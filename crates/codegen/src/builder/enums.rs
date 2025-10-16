@@ -3,9 +3,7 @@ use crate::builder::{
     module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
-use ast::source_loc::SourceLoc;
 use inkwell::{
-    AddressSpace,
     module::Linkage,
     types::{AnyType, ArrayType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, StructValue},
@@ -17,7 +15,7 @@ use resolver::{
 };
 use typed_ast::{
     TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedTypeArgs,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -118,169 +116,21 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    // REVIEW Move to intrinsics.rs
-    fn build_memcmp_for_arrays(&self, lhs_arr: ArrayValue<'a>, rhs_arr: ArrayValue<'a>) -> IntValue<'a> {
-        let i32_type = self.llvmctx.i32_type();
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let target_data = self.llvmtm.get_target_data();
-        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
-
-        let module = self.llvmmodule.borrow();
-        let memcmp = match module.get_function("memcmp") {
-            Some(func) => func,
-            None => {
-                let fn_type = i32_type.fn_type(
-                    &[
-                        i8_ptr_type.into(),        // const void* lhs
-                        i8_ptr_type.into(),        // const void* rhs
-                        ptr_sized_int_type.into(), // size_t len
-                    ],
-                    false,
-                );
-                module.add_function("memcmp", fn_type, None)
-            }
-        };
-
-        let lhs_alloca = self.llvmbuilder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
-        let rhs_alloca = self.llvmbuilder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
-
-        self.llvmbuilder.build_store(lhs_alloca, lhs_arr).unwrap();
-        self.llvmbuilder.build_store(rhs_alloca, rhs_arr).unwrap();
-
-        let zero = self.llvmctx.i32_type().const_zero();
-        let gep_idx = &[zero, zero];
-        let lhs_ptr = unsafe {
-            self.llvmbuilder
-                .build_in_bounds_gep(lhs_arr.get_type(), lhs_alloca, gep_idx, "lhs_gep")
-                .unwrap()
-        };
-        let rhs_ptr = unsafe {
-            self.llvmbuilder
-                .build_in_bounds_gep(rhs_arr.get_type(), rhs_alloca, gep_idx, "rhs_gep")
-                .unwrap()
-        };
-
-        let lhs_cast = self
-            .llvmbuilder
-            .build_pointer_cast(lhs_ptr, i8_ptr_type, "lhs_cast")
-            .unwrap();
-        let rhs_cast = self
-            .llvmbuilder
-            .build_pointer_cast(rhs_ptr, i8_ptr_type, "rhs_cast")
-            .unwrap();
-
-        let byte_size = target_data.get_bit_size(&lhs_arr.get_type()) / 8;
-        let len_val = ptr_sized_int_type.const_int(byte_size as u64, false);
-
-        let cmp = self
-            .llvmbuilder
-            .build_call(
-                memcmp,
-                &[lhs_cast.into(), rhs_cast.into(), len_val.into()],
-                "memcmp_call",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap();
-
-        drop(module);
-        cmp.into_int_value()
-    }
-
-    // REVIEW Move to intrinsics.rs
-    pub(crate) fn copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {
-        let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
-
-        let buffer_alloca = self
-            .llvmbuilder
-            .build_alloca(buffer.get_type(), "buffer_alloca")
-            .unwrap();
-        self.llvmbuilder.build_store(buffer_alloca, buffer).unwrap();
-
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let dest_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(struct_alloca, i8_ptr_type, "dest_i8")
-            .unwrap();
-        let src_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(buffer_alloca, i8_ptr_type, "src_i8")
-            .unwrap();
-
-        let struct_size = struct_type.size_of().unwrap();
-        self.llvmbuilder
-            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, struct_size)
-            .unwrap();
-
-        self.llvmbuilder
-            .build_load(struct_type, struct_alloca, "load_struct")
-            .unwrap()
-            .into_struct_value()
-    }
-
-    // REVIEW Move to intrinsics.rs
-    fn copy_payload_to_buffer(&self, src_value: BasicValueEnum<'a>, dest_array_type: ArrayType<'a>) -> ArrayValue<'a> {
-        let array_alloca = self
-            .llvmbuilder
-            .build_alloca(dest_array_type, &format!("alloca"))
-            .unwrap();
-
-        let src_ptr = match src_value {
-            BasicValueEnum::PointerValue(ptr) => ptr,
-            _ => {
-                let tmp_alloca = self.llvmbuilder.build_alloca(src_value.get_type(), "tmp").unwrap();
-                self.llvmbuilder.build_store(tmp_alloca, src_value).unwrap();
-                tmp_alloca
-            }
-        };
-
-        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let dest_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(array_alloca, i8_ptr_type, "dest_i8")
-            .unwrap();
-        let src_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(src_ptr, i8_ptr_type, "src_i8")
-            .unwrap();
-
-        let array_size = dest_array_type.size_of().unwrap();
-
-        self.llvmbuilder
-            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, array_size)
-            .unwrap();
-
-        self.llvmbuilder
-            .build_load(dest_array_type, array_alloca, &format!("load"))
-            .unwrap()
-            .into_array_value()
-    }
-
     pub(crate) fn build_enum_valued_field_variant_struct_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         enum_valued_fields: Vec<TypedEnumValuedField>,
     ) -> StructType<'a> {
-        let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
+        let fields: Vec<BasicTypeEnum<'a>> = enum_valued_fields
+            .iter()
+            .map(|valued_field| {
+                self.build_concrete_type(local_scope_opt.clone(), valued_field.field_type.clone())
+                    .try_into()
+                    .unwrap()
+            })
+            .collect();
 
-        for (idx, valued_field) in enum_valued_fields.iter().enumerate() {
-            fields.push(TypedUnnamedStructTypeField {
-                field_name: format!("field{}", idx),
-                field_type: Box::new(valued_field.field_type.clone()),
-                loc: valued_field.loc.clone(),
-            });
-        }
-
-        let unnamed_struct_type = TypedUnnamedStructType {
-            fields,
-            packed: false,
-            loc: SourceLoc::default(),
-        };
-
-        self.build_unnamed_struct_type(local_scope_opt, &unnamed_struct_type)
-            .try_into()
-            .unwrap()
+        self.llvmctx.struct_type(&fields, false)
     }
 
     pub(crate) fn build_construct_enum_variant(
@@ -292,14 +142,19 @@ impl<'a> CodeGenBuilder<'a> {
         type_args: &Option<TypedTypeArgs>,
     ) -> InternalValue<'a> {
         let (enum_struct_type, enum_payload_type) = self.get_or_declare_enum_monomorph(resolved_enum, type_args);
+        let enum_sig = if let Some(type_args) = type_args {
+            let normalized_args = self.get_normalized_type_args(type_args);
+            self.substitute_enum_sig_generic_params(resolved_enum.enum_sig.clone(), &normalized_args)
+        } else {
+            resolved_enum.enum_sig.clone()
+        };
 
-        let enum_variant_idx = resolved_enum
-            .enum_sig
+        let enum_variant_idx = enum_sig
             .variants
             .iter()
             .position(|variant| variant.get_identifier().as_string() == variant_name)
             .unwrap();
-        let enum_variant = &resolved_enum.enum_sig.variants[enum_variant_idx];
+        let enum_variant = &enum_sig.variants[enum_variant_idx];
 
         let mut enum_struct_value = enum_struct_type.const_zero();
 

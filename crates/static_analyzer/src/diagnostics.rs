@@ -2,6 +2,9 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    ExplicitTypeArgsRequired {
+        type_name: String
+    },
     InfiniteRecursiveType {
         type_name: String,
     },
@@ -240,6 +243,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name } => {
+                write!(f, "Cannot infer all generic parameters for type '{}'.", type_name)
+            }
             AnalyzerDiagKind::UnexpectedTypeArgs => {
                 write!(f, "Type arguments supplied to a non-generic type.")
             }

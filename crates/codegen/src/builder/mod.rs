@@ -14,3 +14,4 @@ mod generics;
 mod irreg;
 mod controlflow;
 mod unions;
+mod intrinsics;

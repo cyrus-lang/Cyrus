@@ -138,14 +138,7 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> (StructType<'a>, ArrayType<'a>) {
         if let Some(_) = &resolved_enum.enum_sig.generic_params {
             let type_args = type_args.as_ref().expect("Generic struct used without type args!");
-
-            let normalized_args: NormalizedTypeArgs = type_args
-                .iter()
-                .map(|type_arg| match type_arg {
-                    TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
-                    TypedTypeArg::Named { value, .. } => value.clone(),
-                })
-                .collect();
+            let normalized_args = self.get_normalized_type_args(type_args);
 
             let key = MonomorphKey::new(resolved_enum.symbol_id, normalized_args);
             let monomorph_id = with_monomorph_registry!(self, ctx, {
@@ -188,14 +181,7 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> StructType<'a> {
         if let Some(_) = &resolved_union.union_sig.generic_params {
             let type_args = type_args.as_ref().expect("Generic struct used without type args!");
-
-            let normalized_args: NormalizedTypeArgs = type_args
-                .iter()
-                .map(|type_arg| match type_arg {
-                    TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
-                    TypedTypeArg::Named { value, .. } => value.clone(),
-                })
-                .collect();
+            let normalized_args = self.get_normalized_type_args(type_args);
 
             let key = MonomorphKey::new(resolved_union.symbol_id, normalized_args);
             let monomorph_id = with_monomorph_registry!(self, ctx, {
@@ -237,14 +223,7 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> StructType<'a> {
         if let Some(_) = &resolved_struct.struct_sig.generic_params {
             let type_args = type_args.as_ref().expect("Generic struct used without type args!");
-
-            let normalized_args: NormalizedTypeArgs = type_args
-                .iter()
-                .map(|type_arg| match type_arg {
-                    TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
-                    TypedTypeArg::Named { value, .. } => value.clone(),
-                })
-                .collect();
+            let normalized_args = self.get_normalized_type_args(type_args);
 
             let key = MonomorphKey::new(resolved_struct.symbol_id, normalized_args);
             let monomorph_id = with_monomorph_registry!(self, ctx, {
@@ -375,6 +354,16 @@ impl<'a> CodeGenBuilder<'a> {
         struct_sig.generic_params = None;
         struct_sig.fields = substituted_fields;
         struct_sig
+    }
+
+    pub(crate) fn get_normalized_type_args(&self, type_args: &TypedTypeArgs) -> NormalizedTypeArgs {
+        type_args
+            .iter()
+            .map(|type_arg| match type_arg {
+                TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
+                TypedTypeArg::Named { value, .. } => value.clone(),
+            })
+            .collect()
     }
 
     fn substitute_concrete_type(&self, ty: &ConcreteType, subst_map: &HashMap<String, ConcreteType>) -> ConcreteType {

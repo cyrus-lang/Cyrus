@@ -1,0 +1,148 @@
+use crate::builder::module::CodeGenBuilder;
+use inkwell::{
+    AddressSpace,
+    types::{ArrayType, StructType},
+    values::{ArrayValue, BasicValueEnum, IntValue, StructValue},
+};
+
+impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_memcmp_for_arrays(&self, lhs_arr: ArrayValue<'a>, rhs_arr: ArrayValue<'a>) -> IntValue<'a> {
+        let i32_type = self.llvmctx.i32_type();
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let target_data = self.llvmtm.get_target_data();
+        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
+
+        let module = self.llvmmodule.borrow();
+        let memcmp = match module.get_function("memcmp") {
+            Some(func) => func,
+            None => {
+                let fn_type = i32_type.fn_type(
+                    &[
+                        i8_ptr_type.into(),        // const void* lhs
+                        i8_ptr_type.into(),        // const void* rhs
+                        ptr_sized_int_type.into(), // size_t len
+                    ],
+                    false,
+                );
+                module.add_function("memcmp", fn_type, None)
+            }
+        };
+
+        let lhs_alloca = self.llvmbuilder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
+        let rhs_alloca = self.llvmbuilder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
+
+        self.llvmbuilder.build_store(lhs_alloca, lhs_arr).unwrap();
+        self.llvmbuilder.build_store(rhs_alloca, rhs_arr).unwrap();
+
+        let zero = self.llvmctx.i32_type().const_zero();
+        let gep_idx = &[zero, zero];
+        let lhs_ptr = unsafe {
+            self.llvmbuilder
+                .build_in_bounds_gep(lhs_arr.get_type(), lhs_alloca, gep_idx, "lhs_gep")
+                .unwrap()
+        };
+        let rhs_ptr = unsafe {
+            self.llvmbuilder
+                .build_in_bounds_gep(rhs_arr.get_type(), rhs_alloca, gep_idx, "rhs_gep")
+                .unwrap()
+        };
+
+        let lhs_cast = self
+            .llvmbuilder
+            .build_pointer_cast(lhs_ptr, i8_ptr_type, "lhs_cast")
+            .unwrap();
+        let rhs_cast = self
+            .llvmbuilder
+            .build_pointer_cast(rhs_ptr, i8_ptr_type, "rhs_cast")
+            .unwrap();
+
+        let byte_size = target_data.get_bit_size(&lhs_arr.get_type()) / 8;
+        let len_val = ptr_sized_int_type.const_int(byte_size as u64, false);
+
+        let cmp = self
+            .llvmbuilder
+            .build_call(
+                memcmp,
+                &[lhs_cast.into(), rhs_cast.into(), len_val.into()],
+                "memcmp_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+
+        drop(module);
+        cmp.into_int_value()
+    }
+
+    pub(crate) fn copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {
+        let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
+
+        let buffer_alloca = self
+            .llvmbuilder
+            .build_alloca(buffer.get_type(), "buffer_alloca")
+            .unwrap();
+        self.llvmbuilder.build_store(buffer_alloca, buffer).unwrap();
+
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let dest_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(struct_alloca, i8_ptr_type, "dest_i8")
+            .unwrap();
+        let src_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(buffer_alloca, i8_ptr_type, "src_i8")
+            .unwrap();
+
+        let struct_size = struct_type.size_of().unwrap();
+        self.llvmbuilder
+            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, struct_size)
+            .unwrap();
+
+        self.llvmbuilder
+            .build_load(struct_type, struct_alloca, "load_struct")
+            .unwrap()
+            .into_struct_value()
+    }
+
+    pub(crate) fn copy_payload_to_buffer(
+        &self,
+        src_value: BasicValueEnum<'a>,
+        dest_array_type: ArrayType<'a>,
+    ) -> ArrayValue<'a> {
+        let array_alloca = self
+            .llvmbuilder
+            .build_alloca(dest_array_type, &format!("alloca"))
+            .unwrap();
+
+        let src_ptr = match src_value {
+            BasicValueEnum::PointerValue(ptr) => ptr,
+            _ => {
+                let tmp_alloca = self.llvmbuilder.build_alloca(src_value.get_type(), "tmp").unwrap();
+                self.llvmbuilder.build_store(tmp_alloca, src_value).unwrap();
+                tmp_alloca
+            }
+        };
+
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let dest_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(array_alloca, i8_ptr_type, "dest_i8")
+            .unwrap();
+        let src_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(src_ptr, i8_ptr_type, "src_i8")
+            .unwrap();
+
+        let array_size = dest_array_type.size_of().unwrap();
+
+        self.llvmbuilder
+            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, array_size)
+            .unwrap();
+
+        self.llvmbuilder
+            .build_load(dest_array_type, array_alloca, &format!("load"))
+            .unwrap()
+            .into_array_value()
+    }
+}

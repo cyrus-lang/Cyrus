@@ -104,21 +104,31 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn normalize_type_args_and_register(
         &mut self,
+        scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
         generic_params: &Option<TypedGenericParamsList>,
         generic_mapping_ctx: &GenericMappingCtx,
+        loc: SourceLoc,
     ) -> Option<Vec<ConcreteType>> {
         let mut inferred_all = true;
+
         if let Some(generic_params) = &generic_params {
             // normalize type arguments using current mapping
             let mut normalized_type_args: Vec<ConcreteType> = Vec::new();
+            let mut missing: Vec<String> = Vec::new();
+
             for param in generic_params {
-                match generic_mapping_ctx.mapping.get(&param.param_name.as_string()).cloned() {
-                    Some(concrete_type) => normalized_type_args.push(concrete_type),
-                    None => {
-                        inferred_all = false;
-                        continue;
-                    }
+                let key = param.param_name.as_string();
+
+                if let Some(concrete_type) = generic_mapping_ctx.mapping.get(&key).cloned() {
+                    // explicit
+                    normalized_type_args.push(concrete_type);
+                } else if let Some(default_ty) = &param.default {
+                    // use default
+                    normalized_type_args.push(default_ty.clone());
+                } else {
+                    inferred_all = false;
+                    missing.push(format!("'{}'", key));
                 }
             }
 
@@ -128,10 +138,24 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
 
+            if !missing.is_empty() {
+                let type_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
+                let hint = format!("Provide explicit type arguments for {}", missing.join(", "));
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name },
+                    location: Some(DiagLoc::new(loc)),
+                    hint: Some(hint),
+                });
+
+                return None;
+            }
+
             return Some(normalized_type_args);
         }
 
-        return None;
+        None
     }
 
     pub(crate) fn inferred_types_as_positional_type_args(&self, types: Vec<ConcreteType>) -> TypedTypeArgs {
@@ -278,18 +302,6 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(generic_params) = generic_params_opt {
             if let Some(type_args) = type_args_opt.as_ref().map(|args| args.clone()) {
-                if generic_params.len() != type_args.len() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::GenericArityMismatch {
-                            expected: generic_params.len(),
-                            provided: type_args.len(),
-                        },
-                        location: Some(DiagLoc::new(loc.clone())),
-                        hint: None,
-                    });
-                }
-
                 for (param, arg) in generic_params.iter().zip(type_args.iter()) {
                     let concrete_type = match arg {
                         TypedTypeArg::Positional(ct) => ct.clone(),

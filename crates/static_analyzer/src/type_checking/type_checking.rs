@@ -760,9 +760,11 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 if let Some(type_args) = self.normalize_type_args_and_register(
+                    scope_id_opt,
                     enum_symbol_id,
                     &resolved_enum.enum_sig.generic_params,
                     &generic_mapping_ctx,
+                    method_call.loc.clone()
                 ) {
                     method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                 }
@@ -1063,9 +1065,11 @@ impl<'a> AnalysisContext<'a> {
                 )?;
 
                 if let Some(type_args) = self.normalize_type_args_and_register(
+                    scope_id_opt,
                     resolved_union.symbol_id,
                     &resolved_union.union_sig.generic_params,
                     &generic_mapping_ctx,
+                    struct_init.loc.clone()
                 ) {
                     struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                 }
@@ -1204,9 +1208,11 @@ impl<'a> AnalysisContext<'a> {
                     missing_fields.remove(missing_fields_idx);
 
                     if let Some(type_args) = self.normalize_type_args_and_register(
+                        scope_id_opt,
                         resolved_struct.symbol_id,
                         &resolved_struct.struct_sig.generic_params,
                         &generic_mapping_ctx,
+                        struct_init.loc.clone()
                     ) {
                         struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                     }
