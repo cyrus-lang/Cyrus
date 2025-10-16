@@ -481,12 +481,12 @@ impl<'a> CodeGenBuilder<'a> {
                             )
                             .unwrap();
 
-                        let mut irreg = self.irreg.borrow_mut();
-                        irreg.insert(
+                        dbg!(field_pointer.clone());
+                        
+                        self.insert_ir_value(
                             symbol_id,
                             LocalIRValue::LValue(field_pointer, resolved_variable.typed_variable.ty.clone().unwrap()),
                         );
-                        drop(irreg);
                     }
 
                     drop(local_scope);

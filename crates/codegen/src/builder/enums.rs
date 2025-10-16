@@ -209,11 +209,9 @@ impl<'a> CodeGenBuilder<'a> {
         variant_name: String,
     ) -> InternalValue<'a> {
         let (enum_struct_type, enum_payload_type) = {
-            let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&resolved_enum.symbol_id).unwrap();
+            let local_ir_value = self.get_ir_value(resolved_enum.symbol_id).unwrap();
             let enum_ir_value = local_ir_value.as_enum().unwrap().clone();
             let (struct_type, payload_type) = (enum_ir_value.0.clone(), enum_ir_value.1.clone());
-            drop(irreg);
             (struct_type, payload_type)
         };
 

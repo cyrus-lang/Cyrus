@@ -25,9 +25,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig) -> FunctionValue<'a> {
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&symbol_id).cloned();
-        drop(irreg);
+        let local_ir_value = self.get_ir_value(symbol_id);
 
         let fn_value = match local_ir_value {
             Some(local_ir_value) => match local_ir_value.as_func() {
@@ -61,11 +59,9 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn get_or_declare_struct(&mut self, symbol_id: SymbolID, struct_sig: &StructSig) -> StructType<'a> {
         if struct_sig.generic_params.is_none() {
-            let irreg = self.irreg.borrow();
-            let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-            drop(irreg);
+            let local_ir_value = self.get_ir_value(symbol_id);
 
-            match local_ir_value_opt {
+            match local_ir_value {
                 Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
                 None => {
                     let struct_type = self.build_struct_type(struct_sig, None);
@@ -80,11 +76,9 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn get_or_declare_union(&mut self, symbol_id: SymbolID, union_sig: &UnionSig) -> StructType<'a> {
         if union_sig.generic_params.is_none() {
-            let irreg = self.irreg.borrow();
-            let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-            drop(irreg);
+            let local_ir_value = self.get_ir_value(symbol_id);
 
-            match local_ir_value_opt {
+            match local_ir_value {
                 Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
                 None => {
                     let struct_type = self.build_union_type(union_sig, None);
@@ -103,11 +97,9 @@ impl<'a> CodeGenBuilder<'a> {
         enum_sig: &EnumSig,
     ) -> (StructType<'a>, ArrayType<'a>) {
         if enum_sig.generic_params.is_none() {
-            let irreg = self.irreg.borrow();
-            let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-            drop(irreg);
+            let local_ir_value = self.get_ir_value(symbol_id);
 
-            match local_ir_value_opt {
+            match local_ir_value {
                 Some(local_ir_value) => {
                     let (struct_type, payload_type) = local_ir_value.as_enum().unwrap();
                     (struct_type.clone(), payload_type.clone())
