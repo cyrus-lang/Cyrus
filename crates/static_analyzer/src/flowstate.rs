@@ -3,7 +3,7 @@ use crate::context::AnalysisContext;
 #[allow(unused)]
 #[derive(Debug)]
 pub(crate) enum ControlContext {
-    For,
+    Loop,
     Switch,
     While,
 }

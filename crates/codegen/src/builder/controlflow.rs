@@ -407,8 +407,6 @@ impl<'a> CodeGenBuilder<'a> {
         let mut block_id = 0;
 
         for case in &switch.cases {
-            let local_scope_opt = self.resolver.get_scope_ref(self.module_id, case.body.scope_id);
-
             let case_int_value = match &case.pattern {
                 TypedSwitchCasePattern::Expression(..) => unreachable!(),
                 TypedSwitchCasePattern::Identifier(identifier, _) => {
@@ -449,7 +447,7 @@ impl<'a> CodeGenBuilder<'a> {
                         };
 
                         self.build_enum_valued_field_variant_struct_type(
-                            local_scope_opt.clone(),
+                            Some(local_scope_rc.clone()),
                             enum_valued_fields.clone(),
                         )
                     };
@@ -464,12 +462,13 @@ impl<'a> CodeGenBuilder<'a> {
                         .unwrap();
 
                     for (valued_field_idx, valued_field) in valued_fields.iter().enumerate() {
-                        let local_symbol = local_scope.resolve(&valued_field.name).unwrap();
-                        let symbol_id = local_symbol.get_symbol_id();
+                        let local_symbol = local_scope.resolve_with_symbol_id(valued_field.symbol_id).unwrap();
                         let resolved_variable = match &local_symbol.kind {
                             LocalSymbolKind::Variable(resolved_variable) => resolved_variable,
                             _ => unreachable!(),
                         };
+
+                        let variable_type = resolved_variable.typed_variable.ty.clone().unwrap();
 
                         let field_pointer = self
                             .llvmbuilder
@@ -481,11 +480,9 @@ impl<'a> CodeGenBuilder<'a> {
                             )
                             .unwrap();
 
-                        dbg!(field_pointer.clone());
-                        
                         self.insert_ir_value(
-                            symbol_id,
-                            LocalIRValue::LValue(field_pointer, resolved_variable.typed_variable.ty.clone().unwrap()),
+                            valued_field.symbol_id,
+                            LocalIRValue::LValue(field_pointer, variable_type),
                         );
                     }
 
