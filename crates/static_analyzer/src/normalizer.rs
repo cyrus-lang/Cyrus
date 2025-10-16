@@ -236,8 +236,12 @@ impl<'a> AnalysisContext<'a> {
         match local_or_global_symbol {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
                 LocalSymbolKind::Variable(resolved_variable) => {
-                    if let Some(t) = &resolved_variable.typed_variable.ty {
-                        self.normalize_type(scope_id_opt, t.clone(), resolved_variable.typed_variable.loc.clone())
+                    if let Some(concrete_type) = &resolved_variable.typed_variable.ty {
+                        self.normalize_type(
+                            scope_id_opt,
+                            concrete_type.clone(),
+                            resolved_variable.typed_variable.loc.clone(),
+                        )
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
                         let rhs_ty = self.analyze_typed_expr_type_non_terminal(
                             scope_id_opt,
