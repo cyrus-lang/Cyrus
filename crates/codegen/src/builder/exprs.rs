@@ -777,8 +777,6 @@ impl<'a> CodeGenBuilder<'a> {
                     .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
 
                 if variant_opt.is_some() {
-                    // ANCHOR
-                    //
                     return self.build_construct_enum_variant(
                         local_scope_opt,
                         resolved_enum,

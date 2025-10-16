@@ -121,7 +121,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_dereference_expr_type(scope_id_opt, typed_dereference)
             }
             TypedExpressionKind::StructInit(struct_init) => {
-                self.analyze_struct_init_expr_type(scope_id_opt, struct_init)
+                self.analyze_struct_init_expr_type(scope_id_opt, struct_init, expected_type)
             }
             TypedExpressionKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
@@ -699,6 +699,7 @@ impl<'a> AnalysisContext<'a> {
         enum_variant: &TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
+        expected_typed: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let valued_fields = match enum_variant {
             TypedEnumVariant::Variant(_, valued_fields) => {
@@ -764,9 +765,12 @@ impl<'a> AnalysisContext<'a> {
                     enum_symbol_id,
                     &resolved_enum.enum_sig.generic_params,
                     &generic_mapping_ctx,
-                    method_call.loc.clone()
+                    expected_typed,
+                    method_call.loc.clone(),
                 ) {
                     method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+                } else {
+                    return None;
                 }
             }
         );
@@ -992,6 +996,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         union_symbol_id: SymbolID,
         struct_init: &mut TypedStructInit,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         if struct_init.fields.len() > 1 || struct_init.fields.len() == 0 {
             self.reporter.report(Diag {
@@ -1069,9 +1074,12 @@ impl<'a> AnalysisContext<'a> {
                     resolved_union.symbol_id,
                     &resolved_union.union_sig.generic_params,
                     &generic_mapping_ctx,
-                    struct_init.loc.clone()
+                    expected_type,
+                    struct_init.loc.clone(),
                 ) {
                     struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+                } else {
+                    return None;
                 }
             }
         );
@@ -1099,6 +1107,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInit,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let normalized = self
             .normalize_type(
@@ -1112,7 +1121,12 @@ impl<'a> AnalysisContext<'a> {
             Some(symbol_id) => symbol_id,
             None => {
                 if let Some(union_symbol_id) = normalized.as_union_symbol_id() {
-                    return self.analyze_union_init_expr_type(scope_id_opt, union_symbol_id, struct_init);
+                    return self.analyze_union_init_expr_type(
+                        scope_id_opt,
+                        union_symbol_id,
+                        struct_init,
+                        expected_type,
+                    );
                 } else {
                     let symbol_name = format_concrete_type(normalized, &(self.symbol_formatter)(scope_id_opt));
 
@@ -1206,16 +1220,19 @@ impl<'a> AnalysisContext<'a> {
                     };
 
                     missing_fields.remove(missing_fields_idx);
+                }
 
-                    if let Some(type_args) = self.normalize_type_args_and_register(
-                        scope_id_opt,
-                        resolved_struct.symbol_id,
-                        &resolved_struct.struct_sig.generic_params,
-                        &generic_mapping_ctx,
-                        struct_init.loc.clone()
-                    ) {
-                        struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-                    }
+                if let Some(type_args) = self.normalize_type_args_and_register(
+                    scope_id_opt,
+                    resolved_struct.symbol_id,
+                    &resolved_struct.struct_sig.generic_params,
+                    &generic_mapping_ctx,
+                    expected_type.clone(),
+                    struct_init.loc.clone(),
+                ) {
+                    struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+                } else {
+                    return None;
                 }
             }
         );
@@ -1598,6 +1615,7 @@ impl<'a> AnalysisContext<'a> {
                     enum_variant,
                     method_call,
                     resolved_enum,
+                    expected_type,
                 );
             }
         }
