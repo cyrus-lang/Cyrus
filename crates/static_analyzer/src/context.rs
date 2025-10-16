@@ -439,17 +439,15 @@ impl<'a> AnalysisContext<'a> {
             branch_states.push(body_flow_state);
 
             // use the normalized state for fallthrough detection
-            if body_flow_state == FlowState::Reachable {
-                if i + 1 < typed_switch.cases.len() {
-                    let next_case = &typed_switch.cases[i + 1];
-                    if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase,
-                            location: Some(DiagLoc::new(next_case.loc.clone())),
-                            hint: None,
-                        });
-                    }
+            if body_flow_state == FlowState::Reachable && i + 1 < typed_switch.cases.len() {
+                let next_case = &typed_switch.cases[i + 1];
+                if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase,
+                        location: Some(DiagLoc::new(next_case.loc.clone())),
+                        hint: None,
+                    });
                 }
             }
         }
@@ -461,27 +459,27 @@ impl<'a> AnalysisContext<'a> {
             branch_states.push(FlowState::Reachable);
         }
 
+        // default case
+        if let Some(default_case) = &mut typed_switch.default_case {
+            let body_flow_state = self.analyze_block_statement(default_case);
+            branch_states.push(body_flow_state);
+        } else {
+            branch_states.push(FlowState::Reachable);
+        }
+
         self.control_stack.pop();
 
-        // FIXME
-        todo!();
-        // // final decision
-        // let final_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
-        //     FlowState::Returns
-        // } else {
-        //     branch_states
-        //         .into_iter()
-        //         .reduce(|a, b| self.merge_flow_state(a, b))
-        //         .unwrap_or(FlowState::Unreachable)
-        // };
+        // final merge
+        let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+            FlowState::Returns
+        } else {
+            FlowState::Reachable
+        };
 
-        // self.control_stack.pop();
-        // final_state
+        flow_state
     }
 
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
-        dbg!(typed_switch.operand.loc.clone());
-
         self.control_stack.push(ControlContext::Switch);
 
         if typed_switch.cases.is_empty() {
