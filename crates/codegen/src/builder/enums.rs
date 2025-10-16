@@ -279,9 +279,9 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_enum_type(
         &mut self,
         enum_sig: &EnumSig,
-        custon_name: Option<String>,
+        custom_name: Option<String>,
     ) -> (StructType<'a>, ArrayType<'a>) {
-        let llvm_struct_name = custon_name.unwrap_or(generate_enum_abi_name(
+        let llvm_struct_name = custom_name.unwrap_or(generate_enum_abi_name(
             &self.get_module_name(self.module_id),
             &enum_sig.name,
         ));
