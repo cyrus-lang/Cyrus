@@ -17,7 +17,6 @@ use resolver::{
 };
 use typed_ast::{
     TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedTypeArgs,
-    TypedUnnamedStructValueField,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
 
@@ -315,44 +314,31 @@ impl<'a> CodeGenBuilder<'a> {
             .unwrap()
             .into_struct_value();
 
-        match enum_variant {
-            TypedEnumVariant::Identifier(..) => unreachable!(),
-            TypedEnumVariant::Valued(..) => unreachable!(),
-            TypedEnumVariant::Variant(_, enum_valued_fields) => {
-                let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
-
-                for (idx, valued_field) in enum_valued_fields.iter().enumerate() {
+        if let TypedEnumVariant::Variant(_, enum_valued_fields) = enum_variant {
+            let fields: Vec<BasicValueEnum<'a>> = enum_valued_fields
+                .iter()
+                .enumerate()
+                .map(|(idx, enum_valued_field)| {
                     let arg = &args[idx];
+                    let lvalue = self.build_expr(local_scope_opt.clone(), arg);
+                    let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+                    let casted_rvalue =
+                        self.build_implicit_cast(local_scope_opt.clone(), enum_valued_field.field_type.clone(), rvalue);
 
-                    fields.push(TypedUnnamedStructValueField {
-                        field_name: format!("field{}", idx),
-                        field_type: Some(valued_field.field_type.clone()),
-                        field_value: Box::new(arg.clone()),
-                        loc: valued_field.loc.clone(),
-                    });
-                }
+                    casted_rvalue.as_basic_value()
+                })
+                .collect();
 
-                let mut payload_value = enum_payload_type.const_zero();
+            let payload_basic_value = self.llvmctx.const_struct(&fields, false);
 
-                for (idx, _) in enum_valued_fields.iter().enumerate() {
-                    let arg_val = self
-                        .build_expr(local_scope_opt.clone(), &args[idx])
-                        .as_basic_value()
-                        .as_basic_value_enum();
+            let copied_payload =
+                self.copy_payload_to_buffer(BasicValueEnum::StructValue(payload_basic_value), enum_payload_type);
 
-                    payload_value = self
-                        .llvmbuilder
-                        .build_insert_value(payload_value, arg_val, idx as u32, "set_payload")
-                        .unwrap()
-                        .into_array_value();
-                }
-
-                enum_struct_value = self
-                    .llvmbuilder
-                    .build_insert_value(enum_struct_value, payload_value, 1, "set")
-                    .unwrap()
-                    .into_struct_value();
-            }
+            enum_struct_value = self
+                .llvmbuilder
+                .build_insert_value(enum_struct_value, copied_payload, 1, "set")
+                .unwrap()
+                .into_struct_value();
         }
 
         InternalValue::new(
