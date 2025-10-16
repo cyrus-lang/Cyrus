@@ -136,15 +136,12 @@ impl<'a> CodeGenBuilder<'a> {
             };
 
             let irreg_symbol_id = local_or_global_symbol.get_symbol_id();
-
-            let irreg = self.irreg.borrow();
-            let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
-            drop(irreg);
+            let local_ir_value = self.get_ir_value(irreg_symbol_id);
 
             if let Some(typedef) = local_or_global_symbol.as_typedef() {
                 self.build_concrete_type(local_scope_opt, typedef.typedef_sig.ty.clone())
             } else {
-                let local_ir_value = match local_ir_value_opt {
+                let local_ir_value = match local_ir_value {
                     Some(local_ir_value) => local_ir_value,
                     None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
                 };
@@ -178,12 +175,9 @@ impl<'a> CodeGenBuilder<'a> {
                         };
 
                         let irreg_symbol_id = local_or_global_symbol.get_symbol_id();
+                        let local_ir_value = self.get_ir_value(irreg_symbol_id);
 
-                        let irreg = self.irreg.borrow();
-                        let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
-                        drop(irreg);
-
-                        let local_ir_value = match local_ir_value_opt {
+                        let local_ir_value = match local_ir_value {
                             Some(local_ir_value) => local_ir_value,
                             None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
                         };

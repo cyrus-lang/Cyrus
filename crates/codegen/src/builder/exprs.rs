@@ -1553,9 +1553,7 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> InternalValue<'a> {
-        let irreg = self.irreg.borrow();
-        let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-        drop(irreg);
+        let local_ir_value_opt = self.get_ir_value(symbol_id);
 
         let local_ir_value = match local_ir_value_opt {
             Some(local_ir_value) => local_ir_value,

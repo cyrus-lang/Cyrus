@@ -19,7 +19,9 @@ use inkwell::{
 };
 use resolver::{scope::LocalScopeRef, typed_func_type_from_func_sig};
 use typed_ast::{
-    ModuleID, SymbolID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedLambda, TypedVariable, types::{ConcreteType, TypedFuncType}
+    ModuleID, SymbolID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams,
+    TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedLambda, TypedVariable,
+    types::{ConcreteType, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -177,8 +179,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn build_func_def(&mut self, func_def: &TypedFuncDef) {
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, func_def.body.scope_id);
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
+        let local_ir_value = self.get_ir_value(func_def.symbol_id).unwrap();
 
         let func = local_ir_value.as_func().unwrap().clone();
         let fn_value = func.0.clone();
@@ -187,7 +188,6 @@ impl<'a> CodeGenBuilder<'a> {
         let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
         self.blockreg.current_block_ref = Some(entry_block);
         self.llvmbuilder.position_at_end(entry_block);
-        drop(irreg);
 
         self.build_func_params(local_scope_opt, &func_def.params, fn_value);
 

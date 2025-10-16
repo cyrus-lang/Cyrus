@@ -169,54 +169,6 @@ impl<'a> AnalysisContext<'a> {
         None
     }
 
-    fn infer_generic_type_from_expected_type(
-        &mut self,
-        symbol_id: SymbolID,
-        generic_params: &TypedGenericParamsList,
-        generic_mapping_ctx: &GenericMappingCtx,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<Vec<ConcreteType>> {
-        let expected = match expected_type.as_ref() {
-            Some(e) => e,
-            None => return None,
-        };
-
-        if let ConcreteType::GenericType(generic_type) = expected {
-            if generic_type.base != symbol_id {
-                return None;
-            }
-
-            if generic_type.type_args.len() != generic_params.len() {
-                return None;
-            }
-
-            let mut merged_args: Vec<ConcreteType> = Vec::with_capacity(generic_params.len());
-            for (i, param) in generic_params.iter().enumerate() {
-                let key = param.param_name.as_string();
-
-                if let Some(concrete) = generic_mapping_ctx.mapping.get(&key).cloned() {
-                    merged_args.push(concrete);
-                } else if let Some(default_ty) = &param.default {
-                    merged_args.push(default_ty.clone());
-                } else {
-                    let concrete_type = match generic_type.type_args[i].clone() {
-                        TypedTypeArg::Positional(concrete_type) => concrete_type,
-                        TypedTypeArg::Named { value, .. } => value,
-                    };
-                    merged_args.push(concrete_type);
-                }
-            }
-
-            with_monomorph_registry!(self, registry, {
-                registry.register(symbol_id, merged_args.clone());
-            });
-
-            return Some(merged_args);
-        }
-
-        None
-    }
-
     pub(crate) fn inferred_types_as_positional_type_args(&self, types: Vec<ConcreteType>) -> TypedTypeArgs {
         types
             .iter()
@@ -379,6 +331,54 @@ impl<'a> AnalysisContext<'a> {
         }
 
         GenericMappingCtx { mapping }
+    }
+
+    fn infer_generic_type_from_expected_type(
+        &mut self,
+        symbol_id: SymbolID,
+        generic_params: &TypedGenericParamsList,
+        generic_mapping_ctx: &GenericMappingCtx,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<Vec<ConcreteType>> {
+        let expected = match expected_type.as_ref() {
+            Some(e) => e,
+            None => return None,
+        };
+
+        if let ConcreteType::GenericType(generic_type) = expected {
+            if generic_type.base != symbol_id {
+                return None;
+            }
+
+            if generic_type.type_args.len() != generic_params.len() {
+                return None;
+            }
+
+            let mut merged_args: Vec<ConcreteType> = Vec::with_capacity(generic_params.len());
+            for (i, param) in generic_params.iter().enumerate() {
+                let key = param.param_name.as_string();
+
+                if let Some(concrete) = generic_mapping_ctx.mapping.get(&key).cloned() {
+                    merged_args.push(concrete);
+                } else if let Some(default_ty) = &param.default {
+                    merged_args.push(default_ty.clone());
+                } else {
+                    let concrete_type = match generic_type.type_args[i].clone() {
+                        TypedTypeArg::Positional(concrete_type) => concrete_type,
+                        TypedTypeArg::Named { value, .. } => value,
+                    };
+                    merged_args.push(concrete_type);
+                }
+            }
+
+            with_monomorph_registry!(self, registry, {
+                registry.register(symbol_id, merged_args.clone());
+            });
+
+            return Some(merged_args);
+        }
+
+        None
     }
 }
 
