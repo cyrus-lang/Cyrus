@@ -69,7 +69,9 @@ pub fn main() {
                 AnalysisContext::check_entry_points(entry_points);
             }
 
-            // dbg!(typed_program_tree);
+            if !resolver.reporter.has_errors() {
+                dbg!(typed_program_tree);
+            }
         }
         Err(errors) => {
             parser.display_parser_errors(errors.clone());
