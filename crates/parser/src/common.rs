@@ -542,23 +542,18 @@ impl Parser {
         let mut args = Vec::new();
 
         loop {
-            if let TokenKind::Identifier { .. } = self.current_token().kind {
-                if self.peek_token_is(TokenKind::Assign) {
-                    let key = self.parse_identifier()?;
-                    self.next_token(); // consume identifier
-                    self.expect_current(TokenKind::Assign)?;
+            if matches!(self.current_token().kind, TokenKind::Identifier { .. })
+                && self.peek_token_is(TokenKind::Assign)
+            {
+                let key = self.parse_identifier()?;
+                self.next_token(); // consume identifier
+                self.expect_current(TokenKind::Assign)?;
 
-                    let val = self.parse_type_specifier()?;
-                    self.next_token();
+                let val = self.parse_type_specifier()?;
+                self.next_token();
 
-                    args.push(TypeArg::Named { key, value: val });
-                } else {
-                    // positional type arg
-                    let ty = self.parse_type_specifier()?;
-                    args.push(TypeArg::Positional(ty));
-                }
+                args.push(TypeArg::Named { key, value: val });
             } else {
-                // positional type arg that is not an identifier
                 let ty = self.parse_type_specifier()?;
                 self.next_token();
                 args.push(TypeArg::Positional(ty));
