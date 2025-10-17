@@ -2673,7 +2673,17 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         field_access: &FieldAccess,
     ) -> Option<TypedExpression> {
-        let operand = self.resolve_expr(module_id, local_scope_opt, &field_access.operand)?;
+        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &field_access.operand)?;
+
+        let type_args = field_access.type_args.clone().and_then(|type_args| {
+            Some(self.resolve_type_args(
+                module_id,
+                local_scope_opt,
+                &type_args,
+                field_access.loc.clone(),
+                field_access.span.end,
+            ))
+        })?;
 
         Some(TypedExpression {
             kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
@@ -2683,6 +2693,7 @@ impl Resolver {
                 field_index: None,
                 field_ty: None,
                 object_symbol_id: None,
+                type_args,
                 loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
             }),
             value_category: ValueCategory::Lvalue,

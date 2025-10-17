@@ -229,6 +229,7 @@ pub struct FieldAccess {
     pub is_fat_arrow: bool,
     pub operand: Box<Expression>,
     pub field_name: Identifier,
+    pub type_args: Option<TypeArgs>,
     pub span: Span,
     pub loc: Location,
 }
