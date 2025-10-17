@@ -1,7 +1,7 @@
 use crate::builder::module::CodeGenBuilder;
 use inkwell::{
     AddressSpace,
-    types::{ArrayType, StructType},
+    types::{ArrayType, BasicType, StructType},
     values::{ArrayValue, BasicValueEnum, IntValue, StructValue},
 };
 
@@ -110,38 +110,32 @@ impl<'a> CodeGenBuilder<'a> {
         src_value: BasicValueEnum<'a>,
         dest_array_type: ArrayType<'a>,
     ) -> ArrayValue<'a> {
-        let array_alloca = self
-            .llvmbuilder
-            .build_alloca(dest_array_type, &format!("alloca"))
-            .unwrap();
+        let builder = &self.llvmbuilder;
+
+        let array_alloca = builder.build_alloca(dest_array_type, "alloca").unwrap();
+        builder.build_store(array_alloca, dest_array_type.const_zero()).unwrap(); // zero-init
 
         let src_ptr = match src_value {
             BasicValueEnum::PointerValue(ptr) => ptr,
             _ => {
-                let tmp_alloca = self.llvmbuilder.build_alloca(src_value.get_type(), "tmp").unwrap();
-                self.llvmbuilder.build_store(tmp_alloca, src_value).unwrap();
+                let tmp_alloca = builder.build_alloca(src_value.get_type(), "tmp").unwrap();
+                builder.build_store(tmp_alloca, src_value).unwrap();
                 tmp_alloca
             }
         };
 
         let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let dest_i8_ptr = self
-            .llvmbuilder
+        let dest_i8_ptr = builder
             .build_pointer_cast(array_alloca, i8_ptr_type, "dest_i8")
             .unwrap();
-        let src_i8_ptr = self
-            .llvmbuilder
-            .build_pointer_cast(src_ptr, i8_ptr_type, "src_i8")
-            .unwrap();
+        let src_i8_ptr = builder.build_pointer_cast(src_ptr, i8_ptr_type, "src_i8").unwrap();
 
-        let array_size = dest_array_type.size_of().unwrap();
+        let src_size = src_value.get_type().size_of().unwrap();
+        builder.build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, src_size).unwrap();
 
-        self.llvmbuilder
-            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, array_size)
-            .unwrap();
-
-        self.llvmbuilder
-            .build_load(dest_array_type, array_alloca, &format!("load"))
+        // Load back the array
+        builder
+            .build_load(dest_array_type, array_alloca, "load")
             .unwrap()
             .into_array_value()
     }
