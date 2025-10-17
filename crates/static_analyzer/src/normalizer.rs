@@ -5,6 +5,7 @@ use partialmatch::partial_match;
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
+    TypedTypeArg,
     types::{
         ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
         TypedTupleType,
@@ -51,8 +52,27 @@ impl<'a> AnalysisContext<'a> {
         });
 
         match ty {
-            ty @ ConcreteType::GenericType(..) => Some(ty),
             ty @ ConcreteType::GenericParam(..) => Some(ty),
+            ConcreteType::GenericType(mut generic_type) => {
+                for type_arg in &mut generic_type.type_args {
+                    let normalized_type_arg = match type_arg {
+                        TypedTypeArg::Positional(concrete_type) => {
+                            let normalized_ty =
+                                self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone())?;
+                            TypedTypeArg::Positional(normalized_ty)
+                        }
+                        TypedTypeArg::Named { key, value } => {
+                            let normalized_ty = self.normalize_type(scope_id_opt, value.clone(), loc.clone())?;
+                            TypedTypeArg::Named {
+                                key: key.clone(),
+                                value: normalized_ty,
+                            }
+                        }
+                    };
+                    *type_arg = normalized_type_arg;
+                }
+                Some(ConcreteType::GenericType(generic_type))
+            }
             ConcreteType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 

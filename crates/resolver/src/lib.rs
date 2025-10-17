@@ -438,75 +438,85 @@ impl Resolver {
         type_args: &TypeArgs,
         loc: Location,
         span_end: usize,
-    ) -> TypedTypeArgs {
+    ) -> Option<TypedTypeArgs> {
         type_args
             .iter()
             .map(|type_arg| match type_arg {
-                TypeArg::Positional(type_specifier) => TypedTypeArg::Positional(
-                    self.resolve_type(
+                TypeArg::Positional(type_specifier) => {
+                    let ty = self.resolve_type(
                         &None,
                         local_scope_opt.clone(),
                         module_id,
                         type_specifier.clone(),
                         loc.clone(),
                         span_end,
-                    )
-                    .unwrap(),
-                ),
+                    )?;
+                    Some(TypedTypeArg::Positional(ty))
+                }
                 TypeArg::Named { key, value } => {
-                    let value = self
-                        .resolve_type(
-                            &None,
-                            local_scope_opt.clone(),
-                            module_id,
-                            value.clone(),
-                            loc.clone(),
-                            span_end,
-                        )
-                        .unwrap();
-                    TypedTypeArg::Named {
+                    let ty = self.resolve_type(
+                        &None,
+                        local_scope_opt.clone(),
+                        module_id,
+                        value.clone(),
+                        loc.clone(),
+                        span_end,
+                    )?;
+                    Some(TypedTypeArg::Named {
                         key: key.clone(),
-                        value,
-                    }
+                        value: ty,
+                    })
                 }
             })
-            .collect()
+            .collect::<Option<_>>()
     }
 
-    fn resolve_generic_params(&mut self, generic_params: &GenericParamsList) -> TypedGenericParamsList {
+    fn resolve_generic_params(&mut self, generic_params: &GenericParamsList) -> Option<TypedGenericParamsList> {
         generic_params
             .iter()
-            .map(|generic_param| TypedGenericParam {
-                param_name: generic_param.param_name.clone(),
-                bounds: generic_param.bounds.clone().and_then(|bounds| {
-                    Some(
-                        bounds
+            .map(|generic_param| {
+                let bounds = match &generic_param.bounds {
+                    Some(bounds) => {
+                        let resolved_bounds = bounds
                             .iter()
-                            .map(|bound| TypedBound {
-                                symbol: bound.symbol.clone(),
-                                type_args: self.resolve_type_args(
-                                    self.current_module.unwrap(),
-                                    None,
-                                    &bound.type_args,
-                                    generic_param.param_name.loc.clone(),
-                                    generic_param.param_name.span.end,
-                                ),
+                            .map(|bound| {
+                                Some(TypedBound {
+                                    symbol: bound.symbol.clone(),
+                                    type_args: self.resolve_type_args(
+                                        self.current_module?,
+                                        None,
+                                        &bound.type_args,
+                                        generic_param.param_name.loc.clone(),
+                                        generic_param.param_name.span.end,
+                                    )?,
+                                })
                             })
-                            .collect(),
-                    )
-                }),
-                default: generic_param.default.clone().and_then(|default_type_specifier| {
-                    self.resolve_type(
+                            .collect::<Option<Vec<_>>>()?;
+
+                        Some(resolved_bounds)
+                    }
+                    None => None,
+                };
+
+                let default = match &generic_param.default {
+                    Some(default_type_specifier) => Some(self.resolve_type(
                         &Some(generic_params.clone()),
                         None,
-                        self.current_module.unwrap(),
-                        default_type_specifier,
+                        self.current_module?,
+                        default_type_specifier.clone(),
                         generic_param.param_name.loc.clone(),
                         generic_param.param_name.span.end,
-                    )
-                }),
+                    )?),
+                    None => None,
+                };
+
+                Some(TypedGenericParam {
+                    param_name: generic_param.param_name.clone(),
+                    bounds,
+                    default,
+                })
             })
-            .collect()
+            .collect::<Option<Vec<_>>>()
     }
 
     fn resolve_generic_param_as_type(
@@ -554,7 +564,7 @@ impl Resolver {
                 let is_const = base.is_const();
                 if let Some(symbol_id) = base.get_const_inner().as_unresolved_symbol() {
                     let type_args =
-                        self.resolve_type_args(module_id, local_scope, &generic_inst.type_args, loc.clone(), span_end);
+                        self.resolve_type_args(module_id, local_scope, &generic_inst.type_args, loc.clone(), span_end)?;
 
                     Ok(ConcreteType::GenericType(GenericType {
                         base: symbol_id,
@@ -1094,7 +1104,7 @@ impl Resolver {
         let generic_params = union_decl
             .generic_params
             .clone()
-            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)));
+            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)))?;
 
         let resolved_union = ResolvedUnion {
             module_id,
@@ -1202,7 +1212,7 @@ impl Resolver {
         let generic_params = enum_decl
             .generic_params
             .clone()
-            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)));
+            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)))?;
 
         let resolved_enum = ResolvedEnum {
             module_id,
@@ -1520,7 +1530,7 @@ impl Resolver {
         let generic_params = struct_decl
             .generic_params
             .clone()
-            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)));
+            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)))?;
 
         let resolved_struct = ResolvedStruct {
             module_id,
@@ -2703,7 +2713,7 @@ impl Resolver {
                 method_call.loc.clone(),
                 method_call.span.end,
             ))
-        });
+        })?;
 
         Some(TypedExpression {
             kind: TypedExpressionKind::MethodCall(TypedMethodCall {
@@ -2751,7 +2761,7 @@ impl Resolver {
                 struct_init.loc.clone(),
                 struct_init.span.end,
             ))
-        });
+        })?;
 
         Some(TypedExpression {
             kind: TypedExpressionKind::StructInit(TypedStructInit {
