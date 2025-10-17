@@ -333,7 +333,7 @@ impl<'a> AnalysisContext<'a> {
         GenericMappingCtx { mapping }
     }
 
-    fn infer_generic_type_from_expected_type(
+    pub(crate) fn infer_generic_type_from_expected_type(
         &mut self,
         symbol_id: SymbolID,
         generic_params: &TypedGenericParamsList,

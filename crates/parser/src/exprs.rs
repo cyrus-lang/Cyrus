@@ -739,7 +739,7 @@ impl Parser {
 
         if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
             let identifier = self.parse_identifier()?;
-
+            
             let mut type_args_opt: Option<Vec<TypeArg>> = None;
             if self.is_type_arg_start(operand.clone()) {
                 self.next_token(); // consume current token of expr
@@ -751,19 +751,16 @@ impl Parser {
                 self.next_token(); // consume identifier
 
                 return self.parse_method_call(operand, identifier, is_fat_arrow, type_args_opt, start, loc);
+            } else {
+                Ok(Expression::FieldAccess(FieldAccess {
+                    is_fat_arrow,
+                    operand: Box::new(operand),
+                    field_name: identifier,
+                    type_args: type_args_opt,
+                    span: Span::new(start, self.current_token().span.end),
+                    loc,
+                }))
             }
-        }
-
-        if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-            let identifier = self.parse_identifier()?;
-
-            Ok(Expression::FieldAccess(FieldAccess {
-                is_fat_arrow,
-                operand: Box::new(operand),
-                field_name: identifier,
-                span: Span::new(start, self.current_token().span.end),
-                loc,
-            }))
         } else {
             let index = self.parse_expression(Precedence::Lowest)?.0;
 

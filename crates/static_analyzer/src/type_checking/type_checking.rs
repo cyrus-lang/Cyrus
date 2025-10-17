@@ -788,42 +788,28 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_enum_variant_no_field(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
         enum_symbol_id: SymbolID,
+        enum_name: String,
+        enum_variant_opt: Option<&TypedEnumVariant>,
         field_access: &TypedFieldAccess,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
-            .unwrap();
-        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
-
-        let enum_variant = match resolved_enum
-            .enum_sig
-            .variants
-            .iter()
-            .find(|variant| variant.get_identifier().as_string() == field_access.field_name)
-        {
-            Some(enum_variant) => enum_variant,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::VariantNotDefinedForEnum {
-                        enum_name: resolved_enum.enum_sig.name.clone(),
-                        variant_name: field_access.field_name.clone(),
-                    },
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
-                    hint: None,
-                });
-                return None;
-            }
-        };
-
-        if matches!(enum_variant, TypedEnumVariant::Variant(..)) {
+        if enum_variant_opt.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::VariantNotDefinedForEnum {
+                    enum_name,
+                    variant_name: field_access.field_name.clone(),
+                },
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            return None;
+        } else if matches!(enum_variant_opt, Some(TypedEnumVariant::Variant(..))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::VariantMissingFields {
-                    enum_name: resolved_enum.enum_sig.name.clone(),
+                    enum_name,
                     variant_name: field_access.field_name.clone(),
                 },
                 location: Some(DiagLoc::new(field_access.loc.clone())),
@@ -832,9 +818,18 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
-            resolved_enum.symbol_id,
-        )))
+        // FIXME
+        // ANCHOR
+        todo!();
+        // if let Some(expected_type) = expected_type {
+        //     if let Some(generic_type) = expected_type.as_generic_type() {
+        //         if generic_type.base == enum_symbol_id {
+        //             return Some(expected_type);
+        //         }
+        //     }
+        // }
+
+        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
     }
 
     fn resolve_member_access_kind(
@@ -904,11 +899,6 @@ impl<'a> AnalysisContext<'a> {
                     .as_union()
                     .map(|resolved_union| MemberAccessKind::Union(Box::new(resolved_union.clone())))
             })
-            .or_else(|| {
-                local_or_global_symbol
-                    .as_enum()
-                    .map(|resolved_enum| MemberAccessKind::Enum(Box::new(resolved_enum.clone())))
-            })
     }
 
     fn analyze_field_access_type(
@@ -931,12 +921,42 @@ impl<'a> AnalysisContext<'a> {
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
+        // check for enum variant
+
+        match field_access.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id, _) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                    .unwrap();
+
+                if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
+                    let enum_variant_opt = resolved_enum
+                        .enum_sig
+                        .variants
+                        .iter()
+                        .find(|variant| variant.get_identifier().as_string() == field_access.field_name);
+
+                    let concrete_type = self.analyze_enum_variant_no_field(
+                        resolved_enum.symbol_id,
+                        resolved_enum.enum_sig.name.clone(),
+                        enum_variant_opt,
+                        &field_access,
+                        expected_type,
+                    );
+                    field_access.operand.concrete_type = concrete_type.clone();
+                    return concrete_type;
+                }
+            }
+            _ => {}
+        };
+
+        // multiplex field access
+
         let concrete_type =
             self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
         field_access.operand.concrete_type = Some(concrete_type.get_const_inner().clone());
         let operand_ty = concrete_type.get_const_inner();
-
-        // multiplex field access
 
         let generic_type_opt = operand_ty.as_generic_type();
 
@@ -971,9 +991,6 @@ impl<'a> AnalysisContext<'a> {
                         struct_sig.methods.clone(),
                         resolved_struct.symbol_id,
                     )
-                }
-                MemberAccessKind::Enum(resolved_enum) => {
-                    self.analyze_enum_variant_no_field(local_scope_opt.clone(), resolved_enum.symbol_id, &field_access)
                 }
                 MemberAccessKind::Union(resolved_union) => {
                     let mut union_sig = resolved_union.union_sig.clone();
@@ -2111,7 +2128,6 @@ enum MemberAccessKind {
     UnnamedStruct(Box<TypedUnnamedStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
-    Enum(Box<ResolvedEnum>),
 }
 
 fn infer_integer_type(

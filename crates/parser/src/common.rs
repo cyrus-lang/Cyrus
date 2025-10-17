@@ -601,39 +601,25 @@ impl Parser {
             return false;
         }
 
-        let mut i = 1; // token after '<'
+        let mut i = 1; 
         let mut depth = 0;
 
         while let Some(tok) = self.peek_n_token(i) {
-            partial_match!(tok.kind, {
+            match tok.kind {
                 TokenKind::LessThan => {
                     depth += 1;
-                },
+                }
                 TokenKind::GreaterThan => {
-                    if depth == 0 {
-                        return false; // unmatched `>`
-                    }
                     depth -= 1;
-
                     if depth == 0 {
-                        // reached the matching '>' for the first '<'
-                        if let Some(next_tok) = self.peek_n_token(i + 1) {
-                            return matches!(
-                                next_tok.kind,
-                                TokenKind::LeftParen     // foo<T>()
-                                | TokenKind::LeftBrace   // Foo<T> {}
-                                | TokenKind::DoubleColon // Foo<T>::bar
-                            );
-                        } else {
-                            return false;
-                        }
+                        return true;
                     }
-                },
+                }
                 TokenKind::Semicolon | TokenKind::EOF => {
-                    return false; // abort if new statement starts
-                },
-            });
-
+                    return false;
+                }
+                _ => {}
+            }
             i += 1;
         }
 

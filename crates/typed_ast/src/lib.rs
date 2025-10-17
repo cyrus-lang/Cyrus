@@ -302,6 +302,7 @@ pub struct TypedFieldAccess {
     pub field_name: String,
     pub field_index: Option<usize>,
     pub field_ty: Option<ConcreteType>,
+    pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
 }
