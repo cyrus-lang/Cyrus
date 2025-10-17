@@ -137,7 +137,7 @@ impl<'a> CodeGenBuilder<'a> {
         type_args: &Option<TypedTypeArgs>,
     ) -> (StructType<'a>, ArrayType<'a>) {
         if let Some(_) = &resolved_enum.enum_sig.generic_params {
-            let type_args = type_args.as_ref().expect("Generic struct used without type args!");
+            let type_args = type_args.as_ref().expect("Generic enum used without type args!");
             let normalized_args = self.get_normalized_type_args(type_args);
 
             let key = MonomorphKey::new(resolved_enum.symbol_id, normalized_args);

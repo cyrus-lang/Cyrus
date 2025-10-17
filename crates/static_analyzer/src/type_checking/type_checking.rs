@@ -788,17 +788,17 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_enum_variant_no_field(
         &mut self,
-        enum_symbol_id: SymbolID,
-        enum_name: String,
+        scope_id_opt: Option<ScopeID>,
+        resolved_enum: &ResolvedEnum,
+        field_access: &mut TypedFieldAccess,
         enum_variant_opt: Option<&TypedEnumVariant>,
-        field_access: &TypedFieldAccess,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         if enum_variant_opt.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::VariantNotDefinedForEnum {
-                    enum_name,
+                    enum_name: resolved_enum.enum_sig.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 },
                 location: Some(DiagLoc::new(field_access.loc.clone())),
@@ -809,7 +809,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::VariantMissingFields {
-                    enum_name,
+                    enum_name: resolved_enum.enum_sig.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 },
                 location: Some(DiagLoc::new(field_access.loc.clone())),
@@ -818,18 +818,36 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // FIXME
-        // ANCHOR
-        todo!();
-        // if let Some(expected_type) = expected_type {
-        //     if let Some(generic_type) = expected_type.as_generic_type() {
-        //         if generic_type.base == enum_symbol_id {
-        //             return Some(expected_type);
-        //         }
-        //     }
-        // }
+        if resolved_enum.enum_sig.generic_params.is_some() {
+            let generic_mapping_ctx = self.get_generic_mapping_ctx(
+                &resolved_enum.enum_sig.generic_params,
+                &field_access.type_args,
+                field_access.loc.clone(),
+            );
 
-        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
+            let type_args = self.normalize_type_args_and_register(
+                scope_id_opt,
+                resolved_enum.symbol_id,
+                &resolved_enum.enum_sig.generic_params,
+                &generic_mapping_ctx,
+                expected_type.clone(),
+                field_access.loc.clone(),
+            )?;
+
+            let type_args = self.inferred_types_as_positional_type_args(type_args);
+
+            field_access.type_args = Some(type_args.clone());
+
+            Some(ConcreteType::GenericType(GenericType {
+                base: resolved_enum.symbol_id,
+                type_args,
+                is_const: false,
+            }))
+        } else {
+            Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
+                resolved_enum.symbol_id,
+            )))
+        }
     }
 
     fn resolve_member_access_kind(
@@ -923,11 +941,11 @@ impl<'a> AnalysisContext<'a> {
 
         // check for enum variant
 
-        match field_access.operand.kind {
+        match &field_access.operand.kind {
             TypedExpressionKind::Symbol(symbol_id, _) => {
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
                     .unwrap();
 
                 if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
@@ -938,10 +956,10 @@ impl<'a> AnalysisContext<'a> {
                         .find(|variant| variant.get_identifier().as_string() == field_access.field_name);
 
                     let concrete_type = self.analyze_enum_variant_no_field(
-                        resolved_enum.symbol_id,
-                        resolved_enum.enum_sig.name.clone(),
+                        scope_id_opt,
+                        resolved_enum,
+                        field_access,
                         enum_variant_opt,
-                        &field_access,
                         expected_type,
                     );
                     field_access.operand.concrete_type = concrete_type.clone();
@@ -951,6 +969,15 @@ impl<'a> AnalysisContext<'a> {
             _ => {}
         };
 
+        if field_access.type_args.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UnexpectedTypeArgs,
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
         // multiplex field access
 
         let concrete_type =

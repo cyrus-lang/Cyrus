@@ -418,6 +418,7 @@ impl<'a> CodeGenBuilder<'a> {
                     return self.build_construct_enum_variant_no_field(
                         local_scope_opt,
                         resolved_enum,
+                        &field_access.type_args,
                         field_access.field_name.clone(),
                     );
                 } else {

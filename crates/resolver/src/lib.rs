@@ -2676,14 +2676,14 @@ impl Resolver {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &field_access.operand)?;
 
         let type_args = field_access.type_args.clone().and_then(|type_args| {
-            Some(self.resolve_type_args(
+            self.resolve_type_args(
                 module_id,
                 local_scope_opt,
                 &type_args,
                 field_access.loc.clone(),
                 field_access.span.end,
-            ))
-        })?;
+            )
+        });
 
         Some(TypedExpression {
             kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
@@ -2717,14 +2717,14 @@ impl Resolver {
             .collect();
 
         let type_args = method_call.type_args.clone().and_then(|type_args| {
-            Some(self.resolve_type_args(
+            self.resolve_type_args(
                 module_id,
                 local_scope_opt,
                 &type_args,
                 method_call.loc.clone(),
                 method_call.span.end,
-            ))
-        })?;
+            )
+        });
 
         Some(TypedExpression {
             kind: TypedExpressionKind::MethodCall(TypedMethodCall {
@@ -2765,14 +2765,14 @@ impl Resolver {
             .collect();
 
         let type_args = struct_init.type_args.clone().and_then(|type_args| {
-            Some(self.resolve_type_args(
+            self.resolve_type_args(
                 module_id,
                 local_scope_opt,
                 &type_args,
                 struct_init.loc.clone(),
                 struct_init.span.end,
-            ))
-        })?;
+            )
+        });
 
         Some(TypedExpression {
             kind: TypedExpressionKind::StructInit(TypedStructInit {

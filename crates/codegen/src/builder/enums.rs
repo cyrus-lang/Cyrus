@@ -206,14 +206,10 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
+        type_args: &Option<TypedTypeArgs>,
         variant_name: String,
     ) -> InternalValue<'a> {
-        let (enum_struct_type, enum_payload_type) = {
-            let local_ir_value = self.get_ir_value(resolved_enum.symbol_id).unwrap();
-            let enum_ir_value = local_ir_value.as_enum().unwrap().clone();
-            let (struct_type, payload_type) = (enum_ir_value.0.clone(), enum_ir_value.1.clone());
-            (struct_type, payload_type)
-        };
+        let (enum_struct_type, enum_payload_type) = self.get_or_declare_enum_monomorph(resolved_enum, type_args);
 
         let enum_variant_idx = resolved_enum
             .enum_sig
