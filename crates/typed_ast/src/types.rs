@@ -96,6 +96,13 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn get_symbol_id(&self) -> Option<SymbolID> {
+        match self.get_const_inner() {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            _ => None,
+        }
+    }
+
     pub fn as_generic_type(&self) -> Option<&GenericType> {
         match self {
             ConcreteType::GenericType(generic_type) => Some(generic_type),

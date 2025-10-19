@@ -1728,7 +1728,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef) {
-        dbg!(typed_typedef.clone());
         typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone())
         {
             Some(concrete_type) => concrete_type,

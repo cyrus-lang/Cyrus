@@ -2,7 +2,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
-use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
+use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
     TypedTypeArg,
@@ -18,6 +18,7 @@ impl<'a> AnalysisContext<'a> {
     pub fn normalize_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+
         ty: ConcreteType,
         loc: SourceLoc,
     ) -> Option<ConcreteType> {
@@ -281,7 +282,7 @@ impl<'a> AnalysisContext<'a> {
                 LocalSymbolKind::Interface(i) => {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
                 }
-                LocalSymbolKind::Typedef(mut resolved_typedef) => self
+                LocalSymbolKind::Typedef(resolved_typedef) => self
                     .resolve_typedef_inner_type(&resolved_typedef)
                     .and_then(|t| self.normalize_type(scope_id_opt, t, resolved_typedef.typedef_sig.loc.clone())),
             },
@@ -342,52 +343,12 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Interface(resolved_interface) => Some(ConcreteType::ResolvedSymbol(
                     ResolvedSymbol::Interface(resolved_interface.symbol_id),
                 )),
-                SymbolEntryKind::Typedef(mut resolved_typedef) => {
-                    self.resolve_typedef_inner_type(&resolved_typedef)
-                        .and_then(|concrete_type| {
-                            self.normalize_type(scope_id_opt, concrete_type, resolved_typedef.typedef_sig.loc.clone())
-                        });
-                    todo!()
-                }
+                SymbolEntryKind::Typedef(resolved_typedef) => self
+                    .resolve_typedef_inner_type(&resolved_typedef)
+                    .and_then(|concrete_type| {
+                        self.normalize_type(scope_id_opt, concrete_type, resolved_typedef.typedef_sig.loc.clone())
+                    }),
             },
-        }
-    }
-
-    pub(crate) fn resolve_symbol_as_struct(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        symbol_id: SymbolID,
-        loc: SourceLoc,
-    ) -> Option<ResolvedStruct> {
-        let local_scope_opt =
-            scope_id_opt.map(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id).unwrap());
-
-        match match self.normalize_type(scope_id_opt, ConcreteType::UnresolvedSymbol(symbol_id), loc.clone())? {
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id)) => {
-                match self
-                    .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
-                    .unwrap()
-                {
-                    LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_struct().cloned(),
-                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_struct().cloned(),
-                }
-            }
-            _ => None,
-        } {
-            Some(resolved_struct) => Some(resolved_struct),
-            None => {
-                let symbol_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
-                    location: Some(DiagLoc::new(loc)),
-                    hint: None,
-                });
-
-                None
-            }
         }
     }
 
