@@ -54,6 +54,7 @@ pub struct EnumSig {
 pub struct TypedefSig {
     pub name: String,
     pub ty: ConcreteType,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }

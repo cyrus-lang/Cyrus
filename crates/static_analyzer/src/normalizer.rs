@@ -281,18 +281,13 @@ impl<'a> AnalysisContext<'a> {
                 LocalSymbolKind::Interface(i) => {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
                 }
-                LocalSymbolKind::Typedef(resolved_typedef) => self
+                LocalSymbolKind::Typedef(mut resolved_typedef) => self
                     .resolve_typedef_inner_type(&resolved_typedef)
                     .and_then(|t| self.normalize_type(scope_id_opt, t, resolved_typedef.typedef_sig.loc.clone())),
             },
 
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
-                SymbolEntryKind::Method(..) => {
-                    // FIXME
-                    // let fty = ConcreteType::from_function_sig(&m.sig);
-                    // self.normalize_type(scope_id_opt, fty, m.loc.clone())
-                    todo!();
-                }
+                SymbolEntryKind::Method(..) => unreachable!(),
                 SymbolEntryKind::Func(resolved_func) => Some(ConcreteType::FuncType(TypedFuncType {
                     def_module_id: Some(resolved_func.module_id),
                     params: TypedFuncTypeParams {
@@ -338,14 +333,22 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Struct(s) => {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
                 }
-                SymbolEntryKind::Enum(e) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(e.symbol_id))),
-                SymbolEntryKind::Union(e) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(e.symbol_id))),
-                SymbolEntryKind::Interface(i) => {
-                    Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
+                SymbolEntryKind::Enum(resolved_enum) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
+                    resolved_enum.symbol_id,
+                ))),
+                SymbolEntryKind::Union(resolved_union) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
+                    resolved_union.symbol_id,
+                ))),
+                SymbolEntryKind::Interface(resolved_interface) => Some(ConcreteType::ResolvedSymbol(
+                    ResolvedSymbol::Interface(resolved_interface.symbol_id),
+                )),
+                SymbolEntryKind::Typedef(mut resolved_typedef) => {
+                    self.resolve_typedef_inner_type(&resolved_typedef)
+                        .and_then(|concrete_type| {
+                            self.normalize_type(scope_id_opt, concrete_type, resolved_typedef.typedef_sig.loc.clone())
+                        });
+                    todo!()
                 }
-                SymbolEntryKind::Typedef(resolved_typedef) => self
-                    .resolve_typedef_inner_type(&resolved_typedef)
-                    .and_then(|t| self.normalize_type(scope_id_opt, t, resolved_typedef.typedef_sig.loc.clone())),
             },
         }
     }

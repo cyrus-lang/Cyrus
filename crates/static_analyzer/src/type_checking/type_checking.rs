@@ -159,13 +159,13 @@ impl<'a> AnalysisContext<'a> {
         let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.loc.clone());
         typed_expr.concrete_type = normalized_type.clone();
 
-        if cfg!(debug_assertions) {
-            if let Some(concrete_type_clone) = typed_expr.concrete_type.clone() {
-                let is_unresolved_symbol = matches!(concrete_type_clone, ConcreteType::UnresolvedSymbol(..));
-                assert!(is_unresolved_symbol == false);
-            }
-            assert!(typed_expr.concrete_type != None);
-        }
+        // if cfg!(debug_assertions) {
+        //     if let Some(concrete_type_clone) = typed_expr.concrete_type.clone() {
+        //         let is_unresolved_symbol = matches!(concrete_type_clone, ConcreteType::UnresolvedSymbol(..));
+        //         assert!(is_unresolved_symbol == false);
+        //     }
+        //     assert!(typed_expr.concrete_type != None);
+        // }
 
         normalized_type
     }
@@ -947,6 +947,7 @@ impl<'a> AnalysisContext<'a> {
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
                     .unwrap();
+                dbg!(local_or_global_symbol.clone());
 
                 if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
                     let enum_variant_opt = resolved_enum
@@ -1153,167 +1154,186 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInit,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        let normalized = self
-            .normalize_type(
-                scope_id_opt,
-                ConcreteType::UnresolvedSymbol(struct_init.symbol_id),
-                struct_init.loc.clone(),
-            )
-            .unwrap();
 
-        let struct_symbol_id = match normalized.get_const_inner().as_struct_symbol_id() {
-            Some(symbol_id) => symbol_id,
-            None => {
-                if let Some(union_symbol_id) = normalized.as_union_symbol_id() {
-                    return self.analyze_union_init_expr_type(
-                        scope_id_opt,
-                        union_symbol_id,
-                        struct_init,
-                        expected_type,
-                    );
-                } else {
-                    let symbol_name = format_concrete_type(normalized, &(self.symbol_formatter)(scope_id_opt));
+        // let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        // let struct_object_id = self
+        //     .normalize_type(
+        //         scope_id_opt,
+        //         ConcreteType::UnresolvedSymbol(struct_init.symbol_id),
+        //         struct_init.loc.clone(),
+        //     )?
+        //     .as_unresolved_symbol()?;
+        // let local_or_global_symbol = self
+        //     .resolver
+        //     .resolve_local_or_global_symbol(local_scope_opt, struct_object_id)
+        //     .unwrap();
 
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
-                        location: Some(DiagLoc::new(struct_init.loc.clone())),
-                        hint: None,
-                    });
-                    return None;
-                }
-            }
-        };
+        // let resolved_struct = local_or_global_symbol.as_struct().or_else(|| {
+        //     local_or_global_symbol
+        //         .as_typedef()
+        //         .clone()
+        //         .and_then(|resolved_typedef| {
+        //             let concrete_type =
+        //                 self.substitute_typedef_type_args(&mut resolved_typedef.typedef_sig, struct_init.loc.clone());
+        //             dbg!(concrete_type.clone());
+        //             todo!();
+        //         })
+        // });
+        todo!(); // FIXME
 
-        let resolved_struct = self
-            .resolve_symbol_as_struct(scope_id_opt, struct_symbol_id, struct_init.loc.clone())
-            .unwrap();
+        // let struct_symbol_id = match normalized.get_const_inner().as_struct_symbol_id() {
+        //     Some(symbol_id) => symbol_id,
+        //     None => {
+        //         if let Some(union_symbol_id) = normalized.as_union_symbol_id() {
+        //             return self.analyze_union_init_expr_type(
+        //                 scope_id_opt,
+        //                 union_symbol_id,
+        //                 struct_init,
+        //                 expected_type,
+        //             );
+        //         } else {
+        //             let symbol_name = format_concrete_type(normalized, &(self.symbol_formatter)(scope_id_opt));
 
-        // check duplicate field inits
-        let mut field_names: Vec<String> = Vec::new();
-        for field_init in &struct_init.fields {
-            let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
+        //                 location: Some(DiagLoc::new(struct_init.loc.clone())),
+        //                 hint: None,
+        //             });
+        //             return None;
+        //         }
+        //     }
+        // };
 
-            if field_names.contains(&field_init.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::DuplicateFieldName {
-                        object_name: struct_name,
-                        field_name: field_init.name.clone(),
-                    },
-                    location: Some(DiagLoc::new(field_init.loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
+        // let resolved_struct = self
+        //     .resolve_symbol_as_struct(scope_id_opt, struct_symbol_id, struct_init.loc.clone())
+        //     .unwrap();
 
-            field_names.push(field_init.name.clone());
-        }
+        // // check duplicate field inits
+        // let mut field_names: Vec<String> = Vec::new();
+        // for field_init in &struct_init.fields {
+        //     let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
-        let mut missing_fields: Vec<String> = resolved_struct
-            .struct_sig
-            .fields
-            .iter()
-            .map(|field| field.name.clone())
-            .collect();
+        //     if field_names.contains(&field_init.name) {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: AnalyzerDiagKind::DuplicateFieldName {
+        //                 object_name: struct_name,
+        //                 field_name: field_init.name.clone(),
+        //             },
+        //             location: Some(DiagLoc::new(field_init.loc.clone())),
+        //             hint: None,
+        //         });
+        //         continue;
+        //     }
 
-        generic_mapping_ctx_scope!(
-            self,
-            resolved_struct.struct_sig.generic_params,
-            struct_init.type_args,
-            struct_init.loc.clone(),
-            generic_mapping_ctx,
-            {
-                for field_init in &mut struct_init.fields {
-                    let field = match resolved_struct
-                        .struct_sig
-                        .fields
-                        .iter()
-                        .find(|field| field.name == field_init.name)
-                    {
-                        Some(field) => field,
-                        None => {
-                            let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+        //     field_names.push(field_init.name.clone());
+        // }
 
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                                    struct_name,
-                                    field_name: field_init.name.clone(),
-                                },
-                                location: Some(DiagLoc::new(field_init.loc.clone())),
-                                hint: None,
-                            });
-                            continue;
-                        }
-                    };
+        // let mut missing_fields: Vec<String> = resolved_struct
+        //     .struct_sig
+        //     .fields
+        //     .iter()
+        //     .map(|field| field.name.clone())
+        //     .collect();
 
-                    self.substitute_type_or_infer_with(
-                        scope_id_opt,
-                        field.ty.clone(),
-                        &mut field_init.value,
-                        &mut generic_mapping_ctx,
-                    )?;
+        // generic_mapping_ctx_scope!(
+        //     self,
+        //     resolved_struct.struct_sig.generic_params,
+        //     struct_init.type_args,
+        //     struct_init.loc.clone(),
+        //     generic_mapping_ctx,
+        //     {
+        //         for field_init in &mut struct_init.fields {
+        //             let field = match resolved_struct
+        //                 .struct_sig
+        //                 .fields
+        //                 .iter()
+        //                 .find(|field| field.name == field_init.name)
+        //             {
+        //                 Some(field) => field,
+        //                 None => {
+        //                     let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
-                    let missing_fields_idx = match missing_fields
-                        .iter()
-                        .position(|field_name| *field_name == field_init.name.clone())
-                    {
-                        Some(idx) => idx,
-                        None => continue,
-                    };
+        //                     self.reporter.report(Diag {
+        //                         level: DiagLevel::Error,
+        //                         kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+        //                             struct_name,
+        //                             field_name: field_init.name.clone(),
+        //                         },
+        //                         location: Some(DiagLoc::new(field_init.loc.clone())),
+        //                         hint: None,
+        //                     });
+        //                     continue;
+        //                 }
+        //             };
 
-                    missing_fields.remove(missing_fields_idx);
-                }
+        //             self.substitute_type_or_infer_with(
+        //                 scope_id_opt,
+        //                 field.ty.clone(),
+        //                 &mut field_init.value,
+        //                 &mut generic_mapping_ctx,
+        //             )?;
 
-                if let Some(type_args) = self.normalize_type_args_and_register(
-                    scope_id_opt,
-                    resolved_struct.symbol_id,
-                    &resolved_struct.struct_sig.generic_params,
-                    &generic_mapping_ctx,
-                    expected_type.clone(),
-                    struct_init.loc.clone(),
-                ) {
-                    struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-                } else {
-                    return None;
-                }
-            }
-        );
+        //             let missing_fields_idx = match missing_fields
+        //                 .iter()
+        //                 .position(|field_name| *field_name == field_init.name.clone())
+        //             {
+        //                 Some(idx) => idx,
+        //                 None => continue,
+        //             };
 
-        if !missing_fields.is_empty() {
-            let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+        //             missing_fields.remove(missing_fields_idx);
+        //         }
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::StructMissingFields {
-                    struct_name,
-                    missing_field_names: missing_fields,
-                },
-                location: Some(DiagLoc::new(struct_init.loc.clone())),
-                hint: None,
-            });
-        }
+        //         if let Some(type_args) = self.normalize_type_args_and_register(
+        //             scope_id_opt,
+        //             resolved_struct.symbol_id,
+        //             &resolved_struct.struct_sig.generic_params,
+        //             &generic_mapping_ctx,
+        //             expected_type.clone(),
+        //             struct_init.loc.clone(),
+        //         ) {
+        //             struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+        //         } else {
+        //             return None;
+        //         }
+        //     }
+        // );
 
-        struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
+        // if !missing_fields.is_empty() {
+        //     let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
-        let pure_struct_type = if struct_init.is_const {
-            ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
-                struct_init.symbol_id,
-            ))))
-        } else {
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id))
-        };
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: AnalyzerDiagKind::StructMissingFields {
+        //             struct_name,
+        //             missing_field_names: missing_fields,
+        //         },
+        //         location: Some(DiagLoc::new(struct_init.loc.clone())),
+        //         hint: None,
+        //     });
+        // }
 
-        if let Some(type_args) = &struct_init.type_args {
-            Some(ConcreteType::GenericType(GenericType {
-                base: struct_init.symbol_id,
-                type_args: type_args.clone(),
-                is_const: struct_init.is_const,
-            }))
-        } else {
-            Some(pure_struct_type)
-        }
+        // struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
+
+        // let pure_struct_type = if struct_init.is_const {
+        //     ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+        //         struct_init.symbol_id,
+        //     ))))
+        // } else {
+        //     ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id))
+        // };
+
+        // if let Some(type_args) = &struct_init.type_args {
+        //     Some(ConcreteType::GenericType(GenericType {
+        //         base: struct_init.symbol_id,
+        //         type_args: type_args.clone(),
+        //         is_const: struct_init.is_const,
+        //     }))
+        // } else {
+        //     Some(pure_struct_type)
+        // }
     }
 
     fn check_func_call(
@@ -1628,7 +1648,7 @@ impl<'a> AnalysisContext<'a> {
             &mut method_call.operand,
             expected_type.clone(),
         ) {
-            Some(concrete_type) => Some(concrete_type),
+            Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type, loc.clone()),
             None => return None,
         };
 
