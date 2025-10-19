@@ -154,7 +154,6 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // 6️⃣ Report errors if missing
         if !missing.is_empty() {
             let type_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
             let hint = format!("Provide explicit type arguments for {}", missing.join(", "));
@@ -169,7 +168,6 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // 7️⃣ Register final resolved types
         let final_args: Vec<ConcreteType> = normalized_type_args.into_iter().map(|x| x.unwrap()).collect();
         with_monomorph_registry!(self, registry, {
             registry.register(symbol_id, final_args.clone());
@@ -344,7 +342,6 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                // Safety check: if number of positional args > generic params
                 if positional.len() > generic_params.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,

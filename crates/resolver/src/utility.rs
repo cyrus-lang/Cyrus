@@ -1,6 +1,6 @@
 use crate::{
     Resolver,
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, SymbolEntry, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, ResolvedStruct, SymbolEntry},
 };
 use typed_ast::{ModuleID, ScopeID, SymbolID};
 
@@ -45,17 +45,6 @@ impl Resolver {
             .map(|(module_id, _)| *module_id)
     }
 
-    pub fn find_function(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
-        self.lookup_symbol(module_id, name)
-            .filter(|entry| matches!(entry.kind, SymbolEntryKind::Func { .. }))
-    }
-
-    /// Finds a symbol by name and returns it *only if* it's a struct.
-    pub fn find_struct(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
-        self.lookup_symbol(module_id, name)
-            .filter(|entry| matches!(entry.kind, SymbolEntryKind::Struct { .. }))
-    }
-
     /// Resolves a global symbol from its ID, searching across all modules.
     pub fn resolve_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
         let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
@@ -76,9 +65,17 @@ impl Resolver {
             .cloned()
     }
 
-    /// Resolves a symbol that could be either local or global.
-    /// This version is cleaner and has no duplicated logic.
-    pub fn resolve_local_or_global_symbol(
+    pub fn resolve_struct_symbol(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+    ) -> Option<ResolvedStruct> {
+        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+            .as_struct()
+            .cloned()
+    }
+
+    fn resolve_local_or_global_symbol(
         &self,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,

@@ -9,7 +9,7 @@ use inkwell::{
     values::{GlobalValue, PointerValue},
 };
 use resolver::{scope::LocalScopeRef, signatures::GlobalVarSig};
-use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable};
+use typed_ast::{TypedGlobalVariable, TypedVariable};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn get_or_declare_global_var(&mut self, global_var_sig: GlobalVarSig) -> GlobalValue<'a> {
@@ -46,7 +46,8 @@ impl<'a> CodeGenBuilder<'a> {
         };
 
         if global_var_type.is_none() {
-            let typed_expr: TypedExpression = global_var.expr.clone().unwrap();
+            dbg!(global_var.clone());
+            let typed_expr = global_var.expr.clone().unwrap();
             global_var_type = Some(self.build_concrete_type(None, typed_expr.concrete_type.unwrap()));
         }
 
@@ -69,7 +70,6 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_global_var_def(&mut self, global_var: &TypedGlobalVariable) {
         let local_ir_value = self.get_ir_value(global_var.symbol_id).unwrap();
         let global_value = local_ir_value.as_global_value().unwrap().0.clone();
-
 
         if let Some(concrete_type) = &global_var.ty {
             global_value.set_constant(concrete_type.is_const());

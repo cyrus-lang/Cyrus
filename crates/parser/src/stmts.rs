@@ -1449,9 +1449,18 @@ impl Parser {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
-        self.next_token();
+        self.expect_current(TokenKind::Typedef)?;
+
         let identifier = self.parse_identifier()?;
         self.next_token();
+
+        let generic_params;
+        if self.current_token_is(TokenKind::LessThan) {
+            generic_params = Some(self.parse_generic_params()?);
+        } else {
+            generic_params = None;
+        }
+
         self.expect_current(TokenKind::Assign)?;
         let type_specifier = self.parse_type_specifier()?;
         self.next_token();
@@ -1459,6 +1468,7 @@ impl Parser {
             vis: vis.unwrap_or(AccessSpecifier::Internal),
             identifier,
             type_specifier,
+            generic_params,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

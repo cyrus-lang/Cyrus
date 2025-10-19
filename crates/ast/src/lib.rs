@@ -322,6 +322,22 @@ pub enum TypeSpecifier {
 }
 
 impl TypeSpecifier {
+    pub fn is_const(&self) -> bool {
+        matches!(self, Self::Const(..))
+    }
+
+    pub fn as_module_import(&self) -> Option<ModuleImport> {
+        match self {
+            TypeSpecifier::Identifier(identifier) => Some(ModuleImport {
+                segments: vec![ModuleSegment::SubModule(identifier.clone())],
+                span: identifier.span.clone(),
+                loc: identifier.loc.clone(),
+            }),
+            TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
+            _ => None,
+        }
+    }
+
     pub fn get_loc(&self) -> (Location, usize) {
         match self {
             TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
@@ -476,6 +492,7 @@ pub struct GlobalVariable {
 pub struct Typedef {
     pub identifier: Identifier,
     pub type_specifier: TypeSpecifier,
+    pub generic_params: Option<GenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: Location,
     pub span: Span,
