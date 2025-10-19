@@ -2,7 +2,10 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomo
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
-use resolver::signatures::{EnumSig, StructSig, UnionSig};
+use resolver::{
+    scope::LocalScopeRef,
+    signatures::{EnumSig, StructSig, UnionSig},
+};
 use std::collections::HashMap;
 use typed_ast::{
     ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg,
@@ -20,7 +23,76 @@ pub(crate) struct GenericMappingCtx {
     pub(crate) named: HashMap<String, ConcreteType>,
 }
 
+#[macro_export]
+macro_rules! generic_mapping_ctx_scope {
+    ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $ctx:ident, $body:block) => {{
+        #[allow(unused_mut)]
+        let mut $ctx =
+            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, $loc);
+
+        $self.generic_ctx_stack.push($ctx.clone());
+        $body
+        $self.generic_ctx_stack.pop();
+    }};
+}
+
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn substitute_typedef_to_concrete_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        typedef_symbol_id: SymbolID,
+        type_args_opt: &Option<TypedTypeArgs>,
+        expected_type: Option<ConcreteType>,
+        loc: SourceLoc,
+    ) -> Option<ConcreteType> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, typedef_symbol_id)
+            .unwrap();
+
+        local_or_global_symbol
+            .as_typedef()
+            .and_then(|resolved_typedef| {
+                let generic_params = &resolved_typedef.typedef_sig.generic_params;
+
+                let generic_mapping_ctx = self.get_generic_mapping_ctx(generic_params, type_args_opt, loc.clone());
+                self.generic_ctx_stack.push(generic_mapping_ctx.clone());
+
+                let generic_type_opt = || -> Option<GenericType> {
+                    let final_positional = self.normalize_type_args_and_register(
+                        scope_id_opt,
+                        typedef_symbol_id,
+                        &generic_params,
+                        &generic_mapping_ctx,
+                        expected_type,
+                        loc,
+                    )?;
+                    
+                    let new_type_args = self.positional_type_args_to_positional(final_positional);
+
+                    resolved_typedef
+                        .typedef_sig
+                        .ty
+                        .as_generic_type()
+                        .cloned()
+                        .and_then(|mut generic_type| {
+                            generic_type.type_args= new_type_args;
+                            Some(generic_type)
+                        })
+                }();
+
+                self.generic_ctx_stack.pop();
+
+                generic_type_opt.map(ConcreteType::GenericType)
+            })
+            .or(self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol))
+    }
+
+    fn positional_type_args_to_positional(&self, positional: Vec<ConcreteType>) -> TypedTypeArgs {
+        positional.into_iter().map(TypedTypeArg::Positional).collect()
+    }
+
     pub(crate) fn substitute_field_access_type(
         &mut self,
         field_access_operand: &mut TypedExpression,
@@ -420,18 +492,6 @@ impl<'a> AnalysisContext<'a> {
 
         Some(merged_args)
     }
-}
-
-#[macro_export]
-macro_rules! generic_mapping_ctx_scope {
-    ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $ctx:ident, $body:block) => {{
-        let mut $ctx =
-            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, $loc);
-
-        $self.generic_ctx_stack.push($ctx.clone());
-        $body
-        $self.generic_ctx_stack.pop();
-    }};
 }
 
 impl GenericMappingCtx {

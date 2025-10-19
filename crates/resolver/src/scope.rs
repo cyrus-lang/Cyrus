@@ -233,16 +233,16 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn as_global_var(&self) -> Option<ResolvedGlobalVar> {
+    pub fn as_global_var(&self) -> Option<&ResolvedGlobalVar> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(..) => None,
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_global_var().cloned(),
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_global_var(),
         }
     }
 
-    pub fn as_variable(&self) -> Option<ResolvedVariable> {
+    pub fn as_variable(&self) -> Option<&ResolvedVariable> {
         match self {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_variable().cloned(),
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_variable(),
             LocalOrGlobalSymbol::GlobalSymbol(..) => None,
         }
     }
