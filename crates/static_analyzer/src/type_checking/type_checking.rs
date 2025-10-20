@@ -1137,27 +1137,24 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let object_concrete_type = self
-            .substitute_typedef_to_concrete_type(
+        let (object_concrete_type, typedef_mapping_ctx) = self
+            .get_linked_typedef_mapping_ctx(
                 scope_id_opt,
                 local_scope_opt.clone(),
                 struct_init.symbol_id,
                 &struct_init.type_args,
-                expected_type.clone(),
                 struct_init.loc.clone(),
             )
             .unwrap();
 
-        dbg!(object_concrete_type.clone());
-        todo!();
-
-        let (unresolved_object_id, type_args_opt) = object_concrete_type
+        let unresolved_object_id = object_concrete_type
             .get_symbol_id()
-            .map(|symbol_id| (symbol_id, None))
+            .map(|symbol_id| symbol_id)
             .or_else(|| {
-                object_concrete_type
-                    .as_generic_type()
-                    .and_then(|generic_type| Some((generic_type.base, Some(generic_type.type_args.clone()))))
+                object_concrete_type.as_generic_type().and_then(|generic_type| {
+                    struct_init.type_args = Some(generic_type.type_args.clone());
+                    Some(generic_type.base)
+                })
             })
             .unwrap();
 
@@ -1178,7 +1175,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(resolved_union) = local_or_global_symbol.as_union() {
             self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, expected_type)
         } else if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
-            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, expected_type, &None)
+            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, expected_type, typedef_mapping_ctx)
         } else {
             let symbol_name = (self.symbol_formatter)(scope_id_opt)(resolved_object_symbol_id);
 
@@ -1198,7 +1195,7 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInit,
         resolved_struct: &ResolvedStruct,
         expected_type: Option<ConcreteType>,
-        parent_mapping_ctx: &Option<Box<GenericMappingCtx>>
+        typedef_mapping_ctx: Option<Box<GenericMappingCtx>>
     ) -> Option<ConcreteType> {
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -1235,6 +1232,8 @@ impl<'a> AnalysisContext<'a> {
             struct_init.loc.clone(),
             generic_mapping_ctx,
             {
+                generic_mapping_ctx.parent = typedef_mapping_ctx;
+                
                 for (idx, field_init) in struct_init.fields.iter_mut().enumerate() {
                     let field = match resolved_struct
                         .struct_sig
