@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, generics::GenericMappingCtx};
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
@@ -751,12 +751,14 @@ impl<'a> AnalysisContext<'a> {
             method_call.loc.clone(),
             generic_mapping_ctx,
             {
-                for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields) {
+                for (idx, (typed_expr, enum_valued_field)) in method_call.args.iter_mut().zip(valued_fields).enumerate()
+                {
                     typed_expr.concrete_type = self.substitute_type_or_infer_with(
                         scope_id_opt,
                         enum_valued_field.field_type.clone(),
                         typed_expr,
                         &mut generic_mapping_ctx,
+                        Some(idx),
                     );
                 }
 
@@ -767,6 +769,8 @@ impl<'a> AnalysisContext<'a> {
                     &generic_mapping_ctx,
                     expected_typed,
                     method_call.loc.clone(),
+                    false,
+                    true,
                 ) {
                     method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                 } else {
@@ -822,6 +826,7 @@ impl<'a> AnalysisContext<'a> {
             let generic_mapping_ctx = self.get_generic_mapping_ctx(
                 &resolved_enum.enum_sig.generic_params,
                 &field_access.type_args,
+                None,
                 field_access.loc.clone(),
             );
 
@@ -832,6 +837,8 @@ impl<'a> AnalysisContext<'a> {
                 &generic_mapping_ctx,
                 expected_type.clone(),
                 field_access.loc.clone(),
+                false,
+                true,
             )?;
 
             let type_args = self.inferred_types_as_positional_type_args(type_args);
@@ -978,7 +985,7 @@ impl<'a> AnalysisContext<'a> {
 
         let concrete_type =
             self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
-            
+
         field_access.operand.concrete_type = Some(concrete_type.get_const_inner().clone());
         let operand_ty = concrete_type.get_const_inner();
 
@@ -1083,6 +1090,7 @@ impl<'a> AnalysisContext<'a> {
                     field.ty.clone(),
                     &mut field_init.value,
                     &mut generic_mapping_ctx,
+                    Some(0),
                 )?;
 
                 if let Some(type_args) = self.normalize_type_args_and_register(
@@ -1092,6 +1100,8 @@ impl<'a> AnalysisContext<'a> {
                     &generic_mapping_ctx,
                     expected_type,
                     struct_init.loc.clone(),
+                    false,
+                    true,
                 ) {
                     struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                 } else {
@@ -1138,13 +1148,16 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
-        let unresolved_object_id = object_concrete_type
+        dbg!(object_concrete_type.clone());
+        todo!();
+
+        let (unresolved_object_id, type_args_opt) = object_concrete_type
             .get_symbol_id()
+            .map(|symbol_id| (symbol_id, None))
             .or_else(|| {
-                object_concrete_type.as_generic_type().and_then(|generic_type| {
-                    struct_init.type_args = Some(generic_type.type_args.clone());
-                    Some(generic_type.base)
-                })
+                object_concrete_type
+                    .as_generic_type()
+                    .and_then(|generic_type| Some((generic_type.base, Some(generic_type.type_args.clone()))))
             })
             .unwrap();
 
@@ -1165,7 +1178,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(resolved_union) = local_or_global_symbol.as_union() {
             self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, expected_type)
         } else if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
-            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, expected_type)
+            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, expected_type, &None)
         } else {
             let symbol_name = (self.symbol_formatter)(scope_id_opt)(resolved_object_symbol_id);
 
@@ -1185,6 +1198,7 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInit,
         resolved_struct: &ResolvedStruct,
         expected_type: Option<ConcreteType>,
+        parent_mapping_ctx: &Option<Box<GenericMappingCtx>>
     ) -> Option<ConcreteType> {
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -1221,7 +1235,7 @@ impl<'a> AnalysisContext<'a> {
             struct_init.loc.clone(),
             generic_mapping_ctx,
             {
-                for field_init in &mut struct_init.fields {
+                for (idx, field_init) in struct_init.fields.iter_mut().enumerate() {
                     let field = match resolved_struct
                         .struct_sig
                         .fields
@@ -1250,6 +1264,7 @@ impl<'a> AnalysisContext<'a> {
                         field.ty.clone(),
                         &mut field_init.value,
                         &mut generic_mapping_ctx,
+                        Some(idx),
                     );
 
                     let missing_fields_idx = match missing_fields
@@ -1263,6 +1278,9 @@ impl<'a> AnalysisContext<'a> {
                     missing_fields.remove(missing_fields_idx);
                 }
 
+                // REVIEW Remove
+                dbg!(generic_mapping_ctx.clone());
+
                 if let Some(type_args) = self.normalize_type_args_and_register(
                     scope_id_opt,
                     resolved_struct.symbol_id,
@@ -1270,6 +1288,8 @@ impl<'a> AnalysisContext<'a> {
                     &generic_mapping_ctx,
                     expected_type.clone(),
                     struct_init.loc.clone(),
+                    false,
+                    true,
                 ) {
                     struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                 } else {

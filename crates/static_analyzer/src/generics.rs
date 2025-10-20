@@ -19,6 +19,7 @@ use typed_ast::{
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GenericMappingCtx {
+    pub(crate) parent: Option<Box<GenericMappingCtx>>,
     pub(crate) positional: Vec<ConcreteType>,
     pub(crate) named: HashMap<String, ConcreteType>,
 }
@@ -28,7 +29,16 @@ macro_rules! generic_mapping_ctx_scope {
     ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $ctx:ident, $body:block) => {{
         #[allow(unused_mut)]
         let mut $ctx =
-            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, $loc);
+            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, None, $loc);
+
+        $self.generic_ctx_stack.push($ctx.clone());
+        $body
+        $self.generic_ctx_stack.pop();
+    }};
+    ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $ctx:ident, $parent:expr, $body:block) => {{
+        #[allow(unused_mut)]
+        let mut $ctx =
+            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, $parent, $loc);
 
         $self.generic_ctx_stack.push($ctx.clone());
         $body
@@ -56,7 +66,9 @@ impl<'a> AnalysisContext<'a> {
             .and_then(|resolved_typedef| {
                 let generic_params = &resolved_typedef.typedef_sig.generic_params;
 
-                let generic_mapping_ctx = self.get_generic_mapping_ctx(generic_params, type_args_opt, loc.clone());
+                let generic_mapping_ctx =
+                    self.get_generic_mapping_ctx(generic_params, type_args_opt, None, loc.clone());
+                    
                 self.generic_ctx_stack.push(generic_mapping_ctx.clone());
 
                 let generic_type_opt = || -> Option<GenericType> {
@@ -67,19 +79,21 @@ impl<'a> AnalysisContext<'a> {
                         &generic_mapping_ctx,
                         expected_type,
                         loc,
+                        true,
+                        false,
                     )?;
-                    
-                    let new_type_args = self.positional_type_args_to_positional(final_positional);
 
-                    resolved_typedef
-                        .typedef_sig
-                        .ty
-                        .as_generic_type()
-                        .cloned()
-                        .and_then(|mut generic_type| {
-                            generic_type.type_args= new_type_args;
-                            Some(generic_type)
-                        })
+                    dbg!(final_positional);
+                    todo!();
+                    // resolved_typedef
+                    //     .typedef_sig
+                    //     .ty
+                    //     .as_generic_type()
+                    //     .cloned()
+                    //     .and_then(|mut generic_type| {
+                    //         generic_type.type_args = final_positional;
+                    //         Some(generic_type)
+                    //     })
                 }();
 
                 self.generic_ctx_stack.pop();
@@ -87,10 +101,6 @@ impl<'a> AnalysisContext<'a> {
                 generic_type_opt.map(ConcreteType::GenericType)
             })
             .or(self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol))
-    }
-
-    fn positional_type_args_to_positional(&self, positional: Vec<ConcreteType>) -> TypedTypeArgs {
-        positional.into_iter().map(TypedTypeArg::Positional).collect()
     }
 
     pub(crate) fn substitute_field_access_type(
@@ -102,7 +112,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         partial_match!((generic_type_opt, field_access_operand.concrete_type.clone()), {
             (Some(generic_type), Some(operand_ty)) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(&generic_params, &Some(generic_type.type_args.clone()), None, loc);
                 field_access_operand.concrete_type = self.substitute_type(operand_ty, &mapping_ctx, None);
             }
         })
@@ -116,7 +126,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         partial_match!(generic_type_opt, {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()), None, loc);
                 struct_sig.fields.iter_mut().enumerate().for_each(|(idx, field)| {
                     if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)){
                         field.ty = concrete_type;
@@ -134,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         partial_match!(generic_type_opt, {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&union_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(&union_sig.generic_params, &Some(generic_type.type_args.clone()), None, loc);
                 union_sig.fields.iter_mut().enumerate().for_each(|(idx, field)| {
                     if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)){
                         field.ty = concrete_type;
@@ -153,7 +163,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         partial_match!(generic_type_opt, {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&enum_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(&enum_sig.generic_params, &Some(generic_type.type_args.clone()), None, loc);
                 enum_sig.variants.iter_mut().enumerate().for_each(|(idx, variant)| {
                     match variant {
                         TypedEnumVariant::Identifier(..) => {},
@@ -183,6 +193,8 @@ impl<'a> AnalysisContext<'a> {
         generic_mapping_ctx: &GenericMappingCtx,
         expected_type: Option<ConcreteType>,
         loc: SourceLoc,
+        allow_inference_without_error: bool,
+        register_monomorph: bool,
     ) -> Option<Vec<ConcreteType>> {
         let Some(generic_params) = generic_params else {
             return None;
@@ -191,14 +203,14 @@ impl<'a> AnalysisContext<'a> {
         let mut normalized_type_args: Vec<Option<ConcreteType>> = vec![None; generic_params.len()];
         let mut missing: Vec<String> = Vec::new();
 
-        for (i, _param) in generic_params.iter().enumerate() {
+        for (i, _) in generic_params.iter().enumerate() {
             if let Some(concrete_type) = generic_mapping_ctx.positional.get(i) {
                 normalized_type_args[i] = Some(concrete_type.clone());
             }
         }
 
         for (name, ty) in &generic_mapping_ctx.named {
-            if let Some(idx) = generic_params.iter().position(|p| p.param_name.as_string() == *name) {
+            if let Some(idx) = generic_params.iter().position(|param| param.param_name.name == *name) {
                 normalized_type_args[idx] = Some(ty.clone());
             }
         }
@@ -215,35 +227,36 @@ impl<'a> AnalysisContext<'a> {
             if ty_slot.is_none() {
                 if let Some(inferred) = self.infer_generic_type_from_expected_type(
                     symbol_id,
-                    &generic_params[i..=i].to_vec(), // single param slice
+                    &generic_params[i..=i].to_vec(),
                     generic_mapping_ctx,
                     expected_type.clone(),
                 ) {
                     *ty_slot = Some(inferred[0].clone());
                 } else {
-                    missing.push(generic_params[i].param_name.as_string());
+                    missing.push(generic_params[i].param_name.name.clone());
                 }
             }
         }
 
-        if !missing.is_empty() {
+        if !missing.is_empty() && !allow_inference_without_error {
             let type_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
             let hint = format!("Provide explicit type arguments for {}", missing.join(", "));
-
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name },
                 location: Some(DiagLoc::new(loc)),
                 hint: Some(hint),
             });
-
             return None;
         }
 
-        let final_args: Vec<ConcreteType> = normalized_type_args.into_iter().map(|x| x.unwrap()).collect();
-        with_monomorph_registry!(self, registry, {
-            registry.register(symbol_id, final_args.clone());
-        });
+        let final_args: Vec<ConcreteType> = normalized_type_args.into_iter().filter_map(|x| x).collect();
+
+        if register_monomorph {
+            with_monomorph_registry!(self, registry, {
+                registry.register(symbol_id, final_args.clone());
+            });
+        }
 
         Some(final_args)
     }
@@ -261,8 +274,9 @@ impl<'a> AnalysisContext<'a> {
         concrete_type: ConcreteType,
         expr: &mut TypedExpression,
         generic_mapping_ctx: &mut GenericMappingCtx,
+        positional_index: Option<usize>,
     ) -> Option<ConcreteType> {
-        match self.substitute_type(concrete_type.clone(), generic_mapping_ctx, None) {
+        match self.substitute_type(concrete_type.clone(), generic_mapping_ctx, positional_index) {
             Some(substituted) => {
                 // analyze the expression with the expected substituted type
                 if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone())) {
@@ -311,7 +325,7 @@ impl<'a> AnalysisContext<'a> {
         positional_index: Option<usize>,
     ) -> Option<ConcreteType> {
         match concrete_type {
-            ConcreteType::GenericParam(param) => generic_mapping_ctx.get(&param.name, positional_index),
+            ConcreteType::GenericParam(param) => generic_mapping_ctx.get(param.name, positional_index),
             ConcreteType::Pointer(inner) => Some(ConcreteType::Pointer(Box::new(self.substitute_type(
                 *inner,
                 generic_mapping_ctx,
@@ -395,6 +409,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         generic_params_opt: &Option<TypedGenericParamsList>,
         type_args_opt: &Option<TypedTypeArgs>,
+        parent: Option<Box<GenericMappingCtx>>,
         loc: SourceLoc,
     ) -> GenericMappingCtx {
         let mut positional: Vec<ConcreteType> = Vec::new();
@@ -409,7 +424,7 @@ impl<'a> AnalysisContext<'a> {
                             positional.push(ct.clone());
                         }
                         TypedTypeArg::Named { key, value } => {
-                            named.insert(key.as_string(), value.clone());
+                            named.insert(key.clone(), value.clone());
                         }
                     }
                 }
@@ -436,7 +451,11 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        GenericMappingCtx { positional, named }
+        GenericMappingCtx {
+            positional,
+            named,
+            parent,
+        }
     }
 
     pub(crate) fn infer_generic_type_from_expected_type(
@@ -458,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
         let mut merged_args: Vec<ConcreteType> = Vec::with_capacity(generic_params.len());
 
         for (i, param) in generic_params.iter().enumerate() {
-            let key = param.param_name.as_string();
+            let key = param.param_name.name.clone();
 
             let concrete = if i < generic_mapping_ctx.positional.len() {
                 Some(generic_mapping_ctx.positional[i].clone())
@@ -495,17 +514,16 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl GenericMappingCtx {
-    pub(crate) fn get(&self, name: &str, positional_index: Option<usize>) -> Option<ConcreteType> {
+    pub(crate) fn get(&self, name: String, positional_index: Option<usize>) -> Option<ConcreteType> {
         if let Some(idx) = positional_index {
             if idx < self.positional.len() {
                 return Some(self.positional[idx].clone());
             }
         }
-
-        if let Some(concrete) = self.named.get(name) {
+        if let Some(concrete) = self.named.get(&name) {
             return Some(concrete.clone());
         }
 
-        None
+        self.parent.as_ref()?.get(name, positional_index)
     }
 }

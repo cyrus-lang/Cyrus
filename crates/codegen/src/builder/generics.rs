@@ -270,7 +270,7 @@ impl<'a> CodeGenBuilder<'a> {
         let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
-            subst_map.insert(param.param_name.to_string(), arg.clone());
+            subst_map.insert(param.param_name.name.clone(), arg.clone());
         }
 
         let substituted_variants: Vec<TypedEnumVariant> = enum_sig
@@ -306,7 +306,7 @@ impl<'a> CodeGenBuilder<'a> {
         let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
-            subst_map.insert(param.param_name.to_string(), arg.clone());
+            subst_map.insert(param.param_name.name.clone(), arg.clone());
         }
 
         let substituted_fields: Vec<TypedUnionField> = union_sig
@@ -337,7 +337,7 @@ impl<'a> CodeGenBuilder<'a> {
         let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
-            subst_map.insert(param.param_name.to_string(), arg.clone());
+            subst_map.insert(param.param_name.name.clone(), arg.clone());
         }
 
         let substituted_fields: Vec<TypedStructField> = struct_sig
