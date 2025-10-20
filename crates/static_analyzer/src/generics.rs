@@ -35,27 +35,17 @@ macro_rules! generic_mapping_ctx_scope {
         $body
         $self.generic_ctx_stack.pop();
     }};
-    ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $ctx:ident, $parent:expr, $body:block) => {{
-        #[allow(unused_mut)]
-        let mut $ctx =
-            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, $parent, $loc);
-
-        $self.generic_ctx_stack.push($ctx.clone());
-        $body
-        $self.generic_ctx_stack.pop();
-    }};
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn substitute_typedef_to_concrete_type(
+    pub(crate) fn get_linked_typedef_mapping_ctx(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
         typedef_symbol_id: SymbolID,
         type_args_opt: &Option<TypedTypeArgs>,
-        expected_type: Option<ConcreteType>,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<(ConcreteType, Option<Box<GenericMappingCtx>>)> {
         let local_or_global_symbol = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, typedef_symbol_id)
@@ -64,44 +54,138 @@ impl<'a> AnalysisContext<'a> {
         local_or_global_symbol
             .as_typedef()
             .and_then(|resolved_typedef| {
-                let generic_params = &resolved_typedef.typedef_sig.generic_params;
+                let typedef_generic_params = &resolved_typedef.typedef_sig.generic_params;
 
-                let generic_mapping_ctx =
-                    self.get_generic_mapping_ctx(generic_params, type_args_opt, None, loc.clone());
-                    
-                self.generic_ctx_stack.push(generic_mapping_ctx.clone());
+                // build typedef-level mapping ctx
+                let mut typedef_ctx =
+                    self.get_generic_mapping_ctx(typedef_generic_params, type_args_opt, None, loc.clone());
 
-                let generic_type_opt = || -> Option<GenericType> {
-                    let final_positional = self.normalize_type_args_and_register(
-                        scope_id_opt,
-                        typedef_symbol_id,
-                        &generic_params,
-                        &generic_mapping_ctx,
-                        expected_type,
-                        loc,
-                        true,
-                        false,
-                    )?;
+                self.generic_ctx_stack.push(typedef_ctx.clone());
 
-                    dbg!(final_positional);
-                    todo!();
-                    // resolved_typedef
-                    //     .typedef_sig
-                    //     .ty
-                    //     .as_generic_type()
-                    //     .cloned()
-                    //     .and_then(|mut generic_type| {
-                    //         generic_type.type_args = final_positional;
-                    //         Some(generic_type)
-                    //     })
-                }();
+                // substitute inner type and traverse it
+                let concrete_type =
+                    self.traverse_and_link_inner_generics(resolved_typedef.typedef_sig.ty.clone(), &mut typedef_ctx)?;
 
                 self.generic_ctx_stack.pop();
 
-                generic_type_opt.map(ConcreteType::GenericType)
+                Some((concrete_type, Some(Box::new(typedef_ctx))))
             })
-            .or(self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol))
+            .or(self
+                .resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
+                .map(|concrete_type| (concrete_type, None)))
     }
+
+    // traverse a concrete type and replace inner generic params with the typedef's generic params
+    fn traverse_and_link_inner_generics(
+        &mut self,
+        ty: ConcreteType,
+        typedef_ctx: &mut GenericMappingCtx,
+    ) -> Option<ConcreteType> {
+        match ty {
+            ConcreteType::GenericParam(param) => Some(
+                typedef_ctx
+                    .named
+                    .get(&param.name)
+                    .cloned()
+                    .unwrap_or(ConcreteType::GenericParam(param)),
+            ),
+            ConcreteType::Pointer(inner) => Some(ConcreteType::Pointer(Box::new(
+                self.traverse_and_link_inner_generics(*inner, typedef_ctx)?,
+            ))),
+            ConcreteType::Array(inner) => Some(ConcreteType::Array(TypedArrayType {
+                element_type: Box::new(self.traverse_and_link_inner_generics(*inner.element_type, typedef_ctx)?),
+                capacity: inner.capacity,
+                loc: inner.loc,
+            })),
+            ConcreteType::Const(inner) => Some(ConcreteType::Const(Box::new(
+                self.traverse_and_link_inner_generics(*inner, typedef_ctx)?,
+            ))),
+            ConcreteType::Tuple(t) => {
+                let new_list = t
+                    .type_list
+                    .into_iter()
+                    .map(|t| self.traverse_and_link_inner_generics(t, typedef_ctx))
+                    .collect::<Option<Vec<_>>>()?;
+                Some(ConcreteType::Tuple(TypedTupleType {
+                    type_list: new_list,
+                    loc: t.loc,
+                }))
+            }
+            ConcreteType::FuncType(f) => {
+                let new_params = f
+                    .params
+                    .list
+                    .into_iter()
+                    .map(|p| self.traverse_and_link_inner_generics(p, typedef_ctx))
+                    .collect::<Option<Vec<_>>>()?;
+                let new_return = Box::new(self.traverse_and_link_inner_generics(*f.return_type, typedef_ctx)?);
+                Some(ConcreteType::FuncType(TypedFuncType {
+                    def_module_id: f.def_module_id,
+                    params: TypedFuncTypeParams {
+                        list: new_params,
+                        variadic: f.params.variadic,
+                    },
+                    return_type: new_return,
+                    vis_opt: f.vis_opt,
+                    loc: f.loc,
+                }))
+            }
+            ConcreteType::UnnamedStruct(s) => {
+                let new_fields = s
+                    .fields
+                    .into_iter()
+                    .map(|f| {
+                        Some(TypedUnnamedStructTypeField {
+                            field_name: f.field_name,
+                            field_type: Box::new(self.traverse_and_link_inner_generics(*f.field_type, typedef_ctx)?),
+                            loc: f.loc,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some(ConcreteType::UnnamedStruct(TypedUnnamedStructType {
+                    fields: new_fields,
+                    packed: s.packed,
+                    loc: s.loc,
+                }))
+            }
+            other => Some(other),
+        }
+    }
+
+    // pub(crate) fn substitute_typedef_to_concrete_type(
+    //     &mut self,
+    //     scope_id_opt: Option<ScopeID>,
+    //     local_scope_opt: Option<LocalScopeRef>,
+    //     typedef_symbol_id: SymbolID,
+    //     type_args_opt: &Option<TypedTypeArgs>,
+    //     loc: SourceLoc,
+    // ) -> Option<(ConcreteType, Option<GenericMappingCtx>)> {
+    //     let local_or_global_symbol = self
+    //         .resolver
+    //         .resolve_local_or_global_symbol(local_scope_opt, typedef_symbol_id)
+    //         .unwrap();
+
+    //     local_or_global_symbol
+    //         .as_typedef()
+    //         .and_then(|resolved_typedef| {
+    //             let generic_params = &resolved_typedef.typedef_sig.generic_params;
+
+    //             let generic_mapping_ctx =
+    //                 self.get_generic_mapping_ctx(generic_params, type_args_opt, None, loc.clone());
+
+    //             self.generic_ctx_stack.push(generic_mapping_ctx.clone());
+
+    //             let concrete_type =
+    //                 self.substitute_type(resolved_typedef.typedef_sig.ty.clone(), &generic_mapping_ctx, None)?;
+
+    //             self.generic_ctx_stack.pop();
+
+    //             Some((concrete_type, Some(generic_mapping_ctx.clone())))
+    //         })
+    //         .or(self
+    //             .resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
+    //             .map(|concrete_type| (concrete_type, None)))
+    // }
 
     pub(crate) fn substitute_field_access_type(
         &mut self,
@@ -278,7 +362,6 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         match self.substitute_type(concrete_type.clone(), generic_mapping_ctx, positional_index) {
             Some(substituted) => {
-                // analyze the expression with the expected substituted type
                 if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone())) {
                     if !self.check_type_mismatch(scope_id_opt, expr_type.clone(), substituted.clone(), expr.loc.clone())
                     {
@@ -303,14 +386,20 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             None => {
-                // could not substitute: attempt to infer from expression
                 if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
                     if let ConcreteType::GenericParam(param) = &concrete_type {
-                        // insert inferred type into named map
+                        // insert inferred type into named map using symbol_id
                         generic_mapping_ctx.named.insert(param.name.clone(), expr_type.clone());
+
+                        // also update positional if this param exists there
+                        if let Some(pos_idx) = positional_index {
+                            if pos_idx < generic_mapping_ctx.positional.len() {
+                                generic_mapping_ctx.positional[pos_idx] = expr_type.clone();
+                            }
+                        }
                     }
-                    // now try substitution again
-                    self.substitute_type(concrete_type, generic_mapping_ctx, None)
+
+                    self.substitute_type(concrete_type, generic_mapping_ctx, positional_index)
                 } else {
                     None
                 }
