@@ -1139,26 +1139,17 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let (object_concrete_type, typedef_mapping_ctx) = self
-            .get_linked_typedef_mapping_ctx(
-                scope_id_opt,
-                local_scope_opt.clone(),
-                struct_init.symbol_id,
-                &struct_init.type_args,
-                struct_init.loc.clone(),
-            )
-            .unwrap();
+        let (object_concrete_type, typedef_mapping_ctx) = self.get_linked_typedef_mapping_ctx(
+            scope_id_opt,
+            local_scope_opt.clone(),
+            struct_init.symbol_id,
+            &struct_init.type_args,
+            struct_init.loc.clone(),
+        )?;
 
         let unresolved_object_id = object_concrete_type
             .get_symbol_id()
-            .map(|symbol_id| symbol_id)
-            .or_else(|| {
-                object_concrete_type.as_generic_type().and_then(|generic_type| {
-                    struct_init.type_args = Some(generic_type.type_args.clone());
-                    Some(generic_type.base)
-                })
-            })
-            .unwrap();
+            .or_else(|| object_concrete_type.as_generic_type().map(|g| g.base))?;
 
         let local_or_global_symbol = self
             .resolver

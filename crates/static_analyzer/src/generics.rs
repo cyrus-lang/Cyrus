@@ -11,7 +11,6 @@ use typed_ast::{
     ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParam,
     TypedGenericParamsList, TypedIdentifier, TypedTypeArg, TypedTypeArgs,
     format::format_concrete_type,
-    lookup_symbol_from_generic_params,
     types::{
         ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
@@ -644,30 +643,6 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl GenericMappingCtx {
-    pub(crate) fn get_with_symbol_id(
-        &self,
-        param: &TypedIdentifier,
-        positional_index: Option<usize>,
-    ) -> Option<ConcreteType> {
-        if let Some(concrete_type) = self.named.iter().find_map(|(key, val)| {
-            if key.symbol_id == param.symbol_id {
-                Some(val.clone())
-            } else {
-                None
-            }
-        }) {
-            return Some(concrete_type);
-        }
-
-        if let Some(idx) = positional_index {
-            if idx < self.positional.len() {
-                return Some(self.positional[idx].clone());
-            }
-        }
-
-        self.parent.as_ref()?.get_with_symbol_id(param, positional_index)
-    }
-
     pub(crate) fn get_with_symbol_name(&self, name: &str, positional_index: Option<usize>) -> Option<ConcreteType> {
         if let Some(concrete_type) = self
             .named
