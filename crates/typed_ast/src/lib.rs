@@ -748,3 +748,9 @@ impl Hash for TypedIdentifier {
         self.symbol_id.hash(state);
     }
 }
+
+pub fn lookup_symbol_from_generic_params(list: &TypedGenericParamsList, symbol_id: SymbolID) -> Option<TypedGenericParam> {
+    list.iter()
+        .find(|generic_param| generic_param.param_name.symbol_id == symbol_id)
+        .cloned()
+}

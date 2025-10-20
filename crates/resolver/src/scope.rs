@@ -2,7 +2,10 @@ use crate::signatures::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig,
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedVariable};
+use typed_ast::{
+    ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedGenericParamsList, TypedVariable,
+    types::GenericType,
+};
 
 // Symbol Table (Per Module)
 
@@ -128,6 +131,27 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
+    pub fn get_generic_type(&self) -> Option<TypedGenericParamsList> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Variable(_) => None,
+                LocalSymbolKind::Struct(resolved_struct) => resolved_struct.struct_sig.generic_params.clone(),
+                LocalSymbolKind::Enum(resolved_enum) => resolved_enum.enum_sig.generic_params.clone(),
+                LocalSymbolKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.generic_params.clone(),
+                LocalSymbolKind::Union(resolved_union) => resolved_union.union_sig.generic_params.clone(),
+                LocalSymbolKind::Interface(..) => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Method(_) | SymbolEntryKind::Func(_) => None,
+                SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.generic_params.clone(),
+                SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.generic_params.clone(),
+                SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.generic_params.clone(),
+                SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.generic_params.clone(),
+                SymbolEntryKind::GlobalVar(..) | SymbolEntryKind::Interface(..) => None,
+            },
+        }
+    }
+
     pub fn is_kind_of_variable(&self) -> bool {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
