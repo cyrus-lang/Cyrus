@@ -1234,10 +1234,11 @@ impl<'a> AnalysisContext<'a> {
                 generic_mapping_ctx.parent = typedef_mapping_ctx;
 
                 for (idx, field_init) in struct_init.fields.iter_mut().enumerate() {
-                    let field = match resolved_struct
+                    let mut field = match resolved_struct
                         .struct_sig
                         .fields
                         .iter()
+                        .cloned()
                         .find(|field| field.name == field_init.name)
                     {
                         Some(field) => field,
@@ -1257,13 +1258,33 @@ impl<'a> AnalysisContext<'a> {
                         }
                     };
 
-                    self.substitute_type_or_infer_with(
+                    if let ConcreteType::GenericParam(param) = field.ty.clone() {
+                        let resolved_param = generic_mapping_ctx.resolve_linked_param(&param);
+                        dbg!(resolved_param.clone());
+
+                        field.ty = ConcreteType::GenericParam(resolved_param);
+                    }
+                    dbg!(field.ty.clone());
+
+                    let field_value_ty =
+                        match self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field.ty.clone()))
+                        {
+                            Some(concrete_type) => concrete_type,
+                            None => continue,
+                        };
+
+                    let inferred_ty = match self.substitute_type_or_infer_with(
                         scope_id_opt,
                         field.ty.clone(),
                         &mut field_init.value,
                         &mut generic_mapping_ctx,
                         Some(idx),
-                    );
+                    ) {
+                        Some(concrete_type) => concrete_type,
+                        None => continue,
+                    };
+
+                    dbg!((field_value_ty, inferred_ty));
 
                     let missing_fields_idx = match missing_fields
                         .iter()

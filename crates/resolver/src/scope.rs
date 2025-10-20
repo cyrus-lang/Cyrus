@@ -4,7 +4,6 @@ use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{
     ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedGenericParamsList, TypedVariable,
-    types::GenericType,
 };
 
 // Symbol Table (Per Module)
