@@ -1258,6 +1258,8 @@ impl<'a> AnalysisContext<'a> {
                         }
                     };
 
+                    dbg!(field.ty.clone());
+                    
                     self.substitute_type_or_infer_with(
                         scope_id_opt,
                         field.ty.clone(),
