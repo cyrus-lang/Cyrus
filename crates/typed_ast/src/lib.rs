@@ -678,7 +678,7 @@ pub type TypedGenericParamsList = Vec<TypedGenericParam>;
 
 #[derive(Debug, Clone)]
 pub struct TypedGenericParam {
-    pub param_name: Identifier,
+    pub param_name: TypedIdentifier,
     pub bounds: Option<Vec<TypedBound>>,
     pub default: Option<ConcreteType>,
 }
@@ -692,7 +692,7 @@ pub struct TypedBound {
 #[derive(Debug, Clone, Eq, Hash)]
 pub enum TypedTypeArg {
     Positional(ConcreteType),
-    Named { key: Identifier, value: ConcreteType },
+    Named { key: String, value: ConcreteType },
 }
 
 pub type TypedTypeArgs = Vec<TypedTypeArg>;
@@ -710,7 +710,7 @@ impl PartialEq for TypedTypeArg {
                     key: r_key,
                     value: r_value,
                 },
-            ) => l_key.name == r_key.name && l_value == r_value,
+            ) => l_key == r_key && l_value == r_value,
             _ => false,
         }
     }

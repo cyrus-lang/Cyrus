@@ -464,7 +464,7 @@ impl Resolver {
                         span_end,
                     )?;
                     Some(TypedTypeArg::Named {
-                        key: key.clone(),
+                        key: key.as_string(),
                         value: ty,
                     })
                 }
@@ -514,7 +514,14 @@ impl Resolver {
                     };
 
                     Some(TypedGenericParam {
-                        param_name: generic_param.param_name.clone(),
+                        param_name: TypedIdentifier {
+                            name: generic_param.param_name.as_string(),
+                            symbol_id: generate_symbol_id(),
+                            loc: SourceLoc::from_loc(
+                                generic_param.param_name.loc.clone(),
+                                self.get_current_module_file_path(),
+                            ),
+                        },
                         bounds,
                         default,
                     })
@@ -531,16 +538,9 @@ impl Resolver {
         generic_params_list_opt.clone().and_then(|generic_params| {
             generic_params
                 .iter()
-                .find(|param| param.param_name.as_string() == identifier.as_string())
+                .find(|param| param.param_name.name == identifier.as_string())
                 .and_then(|generic_param| {
-                    Some(ConcreteType::GenericParam(TypedIdentifier {
-                        name: generic_param.param_name.as_string(),
-                        symbol_id: generate_symbol_id(),
-                        loc: SourceLoc::from_loc(
-                            generic_param.param_name.loc.clone(),
-                            self.get_current_module_file_path(),
-                        ),
-                    }))
+                    Some(ConcreteType::GenericParam(generic_param.param_name.clone()))
                 })
         })
     }
