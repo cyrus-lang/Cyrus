@@ -1,4 +1,6 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, generics::GenericMappingCtx};
+use crate::{
+    context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, generics::GenericMappingCtx,
+};
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
@@ -1175,7 +1177,13 @@ impl<'a> AnalysisContext<'a> {
         if let Some(resolved_union) = local_or_global_symbol.as_union() {
             self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, expected_type)
         } else if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
-            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, expected_type, typedef_mapping_ctx)
+            self.analyze_struct_init_expr_type(
+                scope_id_opt,
+                struct_init,
+                resolved_struct,
+                expected_type,
+                typedef_mapping_ctx,
+            )
         } else {
             let symbol_name = (self.symbol_formatter)(scope_id_opt)(resolved_object_symbol_id);
 
@@ -1195,7 +1203,7 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInit,
         resolved_struct: &ResolvedStruct,
         expected_type: Option<ConcreteType>,
-        typedef_mapping_ctx: Option<Box<GenericMappingCtx>>
+        typedef_mapping_ctx: Option<Box<GenericMappingCtx>>,
     ) -> Option<ConcreteType> {
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -1233,7 +1241,7 @@ impl<'a> AnalysisContext<'a> {
             generic_mapping_ctx,
             {
                 generic_mapping_ctx.parent = typedef_mapping_ctx;
-                
+
                 for (idx, field_init) in struct_init.fields.iter_mut().enumerate() {
                     let field = match resolved_struct
                         .struct_sig
@@ -1258,8 +1266,6 @@ impl<'a> AnalysisContext<'a> {
                         }
                     };
 
-                    dbg!(field.ty.clone());
-                    
                     self.substitute_type_or_infer_with(
                         scope_id_opt,
                         field.ty.clone(),
@@ -1278,9 +1284,6 @@ impl<'a> AnalysisContext<'a> {
 
                     missing_fields.remove(missing_fields_idx);
                 }
-
-                // REVIEW Remove
-                dbg!(generic_mapping_ctx.clone());
 
                 if let Some(type_args) = self.normalize_type_args_and_register(
                     scope_id_opt,
