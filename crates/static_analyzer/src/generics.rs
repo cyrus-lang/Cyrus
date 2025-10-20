@@ -152,41 +152,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // pub(crate) fn substitute_typedef_to_concrete_type(
-    //     &mut self,
-    //     scope_id_opt: Option<ScopeID>,
-    //     local_scope_opt: Option<LocalScopeRef>,
-    //     typedef_symbol_id: SymbolID,
-    //     type_args_opt: &Option<TypedTypeArgs>,
-    //     loc: SourceLoc,
-    // ) -> Option<(ConcreteType, Option<GenericMappingCtx>)> {
-    //     let local_or_global_symbol = self
-    //         .resolver
-    //         .resolve_local_or_global_symbol(local_scope_opt, typedef_symbol_id)
-    //         .unwrap();
-
-    //     local_or_global_symbol
-    //         .as_typedef()
-    //         .and_then(|resolved_typedef| {
-    //             let generic_params = &resolved_typedef.typedef_sig.generic_params;
-
-    //             let generic_mapping_ctx =
-    //                 self.get_generic_mapping_ctx(generic_params, type_args_opt, None, loc.clone());
-
-    //             self.generic_ctx_stack.push(generic_mapping_ctx.clone());
-
-    //             let concrete_type =
-    //                 self.substitute_type(resolved_typedef.typedef_sig.ty.clone(), &generic_mapping_ctx, None)?;
-
-    //             self.generic_ctx_stack.pop();
-
-    //             Some((concrete_type, Some(generic_mapping_ctx.clone())))
-    //         })
-    //         .or(self
-    //             .resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
-    //             .map(|concrete_type| (concrete_type, None)))
-    // }
-
     pub(crate) fn substitute_field_access_type(
         &mut self,
         field_access_operand: &mut TypedExpression,
