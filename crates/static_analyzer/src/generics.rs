@@ -9,7 +9,7 @@ use resolver::{
 use std::collections::HashMap;
 use typed_ast::{
     ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParam,
-    TypedGenericParamsList, TypedIdentifier, TypedTypeArg, TypedTypeArgs,
+    TypedGenericParamsList, TypedIdentifier, TypedStructInit, TypedTypeArg, TypedTypeArgs,
     format::format_concrete_type,
     types::{
         ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
@@ -22,6 +22,7 @@ pub(crate) struct GenericMappingCtx {
     pub(crate) parent: Option<Box<GenericMappingCtx>>,
     pub(crate) positional: Vec<ConcreteType>,
     pub(crate) named: HashMap<TypedIdentifier, ConcreteType>,
+    pub linked_symbol_ids: HashMap<SymbolID, SymbolID>,
 }
 
 #[macro_export]
@@ -78,12 +79,21 @@ impl<'a> AnalysisContext<'a> {
                             )
                             .unwrap();
 
+                        if let Some(generic_params) = &resolved_typedef.typedef_sig.generic_params {
+                            for gp in generic_params.iter() {
+                                typedef_ctx
+                                    .named
+                                    .insert(gp.param_name.clone(), ConcreteType::GenericParam(gp.param_name.clone()));
+                            }
+                        }
+
                         self.generic_ctx_stack.pop();
+
                         return Some((concrete_type, Some(Box::new(typedef_ctx))));
                     }
                 }
 
-                return Some((resolved_typedef.typedef_sig.ty.clone(), None));
+                Some((resolved_typedef.typedef_sig.ty.clone(), None))
             })
             .or(self
                 .resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
@@ -94,15 +104,26 @@ impl<'a> AnalysisContext<'a> {
         &self,
         type_arg: &TypedTypeArg,
         generic_param: &TypedGenericParam,
+        generic_mapping_ctx: &mut GenericMappingCtx,
     ) -> Option<TypedTypeArg> {
-        match &type_arg {
+        match type_arg {
             TypedTypeArg::Positional(ct) | TypedTypeArg::Named { key: _, value: ct } => match ct {
                 ConcreteType::GenericParam(param) => {
-                    return Some(TypedTypeArg::Positional(ConcreteType::GenericParam(TypedIdentifier {
-                        name: param.name.clone(),
-                        symbol_id: generic_param.param_name.symbol_id,
-                        loc: param.loc.clone(),
-                    })));
+                    // let new_ct = ConcreteType::GenericParam(TypedIdentifier {
+                    //     name: param.name.clone(),
+                    //     symbol_id: generic_param.param_name.symbol_id,
+                    //     loc: param.loc.clone(),
+                    // });
+
+                    generic_mapping_ctx
+                        .linked_symbol_ids
+                        .insert(param.symbol_id, generic_param.param_name.symbol_id);
+
+                    // generic_mapping_ctx
+                    //     .linked_symbol_ids
+                    //     .insert(generic_param.param_name.symbol_id, param.symbol_id);
+
+                    return Some(TypedTypeArg::Positional(new_ct));
                 }
                 _ => {}
             },
@@ -111,12 +132,33 @@ impl<'a> AnalysisContext<'a> {
         Some(type_arg.clone())
     }
 
+    // fn link_generic_param_to_inner(
+    //     &self,
+    //     type_arg: &TypedTypeArg,
+    //     generic_param: &TypedGenericParam,
+    // ) -> Option<TypedTypeArg> {
+    //     match &type_arg {
+    //         TypedTypeArg::Positional(ct) | TypedTypeArg::Named { key: _, value: ct } => match ct {
+    //             ConcreteType::GenericParam(param) => {
+    //                 return Some(TypedTypeArg::Positional(ConcreteType::GenericParam(TypedIdentifier {
+    //                     name: param.name.clone(),
+    //                     symbol_id: generic_param.param_name.symbol_id,
+    //                     loc: param.loc.clone(),
+    //                 })));
+    //             }
+    //             _ => {}
+    //         },
+    //     };
+
+    //     Some(type_arg.clone())
+    // }
+
     fn traverse_and_link_inner_generics(
         &mut self,
         generic_params: &TypedGenericParamsList,
         translate_generic_params: &TypedGenericParamsList,
         ty: ConcreteType,
-        typedef_ctx: &GenericMappingCtx,
+        typedef_ctx: &mut GenericMappingCtx,
     ) -> Option<ConcreteType> {
         match ty {
             ConcreteType::GenericType(mut generic_type) => {
@@ -124,7 +166,7 @@ impl<'a> AnalysisContext<'a> {
 
                 for (idx, generic_param) in translate_generic_params.iter().enumerate() {
                     let type_arg = &generic_type.type_args[idx];
-                    let linked = self.link_generic_param_to_inner(type_arg, generic_param)?;
+                    let linked = self.link_generic_param_to_inner(type_arg, generic_param, typedef_ctx)?;
                     generic_type.type_args[idx] = linked;
                 }
 
@@ -390,56 +432,74 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_type_or_infer_with(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        concrete_type: ConcreteType,
+        mut concrete_type: ConcreteType,
         expr: &mut TypedExpression,
         generic_mapping_ctx: &mut GenericMappingCtx,
         positional_index: Option<usize>,
     ) -> Option<ConcreteType> {
-        match self.substitute_type(concrete_type.clone(), generic_mapping_ctx, positional_index) {
-            Some(substituted) => {
-                if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone())) {
-                    if !self.check_type_mismatch(scope_id_opt, expr_type.clone(), substituted.clone(), expr.loc.clone())
-                    {
-                        let expected_type =
-                            format_concrete_type(substituted.clone(), &(self.symbol_formatter)(scope_id_opt));
-                        let found_type =
-                            format_concrete_type(expr_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::AssignmentTypeMismatch {
-                                lhs_type: expected_type,
-                                rhs_type: found_type,
-                            },
-                            location: Some(DiagLoc::new(expr.loc.clone())),
-                            hint: None,
-                        });
-                        return None;
-                    }
-                    Some(substituted)
-                } else {
-                    None
-                }
-            }
-            None => {
-                if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
-                    if let ConcreteType::GenericParam(param) = &concrete_type {
-                        // insert inferred type into named map using symbol_id
-                        generic_mapping_ctx.named.insert(param.clone(), expr_type.clone());
+        // resolve linked symbol_id for generic param if exists
+        if let ConcreteType::GenericParam(ref gp) = concrete_type {
+            let linked_param = generic_mapping_ctx.resolve_linked_param(gp);
+            concrete_type = ConcreteType::GenericParam(linked_param);
+        }
 
-                        // also update positional if this param exists there
-                        if let Some(pos_idx) = positional_index {
-                            if pos_idx < generic_mapping_ctx.positional.len() {
-                                generic_mapping_ctx.positional[pos_idx] = expr_type.clone();
+        // evaluate expr type before substitution
+        let expr_concrete_typ = expr
+            .concrete_type
+            .clone()
+            .or(self.analyze_typed_expr_type(scope_id_opt, expr, None));
+
+        // substitute or infer
+        let final_concrete_type =
+            match self.substitute_type(concrete_type.clone(), generic_mapping_ctx, positional_index) {
+                Some(substituted) => self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone())),
+                None => {
+                    if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
+                        if let ConcreteType::GenericParam(param) = &concrete_type {
+                            // insert inferred type into named map using symbol_id
+                            generic_mapping_ctx.named.insert(param.clone(), expr_type.clone());
+
+                            // also update positional if this param exists there
+                            if let Some(pos_idx) = positional_index {
+                                if pos_idx < generic_mapping_ctx.positional.len() {
+                                    generic_mapping_ctx.positional[pos_idx] = expr_type.clone();
+                                }
                             }
                         }
-                    }
 
-                    self.substitute_type(concrete_type, generic_mapping_ctx, positional_index)
-                } else {
-                    None
+                        self.substitute_type(concrete_type, generic_mapping_ctx, positional_index)
+                    } else {
+                        None
+                    }
                 }
+            };
+
+        // check mismatch with original expr type
+        if let Some(expr_ty) = &expr_concrete_typ {
+            if !self.check_type_mismatch(
+                scope_id_opt,
+                expr_ty.clone(),
+                final_concrete_type.clone()?,
+                expr.loc.clone(),
+            ) {
+                let expected_type =
+                    format_concrete_type(final_concrete_type.clone()?, &(self.symbol_formatter)(scope_id_opt));
+                let found_type = format_concrete_type(expr_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: expected_type,
+                        rhs_type: found_type,
+                    },
+                    location: Some(DiagLoc::new(expr.loc.clone())),
+                    hint: None,
+                });
+                return None;
             }
         }
+
+        final_concrete_type
     }
 
     pub(crate) fn substitute_type(
@@ -582,10 +642,16 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        let linked_symbol_ids: HashMap<SymbolID, SymbolID> = parent
+            .clone()
+            .and_then(|ctx| Some(ctx.linked_symbol_ids.clone()))
+            .unwrap_or(HashMap::new());
+
         GenericMappingCtx {
             positional,
             named,
             parent,
+            linked_symbol_ids,
         }
     }
 
@@ -643,6 +709,18 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl GenericMappingCtx {
+    pub fn resolve_linked_param(&self, field_param: &TypedIdentifier) -> TypedIdentifier {
+        if let Some(&linked_id) = self.linked_symbol_ids.get(&field_param.symbol_id) {
+            TypedIdentifier {
+                name: field_param.name.clone(),
+                symbol_id: linked_id,
+                loc: field_param.loc.clone(),
+            }
+        } else {
+            field_param.clone()
+        }
+    }
+
     pub(crate) fn get_with_symbol_name(&self, name: &str, positional_index: Option<usize>) -> Option<ConcreteType> {
         if let Some(concrete_type) = self
             .named
