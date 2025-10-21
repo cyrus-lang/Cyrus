@@ -17,12 +17,12 @@ use typed_ast::{
     },
 };
 
+pub(crate) type ChildGenericParamSymbolID = SymbolID;
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GenericMappingCtx {
-    pub(crate) parent: Option<Box<GenericMappingCtx>>,
-    pub(crate) positional: Vec<ConcreteType>,
     pub(crate) named: HashMap<TypedIdentifier, ConcreteType>,
-    pub linked_symbol_ids: HashMap<SymbolID, SymbolID>,
+    pub(crate) linked_gps: HashMap<ChildGenericParamSymbolID, SymbolID>,
 }
 
 #[macro_export]
@@ -39,119 +39,23 @@ macro_rules! generic_mapping_ctx_scope {
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn get_linked_typedef_mapping_ctx(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
-        typedef_symbol_id: SymbolID,
-        type_args_opt: &Option<TypedTypeArgs>,
-        loc: SourceLoc,
-    ) -> Option<(ConcreteType, Option<Box<GenericMappingCtx>>)> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), typedef_symbol_id)
-            .unwrap();
-
-        local_or_global_symbol
-            .as_typedef()
-            .and_then(|resolved_typedef| {
-                let generic_params = &resolved_typedef.typedef_sig.generic_params;
-
-                // build typedef-level mapping ctx
-                let mut typedef_ctx = self.get_generic_mapping_ctx(generic_params, type_args_opt, None, loc.clone());
-
-                if let Some(generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type() {
-                    let local_or_global_symbol = self
-                        .resolver
-                        .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
-                        .unwrap();
-
-                    if let Some(translate_generic_params) = local_or_global_symbol.get_generic_type() {
-                        self.generic_ctx_stack.push(typedef_ctx.clone());
-
-                        // substitute inner type and traverse it
-                        let concrete_type = self
-                            .traverse_and_link_inner_generics(
-                                &generic_params.clone().unwrap(),
-                                &translate_generic_params,
-                                resolved_typedef.typedef_sig.ty.clone(),
-                                &mut typedef_ctx,
-                            )
-                            .unwrap();
-
-                        if let Some(generic_params) = &resolved_typedef.typedef_sig.generic_params {
-                            for gp in generic_params.iter() {
-                                typedef_ctx
-                                    .named
-                                    .insert(gp.param_name.clone(), ConcreteType::GenericParam(gp.param_name.clone()));
-                            }
-                        }
-
-                        self.generic_ctx_stack.pop();
-
-                        return Some((concrete_type, Some(Box::new(typedef_ctx))));
-                    }
-                }
-
-                Some((resolved_typedef.typedef_sig.ty.clone(), None))
-            })
-            .or(self
-                .resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
-                .map(|concrete_type| (concrete_type, None)))
-    }
-
     fn link_generic_param_to_inner(
         &self,
         type_arg: &TypedTypeArg,
         generic_param: &TypedGenericParam,
         generic_mapping_ctx: &mut GenericMappingCtx,
-    ) -> Option<TypedTypeArg> {
+    ) {
         match type_arg {
             TypedTypeArg::Positional(ct) | TypedTypeArg::Named { key: _, value: ct } => match ct {
                 ConcreteType::GenericParam(param) => {
-                    // let new_ct = ConcreteType::GenericParam(TypedIdentifier {
-                    //     name: param.name.clone(),
-                    //     symbol_id: generic_param.param_name.symbol_id,
-                    //     loc: param.loc.clone(),
-                    // });
-
                     generic_mapping_ctx
-                        .linked_symbol_ids
+                        .linked_gps
                         .insert(param.symbol_id, generic_param.param_name.symbol_id);
-
-                    // generic_mapping_ctx
-                    //     .linked_symbol_ids
-                    //     .insert(generic_param.param_name.symbol_id, param.symbol_id);
-
-                    return Some(TypedTypeArg::Positional(new_ct));
                 }
                 _ => {}
             },
         };
-
-        Some(type_arg.clone())
     }
-
-    // fn link_generic_param_to_inner(
-    //     &self,
-    //     type_arg: &TypedTypeArg,
-    //     generic_param: &TypedGenericParam,
-    // ) -> Option<TypedTypeArg> {
-    //     match &type_arg {
-    //         TypedTypeArg::Positional(ct) | TypedTypeArg::Named { key: _, value: ct } => match ct {
-    //             ConcreteType::GenericParam(param) => {
-    //                 return Some(TypedTypeArg::Positional(ConcreteType::GenericParam(TypedIdentifier {
-    //                     name: param.name.clone(),
-    //                     symbol_id: generic_param.param_name.symbol_id,
-    //                     loc: param.loc.clone(),
-    //                 })));
-    //             }
-    //             _ => {}
-    //         },
-    //     };
-
-    //     Some(type_arg.clone())
-    // }
 
     fn traverse_and_link_inner_generics(
         &mut self,
@@ -166,8 +70,7 @@ impl<'a> AnalysisContext<'a> {
 
                 for (idx, generic_param) in translate_generic_params.iter().enumerate() {
                     let type_arg = &generic_type.type_args[idx];
-                    let linked = self.link_generic_param_to_inner(type_arg, generic_param, typedef_ctx)?;
-                    generic_type.type_args[idx] = linked;
+                    self.link_generic_param_to_inner(type_arg, generic_param, typedef_ctx);
                 }
 
                 Some(ConcreteType::GenericType(generic_type))
@@ -258,6 +161,55 @@ impl<'a> AnalysisContext<'a> {
                 }))
             }
             other => Some(other),
+        }
+    }
+
+    pub(crate) fn resolve_generic_type_base_as_resolved_symbol_id(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+    ) -> Option<ConcreteType> {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)?;
+
+        if let Some(resolved_typedef) = local_or_global_symbol.as_typedef() {
+            if let Some(generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type() {
+                generic_mapping_ctx_scope!(
+                    self,
+                    resolved_typedef.typedef_sig.generic_params,
+                    Some(generic_type.type_args.clone()),
+                    resolved_typedef.typedef_sig.loc.clone(),
+                    typedef_ctx,
+                    {
+                        let inner_symbol = self
+                            .resolver
+                            .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)?;
+
+                        if let Some(sig_gp) = &resolved_typedef.typedef_sig.generic_params {
+                            self.traverse_and_link_inner_generics(
+                                &sig_gp,
+                                &inner_symbol.get_generic_type().unwrap(),
+                                resolved_typedef.typedef_sig.ty.clone(),
+                                &mut typedef_ctx,
+                            );
+                        }
+
+                        dbg!(inner_symbol.get_generic_type().clone());
+
+                        todo!();
+                    }
+                );
+            }
+        }
+
+        match self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)? {
+            ConcreteType::GenericType(generic_type) => {
+                self.resolve_generic_type_base_as_resolved_symbol_id(scope_id_opt, generic_type.base)
+            }
+            ty @ _ => Some(ty),
         }
     }
 
@@ -361,12 +313,6 @@ impl<'a> AnalysisContext<'a> {
         let mut normalized_type_args: Vec<Option<ConcreteType>> = vec![None; generic_params.len()];
         let mut missing: Vec<String> = Vec::new();
 
-        for (i, _) in generic_params.iter().enumerate() {
-            if let Some(concrete_type) = generic_mapping_ctx.positional.get(i) {
-                normalized_type_args[i] = Some(concrete_type.clone());
-            }
-        }
-
         for (name, ty) in &generic_mapping_ctx.named {
             if let Some(idx) = generic_params
                 .iter()
@@ -437,12 +383,6 @@ impl<'a> AnalysisContext<'a> {
         generic_mapping_ctx: &mut GenericMappingCtx,
         positional_index: Option<usize>,
     ) -> Option<ConcreteType> {
-        // resolve linked symbol_id for generic param if exists
-        if let ConcreteType::GenericParam(ref gp) = concrete_type {
-            let linked_param = generic_mapping_ctx.resolve_linked_param(gp);
-            concrete_type = ConcreteType::GenericParam(linked_param);
-        }
-
         // evaluate expr type before substitution
         let expr_concrete_typ = expr
             .concrete_type
@@ -458,13 +398,6 @@ impl<'a> AnalysisContext<'a> {
                         if let ConcreteType::GenericParam(param) = &concrete_type {
                             // insert inferred type into named map using symbol_id
                             generic_mapping_ctx.named.insert(param.clone(), expr_type.clone());
-
-                            // also update positional if this param exists there
-                            if let Some(pos_idx) = positional_index {
-                                if pos_idx < generic_mapping_ctx.positional.len() {
-                                    generic_mapping_ctx.positional[pos_idx] = expr_type.clone();
-                                }
-                            }
                         }
 
                         self.substitute_type(concrete_type, generic_mapping_ctx, positional_index)
@@ -509,9 +442,7 @@ impl<'a> AnalysisContext<'a> {
         positional_index: Option<usize>,
     ) -> Option<ConcreteType> {
         match concrete_type {
-            ConcreteType::GenericParam(param) => {
-                generic_mapping_ctx.get_with_symbol_name(&param.name, positional_index)
-            }
+            ConcreteType::GenericParam(param) => generic_mapping_ctx.get_with_symbol_id(param.symbol_id),
             ConcreteType::Pointer(inner) => Some(ConcreteType::Pointer(Box::new(self.substitute_type(
                 *inner,
                 generic_mapping_ctx,
@@ -594,20 +525,21 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn get_generic_mapping_ctx(
         &mut self,
         generic_params_opt: &Option<TypedGenericParamsList>,
-        type_args_opt: &Option<TypedTypeArgs>,
+        input_type_args_opt: &Option<TypedTypeArgs>,
         parent: Option<Box<GenericMappingCtx>>,
         loc: SourceLoc,
     ) -> GenericMappingCtx {
-        let mut positional: Vec<ConcreteType> = Vec::new();
         let mut named: HashMap<TypedIdentifier, ConcreteType> = HashMap::new();
 
         if let Some(generic_params) = generic_params_opt {
-            if let Some(type_args) = type_args_opt.as_ref() {
+            if let Some(type_args) = input_type_args_opt.as_ref() {
                 // zip generic_params with type_args (positional + named)
                 for arg in type_args.iter() {
                     match arg {
                         TypedTypeArg::Positional(ct) => {
-                            positional.push(ct.clone());
+                            dbg!(ct.clone());
+                            todo!(); // FIXME
+                            // positional.push(ct.clone());
                         }
                         TypedTypeArg::Named { key, value } => {
                             let generic_param = generic_params
@@ -620,7 +552,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                if positional.len() > generic_params.len() {
+                if type_args.len() > generic_params.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::UnexpectedTypeArgs,
@@ -628,12 +560,12 @@ impl<'a> AnalysisContext<'a> {
                         hint: Some(format!(
                             "Too many positional type arguments (expected <= {}, found {})",
                             generic_params.len(),
-                            positional.len()
+                            type_args.len()
                         )),
                     });
                 }
             }
-        } else if type_args_opt.is_some() {
+        } else if input_type_args_opt.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UnexpectedTypeArgs,
@@ -642,17 +574,8 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let linked_symbol_ids: HashMap<SymbolID, SymbolID> = parent
-            .clone()
-            .and_then(|ctx| Some(ctx.linked_symbol_ids.clone()))
-            .unwrap_or(HashMap::new());
-
-        GenericMappingCtx {
-            positional,
-            named,
-            parent,
-            linked_symbol_ids,
-        }
+        let linked_gps = parent.and_then(|ctx| Some(ctx.linked_gps)).unwrap_or(HashMap::new());
+        GenericMappingCtx { named, linked_gps }
     }
 
     pub(crate) fn infer_generic_type_from_expected_type(
@@ -673,32 +596,34 @@ impl<'a> AnalysisContext<'a> {
 
         let mut merged_args: Vec<ConcreteType> = Vec::with_capacity(generic_params.len());
 
-        for (i, param) in generic_params.iter().enumerate() {
-            let concrete = if i < generic_mapping_ctx.positional.len() {
-                Some(generic_mapping_ctx.positional[i].clone())
-            } else {
-                None
-            }
-            .or_else(|| generic_mapping_ctx.named.get(&param.param_name.clone()).cloned())
-            .or_else(|| param.default.clone())
-            .or_else(|| {
-                if i >= generic_type.type_args.len() {
-                    None
-                } else {
-                    match &generic_type.type_args[i] {
-                        TypedTypeArg::Positional(ty) => Some(ty.clone()),
-                        TypedTypeArg::Named { value, .. } => Some(value.clone()),
-                    }
-                }
-            });
+        todo!();
+        // FIXME
+        // for (i, param) in generic_params.iter().enumerate() {
+        //     let concrete = if i < generic_mapping_ctx.positional.len() {
+        //         Some(generic_mapping_ctx.positional[i].clone())
+        //     } else {
+        //         None
+        //     }
+        //     .or_else(|| generic_mapping_ctx.named.get(&param.param_name.clone()).cloned())
+        //     .or_else(|| param.default.clone())
+        //     .or_else(|| {
+        //         if i >= generic_type.type_args.len() {
+        //             None
+        //         } else {
+        //             match &generic_type.type_args[i] {
+        //                 TypedTypeArg::Positional(ty) => Some(ty.clone()),
+        //                 TypedTypeArg::Named { value, .. } => Some(value.clone()),
+        //             }
+        //         }
+        //     });
 
-            if let Some(concrete_type) = concrete {
-                merged_args.push(concrete_type);
-            } else {
-                // could not infer this generic param
-                return None;
-            }
-        }
+        //     if let Some(concrete_type) = concrete {
+        //         merged_args.push(concrete_type);
+        //     } else {
+        //         // could not infer this generic param
+        //         return None;
+        //     }
+        // }
 
         with_monomorph_registry!(self, registry, {
             registry.register(symbol_id, merged_args.clone());
@@ -709,33 +634,13 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl GenericMappingCtx {
-    pub fn resolve_linked_param(&self, field_param: &TypedIdentifier) -> TypedIdentifier {
-        if let Some(&linked_id) = self.linked_symbol_ids.get(&field_param.symbol_id) {
-            TypedIdentifier {
-                name: field_param.name.clone(),
-                symbol_id: linked_id,
-                loc: field_param.loc.clone(),
+    pub(crate) fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<ConcreteType> {
+        self.named.iter().find_map(|(key, val)| {
+            if key.symbol_id == symbol_id {
+                Some(val.clone())
+            } else {
+                None
             }
-        } else {
-            field_param.clone()
-        }
-    }
-
-    pub(crate) fn get_with_symbol_name(&self, name: &str, positional_index: Option<usize>) -> Option<ConcreteType> {
-        if let Some(concrete_type) = self
-            .named
-            .iter()
-            .find_map(|(key, val)| if key.name == name { Some(val.clone()) } else { None })
-        {
-            return Some(concrete_type);
-        }
-
-        if let Some(idx) = positional_index {
-            if idx < self.positional.len() {
-                return Some(self.positional[idx].clone());
-            }
-        }
-
-        self.parent.as_ref()?.get_with_symbol_name(name, positional_index)
+        })
     }
 }

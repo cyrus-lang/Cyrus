@@ -1139,13 +1139,8 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let (object_concrete_type, typedef_mapping_ctx) = self.get_linked_typedef_mapping_ctx(
-            scope_id_opt,
-            local_scope_opt.clone(),
-            struct_init.symbol_id,
-            &struct_init.type_args,
-            struct_init.loc.clone(),
-        )?;
+        let object_concrete_type =
+            self.resolve_generic_type_base_as_resolved_symbol_id(scope_id_opt, struct_init.symbol_id)?;
 
         let unresolved_object_id = object_concrete_type
             .get_symbol_id()
@@ -1168,13 +1163,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(resolved_union) = local_or_global_symbol.as_union() {
             self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, expected_type)
         } else if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
-            self.analyze_struct_init_expr_type(
-                scope_id_opt,
-                struct_init,
-                resolved_struct,
-                expected_type,
-                typedef_mapping_ctx,
-            )
+            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, expected_type)
         } else {
             let symbol_name = (self.symbol_formatter)(scope_id_opt)(resolved_object_symbol_id);
 
@@ -1194,7 +1183,6 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInit,
         resolved_struct: &ResolvedStruct,
         expected_type: Option<ConcreteType>,
-        typedef_mapping_ctx: Option<Box<GenericMappingCtx>>,
     ) -> Option<ConcreteType> {
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -1231,8 +1219,6 @@ impl<'a> AnalysisContext<'a> {
             struct_init.loc.clone(),
             generic_mapping_ctx,
             {
-                generic_mapping_ctx.parent = typedef_mapping_ctx;
-
                 for (idx, field_init) in struct_init.fields.iter_mut().enumerate() {
                     let mut field = match resolved_struct
                         .struct_sig
@@ -1258,21 +1244,6 @@ impl<'a> AnalysisContext<'a> {
                         }
                     };
 
-                    if let ConcreteType::GenericParam(param) = field.ty.clone() {
-                        let resolved_param = generic_mapping_ctx.resolve_linked_param(&param);
-                        dbg!(resolved_param.clone());
-
-                        field.ty = ConcreteType::GenericParam(resolved_param);
-                    }
-                    dbg!(field.ty.clone());
-
-                    let field_value_ty =
-                        match self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field.ty.clone()))
-                        {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
-
                     let inferred_ty = match self.substitute_type_or_infer_with(
                         scope_id_opt,
                         field.ty.clone(),
@@ -1283,8 +1254,6 @@ impl<'a> AnalysisContext<'a> {
                         Some(concrete_type) => concrete_type,
                         None => continue,
                     };
-
-                    dbg!((field_value_ty, inferred_ty));
 
                     let missing_fields_idx = match missing_fields
                         .iter()
