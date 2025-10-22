@@ -1,21 +1,41 @@
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use generics::GenericMappingCtx;
 use partialmatch::partial_match;
-use resolver::{
-    scope::LocalScopeRef,
-    signatures::{EnumSig, StructSig, UnionSig},
-};
+use resolver::signatures::{EnumSig, StructSig, UnionSig};
 use typed_ast::{
-    ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParam,
-    TypedGenericParamsList, TypedIdentifier, TypedStructInit, TypedTypeArg, TypedTypeArgs,
+    ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParamsList, TypedIdentifier,
+    TypedTypeArg, TypedTypeArgs,
     format::format_concrete_type,
     types::{
         ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
+
+#[macro_export]
+macro_rules! generic_mapping_ctx_scope {
+    // parent context provided explicitly
+    ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $parent_ctx:expr, $exposed_ctx:ident, $body:block) => {{
+        let mut __ctx = $parent_ctx
+            .and_then(|ctx| Some(ctx.new_child()))
+            .unwrap_or(GenericMappingCtx::new_root());
+
+        #[allow(unused_mut)]
+        let mut __child_ctx = $self.get_generic_mapping_ctx(&mut __ctx, &$generic_params, &$type_args, $loc);
+
+        $self.generic_ctx_stack.push(__child_ctx.clone());
+        let __result = {
+            let mut $exposed_ctx = __child_ctx;
+            $body
+        };
+        $self.generic_ctx_stack.pop();
+
+        __result
+    }};
+}
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn resolve_generic_typedef(
@@ -228,6 +248,217 @@ impl<'a> AnalysisContext<'a> {
         final_concrete_type
     }
 
+    pub(crate) fn get_generic_mapping_ctx(
+        &mut self,
+        mapping_ctx: &mut GenericMappingCtx,
+        generic_params_opt: &Option<TypedGenericParamsList>,
+        input_type_args_opt: &Option<TypedTypeArgs>,
+        loc: SourceLoc,
+    ) -> GenericMappingCtx {
+        // When generic parameters exist
+        if let Some(generic_params) = generic_params_opt {
+            if let Some(type_args) = input_type_args_opt {
+                // link positional and named type arguments
+                for (idx, arg) in type_args.iter().enumerate() {
+                    match arg {
+                        TypedTypeArg::Positional(concrete_type) => {
+                            let current_gp = match generic_params.get(idx) {
+                                Some(gp) => gp,
+                                None => continue, // skip if there's no corresponding param
+                            };
+
+                            if let Some(generic_param) = concrete_type.as_generic_param() {
+                                // Link generic → generic (e.g. T = U)
+                                mapping_ctx.insert_linked(current_gp.param_name.symbol_id, generic_param.symbol_id);
+                            } else {
+                                // Bind concrete type to generic param
+                                mapping_ctx.insert_named(current_gp.param_name.clone(), concrete_type.clone());
+                            }
+                        }
+
+                        TypedTypeArg::Named { key, value } => {
+                            if let Some(generic_param) = generic_params.iter().find(|gp| gp.param_name.name == *key) {
+                                mapping_ctx.insert_named(generic_param.param_name.clone(), value.clone());
+                            }
+                        }
+                    }
+                }
+
+                // Check for excess type arguments
+                if type_args.len() > generic_params.len() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::UnexpectedTypeArgs,
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: Some(format!(
+                            "Too many positional type arguments (expected ≤ {}, found {}).",
+                            generic_params.len(),
+                            type_args.len(),
+                        )),
+                    });
+                }
+            }
+        } else if input_type_args_opt.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UnexpectedTypeArgs,
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: Some("Remove the type arguments or add generic parameters to the type.".to_string()),
+            });
+        }
+
+        mapping_ctx.clone()
+    }
+
+    pub(crate) fn normalize_type_args_and_register(
+        &mut self,
+        mapping_ctx: &GenericMappingCtx,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+        generic_params: &Option<TypedGenericParamsList>,
+        expected_type: Option<ConcreteType>,
+        loc: SourceLoc,
+        allow_inference_without_error: bool,
+        register_monomorph: bool,
+    ) -> Option<Vec<ConcreteType>> {
+        let Some(generic_params) = generic_params else {
+            return None;
+        };
+        let mut normalized_type_args: Vec<Option<ConcreteType>> = vec![None; generic_params.len()];
+        let mut missing: Vec<String> = Vec::new();
+        for (name, ty) in &mapping_ctx.named {
+            if let Some(idx) = generic_params
+                .iter()
+                .position(|param| param.param_name.symbol_id == name.symbol_id)
+            {
+                normalized_type_args[idx] = Some(ty.clone());
+            }
+        }
+        for (i, param) in generic_params.iter().enumerate() {
+            if normalized_type_args[i].is_none() {
+                if let Some(default_ty) = &param.default {
+                    normalized_type_args[i] = Some(default_ty.clone());
+                }
+            }
+        }
+        for (i, ty_slot) in normalized_type_args.iter_mut().enumerate() {
+            if ty_slot.is_none() {
+                if let Some(inferred) = self.infer_generic_type_from_expected_type(
+                    symbol_id,
+                    &generic_params[i..=i].to_vec(),
+                    mapping_ctx,
+                    expected_type.clone(),
+                ) {
+                    *ty_slot = Some(inferred[0].clone());
+                } else {
+                    missing.push(generic_params[i].param_name.name.clone());
+                }
+            }
+        }
+        if !missing.is_empty() && !allow_inference_without_error {
+            let type_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
+            let hint = format!("Provide explicit type arguments for {}", missing.join(", "));
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name },
+                location: Some(DiagLoc::new(loc)),
+                hint: Some(hint),
+            });
+            return None;
+        }
+        let final_args: Vec<ConcreteType> = normalized_type_args.into_iter().filter_map(|x| x).collect();
+        if register_monomorph {
+            with_monomorph_registry!(self, registry, {
+                registry.register(symbol_id, final_args.clone());
+            });
+        }
+        Some(final_args)
+    }
+
+    pub(crate) fn substitute_type(
+        &self,
+        concrete_type: ConcreteType,
+        generic_mapping_ctx: &GenericMappingCtx,
+        positional_index: Option<usize>,
+    ) -> Option<ConcreteType> {
+        match concrete_type {
+            ConcreteType::GenericParam(param) => generic_mapping_ctx.get_with_symbol_id(param.symbol_id),
+            ConcreteType::Pointer(inner) => Some(ConcreteType::Pointer(Box::new(self.substitute_type(
+                *inner,
+                generic_mapping_ctx,
+                positional_index,
+            )?))),
+            ConcreteType::Array(inner) => Some(ConcreteType::Array(TypedArrayType {
+                element_type: Box::new(self.substitute_type(
+                    *inner.element_type,
+                    generic_mapping_ctx,
+                    positional_index,
+                )?),
+                capacity: inner.capacity,
+                loc: inner.loc.clone(),
+            })),
+            ConcreteType::Const(inner) => Some(ConcreteType::Const(Box::new(self.substitute_type(
+                *inner,
+                generic_mapping_ctx,
+                positional_index,
+            )?))),
+            ConcreteType::Tuple(tuple) => {
+                let new_list = tuple
+                    .type_list
+                    .into_iter()
+                    .map(|t| self.substitute_type(t, generic_mapping_ctx, positional_index))
+                    .collect::<Option<Vec<_>>>()?;
+                Some(ConcreteType::Tuple(TypedTupleType {
+                    type_list: new_list,
+                    loc: tuple.loc.clone(),
+                }))
+            }
+            ConcreteType::FuncType(func) => {
+                let new_params = func
+                    .params
+                    .list
+                    .into_iter()
+                    .map(|p| self.substitute_type(p, generic_mapping_ctx, positional_index))
+                    .collect::<Option<Vec<_>>>()?;
+                let new_return =
+                    Box::new(self.substitute_type(*func.return_type, generic_mapping_ctx, positional_index)?);
+                Some(ConcreteType::FuncType(TypedFuncType {
+                    def_module_id: func.def_module_id,
+                    params: TypedFuncTypeParams {
+                        list: new_params,
+                        variadic: func.params.variadic,
+                    },
+                    return_type: new_return,
+                    vis_opt: func.vis_opt,
+                    loc: func.loc,
+                }))
+            }
+            ConcreteType::UnnamedStruct(s) => {
+                let new_fields = s
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        Some(TypedUnnamedStructTypeField {
+                            field_name: f.field_name.clone(),
+                            field_type: Box::new(self.substitute_type(
+                                *f.field_type.clone(),
+                                generic_mapping_ctx,
+                                positional_index,
+                            )?),
+                            loc: f.loc.clone(),
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some(ConcreteType::UnnamedStruct(TypedUnnamedStructType {
+                    fields: new_fields,
+                    packed: s.packed,
+                    loc: s.loc.clone(),
+                }))
+            }
+            other => Some(other),
+        }
+    }
+
     pub(crate) fn infer_generic_type_from_expected_type(
         &mut self,
         symbol_id: SymbolID,
@@ -279,5 +510,85 @@ impl<'a> AnalysisContext<'a> {
         });
 
         Some(merged_args)
+    }
+}
+
+pub type ChildGenericParamSymbolID = SymbolID;
+
+#[derive(Debug, Clone, Default)]
+pub struct GenericMappingCtx {
+    pub named: HashMap<TypedIdentifier, ConcreteType>,
+    pub parent: Option<Box<GenericMappingCtx>>,
+    pub linked_gps: Rc<RefCell<HashMap<ChildGenericParamSymbolID, SymbolID>>>,
+}
+
+impl GenericMappingCtx {
+    pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<ConcreteType> {
+        fn lookup_named(ctx: &GenericMappingCtx, sid: SymbolID) -> Option<ConcreteType> {
+            ctx.named
+                .iter()
+                .find_map(|(key, val)| (key.symbol_id == sid).then(|| val.clone()))
+        }
+
+        fn lookup_in_chain(mut ctx_opt: Option<&Box<GenericMappingCtx>>, sid: SymbolID) -> Option<ConcreteType> {
+            while let Some(ctx) = ctx_opt {
+                if let Some(t) = lookup_named(ctx, sid) {
+                    return Some(t);
+                }
+                ctx_opt = ctx.parent.as_ref();
+            }
+            None
+        }
+
+        fn lookup_via_links(ctx: &GenericMappingCtx, sid: SymbolID) -> Option<ConcreteType> {
+            let linked_gps = ctx.linked_gps.borrow();
+
+            for (child, mapped) in &*linked_gps {
+                if *child == sid {
+                    if let Some(t) =
+                        lookup_named(ctx, *mapped).or_else(|| lookup_in_chain(ctx.parent.as_ref(), *mapped))
+                    {
+                        return Some(t);
+                    }
+                } else if *mapped == sid {
+                    if let Some(t) = lookup_named(ctx, *child).or_else(|| lookup_in_chain(ctx.parent.as_ref(), *child))
+                    {
+                        return Some(t);
+                    }
+                }
+            }
+            None
+        }
+
+        lookup_named(self, symbol_id)
+            .or_else(|| lookup_via_links(self, symbol_id))
+            .or_else(|| self.parent.as_ref()?.get_with_symbol_id(symbol_id))
+    }
+
+    pub fn insert_named(&mut self, id: TypedIdentifier, ty: ConcreteType) {
+        // only insert if this id is not yet inferred
+        if !self.named.contains_key(&id) {
+            self.named.insert(id.clone(), ty.clone());
+        }
+    }
+
+    pub fn insert_linked(&self, child_id: SymbolID, parent_id: SymbolID) {
+        self.linked_gps.borrow_mut().insert(child_id, parent_id);
+    }
+
+    pub fn new_root() -> Self {
+        Self {
+            named: HashMap::new(),
+            linked_gps: Rc::new(RefCell::new(HashMap::new())),
+            parent: None,
+        }
+    }
+
+    pub fn new_child(&self) -> Self {
+        Self {
+            named: HashMap::new(),
+            linked_gps: self.linked_gps.clone(),
+            parent: Some(Box::new(self.clone())),
+        }
     }
 }
