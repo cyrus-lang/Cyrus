@@ -454,7 +454,7 @@ impl<'a> CodeGenBuilder<'a> {
 
                     let enum_struct_value = operand_rvalue.as_basic_value().into_struct_value();
                     let buffer = self.build_enum_extract_payload(enum_struct_value);
-                    let payload_struct_value = self.copy_buffer_to_struct(buffer, enum_struct_type);
+                    let payload_struct_value = self.intrinsic_copy_buffer_to_struct(buffer, enum_struct_type);
                     let payload_struct_type = payload_struct_value.get_type();
                     let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
                     self.llvmbuilder
