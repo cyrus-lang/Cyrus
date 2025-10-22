@@ -87,7 +87,7 @@ impl<'a> CodeGenBuilder<'a> {
         let payload1 = self.build_enum_extract_payload(struct_value1);
         let payload2 = self.build_enum_extract_payload(struct_value2);
 
-        let memcmp_result = self.build_memcmp_for_arrays(payload1, payload2);
+        let memcmp_result = self.intrinsic_array_memcmp(payload1, payload2);
 
         let i32_zero = self.llvmctx.i32_type().const_zero();
         let payload_eq = self
@@ -187,7 +187,7 @@ impl<'a> CodeGenBuilder<'a> {
             let payload_basic_value = self.llvmctx.const_struct(&fields, false);
 
             let copied_payload =
-                self.copy_payload_to_buffer(BasicValueEnum::StructValue(payload_basic_value), enum_payload_type);
+                self.intrinsic_copy_payload_to_buffer(BasicValueEnum::StructValue(payload_basic_value), enum_payload_type);
 
             enum_struct_value = self
                 .llvmbuilder
@@ -253,7 +253,7 @@ impl<'a> CodeGenBuilder<'a> {
                     rvalue.as_basic_value()
                 };
 
-                let copied_payload = self.copy_payload_to_buffer(payload_value, enum_payload_type);
+                let copied_payload = self.intrinsic_copy_payload_to_buffer(payload_value, enum_payload_type);
 
                 enum_struct_value = self
                     .llvmbuilder

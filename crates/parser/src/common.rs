@@ -282,7 +282,7 @@ impl Parser {
         parsed_kind
     }
 
-    pub fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParserError> {
+    fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParserError> {
         let mut dimensions: Vec<ArrayCapacity> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
@@ -305,7 +305,7 @@ impl Parser {
         Ok(type_specifier)
     }
 
-    pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParserError> {
+    fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParserError> {
         self.expect_current(TokenKind::LeftBracket)?;
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
@@ -315,7 +315,7 @@ impl Parser {
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
-    pub fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {
+    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {
         self.expect_current(TokenKind::LeftBracket)?;
 
         if self.current_token_is(TokenKind::RightBracket) {
@@ -334,7 +334,7 @@ impl Parser {
         Ok(index)
     }
 
-    pub fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
+    pub(crate) fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
         let access_specifier: AccessSpecifier = {
             if self.current_token_is(TokenKind::Inline) {
                 self.next_token();
@@ -369,7 +369,7 @@ impl Parser {
         Ok(access_specifier)
     }
 
-    pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
+    fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -601,7 +601,7 @@ impl Parser {
             return false;
         }
 
-        let mut i = 1; 
+        let mut i = 1;
         let mut depth = 0;
 
         while let Some(tok) = self.peek_n_token(i) {

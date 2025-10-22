@@ -6,7 +6,7 @@ use inkwell::{
 };
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_memcmp_for_arrays(&self, lhs_arr: ArrayValue<'a>, rhs_arr: ArrayValue<'a>) -> IntValue<'a> {
+    pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'a>, rhs_arr: ArrayValue<'a>) -> IntValue<'a> {
         let i32_type = self.llvmctx.i32_type();
         let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
         let target_data = self.llvmtm.get_target_data();
@@ -75,7 +75,7 @@ impl<'a> CodeGenBuilder<'a> {
         cmp.into_int_value()
     }
 
-    pub(crate) fn copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {
+    pub(crate) fn intrinsic_copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {
         let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
 
         let buffer_alloca = self
@@ -105,7 +105,7 @@ impl<'a> CodeGenBuilder<'a> {
             .into_struct_value()
     }
 
-    pub(crate) fn copy_payload_to_buffer(
+    pub(crate) fn intrinsic_copy_payload_to_buffer(
         &self,
         src_value: BasicValueEnum<'a>,
         dest_array_type: ArrayType<'a>,

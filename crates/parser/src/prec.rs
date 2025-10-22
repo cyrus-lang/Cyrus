@@ -17,6 +17,7 @@ pub enum Precedence {
     Index,       // array[index]
     Field,       // . and ->
 }
+
 pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
     match token_kind {
         TokenKind::Or => Precedence::Or,
