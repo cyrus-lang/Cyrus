@@ -193,6 +193,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_type_or_infer_with(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+        generic_params_opt: &Option<TypedGenericParamsList>,
         concrete_type: ConcreteType,
         expr: &mut TypedExpression,
         generic_mapping_ctx: &mut GenericMappingCtx,
@@ -212,8 +213,20 @@ impl<'a> AnalysisContext<'a> {
                     Some(substituted)
                 }
                 None => {
+                    // insert freshly inferred generic param to mapping ctx
                     if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
                         self.substitute_type(expr_type, generic_mapping_ctx, positional_index)
+                            .and_then(|substituted| {
+                                if let Some(generic_params) = generic_params_opt {
+                                    if let Some(idx) = positional_index {
+                                        if let Some(generic_param) = generic_params.get(idx) {
+                                            generic_mapping_ctx
+                                                .insert_named(generic_param.param_name.clone(), substituted.clone());
+                                        }
+                                    }
+                                }
+                                Some(substituted)
+                            })
                     } else {
                         None
                     }
@@ -324,8 +337,10 @@ impl<'a> AnalysisContext<'a> {
         let Some(generic_params) = generic_params else {
             return None;
         };
+
         let mut normalized_type_args: Vec<Option<ConcreteType>> = vec![None; generic_params.len()];
         let mut missing: Vec<String> = Vec::new();
+
         for (name, ty) in &mapping_ctx.named {
             if let Some(idx) = generic_params
                 .iter()
@@ -334,6 +349,7 @@ impl<'a> AnalysisContext<'a> {
                 normalized_type_args[idx] = Some(ty.clone());
             }
         }
+
         for (i, param) in generic_params.iter().enumerate() {
             if normalized_type_args[i].is_none() {
                 if let Some(default_ty) = &param.default {
@@ -341,6 +357,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
+
         for (i, ty_slot) in normalized_type_args.iter_mut().enumerate() {
             if ty_slot.is_none() {
                 if let Some(inferred) = self.infer_generic_type_from_expected_type(
@@ -355,6 +372,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
+
         if !missing.is_empty() && !allow_inference_without_error {
             let type_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
             let hint = format!("Provide explicit type arguments for {}", missing.join(", "));
@@ -366,12 +384,15 @@ impl<'a> AnalysisContext<'a> {
             });
             return None;
         }
+
         let final_args: Vec<ConcreteType> = normalized_type_args.into_iter().filter_map(|x| x).collect();
+
         if register_monomorph {
             with_monomorph_registry!(self, registry, {
                 registry.register(symbol_id, final_args.clone());
             });
         }
+
         Some(final_args)
     }
 
@@ -477,6 +498,8 @@ impl<'a> AnalysisContext<'a> {
 
         let mut merged_args: Vec<ConcreteType> = Vec::with_capacity(generic_params.len());
 
+        dbg!(expected_type.clone());
+        todo!();
         // FIXME
         // for (i, param) in generic_params.iter().enumerate() {
         //     let concrete = if i < generic_mapping_ctx.positional.len() {
