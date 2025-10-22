@@ -13,7 +13,7 @@ use ast::{
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     debug_info::AsDIScope,
-    types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType},
+    types::{AnyType, BasicMetadataTypeEnum, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use resolver::{
@@ -592,8 +592,20 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+        // let struct_type = self.get_or_declare_struct_monomorph(resolved_struct, &struct_init.type_args);
 
-        let struct_type = self.get_or_declare_struct_monomorph(resolved_struct, &struct_init.type_args);
+        let struct_field_types: Vec<BasicTypeEnum<'a>> = struct_init
+            .fields
+            .iter()
+            .map(|field| {
+                self.build_concrete_type(local_scope_opt.clone(), field.value.concrete_type.clone().unwrap())
+                    .as_any_type_enum()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect();
+
+        let struct_type  = self.llvmctx.struct_type(&struct_field_types, resolved_struct.struct_sig.packed);
         let mut struct_value = struct_type.get_undef();
 
         let mut all_const = true;
