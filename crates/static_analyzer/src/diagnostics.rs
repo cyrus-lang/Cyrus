@@ -2,7 +2,6 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
-    
     InfiniteRecursiveType {
         type_name: String,
     },
@@ -232,20 +231,30 @@ pub enum AnalyzerDiagKind {
     ConstVariableMustBeInitialized,
     InvalidUsageOfTheConcreteType,
     GenericArityMismatch {
-        expected: usize, 
-        provided: usize
+        expected: usize,
+        provided: usize,
     },
     UnexpectedTypeArgs,
+    ExplicitTypeArgsRequired {
+        type_name: String,
+    },
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name } => {
+                write!(f, "Cannot infer all generic parameters for type '{}'.", type_name)
+            }
             AnalyzerDiagKind::UnexpectedTypeArgs => {
                 write!(f, "Type arguments supplied to a non-generic type.")
             }
             AnalyzerDiagKind::GenericArityMismatch { expected, provided } => {
-                write!(f, "Generic arity mismatch because this type expects {} generic parameters but {} arguments were supplied.", expected, provided)
+                write!(
+                    f,
+                    "Generic arity mismatch because this type expects {} generic parameters but {} arguments were supplied.",
+                    expected, provided
+                )
             }
             AnalyzerDiagKind::UnknownSymbol { symbol_name } => {
                 write!(f, "Unknown symbol '{}'.", symbol_name)

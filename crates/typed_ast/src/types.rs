@@ -60,7 +60,7 @@ pub enum ResolvedSymbol {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GenericType {
     pub base: SymbolID,
-    pub mapping_ctx: GenericMappingCtx,
+    pub type_args: TypedTypeArgs,
     pub is_const: bool,
 }
 
