@@ -256,15 +256,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48fa0e0af0c47bfb4317ca9b4729ee7164f626c7d9ae0661dd550a61cee3578c"
 
 [[package]]
-name = "generics"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "typed_ast",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -601,7 +592,6 @@ dependencies = [
  "ast",
  "diagcentral",
  "fx-hash",
- "generics",
  "lexer",
  "parser",
  "partialmatch",

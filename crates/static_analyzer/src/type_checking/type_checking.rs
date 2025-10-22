@@ -755,41 +755,42 @@ impl<'a> AnalysisContext<'a> {
             method_call.loc.clone(),
         );
 
-        generic_mapping_ctx_scope!(
-            self,
-            resolved_enum.enum_sig.generic_params,
-            method_call.type_args,
-            method_call.loc.clone(),
-            Some(&mut mapping_ctx),
-            mapping_ctx,
-            {
-                for (idx, (typed_expr, enum_valued_field)) in method_call.args.iter_mut().zip(valued_fields).enumerate()
-                {
-                    typed_expr.concrete_type = self.substitute_type_or_infer_with(
-                        scope_id_opt,
-                        enum_valued_field.field_type.clone(),
-                        typed_expr,
-                        &mut mapping_ctx,
-                        Some(idx),
-                    );
-                }
+        // FIXME
+        // generic_mapping_ctx_scope!(
+        //     self,
+        //     resolved_enum.enum_sig.generic_params,
+        //     method_call.type_args,
+        //     method_call.loc.clone(),
+        //     Some(&mut mapping_ctx),
+        //     mapping_ctx,
+        //     {
+        //         for (idx, (typed_expr, enum_valued_field)) in method_call.args.iter_mut().zip(valued_fields).enumerate()
+        //         {
+        //             typed_expr.concrete_type = self.substitute_type_or_infer_with(
+        //                 scope_id_opt,
+        //                 enum_valued_field.field_type.clone(),
+        //                 typed_expr,
+        //                 &mut mapping_ctx,
+        //                 Some(idx),
+        //             );
+        //         }
 
-                if let Some(type_args) = self.normalize_type_args_and_register(
-                    &mut mapping_ctx,
-                    scope_id_opt,
-                    enum_symbol_id,
-                    &resolved_enum.enum_sig.generic_params,
-                    expected_typed,
-                    method_call.loc.clone(),
-                    false,
-                    true,
-                ) {
-                    method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-                } else {
-                    return None;
-                }
-            }
-        );
+        //         if let Some(type_args) = self.normalize_type_args_and_register(
+        //             &mut mapping_ctx,
+        //             scope_id_opt,
+        //             enum_symbol_id,
+        //             &resolved_enum.enum_sig.generic_params,
+        //             expected_typed,
+        //             method_call.loc.clone(),
+        //             false,
+        //             true,
+        //         ) {
+        //             method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+        //         } else {
+        //             return None;
+        //         }
+        //     }
+        // );
 
         if let Some(type_args) = &method_call.type_args {
             Some(ConcreteType::GenericType(GenericType {
@@ -1108,38 +1109,39 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        generic_mapping_ctx_scope!(
-            self,
-            resolved_union.union_sig.generic_params,
-            struct_init.type_args,
-            struct_init.loc.clone(),
-            Some(&mut mapping_ctx),
-            mapping_ctx,
-            {
-                self.substitute_type_or_infer_with(
-                    scope_id_opt,
-                    field.ty.clone(),
-                    &mut field_init.value,
-                    &mut mapping_ctx,
-                    Some(0),
-                )?;
+        // FIXME
+        // generic_mapping_ctx_scope!(
+        //     self,
+        //     resolved_union.union_sig.generic_params,
+        //     struct_init.type_args,
+        //     struct_init.loc.clone(),
+        //     Some(&mut mapping_ctx),
+        //     mapping_ctx,
+        //     {
+        //         self.substitute_type_or_infer_with(
+        //             scope_id_opt,
+        //             field.ty.clone(),
+        //             &mut field_init.value,
+        //             &mut mapping_ctx,
+        //             Some(0),
+        //         )?;
 
-                if let Some(type_args) = self.normalize_type_args_and_register(
-                    &mut mapping_ctx,
-                    scope_id_opt,
-                    resolved_union.symbol_id,
-                    &resolved_union.union_sig.generic_params,
-                    expected_type,
-                    struct_init.loc.clone(),
-                    false,
-                    true,
-                ) {
-                    struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-                } else {
-                    return None;
-                }
-            }
-        );
+        //         if let Some(type_args) = self.normalize_type_args_and_register(
+        //             &mut mapping_ctx,
+        //             scope_id_opt,
+        //             resolved_union.symbol_id,
+        //             &resolved_union.union_sig.generic_params,
+        //             expected_type,
+        //             struct_init.loc.clone(),
+        //             false,
+        //             true,
+        //         ) {
+        //             struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+        //         } else {
+        //             return None;
+        //         }
+        //     }
+        // );
 
         let pure_union_type = if struct_init.is_const {
             ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
@@ -1287,6 +1289,7 @@ impl<'a> AnalysisContext<'a> {
 
                     if let Some(inferred_ty) = self.substitute_type_or_infer_with(
                         scope_id_opt,
+                        generic_params,
                         field.ty.clone(),
                         &mut field_init.value,
                         &mut mapping_ctx,
@@ -1317,7 +1320,6 @@ impl<'a> AnalysisContext<'a> {
                     true,
                 ) {
                     struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-                    dbg!(struct_init.type_args.clone());
                 } else {
                     return None;
                 }
