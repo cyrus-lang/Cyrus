@@ -7,6 +7,7 @@ pub extern var stdin: abi::c_file;
 pub extern fn printf(format: abi::c_char*, ...) abi::c_int;
 pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
 pub extern fn malloc(size: abi::c_size_t) abi::c_void*;
+pub extern fn calloc(num: abi::c_size_t, size: abi::c_size_t) abi::c_void*;
 pub extern fn free(ptr: abi::c_void*) abi::c_void;
 pub extern fn exit(status: abi::c_int) abi::c_void;
 pub extern fn realloc(ptr: abi::c_void*, size: abi::c_size_t) abi::c_void*;

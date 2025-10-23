@@ -1,7 +1,6 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use partialmatch::partial_match;
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
@@ -24,7 +23,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
-        partial_match!(&ty, {
+        match &ty {
             ConcreteType::UnresolvedSymbol(symbol_id)
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id))
@@ -39,18 +38,23 @@ impl<'a> AnalysisContext<'a> {
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)?;
 
                 // mark symbol used
-                partial_match!(local_or_global_symbol, {
+                match local_or_global_symbol {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
-                        if let Some(local_scope) = self.resolver.get_scope_ref(self.module_id, local_symbol.get_symbol_id()) {
+                        if let Some(local_scope) = self
+                            .resolver
+                            .get_scope_ref(self.module_id, local_symbol.get_symbol_id())
+                        {
                             self.mark_local_symbol_used_once(local_scope, self.module_id, *symbol_id);
                         }
-                    },
+                    }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
-                    },
-                });
-            },
-        });
+                    }
+                    _ => {}
+                };
+            }
+            _ => {}
+        };
 
         match ty {
             ty @ ConcreteType::GenericParam(..) => Some(ty),

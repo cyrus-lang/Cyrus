@@ -11,7 +11,6 @@ lexer = { path = "../lexer", version = "*" }
 utils = { path = "../utils", version = "*" }
 resolver = { path = "../resolver", version = "*" }
 diagcentral = { path = "../diagcentral", version = "*" }
-partialmatch = { path = "../partialmatch", version = "*" }
 fx-hash = "0.1.0"
 smallvec = "1.15.1"
 

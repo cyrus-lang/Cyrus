@@ -3,7 +3,6 @@ use ast::{
     AssignmentKind, LiteralKind,
     operators::{InfixOperator, PrefixOperator},
 };
-use partialmatch::partial_match;
 use typed_ast::{
     ScopeID, TypedAssignment, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral,
     TypedPrefixExpression, ValueCategory,
@@ -17,24 +16,28 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) {
-        partial_match!(&mut typed_expr.kind, {
+        match &mut typed_expr.kind {
             TypedExpressionKind::Assignment(typed_assignment) => {
                 if typed_assignment.kind != AssignmentKind::Default {
                     typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
                 }
-            },
+            }
             TypedExpressionKind::Prefix(prefix_expr) => {
-                partial_match!(prefix_expr.op, {
+                match prefix_expr.op {
                     PrefixOperator::Bang => {
-                        if let Some(lowered_typed_expr) =
-                            self.lower_prefix_bang_with_pointer_operand(scope_id_opt, expected_type.clone(), prefix_expr)
-                        {
+                        if let Some(lowered_typed_expr) = self.lower_prefix_bang_with_pointer_operand(
+                            scope_id_opt,
+                            expected_type.clone(),
+                            prefix_expr,
+                        ) {
                             *typed_expr = lowered_typed_expr;
                         }
-                    },
-                });
-            },
-        });
+                    }
+                    _ => {}
+                };
+            }
+            _ => {}
+        };
     }
 
     fn lower_prefix_bang_with_pointer_operand(

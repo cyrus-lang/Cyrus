@@ -3,7 +3,6 @@ use crate::{
 };
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use partialmatch::partial_match;
 use resolver::{
     scope::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
@@ -178,9 +177,10 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        partial_match!(&typed_expr.kind, {
+        match &typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, _) => {
-                let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+                let local_scope_opt =
+                    scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
                 let local_or_global_symbol = self
                     .resolver
@@ -198,7 +198,8 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
             }
-        });
+            _ => {}
+        };
 
         self.analyze_typed_expr_type_non_terminal(scope_id_opt, typed_expr, expected_type)
     }

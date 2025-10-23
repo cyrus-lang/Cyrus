@@ -20,7 +20,6 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use diagcentral::{reporter::DiagReporter, *};
-use partialmatch::partial_match;
 use rand::Rng;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -539,9 +538,7 @@ impl Resolver {
             generic_params
                 .iter()
                 .find(|param| param.param_name.name == identifier.as_string())
-                .and_then(|generic_param| {
-                    Some(ConcreteType::GenericParam(generic_param.param_name.clone()))
-                })
+                .and_then(|generic_param| Some(ConcreteType::GenericParam(generic_param.param_name.clone())))
         })
     }
 
@@ -858,80 +855,97 @@ impl Resolver {
     // And Registers each declared name into the current module’s symbol table. (first pass)
     fn resolve_decl_names(&mut self, module_id: ModuleID, ast: &ProgramTree) {
         for stmt in ast.body.as_ref() {
-            partial_match!(stmt, {
+            match stmt {
                 Statement::Interface(interface) => {
                     if self.duplicate_symbol(
                         module_id,
                         interface.identifier.name.clone(),
                         SourceLoc::from_loc(interface.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &interface.identifier.name.clone());
-                },
+                }
                 Statement::Union(union_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         union_decl.identifier.name.clone(),
                         SourceLoc::from_loc(union_decl.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &union_decl.identifier.name.clone());
-                },
+                }
                 Statement::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
                         typedef.identifier.name.clone(),
                         SourceLoc::from_loc(typedef.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &typedef.identifier.name.clone());
-                },
+                }
                 Statement::FuncDef(func_def) => {
                     if self.duplicate_symbol(
                         module_id,
                         func_def.identifier.name.clone(),
                         SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &func_def.identifier.name.clone());
-                },
+                }
                 Statement::FuncDecl(func_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         func_decl.identifier.name.clone(),
                         SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &func_decl.get_usable_name());
-                },
+                }
                 Statement::GlobalVariable(global_variable) => {
                     if self.duplicate_symbol(
                         module_id,
                         global_variable.identifier.name.clone(),
                         SourceLoc::from_loc(global_variable.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &global_variable.identifier.name.clone());
-                },
+                }
                 Statement::Struct(struct_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         struct_decl.identifier.name.clone(),
                         SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &struct_decl.identifier.name.clone());
-                },
+                }
                 Statement::Enum(enum_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         enum_decl.identifier.name.clone(),
                         SourceLoc::from_loc(enum_decl.loc.clone(), self.get_current_module_file_path()),
-                    ) { continue; }
+                    ) {
+                        continue;
+                    }
 
                     self.insert_symbol_name(module_id, &enum_decl.identifier.name.clone());
-                },
-            });
+                }
+                _ => {}
+            };
         }
     }
 
