@@ -18,12 +18,6 @@ impl Parser {
         let mut left = self.parse_prefix_expression()?;
 
         loop {
-            if self.peek_token_is(TokenKind::Assign) {
-                self.next_token();
-                let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
-                return Ok((expr, Span::new(left_start, self.current_token().span.end)));
-            }
-
             if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
                 left = self.parse_array_index(left)?;
@@ -141,7 +135,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 self.next_token();
                 Expression::AddressOf(AddressOf {
-                    expr: Box::new(self.parse_expression(Precedence::Lowest)?.0),
+                    expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
@@ -151,7 +145,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 self.next_token();
                 Expression::Dereference(Dereference {
-                    expr: Box::new(self.parse_expression(Precedence::Lowest)?.0),
+                    expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
@@ -415,6 +409,13 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         match self.peek_token().kind {
+            TokenKind::Assign => {
+                self.next_token();
+                match self.parse_assignment(left, AssignmentKind::Default, left_start) {
+                    Ok(expr) => Some(Ok(expr)),
+                    Err(err) => Some(Err(err)),
+                }
+            }
             TokenKind::Plus
             | TokenKind::Minus
             | TokenKind::Asterisk
@@ -739,7 +740,7 @@ impl Parser {
 
         if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
             let identifier = self.parse_identifier()?;
-            
+
             let mut type_args_opt: Option<Vec<TypeArg>> = None;
             if self.is_type_arg_start(operand.clone()) {
                 self.next_token(); // consume current token of expr
