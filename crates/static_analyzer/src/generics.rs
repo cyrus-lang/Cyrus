@@ -1,10 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
-
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use partialmatch::partial_match;
 use resolver::signatures::{EnumSig, StructSig, UnionSig};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{
     ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParamsList, TypedIdentifier,
     TypedTypeArg, TypedTypeArgs,
@@ -105,12 +103,18 @@ impl<'a> AnalysisContext<'a> {
         generic_type_opt: Option<&GenericType>,
         loc: SourceLoc,
     ) {
-        partial_match!((generic_type_opt, field_access_operand.concrete_type.clone()), {
+        match (generic_type_opt, field_access_operand.concrete_type.clone()) {
             (Some(generic_type), Some(operand_ty)) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(mapping_ctx, &generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(
+                    mapping_ctx,
+                    &generic_params,
+                    &Some(generic_type.type_args.clone()),
+                    loc,
+                );
                 field_access_operand.concrete_type = self.substitute_type(operand_ty, &mapping_ctx, None);
             }
-        })
+            _ => {}
+        }
     }
 
     pub(crate) fn substitute_struct_type_args(
@@ -120,16 +124,22 @@ impl<'a> AnalysisContext<'a> {
         generic_type_opt: Option<&GenericType>,
         loc: SourceLoc,
     ) {
-        partial_match!(generic_type_opt, {
+        match generic_type_opt {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(mapping_ctx, &struct_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(
+                    mapping_ctx,
+                    &struct_sig.generic_params,
+                    &Some(generic_type.type_args.clone()),
+                    loc,
+                );
                 struct_sig.fields.iter_mut().enumerate().for_each(|(idx, field)| {
-                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)){
+                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)) {
                         field.ty = concrete_type;
                     }
                 });
             }
-        })
+            _ => {}
+        }
     }
 
     pub(crate) fn substitute_union_type_args(
@@ -139,16 +149,22 @@ impl<'a> AnalysisContext<'a> {
         generic_type_opt: Option<&GenericType>,
         loc: SourceLoc,
     ) {
-        partial_match!(generic_type_opt, {
+        match generic_type_opt {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(mapping_ctx, &union_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                let mapping_ctx = self.get_generic_mapping_ctx(
+                    mapping_ctx,
+                    &union_sig.generic_params,
+                    &Some(generic_type.type_args.clone()),
+                    loc,
+                );
                 union_sig.fields.iter_mut().enumerate().for_each(|(idx, field)| {
-                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)){
+                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)) {
                         field.ty = concrete_type;
                     }
                 });
             }
-        })
+            _ => {}
+        }
     }
 
     pub(crate) fn substitute_enum_type_args(
@@ -159,28 +175,39 @@ impl<'a> AnalysisContext<'a> {
         generic_type_opt: Option<&GenericType>,
         loc: SourceLoc,
     ) {
-        partial_match!(generic_type_opt, {
+        match generic_type_opt {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(mapping_ctx, &enum_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
-                enum_sig.variants.iter_mut().enumerate().for_each(|(idx, variant)| {
-                    match variant {
-                        TypedEnumVariant::Identifier(..) => {},
+                let mapping_ctx = self.get_generic_mapping_ctx(
+                    mapping_ctx,
+                    &enum_sig.generic_params,
+                    &Some(generic_type.type_args.clone()),
+                    loc,
+                );
+                enum_sig
+                    .variants
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(idx, variant)| match variant {
+                        TypedEnumVariant::Identifier(..) => {}
                         TypedEnumVariant::Valued(_, typed_expr) => {
-                            self.analyze_typed_expr_type(scope_id_opt, typed_expr, None).inspect(|concrete_type| {
-                                self.substitute_type(concrete_type.clone(), &mapping_ctx, Some(idx));
-                            });
-                        },
+                            self.analyze_typed_expr_type(scope_id_opt, typed_expr, None)
+                                .inspect(|concrete_type| {
+                                    self.substitute_type(concrete_type.clone(), &mapping_ctx, Some(idx));
+                                });
+                        }
                         TypedEnumVariant::Variant(_, typed_enum_valued_fields) => {
                             for valued_field in typed_enum_valued_fields {
-                                if let Some(substituted_type) = self.substitute_type(valued_field.field_type.clone(), &mapping_ctx, Some(idx)) {
+                                if let Some(substituted_type) =
+                                    self.substitute_type(valued_field.field_type.clone(), &mapping_ctx, Some(idx))
+                                {
                                     valued_field.field_type = substituted_type;
                                 }
                             }
-                        },
-                    }
-                });
+                        }
+                    });
             }
-        })
+            _ => {}
+        }
     }
 
     pub(crate) fn inferred_types_as_positional_type_args(&self, types: Vec<ConcreteType>) -> TypedTypeArgs {

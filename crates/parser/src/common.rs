@@ -8,7 +8,6 @@ use ast::*;
 use diagcentral::Diag;
 use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
-use partialmatch::partial_match;
 
 impl Parser {
     pub fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
@@ -41,10 +40,10 @@ impl Parser {
         let mut bracket_count = 0;
 
         while let Some(tok) = self.peek_n_token(i) {
-            partial_match!(&tok.kind, {
+            match &tok.kind {
                 TokenKind::LeftBracket => {
                     bracket_count += 1;
-                },
+                }
                 TokenKind::RightBracket => {
                     if bracket_count == 0 {
                         return false; // unmatched
@@ -58,8 +57,9 @@ impl Parser {
                             return false;
                         }
                     }
-                },
-            });
+                }
+                _ => {}
+            };
             i += 1;
         }
 

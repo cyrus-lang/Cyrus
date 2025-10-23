@@ -1856,9 +1856,10 @@ impl<'a> AnalysisContext<'a> {
         let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
             Some(concrete_type) => concrete_type,
             None => return,
-        };
+        }
+        .as_rvalue(true);
 
-        if lhs_type.is_const() {
+        if lhs_type.as_rvalue(true).is_const() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::CannotAssignToConstLValue,
@@ -1869,7 +1870,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if assign.kind == AssignmentKind::Default {
-            if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), assign.loc.clone()) {
+            if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.as_rvalue(true).clone(), assign.loc.clone()) {
                 let lhs_type = format_concrete_type(lhs_type, &(self.symbol_formatter)(scope_id_opt));
                 let rhs_type = format_concrete_type(rhs_type, &(self.symbol_formatter)(scope_id_opt));
 

@@ -605,7 +605,9 @@ impl<'a> CodeGenBuilder<'a> {
             })
             .collect();
 
-        let struct_type  = self.llvmctx.struct_type(&struct_field_types, resolved_struct.struct_sig.packed);
+        let struct_type = self
+            .llvmctx
+            .struct_type(&struct_field_types, resolved_struct.struct_sig.packed);
         let mut struct_value = struct_type.get_undef();
 
         let mut all_const = true;
@@ -660,11 +662,10 @@ impl<'a> CodeGenBuilder<'a> {
         deref: &TypedDereference,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
-        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
         InternalValue::new(
-            rvalue.value_type.clone(),
-            InternalValueKind::LValue(rvalue.as_basic_value().into_pointer_value()),
+            lvalue.value_type.clone(),
+            InternalValueKind::LValue(lvalue.as_basic_value().into_pointer_value()),
         )
     }
 

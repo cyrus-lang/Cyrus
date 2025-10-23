@@ -1,5 +1,3 @@
-use partialmatch::partial_match;
-
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::*,
@@ -51,10 +49,11 @@ impl ProgramTree {
     pub fn get_imports(&self) -> Vec<Import> {
         let mut imports: Vec<Import> = Vec::new();
 
-        self.body.iter().for_each(|stmt| {
-            partial_match!(stmt, {
-                Statement::Import(import) => { imports.push(import.clone()); },
-            })
+        self.body.iter().for_each(|stmt| match stmt {
+            Statement::Import(import) => {
+                imports.push(import.clone());
+            }
+            _ => {}
         });
 
         imports
