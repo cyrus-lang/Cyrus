@@ -8,7 +8,7 @@ use typed_ast::{
     TypedTypeArg, TypedTypeArgs,
     format::format_concrete_type,
     types::{
-        ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -42,7 +42,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
     ) -> Option<(
-        ConcreteType,
+        SemanticType,
         Option<Box<GenericMappingCtx>>,
         Option<TypedGenericParamsList>,
     )> {
@@ -88,7 +88,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)? {
-            ConcreteType::GenericType(generic_type) => {
+            SemanticType::GenericType(generic_type) => {
                 self.resolve_generic_typedef(mapping_ctx, scope_id_opt, generic_type.base)
             }
             ty @ _ => Some((ty, None, None)),
@@ -210,7 +210,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn inferred_types_as_positional_type_args(&self, types: Vec<ConcreteType>) -> TypedTypeArgs {
+    pub(crate) fn inferred_types_as_positional_type_args(&self, types: Vec<SemanticType>) -> TypedTypeArgs {
         types
             .iter()
             .map(|concrete_type| TypedTypeArg::Positional(concrete_type.clone()))
@@ -221,11 +221,11 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         generic_params_opt: &Option<TypedGenericParamsList>,
-        concrete_type: ConcreteType,
+        concrete_type: SemanticType,
         expr: &mut TypedExpression,
         generic_mapping_ctx: &mut GenericMappingCtx,
         positional_index: Option<usize>,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         // evaluate expr type before substitution
         let expr_concrete_typ = expr
             .concrete_type
@@ -356,16 +356,16 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
         generic_params: &Option<TypedGenericParamsList>,
-        expected_type: Option<ConcreteType>,
+        expected_type: Option<SemanticType>,
         loc: SourceLoc,
         allow_inference_without_error: bool,
         register_monomorph: bool,
-    ) -> Option<Vec<ConcreteType>> {
+    ) -> Option<Vec<SemanticType>> {
         let Some(generic_params) = generic_params else {
             return None;
         };
 
-        let mut normalized_type_args: Vec<Option<ConcreteType>> = vec![None; generic_params.len()];
+        let mut normalized_type_args: Vec<Option<SemanticType>> = vec![None; generic_params.len()];
         let mut missing: Vec<String> = Vec::new();
 
         for (name, ty) in &mapping_ctx.named {
@@ -412,7 +412,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let final_args: Vec<ConcreteType> = normalized_type_args.into_iter().filter_map(|x| x).collect();
+        let final_args: Vec<SemanticType> = normalized_type_args.into_iter().filter_map(|x| x).collect();
 
         if register_monomorph {
             with_monomorph_registry!(self, registry, {
@@ -425,18 +425,18 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn substitute_type(
         &self,
-        concrete_type: ConcreteType,
+        concrete_type: SemanticType,
         generic_mapping_ctx: &GenericMappingCtx,
         positional_index: Option<usize>,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         match concrete_type {
-            ConcreteType::GenericParam(param) => generic_mapping_ctx.get_with_symbol_id(param.symbol_id),
-            ConcreteType::Pointer(inner) => Some(ConcreteType::Pointer(Box::new(self.substitute_type(
+            SemanticType::GenericParam(param) => generic_mapping_ctx.get_with_symbol_id(param.symbol_id),
+            SemanticType::Pointer(inner) => Some(SemanticType::Pointer(Box::new(self.substitute_type(
                 *inner,
                 generic_mapping_ctx,
                 positional_index,
             )?))),
-            ConcreteType::Array(inner) => Some(ConcreteType::Array(TypedArrayType {
+            SemanticType::Array(inner) => Some(SemanticType::Array(TypedArrayType {
                 element_type: Box::new(self.substitute_type(
                     *inner.element_type,
                     generic_mapping_ctx,
@@ -445,23 +445,23 @@ impl<'a> AnalysisContext<'a> {
                 capacity: inner.capacity,
                 loc: inner.loc.clone(),
             })),
-            ConcreteType::Const(inner) => Some(ConcreteType::Const(Box::new(self.substitute_type(
+            SemanticType::Const(inner) => Some(SemanticType::Const(Box::new(self.substitute_type(
                 *inner,
                 generic_mapping_ctx,
                 positional_index,
             )?))),
-            ConcreteType::Tuple(tuple) => {
+            SemanticType::Tuple(tuple) => {
                 let new_list = tuple
                     .type_list
                     .into_iter()
                     .map(|t| self.substitute_type(t, generic_mapping_ctx, positional_index))
                     .collect::<Option<Vec<_>>>()?;
-                Some(ConcreteType::Tuple(TypedTupleType {
+                Some(SemanticType::Tuple(TypedTupleType {
                     type_list: new_list,
                     loc: tuple.loc.clone(),
                 }))
             }
-            ConcreteType::FuncType(func) => {
+            SemanticType::FuncType(func) => {
                 let new_params = func
                     .params
                     .list
@@ -470,7 +470,7 @@ impl<'a> AnalysisContext<'a> {
                     .collect::<Option<Vec<_>>>()?;
                 let new_return =
                     Box::new(self.substitute_type(*func.return_type, generic_mapping_ctx, positional_index)?);
-                Some(ConcreteType::FuncType(TypedFuncType {
+                Some(SemanticType::FuncType(TypedFuncType {
                     def_module_id: func.def_module_id,
                     params: TypedFuncTypeParams {
                         list: new_params,
@@ -481,7 +481,7 @@ impl<'a> AnalysisContext<'a> {
                     loc: func.loc,
                 }))
             }
-            ConcreteType::UnnamedStruct(s) => {
+            SemanticType::UnnamedStruct(s) => {
                 let new_fields = s
                     .fields
                     .iter()
@@ -497,7 +497,7 @@ impl<'a> AnalysisContext<'a> {
                         })
                     })
                     .collect::<Option<Vec<_>>>()?;
-                Some(ConcreteType::UnnamedStruct(TypedUnnamedStructType {
+                Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                     fields: new_fields,
                     packed: s.packed,
                     loc: s.loc.clone(),
@@ -512,18 +512,18 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         generic_params: &TypedGenericParamsList,
         generic_mapping_ctx: &GenericMappingCtx,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<Vec<ConcreteType>> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<Vec<SemanticType>> {
         let expected = expected_type.as_ref()?;
 
-        let ConcreteType::GenericType(generic_type) = expected else {
+        let SemanticType::GenericType(generic_type) = expected else {
             return None;
         };
         if generic_type.base != symbol_id {
             return None;
         }
 
-        let mut merged_args: Vec<ConcreteType> = Vec::with_capacity(generic_params.len());
+        let mut merged_args: Vec<SemanticType> = Vec::with_capacity(generic_params.len());
 
         dbg!(expected_type.clone());
         todo!();
@@ -567,20 +567,20 @@ pub type ChildGenericParamSymbolID = SymbolID;
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericMappingCtx {
-    pub named: HashMap<TypedIdentifier, ConcreteType>,
+    pub named: HashMap<TypedIdentifier, SemanticType>,
     pub parent: Option<Box<GenericMappingCtx>>,
     pub linked_gps: Rc<RefCell<HashMap<ChildGenericParamSymbolID, SymbolID>>>,
 }
 
 impl GenericMappingCtx {
-    pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<ConcreteType> {
-        fn lookup_named(ctx: &GenericMappingCtx, sid: SymbolID) -> Option<ConcreteType> {
+    pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
+        fn lookup_named(ctx: &GenericMappingCtx, sid: SymbolID) -> Option<SemanticType> {
             ctx.named
                 .iter()
                 .find_map(|(key, val)| (key.symbol_id == sid).then(|| val.clone()))
         }
 
-        fn lookup_in_chain(mut ctx_opt: Option<&Box<GenericMappingCtx>>, sid: SymbolID) -> Option<ConcreteType> {
+        fn lookup_in_chain(mut ctx_opt: Option<&Box<GenericMappingCtx>>, sid: SymbolID) -> Option<SemanticType> {
             while let Some(ctx) = ctx_opt {
                 if let Some(t) = lookup_named(ctx, sid) {
                     return Some(t);
@@ -590,7 +590,7 @@ impl GenericMappingCtx {
             None
         }
 
-        fn lookup_via_links(ctx: &GenericMappingCtx, sid: SymbolID) -> Option<ConcreteType> {
+        fn lookup_via_links(ctx: &GenericMappingCtx, sid: SymbolID) -> Option<SemanticType> {
             let linked_gps = ctx.linked_gps.borrow();
 
             for (child, mapped) in &*linked_gps {
@@ -615,7 +615,7 @@ impl GenericMappingCtx {
             .or_else(|| self.parent.as_ref()?.get_with_symbol_id(symbol_id))
     }
 
-    pub fn insert_named(&mut self, id: TypedIdentifier, ty: ConcreteType) {
+    pub fn insert_named(&mut self, id: TypedIdentifier, ty: SemanticType) {
         // only insert if this id is not yet inferred
         if !self.named.contains_key(&id) {
             self.named.insert(id.clone(), ty.clone());

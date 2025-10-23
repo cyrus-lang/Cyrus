@@ -9,7 +9,7 @@ use typed_ast::{
     ScopeID, TypedAddressOf, TypedDereference, TypedExpressionKind, TypedInfixExpression, TypedPrefixExpression,
     TypedSizeOfExpression, TypedUnaryExpression,
     format::format_concrete_type,
-    types::{BasicConcreteType, ConcreteType},
+    types::{BasicSemanticType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -17,8 +17,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         infix_expr: &mut TypedInfixExpression,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -63,7 +63,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         address_of: &mut TypedAddressOf,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         if !address_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -81,14 +81,14 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        Some(ConcreteType::Pointer(Box::new(operand_type)))
+        Some(SemanticType::Pointer(Box::new(operand_type)))
     }
 
     pub(crate) fn analyze_dereference_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         dereference: &mut TypedDereference,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let operand_inner_type = dereference.operand.concrete_type.clone();
         let operand_type =
             match self.analyze_typed_expr_type(scope_id_opt, &mut dereference.operand, operand_inner_type) {
@@ -109,7 +109,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let pointer_inner_type = match operand_type {
-            ConcreteType::Pointer(concrete_type) => *concrete_type,
+            SemanticType::Pointer(concrete_type) => *concrete_type,
             _ => unreachable!(),
         };
 
@@ -130,21 +130,21 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         sizeof_expr: &mut TypedSizeOfExpression,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let symbol_id = match &sizeof_expr.expr.kind {
-            TypedExpressionKind::ConcreteType(concrete_type) => {
-                if let ConcreteType::UnresolvedSymbol(symbol_id) = concrete_type {
+            TypedExpressionKind::SemanticType(concrete_type) => {
+                if let SemanticType::UnresolvedSymbol(symbol_id) = concrete_type {
                     *symbol_id
                 } else {
                     self.normalize_type(scope_id_opt, concrete_type.clone(), sizeof_expr.loc.clone())?;
-                    return Some(ConcreteType::BasicType(BasicConcreteType::SizeT));
+                    return Some(SemanticType::BasicType(BasicSemanticType::SizeT));
                 }
             }
             TypedExpressionKind::Symbol(symbol_id, ..) => *symbol_id,
             _ => {
                 self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
-                return Some(ConcreteType::BasicType(BasicConcreteType::SizeT));
+                return Some(SemanticType::BasicType(BasicSemanticType::SizeT));
             }
         };
 
@@ -162,20 +162,20 @@ impl<'a> AnalysisContext<'a> {
             // consider as type
             self.normalize_type(
                 scope_id_opt,
-                ConcreteType::UnresolvedSymbol(symbol_id),
+                SemanticType::UnresolvedSymbol(symbol_id),
                 sizeof_expr.loc.clone(),
             )?;
         }
 
-        Some(ConcreteType::BasicType(BasicConcreteType::SizeT))
+        Some(SemanticType::BasicType(BasicSemanticType::SizeT))
     }
 
     pub(crate) fn analyze_prefix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         prefix_expr: &mut TypedPrefixExpression,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -184,7 +184,7 @@ impl<'a> AnalysisContext<'a> {
         match prefix_expr.op {
             PrefixOperator::BitwiseNot => {
                 let valid_concrete_type = match &operand_type {
-                    ConcreteType::BasicType(basic_concrete_type) => {
+                    SemanticType::BasicType(basic_concrete_type) => {
                         if basic_concrete_type.is_integer() {
                             Some(basic_concrete_type.clone())
                         } else {
@@ -195,7 +195,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_concrete_type {
-                    Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type.clone())),
+                    Some(concrete_type) => Some(SemanticType::BasicType(concrete_type.clone())),
                     None => {
                         let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -211,7 +211,7 @@ impl<'a> AnalysisContext<'a> {
             }
             PrefixOperator::Bang => {
                 let valid_concrete_type = match &operand_type {
-                    ConcreteType::BasicType(basic_concrete_type) => {
+                    SemanticType::BasicType(basic_concrete_type) => {
                         if basic_concrete_type.is_bool() {
                             Some(basic_concrete_type)
                         } else {
@@ -222,7 +222,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_concrete_type {
-                    Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type.clone())),
+                    Some(concrete_type) => Some(SemanticType::BasicType(concrete_type.clone())),
                     None => {
                         let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -238,7 +238,7 @@ impl<'a> AnalysisContext<'a> {
             }
             PrefixOperator::Minus => {
                 let valid_concrete_type = match &operand_type {
-                    ConcreteType::BasicType(basic_concrete_type) => {
+                    SemanticType::BasicType(basic_concrete_type) => {
                         if basic_concrete_type.is_integer() || basic_concrete_type.is_float() {
                             Some(basic_concrete_type)
                         } else {
@@ -249,7 +249,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_concrete_type {
-                    Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type.clone())),
+                    Some(concrete_type) => Some(SemanticType::BasicType(concrete_type.clone())),
                     None => {
                         let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -270,7 +270,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         unary_expr: &mut TypedUnaryExpression,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let operand_inner_type = unary_expr.operand.concrete_type.clone();
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut unary_expr.operand, operand_inner_type)
         {
@@ -306,16 +306,16 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_arithmetic_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             let valid = (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float());
 
             if valid {
-                if let (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic)) = (lhs, rhs) {
-                    BasicConcreteType::bigger_type(lhs_basic, rhs_basic)
+                if let (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic)) = (lhs, rhs) {
+                    BasicSemanticType::bigger_type(lhs_basic, rhs_basic)
                 } else {
                     None
                 }
@@ -328,9 +328,9 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_compare_enums(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
-    ) -> Option<ConcreteType> {
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
+    ) -> Option<SemanticType> {
         let enum_symbol_id1 = lhs_type.as_enum_symbol_id().unwrap();
         let enum_symbol_id2 = rhs_type.as_enum_symbol_id().unwrap();
 
@@ -348,7 +348,7 @@ impl<'a> AnalysisContext<'a> {
         let resolved_enum2 = local_or_global_symbol2.as_enum()?;
 
         if resolved_enum1.symbol_id == resolved_enum2.symbol_id {
-            Some(ConcreteType::BasicType(BasicConcreteType::Bool))
+            Some(SemanticType::BasicType(BasicSemanticType::Bool))
         } else {
             None
         }
@@ -357,11 +357,11 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_compare_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         cmp_eq: bool,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let lhs_type = lhs_type.get_const_inner();
         let rhs_type = rhs_type.get_const_inner();
 
@@ -405,15 +405,15 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float()) {
-                Some(BasicConcreteType::Bool)
+                Some(BasicSemanticType::Bool)
             } else if cmp_eq {
                 // allow pointer comparisons
-                if let (ConcreteType::Pointer(_), ConcreteType::Pointer(_)) = (&lhs, &rhs) {
-                    Some(BasicConcreteType::Bool)
-                } else if let (ConcreteType::Pointer(_), ConcreteType::BasicType(BasicConcreteType::Null)) =
+                if let (SemanticType::Pointer(_), SemanticType::Pointer(_)) = (&lhs, &rhs) {
+                    Some(BasicSemanticType::Bool)
+                } else if let (SemanticType::Pointer(_), SemanticType::BasicType(BasicSemanticType::Null)) =
                     (&lhs, &rhs)
                 {
-                    Some(BasicConcreteType::Bool)
+                    Some(BasicSemanticType::Bool)
                 } else {
                     None
                 }
@@ -426,11 +426,11 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_binary_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-        type_checker: impl Fn(&mut Self, ConcreteType, ConcreteType) -> Option<BasicConcreteType>,
-    ) -> Option<ConcreteType> {
+        type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<BasicSemanticType>,
+    ) -> Option<SemanticType> {
         let lhs_type = lhs_type.get_const_inner();
         let rhs_type = rhs_type.get_const_inner();
 
@@ -453,7 +453,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
-            Some(result_basic) => Some(ConcreteType::BasicType(result_basic)),
+            Some(result_basic) => Some(SemanticType::BasicType(result_basic)),
             None => {
                 let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
                 let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
@@ -475,33 +475,33 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_or_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(inner_pointer_type)) => {
-                Some(ConcreteType::Pointer(inner_pointer_type))
+            (SemanticType::BasicType(BasicSemanticType::Null), SemanticType::Pointer(inner_pointer_type)) => {
+                Some(SemanticType::Pointer(inner_pointer_type))
             }
-            (ConcreteType::Pointer(inner_pointer_type), ConcreteType::BasicType(BasicConcreteType::Null)) => {
-                Some(ConcreteType::Pointer(inner_pointer_type))
+            (SemanticType::Pointer(inner_pointer_type), SemanticType::BasicType(BasicSemanticType::Null)) => {
+                Some(SemanticType::Pointer(inner_pointer_type))
             }
-            (ConcreteType::Pointer(inner_pointer_type1), ConcreteType::Pointer(inner_pointer_type2)) => {
+            (SemanticType::Pointer(inner_pointer_type1), SemanticType::Pointer(inner_pointer_type2)) => {
                 if *inner_pointer_type1 == *inner_pointer_type2 {
-                    Some(ConcreteType::Pointer(inner_pointer_type1))
+                    Some(SemanticType::Pointer(inner_pointer_type1))
                 } else {
                     None
                 }
             }
             (
-                null_concrete_type @ ConcreteType::BasicType(BasicConcreteType::Null),
-                ConcreteType::BasicType(BasicConcreteType::Null),
+                null_concrete_type @ SemanticType::BasicType(BasicSemanticType::Null),
+                SemanticType::BasicType(BasicSemanticType::Null),
             ) => Some(null_concrete_type),
             _ => self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-                (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic))
+                (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic))
                     if lhs_basic.is_bool() && rhs_basic.is_bool() =>
                 {
-                    Some(BasicConcreteType::Bool)
+                    Some(BasicSemanticType::Bool)
                 }
                 _ => None,
             }),
@@ -511,15 +511,15 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_and_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-            (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic))
+            (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic))
                 if lhs_basic.is_bool() && rhs_basic.is_bool() =>
             {
-                Some(BasicConcreteType::Bool)
+                Some(BasicSemanticType::Bool)
             }
             _ => None,
         })
@@ -528,14 +528,14 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_left_shift_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
-            if let (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic)) = (&lhs, &rhs) {
+            if let (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic)) = (&lhs, &rhs) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    Some(BasicConcreteType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                    Some(BasicSemanticType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
                 } else {
                     None
                 }
@@ -548,17 +548,17 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_right_shift_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         self.analyze_binary_expr(
             scope_id_opt,
             lhs_type.clone(),
             rhs_type.clone(),
             loc.clone(),
             |this, lhs, rhs| {
-                if let (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic)) = (&lhs, &rhs) {
+                if let (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic)) = (&lhs, &rhs) {
                     // rhs must be unsigned
                     if rhs_basic.is_signed() {
                         this.reporter.report(Diag {
@@ -571,7 +571,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                        Some(BasicConcreteType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                        Some(BasicSemanticType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
                     } else {
                         None
                     }
@@ -585,15 +585,15 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_bitwise_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        lhs_type: ConcreteType,
-        rhs_type: ConcreteType,
+        lhs_type: SemanticType,
+        rhs_type: SemanticType,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             // only allow integer types
             if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_basic_type(), rhs.as_basic_type()) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    return Some(BasicConcreteType::bigger_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
+                    return Some(BasicSemanticType::bigger_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
                 }
             }
 

@@ -21,7 +21,7 @@ use resolver::{scope::LocalScopeRef, typed_func_type_from_func_sig};
 use typed_ast::{
     ModuleID, SymbolID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams,
     TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedLambda, TypedVariable,
-    types::{ConcreteType, TypedFuncType},
+    types::{SemanticType, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -40,7 +40,7 @@ impl<'a> CodeGenBuilder<'a> {
                 *method_symbol_id,
                 LocalIRValue::Func(
                     fn_value,
-                    ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
+                    SemanticType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
                 ),
             );
 
@@ -118,7 +118,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::FuncType(func_type),
+            SemanticType::FuncType(func_type),
             InternalValueKind::RValue(self.build_cast_fn_value_to_pointer(fn_value).try_into().unwrap()),
         )
     }
@@ -156,7 +156,7 @@ impl<'a> CodeGenBuilder<'a> {
             if basic_value.is_pointer_value() {
                 self.insert_ir_value(
                     local_param_symbol_id,
-                    LocalIRValue::RValue(basic_value, ConcreteType::Pointer(Box::new(concrete_type))),
+                    LocalIRValue::RValue(basic_value, SemanticType::Pointer(Box::new(concrete_type))),
                 );
             } else {
                 let lvalue_pointer = self.build_local_variable(
@@ -211,7 +211,7 @@ impl<'a> CodeGenBuilder<'a> {
         use_func_real_name: bool,
         module_id: Option<ModuleID>,
         params: TypedFuncParams,
-        return_type: ConcreteType,
+        return_type: SemanticType,
         vis: AccessSpecifier,
     ) -> FunctionValue<'a> {
         let linkage = {
@@ -289,7 +289,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_func_type(
         &mut self,
         params: TypedFuncTypeParams,
-        return_type: ConcreteType,
+        return_type: SemanticType,
     ) -> FunctionType<'a> {
         let param_types: Vec<BasicMetadataTypeEnum<'a>> = params
             .list

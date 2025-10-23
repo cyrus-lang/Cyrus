@@ -27,7 +27,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
-    BasicConcreteType, ConcreteType, GenericType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+    BasicSemanticType, SemanticType, GenericType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
     TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
@@ -533,12 +533,12 @@ impl Resolver {
         &mut self,
         generic_params_list_opt: &Option<TypedGenericParamsList>,
         identifier: &Identifier,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         generic_params_list_opt.clone().and_then(|generic_params| {
             generic_params
                 .iter()
                 .find(|param| param.param_name.name == identifier.as_string())
-                .and_then(|generic_param| Some(ConcreteType::GenericParam(generic_param.param_name.clone())))
+                .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.param_name.clone())))
         })
     }
 
@@ -550,7 +550,7 @@ impl Resolver {
         type_specifier: TypeSpecifier,
         loc: Location,
         span_end: usize,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let result = match &type_specifier {
             TypeSpecifier::GenericInst(generic_inst) => {
                 let base = self.resolve_type(
@@ -573,7 +573,7 @@ impl Resolver {
                         span_end,
                     )?;
 
-                    Ok(ConcreteType::GenericType(GenericType {
+                    Ok(SemanticType::GenericType(GenericType {
                         base: symbol_id,
                         type_args,
                         is_const,
@@ -585,7 +585,7 @@ impl Resolver {
                 }
             }
             TypeSpecifier::Tuple(tuple_type) => {
-                let mut type_list: Vec<ConcreteType> = Vec::new();
+                let mut type_list: Vec<SemanticType> = Vec::new();
 
                 for element_type in &tuple_type.type_list {
                     match self.resolve_type(
@@ -601,13 +601,13 @@ impl Resolver {
                     }
                 }
 
-                Ok(ConcreteType::Tuple(TypedTupleType {
+                Ok(SemanticType::Tuple(TypedTupleType {
                     type_list,
                     loc: SourceLoc::from_loc(tuple_type.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
             TypeSpecifier::FuncType(func_type) => {
-                let params: Vec<ConcreteType> = func_type
+                let params: Vec<SemanticType> = func_type
                     .params
                     .list
                     .iter()
@@ -650,7 +650,7 @@ impl Resolver {
                     span_end,
                 )?;
 
-                Ok(ConcreteType::FuncType(TypedFuncType {
+                Ok(SemanticType::FuncType(TypedFuncType {
                     def_module_id: None,
                     params: TypedFuncTypeParams { list: params, variadic },
                     return_type: Box::new(return_type),
@@ -659,7 +659,7 @@ impl Resolver {
                 }))
             }
             TypeSpecifier::TypeToken(token) => {
-                ConcreteType::try_from(token.kind.clone()).map_err(|_| ResolverDiagKind::TypeNotFound {
+                SemanticType::try_from(token.kind.clone()).map_err(|_| ResolverDiagKind::TypeNotFound {
                     name: token.kind.to_string(),
                 })
             }
@@ -672,7 +672,7 @@ impl Resolver {
                     loc.clone(),
                     span_end,
                 )?;
-                Ok(ConcreteType::Const(Box::new(ct)))
+                Ok(SemanticType::Const(Box::new(ct)))
             }
             TypeSpecifier::Dereference(inner) => {
                 let ct = self.resolve_type(
@@ -683,7 +683,7 @@ impl Resolver {
                     loc.clone(),
                     span_end,
                 )?;
-                Ok(ConcreteType::Pointer(Box::new(ct)))
+                Ok(SemanticType::Pointer(Box::new(ct)))
             }
             TypeSpecifier::Array(array_spec) => {
                 let elem_type = self.resolve_type(
@@ -713,7 +713,7 @@ impl Resolver {
                     ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
                 };
 
-                Ok(ConcreteType::Array(TypedArrayType {
+                Ok(SemanticType::Array(TypedArrayType {
                     element_type: Box::new(elem_type),
                     capacity,
                     loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
@@ -738,7 +738,7 @@ impl Resolver {
                     }
                 }
 
-                Ok(ConcreteType::UnnamedStruct(TypedUnnamedStructType {
+                Ok(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                     fields,
                     packed: struct_spec.packed,
                     loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.get_current_module_file_path()),
@@ -746,7 +746,7 @@ impl Resolver {
             }
             TypeSpecifier::ModuleImport(import) => self
                 .resolve_module_import(module_id, import.clone())
-                .map(ConcreteType::UnresolvedSymbol)
+                .map(SemanticType::UnresolvedSymbol)
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: "import".to_string(),
                 }),
@@ -754,7 +754,7 @@ impl Resolver {
                 .resolve_generic_param_as_type(generic_params, identifier)
                 .or(self
                     .lookup_symbol_id(module_id, &identifier.name)
-                    .map(ConcreteType::UnresolvedSymbol))
+                    .map(SemanticType::UnresolvedSymbol))
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: identifier.name.clone(),
                 }),
@@ -1495,9 +1495,9 @@ impl Resolver {
                             symbol_id: self_symbol_id,
                             name: "self".to_string(),
                             ty: match self_modifier.kind {
-                                SelfModifierKind::Copied => Some(ConcreteType::UnresolvedSymbol(struct_symbol_id)),
-                                SelfModifierKind::Referenced => Some(ConcreteType::Pointer(Box::new(
-                                    ConcreteType::UnresolvedSymbol(struct_symbol_id),
+                                SelfModifierKind::Copied => Some(SemanticType::UnresolvedSymbol(struct_symbol_id)),
+                                SelfModifierKind::Referenced => Some(SemanticType::Pointer(Box::new(
+                                    SemanticType::UnresolvedSymbol(struct_symbol_id),
                                 ))),
                             },
                             rhs: None,
@@ -1665,7 +1665,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         func_decl: &FuncDecl,
-    ) -> Option<(ConcreteType, Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
+    ) -> Option<(SemanticType, Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
         let return_type_specifier = func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
             kind: TokenKind::Void,
             span: Span::default(),
@@ -2983,7 +2983,7 @@ impl Resolver {
                     span_end,
                 )?;
                 return Some(TypedExpression {
-                    kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
+                    kind: TypedExpressionKind::SemanticType(concrete_type.clone()),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: Some(concrete_type),
                     loc: SourceLoc::from_loc(loc, self.get_current_module_file_path()),
@@ -3025,10 +3025,10 @@ impl Resolver {
     }
 
     fn resolve_literal_expr(&mut self, literal: &Literal) -> Option<TypedExpression> {
-        let literal_type: Option<ConcreteType> = match &literal.kind {
+        let literal_type: Option<SemanticType> = match &literal.kind {
             LiteralKind::Integer(_, suffix_opt) | LiteralKind::Float(_, suffix_opt) => {
                 if let Some(token_kind) = suffix_opt {
-                    match ConcreteType::try_from(*token_kind.clone()) {
+                    match SemanticType::try_from(*token_kind.clone()) {
                         Ok(concrete_type) => Some(concrete_type),
                         Err(_) => {
                             self.reporter.report(Diag {
@@ -3052,26 +3052,26 @@ impl Resolver {
                     match string_prefix {
                         StringPrefix::B => {
                             let len = string_value.len() + 1;
-                            Some(ConcreteType::Array(TypedArrayType {
-                                element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
+                            Some(SemanticType::Array(TypedArrayType {
+                                element_type: Box::new(SemanticType::BasicType(BasicSemanticType::Char)),
                                 capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len)),
                                 loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
                             }))
                         }
-                        StringPrefix::C => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                            BasicConcreteType::Char,
+                        StringPrefix::C => Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
+                            BasicSemanticType::Char,
                         )))),
                     }
                 } else {
-                    Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                        BasicConcreteType::Char,
+                    Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
+                        BasicSemanticType::Char,
                     ))))
                 }
             }
-            LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
-            LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
-            LiteralKind::Null => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                BasicConcreteType::Void,
+            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicSemanticType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicSemanticType::Char)),
+            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
+                BasicSemanticType::Void,
             )))),
         };
 
@@ -3429,10 +3429,10 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
             .map(|param| match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
                 TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    let ty = ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
+                    let ty = SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
                     match typed_self_modifier.kind {
                         SelfModifierKind::Copied => ty,
-                        SelfModifierKind::Referenced => ConcreteType::Pointer(Box::new(ty)),
+                        SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(ty)),
                     }
                 }
             })

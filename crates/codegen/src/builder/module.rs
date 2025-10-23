@@ -14,7 +14,7 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::Resolver;
-use static_analyzer::monomorph::MonomorphRegistry;
+use semantic::monomorph::MonomorphRegistry;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -23,7 +23,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
+use typed_ast::{ModuleID, TypedProgramTree, types::SemanticType};
 
 pub struct CodeGenModule<'module> {
     ctx: Rc<Context>,
@@ -170,23 +170,23 @@ pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
 
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
-    Func(FunctionValue<'a>, ConcreteType),
+    Func(FunctionValue<'a>, SemanticType),
     Struct(StructType<'a>),
     Enum((StructType<'a>, ArrayType<'a>)),
-    GlobalValue(GlobalValue<'a>, ConcreteType),
-    LValue(PointerValue<'a>, ConcreteType),
-    RValue(BasicValueEnum<'a>, ConcreteType),
+    GlobalValue(GlobalValue<'a>, SemanticType),
+    LValue(PointerValue<'a>, SemanticType),
+    RValue(BasicValueEnum<'a>, SemanticType),
 }
 
 impl<'a> LocalIRValue<'a> {
-    pub fn as_func(&self) -> Option<(&FunctionValue<'a>, &ConcreteType)> {
+    pub fn as_func(&self) -> Option<(&FunctionValue<'a>, &SemanticType)> {
         match self {
             LocalIRValue::Func(fn_value, concrete_type) => Some((fn_value, concrete_type)),
             _ => None,
         }
     }
 
-    pub fn as_global_value(&self) -> Option<(&GlobalValue<'a>, &ConcreteType)> {
+    pub fn as_global_value(&self) -> Option<(&GlobalValue<'a>, &SemanticType)> {
         match self {
             LocalIRValue::GlobalValue(global_value, concrete_type) => Some((global_value, concrete_type)),
             _ => None,
@@ -207,14 +207,14 @@ impl<'a> LocalIRValue<'a> {
         }
     }
 
-    pub fn as_lvalue(&self) -> Option<(&PointerValue<'a>, &ConcreteType)> {
+    pub fn as_lvalue(&self) -> Option<(&PointerValue<'a>, &SemanticType)> {
         match self {
             LocalIRValue::LValue(pointer, concrete_type) => Some((pointer, concrete_type)),
             _ => None,
         }
     }
 
-    pub fn as_rvalue(&self) -> Option<(&BasicValueEnum<'a>, &ConcreteType)> {
+    pub fn as_rvalue(&self) -> Option<(&BasicValueEnum<'a>, &SemanticType)> {
         match self {
             LocalIRValue::RValue(basic_value, concrete_type) => Some((basic_value, concrete_type)),
             _ => None,

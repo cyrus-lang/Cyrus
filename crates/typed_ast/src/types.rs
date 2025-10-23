@@ -3,13 +3,13 @@ use ast::{AccessSpecifier, token::TokenKind};
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ConcreteType {
+pub enum SemanticType {
     UnresolvedSymbol(SymbolID),
     ResolvedSymbol(ResolvedSymbol),
-    BasicType(BasicConcreteType),
+    BasicType(BasicSemanticType),
     Array(TypedArrayType),
-    Const(Box<ConcreteType>),
-    Pointer(Box<ConcreteType>),
+    Const(Box<SemanticType>),
+    Pointer(Box<SemanticType>),
     UnnamedStruct(TypedUnnamedStructType),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
@@ -18,7 +18,7 @@ pub enum ConcreteType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BasicConcreteType {
+pub enum BasicSemanticType {
     UIntPtr,
     IntPtr,
     SizeT,
@@ -66,7 +66,7 @@ pub struct GenericType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
-    pub type_list: Vec<ConcreteType>,
+    pub type_list: Vec<SemanticType>,
     pub loc: SourceLoc,
 }
 
@@ -74,7 +74,7 @@ pub struct TypedTupleType {
 pub struct TypedFuncType {
     pub def_module_id: Option<ModuleID>,
     pub params: TypedFuncTypeParams,
-    pub return_type: Box<ConcreteType>,
+    pub return_type: Box<SemanticType>,
     pub vis_opt: Option<AccessSpecifier>,
     pub loc: SourceLoc,
 }
@@ -95,40 +95,40 @@ impl ResolvedSymbol {
     }
 }
 
-impl ConcreteType {
+impl SemanticType {
     pub fn get_symbol_id(&self) -> Option<SymbolID> {
         match self.get_const_inner() {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
             _ => None,
         }
     }
 
     pub fn as_generic_type(&self) -> Option<&GenericType> {
         match self {
-            ConcreteType::GenericType(generic_type) => Some(generic_type),
+            SemanticType::GenericType(generic_type) => Some(generic_type),
             _ => None,
         }
     }
 
     pub fn as_generic_param(&self) -> Option<&TypedIdentifier> {
         match self {
-            ConcreteType::GenericParam(typed_identifier) => Some(typed_identifier),
+            SemanticType::GenericParam(typed_identifier) => Some(typed_identifier),
             _ => None,
         }
     }
 
     pub fn is_integer(&self) -> bool {
         match self.get_const_inner() {
-            ConcreteType::BasicType(basic) => basic.is_integer(),
-            ConcreteType::Const(inner) => matches!(&**inner, ConcreteType::BasicType(b) if b.is_integer()),
+            SemanticType::BasicType(basic) => basic.is_integer(),
+            SemanticType::Const(inner) => matches!(&**inner, SemanticType::BasicType(b) if b.is_integer()),
             _ => false,
         }
     }
 
     pub fn is_float(&self) -> bool {
         match self.get_const_inner() {
-            ConcreteType::BasicType(basic) => basic.is_float(),
-            ConcreteType::Const(inner) => matches!(&**inner, ConcreteType::BasicType(b) if b.is_float()),
+            SemanticType::BasicType(basic) => basic.is_float(),
+            SemanticType::Const(inner) => matches!(&**inner, SemanticType::BasicType(b) if b.is_float()),
             _ => false,
         }
     }
@@ -136,63 +136,63 @@ impl ConcreteType {
     pub fn is_enum(&self) -> bool {
         matches!(
             self.get_const_inner(),
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
+            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(..))
         )
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(self.get_const_inner(), ConcreteType::BasicType(BasicConcreteType::Bool))
+        matches!(self.get_const_inner(), SemanticType::BasicType(BasicSemanticType::Bool))
     }
 
     pub fn is_array(&self) -> bool {
-        matches!(self.get_const_inner(), ConcreteType::Array(..))
+        matches!(self.get_const_inner(), SemanticType::Array(..))
     }
 
     pub fn is_const(&self) -> bool {
-        matches!(self.get_const_inner(), ConcreteType::Const(_))
+        matches!(self.get_const_inner(), SemanticType::Const(_))
     }
 
     pub fn is_void(&self) -> bool {
-        matches!(self.get_const_inner(), ConcreteType::BasicType(BasicConcreteType::Void))
+        matches!(self.get_const_inner(), SemanticType::BasicType(BasicSemanticType::Void))
     }
 
     pub fn is_pointer(&self) -> bool {
-        matches!(self.get_const_inner(), ConcreteType::Pointer(..))
+        matches!(self.get_const_inner(), SemanticType::Pointer(..))
     }
 
     pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
         match &self {
-            ConcreteType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
+            SemanticType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
             _ => None,
         }
     }
 
     pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
         match &self.get_const_inner() {
-            ConcreteType::Tuple(tuple_type) => Some(tuple_type),
+            SemanticType::Tuple(tuple_type) => Some(tuple_type),
             _ => None,
         }
     }
 
     pub fn as_func_type(&self) -> Option<&TypedFuncType> {
         match &self {
-            ConcreteType::FuncType(func_type) => Some(func_type),
+            SemanticType::FuncType(func_type) => Some(func_type),
             _ => None,
         }
     }
 
     pub fn is_resolved_symbol(&self) -> bool {
         match self {
-            ConcreteType::ResolvedSymbol(..) => true,
+            SemanticType::ResolvedSymbol(..) => true,
             _ => false,
         }
     }
 
-    pub fn as_rvalue(&self, lvalue: bool) -> ConcreteType {
+    pub fn as_rvalue(&self, lvalue: bool) -> SemanticType {
         if lvalue {
             match self {
-                ConcreteType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
-                ConcreteType::Pointer(concrete_type) => {
+                SemanticType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
+                SemanticType::Pointer(concrete_type) => {
                     concrete_type.get_pointer_inner().unwrap_or(*concrete_type.clone())
                 }
                 _ => self.clone(),
@@ -204,42 +204,42 @@ impl ConcreteType {
 
     pub fn is_char(&self) -> bool {
         match self {
-            ConcreteType::BasicType(BasicConcreteType::Char) => true,
+            SemanticType::BasicType(BasicSemanticType::Char) => true,
             _ => false,
         }
     }
 
-    pub fn as_basic_type(&self) -> Option<&BasicConcreteType> {
+    pub fn as_basic_type(&self) -> Option<&BasicSemanticType> {
         match self {
-            ConcreteType::BasicType(ty) => Some(ty),
+            SemanticType::BasicType(ty) => Some(ty),
             _ => None,
         }
     }
 
-    pub fn get_const_inner(&self) -> &ConcreteType {
+    pub fn get_const_inner(&self) -> &SemanticType {
         match self {
-            ConcreteType::Const(concrete_type) => concrete_type,
+            SemanticType::Const(concrete_type) => concrete_type,
             concrete_type @ _ => concrete_type,
         }
     }
 
-    pub fn get_pointer_inner(&self) -> Option<ConcreteType> {
+    pub fn get_pointer_inner(&self) -> Option<SemanticType> {
         match self {
-            ConcreteType::Pointer(concrete_type) => Some(*concrete_type.clone()),
+            SemanticType::Pointer(concrete_type) => Some(*concrete_type.clone()),
             _ => None,
         }
     }
 
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
         match self {
-            ConcreteType::Array(ty) => Some(ty),
+            SemanticType::Array(ty) => Some(ty),
             _ => None,
         }
     }
 
     pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
@@ -249,7 +249,7 @@ impl ConcreteType {
 
     pub fn as_union_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Union(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
@@ -259,7 +259,7 @@ impl ConcreteType {
 
     pub fn as_enum_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
@@ -269,89 +269,89 @@ impl ConcreteType {
 
     pub fn as_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
         match self {
-            ConcreteType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
+            SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
             _ => None,
         }
     }
 
     pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
         match self {
-            ConcreteType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
-            ConcreteType::Const(inner_concrete_type) => inner_concrete_type.as_unnamed_struct(),
+            SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
+            SemanticType::Const(inner_concrete_type) => inner_concrete_type.as_unnamed_struct(),
             _ => None,
         }
     }
 }
 
-impl BasicConcreteType {
+impl BasicSemanticType {
     pub fn is_bool(&self) -> bool {
-        matches!(self, BasicConcreteType::Bool)
+        matches!(self, BasicSemanticType::Bool)
     }
 
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
-            BasicConcreteType::UIntPtr
-                | BasicConcreteType::IntPtr
-                | BasicConcreteType::SizeT
-                | BasicConcreteType::Int
-                | BasicConcreteType::Int8
-                | BasicConcreteType::Int16
-                | BasicConcreteType::Int32
-                | BasicConcreteType::Int64
-                | BasicConcreteType::Int128
-                | BasicConcreteType::UInt
-                | BasicConcreteType::UInt8
-                | BasicConcreteType::UInt16
-                | BasicConcreteType::UInt32
-                | BasicConcreteType::UInt64
-                | BasicConcreteType::UInt128
+            BasicSemanticType::UIntPtr
+                | BasicSemanticType::IntPtr
+                | BasicSemanticType::SizeT
+                | BasicSemanticType::Int
+                | BasicSemanticType::Int8
+                | BasicSemanticType::Int16
+                | BasicSemanticType::Int32
+                | BasicSemanticType::Int64
+                | BasicSemanticType::Int128
+                | BasicSemanticType::UInt
+                | BasicSemanticType::UInt8
+                | BasicSemanticType::UInt16
+                | BasicSemanticType::UInt32
+                | BasicSemanticType::UInt64
+                | BasicSemanticType::UInt128
         )
     }
 
     pub fn is_float(&self) -> bool {
         matches!(
             self,
-            BasicConcreteType::Float16
-                | BasicConcreteType::Float32
-                | BasicConcreteType::Float64
-                | BasicConcreteType::Float128
+            BasicSemanticType::Float16
+                | BasicSemanticType::Float32
+                | BasicSemanticType::Float64
+                | BasicSemanticType::Float128
         )
     }
 
     pub fn is_signed(&self) -> bool {
         match self {
-            BasicConcreteType::UIntPtr
-            | BasicConcreteType::UInt
-            | BasicConcreteType::UInt8
-            | BasicConcreteType::UInt16
-            | BasicConcreteType::UInt32
-            | BasicConcreteType::UInt64
-            | BasicConcreteType::UInt128
-            | BasicConcreteType::SizeT
-            | BasicConcreteType::Bool
-            | BasicConcreteType::Char
-            | BasicConcreteType::Void
-            | BasicConcreteType::Null
-            | BasicConcreteType::Float16
-            | BasicConcreteType::Float32
-            | BasicConcreteType::Float64
-            | BasicConcreteType::Float128 => false,
+            BasicSemanticType::UIntPtr
+            | BasicSemanticType::UInt
+            | BasicSemanticType::UInt8
+            | BasicSemanticType::UInt16
+            | BasicSemanticType::UInt32
+            | BasicSemanticType::UInt64
+            | BasicSemanticType::UInt128
+            | BasicSemanticType::SizeT
+            | BasicSemanticType::Bool
+            | BasicSemanticType::Char
+            | BasicSemanticType::Void
+            | BasicSemanticType::Null
+            | BasicSemanticType::Float16
+            | BasicSemanticType::Float32
+            | BasicSemanticType::Float64
+            | BasicSemanticType::Float128 => false,
 
-            BasicConcreteType::IntPtr
-            | BasicConcreteType::Int
-            | BasicConcreteType::Int8
-            | BasicConcreteType::Int16
-            | BasicConcreteType::Int32
-            | BasicConcreteType::Int64
-            | BasicConcreteType::Int128 => true,
+            BasicSemanticType::IntPtr
+            | BasicSemanticType::Int
+            | BasicSemanticType::Int8
+            | BasicSemanticType::Int16
+            | BasicSemanticType::Int32
+            | BasicSemanticType::Int64
+            | BasicSemanticType::Int128 => true,
         }
     }
 
-    pub fn bigger_type(a: BasicConcreteType, b: BasicConcreteType) -> Option<BasicConcreteType> {
-        use BasicConcreteType::*;
+    pub fn bigger_type(a: BasicSemanticType, b: BasicSemanticType) -> Option<BasicSemanticType> {
+        use BasicSemanticType::*;
 
-        fn rank(ty: &BasicConcreteType) -> Option<u8> {
+        fn rank(ty: &BasicSemanticType) -> Option<u8> {
             match ty {
                 Int8 | UInt8 => Some(2),
                 Int16 | UInt16 => Some(3),
@@ -376,43 +376,43 @@ impl BasicConcreteType {
     }
 }
 
-impl TryFrom<TokenKind> for ConcreteType {
+impl TryFrom<TokenKind> for SemanticType {
     type Error = ();
 
     fn try_from(token_kind: TokenKind) -> Result<Self, Self::Error> {
         let basic_type = match &token_kind {
-            TokenKind::SizeT => BasicConcreteType::SizeT,
-            TokenKind::IntPtr => BasicConcreteType::IntPtr,
-            TokenKind::UIntPtr => BasicConcreteType::UIntPtr,
-            TokenKind::Int => BasicConcreteType::Int,
-            TokenKind::Int8 => BasicConcreteType::Int8,
-            TokenKind::Int16 => BasicConcreteType::Int16,
-            TokenKind::Int32 => BasicConcreteType::Int32,
-            TokenKind::Int64 => BasicConcreteType::Int64,
-            TokenKind::Int128 => BasicConcreteType::Int128,
-            TokenKind::UInt => BasicConcreteType::UInt,
-            TokenKind::UInt8 => BasicConcreteType::UInt8,
-            TokenKind::UInt16 => BasicConcreteType::UInt16,
-            TokenKind::UInt32 => BasicConcreteType::UInt32,
-            TokenKind::UInt64 => BasicConcreteType::UInt64,
-            TokenKind::UInt128 => BasicConcreteType::UInt128,
-            TokenKind::Float16 => BasicConcreteType::Float16,
-            TokenKind::Float32 => BasicConcreteType::Float32,
-            TokenKind::Float64 => BasicConcreteType::Float64,
-            TokenKind::Float128 => BasicConcreteType::Float128,
-            TokenKind::Bool => BasicConcreteType::Bool,
-            TokenKind::Void => BasicConcreteType::Void,
-            TokenKind::Char => BasicConcreteType::Char,
+            TokenKind::SizeT => BasicSemanticType::SizeT,
+            TokenKind::IntPtr => BasicSemanticType::IntPtr,
+            TokenKind::UIntPtr => BasicSemanticType::UIntPtr,
+            TokenKind::Int => BasicSemanticType::Int,
+            TokenKind::Int8 => BasicSemanticType::Int8,
+            TokenKind::Int16 => BasicSemanticType::Int16,
+            TokenKind::Int32 => BasicSemanticType::Int32,
+            TokenKind::Int64 => BasicSemanticType::Int64,
+            TokenKind::Int128 => BasicSemanticType::Int128,
+            TokenKind::UInt => BasicSemanticType::UInt,
+            TokenKind::UInt8 => BasicSemanticType::UInt8,
+            TokenKind::UInt16 => BasicSemanticType::UInt16,
+            TokenKind::UInt32 => BasicSemanticType::UInt32,
+            TokenKind::UInt64 => BasicSemanticType::UInt64,
+            TokenKind::UInt128 => BasicSemanticType::UInt128,
+            TokenKind::Float16 => BasicSemanticType::Float16,
+            TokenKind::Float32 => BasicSemanticType::Float32,
+            TokenKind::Float64 => BasicSemanticType::Float64,
+            TokenKind::Float128 => BasicSemanticType::Float128,
+            TokenKind::Bool => BasicSemanticType::Bool,
+            TokenKind::Void => BasicSemanticType::Void,
+            TokenKind::Char => BasicSemanticType::Char,
             _ => return Err(()),
         };
 
-        Ok(ConcreteType::BasicType(basic_type))
+        Ok(SemanticType::BasicType(basic_type))
     }
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedArrayType {
-    pub element_type: Box<ConcreteType>,
+    pub element_type: Box<SemanticType>,
     pub capacity: TypedArrayCapacity,
     pub loc: SourceLoc,
 }
@@ -474,7 +474,7 @@ impl Hash for TypedUnnamedStructType {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedStructTypeField {
     pub field_name: String,
-    pub field_type: Box<ConcreteType>,
+    pub field_type: Box<SemanticType>,
     pub loc: SourceLoc,
 }
 

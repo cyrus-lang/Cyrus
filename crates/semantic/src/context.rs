@@ -22,7 +22,7 @@ use std::{
 };
 use typed_ast::{
     format::format_concrete_type,
-    types::{BasicConcreteType, ConcreteType, TypedFuncType},
+    types::{BasicSemanticType, SemanticType, TypedFuncType},
     *,
 };
 
@@ -299,8 +299,8 @@ impl<'a> AnalysisContext<'a> {
         // update type and rhs metadata in local scope
 
         for (symbol_id, mut concrete_type) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
-            if export_tuple_values.is_const && !matches!(concrete_type, ConcreteType::Const(..)) {
-                concrete_type = ConcreteType::Const(Box::new(concrete_type.clone()));
+            if export_tuple_values.is_const && !matches!(concrete_type, SemanticType::Const(..)) {
+                concrete_type = SemanticType::Const(Box::new(concrete_type.clone()));
             }
 
             scope_id_opt.inspect(|scope_id| {
@@ -639,7 +639,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id: ScopeID,
         typed_if: &mut TypedIf,
-        expected_type: Option<ConcreteType>,
+        expected_type: Option<SemanticType>,
     ) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
 
@@ -664,7 +664,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(concrete_type) = self.analyze_typed_expr_type(
             scope_id_opt,
             &mut typed_while.condition,
-            Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+            Some(SemanticType::BasicType(BasicSemanticType::Bool)),
         ) {
             self.check_expr_type_must_be_condition(concrete_type, typed_while.loc.clone());
         }
@@ -685,7 +685,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(concrete_type) = self.analyze_typed_expr_type(
                 scope_id_opt,
                 typed_expr,
-                Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+                Some(SemanticType::BasicType(BasicSemanticType::Bool)),
             ) {
                 self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
             }
@@ -792,16 +792,16 @@ impl<'a> AnalysisContext<'a> {
 
     fn check_global_var_assignment_type(
         &mut self,
-        global_var_type: ConcreteType,
-        expr_type: ConcreteType,
+        global_var_type: SemanticType,
+        expr_type: SemanticType,
         loc: SourceLoc,
     ) {
         let compatible_type = match (global_var_type.clone(), expr_type.clone()) {
-            (ConcreteType::Const(concrete_type1), ConcreteType::Const(concrete_type2)) => {
+            (SemanticType::Const(concrete_type1), SemanticType::Const(concrete_type2)) => {
                 concrete_type1 == concrete_type2
             }
-            (ConcreteType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
-            (concrete_type1, ConcreteType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
+            (SemanticType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
+            (concrete_type1, SemanticType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
             (concrete_type1, concrete_type2) => concrete_type1 == concrete_type2,
         };
 
@@ -818,7 +818,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_global_var_for_const_folding(&self, concrete_type: ConcreteType) -> bool {
+    fn check_global_var_for_const_folding(&self, concrete_type: SemanticType) -> bool {
         match concrete_type.get_const_inner().as_basic_type() {
             Some(basic_concrete_type) => basic_concrete_type.is_integer(),
             None => false,
@@ -834,7 +834,7 @@ impl<'a> AnalysisContext<'a> {
 
             if self.check_global_var_for_const_folding(concrete_type) {
                 if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
-                    let integer_concrete_type = Some(ConcreteType::BasicType(BasicConcreteType::Int));
+                    let integer_concrete_type = Some(SemanticType::BasicType(BasicSemanticType::Int));
 
                     expr = TypedExpression {
                         kind: TypedExpressionKind::Literal(TypedLiteral {
@@ -872,7 +872,7 @@ impl<'a> AnalysisContext<'a> {
 
         if matches!(
             typed_global_var.ty,
-            Some(ConcreteType::BasicType(BasicConcreteType::Void))
+            Some(SemanticType::BasicType(BasicSemanticType::Void))
         ) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -882,7 +882,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if matches!(typed_global_var.ty, Some(ConcreteType::FuncType(..))) && typed_global_var.expr.is_none() {
+        if matches!(typed_global_var.ty, Some(SemanticType::FuncType(..))) && typed_global_var.expr.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UninitializedLambda,
@@ -892,12 +892,12 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
-            typed_global_var.ty = Some(ConcreteType::Const(Box::new(typed_global_var.ty.clone().unwrap())));
+        if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
+            typed_global_var.ty = Some(SemanticType::Const(Box::new(typed_global_var.ty.clone().unwrap())));
         }
 
         if let Some(expr) = &typed_global_var.expr {
-            if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
+            if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
@@ -1122,7 +1122,7 @@ impl<'a> AnalysisContext<'a> {
                 let object_method = local_or_global_symbol.as_method().unwrap();
 
                 { // NOTE
-                    // we may need to change SelfModifier to something like a standalone ConcreteType
+                    // we may need to change SelfModifier to something like a standalone SemanticType
                     // because currently we can't have `Self` type in interface which already became a paint in the ass.
                     //
                     // interface Person {
@@ -1440,7 +1440,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_any_func_def(
         &mut self,
-        return_type: &mut ConcreteType,
+        return_type: &mut SemanticType,
         params: &mut TypedFuncParams,
         body: &mut TypedBlockStatement,
         vis_opt: Option<AccessSpecifier>,
@@ -1587,7 +1587,7 @@ impl<'a> AnalysisContext<'a> {
                         .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
                         .unwrap();
 
-                    if matches!(normalized_type, ConcreteType::BasicType(BasicConcreteType::Void)) {
+                    if matches!(normalized_type, SemanticType::BasicType(BasicSemanticType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: AnalyzerDiagKind::VoidVariableType,
@@ -1603,7 +1603,7 @@ impl<'a> AnalysisContext<'a> {
                     let normalized_type = self
                         .normalize_type(
                             None,
-                            ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
+                            SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
                             typed_self_modifier.loc.clone(),
                         )
                         .unwrap();
@@ -1613,7 +1613,7 @@ impl<'a> AnalysisContext<'a> {
                             typed_self_modifier.ty = Some(normalized_type);
                         }
                         SelfModifierKind::Referenced => {
-                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(normalized_type)));
+                            typed_self_modifier.ty = Some(SemanticType::Pointer(Box::new(normalized_type)));
                         }
                     }
                 }
@@ -1629,7 +1629,7 @@ impl<'a> AnalysisContext<'a> {
 
                 if matches!(
                     normalized_concrete_type,
-                    ConcreteType::BasicType(BasicConcreteType::Void)
+                    SemanticType::BasicType(BasicSemanticType::Void)
                 ) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1649,7 +1649,7 @@ impl<'a> AnalysisContext<'a> {
         for param in params.list.iter_mut() {
             let normalized_type = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
 
-            if matches!(normalized_type, ConcreteType::BasicType(BasicConcreteType::Void)) {
+            if matches!(normalized_type, SemanticType::BasicType(BasicSemanticType::Void)) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::VoidVariableType,
@@ -1673,7 +1673,7 @@ impl<'a> AnalysisContext<'a> {
 
                     if matches!(
                         normalized_concrete_type,
-                        ConcreteType::BasicType(BasicConcreteType::Void)
+                        SemanticType::BasicType(BasicSemanticType::Void)
                     ) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -1795,14 +1795,14 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            if typed_variable.is_const && !matches!(typed_variable.ty, Some(ConcreteType::Const(..))) {
-                typed_variable.ty = Some(ConcreteType::Const(Box::new(typed_variable.ty.clone().unwrap())));
+            if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
+                typed_variable.ty = Some(SemanticType::Const(Box::new(typed_variable.ty.clone().unwrap())));
             }
         }
 
         if matches!(
             typed_variable.ty,
-            Some(ConcreteType::BasicType(BasicConcreteType::Void))
+            Some(SemanticType::BasicType(BasicSemanticType::Void))
         ) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1812,7 +1812,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if matches!(typed_variable.ty, Some(ConcreteType::FuncType(..))) && typed_variable.rhs.is_none() {
+        if matches!(typed_variable.ty, Some(SemanticType::FuncType(..))) && typed_variable.rhs.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UninitializedLambda,

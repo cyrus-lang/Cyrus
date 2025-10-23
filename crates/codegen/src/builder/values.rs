@@ -4,7 +4,7 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue, PointerValue},
 };
 use resolver::scope::LocalScopeRef;
-use typed_ast::types::ConcreteType;
+use typed_ast::types::SemanticType;
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_zero_init_value(&mut self, basic_type: BasicTypeEnum<'a>) -> BasicValueEnum<'a> {
@@ -41,7 +41,7 @@ impl<'a> CodeGenBuilder<'a> {
 
 #[derive(Debug, Clone)]
 pub struct InternalValue<'a> {
-    pub value_type: ConcreteType,
+    pub value_type: SemanticType,
     pub kind: InternalValueKind<'a>,
 }
 
@@ -53,7 +53,7 @@ pub enum InternalValueKind<'a> {
 }
 
 impl<'a> InternalValue<'a> {
-    pub fn new(value_type: ConcreteType, kind: InternalValueKind<'a>) -> Self {
+    pub fn new(value_type: SemanticType, kind: InternalValueKind<'a>) -> Self {
         InternalValue { value_type, kind }
     }
 

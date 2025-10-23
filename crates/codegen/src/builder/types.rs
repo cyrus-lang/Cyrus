@@ -17,7 +17,7 @@ use resolver::{
 use typed_ast::{
     SymbolID, TypedTupleValue,
     types::{
-        BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        BasicSemanticType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedArrayType, TypedTupleType, TypedUnnamedStructType,
     },
 };
@@ -90,7 +90,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_implicit_cast(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        target_type: ConcreteType,
+        target_type: SemanticType,
         rvalue: InternalValue<'a>,
     ) -> InternalValue<'a> {
         let target_any_type = self.build_concrete_type(local_scope_opt, target_type.clone());
@@ -216,17 +216,17 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_concrete_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        concrete_type: ConcreteType,
+        concrete_type: SemanticType,
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
-            ConcreteType::GenericParam(..) => unreachable!(),
-            ConcreteType::GenericType(ref resolved_generic) => {
+            SemanticType::GenericParam(..) => unreachable!(),
+            SemanticType::GenericType(ref resolved_generic) => {
                 self.build_resolved_generic_type(local_scope_opt, resolved_generic)
             }
-            ConcreteType::UnresolvedSymbol(symbol_id) => {
+            SemanticType::UnresolvedSymbol(symbol_id) => {
                 self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id)
             }
-            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id)
                 | ResolvedSymbol::Union(symbol_id)
                 | ResolvedSymbol::Typedef(symbol_id)
@@ -239,8 +239,8 @@ impl<'a> CodeGenBuilder<'a> {
                     self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id)
                 }
             },
-            ConcreteType::BasicType(basic_concrete_type) => self.build_basic_concrete_type(basic_concrete_type),
-            ConcreteType::Array(typed_array_type) => {
+            SemanticType::BasicType(basic_concrete_type) => self.build_basic_concrete_type(basic_concrete_type),
+            SemanticType::Array(typed_array_type) => {
                 let element_type: BasicTypeEnum = self
                     .build_concrete_type(local_scope_opt.clone(), *typed_array_type.element_type.clone())
                     .try_into()
@@ -250,16 +250,16 @@ impl<'a> CodeGenBuilder<'a> {
 
                 AnyTypeEnum::ArrayType(element_type.array_type(array_capacity.try_into().unwrap()))
             }
-            ConcreteType::Const(concrete_type) => self.build_concrete_type(local_scope_opt, *concrete_type),
-            ConcreteType::Pointer(_) => {
+            SemanticType::Const(concrete_type) => self.build_concrete_type(local_scope_opt, *concrete_type),
+            SemanticType::Pointer(_) => {
                 let ptr: PointerType<'a> = self.llvmctx.ptr_type(AddressSpace::default());
                 AnyTypeEnum::PointerType(ptr)
             }
-            ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
+            SemanticType::UnnamedStruct(typed_unnamed_struct_type) => {
                 self.build_unnamed_struct_type(local_scope_opt, &typed_unnamed_struct_type)
             }
-            ConcreteType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).into(),
-            ConcreteType::Tuple(tuple_type) => self.build_tuple_type(local_scope_opt, &tuple_type),
+            SemanticType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).into(),
+            SemanticType::Tuple(tuple_type) => self.build_tuple_type(local_scope_opt, &tuple_type),
         }
     }
 
@@ -306,34 +306,34 @@ impl<'a> CodeGenBuilder<'a> {
         AnyTypeEnum::StructType(self.llvmctx.struct_type(&field_types, unnamed_struct_type.packed))
     }
 
-    pub(crate) fn build_basic_concrete_type(&self, basic_concrete_type: BasicConcreteType) -> AnyTypeEnum<'a> {
+    pub(crate) fn build_basic_concrete_type(&self, basic_concrete_type: BasicSemanticType) -> AnyTypeEnum<'a> {
         let target_data = self.llvmtm.get_target_data();
         let ptr_sized_int_type = AnyTypeEnum::IntType(self.llvmctx.ptr_sized_int_type(&target_data, None));
 
         match basic_concrete_type {
-            BasicConcreteType::UIntPtr => ptr_sized_int_type,
-            BasicConcreteType::IntPtr => ptr_sized_int_type,
-            BasicConcreteType::SizeT => ptr_sized_int_type,
-            BasicConcreteType::Int => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
-            BasicConcreteType::Int8 => AnyTypeEnum::IntType(self.llvmctx.i8_type()),
-            BasicConcreteType::Int16 => AnyTypeEnum::IntType(self.llvmctx.i16_type()),
-            BasicConcreteType::Int32 => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
-            BasicConcreteType::Int64 => AnyTypeEnum::IntType(self.llvmctx.i64_type()),
-            BasicConcreteType::Int128 => AnyTypeEnum::IntType(self.llvmctx.i128_type()),
-            BasicConcreteType::UInt => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
-            BasicConcreteType::UInt8 => AnyTypeEnum::IntType(self.llvmctx.i8_type()),
-            BasicConcreteType::UInt16 => AnyTypeEnum::IntType(self.llvmctx.i16_type()),
-            BasicConcreteType::UInt32 => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
-            BasicConcreteType::UInt64 => AnyTypeEnum::IntType(self.llvmctx.i64_type()),
-            BasicConcreteType::UInt128 => AnyTypeEnum::IntType(self.llvmctx.i128_type()),
-            BasicConcreteType::Float16 => AnyTypeEnum::FloatType(self.llvmctx.f16_type()),
-            BasicConcreteType::Float32 => AnyTypeEnum::FloatType(self.llvmctx.f32_type()),
-            BasicConcreteType::Float64 => AnyTypeEnum::FloatType(self.llvmctx.f64_type()),
-            BasicConcreteType::Float128 => AnyTypeEnum::FloatType(self.llvmctx.f128_type()),
-            BasicConcreteType::Char => AnyTypeEnum::IntType(self.llvmctx.i8_type()),
-            BasicConcreteType::Bool => AnyTypeEnum::IntType(self.llvmctx.bool_type()),
-            BasicConcreteType::Null => AnyTypeEnum::PointerType(self.llvmctx.ptr_type(AddressSpace::default())),
-            BasicConcreteType::Void => AnyTypeEnum::VoidType(self.llvmctx.void_type()),
+            BasicSemanticType::UIntPtr => ptr_sized_int_type,
+            BasicSemanticType::IntPtr => ptr_sized_int_type,
+            BasicSemanticType::SizeT => ptr_sized_int_type,
+            BasicSemanticType::Int => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
+            BasicSemanticType::Int8 => AnyTypeEnum::IntType(self.llvmctx.i8_type()),
+            BasicSemanticType::Int16 => AnyTypeEnum::IntType(self.llvmctx.i16_type()),
+            BasicSemanticType::Int32 => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
+            BasicSemanticType::Int64 => AnyTypeEnum::IntType(self.llvmctx.i64_type()),
+            BasicSemanticType::Int128 => AnyTypeEnum::IntType(self.llvmctx.i128_type()),
+            BasicSemanticType::UInt => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
+            BasicSemanticType::UInt8 => AnyTypeEnum::IntType(self.llvmctx.i8_type()),
+            BasicSemanticType::UInt16 => AnyTypeEnum::IntType(self.llvmctx.i16_type()),
+            BasicSemanticType::UInt32 => AnyTypeEnum::IntType(self.llvmctx.i32_type()),
+            BasicSemanticType::UInt64 => AnyTypeEnum::IntType(self.llvmctx.i64_type()),
+            BasicSemanticType::UInt128 => AnyTypeEnum::IntType(self.llvmctx.i128_type()),
+            BasicSemanticType::Float16 => AnyTypeEnum::FloatType(self.llvmctx.f16_type()),
+            BasicSemanticType::Float32 => AnyTypeEnum::FloatType(self.llvmctx.f32_type()),
+            BasicSemanticType::Float64 => AnyTypeEnum::FloatType(self.llvmctx.f64_type()),
+            BasicSemanticType::Float128 => AnyTypeEnum::FloatType(self.llvmctx.f128_type()),
+            BasicSemanticType::Char => AnyTypeEnum::IntType(self.llvmctx.i8_type()),
+            BasicSemanticType::Bool => AnyTypeEnum::IntType(self.llvmctx.bool_type()),
+            BasicSemanticType::Null => AnyTypeEnum::PointerType(self.llvmctx.ptr_type(AddressSpace::default())),
+            BasicSemanticType::Void => AnyTypeEnum::VoidType(self.llvmctx.void_type()),
         }
     }
 
@@ -363,7 +363,7 @@ impl<'a> CodeGenBuilder<'a> {
                         self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig.clone());
                     LocalIRValue::Func(
                         fn_value,
-                        ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
+                        SemanticType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
                     )
                 }
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
@@ -387,7 +387,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 }
 
-fn get_elements_type_from_tuple_value(tuple_value: &TypedTupleValue) -> Vec<ConcreteType> {
+fn get_elements_type_from_tuple_value(tuple_value: &TypedTupleValue) -> Vec<SemanticType> {
     tuple_value
         .expr_list
         .iter()

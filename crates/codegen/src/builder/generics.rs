@@ -9,7 +9,7 @@ use resolver::{
     scope::{LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion},
     signatures::{EnumSig, StructSig, UnionSig},
 };
-use static_analyzer::{
+use semantic::{
     monomorph::{MonomorphKey, NormalizedTypeArgs},
     with_monomorph_registry,
 };
@@ -18,7 +18,7 @@ use typed_ast::{
     SymbolID, TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg,
     TypedTypeArgs, TypedUnionField,
     types::{
-        ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -267,7 +267,7 @@ impl<'a> CodeGenBuilder<'a> {
             return enum_sig.clone();
         };
 
-        let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
+        let mut subst_map: HashMap<String, SemanticType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
             subst_map.insert(param.param_name.name.clone(), arg.clone());
@@ -303,7 +303,7 @@ impl<'a> CodeGenBuilder<'a> {
             return union_sig.clone();
         };
 
-        let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
+        let mut subst_map: HashMap<String, SemanticType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
             subst_map.insert(param.param_name.name.clone(), arg.clone());
@@ -334,7 +334,7 @@ impl<'a> CodeGenBuilder<'a> {
             return struct_sig.clone();
         };
 
-        let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
+        let mut subst_map: HashMap<String, SemanticType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
             subst_map.insert(param.param_name.name.clone(), arg.clone());
@@ -366,27 +366,27 @@ impl<'a> CodeGenBuilder<'a> {
             .collect()
     }
 
-    fn substitute_concrete_type(&self, ty: &ConcreteType, subst_map: &HashMap<String, ConcreteType>) -> ConcreteType {
+    fn substitute_concrete_type(&self, ty: &SemanticType, subst_map: &HashMap<String, SemanticType>) -> SemanticType {
         match ty {
-            ConcreteType::GenericParam(typed_identifier) => subst_map
+            SemanticType::GenericParam(typed_identifier) => subst_map
                 .get(&typed_identifier.name)
                 .cloned()
                 .unwrap_or_else(|| ty.clone()),
-            ConcreteType::Pointer(inner) => {
-                ConcreteType::Pointer(Box::new(self.substitute_concrete_type(inner, subst_map)))
+            SemanticType::Pointer(inner) => {
+                SemanticType::Pointer(Box::new(self.substitute_concrete_type(inner, subst_map)))
             }
-            ConcreteType::Array(typed_array_type) => {
+            SemanticType::Array(typed_array_type) => {
                 let element_type = self.substitute_concrete_type(&typed_array_type.element_type, subst_map);
-                ConcreteType::Array(TypedArrayType {
+                SemanticType::Array(TypedArrayType {
                     element_type: Box::new(element_type),
                     capacity: typed_array_type.capacity.clone(),
                     loc: typed_array_type.loc.clone(),
                 })
             }
-            ConcreteType::Const(inner) => {
-                ConcreteType::Const(Box::new(self.substitute_concrete_type(inner, subst_map)))
+            SemanticType::Const(inner) => {
+                SemanticType::Const(Box::new(self.substitute_concrete_type(inner, subst_map)))
             }
-            ConcreteType::FuncType(func_ty) => {
+            SemanticType::FuncType(func_ty) => {
                 let new_return_type = self.substitute_concrete_type(&func_ty.return_type, subst_map);
                 let new_params = TypedFuncTypeParams {
                     list: func_ty
@@ -405,7 +405,7 @@ impl<'a> CodeGenBuilder<'a> {
                     }),
                 };
 
-                ConcreteType::FuncType(TypedFuncType {
+                SemanticType::FuncType(TypedFuncType {
                     def_module_id: func_ty.def_module_id,
                     return_type: Box::new(new_return_type),
                     params: new_params,
@@ -413,19 +413,19 @@ impl<'a> CodeGenBuilder<'a> {
                     vis_opt: func_ty.vis_opt.clone(),
                 })
             }
-            ConcreteType::Tuple(tuple_ty) => {
+            SemanticType::Tuple(tuple_ty) => {
                 let type_list = tuple_ty
                     .type_list
                     .iter()
                     .map(|elem| self.substitute_concrete_type(elem, subst_map))
                     .collect();
 
-                ConcreteType::Tuple(TypedTupleType {
+                SemanticType::Tuple(TypedTupleType {
                     type_list,
                     loc: tuple_ty.loc.clone(),
                 })
             }
-            ConcreteType::UnnamedStruct(unnamed) => {
+            SemanticType::UnnamedStruct(unnamed) => {
                 let new_fields = unnamed
                     .fields
                     .iter()
@@ -439,7 +439,7 @@ impl<'a> CodeGenBuilder<'a> {
                     })
                     .collect();
 
-                ConcreteType::UnnamedStruct(TypedUnnamedStructType {
+                SemanticType::UnnamedStruct(TypedUnnamedStructType {
                     fields: new_fields,
                     packed: unnamed.packed,
                     loc: unnamed.loc.clone(),

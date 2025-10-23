@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use typed_ast::{SymbolID, types::ConcreteType};
+use typed_ast::{SymbolID, types::SemanticType};
 
 pub type MonomorphID = u32;
-pub type NormalizedTypeArgs = Vec<ConcreteType>;
+pub type NormalizedTypeArgs = Vec<SemanticType>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MonomorphKey {
