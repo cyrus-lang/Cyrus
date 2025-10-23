@@ -1,5 +1,5 @@
 use ast::AccessSpecifier;
-use static_analyzer::monomorph::MonomorphID;
+use semantic::monomorph::MonomorphID;
 
 pub(crate) fn make_func_abi_name(module_name: &String, func_name: &String, vis: AccessSpecifier) -> String {
     if func_name == "main" || matches!(vis, AccessSpecifier::Extern | AccessSpecifier::PublicExtern) {

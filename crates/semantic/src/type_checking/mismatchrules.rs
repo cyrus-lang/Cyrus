@@ -2,34 +2,34 @@ use crate::context::AnalysisContext;
 use ast::source_loc::SourceLoc;
 use typed_ast::{
     ScopeID,
-    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    types::{BasicSemanticType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn check_type_mismatch(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        value_type: ConcreteType,
-        target_type: ConcreteType,
+        value_type: SemanticType,
+        target_type: SemanticType,
         loc: SourceLoc,
     ) -> bool {
         match (
             value_type.get_const_inner().clone(),
             target_type.get_const_inner().clone(),
         ) {
-            (ConcreteType::ResolvedSymbol(resolved_symbol1), ConcreteType::ResolvedSymbol(resolved_symbol2)) => {
+            (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
             }
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
+            (SemanticType::BasicType(basic_concrete_type1), SemanticType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
-            (ConcreteType::Array(array_type1), ConcreteType::Array(array_type2)) => {
+            (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
                 let valid_capacity = self.check_const_str_to_array_assignment(array_type1.clone(), array_type2.clone());
 
                 valid_capacity
                     && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
             }
-            (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
+            (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
                 if let Some(arr_type) = inner_concrete_type1.as_array_type() {
                     *arr_type.element_type == *inner_concrete_type2
                 } else {
@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
                         || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
                 }
             }
-            (ConcreteType::UnnamedStruct(unnamed_struct1), ConcreteType::UnnamedStruct(unnamed_struct2)) => {
+            (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
                 let packed = unnamed_struct1.packed == unnamed_struct2.packed;
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
@@ -48,19 +48,19 @@ impl<'a> AnalysisContext<'a> {
                 }
                 packed && fields
             }
-            (ConcreteType::GenericType(resolved_generic1), ConcreteType::GenericType(resolved_generic2)) => {
+            (SemanticType::GenericType(resolved_generic1), SemanticType::GenericType(resolved_generic2)) => {
                 resolved_generic1.base == resolved_generic2.base
                     && resolved_generic1.type_args == resolved_generic2.type_args
             }
-            (ConcreteType::FuncType(func_type1), ConcreteType::FuncType(func_type2)) => func_type1 == func_type2,
-            (ConcreteType::Tuple(tuple_type1), ConcreteType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
-            (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(..)) => true,
+            (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
+            (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
+            (SemanticType::BasicType(BasicSemanticType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
     }
 
-    pub(crate) fn check_basic_type_mismatch(&self, value: BasicConcreteType, target: BasicConcreteType) -> bool {
-        use BasicConcreteType::*;
+    pub(crate) fn check_basic_type_mismatch(&self, value: BasicSemanticType, target: BasicSemanticType) -> bool {
+        use BasicSemanticType::*;
 
         match (value, target) {
             // Same type is always compatible
@@ -95,17 +95,17 @@ impl<'a> AnalysisContext<'a> {
 
             // Integer to intptr (safe if value fits)
             (
-                BasicConcreteType::Int | BasicConcreteType::Int8 | BasicConcreteType::Int16 | BasicConcreteType::Int32,
-                BasicConcreteType::IntPtr,
+                BasicSemanticType::Int | BasicSemanticType::Int8 | BasicSemanticType::Int16 | BasicSemanticType::Int32,
+                BasicSemanticType::IntPtr,
             ) => true,
 
             // Unsigned to intptr (less safe, maybe allow some)
             (
-                BasicConcreteType::UInt
-                | BasicConcreteType::UInt8
-                | BasicConcreteType::UInt16
-                | BasicConcreteType::UInt32,
-                BasicConcreteType::UIntPtr,
+                BasicSemanticType::UInt
+                | BasicSemanticType::UInt8
+                | BasicSemanticType::UInt16
+                | BasicSemanticType::UInt32,
+                BasicSemanticType::UIntPtr,
             ) => true,
 
             (Null, Null) => true,
@@ -135,51 +135,51 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
+    pub(crate) fn check_explicit_typecast(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
         match (value_type, target_type) {
             // Same type, always fine
             (a, b) if a == b => true,
 
             // Any integer to any integer
-            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+            (SemanticType::BasicType(value), SemanticType::BasicType(target))
                 if value.is_integer() && target.is_integer() =>
             {
                 true
             }
 
             // Any float to any float
-            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+            (SemanticType::BasicType(value), SemanticType::BasicType(target))
                 if value.is_float() && target.is_float() =>
             {
                 true
             }
 
             // Bool to anything integer-ish (common in C-style languages)
-            (ConcreteType::BasicType(BasicConcreteType::Bool), ConcreteType::BasicType(target))
+            (SemanticType::BasicType(BasicSemanticType::Bool), SemanticType::BasicType(target))
                 if target.is_integer() =>
             {
                 true
             }
 
             // Char to integer and back
-            (ConcreteType::BasicType(BasicConcreteType::Char), ConcreteType::BasicType(target))
+            (SemanticType::BasicType(BasicSemanticType::Char), SemanticType::BasicType(target))
                 if target.is_integer() =>
             {
                 true
             }
-            (ConcreteType::BasicType(value), ConcreteType::BasicType(BasicConcreteType::Char))
+            (SemanticType::BasicType(value), SemanticType::BasicType(BasicSemanticType::Char))
                 if value.is_integer() =>
             {
                 true
             }
 
             // void* <-> intptr/uintptr
-            (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::IntPtr))
-            | (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::UIntPtr))
-            | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
-            | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
+            (SemanticType::Pointer(..), SemanticType::BasicType(BasicSemanticType::IntPtr))
+            | (SemanticType::Pointer(..), SemanticType::BasicType(BasicSemanticType::UIntPtr))
+            | (SemanticType::BasicType(BasicSemanticType::IntPtr), SemanticType::Pointer(..))
+            | (SemanticType::BasicType(BasicSemanticType::UIntPtr), SemanticType::Pointer(..)) => true,
 
-            (ConcreteType::FuncType(..), ConcreteType::Pointer(pointer_type)) => pointer_type.is_void(),
+            (SemanticType::FuncType(..), SemanticType::Pointer(pointer_type)) => pointer_type.is_void(),
 
             _ => false,
         }

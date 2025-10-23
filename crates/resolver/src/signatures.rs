@@ -2,7 +2,7 @@ use ast::{AccessSpecifier, source_loc::SourceLoc};
 use std::collections::HashMap;
 use typed_ast::{
     ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParamKind, TypedFuncParams,
-    TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::ConcreteType,
+    TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::SemanticType,
 };
 
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub struct FuncSig {
     pub module_id: ModuleID,
     pub name: String,
     pub params: TypedFuncParams,
-    pub return_type: ConcreteType,
+    pub return_type: SemanticType,
     pub is_func_decl: bool,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
@@ -53,7 +53,7 @@ pub struct EnumSig {
 #[derive(Debug, Clone)]
 pub struct TypedefSig {
     pub name: String,
-    pub ty: ConcreteType,
+    pub ty: SemanticType,
     pub generic_params: Option<TypedGenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
@@ -73,7 +73,7 @@ pub struct InterfaceSig {
 pub struct GlobalVarSig {
     pub module_id: ModuleID,
     pub name: String,
-    pub ty: Option<ConcreteType>,
+    pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExpression>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,

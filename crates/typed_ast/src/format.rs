@@ -4,7 +4,7 @@ use crate::{
     SymbolID, TypedExpression, TypedExpressionKind, TypedFuncParamKind, TypedFuncTypeVariadicParams,
     TypedFuncVariadicParams, TypedLambda, TypedTypeArg,
     types::{
-        BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        BasicSemanticType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedFuncType, TypedUnnamedStructType,
     },
 };
@@ -230,7 +230,7 @@ pub fn format_typed_expr<'a>(
             let operand_fmt = &format_typed_expr(&typed_size_of_expr.expr, format_symbol);
             return format!("sizeof({})", operand_fmt);
         }
-        TypedExpressionKind::ConcreteType(concrete_type) => format_concrete_type(concrete_type.clone(), format_symbol),
+        TypedExpressionKind::SemanticType(concrete_type) => format_concrete_type(concrete_type.clone(), format_symbol),
         TypedExpressionKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),
         TypedExpressionKind::Tuple(tuple_value) => {
             format!(
@@ -281,13 +281,13 @@ pub fn format_unnamed_struct_type<'a>(
 }
 
 pub fn format_concrete_type<'a>(
-    concrete_type: ConcreteType,
+    concrete_type: SemanticType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     match concrete_type {
-        ConcreteType::UnresolvedSymbol(..) => unreachable!(),
-        ConcreteType::GenericParam(identifier) => identifier.name.clone(),
-        ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+        SemanticType::UnresolvedSymbol(..) => unreachable!(),
+        SemanticType::GenericParam(identifier) => identifier.name.clone(),
+        SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
             ResolvedSymbol::Enum(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Typedef(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::NamedStruct(symbol_id) => format_symbol(symbol_id),
@@ -298,32 +298,32 @@ pub fn format_concrete_type<'a>(
             ResolvedSymbol::Method(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Union(symbol_id) => format_symbol(symbol_id),
         },
-        ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {
-            BasicConcreteType::UIntPtr => "uintptr".to_string(),
-            BasicConcreteType::IntPtr => "intptr".to_string(),
-            BasicConcreteType::SizeT => "size_t".to_string(),
-            BasicConcreteType::Int => "int".to_string(),
-            BasicConcreteType::Int8 => "int8".to_string(),
-            BasicConcreteType::Int16 => "int16".to_string(),
-            BasicConcreteType::Int32 => "int32".to_string(),
-            BasicConcreteType::Int64 => "int64".to_string(),
-            BasicConcreteType::Int128 => "int128".to_string(),
-            BasicConcreteType::UInt => "uint".to_string(),
-            BasicConcreteType::UInt8 => "uint8".to_string(),
-            BasicConcreteType::UInt16 => "uint16".to_string(),
-            BasicConcreteType::UInt32 => "uint32".to_string(),
-            BasicConcreteType::UInt64 => "uint64".to_string(),
-            BasicConcreteType::UInt128 => "uint128".to_string(),
-            BasicConcreteType::Float16 => "float16".to_string(),
-            BasicConcreteType::Float32 => "float32".to_string(),
-            BasicConcreteType::Float64 => "float64".to_string(),
-            BasicConcreteType::Float128 => "float128".to_string(),
-            BasicConcreteType::Char => "char".to_string(),
-            BasicConcreteType::Bool => "bool".to_string(),
-            BasicConcreteType::Void => "void".to_string(),
-            BasicConcreteType::Null => "null".to_string(),
+        SemanticType::BasicType(basic_concrete_type) => match basic_concrete_type {
+            BasicSemanticType::UIntPtr => "uintptr".to_string(),
+            BasicSemanticType::IntPtr => "intptr".to_string(),
+            BasicSemanticType::SizeT => "size_t".to_string(),
+            BasicSemanticType::Int => "int".to_string(),
+            BasicSemanticType::Int8 => "int8".to_string(),
+            BasicSemanticType::Int16 => "int16".to_string(),
+            BasicSemanticType::Int32 => "int32".to_string(),
+            BasicSemanticType::Int64 => "int64".to_string(),
+            BasicSemanticType::Int128 => "int128".to_string(),
+            BasicSemanticType::UInt => "uint".to_string(),
+            BasicSemanticType::UInt8 => "uint8".to_string(),
+            BasicSemanticType::UInt16 => "uint16".to_string(),
+            BasicSemanticType::UInt32 => "uint32".to_string(),
+            BasicSemanticType::UInt64 => "uint64".to_string(),
+            BasicSemanticType::UInt128 => "uint128".to_string(),
+            BasicSemanticType::Float16 => "float16".to_string(),
+            BasicSemanticType::Float32 => "float32".to_string(),
+            BasicSemanticType::Float64 => "float64".to_string(),
+            BasicSemanticType::Float128 => "float128".to_string(),
+            BasicSemanticType::Char => "char".to_string(),
+            BasicSemanticType::Bool => "bool".to_string(),
+            BasicSemanticType::Void => "void".to_string(),
+            BasicSemanticType::Null => "null".to_string(),
         },
-        ConcreteType::Array(typed_array_type) => {
+        SemanticType::Array(typed_array_type) => {
             let mut fmt = String::new();
             fmt.push_str(&format_concrete_type(*typed_array_type.element_type, format_symbol));
             fmt.push_str("[");
@@ -341,17 +341,17 @@ pub fn format_concrete_type<'a>(
             fmt.push_str("]");
             fmt
         }
-        ConcreteType::Const(concrete_type) => {
+        SemanticType::Const(concrete_type) => {
             format!("const {}", format_concrete_type(*concrete_type, format_symbol))
         }
-        ConcreteType::Pointer(concrete_type) => {
+        SemanticType::Pointer(concrete_type) => {
             format!("{}*", format_concrete_type(*concrete_type, format_symbol))
         }
-        ConcreteType::UnnamedStruct(unnamed_struct_type) => {
+        SemanticType::UnnamedStruct(unnamed_struct_type) => {
             format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
         }
-        ConcreteType::FuncType(func_type) => format_func_type(&func_type, format_symbol),
-        ConcreteType::Tuple(tuple_type) => {
+        SemanticType::FuncType(func_type) => format_func_type(&func_type, format_symbol),
+        SemanticType::Tuple(tuple_type) => {
             format!(
                 "({})",
                 tuple_type
@@ -362,7 +362,7 @@ pub fn format_concrete_type<'a>(
                     .join(", ")
             )
         }
-        ConcreteType::GenericType(generic_type) => {
+        SemanticType::GenericType(generic_type) => {
             let base = format_symbol(generic_type.base);
             let type_args = generic_type
                 .type_args

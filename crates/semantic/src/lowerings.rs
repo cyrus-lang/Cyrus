@@ -6,7 +6,7 @@ use ast::{
 use typed_ast::{
     ScopeID, TypedAssignment, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral,
     TypedPrefixExpression, ValueCategory,
-    types::{BasicConcreteType, ConcreteType},
+    types::{BasicSemanticType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -14,7 +14,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
-        expected_type: Option<ConcreteType>,
+        expected_type: Option<SemanticType>,
     ) {
         match &mut typed_expr.kind {
             TypedExpressionKind::Assignment(typed_assignment) => {
@@ -43,7 +43,7 @@ impl<'a> AnalysisContext<'a> {
     fn lower_prefix_bang_with_pointer_operand(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        expected_type: Option<ConcreteType>,
+        expected_type: Option<SemanticType>,
         prefix_expr: &mut TypedPrefixExpression,
     ) -> Option<TypedExpression> {
         let operand_type =
@@ -54,8 +54,8 @@ impl<'a> AnalysisContext<'a> {
 
         let null_literal_expr = TypedExpression {
             kind: TypedExpressionKind::Literal(TypedLiteral {
-                ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                    BasicConcreteType::Void,
+                ty: Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
+                    BasicSemanticType::Void,
                 )))),
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc.clone(),

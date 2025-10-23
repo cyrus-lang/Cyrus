@@ -15,7 +15,7 @@ use resolver::{
 };
 use typed_ast::{
     TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedTypeArgs,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
+    types::{BasicSemanticType, SemanticType, ResolvedSymbol},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -46,7 +46,7 @@ impl<'a> CodeGenBuilder<'a> {
         let tag1 = self.build_enum_extract_index(struct_value1);
         let tag2 = self.build_enum_extract_index(struct_value2);
 
-        let tag_concrete_type = ConcreteType::BasicType(BasicConcreteType::UInt32);
+        let tag_concrete_type = SemanticType::BasicType(BasicSemanticType::UInt32);
         let tag_cmp_result = if cmp_eq {
             self.build_cmp_eq(
                 local_scope_opt,
@@ -111,7 +111,7 @@ impl<'a> CodeGenBuilder<'a> {
         phi.add_incoming(&[(&payload_eq, payload_cmp_block)]);
 
         InternalValue::new(
-            ConcreteType::BasicType(BasicConcreteType::Bool),
+            SemanticType::BasicType(BasicSemanticType::Bool),
             InternalValueKind::RValue(phi.as_basic_value()),
         )
     }
@@ -197,7 +197,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(resolved_enum.symbol_id)),
+            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(resolved_enum.symbol_id)),
             InternalValueKind::RValue(enum_struct_value.as_basic_value_enum()),
         )
     }
@@ -265,7 +265,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(resolved_enum.symbol_id)),
+            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(resolved_enum.symbol_id)),
             InternalValueKind::RValue(enum_struct_value.as_basic_value_enum()),
         )
     }

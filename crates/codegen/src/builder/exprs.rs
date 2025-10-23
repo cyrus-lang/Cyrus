@@ -25,7 +25,7 @@ use typed_ast::{
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
     TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit,
     TypedTupleMemberAccess, TypedTupleValue, TypedUnaryExpression, TypedUnnamedStructValue,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
+    types::{BasicSemanticType, SemanticType, ResolvedSymbol, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -71,7 +71,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
                 self.build_tuple_member_access(local_scope_opt, tuple_member_access)
             }
-            TypedExpressionKind::ConcreteType(..) => unreachable!(),
+            TypedExpressionKind::SemanticType(..) => unreachable!(),
         }
     }
 
@@ -143,7 +143,7 @@ impl<'a> CodeGenBuilder<'a> {
             let tuple_struct_value = tuple_struct_type.const_named_struct(&basic_values);
 
             InternalValue::new(
-                ConcreteType::Tuple(tuple_type),
+                SemanticType::Tuple(tuple_type),
                 InternalValueKind::RValue(tuple_struct_value.into()),
             )
         } else {
@@ -158,7 +158,7 @@ impl<'a> CodeGenBuilder<'a> {
             });
 
             InternalValue::new(
-                ConcreteType::Tuple(tuple_type),
+                SemanticType::Tuple(tuple_type),
                 InternalValueKind::RValue(tuple_struct_value.into()),
             )
         }
@@ -168,7 +168,7 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         pointer: PointerValue<'a>,
-        pointee_ty: ConcreteType,
+        pointee_ty: SemanticType,
         index: InternalValue<'a>,
         array_length: u32,
     ) -> InternalValue<'a> {
@@ -303,7 +303,7 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         lvalue: PointerValue<'a>,   // should be T*, never [N x T]*
         index: InternalValue<'a>,   // expected integer index
-        element_type: ConcreteType, // the concrete type of each element (T)
+        element_type: SemanticType, // the concrete type of each element (T)
     ) -> InternalValue<'a> {
         let element_basic_type: BasicTypeEnum<'a> = self
             .build_concrete_type(local_scope_opt, element_type.clone())
@@ -530,7 +530,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::UnnamedStruct(unnamed_struct_value.unnamed_struct_type.clone().unwrap()),
+            SemanticType::UnnamedStruct(unnamed_struct_value.unnamed_struct_type.clone().unwrap()),
             InternalValueKind::RValue(struct_value.as_basic_value_enum()),
         )
     }
@@ -572,7 +572,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)),
+            SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)),
             InternalValueKind::RValue(struct_value.as_basic_value_enum()),
         )
     }
@@ -638,7 +638,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)),
+            SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)),
             InternalValueKind::RValue(struct_value.as_basic_value_enum()),
         )
     }
@@ -679,12 +679,12 @@ impl<'a> CodeGenBuilder<'a> {
 
         if let Some(fn_value) = lvalue.as_func_value() {
             InternalValue::new(
-                ConcreteType::Pointer(Box::new(operand_type)),
+                SemanticType::Pointer(Box::new(operand_type)),
                 InternalValueKind::RValue(self.build_cast_fn_value_to_pointer(fn_value).try_into().unwrap()),
             )
         } else {
             InternalValue::new(
-                ConcreteType::Pointer(Box::new(operand_type)),
+                SemanticType::Pointer(Box::new(operand_type)),
                 InternalValueKind::RValue(lvalue.as_basic_value()),
             )
         }
@@ -1092,7 +1092,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self.llvmbuilder.build_int_compare(int_pred, lhs, rhs, "cmp").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1102,7 +1102,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_float_compare(float_pred, lhs, rhs, "cmp")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1123,7 +1123,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1133,7 +1133,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1143,7 +1143,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1175,7 +1175,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1185,7 +1185,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_float_compare(FloatPredicate::ONE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1195,7 +1195,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1228,7 +1228,7 @@ impl<'a> CodeGenBuilder<'a> {
             .into_pointer_value();
 
         InternalValue::new(
-            ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void))),
+            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicSemanticType::Void))),
             InternalValueKind::RValue(selected.as_basic_value_enum()),
         )
     }
@@ -1238,7 +1238,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let or_value = self.llvmbuilder.build_or(lhs, rhs, "lor").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(or_value.as_basic_value_enum()),
                 )
             }
@@ -1254,7 +1254,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "land").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1267,7 +1267,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_xor(lhs, rhs, "xor").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1280,7 +1280,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1293,7 +1293,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_or(lhs, rhs, "or").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1312,7 +1312,7 @@ impl<'a> CodeGenBuilder<'a> {
                 let and_not_value = self.llvmbuilder.build_and(lhs, not_rhs, "and_not").unwrap();
 
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Int), // result is integer, not Bool
+                    SemanticType::BasicType(BasicSemanticType::Int), // result is integer, not Bool
                     InternalValueKind::RValue(and_not_value.as_basic_value_enum()),
                 )
             }
@@ -1325,7 +1325,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvmbuilder.build_left_shift(lhs, rhs, "lshift").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(shift_value.as_basic_value_enum()),
                 )
             }
@@ -1341,7 +1341,7 @@ impl<'a> CodeGenBuilder<'a> {
 
                 let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "lshift").unwrap();
                 InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    SemanticType::BasicType(BasicSemanticType::Bool),
                     InternalValueKind::RValue(shift_value.as_basic_value_enum()),
                 )
             }
@@ -1446,16 +1446,16 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_sizeof_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        concrete_type: &ConcreteType,
+        concrete_type: &SemanticType,
     ) -> InternalValue<'a> {
         let any_type = self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone());
         let size_internal_value = InternalValue::new(
-            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            SemanticType::BasicType(BasicSemanticType::SizeT),
             InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
         );
         return self.build_implicit_cast(
             local_scope_opt,
-            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            SemanticType::BasicType(BasicSemanticType::SizeT),
             size_internal_value,
         );
     }
@@ -1470,12 +1470,12 @@ impl<'a> CodeGenBuilder<'a> {
 
         let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
         let size_internal_value = InternalValue::new(
-            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            SemanticType::BasicType(BasicSemanticType::SizeT),
             InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
         );
         self.build_implicit_cast(
             local_scope_opt,
-            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            SemanticType::BasicType(BasicSemanticType::SizeT),
             size_internal_value,
         )
     }
@@ -1486,7 +1486,7 @@ impl<'a> CodeGenBuilder<'a> {
         sizeof_expr: &TypedSizeOfExpression,
     ) -> InternalValue<'a> {
         match &sizeof_expr.expr.kind {
-            TypedExpressionKind::ConcreteType(concrete_type) => self.build_sizeof_type(local_scope_opt, concrete_type),
+            TypedExpressionKind::SemanticType(concrete_type) => self.build_sizeof_type(local_scope_opt, concrete_type),
             TypedExpressionKind::Symbol(symbol_id, _) => {
                 let local_or_global_symbol = self
                     .resolver
@@ -1499,7 +1499,7 @@ impl<'a> CodeGenBuilder<'a> {
                 {
                     return self.build_sizeof_type(
                         local_scope_opt,
-                        &ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(*symbol_id)),
+                        &SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(*symbol_id)),
                     );
                 }
 
@@ -1551,7 +1551,7 @@ impl<'a> CodeGenBuilder<'a> {
                     if let Some(resolved_func) = local_or_global_symbol.as_func() {
                         return LocalIRValue::Func(
                             self.get_or_declare_func(resolved_func.symbol_id, resolved_func.func_sig.clone()),
-                            ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_func.func_sig)),
+                            SemanticType::FuncType(typed_func_type_from_func_sig(&resolved_func.func_sig)),
                         );
                     }
 

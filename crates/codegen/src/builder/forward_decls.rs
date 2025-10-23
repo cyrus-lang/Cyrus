@@ -3,7 +3,7 @@ use resolver::{
     typed_enum_as_enum_sig, typed_func_decl_as_func_sig, typed_func_def_as_func_sig, typed_func_type_from_func_sig,
     typed_struct_as_struct_sig, typed_union_as_union_sig,
 };
-use typed_ast::{TypedEnum, TypedStatement, TypedStruct, TypedUnion, types::ConcreteType};
+use typed_ast::{TypedEnum, TypedStatement, TypedStruct, TypedUnion, types::SemanticType};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
@@ -45,7 +45,7 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_def.symbol_id,
                         LocalIRValue::Func(
                             fn_value,
-                            ConcreteType::FuncType(typed_func_type_from_func_sig(&typed_func_def_as_func_sig(
+                            SemanticType::FuncType(typed_func_type_from_func_sig(&typed_func_def_as_func_sig(
                                 typed_func_def,
                             ))),
                         ),
@@ -64,7 +64,7 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_decl.symbol_id,
                         LocalIRValue::Func(
                             fn_value,
-                            ConcreteType::FuncType(typed_func_type_from_func_sig(&typed_func_decl_as_func_sig(
+                            SemanticType::FuncType(typed_func_type_from_func_sig(&typed_func_decl_as_func_sig(
                                 typed_func_decl,
                             ))),
                         ),

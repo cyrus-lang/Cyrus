@@ -1,7 +1,7 @@
 default: run
 
-static_analyzer:
-	cargo run -j24 -p static_analyzer -- ./tmp/main.cyrus --disable-warnings $(ARGS)
+semantic:
+	cargo run -j24 -p semantic -- ./tmp/main.cyrus --disable-warnings $(ARGS)
 
 resolver:
 	cargo run -j24 -p resolver -- ./tmp/main.cyrus --disable-warnings $(ARGS)

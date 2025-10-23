@@ -161,9 +161,9 @@ dependencies = [
  "parser",
  "project_layout",
  "resolver",
+ "semantic",
  "serde",
  "serde_json",
- "static_analyzer",
  "toml",
  "typed_ast",
  "utils",
@@ -179,9 +179,9 @@ dependencies = [
  "inkwell",
  "project_layout",
  "resolver",
+ "semantic",
  "serde",
  "serde_json",
- "static_analyzer",
  "toml",
  "typed_ast",
  "utils",
@@ -518,6 +518,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
+name = "semantic"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "diagcentral",
+ "fx-hash",
+ "lexer",
+ "parser",
+ "resolver",
+ "smallvec",
+ "typed_ast",
+ "utils",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -575,21 +590,6 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
-
-[[package]]
-name = "static_analyzer"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "fx-hash",
- "lexer",
- "parser",
- "resolver",
- "smallvec",
- "typed_ast",
- "utils",
-]
 
 [[package]]
 name = "strsim"

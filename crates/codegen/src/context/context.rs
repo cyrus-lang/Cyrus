@@ -10,7 +10,7 @@ use inkwell::{
 };
 use project_layout::OBJECTS_FILENAME;
 use resolver::{Resolver, modulefsloader::ModuleFilePath};
-use static_analyzer::monomorph::MonomorphRegistry;
+use semantic::monomorph::MonomorphRegistry;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},

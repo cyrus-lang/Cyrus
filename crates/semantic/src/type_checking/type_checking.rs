@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use typed_ast::{
     format::{format_concrete_type, format_func_type, format_typed_expr},
     types::{
-        BasicConcreteType, ConcreteType, GenericType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        BasicSemanticType, SemanticType, GenericType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
     *,
@@ -25,8 +25,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_literal_type(
         &mut self,
         typed_literal: &mut TypedLiteral,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let ty_opt = match &typed_literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
                 match infer_integer_type(typed_literal, suffix_opt, expected_type.clone()) {
@@ -46,25 +46,25 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
-            LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
-            LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
-            LiteralKind::Null => Some(ConcreteType::BasicType(BasicConcreteType::Null)),
+            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicSemanticType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicSemanticType::Char)),
+            LiteralKind::Null => Some(SemanticType::BasicType(BasicSemanticType::Null)),
             LiteralKind::String(value, prefix_opt) => {
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
                         StringPrefix::C => {
-                            ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicSemanticType::Char)))
                         }
-                        StringPrefix::B => ConcreteType::Array(TypedArrayType {
-                            element_type: Box::new(ConcreteType::Const(Box::new(ConcreteType::BasicType(
-                                BasicConcreteType::Char,
+                        StringPrefix::B => SemanticType::Array(TypedArrayType {
+                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::BasicType(
+                                BasicSemanticType::Char,
                             )))),
                             capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
                             loc: typed_literal.loc.clone(),
                         }),
                     }
                 } else {
-                    ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                    SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicSemanticType::Char)))
                 };
                 Some(ty)
             }
@@ -81,8 +81,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         self.apply_possible_expr_lowerings(scope_id_opt, typed_expr, expected_type.clone());
 
         let concrete_type = match &mut typed_expr.kind {
@@ -146,10 +146,10 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
                 self.analyze_tuple_member_access(scope_id_opt, tuple_member_access, expected_type)
             }
-            TypedExpressionKind::ConcreteType(..) => {
+            TypedExpressionKind::SemanticType(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidUsageOfTheConcreteType,
+                    kind: AnalyzerDiagKind::InvalidUsageOfTheSemanticType,
                     location: Some(DiagLoc::new(typed_expr.loc.clone())),
                     hint: None,
                 });
@@ -162,7 +162,7 @@ impl<'a> AnalysisContext<'a> {
 
         if cfg!(debug_assertions) {
             if let Some(concrete_type_clone) = typed_expr.concrete_type.clone() {
-                let is_unresolved_symbol = matches!(concrete_type_clone, ConcreteType::UnresolvedSymbol(..));
+                let is_unresolved_symbol = matches!(concrete_type_clone, SemanticType::UnresolvedSymbol(..));
                 assert!(is_unresolved_symbol == false);
             }
             assert!(typed_expr.concrete_type != None);
@@ -175,8 +175,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         match &typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, _) => {
                 let local_scope_opt =
@@ -204,7 +204,7 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_typed_expr_type_non_terminal(scope_id_opt, typed_expr, expected_type)
     }
 
-    pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: SourceLoc) {
+    pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: SemanticType, loc: SourceLoc) {
         if !concrete_type.is_bool() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -219,8 +219,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         tuple_member_access: &mut TypedTupleMemberAccess,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let operand_type =
             self.analyze_typed_expr_type(scope_id_opt, &mut tuple_member_access.operand, expected_type)?;
         let index_type = self.analyze_typed_expr_type(scope_id_opt, &mut tuple_member_access.index, None)?;
@@ -280,7 +280,7 @@ impl<'a> AnalysisContext<'a> {
         Some(element_type.clone())
     }
 
-    fn analyze_lambda_expr(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambda) -> Option<ConcreteType> {
+    fn analyze_lambda_expr(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambda) -> Option<SemanticType> {
         let current_func_clone = self.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc.clone());
@@ -298,16 +298,16 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_block_statement(&mut lambda.body);
 
         self.current_func = current_func_clone;
-        Some(ConcreteType::FuncType(func_type))
+        Some(SemanticType::FuncType(func_type))
     }
 
     fn analyze_tuple_value(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         tuple_value: &mut TypedTupleValue,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
-        let mut type_list: Vec<ConcreteType> = Vec::new();
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let mut type_list: Vec<SemanticType> = Vec::new();
 
         let tuple_type_opt = match expected_type {
             Some(concrete_type) => concrete_type.as_tuple_type().cloned(),
@@ -315,7 +315,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         for (idx, expr) in &mut tuple_value.expr_list.iter_mut().enumerate() {
-            let mut expected_type: Option<ConcreteType> = None;
+            let mut expected_type: Option<SemanticType> = None;
             if let Some(tuple_type) = &tuple_type_opt {
                 expected_type = tuple_type.type_list.get(idx).cloned();
             }
@@ -326,7 +326,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        Some(ConcreteType::Tuple(TypedTupleType {
+        Some(SemanticType::Tuple(TypedTupleType {
             type_list,
             loc: tuple_value.loc.clone(),
         }))
@@ -336,7 +336,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_value: &mut TypedUnnamedStructValue,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
         for field in &mut unnamed_struct_value.fields {
@@ -362,11 +362,11 @@ impl<'a> AnalysisContext<'a> {
         unnamed_struct_value.unnamed_struct_type = Some(unnamed_struct_type.clone());
 
         if unnamed_struct_value.is_const {
-            Some(ConcreteType::Const(Box::new(ConcreteType::UnnamedStruct(
+            Some(SemanticType::Const(Box::new(SemanticType::UnnamedStruct(
                 unnamed_struct_type,
             ))))
         } else {
-            Some(ConcreteType::UnnamedStruct(unnamed_struct_type))
+            Some(SemanticType::UnnamedStruct(unnamed_struct_type))
         }
     }
 
@@ -374,7 +374,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         array_index: &mut TypedArrayIndex,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.operand, None) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -477,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
         let base_type = operand
             .concrete_type
             .as_ref()
-            .expect("ConcreteType should be set before field access")
+            .expect("SemanticType should be set before field access")
             .get_const_inner();
 
         let is_pointer = base_type.is_pointer() || base_type.as_generic_type().is_some();
@@ -508,7 +508,7 @@ impl<'a> AnalysisContext<'a> {
         result
     }
 
-    fn validate_union_field_access(&mut self, operand_ty: ConcreteType, field_access: &TypedFieldAccess) -> bool {
+    fn validate_union_field_access(&mut self, operand_ty: SemanticType, field_access: &TypedFieldAccess) -> bool {
         let mut result = true;
 
         if operand_ty.is_pointer() && !field_access.is_fat_arrow {
@@ -537,8 +537,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         union_sig: &UnionSig,
         field_access: &mut TypedFieldAccess,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -601,8 +601,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_type: &TypedUnnamedStructType,
         field_access: &mut TypedFieldAccess,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -621,7 +621,7 @@ impl<'a> AnalysisContext<'a> {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
                         struct_name: format_concrete_type(
-                            ConcreteType::UnnamedStruct(unnamed_struct_type.clone()),
+                            SemanticType::UnnamedStruct(unnamed_struct_type.clone()),
                             &(self.symbol_formatter)(scope_id_opt),
                         ),
                         field_name: field_access.field_name.clone(),
@@ -653,7 +653,7 @@ impl<'a> AnalysisContext<'a> {
         struct_fields: Vec<TypedStructField>,
         struct_methods: HashMap<String, SymbolID>,
         struct_symbol_id: SymbolID,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let field_index = match struct_fields
             .iter()
             .position(|typed_struct_field| typed_struct_field.name == field_access.field_name)
@@ -702,8 +702,8 @@ impl<'a> AnalysisContext<'a> {
         enum_variant: &TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
-        expected_typed: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_typed: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let mut mapping_ctx = GenericMappingCtx::new_root();
 
         let valued_fields = match enum_variant {
@@ -794,13 +794,13 @@ impl<'a> AnalysisContext<'a> {
         // );
 
         if let Some(type_args) = &method_call.type_args {
-            Some(ConcreteType::GenericType(GenericType {
+            Some(SemanticType::GenericType(GenericType {
                 base: resolved_enum.symbol_id,
                 type_args: type_args.clone(),
                 is_const: false,
             }))
         } else {
-            Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
+            Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
         }
     }
 
@@ -810,8 +810,8 @@ impl<'a> AnalysisContext<'a> {
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
         enum_variant_opt: Option<&TypedEnumVariant>,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         if enum_variant_opt.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -861,13 +861,13 @@ impl<'a> AnalysisContext<'a> {
 
             field_access.type_args = Some(type_args.clone());
 
-            Some(ConcreteType::GenericType(GenericType {
+            Some(SemanticType::GenericType(GenericType {
                 base: resolved_enum.symbol_id,
                 type_args,
                 is_const: false,
             }))
         } else {
-            Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
+            Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                 resolved_enum.symbol_id,
             )))
         }
@@ -878,7 +878,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
         operand: &mut TypedExpression,
-        expected_type: Option<ConcreteType>,
+        expected_type: Option<SemanticType>,
         loc: SourceLoc,
     ) -> Option<MemberAccessKind> {
         let operand_type = match &operand.kind {
@@ -902,8 +902,8 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let object_symbol_id = match match operand_type.get_const_inner() {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-            ConcreteType::Pointer(concrete_type) => {
+            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            SemanticType::Pointer(concrete_type) => {
                 if concrete_type.is_void() {
                     return None;
                 } else if let Some(unnamed_struct_type) = concrete_type.as_unnamed_struct() {
@@ -912,10 +912,10 @@ impl<'a> AnalysisContext<'a> {
 
                 self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), loc.clone())
             }
-            ConcreteType::UnnamedStruct(unnamed_struct_type) => {
+            SemanticType::UnnamedStruct(unnamed_struct_type) => {
                 return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));
             }
-            ConcreteType::GenericType(generic_type) => Some(generic_type.base),
+            SemanticType::GenericType(generic_type) => Some(generic_type.base),
             _ => None,
         } {
             Some(symbol_id) => symbol_id,
@@ -946,8 +946,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         field_access: &mut TypedFieldAccess,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let mut mapping_ctx = GenericMappingCtx::new_root();
 
         macro_rules! not_supports_fields {
@@ -1074,8 +1074,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInit,
         resolved_union: &ResolvedUnion,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let mut mapping_ctx = GenericMappingCtx::new_root();
 
         if struct_init.fields.len() > 1 || struct_init.fields.len() == 0 {
@@ -1145,15 +1145,15 @@ impl<'a> AnalysisContext<'a> {
         // );
 
         let pure_union_type = if struct_init.is_const {
-            ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
+            SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
                 struct_init.symbol_id,
             ))))
         } else {
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(struct_init.symbol_id))
+            SemanticType::ResolvedSymbol(ResolvedSymbol::Union(struct_init.symbol_id))
         };
 
         if let Some(type_args) = &struct_init.type_args {
-            Some(ConcreteType::GenericType(GenericType {
+            Some(SemanticType::GenericType(GenericType {
                 base: struct_init.symbol_id,
                 type_args: type_args.clone(),
                 is_const: struct_init.is_const,
@@ -1167,8 +1167,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInit,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let mut mapping_ctx = GenericMappingCtx::new_root();
@@ -1223,10 +1223,10 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInit,
         resolved_struct: &ResolvedStruct,
-        expected_type: Option<ConcreteType>,
+        expected_type: Option<SemanticType>,
         generic_params: &Option<TypedGenericParamsList>,
         parent_mapping_ctx: Option<Box<GenericMappingCtx>>,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
         for field_init in &struct_init.fields {
@@ -1342,15 +1342,15 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let pure_struct_type = if struct_init.is_const {
-            ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+            SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
                 struct_init.symbol_id,
             ))))
         } else {
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id))
+            SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id))
         };
 
         if let Some(type_args) = &struct_init.type_args {
-            Some(ConcreteType::GenericType(GenericType {
+            Some(SemanticType::GenericType(GenericType {
                 base: struct_init.symbol_id,
                 type_args: type_args.clone(),
                 is_const: struct_init.is_const,
@@ -1367,7 +1367,7 @@ impl<'a> AnalysisContext<'a> {
         args: &mut Vec<TypedExpression>,
         loc: SourceLoc,
         instance_method_call: bool,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let is_variadic = func_sig.params.variadic.is_some();
         let mut expected_args_len = func_sig.params.list.len();
 
@@ -1460,7 +1460,7 @@ impl<'a> AnalysisContext<'a> {
                         .unwrap();
                     s.ty = Some(match s.kind {
                         SelfModifierKind::Copied => normalized.clone(),
-                        SelfModifierKind::Referenced => ConcreteType::Pointer(Box::new(normalized.clone())),
+                        SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(normalized.clone())),
                     });
                     s.ty.clone().unwrap()
                 }
@@ -1501,7 +1501,7 @@ impl<'a> AnalysisContext<'a> {
         func_type: &mut TypedFuncType,
         args: &mut Vec<TypedExpression>,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
         let func_name = format_func_type(func_type, &(self.symbol_formatter)(scope_id_opt));
@@ -1606,7 +1606,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let operand_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
         if let Some(mut func_type) = operand_ty.as_func_type().cloned() {
@@ -1646,14 +1646,14 @@ impl<'a> AnalysisContext<'a> {
     fn extract_object_symbol_id<'b>(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        var_type: ConcreteType,
+        var_type: SemanticType,
         loc: SourceLoc,
     ) -> Option<u32> {
         let normalized = self.normalize_type(scope_id_opt, var_type, loc.clone())?;
 
         match normalized {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-            ConcreteType::Pointer(concrete_type) => self.extract_object_symbol_id(scope_id_opt, *concrete_type, loc),
+            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            SemanticType::Pointer(concrete_type) => self.extract_object_symbol_id(scope_id_opt, *concrete_type, loc),
             _ => None,
         }
     }
@@ -1662,8 +1662,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &mut TypedMethodCall,
-        expected_type: Option<ConcreteType>,
-    ) -> Option<ConcreteType> {
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
 
@@ -1676,7 +1676,7 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
+        if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
             method_call.operand.concrete_type
         {
             let local_scope_opt =
@@ -1719,7 +1719,7 @@ impl<'a> AnalysisContext<'a> {
                         *instance_symbol_id,
                     );
 
-                    if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(..))) =
+                    if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(..))) =
                         method_call.operand.concrete_type
                     {
                         method_call.operand.concrete_type.clone().unwrap()
@@ -1749,8 +1749,8 @@ impl<'a> AnalysisContext<'a> {
             };
 
             match operand_type.get_const_inner() {
-                ConcreteType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
-                ConcreteType::Pointer(concrete_type) => {
+                SemanticType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
+                SemanticType::Pointer(concrete_type) => {
                     if concrete_type.is_void() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -2050,7 +2050,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_array: &mut TypedArray,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         typed_array.array_type =
             match self.normalize_type(scope_id_opt, typed_array.array_type.clone(), typed_array.loc.clone()) {
                 Some(concrete_type) => concrete_type,
@@ -2120,12 +2120,12 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(ConcreteType::Array(
+        Some(SemanticType::Array(
             typed_array.array_type.as_array_type().unwrap().clone(),
         ))
     }
 
-    fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<ConcreteType> {
+    fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<SemanticType> {
         let operand =
             match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
                 Some(concrete_type) => concrete_type,
@@ -2160,7 +2160,7 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         instance_symbol_id: SymbolID,
         loc: SourceLoc,
-    ) -> Option<ConcreteType> {
+    ) -> Option<SemanticType> {
         let local_or_global_symbol = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
@@ -2209,8 +2209,8 @@ enum MemberAccessKind {
 fn infer_integer_type(
     literal: &TypedLiteral,
     suffix_opt: &Option<Box<TokenKind>>,
-    expected: Option<ConcreteType>,
-) -> Result<ConcreteType, Diag<AnalyzerDiagKind>> {
+    expected: Option<SemanticType>,
+) -> Result<SemanticType, Diag<AnalyzerDiagKind>> {
     if let Some(suffix) = suffix_opt {
         match map_integer_suffix_to_type(&suffix) {
             Some(ty) => Ok(ty),
@@ -2225,18 +2225,18 @@ fn infer_integer_type(
         if is_integer_type(&ctx_ty) {
             Ok(ctx_ty)
         } else {
-            Ok(ConcreteType::BasicType(BasicConcreteType::Int)) // safe default
+            Ok(SemanticType::BasicType(BasicSemanticType::Int)) // safe default
         }
     } else {
-        Ok(ConcreteType::BasicType(BasicConcreteType::Int))
+        Ok(SemanticType::BasicType(BasicSemanticType::Int))
     }
 }
 
 fn infer_float_type(
     literal: &TypedLiteral,
     suffix_opt: &Option<Box<TokenKind>>,
-    expected: Option<ConcreteType>,
-) -> Result<ConcreteType, Diag<AnalyzerDiagKind>> {
+    expected: Option<SemanticType>,
+) -> Result<SemanticType, Diag<AnalyzerDiagKind>> {
     if let Some(suffix) = suffix_opt {
         match map_float_suffix_to_type(&suffix) {
             Some(ty) => Ok(ty),
@@ -2251,77 +2251,77 @@ fn infer_float_type(
         if is_float_type(&ctx_ty) {
             Ok(ctx_ty)
         } else {
-            Ok(ConcreteType::BasicType(BasicConcreteType::Float64)) // safe default
+            Ok(SemanticType::BasicType(BasicSemanticType::Float64)) // safe default
         }
     } else {
-        Ok(ConcreteType::BasicType(BasicConcreteType::Float64))
+        Ok(SemanticType::BasicType(BasicSemanticType::Float64))
     }
 }
 
-fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<ConcreteType> {
+fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
-        TokenKind::UIntPtr => BasicConcreteType::UIntPtr,
-        TokenKind::IntPtr => BasicConcreteType::IntPtr,
-        TokenKind::SizeT => BasicConcreteType::SizeT,
-        TokenKind::Int => BasicConcreteType::Int,
-        TokenKind::Int8 => BasicConcreteType::Int8,
-        TokenKind::Int16 => BasicConcreteType::Int16,
-        TokenKind::Int32 => BasicConcreteType::Int32,
-        TokenKind::Int64 => BasicConcreteType::Int64,
-        TokenKind::Int128 => BasicConcreteType::Int128,
-        TokenKind::UInt => BasicConcreteType::UInt,
-        TokenKind::UInt8 => BasicConcreteType::UInt8,
-        TokenKind::UInt16 => BasicConcreteType::UInt16,
-        TokenKind::UInt32 => BasicConcreteType::UInt32,
-        TokenKind::UInt64 => BasicConcreteType::UInt64,
-        TokenKind::UInt128 => BasicConcreteType::UInt128,
+        TokenKind::UIntPtr => BasicSemanticType::UIntPtr,
+        TokenKind::IntPtr => BasicSemanticType::IntPtr,
+        TokenKind::SizeT => BasicSemanticType::SizeT,
+        TokenKind::Int => BasicSemanticType::Int,
+        TokenKind::Int8 => BasicSemanticType::Int8,
+        TokenKind::Int16 => BasicSemanticType::Int16,
+        TokenKind::Int32 => BasicSemanticType::Int32,
+        TokenKind::Int64 => BasicSemanticType::Int64,
+        TokenKind::Int128 => BasicSemanticType::Int128,
+        TokenKind::UInt => BasicSemanticType::UInt,
+        TokenKind::UInt8 => BasicSemanticType::UInt8,
+        TokenKind::UInt16 => BasicSemanticType::UInt16,
+        TokenKind::UInt32 => BasicSemanticType::UInt32,
+        TokenKind::UInt64 => BasicSemanticType::UInt64,
+        TokenKind::UInt128 => BasicSemanticType::UInt128,
         _ => return None,
     };
-    Some(ConcreteType::BasicType(ty))
+    Some(SemanticType::BasicType(ty))
 }
 
-fn map_float_suffix_to_type(suffix: &TokenKind) -> Option<ConcreteType> {
+fn map_float_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
-        TokenKind::Float16 => BasicConcreteType::Float16,
-        TokenKind::Float32 => BasicConcreteType::Float32,
-        TokenKind::Float64 => BasicConcreteType::Float64,
-        TokenKind::Float128 => BasicConcreteType::Float128,
+        TokenKind::Float16 => BasicSemanticType::Float16,
+        TokenKind::Float32 => BasicSemanticType::Float32,
+        TokenKind::Float64 => BasicSemanticType::Float64,
+        TokenKind::Float128 => BasicSemanticType::Float128,
         _ => return None,
     };
-    Some(ConcreteType::BasicType(ty))
+    Some(SemanticType::BasicType(ty))
 }
 
-fn is_integer_type(ty: &ConcreteType) -> bool {
+fn is_integer_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
-        ConcreteType::BasicType(
-            BasicConcreteType::Int
-                | BasicConcreteType::Int8
-                | BasicConcreteType::Int16
-                | BasicConcreteType::Int32
-                | BasicConcreteType::Int64
-                | BasicConcreteType::Int128
-                | BasicConcreteType::UInt
-                | BasicConcreteType::UInt8
-                | BasicConcreteType::UInt16
-                | BasicConcreteType::UInt32
-                | BasicConcreteType::UInt64
-                | BasicConcreteType::UInt128
-                | BasicConcreteType::IntPtr
-                | BasicConcreteType::UIntPtr
-                | BasicConcreteType::SizeT
+        SemanticType::BasicType(
+            BasicSemanticType::Int
+                | BasicSemanticType::Int8
+                | BasicSemanticType::Int16
+                | BasicSemanticType::Int32
+                | BasicSemanticType::Int64
+                | BasicSemanticType::Int128
+                | BasicSemanticType::UInt
+                | BasicSemanticType::UInt8
+                | BasicSemanticType::UInt16
+                | BasicSemanticType::UInt32
+                | BasicSemanticType::UInt64
+                | BasicSemanticType::UInt128
+                | BasicSemanticType::IntPtr
+                | BasicSemanticType::UIntPtr
+                | BasicSemanticType::SizeT
         )
     )
 }
 
-fn is_float_type(ty: &ConcreteType) -> bool {
+fn is_float_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
-        ConcreteType::BasicType(
-            BasicConcreteType::Float16
-                | BasicConcreteType::Float32
-                | BasicConcreteType::Float64
-                | BasicConcreteType::Float128
+        SemanticType::BasicType(
+            BasicSemanticType::Float16
+                | BasicSemanticType::Float32
+                | BasicSemanticType::Float64
+                | BasicSemanticType::Float128
         )
     )
 }

@@ -1,11 +1,11 @@
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
-use typed_ast::{SymbolID, types::ConcreteType};
+use typed_ast::{SymbolID, types::SemanticType};
 
 #[derive(Default)]
 pub struct TypeResolverCaches {
     // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef)
-    pub cache: FxHashMap<SymbolID, ConcreteType>,
+    pub cache: FxHashMap<SymbolID, SemanticType>,
     // Guard against cycles
     pub in_progress: SmallVec<[SymbolID; 16]>,
 }

@@ -8,7 +8,7 @@ use resolver::{
     signatures::{EnumSig, FuncSig, StructSig, UnionSig},
     typed_func_type_from_func_sig,
 };
-use typed_ast::{SymbolID, types::ConcreteType};
+use typed_ast::{SymbolID, types::SemanticType};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn insert_ir_value(&mut self, symbol_id: SymbolID, local_value: LocalIRValue<'a>) {
@@ -47,7 +47,7 @@ impl<'a> CodeGenBuilder<'a> {
                     symbol_id,
                     LocalIRValue::Func(
                         fn_value,
-                        ConcreteType::FuncType(typed_func_type_from_func_sig(&func_sig)),
+                        SemanticType::FuncType(typed_func_type_from_func_sig(&func_sig)),
                     ),
                 );
                 fn_value

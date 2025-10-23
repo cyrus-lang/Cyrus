@@ -229,7 +229,7 @@ pub enum AnalyzerDiagKind {
     MultipleEntryPoints,
     MissingEntryPoint,
     ConstVariableMustBeInitialized,
-    InvalidUsageOfTheConcreteType,
+    InvalidUsageOfTheSemanticType,
     GenericArityMismatch {
         expected: usize,
         provided: usize,
@@ -429,7 +429,7 @@ impl fmt::Display for AnalyzerDiagKind {
             AnalyzerDiagKind::UseFatArrow => {
                 write!(f, "Use '->' instead of '.' when accessing a member via a pointer.")
             }
-            AnalyzerDiagKind::InvalidUsageOfTheConcreteType => {
+            AnalyzerDiagKind::InvalidUsageOfTheSemanticType => {
                 write!(f, "Invalid usage of the concrete type.")
             }
             AnalyzerDiagKind::ObjectNotSupportsFields => {

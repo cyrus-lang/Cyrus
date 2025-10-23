@@ -12,7 +12,7 @@ use resolver::{
     Resolver, Visiting, generate_module_id,
     modulefsloader::{ModuleFilePath, ModuleLoaderOptions},
 };
-use static_analyzer::{context::AnalysisContext, monomorph::MonomorphRegistry};
+use semantic::{context::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     cell::RefCell,
     env, fs,

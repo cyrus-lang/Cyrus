@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use typed_ast::{
     SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnumVariant, TypedExpression, TypedExpressionKind,
     TypedFor, TypedIf, TypedReturn, TypedSwitch, TypedSwitchCasePattern, TypedWhile,
-    types::{BasicConcreteType, ConcreteType},
+    types::{BasicSemanticType, SemanticType},
 };
 
 #[derive(Debug, Clone)]
@@ -492,7 +492,7 @@ impl<'a> CodeGenBuilder<'a> {
             };
 
             let case_internal_value = InternalValue::new(
-                ConcreteType::BasicType(BasicConcreteType::Int32),
+                SemanticType::BasicType(BasicSemanticType::Int32),
                 InternalValueKind::RValue(case_int_value.as_basic_value_enum()),
             );
 

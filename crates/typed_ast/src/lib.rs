@@ -1,4 +1,4 @@
-use crate::types::{ConcreteType, TypedUnnamedStructType};
+use crate::types::{SemanticType, TypedUnnamedStructType};
 use ast::{
     AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -30,7 +30,7 @@ pub struct TypedProgramTree {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedExpression {
     pub kind: TypedExpressionKind,
-    pub concrete_type: Option<ConcreteType>,
+    pub concrete_type: Option<SemanticType>,
     pub value_category: ValueCategory,
     pub loc: SourceLoc,
 }
@@ -62,7 +62,7 @@ pub enum TypedExpressionKind {
     SizeOfExpression(TypedSizeOfExpression),
     Lambda(TypedLambda),
     Tuple(TypedTupleValue),
-    ConcreteType(ConcreteType),
+    SemanticType(SemanticType),
     TupleMemberAccess(TypedTupleMemberAccess),
 }
 
@@ -83,7 +83,7 @@ pub struct TypedTupleValue {
 pub struct TypedLambda {
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStatement>,
-    pub return_type: ConcreteType,
+    pub return_type: SemanticType,
     pub loc: SourceLoc,
 }
 
@@ -95,7 +95,7 @@ pub struct TypedSizeOfExpression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedLiteral {
-    pub ty: Option<ConcreteType>,
+    pub ty: Option<SemanticType>,
     pub kind: LiteralKind,
     pub loc: SourceLoc,
 }
@@ -170,7 +170,7 @@ impl TypedExpressionKind {
             | TypedExpressionKind::FuncCall(_)
             | TypedExpressionKind::Assignment(_)
             | TypedExpressionKind::SizeOfExpression(_)
-            | TypedExpressionKind::ConcreteType(_)
+            | TypedExpressionKind::SemanticType(_)
             | TypedExpressionKind::AddressOf(_) => false,
         }
     }
@@ -195,7 +195,7 @@ impl TypedExpressionKind {
             TypedExpressionKind::AddressOf(_) => false,
             TypedExpressionKind::Array(_) => false,
             TypedExpressionKind::SizeOfExpression(_) => false,
-            TypedExpressionKind::ConcreteType(_) => false,
+            TypedExpressionKind::SemanticType(_) => false,
             TypedExpressionKind::Lambda(_) => false,
             TypedExpressionKind::Tuple(_) => false,
         }
@@ -242,13 +242,13 @@ pub struct TypedAssignment {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedCast {
     pub operand: Box<TypedExpression>,
-    pub target_type: ConcreteType,
+    pub target_type: SemanticType,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArray {
-    pub array_type: ConcreteType,
+    pub array_type: SemanticType,
     pub elements: Vec<TypedExpression>,
     pub loc: SourceLoc,
 }
@@ -301,7 +301,7 @@ pub struct TypedFieldAccess {
     pub object_symbol_id: Option<SymbolID>,
     pub field_name: String,
     pub field_index: Option<usize>,
-    pub field_ty: Option<ConcreteType>,
+    pub field_ty: Option<SemanticType>,
     pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
@@ -330,7 +330,7 @@ pub struct TypedUnnamedStructValue {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
     pub field_name: String,
-    pub field_type: Option<ConcreteType>,
+    pub field_type: Option<SemanticType>,
     pub field_value: Box<TypedExpression>,
     pub loc: SourceLoc,
 }
@@ -391,7 +391,7 @@ impl TypedStatement {
 #[derive(Debug, Clone)]
 pub struct TypedExportTupleValues {
     pub exports: Vec<SymbolID>,
-    pub ty: Option<ConcreteType>,
+    pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExpression>,
     pub is_const: bool,
     pub loc: SourceLoc,
@@ -444,7 +444,7 @@ impl TypedEnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
-    pub field_type: ConcreteType,
+    pub field_type: SemanticType,
     pub loc: SourceLoc,
 }
 
@@ -479,14 +479,14 @@ pub struct TypedUnion {
 #[derive(Debug, Clone)]
 pub struct TypedUnionField {
     pub name: String,
-    pub ty: ConcreteType,
+    pub ty: SemanticType,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedStructField {
     pub name: String,
-    pub ty: ConcreteType,
+    pub ty: SemanticType,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -502,7 +502,7 @@ pub struct TypedGlobalVariable {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: Option<ConcreteType>,
+    pub ty: Option<SemanticType>,
     pub expr: Option<TypedExpression>,
     pub is_const: bool,
     pub vis: AccessSpecifier,
@@ -513,7 +513,7 @@ pub struct TypedGlobalVariable {
 pub struct TypedTypedef {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: ConcreteType,
+    pub ty: SemanticType,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -541,7 +541,7 @@ impl TypedBlockStatement {
 pub struct TypedVariable {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: Option<ConcreteType>,
+    pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExpression>,
     pub is_const: bool,
     pub loc: SourceLoc,
@@ -563,7 +563,7 @@ pub struct TypedFuncDef {
     pub name: String,
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStatement>,
-    pub return_type: ConcreteType,
+    pub return_type: SemanticType,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -574,7 +574,7 @@ pub struct TypedFuncDecl {
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
-    pub return_type: ConcreteType,
+    pub return_type: SemanticType,
     pub vis: AccessSpecifier,
     pub renamed_as: Option<String>,
     pub loc: SourceLoc,
@@ -589,19 +589,19 @@ pub struct TypedFuncParams {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,
-    Typed(String, ConcreteType),
+    Typed(String, SemanticType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypedFuncTypeParams {
-    pub list: Vec<ConcreteType>,
+    pub list: Vec<SemanticType>,
     pub variadic: Option<Box<TypedFuncTypeVariadicParams>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypedFuncTypeVariadicParams {
     UntypedCStyle,
-    Typed(ConcreteType),
+    Typed(SemanticType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -614,7 +614,7 @@ pub enum TypedFuncParamKind {
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
     pub self_symbol_id: Option<SymbolID>,
-    pub ty: Option<ConcreteType>,
+    pub ty: Option<SemanticType>,
     pub kind: SelfModifierKind,
     pub loc: SourceLoc,
 }
@@ -622,7 +622,7 @@ pub struct TypedSelfModifier {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncParam {
     pub name: String,
-    pub ty: ConcreteType,
+    pub ty: SemanticType,
     pub loc: SourceLoc,
 }
 
@@ -680,7 +680,7 @@ pub type TypedGenericParamsList = Vec<TypedGenericParam>;
 pub struct TypedGenericParam {
     pub param_name: TypedIdentifier,
     pub bounds: Option<Vec<TypedBound>>,
-    pub default: Option<ConcreteType>,
+    pub default: Option<SemanticType>,
 }
 
 #[derive(Debug, Clone)]
@@ -691,8 +691,8 @@ pub struct TypedBound {
 
 #[derive(Debug, Clone, Eq, Hash)]
 pub enum TypedTypeArg {
-    Positional(ConcreteType),
-    Named { key: String, value: ConcreteType },
+    Positional(SemanticType),
+    Named { key: String, value: SemanticType },
 }
 
 pub type TypedTypeArgs = Vec<TypedTypeArg>;
