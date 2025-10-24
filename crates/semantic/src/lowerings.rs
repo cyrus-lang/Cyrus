@@ -17,7 +17,7 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) {
         match &mut typed_expr.kind {
-            TypedExprKind::Assignment(typed_assignment) => {
+            TypedExprKind::Assign(typed_assignment) => {
                 if typed_assignment.kind != AssignmentKind::Default {
                     typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
                 }
@@ -94,7 +94,7 @@ impl<'a> AnalysisContext<'a> {
             loc: assign.loc.clone(),
         });
 
-        TypedExprKind::Assignment(TypedAssignExpr {
+        TypedExprKind::Assign(TypedAssignExpr {
             lhs: assign.lhs.clone(),
             rhs: Box::new(TypedExprStmt {
                 kind: infix_expr,

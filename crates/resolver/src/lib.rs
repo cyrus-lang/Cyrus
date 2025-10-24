@@ -764,7 +764,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_typedef(
+    fn resolve_typedef_stmt(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -943,35 +943,35 @@ impl Resolver {
         for stmt in ast.body.as_ref() {
             let valid_top_level_stmt: Result<TypedStmt, SourceLoc> = match stmt {
                 Statement::Import(..) => continue,
-                Statement::GlobalVariable(global_var) => match self.resolve_global_var(module_id, global_var) {
+                Statement::GlobalVariable(global_var) => match self.resolve_global_var_stmt(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Typedef(typedef) => match self.resolve_typedef(module_id, None, typedef) {
+                Statement::Typedef(typedef) => match self.resolve_typedef_stmt(module_id, None, typedef) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::FuncDef(func_def) => match self.resolve_func_def(module_id, func_def) {
+                Statement::FuncDef(func_def) => match self.resolve_func_def_stmt(module_id, func_def) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::FuncDecl(func_decl) => match self.resolve_func_decl(module_id, func_decl) {
+                Statement::FuncDecl(func_decl) => match self.resolve_func_decl_stmt(module_id, func_decl) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Struct(struct_decl) => match self.resolve_struct(module_id, None, struct_decl, None) {
+                Statement::Struct(struct_decl) => match self.resolve_struct_stmt(module_id, None, struct_decl, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Enum(enum_decl) => match self.resolve_enum(module_id, None, enum_decl, None) {
+                Statement::Enum(enum_decl) => match self.resolve_enum_stmt(module_id, None, enum_decl, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Interface(interface) => match self.resolve_interface(module_id, None, interface) {
+                Statement::Interface(interface) => match self.resolve_interface_stmt(module_id, None, interface) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Union(union_stmt) => match self.resolve_union(module_id, None, union_stmt, None) {
+                Statement::Union(union_stmt) => match self.resolve_union_stmt(module_id, None, union_stmt, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -1044,7 +1044,7 @@ impl Resolver {
         typed_body
     }
 
-    fn resolve_interface(
+    fn resolve_interface_stmt(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -1129,7 +1129,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_union(
+    fn resolve_union_stmt(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -1218,7 +1218,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_enum(
+    fn resolve_enum_stmt(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -1327,7 +1327,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_global_var(&mut self, module_id: ModuleID, global_var: &GlobalVariable) -> Option<TypedStmt> {
+    fn resolve_global_var_stmt(&mut self, module_id: ModuleID, global_var: &GlobalVariable) -> Option<TypedStmt> {
         let sema_ty = global_var
             .type_specifier
             .clone()
@@ -1561,7 +1561,7 @@ impl Resolver {
             .collect()
     }
 
-    fn resolve_struct(
+    fn resolve_struct_stmt(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -1788,7 +1788,7 @@ impl Resolver {
         Some((typed_func_params, typed_variadic_param))
     }
 
-    fn resolve_func_decl(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStmt> {
+    fn resolve_func_decl_stmt(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStmt> {
         let symbol_id = self.lookup_symbol_id(module_id, &func_decl.get_usable_name()).unwrap();
 
         let (return_type, typed_func_params, typed_variadic_param) = self.resolve_func(module_id, None, func_decl)?;
@@ -1831,7 +1831,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_func_def(&mut self, module_id: ModuleID, func_def: &FuncDef) -> Option<TypedStmt> {
+    fn resolve_func_def_stmt(&mut self, module_id: ModuleID, func_def: &FuncDef) -> Option<TypedStmt> {
         let scope_id = generate_scope_id();
         let body_scope = Rc::new(RefCell::new(LocalScope::new(None)));
         self.insert_scope_ref(module_id, scope_id, body_scope.clone());
@@ -2013,7 +2013,7 @@ impl Resolver {
             match stmt {
                 Statement::Defer(defer) => {
                     if let Some(typed_stmt) =
-                        self.resolve_statement(module_id, scope_id, local_scope.clone(), &defer.operand)
+                        self.resolve_stmt(module_id, scope_id, local_scope.clone(), &defer.operand)
                     {
                         defers.push(TypedDeferStmt {
                             operand: Box::new(typed_stmt),
@@ -2022,7 +2022,7 @@ impl Resolver {
                     }
                 }
                 _ => {
-                    if let Some(typed_stmt) = self.resolve_statement(module_id, scope_id, local_scope.clone(), stmt) {
+                    if let Some(typed_stmt) = self.resolve_stmt(module_id, scope_id, local_scope.clone(), stmt) {
                         typed_body.push(typed_stmt);
                     }
                 }
@@ -2037,7 +2037,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_statement(
+    fn resolve_stmt(
         &mut self,
         module_id: ModuleID,
         scope_id: ScopeID,
@@ -2308,21 +2308,21 @@ impl Resolver {
             }
             Statement::Enum(enum_decl) => {
                 let typed_stmt =
-                    self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id))?;
+                    self.resolve_enum_stmt(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
             Statement::Union(union_decl) => {
                 let typed_stmt =
-                    self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id))?;
+                    self.resolve_union_stmt(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
             Statement::Interface(interface) => {
-                let typed_stmt = self.resolve_interface(module_id, Some(local_scope.clone()), interface)?;
+                let typed_stmt = self.resolve_interface_stmt(module_id, Some(local_scope.clone()), interface)?;
                 Some(typed_stmt)
             }
             Statement::Struct(struct_decl) => {
                 let typed_stmt =
-                    self.resolve_struct(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id))?;
+                    self.resolve_struct_stmt(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
             Statement::BlockStatement(block_statement) => {
@@ -2340,7 +2340,7 @@ impl Resolver {
                 loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.get_current_module_file_path()),
             })),
             Statement::Typedef(typedef) => {
-                let typed_stmt = self.resolve_typedef(module_id, Some(local_scope.clone()), &typedef)?;
+                let typed_stmt = self.resolve_typedef_stmt(module_id, Some(local_scope.clone()), &typedef)?;
                 Some(typed_stmt)
             }
             // Invalid statements.
@@ -2363,7 +2363,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_identifier(
+    fn resolve_ident(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
@@ -2524,13 +2524,13 @@ impl Resolver {
         Some(symbol_id)
     }
 
-    fn resolve_identifier_expr(
+    fn resolve_ident_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         identifier: &Identifier,
     ) -> Option<TypedExprStmt> {
-        let symbol_id = self.resolve_identifier(local_scope_opt, module_id, identifier)?;
+        let symbol_id = self.resolve_ident(local_scope_opt, module_id, identifier)?;
         let loc = SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path());
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(symbol_id, loc.clone()),
@@ -2547,7 +2547,7 @@ impl Resolver {
         module_import: &ModuleImport,
     ) -> Option<TypedExprStmt> {
         if let Some(identifier) = module_import.as_identifier() {
-            self.resolve_identifier_expr(local_scope_opt, module_id, &identifier)
+            self.resolve_ident_expr(local_scope_opt, module_id, &identifier)
         } else {
             self.resolve_module_import(module_id, module_import.clone())
                 .map(|symbol_id| TypedExprStmt {
@@ -2577,7 +2577,7 @@ impl Resolver {
             Expression::ModuleImport(module_import) => {
                 self.resolve_module_import_expr(module_id, local_scope_opt, module_import)
             }
-            Expression::Identifier(identifier) => self.resolve_identifier_expr(local_scope_opt, module_id, identifier),
+            Expression::Identifier(identifier) => self.resolve_ident_expr(local_scope_opt, module_id, identifier),
             Expression::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
             Expression::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
             Expression::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
@@ -2960,7 +2960,7 @@ impl Resolver {
 
         let symbol_id = match type_specifier {
             TypeSpecifier::Identifier(identifier) => {
-                self.resolve_identifier(local_scope_opt, module_id, &identifier)?
+                self.resolve_ident(local_scope_opt, module_id, &identifier)?
             }
             TypeSpecifier::ModuleImport(module_import) => {
                 self.resolve_module_import(module_id, module_import.clone())?
