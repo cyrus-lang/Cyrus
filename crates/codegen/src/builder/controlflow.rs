@@ -351,7 +351,7 @@ impl<'a> CodeGenBuilder<'a> {
         if current_else_block != end_block {
             self.llvmbuilder.position_at_end(current_else_block);
             self.blockreg.current_block_ref = Some(current_else_block);
-            if let Some(alternate) = &typed_if.alternate {
+            if let Some(else_block) = &typed_if.else_block {
                 self.build_block_statement(&alternate);
             }
 

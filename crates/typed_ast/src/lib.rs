@@ -135,9 +135,7 @@ impl TypedExprKind {
                 comptime_valid
             }
             TypedExprKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
-            TypedExprKind::Infix(infix) => {
-                infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid()
-            }
+            TypedExprKind::Infix(infix) => infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid(),
             TypedExprKind::Unary(unary) => unary.operand.kind.is_comptime_valid(),
             TypedExprKind::Cast(cast) => cast.operand.kind.is_comptime_valid(),
             TypedExprKind::Array(typed_array) => typed_array
@@ -148,12 +146,14 @@ impl TypedExprKind {
                 .fields
                 .iter()
                 .all(|field_init| field_init.value.kind.is_comptime_valid()),
-            TypedExprKind::UStructValue(typed_unnamed_struct_value) => typed_unnamed_struct_value
-                .fields
-                .iter()
-                .all(|typed_unnamed_struct_value_field| {
-                    typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
-                }),
+            TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
+                typed_unnamed_struct_value
+                    .fields
+                    .iter()
+                    .all(|typed_unnamed_struct_value_field| {
+                        typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
+                    })
+            }
             TypedExprKind::Symbol(..)
             | TypedExprKind::ArrayIndex(_)
             | TypedExprKind::TupleAccess(_)
@@ -542,10 +542,10 @@ pub struct TypedVarStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedIfStmt {
-    pub condition: TypedExprStmt,
-    pub consequent: Box<TypedBlockStmt>,
+    pub cond: TypedExprStmt,
+    pub then_block: Box<TypedBlockStmt>,
     pub branches: Vec<TypedIfStmt>,
-    pub alternate: Option<Box<TypedBlockStmt>>,
+    pub else_block: Option<Box<TypedBlockStmt>>,
     pub loc: SourceLoc,
 }
 
@@ -742,7 +742,10 @@ impl Hash for TypedIdentifier {
     }
 }
 
-pub fn lookup_symbol_from_generic_params(list: &TypedGenericParamsList, symbol_id: SymbolID) -> Option<TypedGenericParam> {
+pub fn lookup_symbol_from_generic_params(
+    list: &TypedGenericParamsList,
+    symbol_id: SymbolID,
+) -> Option<TypedGenericParam> {
     list.iter()
         .find(|generic_param| generic_param.param_name.symbol_id == symbol_id)
         .cloned()

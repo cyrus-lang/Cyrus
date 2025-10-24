@@ -641,12 +641,12 @@ impl<'a> AnalysisContext<'a> {
         typed_if: &mut TypedIfStmt,
         expected_type: Option<SemanticType>,
     ) -> FlowState {
-        let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
+        let consequent_state = self.analyze_block_statement(&mut typed_if.then_block);
 
-        self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.condition, expected_type.clone());
+        self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.cond, expected_type.clone());
 
         let alternate_state = {
-            if let Some(block_stmt) = &mut typed_if.alternate {
+            if let Some(block_stmt) = &mut typed_if.else_block {
                 self.analyze_block_statement(&mut *block_stmt)
             } else {
                 FlowState::Reachable
