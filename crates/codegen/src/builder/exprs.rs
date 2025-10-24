@@ -44,7 +44,7 @@ impl<'a> CodeGenBuilder<'a> {
             }
             TypedExprKind::Infix(typed_infix_expr) => self.build_infix_expr(local_scope_opt, typed_infix_expr),
             TypedExprKind::Unary(typed_unary_expr) => self.build_unary_expr(local_scope_opt, typed_unary_expr),
-            TypedExprKind::Assignment(typed_assign) => self.build_assign(local_scope_opt, typed_assign),
+            TypedExprKind::Assign(typed_assign) => self.build_assign(local_scope_opt, typed_assign),
             TypedExprKind::Cast(typed_cast) => self.build_cast_expr(local_scope_opt, typed_cast),
             TypedExprKind::Array(typed_array) => self.build_array_expr(local_scope_opt, typed_array),
             TypedExprKind::AddrOf(typed_address_of) => {

@@ -106,7 +106,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Unary(typed_unary_expr) => {
                 self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr)
             }
-            TypedExprKind::Assignment(typed_assignment) => {
+            TypedExprKind::Assign(typed_assignment) => {
                 self.analyze_assignment(scope_id_opt, typed_assignment);
                 None
             }
