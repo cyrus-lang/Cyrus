@@ -1,4 +1,4 @@
-use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams, TypedIdentifier, TypedTypeArgs};
+use crate::{ModuleID, SourceLoc, SymbolID, TypedExprStmt, TypedFuncTypeParams, TypedIdentifier, TypedTypeArgs};
 use ast::{AccessSpecifier, token::TokenKind};
 use std::hash::{Hash, Hasher};
 
@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 pub enum SemanticType {
     UnresolvedSymbol(SymbolID),
     ResolvedSymbol(ResolvedSymbol),
-    BasicType(BasicSemanticType),
+    BasicType(BasicType),
     Array(TypedArrayType),
     Const(Box<SemanticType>),
     Pointer(Box<SemanticType>),
@@ -18,7 +18,7 @@ pub enum SemanticType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BasicSemanticType {
+pub enum BasicType {
     UIntPtr,
     IntPtr,
     SizeT,
@@ -141,7 +141,7 @@ impl SemanticType {
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::BasicType(BasicSemanticType::Bool))
+        matches!(self.get_const_inner(), SemanticType::BasicType(BasicType::Bool))
     }
 
     pub fn is_array(&self) -> bool {
@@ -153,7 +153,7 @@ impl SemanticType {
     }
 
     pub fn is_void(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::BasicType(BasicSemanticType::Void))
+        matches!(self.get_const_inner(), SemanticType::BasicType(BasicType::Void))
     }
 
     pub fn is_pointer(&self) -> bool {
@@ -192,8 +192,8 @@ impl SemanticType {
         if lvalue {
             match self {
                 SemanticType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
-                SemanticType::Pointer(concrete_type) => {
-                    concrete_type.get_pointer_inner().unwrap_or(*concrete_type.clone())
+                SemanticType::Pointer(sema_ty) => {
+                    sema_ty.get_pointer_inner().unwrap_or(*sema_ty.clone())
                 }
                 _ => self.clone(),
             }
@@ -204,12 +204,12 @@ impl SemanticType {
 
     pub fn is_char(&self) -> bool {
         match self {
-            SemanticType::BasicType(BasicSemanticType::Char) => true,
+            SemanticType::BasicType(BasicType::Char) => true,
             _ => false,
         }
     }
 
-    pub fn as_basic_type(&self) -> Option<&BasicSemanticType> {
+    pub fn as_basic_type(&self) -> Option<&BasicType> {
         match self {
             SemanticType::BasicType(ty) => Some(ty),
             _ => None,
@@ -218,14 +218,14 @@ impl SemanticType {
 
     pub fn get_const_inner(&self) -> &SemanticType {
         match self {
-            SemanticType::Const(concrete_type) => concrete_type,
-            concrete_type @ _ => concrete_type,
+            SemanticType::Const(sema_ty) => sema_ty,
+            sema_ty @ _ => sema_ty,
         }
     }
 
     pub fn get_pointer_inner(&self) -> Option<SemanticType> {
         match self {
-            SemanticType::Pointer(concrete_type) => Some(*concrete_type.clone()),
+            SemanticType::Pointer(sema_ty) => Some(*sema_ty.clone()),
             _ => None,
         }
     }
@@ -283,75 +283,75 @@ impl SemanticType {
     }
 }
 
-impl BasicSemanticType {
+impl BasicType {
     pub fn is_bool(&self) -> bool {
-        matches!(self, BasicSemanticType::Bool)
+        matches!(self, BasicType::Bool)
     }
 
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
-            BasicSemanticType::UIntPtr
-                | BasicSemanticType::IntPtr
-                | BasicSemanticType::SizeT
-                | BasicSemanticType::Int
-                | BasicSemanticType::Int8
-                | BasicSemanticType::Int16
-                | BasicSemanticType::Int32
-                | BasicSemanticType::Int64
-                | BasicSemanticType::Int128
-                | BasicSemanticType::UInt
-                | BasicSemanticType::UInt8
-                | BasicSemanticType::UInt16
-                | BasicSemanticType::UInt32
-                | BasicSemanticType::UInt64
-                | BasicSemanticType::UInt128
+            BasicType::UIntPtr
+                | BasicType::IntPtr
+                | BasicType::SizeT
+                | BasicType::Int
+                | BasicType::Int8
+                | BasicType::Int16
+                | BasicType::Int32
+                | BasicType::Int64
+                | BasicType::Int128
+                | BasicType::UInt
+                | BasicType::UInt8
+                | BasicType::UInt16
+                | BasicType::UInt32
+                | BasicType::UInt64
+                | BasicType::UInt128
         )
     }
 
     pub fn is_float(&self) -> bool {
         matches!(
             self,
-            BasicSemanticType::Float16
-                | BasicSemanticType::Float32
-                | BasicSemanticType::Float64
-                | BasicSemanticType::Float128
+            BasicType::Float16
+                | BasicType::Float32
+                | BasicType::Float64
+                | BasicType::Float128
         )
     }
 
     pub fn is_signed(&self) -> bool {
         match self {
-            BasicSemanticType::UIntPtr
-            | BasicSemanticType::UInt
-            | BasicSemanticType::UInt8
-            | BasicSemanticType::UInt16
-            | BasicSemanticType::UInt32
-            | BasicSemanticType::UInt64
-            | BasicSemanticType::UInt128
-            | BasicSemanticType::SizeT
-            | BasicSemanticType::Bool
-            | BasicSemanticType::Char
-            | BasicSemanticType::Void
-            | BasicSemanticType::Null
-            | BasicSemanticType::Float16
-            | BasicSemanticType::Float32
-            | BasicSemanticType::Float64
-            | BasicSemanticType::Float128 => false,
+            BasicType::UIntPtr
+            | BasicType::UInt
+            | BasicType::UInt8
+            | BasicType::UInt16
+            | BasicType::UInt32
+            | BasicType::UInt64
+            | BasicType::UInt128
+            | BasicType::SizeT
+            | BasicType::Bool
+            | BasicType::Char
+            | BasicType::Void
+            | BasicType::Null
+            | BasicType::Float16
+            | BasicType::Float32
+            | BasicType::Float64
+            | BasicType::Float128 => false,
 
-            BasicSemanticType::IntPtr
-            | BasicSemanticType::Int
-            | BasicSemanticType::Int8
-            | BasicSemanticType::Int16
-            | BasicSemanticType::Int32
-            | BasicSemanticType::Int64
-            | BasicSemanticType::Int128 => true,
+            BasicType::IntPtr
+            | BasicType::Int
+            | BasicType::Int8
+            | BasicType::Int16
+            | BasicType::Int32
+            | BasicType::Int64
+            | BasicType::Int128 => true,
         }
     }
 
-    pub fn bigger_type(a: BasicSemanticType, b: BasicSemanticType) -> Option<BasicSemanticType> {
-        use BasicSemanticType::*;
+    pub fn bigger_type(a: BasicType, b: BasicType) -> Option<BasicType> {
+        use BasicType::*;
 
-        fn rank(ty: &BasicSemanticType) -> Option<u8> {
+        fn rank(ty: &BasicType) -> Option<u8> {
             match ty {
                 Int8 | UInt8 => Some(2),
                 Int16 | UInt16 => Some(3),
@@ -381,28 +381,28 @@ impl TryFrom<TokenKind> for SemanticType {
 
     fn try_from(token_kind: TokenKind) -> Result<Self, Self::Error> {
         let basic_type = match &token_kind {
-            TokenKind::SizeT => BasicSemanticType::SizeT,
-            TokenKind::IntPtr => BasicSemanticType::IntPtr,
-            TokenKind::UIntPtr => BasicSemanticType::UIntPtr,
-            TokenKind::Int => BasicSemanticType::Int,
-            TokenKind::Int8 => BasicSemanticType::Int8,
-            TokenKind::Int16 => BasicSemanticType::Int16,
-            TokenKind::Int32 => BasicSemanticType::Int32,
-            TokenKind::Int64 => BasicSemanticType::Int64,
-            TokenKind::Int128 => BasicSemanticType::Int128,
-            TokenKind::UInt => BasicSemanticType::UInt,
-            TokenKind::UInt8 => BasicSemanticType::UInt8,
-            TokenKind::UInt16 => BasicSemanticType::UInt16,
-            TokenKind::UInt32 => BasicSemanticType::UInt32,
-            TokenKind::UInt64 => BasicSemanticType::UInt64,
-            TokenKind::UInt128 => BasicSemanticType::UInt128,
-            TokenKind::Float16 => BasicSemanticType::Float16,
-            TokenKind::Float32 => BasicSemanticType::Float32,
-            TokenKind::Float64 => BasicSemanticType::Float64,
-            TokenKind::Float128 => BasicSemanticType::Float128,
-            TokenKind::Bool => BasicSemanticType::Bool,
-            TokenKind::Void => BasicSemanticType::Void,
-            TokenKind::Char => BasicSemanticType::Char,
+            TokenKind::SizeT => BasicType::SizeT,
+            TokenKind::IntPtr => BasicType::IntPtr,
+            TokenKind::UIntPtr => BasicType::UIntPtr,
+            TokenKind::Int => BasicType::Int,
+            TokenKind::Int8 => BasicType::Int8,
+            TokenKind::Int16 => BasicType::Int16,
+            TokenKind::Int32 => BasicType::Int32,
+            TokenKind::Int64 => BasicType::Int64,
+            TokenKind::Int128 => BasicType::Int128,
+            TokenKind::UInt => BasicType::UInt,
+            TokenKind::UInt8 => BasicType::UInt8,
+            TokenKind::UInt16 => BasicType::UInt16,
+            TokenKind::UInt32 => BasicType::UInt32,
+            TokenKind::UInt64 => BasicType::UInt64,
+            TokenKind::UInt128 => BasicType::UInt128,
+            TokenKind::Float16 => BasicType::Float16,
+            TokenKind::Float32 => BasicType::Float32,
+            TokenKind::Float64 => BasicType::Float64,
+            TokenKind::Float128 => BasicType::Float128,
+            TokenKind::Bool => BasicType::Bool,
+            TokenKind::Void => BasicType::Void,
+            TokenKind::Char => BasicType::Char,
             _ => return Err(()),
         };
 
@@ -431,7 +431,7 @@ pub enum TypedArrayCapacity {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedArrayFixedCapacityValue {
-    Expr(Box<TypedExpression>),
+    Expr(Box<TypedExprStmt>),
     Value(usize),
 }
 
@@ -443,7 +443,7 @@ impl TypedArrayFixedCapacityValue {
         }
     }
 
-    pub fn as_expr(&self) -> Option<Box<TypedExpression>> {
+    pub fn as_expr(&self) -> Option<Box<TypedExprStmt>> {
         match self {
             TypedArrayFixedCapacityValue::Expr(typed_expr) => Some(typed_expr.clone()),
             TypedArrayFixedCapacityValue::Value(..) => None,

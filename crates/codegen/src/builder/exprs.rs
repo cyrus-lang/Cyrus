@@ -21,64 +21,64 @@ use resolver::{
     typed_func_type_from_func_sig,
 };
 use typed_ast::{
-    SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
-    TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
-    TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit,
-    TypedTupleMemberAccess, TypedTupleValue, TypedUnaryExpression, TypedUnnamedStructValue,
-    types::{BasicSemanticType, SemanticType, ResolvedSymbol, TypedFuncType},
+    SymbolID, TypedAddrOfExpr, TypedArrayExpr, TypedArrayIndexExpr, TypedAssignExpr, TypedCastExpr, TypedDerefExpr,
+    TypedExprStmt, TypedExprKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpr,
+    TypedLiteralExpr, TypedMethodCall, TypedPrefixExpr, TypedSizeOfExpr, TypedStructInitExpr,
+    TypedTupleAccessExpr, TypedTupleExpr, TypedUnaryExpr, TypedUStructValue,
+    types::{BasicType, SemanticType, ResolvedSymbol, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        typed_expr: &TypedExpression,
+        typed_expr: &TypedExprStmt,
     ) -> InternalValue<'a> {
         llvm_set_current_location!(&self, typed_expr.loc);
 
         match &typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, _) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
-            TypedExpressionKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
-            TypedExpressionKind::Prefix(typed_prefix_expr) => {
+            TypedExprKind::Symbol(symbol_id, _) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
+            TypedExprKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
+            TypedExprKind::Prefix(typed_prefix_expr) => {
                 self.build_prefix_expr(local_scope_opt, typed_prefix_expr)
             }
-            TypedExpressionKind::Infix(typed_infix_expr) => self.build_infix_expr(local_scope_opt, typed_infix_expr),
-            TypedExpressionKind::Unary(typed_unary_expr) => self.build_unary_expr(local_scope_opt, typed_unary_expr),
-            TypedExpressionKind::Assignment(typed_assign) => self.build_assign(local_scope_opt, typed_assign),
-            TypedExpressionKind::Cast(typed_cast) => self.build_cast_expr(local_scope_opt, typed_cast),
-            TypedExpressionKind::Array(typed_array) => self.build_array_expr(local_scope_opt, typed_array),
-            TypedExpressionKind::AddressOf(typed_address_of) => {
+            TypedExprKind::Infix(typed_infix_expr) => self.build_infix_expr(local_scope_opt, typed_infix_expr),
+            TypedExprKind::Unary(typed_unary_expr) => self.build_unary_expr(local_scope_opt, typed_unary_expr),
+            TypedExprKind::Assignment(typed_assign) => self.build_assign(local_scope_opt, typed_assign),
+            TypedExprKind::Cast(typed_cast) => self.build_cast_expr(local_scope_opt, typed_cast),
+            TypedExprKind::Array(typed_array) => self.build_array_expr(local_scope_opt, typed_array),
+            TypedExprKind::AddrOf(typed_address_of) => {
                 self.build_address_of(local_scope_opt, typed_address_of)
             }
-            TypedExpressionKind::Dereference(typed_dereference) => {
+            TypedExprKind::Deref(typed_dereference) => {
                 self.build_dereference(local_scope_opt, typed_dereference)
             }
-            TypedExpressionKind::StructInit(struct_init) => self.build_struct_init(local_scope_opt, struct_init),
-            TypedExpressionKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
-            TypedExpressionKind::FieldAccess(field_access) => self.build_field_access(local_scope_opt, field_access),
-            TypedExpressionKind::ArrayIndex(typed_array_index) => {
+            TypedExprKind::StructInit(struct_init) => self.build_struct_init(local_scope_opt, struct_init),
+            TypedExprKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
+            TypedExprKind::FieldAccess(field_access) => self.build_field_access(local_scope_opt, field_access),
+            TypedExprKind::ArrayIndex(typed_array_index) => {
                 self.build_array_index(local_scope_opt, typed_array_index)
             }
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+            TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
             }
-            TypedExpressionKind::MethodCall(method_call) => self.build_method_call(local_scope_opt, method_call),
-            TypedExpressionKind::SizeOfExpression(typed_size_of_expr) => {
+            TypedExprKind::MethodCall(method_call) => self.build_method_call(local_scope_opt, method_call),
+            TypedExprKind::SizeOf(typed_size_of_expr) => {
                 self.build_sizeof(local_scope_opt, typed_size_of_expr)
             }
-            TypedExpressionKind::Lambda(typed_lambda) => self.build_lambda_expr(typed_lambda),
-            TypedExpressionKind::Tuple(tuple_value) => self.build_tuple_value(local_scope_opt, tuple_value),
-            TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
+            TypedExprKind::Lambda(typed_lambda) => self.build_lambda_expr(typed_lambda),
+            TypedExprKind::Tuple(tuple_value) => self.build_tuple_value(local_scope_opt, tuple_value),
+            TypedExprKind::TupleAccess(tuple_member_access) => {
                 self.build_tuple_member_access(local_scope_opt, tuple_member_access)
             }
-            TypedExpressionKind::SemanticType(..) => unreachable!(),
+            TypedExprKind::SemanticType(..) => unreachable!(),
         }
     }
 
     fn build_tuple_member_access(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        tuple_member_access: &TypedTupleMemberAccess,
+        tuple_member_access: &TypedTupleAccessExpr,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &tuple_member_access.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
@@ -110,7 +110,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_tuple_value(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        tuple_value: &TypedTupleValue,
+        tuple_value: &TypedTupleExpr,
     ) -> InternalValue<'a> {
         let mut const_elements = true;
 
@@ -324,7 +324,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_array_index(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        array_index: &TypedArrayIndex,
+        array_index: &TypedArrayIndexExpr,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &array_index.operand);
 
@@ -408,13 +408,13 @@ impl<'a> CodeGenBuilder<'a> {
         field_access: &TypedFieldAccess,
     ) -> InternalValue<'a> {
         let mut lvalue = match &field_access.operand.kind {
-            TypedExpressionKind::Symbol(symbol_id, ..) => {
-                let local_or_global_symbol = self
+            TypedExprKind::Symbol(symbol_id, ..) => {
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
                     .unwrap();
 
-                if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
+                if let Some(resolved_enum) = sym.as_enum() {
                     return self.build_construct_enum_variant_no_field(
                         local_scope_opt,
                         resolved_enum,
@@ -428,7 +428,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => self.build_expr(local_scope_opt.clone(), &field_access.operand),
         };
 
-        let mut operand_ty = field_access.operand.concrete_type.clone().unwrap();
+        let mut operand_ty = field_access.operand.sema_ty.clone().unwrap();
 
         if operand_ty.is_pointer() && field_access.is_fat_arrow {
             operand_ty = operand_ty.as_rvalue(true); // unwraps the pointer type
@@ -438,12 +438,12 @@ impl<'a> CodeGenBuilder<'a> {
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
 
         if let Some(symbol_id) = field_access.object_symbol_id {
-            let local_or_global_symbol = self
+            let sym = self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
                 .unwrap();
 
-            if let Some(..) = local_or_global_symbol.as_union() {
+            if let Some(..) = sym.as_union() {
                 // handle union field access
                 return self.build_union_field_access(local_scope_opt.clone(), field_access);
             }
@@ -491,7 +491,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_unnamed_struct_value(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        unnamed_struct_value: &TypedUnnamedStructValue,
+        unnamed_struct_value: &TypedUStructValue,
     ) -> InternalValue<'a> {
         let struct_type = self
             .build_unnamed_struct_type(
@@ -539,7 +539,7 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         resolved_union: &ResolvedUnion,
-        struct_init: &TypedStructInit,
+        struct_init: &TypedStructInitExpr,
     ) -> InternalValue<'a> {
         let struct_type = self.get_or_declare_union_monomorph(resolved_union, &struct_init.type_args);
         let mut struct_value = struct_type.get_undef();
@@ -580,25 +580,25 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_struct_init(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        struct_init: &TypedStructInit,
+        struct_init: &TypedStructInitExpr,
     ) -> InternalValue<'a> {
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), struct_init.symbol_id)
             .unwrap();
 
-        if let Some(resolved_union) = local_or_global_symbol.as_union() {
+        if let Some(resolved_union) = sym.as_union() {
             return self.build_union_init(local_scope_opt.clone(), resolved_union, struct_init);
         }
 
-        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+        let resolved_struct = sym.as_struct().unwrap();
         // let struct_type = self.get_or_declare_struct_monomorph(resolved_struct, &struct_init.type_args);
 
         let struct_field_types: Vec<BasicTypeEnum<'a>> = struct_init
             .fields
             .iter()
             .map(|field| {
-                self.build_concrete_type(local_scope_opt.clone(), field.value.concrete_type.clone().unwrap())
+                self.build_concrete_type(local_scope_opt.clone(), field.value.sema_ty.clone().unwrap())
                     .as_any_type_enum()
                     .try_into()
                     .unwrap()
@@ -643,7 +643,7 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_assign(&mut self, local_scope_opt: Option<LocalScopeRef>, assign: &TypedAssignment) -> InternalValue<'a> {
+    fn build_assign(&mut self, local_scope_opt: Option<LocalScopeRef>, assign: &TypedAssignExpr) -> InternalValue<'a> {
         let lhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.lhs);
         let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.rhs);
         let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue);
@@ -659,7 +659,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_dereference(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        deref: &TypedDereference,
+        deref: &TypedDerefExpr,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
 
@@ -672,9 +672,9 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_address_of(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        address_of: &TypedAddressOf,
+        address_of: &TypedAddrOfExpr,
     ) -> InternalValue<'a> {
-        let operand_type = address_of.operand.concrete_type.clone().unwrap();
+        let operand_type = address_of.operand.sema_ty.clone().unwrap();
         let lvalue = self.build_expr(local_scope_opt.clone(), &address_of.operand);
 
         if let Some(fn_value) = lvalue.as_func_value() {
@@ -690,7 +690,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_array_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, array: &TypedArray) -> InternalValue<'a> {
+    fn build_array_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, array: &TypedArrayExpr) -> InternalValue<'a> {
         let array_concrete_type = array.array_type.as_array_type().unwrap();
         let element_type = array_concrete_type.element_type.clone();
         let array_type = self
@@ -762,7 +762,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_cast_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, cast: &TypedCast) -> InternalValue<'a> {
+    fn build_cast_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, cast: &TypedCastExpr) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &cast.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
         let target_any_type = self.build_concrete_type(local_scope_opt, cast.target_type.clone());
@@ -775,15 +775,15 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         method_call: &TypedMethodCall,
     ) -> InternalValue<'a> {
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.object_symbol_id.unwrap())
             .unwrap();
 
         let (methods, module_id) = {
-            if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+            if let Some(resolved_struct) = sym.as_struct() {
                 (resolved_struct.struct_sig.methods.clone(), resolved_struct.module_id)
-            } else if let Some(resolved_enum) = &local_or_global_symbol.as_enum() {
+            } else if let Some(resolved_enum) = &sym.as_enum() {
                 let variant_opt = resolved_enum
                     .enum_sig
                     .variants
@@ -801,7 +801,7 @@ impl<'a> CodeGenBuilder<'a> {
                 } else {
                     (resolved_enum.enum_sig.methods.clone(), resolved_enum.module_id)
                 }
-            } else if let Some(resolved_union) = local_or_global_symbol.as_union() {
+            } else if let Some(resolved_union) = sym.as_union() {
                 (resolved_union.union_sig.methods.clone(), resolved_union.module_id)
             } else {
                 unreachable!()
@@ -837,10 +837,10 @@ impl<'a> CodeGenBuilder<'a> {
             if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
                 let mut operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
 
-                if method_call.operand.concrete_type.clone().unwrap().is_pointer() {
+                if method_call.operand.sema_ty.clone().unwrap().is_pointer() {
                     operand_lvalue = self.build_dereference(
                         local_scope_opt.clone(),
-                        &TypedDereference {
+                        &TypedDerefExpr {
                             operand: method_call.operand.clone(),
                             loc: method_call.loc.clone(),
                         },
@@ -940,7 +940,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_func_args(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        args: &Vec<TypedExpression>,
+        args: &Vec<TypedExprStmt>,
     ) -> Vec<BasicMetadataValueEnum<'a>> {
         args.iter()
             .map(|typed_expr| {
@@ -955,7 +955,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_unary_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        unary_expr: &TypedUnaryExpression,
+        unary_expr: &TypedUnaryExpr,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &unary_expr.operand);
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
@@ -1092,7 +1092,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self.llvmbuilder.build_int_compare(int_pred, lhs, rhs, "cmp").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1102,7 +1102,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_float_compare(float_pred, lhs, rhs, "cmp")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1123,7 +1123,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1133,7 +1133,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1143,7 +1143,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1175,7 +1175,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1185,7 +1185,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_float_compare(FloatPredicate::ONE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1195,7 +1195,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
@@ -1228,7 +1228,7 @@ impl<'a> CodeGenBuilder<'a> {
             .into_pointer_value();
 
         InternalValue::new(
-            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicSemanticType::Void))),
+            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Void))),
             InternalValueKind::RValue(selected.as_basic_value_enum()),
         )
     }
@@ -1238,7 +1238,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let or_value = self.llvmbuilder.build_or(lhs, rhs, "lor").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(or_value.as_basic_value_enum()),
                 )
             }
@@ -1254,7 +1254,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "land").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1267,7 +1267,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_xor(lhs, rhs, "xor").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1280,7 +1280,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1293,7 +1293,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_or(lhs, rhs, "or").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
                 )
             }
@@ -1312,7 +1312,7 @@ impl<'a> CodeGenBuilder<'a> {
                 let and_not_value = self.llvmbuilder.build_and(lhs, not_rhs, "and_not").unwrap();
 
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Int), // result is integer, not Bool
+                    SemanticType::BasicType(BasicType::Int), // result is integer, not Bool
                     InternalValueKind::RValue(and_not_value.as_basic_value_enum()),
                 )
             }
@@ -1325,7 +1325,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvmbuilder.build_left_shift(lhs, rhs, "lshift").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(shift_value.as_basic_value_enum()),
                 )
             }
@@ -1341,7 +1341,7 @@ impl<'a> CodeGenBuilder<'a> {
 
                 let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "lshift").unwrap();
                 InternalValue::new(
-                    SemanticType::BasicType(BasicSemanticType::Bool),
+                    SemanticType::BasicType(BasicType::Bool),
                     InternalValueKind::RValue(shift_value.as_basic_value_enum()),
                 )
             }
@@ -1352,7 +1352,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_infix_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        infix_expr: &TypedInfixExpression,
+        infix_expr: &TypedInfixExpr,
     ) -> InternalValue<'a> {
         let lhs_lvalue = self.build_expr(local_scope_opt.clone(), &infix_expr.lhs);
         let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &infix_expr.rhs);
@@ -1446,16 +1446,16 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_sizeof_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        concrete_type: &SemanticType,
+        sema_ty: &SemanticType,
     ) -> InternalValue<'a> {
-        let any_type = self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone());
+        let any_type = self.build_concrete_type(local_scope_opt.clone(), sema_ty.clone());
         let size_internal_value = InternalValue::new(
-            SemanticType::BasicType(BasicSemanticType::SizeT),
+            SemanticType::BasicType(BasicType::SizeT),
             InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
         );
         return self.build_implicit_cast(
             local_scope_opt,
-            SemanticType::BasicType(BasicSemanticType::SizeT),
+            SemanticType::BasicType(BasicType::SizeT),
             size_internal_value,
         );
     }
@@ -1463,19 +1463,19 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_sizeof_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        typed_expr: &TypedExpression,
+        typed_expr: &TypedExprStmt,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
         let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
         let size_internal_value = InternalValue::new(
-            SemanticType::BasicType(BasicSemanticType::SizeT),
+            SemanticType::BasicType(BasicType::SizeT),
             InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
         );
         self.build_implicit_cast(
             local_scope_opt,
-            SemanticType::BasicType(BasicSemanticType::SizeT),
+            SemanticType::BasicType(BasicType::SizeT),
             size_internal_value,
         )
     }
@@ -1483,19 +1483,19 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_sizeof(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        sizeof_expr: &TypedSizeOfExpression,
+        sizeof_expr: &TypedSizeOfExpr,
     ) -> InternalValue<'a> {
         match &sizeof_expr.expr.kind {
-            TypedExpressionKind::SemanticType(concrete_type) => self.build_sizeof_type(local_scope_opt, concrete_type),
-            TypedExpressionKind::Symbol(symbol_id, _) => {
-                let local_or_global_symbol = self
+            TypedExprKind::SemanticType(sema_ty) => self.build_sizeof_type(local_scope_opt, sema_ty),
+            TypedExprKind::Symbol(symbol_id, _) => {
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
                     .unwrap();
 
-                if local_or_global_symbol.as_struct().is_some()
-                    || local_or_global_symbol.as_enum().is_some()
-                    || local_or_global_symbol.as_union().is_some()
+                if sym.as_struct().is_some()
+                    || sym.as_enum().is_some()
+                    || sym.as_union().is_some()
                 {
                     return self.build_sizeof_type(
                         local_scope_opt,
@@ -1512,7 +1512,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_prefix_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        prefix_expr: &TypedPrefixExpression,
+        prefix_expr: &TypedPrefixExpr,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &prefix_expr.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
@@ -1529,26 +1529,26 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> LocalIRValue<'a> {
-        let local_or_global_symbol = match self
+        let sym = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
         {
-            Some(local_or_global_symbol) => local_or_global_symbol,
+            Some(sym) => sym,
             None => {
                 panic!("Undefined type symbol.")
             }
         };
 
-        match &local_or_global_symbol {
+        match &sym {
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
-                    let concrete_type = resolved_global_var.global_var_sig.ty.clone().unwrap();
+                    let sema_ty = resolved_global_var.global_var_sig.ty.clone().unwrap();
                     let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig.clone());
 
-                    LocalIRValue::GlobalValue(global_value, concrete_type)
+                    LocalIRValue::GlobalValue(global_value, sema_ty)
                 }
                 _ => {
-                    if let Some(resolved_func) = local_or_global_symbol.as_func() {
+                    if let Some(resolved_func) = sym.as_func() {
                         return LocalIRValue::Func(
                             self.get_or_declare_func(resolved_func.symbol_id, resolved_func.func_sig.clone()),
                             SemanticType::FuncType(typed_func_type_from_func_sig(&resolved_func.func_sig)),
@@ -1574,19 +1574,19 @@ impl<'a> CodeGenBuilder<'a> {
             None => self.get_or_declare_lvalue(local_scope_opt, symbol_id),
         };
 
-        let (pointer, concrete_type) = match local_ir_value.as_lvalue() {
-            Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
+        let (pointer, sema_ty) = match local_ir_value.as_lvalue() {
+            Some((pointer, sema_ty)) => (pointer.clone(), sema_ty.clone()),
             None => match local_ir_value.as_rvalue() {
-                Some((basic_value, concrete_type)) => {
-                    return InternalValue::new(concrete_type.clone(), InternalValueKind::RValue(basic_value.clone()));
+                Some((basic_value, sema_ty)) => {
+                    return InternalValue::new(sema_ty.clone(), InternalValueKind::RValue(basic_value.clone()));
                 }
                 None => match local_ir_value.as_global_value() {
-                    Some((global_value, concrete_type)) => {
-                        (global_value.as_pointer_value().clone(), concrete_type.clone())
+                    Some((global_value, sema_ty)) => {
+                        (global_value.as_pointer_value().clone(), sema_ty.clone())
                     }
                     None => match local_ir_value.as_func() {
-                        Some((fn_value, concrete_type)) => {
-                            return InternalValue::new(concrete_type.clone(), InternalValueKind::FuncValue(*fn_value));
+                        Some((fn_value, sema_ty)) => {
+                            return InternalValue::new(sema_ty.clone(), InternalValueKind::FuncValue(*fn_value));
                         }
                         None => {
                             panic!("Couldn't find any lvalue with this symbol id.")
@@ -1596,11 +1596,11 @@ impl<'a> CodeGenBuilder<'a> {
             },
         };
 
-        let internal_value = InternalValue::new(concrete_type, InternalValueKind::LValue(pointer));
+        let internal_value = InternalValue::new(sema_ty, InternalValueKind::LValue(pointer));
         internal_value
     }
 
-    fn build_literal(&mut self, local_scope_opt: Option<LocalScopeRef>, literal: &TypedLiteral) -> InternalValue<'a> {
+    fn build_literal(&mut self, local_scope_opt: Option<LocalScopeRef>, literal: &TypedLiteralExpr) -> InternalValue<'a> {
         let basic_type_enum: BasicTypeEnum<'a> = self
             .build_concrete_type(local_scope_opt, literal.ty.clone().unwrap())
             .try_into()

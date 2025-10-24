@@ -9,8 +9,8 @@ use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    scope::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
-    signatures::{EnumSig, FuncSig},
+    symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
+    sigs::{EnumSig, FuncSig},
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use std::{
@@ -22,7 +22,7 @@ use std::{
 };
 use typed_ast::{
     format::format_concrete_type,
-    types::{BasicSemanticType, SemanticType, TypedFuncType},
+    types::{BasicType, SemanticType, TypedFuncType},
     *,
 };
 
@@ -115,27 +115,27 @@ impl<'a> AnalysisContext<'a> {
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
-                TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
-                TypedStatement::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
-                TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
-                TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
-                TypedStatement::Struct(typed_struct) => self.analyze_struct(None, typed_struct, false),
-                TypedStatement::Enum(typed_enum) => self.analyze_enum(None, typed_enum, false),
-                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
-                TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
+                TypedStmt::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
+                TypedStmt::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
+                TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
+                TypedStmt::Interface(typed_interface) => self.analyze_interface(typed_interface),
+                TypedStmt::Struct(typed_struct) => self.analyze_struct(None, typed_struct, false),
+                TypedStmt::Enum(typed_enum) => self.analyze_enum(None, typed_enum, false),
+                TypedStmt::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
+                TypedStmt::Union(typed_union) => self.analyze_union(None, typed_union, false),
                 // Invalid top-level statements
-                TypedStatement::Variable(_)
-                | TypedStatement::ExportTupleValues(_)
-                | TypedStatement::BlockStatement(_)
-                | TypedStatement::Defer(_)
-                | TypedStatement::If(_)
-                | TypedStatement::Return(_)
-                | TypedStatement::Break(_)
-                | TypedStatement::Continue(_)
-                | TypedStatement::For(_)
-                | TypedStatement::While(_)
-                | TypedStatement::Switch(_)
-                | TypedStatement::Expression(_) => {
+                TypedStmt::Variable(_)
+                | TypedStmt::ExportTuple(_)
+                | TypedStmt::BlockStatement(_)
+                | TypedStmt::Defer(_)
+                | TypedStmt::If(_)
+                | TypedStmt::Return(_)
+                | TypedStmt::Break(_)
+                | TypedStmt::Continue(_)
+                | TypedStmt::For(_)
+                | TypedStmt::While(_)
+                | TypedStmt::Switch(_)
+                | TypedStmt::Expression(_) => {
                     unreachable!()
                 }
             }
@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
         self.ast.borrow_mut().body = body;
     }
 
-    pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
+    pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {
         let mut state = FlowState::Reachable;
         for typed_stmt in &mut block_stmt.exprs {
             let stmt_state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
@@ -174,45 +174,45 @@ impl<'a> AnalysisContext<'a> {
         state
     }
 
-    pub(crate) fn analyze_statement(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStatement) -> FlowState {
+    pub(crate) fn analyze_statement(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStmt) -> FlowState {
         match typed_stmt {
-            TypedStatement::ExportTupleValues(export_tuple_values) => {
+            TypedStmt::ExportTuple(export_tuple_values) => {
                 self.analyze_export_tuple_values(Some(scope_id), export_tuple_values);
                 FlowState::Reachable
             }
-            TypedStatement::Variable(typed_variable) => {
+            TypedStmt::Variable(typed_variable) => {
                 self.analyze_variable(Some(scope_id), typed_variable);
                 FlowState::Reachable
             }
-            TypedStatement::BlockStatement(typed_block_statement) => {
+            TypedStmt::BlockStatement(typed_block_statement) => {
                 self.analyze_block_statement(typed_block_statement)
             }
-            TypedStatement::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
-            TypedStatement::Return(typed_return) => self.analyze_return(scope_id, typed_return),
-            TypedStatement::Break(typed_break) => {
+            TypedStmt::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
+            TypedStmt::Return(typed_return) => self.analyze_return(scope_id, typed_return),
+            TypedStmt::Break(typed_break) => {
                 self.analyze_break(typed_break);
                 FlowState::Unreachable
             }
-            TypedStatement::Continue(typed_continue) => {
+            TypedStmt::Continue(typed_continue) => {
                 self.analyze_continue(typed_continue);
                 FlowState::Unreachable
             }
-            TypedStatement::For(typed_for) => self.analyze_for_loop(Some(scope_id), typed_for),
-            TypedStatement::While(typed_while) => self.analyze_while_loop(Some(scope_id), typed_while),
-            TypedStatement::Switch(typed_switch) => self.analyze_switch(Some(scope_id), typed_switch),
-            TypedStatement::Struct(typed_struct) => {
+            TypedStmt::For(typed_for) => self.analyze_for_loop(Some(scope_id), typed_for),
+            TypedStmt::While(typed_while) => self.analyze_while_loop(Some(scope_id), typed_while),
+            TypedStmt::Switch(typed_switch) => self.analyze_switch(Some(scope_id), typed_switch),
+            TypedStmt::Struct(typed_struct) => {
                 self.analyze_struct(Some(scope_id), typed_struct, true);
                 FlowState::Reachable
             }
-            TypedStatement::Enum(typed_enum) => {
+            TypedStmt::Enum(typed_enum) => {
                 self.analyze_enum(Some(scope_id), typed_enum, true);
                 FlowState::Reachable
             }
-            TypedStatement::Expression(typed_expr) => {
-                self.analyze_typed_expr_type(Some(scope_id), typed_expr, typed_expr.concrete_type.clone());
+            TypedStmt::Expression(typed_expr) => {
+                self.analyze_typed_expr_type(Some(scope_id), typed_expr, typed_expr.sema_ty.clone());
                 FlowState::Reachable
             }
-            TypedStatement::Interface(typed_interface) => {
+            TypedStmt::Interface(typed_interface) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
@@ -221,19 +221,19 @@ impl<'a> AnalysisContext<'a> {
                 });
                 FlowState::Reachable
             }
-            TypedStatement::Typedef(typed_typedef) => {
+            TypedStmt::Typedef(typed_typedef) => {
                 self.analyze_typedef(Some(scope_id), typed_typedef);
                 FlowState::Reachable
             }
-            TypedStatement::Union(typed_union) => {
+            TypedStmt::Union(typed_union) => {
                 self.analyze_union(Some(scope_id), typed_union, true);
                 FlowState::Reachable
             }
             // Invalid statements
-            TypedStatement::Defer(..)
-            | TypedStatement::FuncDef(_)
-            | TypedStatement::FuncDecl(_)
-            | TypedStatement::GlobalVariable(_) => {
+            TypedStmt::Defer(..)
+            | TypedStmt::FuncDef(_)
+            | TypedStmt::FuncDecl(_)
+            | TypedStmt::GlobalVariable(_) => {
                 unreachable!()
             }
         }
@@ -242,38 +242,38 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_export_tuple_values(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        export_tuple_values: &mut TypedExportTupleValues,
+        export_tuple_values: &mut TypedExportTupleStmt,
     ) {
         if let Some(typed_expr) = &mut export_tuple_values.rhs {
-            let concrete_type =
+            let sema_ty =
                 match self.analyze_typed_expr_type(scope_id_opt, typed_expr, export_tuple_values.ty.clone()) {
-                    Some(concrete_type) => concrete_type,
+                    Some(sema_ty) => sema_ty,
                     None => return,
                 };
 
             if export_tuple_values.ty.is_none() {
-                export_tuple_values.ty = Some(concrete_type);
+                export_tuple_values.ty = Some(sema_ty);
             }
         }
 
-        if let Some(concrete_type) = &mut export_tuple_values.ty {
-            *concrete_type =
-                match self.normalize_type(scope_id_opt, concrete_type.clone(), export_tuple_values.loc.clone()) {
+        if let Some(sema_ty) = &mut export_tuple_values.ty {
+            *sema_ty =
+                match self.normalize_type(scope_id_opt, sema_ty.clone(), export_tuple_values.loc.clone()) {
                     Some(normalized) => normalized,
                     None => return,
                 };
         }
 
-        let concrete_type = match self.normalize_type(
+        let sema_ty = match self.normalize_type(
             scope_id_opt,
             export_tuple_values.ty.clone().unwrap(),
             export_tuple_values.loc.clone(),
         ) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return,
         };
 
-        let tuple_type = match concrete_type.as_tuple_type() {
+        let tuple_type = match sema_ty.as_tuple_type() {
             Some(tuple_type) => tuple_type.clone(),
             None => {
                 self.reporter.report(Diag {
@@ -298,15 +298,15 @@ impl<'a> AnalysisContext<'a> {
 
         // update type and rhs metadata in local scope
 
-        for (symbol_id, mut concrete_type) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
-            if export_tuple_values.is_const && !matches!(concrete_type, SemanticType::Const(..)) {
-                concrete_type = SemanticType::Const(Box::new(concrete_type.clone()));
+        for (symbol_id, mut sema_ty) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
+            if export_tuple_values.is_const && !matches!(sema_ty, SemanticType::Const(..)) {
+                sema_ty = SemanticType::Const(Box::new(sema_ty.clone()));
             }
 
             scope_id_opt.inspect(|scope_id| {
                 update_local_symbol!(self, *scope_id, *symbol_id,
                     LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                        resolved_variable.typed_variable.ty = Some(concrete_type);
+                        resolved_variable.typed_variable.ty = Some(sema_ty);
                     }
                 );
             });
@@ -316,7 +316,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_switch_on_enum(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_switch: &mut TypedSwitch,
+        typed_switch: &mut TypedSwitchStmt,
         enum_sig: &mut EnumSig,
     ) -> FlowState {
         let mut branch_states = Vec::new();
@@ -413,7 +413,7 @@ impl<'a> AnalysisContext<'a> {
                                     enum_valued_field.field_type.clone(),
                                     SourceLoc::from_loc(identifier.loc.clone(), enum_sig.loc.file_path.clone()),
                                 ) {
-                                    Some(concrete_type) => concrete_type,
+                                    Some(sema_ty) => sema_ty,
                                     None => continue,
                                 };
 
@@ -479,7 +479,7 @@ impl<'a> AnalysisContext<'a> {
         flow_state
     }
 
-    fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
+    fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitchStmt) -> FlowState {
         let mut mapping_ctx = GenericMappingCtx::new_root();
 
         self.control_stack.push(ControlContext::Switch);
@@ -495,7 +495,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let operand_ty = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return FlowState::Reachable,
         };
 
@@ -507,8 +507,8 @@ impl<'a> AnalysisContext<'a> {
             match self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
-                .and_then(|local_or_global_symbol| {
-                    let resolved_enum = local_or_global_symbol.as_enum();
+                .and_then(|sym| {
+                    let resolved_enum = sym.as_enum();
                     resolved_enum.cloned()
                 })
                 .map(|resolved_enum| resolved_enum.symbol_id)
@@ -530,12 +530,12 @@ impl<'a> AnalysisContext<'a> {
             None
         } {
             Some((enum_symbol_id, generic_type_opt)) => {
-                let local_or_global_symbol = self
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
                     .unwrap();
 
-                let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+                let resolved_enum = sym.as_enum().unwrap();
                 let mut enum_sig = resolved_enum.enum_sig.clone();
                 self.substitute_enum_type_args(
                     &mut mapping_ctx,
@@ -556,7 +556,7 @@ impl<'a> AnalysisContext<'a> {
             match &mut case.pattern {
                 TypedSwitchCasePattern::Expression(typed_expr, _) => {
                     let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
-                        Some(concrete_type) => concrete_type,
+                        Some(sema_ty) => sema_ty,
                         None => continue,
                     };
 
@@ -638,7 +638,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_if_stmt(
         &mut self,
         scope_id: ScopeID,
-        typed_if: &mut TypedIf,
+        typed_if: &mut TypedIfStmt,
         expected_type: Option<SemanticType>,
     ) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
@@ -660,13 +660,13 @@ impl<'a> AnalysisContext<'a> {
         self.merge_flow_state(consequent_state, alternate_state)
     }
 
-    fn analyze_while_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_while: &mut TypedWhile) -> FlowState {
-        if let Some(concrete_type) = self.analyze_typed_expr_type(
+    fn analyze_while_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_while: &mut TypedWhileStmt) -> FlowState {
+        if let Some(sema_ty) = self.analyze_typed_expr_type(
             scope_id_opt,
             &mut typed_while.condition,
-            Some(SemanticType::BasicType(BasicSemanticType::Bool)),
+            Some(SemanticType::BasicType(BasicType::Bool)),
         ) {
-            self.check_expr_type_must_be_condition(concrete_type, typed_while.loc.clone());
+            self.check_expr_type_must_be_condition(sema_ty, typed_while.loc.clone());
         }
 
         self.control_stack.push(ControlContext::While);
@@ -676,23 +676,23 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Reachable
     }
 
-    fn analyze_for_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_for: &mut TypedFor) -> FlowState {
+    fn analyze_for_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_for: &mut TypedForStmt) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
             self.analyze_variable(scope_id_opt, initializer);
         }
 
         if let Some(typed_expr) = &mut typed_for.condition {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(
+            if let Some(sema_ty) = self.analyze_typed_expr_type(
                 scope_id_opt,
                 typed_expr,
-                Some(SemanticType::BasicType(BasicSemanticType::Bool)),
+                Some(SemanticType::BasicType(BasicType::Bool)),
             ) {
-                self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
+                self.check_expr_type_must_be_condition(sema_ty, typed_for.loc.clone());
             }
         }
 
         if let Some(typed_expr) = &mut typed_for.increment {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.sema_ty.clone());
         }
 
         self.control_stack.push(ControlContext::Loop);
@@ -702,7 +702,7 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Reachable
     }
 
-    fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) -> FlowState {
+    fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.current_func.clone().unwrap();
         let return_type = self
             .normalize_type(Some(scope_id), *func_type.return_type, typed_return.loc.clone())
@@ -716,13 +716,13 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.argument {
-            if let Some(concrete_type) =
+            if let Some(sema_ty) =
                 self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone()))
             {
                 let expected = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
-                let got = format_concrete_type(concrete_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
+                let got = format_concrete_type(sema_ty.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
-                if !self.check_type_mismatch(Some(scope_id), concrete_type, return_type, typed_return.loc.clone()) {
+                if !self.check_type_mismatch(Some(scope_id), sema_ty, return_type, typed_return.loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got },
@@ -745,7 +745,7 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Returns
     }
 
-    fn analyze_break(&mut self, typed_break: &TypedBreak) -> FlowState {
+    fn analyze_break(&mut self, typed_break: &TypedBreakStmt) -> FlowState {
         if self.control_stack.is_empty() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -759,7 +759,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_continue(&mut self, typed_continue: &TypedContinue) -> FlowState {
+    fn analyze_continue(&mut self, typed_continue: &TypedContinueStmt) -> FlowState {
         let inside_loop = self
             .control_stack
             .iter()
@@ -779,7 +779,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn report_unreachable_block_diag(&mut self, typed_stmt: &TypedStatement) {
+    fn report_unreachable_block_diag(&mut self, typed_stmt: &TypedStmt) {
         if !self.disable_warnings {
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
@@ -818,32 +818,32 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_global_var_for_const_folding(&self, concrete_type: SemanticType) -> bool {
-        match concrete_type.get_const_inner().as_basic_type() {
+    fn check_global_var_for_const_folding(&self, sema_ty: SemanticType) -> bool {
+        match sema_ty.get_const_inner().as_basic_type() {
             Some(basic_concrete_type) => basic_concrete_type.is_integer(),
             None => false,
         }
     }
 
-    pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
+    pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
-            let concrete_type = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
-                Some(concrete_type) => concrete_type,
+            let sema_ty = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
+                Some(sema_ty) => sema_ty,
                 None => return,
             };
 
-            if self.check_global_var_for_const_folding(concrete_type) {
+            if self.check_global_var_for_const_folding(sema_ty) {
                 if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
-                    let integer_concrete_type = Some(SemanticType::BasicType(BasicSemanticType::Int));
+                    let integer_concrete_type = Some(SemanticType::BasicType(BasicType::Int));
 
-                    expr = TypedExpression {
-                        kind: TypedExpressionKind::Literal(TypedLiteral {
+                    expr = TypedExprStmt {
+                        kind: TypedExprKind::Literal(TypedLiteralExpr {
                             ty: integer_concrete_type.clone(),
                             kind: LiteralKind::Integer(integer, None),
                             loc: expr.loc.clone(),
                         }),
-                        concrete_type: integer_concrete_type,
-                        value_category: ValueCategory::Rvalue,
+                        sema_ty: integer_concrete_type,
+                        vcat: ValueCategory::RValue,
                         loc: expr.loc.clone(),
                     };
                 } else {
@@ -857,8 +857,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            expr.concrete_type = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
-                Some(concrete_type) => Some(concrete_type),
+            expr.sema_ty = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
+                Some(sema_ty) => Some(sema_ty),
                 None => return,
             };
 
@@ -866,13 +866,13 @@ impl<'a> AnalysisContext<'a> {
         }
 
         typed_global_var.ty = match &typed_global_var.ty {
-            Some(concrete_type) => self.normalize_type(None, concrete_type.clone(), typed_global_var.loc.clone()),
-            None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
+            Some(sema_ty) => self.normalize_type(None, sema_ty.clone(), typed_global_var.loc.clone()),
+            None => Some(typed_global_var.expr.clone().unwrap().sema_ty.unwrap()),
         };
 
         if matches!(
             typed_global_var.ty,
-            Some(SemanticType::BasicType(BasicSemanticType::Void))
+            Some(SemanticType::BasicType(BasicType::Void))
         ) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -919,13 +919,13 @@ impl<'a> AnalysisContext<'a> {
             if let Some(target_type) = &typed_global_var.ty {
                 if !self.check_type_mismatch(
                     None,
-                    expr.concrete_type.clone().unwrap(),
+                    expr.sema_ty.clone().unwrap(),
                     target_type.clone(),
                     typed_global_var.loc.clone(),
                 ) {
                     let lhs_type = format_concrete_type(target_type.clone(), &(self.symbol_formatter)(None));
                     let rhs_type =
-                        format_concrete_type(expr.concrete_type.clone().unwrap(), &(self.symbol_formatter)(None));
+                        format_concrete_type(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -940,7 +940,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(typed_expr) = &typed_global_var.expr {
             self.check_global_var_assignment_type(
                 typed_global_var.ty.clone().unwrap(),
-                typed_expr.concrete_type.clone().unwrap(),
+                typed_expr.sema_ty.clone().unwrap(),
                 typed_global_var.loc.clone(),
             );
         }
@@ -1062,12 +1062,12 @@ impl<'a> AnalysisContext<'a> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         for identifier in impls {
-            let local_or_global_symbol = self
+            let sym = self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), identifier.symbol_id)
                 .unwrap();
 
-            let resolved_interface = match local_or_global_symbol.as_interface() {
+            let resolved_interface = match sym.as_interface() {
                 Some(resolved_interface) => resolved_interface,
                 None => {
                     self.reporter.report(Diag {
@@ -1115,11 +1115,11 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
-                let local_or_global_symbol = self
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *object_method_symbol_id)
                     .unwrap();
-                let object_method = local_or_global_symbol.as_method().unwrap();
+                let object_method = sym.as_method().unwrap();
 
                 { // NOTE
                     // we may need to change SelfModifier to something like a standalone SemanticType
@@ -1159,10 +1159,10 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_struct: &mut TypedStruct,
+        typed_struct: &mut TypedStructStmt,
         is_local: bool,
     ) {
-        fn update_struct_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_struct: &TypedStruct) {
+        fn update_struct_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_struct: &TypedStructStmt) {
             if let Some(scope_id) = typed_struct.is_local {
                 update_local_symbol!(this, scope_id, typed_struct.symbol_id,
                     LocalSymbolKind::Struct(resolved_struct) => resolved_struct, {
@@ -1197,7 +1197,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => continue,
             };
 
@@ -1237,10 +1237,10 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_union: &mut TypedUnion,
+        typed_union: &mut TypedUnionStmt,
         is_local: bool,
     ) {
-        fn update_union_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_union: &TypedUnion) {
+        fn update_union_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_union: &TypedUnionStmt) {
             if let Some(scope_id) = typed_union.is_local {
                 update_local_symbol!(this, scope_id, typed_union.symbol_id,
                     LocalSymbolKind::Union(resolved_union) => resolved_union, {
@@ -1275,8 +1275,8 @@ impl<'a> AnalysisContext<'a> {
             }
 
             match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
-                Some(concrete_type) => {
-                    field.ty = concrete_type;
+                Some(sema_ty) => {
+                    field.ty = sema_ty;
                 }
                 None => continue,
             }
@@ -1304,8 +1304,8 @@ impl<'a> AnalysisContext<'a> {
         update_union_symbol_entry(self, &typed_union);
     }
 
-    pub(crate) fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnum, is_local: bool) {
-        fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnum) {
+    pub(crate) fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt, is_local: bool) {
+        fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnumStmt) {
             if let Some(scope_id) = typed_enum.is_local {
                 update_local_symbol!(this, scope_id, typed_enum.symbol_id,
                     LocalSymbolKind::Enum(resolved_enum) => resolved_enum, {
@@ -1330,8 +1330,8 @@ impl<'a> AnalysisContext<'a> {
             let variant_identifier = match variant {
                 TypedEnumVariant::Identifier(identifier) => identifier,
                 TypedEnumVariant::Valued(identifier, typed_expr) => {
-                    typed_expr.concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
-                        Some(concrete_type) => Some(concrete_type),
+                    typed_expr.sema_ty = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                        Some(sema_ty) => Some(sema_ty),
                         None => continue,
                     };
                     identifier
@@ -1340,7 +1340,7 @@ impl<'a> AnalysisContext<'a> {
                     for field in typed_enum_valued_fields {
                         field.field_type =
                             match self.normalize_type(scope_id_opt, field.field_type.clone(), field.loc.clone()) {
-                                Some(concrete_type) => concrete_type,
+                                Some(sema_ty) => sema_ty,
                                 None => continue,
                             };
 
@@ -1442,7 +1442,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         return_type: &mut SemanticType,
         params: &mut TypedFuncParams,
-        body: &mut TypedBlockStatement,
+        body: &mut TypedBlockStmt,
         vis_opt: Option<AccessSpecifier>,
         loc: SourceLoc,
     ) {
@@ -1465,7 +1465,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         *return_type = match self.normalize_type(None, return_type.clone(), loc.clone()) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return,
         };
 
@@ -1473,7 +1473,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
-        let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStatement>)> = Vec::new();
+        let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
 
         // forward method declaration resolving
         for symbol_id in methods.values() {
@@ -1506,7 +1506,7 @@ impl<'a> AnalysisContext<'a> {
             self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 
             func_sig.return_type = match self.normalize_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return,
             };
 
@@ -1559,7 +1559,7 @@ impl<'a> AnalysisContext<'a> {
         self.current_method_symbol_id = None;
     }
 
-    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
+    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
         if typed_func_def.name == "main" {
             let mut entry_points = self.entry_points.lock().unwrap();
             entry_points.push(typed_func_def.loc.clone());
@@ -1587,7 +1587,7 @@ impl<'a> AnalysisContext<'a> {
                         .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
                         .unwrap();
 
-                    if matches!(normalized_type, SemanticType::BasicType(BasicSemanticType::Void)) {
+                    if matches!(normalized_type, SemanticType::BasicType(BasicType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: AnalyzerDiagKind::VoidVariableType,
@@ -1621,15 +1621,15 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(variadic_params) = &mut params.variadic {
-            if let TypedFuncVariadicParams::Typed(identifier, concrete_type) = variadic_params {
-                let normalized_concrete_type = match self.normalize_type(None, concrete_type.clone(), loc.clone()) {
-                    Some(concrete_type) => concrete_type,
+            if let TypedFuncVariadicParams::Typed(identifier, sema_ty) = variadic_params {
+                let normalized_concrete_type = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
+                    Some(sema_ty) => sema_ty,
                     None => return,
                 };
 
                 if matches!(
                     normalized_concrete_type,
-                    SemanticType::BasicType(BasicSemanticType::Void)
+                    SemanticType::BasicType(BasicType::Void)
                 ) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1649,7 +1649,7 @@ impl<'a> AnalysisContext<'a> {
         for param in params.list.iter_mut() {
             let normalized_type = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
 
-            if matches!(normalized_type, SemanticType::BasicType(BasicSemanticType::Void)) {
+            if matches!(normalized_type, SemanticType::BasicType(BasicType::Void)) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::VoidVariableType,
@@ -1665,15 +1665,15 @@ impl<'a> AnalysisContext<'a> {
         if let Some(variadic_params) = &mut params.variadic {
             match *variadic_params.clone() {
                 TypedFuncTypeVariadicParams::UntypedCStyle => {}
-                TypedFuncTypeVariadicParams::Typed(concrete_type) => {
-                    let normalized_concrete_type = match self.normalize_type(None, concrete_type.clone(), loc.clone()) {
-                        Some(concrete_type) => concrete_type,
+                TypedFuncTypeVariadicParams::Typed(sema_ty) => {
+                    let normalized_concrete_type = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
+                        Some(sema_ty) => sema_ty,
                         None => return,
                     };
 
                     if matches!(
                         normalized_concrete_type,
-                        SemanticType::BasicType(BasicSemanticType::Void)
+                        SemanticType::BasicType(BasicType::Void)
                     ) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -1689,7 +1689,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDecl) {
+    fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDeclStmt) {
         self.check_duplicate_param_names(
             &typed_func_decl.params.list,
             typed_func_decl.params.variadic.as_ref(),
@@ -1698,14 +1698,14 @@ impl<'a> AnalysisContext<'a> {
 
         typed_func_decl.return_type =
             match self.normalize_type(None, typed_func_decl.return_type.clone(), typed_func_decl.loc.clone()) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return,
             };
 
         self.normalize_func_params(&mut typed_func_decl.params, typed_func_decl.loc.clone());
     }
 
-    fn analyze_interface(&mut self, typed_interface: &TypedInterface) {
+    fn analyze_interface(&mut self, typed_interface: &TypedInterfaceStmt) {
         self.check_interface_name(typed_interface.name.clone(), typed_interface.loc.clone(), false);
 
         let mut name_list: Vec<String> = Vec::new();
@@ -1735,34 +1735,34 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef) {
+    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedefStmt) {
         typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone())
         {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return,
         };
     }
 
-    fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVariable) {
+    fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
         if typed_variable.ty.is_none() && typed_variable.rhs.is_none() {
             return;
         }
 
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
-                if let Some(concrete_type) = &typed_variable.ty {
+                if let Some(sema_ty) = &typed_variable.ty {
                     typed_variable.ty =
-                        self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
+                        self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
                 }
 
-                let concrete_type =
+                let sema_ty =
                     match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
-                        Some(concrete_type) => concrete_type,
+                        Some(sema_ty) => sema_ty,
                         None => return,
                     };
 
-                typed_expr.concrete_type = Some(concrete_type.clone());
-                Some(concrete_type)
+                typed_expr.sema_ty = Some(sema_ty.clone());
+                Some(sema_ty)
             } else {
                 None
             }
@@ -1770,8 +1770,8 @@ impl<'a> AnalysisContext<'a> {
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        if let Some(concrete_type) = &typed_variable.ty {
-            typed_variable.ty = self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
+        if let Some(sema_ty) = &typed_variable.ty {
+            typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
 
             if let Some(value_type) = value_type_opt {
                 let lhs_type = format_concrete_type(
@@ -1802,7 +1802,7 @@ impl<'a> AnalysisContext<'a> {
 
         if matches!(
             typed_variable.ty,
-            Some(SemanticType::BasicType(BasicSemanticType::Void))
+            Some(SemanticType::BasicType(BasicType::Void))
         ) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1847,14 +1847,14 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignment) {
+    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignExpr) {
         let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.lhs, None) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return,
         };
 
         let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return,
         }
         .as_rvalue(true);

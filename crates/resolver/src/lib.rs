@@ -1,24 +1,14 @@
 use crate::modulefsloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
-use crate::scope::*;
-use crate::signatures::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
+use crate::sigs::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
+use crate::symbols::*;
 use crate::{
     diagnostics::ResolverDiagKind,
-    signatures::{FuncSig, TypedefSig},
+    sigs::{FuncSig, TypedefSig},
 };
 use ast::format::module_segments_as_string;
 use ast::source_loc::SourceLoc;
-use ast::{
-    AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
-    FuncTypeVariadicParams, GenericParamsList, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal,
-    MethodCall, ModuleImport, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix,
-    StructInit, SwitchCasePattern, TupleMemberAccess, TupleValue, TypeArg, TypeArgs, UnaryExpression, Union,
-    UnnamedStructValue,
-};
-use ast::{
-    ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
-    Identifier, LiteralKind, ProgramTree, Statement, Struct, TypeSpecifier, Typedef, Variable,
-    token::{Location, Span, Token, TokenKind},
-};
+use ast::token::{Location, Span, Token, TokenKind};
+use ast::*;
 use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
 use std::collections::HashSet;
@@ -26,16 +16,13 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::types::{
-    BasicSemanticType, SemanticType, GenericType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-    TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
-};
-use typed_ast::{SymbolID, *};
+use typed_ast::types::*;
+use typed_ast::*;
 
 mod diagnostics;
 pub mod modulefsloader;
-pub mod scope;
-pub mod signatures;
+pub mod sigs;
+pub mod symbols;
 pub mod utility;
 
 pub type GlobalSymbolsMutex = Mutex<HashMap<ModuleID, SymbolTable>>;
@@ -596,7 +583,7 @@ impl Resolver {
                         loc.clone(),
                         span_end,
                     ) {
-                        Some(concrete_type) => type_list.push(concrete_type),
+                        Some(sema_ty) => type_list.push(sema_ty),
                         None => continue,
                     }
                 }
@@ -674,7 +661,7 @@ impl Resolver {
                 )?;
                 Ok(SemanticType::Const(Box::new(ct)))
             }
-            TypeSpecifier::Dereference(inner) => {
+            TypeSpecifier::Deref(inner) => {
                 let ct = self.resolve_type(
                     generic_params,
                     local_scope_opt,
@@ -698,7 +685,7 @@ impl Resolver {
                 let capacity = match &array_spec.size {
                     ArrayCapacity::Fixed(expr) => {
                         let typed_expr = self.resolve_expr(module_id, local_scope_opt.clone(), expr)?;
-                        if let TypedExpressionKind::Literal(lit) = &typed_expr.kind {
+                        if let TypedExprKind::Literal(lit) = &typed_expr.kind {
                             if let LiteralKind::Integer(value, ..) = &lit.kind {
                                 TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
                                     (*value).try_into().unwrap(),
@@ -782,7 +769,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         typedef: &Typedef,
-    ) -> Option<TypedStatement> {
+    ) -> Option<TypedStmt> {
         let symbol_id = self.lookup_symbol_id(module_id, &typedef.identifier.name)?;
 
         let generic_params = typedef
@@ -790,7 +777,7 @@ impl Resolver {
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        let concrete_type = self.resolve_type(
+        let sema_ty = self.resolve_type(
             &generic_params,
             local_scope_opt.clone(),
             module_id,
@@ -802,7 +789,7 @@ impl Resolver {
         let typedef_sig = TypedefSig {
             name: typedef.identifier.name.clone(),
             generic_params,
-            ty: concrete_type.clone(),
+            ty: sema_ty.clone(),
             vis: typedef.vis.clone(),
             loc: SourceLoc::from_loc(typedef.loc.clone(), self.get_current_module_file_path()),
         };
@@ -826,10 +813,10 @@ impl Resolver {
             );
         }
 
-        Some(TypedStatement::Typedef(TypedTypedef {
+        Some(TypedStmt::Typedef(TypedTypedefStmt {
             symbol_id,
             name: typedef.identifier.name.clone(),
-            ty: concrete_type,
+            ty: sema_ty,
             vis: typedef.vis.clone(),
             loc: typedef_sig.loc,
         }))
@@ -950,11 +937,11 @@ impl Resolver {
     }
 
     // Resolves the full meaning of each top-level declaration in the AST (second pass)
-    fn resolve_definitions(&mut self, module_id: ModuleID, ast: &ProgramTree) -> Vec<TypedStatement> {
-        let mut typed_body: Vec<TypedStatement> = Vec::new();
+    fn resolve_definitions(&mut self, module_id: ModuleID, ast: &ProgramTree) -> Vec<TypedStmt> {
+        let mut typed_body: Vec<TypedStmt> = Vec::new();
 
         for stmt in ast.body.as_ref() {
-            let valid_top_level_stmt: Result<TypedStatement, SourceLoc> = match stmt {
+            let valid_top_level_stmt: Result<TypedStmt, SourceLoc> = match stmt {
                 Statement::Import(..) => continue,
                 Statement::GlobalVariable(global_var) => match self.resolve_global_var(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
@@ -1032,7 +1019,7 @@ impl Resolver {
                     while_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::ExportTupleValues(export_tuple_values) => Err(SourceLoc::from_loc(
+                Statement::ExportTuple(export_tuple_values) => Err(SourceLoc::from_loc(
                     export_tuple_values.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
@@ -1062,13 +1049,13 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         interface: &Interface,
-    ) -> Option<TypedStatement> {
+    ) -> Option<TypedStmt> {
         let interface_symbol_id = local_scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.identifier.name).unwrap());
 
-        let typed_methods: Vec<TypedFuncDecl> = interface
+        let typed_methods: Vec<TypedFuncDeclStmt> = interface
             .methods
             .iter()
             .filter_map(|func_decl| {
@@ -1088,7 +1075,7 @@ impl Resolver {
 
                 let (return_type, typed_func_params, typed_variadic_param) = resolved;
 
-                Some(TypedFuncDecl {
+                Some(TypedFuncDeclStmt {
                     module_id: self.current_module.unwrap(),
                     symbol_id: interface_symbol_id,
                     name: func_decl.identifier.name.clone(),
@@ -1133,7 +1120,7 @@ impl Resolver {
             }
         }
 
-        Some(TypedStatement::Interface(TypedInterface {
+        Some(TypedStmt::Interface(TypedInterfaceStmt {
             name: interface.identifier.name.clone(),
             symbol_id: interface_symbol_id,
             methods: typed_methods,
@@ -1148,7 +1135,7 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         union_decl: &Union,
         is_local: Option<ScopeID>,
-    ) -> Option<TypedStatement> {
+    ) -> Option<TypedStmt> {
         let union_symbol_id = if local_scope_opt.is_some() {
             generate_symbol_id()
         } else {
@@ -1171,10 +1158,10 @@ impl Resolver {
                 field.loc.clone(),
                 field.span.end,
             ) {
-                Some(concrete_type) => {
+                Some(sema_ty) => {
                     typed_union_fields.push(TypedUnionField {
                         name: field.identifier.name.clone(),
-                        ty: concrete_type,
+                        ty: sema_ty,
                         loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
                     });
                 }
@@ -1218,7 +1205,7 @@ impl Resolver {
             );
         }
 
-        Some(TypedStatement::Union(TypedUnion {
+        Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id: union_symbol_id,
             module_id,
             name: union_decl.identifier.name.clone(),
@@ -1237,7 +1224,7 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         enum_decl: &Enum,
         is_local: Option<ScopeID>,
-    ) -> Option<TypedStatement> {
+    ) -> Option<TypedStmt> {
         let enum_symbol_id = if local_scope_opt.is_some() {
             generate_symbol_id()
         } else {
@@ -1264,7 +1251,7 @@ impl Resolver {
                             valued_field.loc.clone(),
                             0,
                         ) {
-                            Some(concrete_type) => concrete_type,
+                            Some(sema_ty) => sema_ty,
                             None => continue,
                         };
 
@@ -1327,7 +1314,7 @@ impl Resolver {
             );
         }
 
-        Some(TypedStatement::Enum(TypedEnum {
+        Some(TypedStmt::Enum(TypedEnumStmt {
             module_id,
             symbol_id: enum_symbol_id,
             name: enum_decl.identifier.name.clone(),
@@ -1340,8 +1327,8 @@ impl Resolver {
         }))
     }
 
-    fn resolve_global_var(&mut self, module_id: ModuleID, global_var: &GlobalVariable) -> Option<TypedStatement> {
-        let concrete_type = global_var
+    fn resolve_global_var(&mut self, module_id: ModuleID, global_var: &GlobalVariable) -> Option<TypedStmt> {
+        let sema_ty = global_var
             .type_specifier
             .clone()
             .and_then(|ty| self.resolve_type(&None, None, module_id, ty, global_var.loc.clone(), global_var.span.end));
@@ -1359,7 +1346,7 @@ impl Resolver {
             global_var_sig: GlobalVarSig {
                 module_id,
                 name: global_var.identifier.name.clone(),
-                ty: concrete_type.clone(),
+                ty: sema_ty.clone(),
                 rhs: typed_expr.clone(),
                 vis: global_var.vis.clone(),
                 loc: SourceLoc::from_loc(global_var.loc.clone(), self.get_current_module_file_path()),
@@ -1372,11 +1359,11 @@ impl Resolver {
             SymbolEntry::new(SymbolEntryKind::GlobalVar(resolved_global_var)),
         );
 
-        Some(TypedStatement::GlobalVariable(TypedGlobalVariable {
+        Some(TypedStmt::GlobalVariable(TypedGlobalVarStmt {
             module_id,
             symbol_id,
             name: global_var.identifier.name.clone(),
-            ty: concrete_type,
+            ty: sema_ty,
             expr: typed_expr,
             vis: global_var.vis.clone(),
             is_const: global_var.is_const,
@@ -1491,7 +1478,7 @@ impl Resolver {
                     let local_symbol = LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                         module_id,
                         symbol_id: self_symbol_id,
-                        typed_variable: TypedVariable {
+                        typed_variable: TypedVarStmt {
                             symbol_id: self_symbol_id,
                             name: "self".to_string(),
                             ty: match self_modifier.kind {
@@ -1550,9 +1537,9 @@ impl Resolver {
                     });
 
                 match resolved {
-                    Some(local_or_global_symbol) => Some(TypedIdentifier {
+                    Some(sym) => Some(TypedIdentifier {
                         name: identifier.as_string(),
-                        symbol_id: local_or_global_symbol.get_symbol_id(),
+                        symbol_id: sym.get_symbol_id(),
                         loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
                     }),
                     None => {
@@ -1580,7 +1567,7 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         struct_decl: &Struct,
         is_local: Option<ScopeID>,
-    ) -> Option<TypedStatement> {
+    ) -> Option<TypedStmt> {
         let struct_symbol_id = local_scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
@@ -1645,7 +1632,7 @@ impl Resolver {
             );
         }
 
-        Some(TypedStatement::Struct(TypedStruct {
+        Some(TypedStmt::Struct(TypedStructStmt {
             module_id: self.current_module.unwrap(),
             symbol_id: struct_symbol_id,
             name: struct_decl.identifier.name.clone(),
@@ -1729,7 +1716,7 @@ impl Resolver {
                             LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                 module_id,
                                 symbol_id,
-                                typed_variable: TypedVariable {
+                                typed_variable: TypedVarStmt {
                                     symbol_id,
                                     name: func_param.identifier.name.clone(),
                                     ty: Some(param_type.clone()),
@@ -1782,7 +1769,7 @@ impl Resolver {
                         LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                             module_id,
                             symbol_id,
-                            typed_variable: TypedVariable {
+                            typed_variable: TypedVarStmt {
                                 symbol_id,
                                 name: identifier.name.clone(),
                                 ty: Some(variadic_type.clone()),
@@ -1801,7 +1788,7 @@ impl Resolver {
         Some((typed_func_params, typed_variadic_param))
     }
 
-    fn resolve_func_decl(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStatement> {
+    fn resolve_func_decl(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStmt> {
         let symbol_id = self.lookup_symbol_id(module_id, &func_decl.get_usable_name()).unwrap();
 
         let (return_type, typed_func_params, typed_variadic_param) = self.resolve_func(module_id, None, func_decl)?;
@@ -1829,7 +1816,7 @@ impl Resolver {
             })),
         );
 
-        Some(TypedStatement::FuncDecl(TypedFuncDecl {
+        Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
             module_id,
             symbol_id,
             name: func_decl.identifier.name.clone(),
@@ -1844,7 +1831,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_func_def(&mut self, module_id: ModuleID, func_def: &FuncDef) -> Option<TypedStatement> {
+    fn resolve_func_def(&mut self, module_id: ModuleID, func_def: &FuncDef) -> Option<TypedStmt> {
         let scope_id = generate_scope_id();
         let body_scope = Rc::new(RefCell::new(LocalScope::new(None)));
         self.insert_scope_ref(module_id, scope_id, body_scope.clone());
@@ -1879,7 +1866,7 @@ impl Resolver {
 
         let typed_func_body = self.resolve_block_statement(scope_id, body_scope, &func_def.body)?;
 
-        Some(TypedStatement::FuncDef(TypedFuncDef {
+        Some(TypedStmt::FuncDef(TypedFuncDefStmt {
             symbol_id,
             module_id,
             name: func_def.identifier.name.clone(),
@@ -1899,7 +1886,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_rc: LocalScopeRef,
         variable: &Variable,
-    ) -> Option<TypedVariable> {
+    ) -> Option<TypedVarStmt> {
         if local_scope_rc.borrow().resolve(&variable.identifier.name).is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1933,7 +1920,7 @@ impl Resolver {
 
         let symbol_id = generate_symbol_id();
 
-        let typed_variable = TypedVariable {
+        let typed_variable = TypedVarStmt {
             symbol_id,
             name: variable.identifier.name.clone(),
             ty: var_type.clone(),
@@ -1956,7 +1943,12 @@ impl Resolver {
         Some(typed_variable)
     }
 
-    fn resolve_if_stmt(&mut self, module_id: ModuleID, local_scope: LocalScopeRef, if_stmt: &If) -> Option<TypedIf> {
+    fn resolve_if_stmt(
+        &mut self,
+        module_id: ModuleID,
+        local_scope: LocalScopeRef,
+        if_stmt: &If,
+    ) -> Option<TypedIfStmt> {
         let typed_condition = match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &if_stmt.condition) {
             Some(typed_expr) => typed_expr,
             None => return None,
@@ -1987,7 +1979,7 @@ impl Resolver {
             }
         };
 
-        let mut branches: Vec<TypedIf> = Vec::new();
+        let mut branches: Vec<TypedIfStmt> = Vec::new();
 
         for else_if_stmt in &if_stmt.branches {
             let typed_if = match self.resolve_if_stmt(module_id, local_scope.clone(), else_if_stmt) {
@@ -1998,7 +1990,7 @@ impl Resolver {
             branches.push(typed_if);
         }
 
-        Some(TypedIf {
+        Some(TypedIfStmt {
             condition: typed_condition,
             consequent: typed_consequent,
             alternate: typed_alternate,
@@ -2012,10 +2004,10 @@ impl Resolver {
         scope_id: ScopeID,
         local_scope: LocalScopeRef,
         block_statement: &BlockStatement,
-    ) -> Option<TypedBlockStatement> {
+    ) -> Option<TypedBlockStmt> {
         let module_id = self.current_module.unwrap();
-        let mut typed_body: Vec<TypedStatement> = Vec::new();
-        let mut defers: Vec<TypedDefer> = Vec::new();
+        let mut typed_body: Vec<TypedStmt> = Vec::new();
+        let mut defers: Vec<TypedDeferStmt> = Vec::new();
 
         for stmt in &block_statement.exprs {
             match stmt {
@@ -2023,7 +2015,7 @@ impl Resolver {
                     if let Some(typed_stmt) =
                         self.resolve_statement(module_id, scope_id, local_scope.clone(), &defer.operand)
                     {
-                        defers.push(TypedDefer {
+                        defers.push(TypedDeferStmt {
                             operand: Box::new(typed_stmt),
                             loc: SourceLoc::from_loc(defer.loc.clone(), self.get_current_module_file_path()),
                         });
@@ -2037,7 +2029,7 @@ impl Resolver {
             }
         }
 
-        Some(TypedBlockStatement {
+        Some(TypedBlockStmt {
             scope_id,
             exprs: typed_body,
             defers,
@@ -2051,9 +2043,9 @@ impl Resolver {
         scope_id: ScopeID,
         local_scope: LocalScopeRef,
         stmt: &Statement,
-    ) -> Option<TypedStatement> {
+    ) -> Option<TypedStmt> {
         match stmt {
-            Statement::ExportTupleValues(export_tuple_values) => {
+            Statement::ExportTuple(export_tuple_values) => {
                 let var_type = export_tuple_values.ty.as_ref().and_then(|ty_spec| {
                     self.resolve_type(
                         &None,
@@ -2079,7 +2071,7 @@ impl Resolver {
 
                     // do not store type and rhs for exported identifiers!
                     // analyzer would infer it.
-                    let typed_variable = TypedVariable {
+                    let typed_variable = TypedVarStmt {
                         symbol_id,
                         name: identifier.as_string(),
                         ty: None,
@@ -2119,7 +2111,7 @@ impl Resolver {
 
                 drop(local_scope_ref);
 
-                Some(TypedStatement::ExportTupleValues(TypedExportTupleValues {
+                Some(TypedStmt::ExportTuple(TypedExportTupleStmt {
                     exports,
                     ty: var_type,
                     rhs: typed_rhs,
@@ -2129,15 +2121,15 @@ impl Resolver {
             }
             Statement::Variable(variable) => {
                 let typed_var = self.declare_local_variable(module_id, local_scope.clone(), &variable)?;
-                Some(TypedStatement::Variable(typed_var))
+                Some(TypedStmt::Variable(typed_var))
             }
             Statement::Expression(expr) => {
                 let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr)?;
-                Some(TypedStatement::Expression(typed_expr))
+                Some(TypedStmt::Expression(typed_expr))
             }
             Statement::If(if_stmt) => {
                 let typed_if = self.resolve_if_stmt(module_id, Rc::clone(&local_scope), if_stmt)?;
-                Some(TypedStatement::If(typed_if))
+                Some(TypedStmt::If(typed_if))
             }
             Statement::Return(return_stmt) => {
                 let argument = if let Some(argument) = &return_stmt.argument {
@@ -2145,7 +2137,7 @@ impl Resolver {
                 } else {
                     None
                 };
-                Some(TypedStatement::Return(TypedReturn {
+                Some(TypedStmt::Return(TypedReturnStmt {
                     argument,
                     loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.get_current_module_file_path()),
                 }))
@@ -2177,7 +2169,7 @@ impl Resolver {
                 let for_typed_body =
                     Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body)?);
 
-                Some(TypedStatement::For(TypedFor {
+                Some(TypedStmt::For(TypedForStmt {
                     initializer,
                     condition,
                     increment,
@@ -2195,7 +2187,7 @@ impl Resolver {
                 let while_typed_body =
                     Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body)?);
 
-                Some(TypedStatement::While(TypedWhile {
+                Some(TypedStmt::While(TypedWhileStmt {
                     condition,
                     body: while_typed_body,
                     loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.get_current_module_file_path()),
@@ -2224,7 +2216,7 @@ impl Resolver {
                                 LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                     module_id,
                                     symbol_id,
-                                    typed_variable: TypedVariable {
+                                    typed_variable: TypedVarStmt {
                                         symbol_id,
                                         name: identifier.name.clone(),
                                         ty: None,
@@ -2257,7 +2249,7 @@ impl Resolver {
                                             LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                                 module_id,
                                                 symbol_id,
-                                                typed_variable: TypedVariable {
+                                                typed_variable: TypedVarStmt {
                                                     symbol_id,
                                                     name: identifier.name.clone(),
                                                     ty: None,
@@ -2307,7 +2299,7 @@ impl Resolver {
                     None
                 };
 
-                Some(TypedStatement::Switch(TypedSwitch {
+                Some(TypedStmt::Switch(TypedSwitchStmt {
                     operand,
                     cases,
                     default_case,
@@ -2339,12 +2331,12 @@ impl Resolver {
                 self.insert_scope_ref(module_id, scope_id, local_scope_copy.clone());
 
                 let typed_stmt = self.resolve_block_statement(scope_id, local_scope_copy, block_statement)?;
-                Some(TypedStatement::BlockStatement(typed_stmt))
+                Some(TypedStmt::BlockStatement(typed_stmt))
             }
-            Statement::Break(break_stmt) => Some(TypedStatement::Break(TypedBreak {
+            Statement::Break(break_stmt) => Some(TypedStmt::Break(TypedBreakStmt {
                 loc: SourceLoc::from_loc(break_stmt.loc.clone(), self.get_current_module_file_path()),
             })),
-            Statement::Continue(continue_stmt) => Some(TypedStatement::Continue(TypedContinue {
+            Statement::Continue(continue_stmt) => Some(TypedStmt::Continue(TypedContinueStmt {
                 loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.get_current_module_file_path()),
             })),
             Statement::Typedef(typedef) => {
@@ -2537,13 +2529,13 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         identifier: &Identifier,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_identifier(local_scope_opt, module_id, identifier)?;
         let loc = SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path());
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Symbol(symbol_id, loc.clone()),
-            concrete_type: None,
-            value_category: ValueCategory::Lvalue,
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Symbol(symbol_id, loc.clone()),
+            sema_ty: None,
+            vcat: ValueCategory::LValue,
             loc,
         })
     }
@@ -2553,18 +2545,18 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         module_import: &ModuleImport,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         if let Some(identifier) = module_import.as_identifier() {
             self.resolve_identifier_expr(local_scope_opt, module_id, &identifier)
         } else {
             self.resolve_module_import(module_id, module_import.clone())
-                .map(|symbol_id| TypedExpression {
-                    kind: TypedExpressionKind::Symbol(
+                .map(|symbol_id| TypedExprStmt {
+                    kind: TypedExprKind::Symbol(
                         symbol_id,
                         SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                     ),
-                    concrete_type: None,
-                    value_category: ValueCategory::Lvalue,
+                    sema_ty: None,
+                    vcat: ValueCategory::LValue,
                     loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                 })
         }
@@ -2575,7 +2567,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         expr: &Expression,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         match expr {
             Expression::FieldAccess(field_access) => {
                 self.resolve_field_access(module_id, local_scope_opt, field_access)
@@ -2600,17 +2592,17 @@ impl Resolver {
             Expression::ArrayIndex(array_index) => {
                 self.resolve_array_index_expr(module_id, local_scope_opt, array_index)
             }
-            Expression::AddressOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
-            Expression::Dereference(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
-            Expression::UnnamedStructValue(unnamed_struct_value) => {
+            Expression::AddrOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
+            Expression::Deref(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
+            Expression::UStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(module_id, local_scope_opt, unnamed_struct_value)
             }
-            Expression::SizeOfExpression(size_of_expression) => {
+            Expression::SizeOf(size_of_expression) => {
                 self.resolve_size_of_expr(module_id, local_scope_opt, size_of_expression)
             }
             Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
             Expression::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, local_scope_opt, tuple_value),
-            Expression::TupleMemberAccess(tuple_member_access) => {
+            Expression::TupleAccess(tuple_member_access) => {
                 self.resolve_tuple_member_access(module_id, local_scope_opt, tuple_member_access)
             }
         }
@@ -2620,19 +2612,19 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        tuple_member_access: &TupleMemberAccess,
-    ) -> Option<TypedExpression> {
+        tuple_member_access: &TupleAccess,
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &tuple_member_access.operand)?;
         let index = self.resolve_expr(module_id, local_scope_opt, &tuple_member_access.index)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::TupleMemberAccess(TypedTupleMemberAccess {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                 operand: Box::new(operand),
                 index: Box::new(index),
                 loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.get_current_module_file_path()),
             }),
-            concrete_type: None,
-            value_category: ValueCategory::Lvalue,
+            sema_ty: None,
+            vcat: ValueCategory::LValue,
             loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2642,8 +2634,8 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         tuple_value: &TupleValue,
-    ) -> Option<TypedExpression> {
-        let mut expr_list: Vec<TypedExpression> = Vec::new();
+    ) -> Option<TypedExprStmt> {
+        let mut expr_list: Vec<TypedExprStmt> = Vec::new();
 
         for expr in &tuple_value.expr_list {
             match self.resolve_expr(module_id, local_scope_opt.clone(), expr) {
@@ -2652,18 +2644,18 @@ impl Resolver {
             }
         }
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Tuple(TypedTupleValue {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Tuple(TypedTupleExpr {
                 expr_list,
                 loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.get_current_module_file_path()),
             }),
-            concrete_type: None,
-            value_category: ValueCategory::Rvalue,
+            sema_ty: None,
+            vcat: ValueCategory::RValue,
             loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.get_current_module_file_path()),
         })
     }
 
-    fn resolve_lambda_expr(&mut self, module_id: ModuleID, lambda: &Lambda) -> Option<TypedExpression> {
+    fn resolve_lambda_expr(&mut self, module_id: ModuleID, lambda: &Lambda) -> Option<TypedExprStmt> {
         let scope_id = generate_scope_id();
         let body_scope = LocalScope::new(None);
         let local_scope_rc = Rc::new(RefCell::new(body_scope));
@@ -2687,15 +2679,15 @@ impl Resolver {
 
         let loc = SourceLoc::from_loc(lambda.loc.clone(), self.get_current_module_file_path());
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Lambda(TypedLambda {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Lambda(TypedLambdaExpr {
                 params: TypedFuncParams { list, variadic },
                 body,
                 return_type,
                 loc: loc.clone(),
             }),
-            concrete_type: None,
-            value_category: ValueCategory::Rvalue,
+            sema_ty: None,
+            vcat: ValueCategory::RValue,
             loc,
         })
     }
@@ -2705,7 +2697,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         field_access: &FieldAccess,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &field_access.operand)?;
 
         let type_args = field_access.type_args.clone().and_then(|type_args| {
@@ -2719,8 +2711,8 @@ impl Resolver {
             )
         });
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::FieldAccess(TypedFieldAccess {
                 operand: Box::new(operand),
                 field_name: field_access.field_name.name.clone(),
                 is_fat_arrow: field_access.is_fat_arrow,
@@ -2730,8 +2722,8 @@ impl Resolver {
                 type_args,
                 loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Lvalue,
-            concrete_type: None,
+            vcat: ValueCategory::LValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2741,10 +2733,10 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         method_call: &MethodCall,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &method_call.operand)?;
 
-        let args: Vec<TypedExpression> = method_call
+        let args: Vec<TypedExprStmt> = method_call
             .args
             .iter()
             .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
@@ -2761,8 +2753,8 @@ impl Resolver {
             )
         });
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::MethodCall(TypedMethodCall {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
                 object_symbol_id: None,
                 method_name: method_call.method_name.name.clone(),
@@ -2771,8 +2763,8 @@ impl Resolver {
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
                 args,
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2782,7 +2774,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         struct_init: &StructInit,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let symbol_id =
             self.resolve_local_module_import(local_scope_opt.clone(), module_id, &struct_init.struct_name)?;
 
@@ -2810,16 +2802,16 @@ impl Resolver {
             )
         });
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::StructInit(TypedStructInit {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::StructInit(TypedStructInitExpr {
                 symbol_id,
                 fields: field_inits,
                 type_args,
                 is_const: struct_init.is_const,
                 loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2829,27 +2821,27 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         func_call: &FuncCall,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         if is_unscoped_expr!(self, local_scope_opt, func_call.loc.clone(), func_call.span.end) {
             return None;
         }
 
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &func_call.operand)?;
 
-        let type_args: Vec<TypedExpression> = func_call
+        let type_args: Vec<TypedExprStmt> = func_call
             .args
             .iter()
             .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
             .collect();
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::FuncCall(TypedFuncCall {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::FuncCall(TypedFuncCall {
                 operand: Box::new(operand),
                 args: type_args,
                 loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2859,7 +2851,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         arr: &Array,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let array_type = self.resolve_type(
             &None,
             local_scope_opt.clone(),
@@ -2869,20 +2861,20 @@ impl Resolver {
             arr.span.end,
         )?;
 
-        let typed_elements: Vec<TypedExpression> = arr
+        let typed_elements: Vec<TypedExprStmt> = arr
             .elements
             .iter()
             .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
             .collect();
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Array(TypedArray {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Array(TypedArrayExpr {
                 array_type,
                 elements: typed_elements,
                 loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2892,19 +2884,19 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         bin: &InfixExpression,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs)?;
         let rhs = self.resolve_expr(module_id, local_scope_opt, &*bin.rhs)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Infix(TypedInfixExpression {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Infix(TypedInfixExpr {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
                 op: bin.op.clone(),
                 loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2914,17 +2906,17 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         prefix: &PrefixExpression,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt, &*prefix.operand)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Prefix(TypedPrefixExpression {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Prefix(TypedPrefixExpr {
                 operand: Box::new(operand),
                 op: prefix.op.clone(),
                 loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2934,7 +2926,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         cast: &Cast,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr)?;
 
         let target_type = self.resolve_type(
@@ -2946,14 +2938,14 @@ impl Resolver {
             cast.span.end,
         )?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Cast(TypedCast {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Cast(TypedCastExpr {
                 operand: Box::new(operand),
                 target_type,
                 loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -2963,7 +2955,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         type_specifier: &TypeSpecifier,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let (loc, span_end) = type_specifier.get_loc();
 
         let symbol_id = match type_specifier {
@@ -2974,7 +2966,7 @@ impl Resolver {
                 self.resolve_module_import(module_id, module_import.clone())?
             }
             _ => {
-                let concrete_type = self.resolve_type(
+                let sema_ty = self.resolve_type(
                     &None,
                     local_scope_opt,
                     module_id,
@@ -2982,22 +2974,22 @@ impl Resolver {
                     loc.clone(),
                     span_end,
                 )?;
-                return Some(TypedExpression {
-                    kind: TypedExpressionKind::SemanticType(concrete_type.clone()),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: Some(concrete_type),
+                return Some(TypedExprStmt {
+                    kind: TypedExprKind::SemanticType(sema_ty.clone()),
+                    vcat: ValueCategory::RValue,
+                    sema_ty: Some(sema_ty),
                     loc: SourceLoc::from_loc(loc, self.get_current_module_file_path()),
                 });
             }
         };
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Symbol(
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Symbol(
                 symbol_id,
                 SourceLoc::from_loc(type_specifier.get_loc().0, self.get_current_module_file_path()),
             ),
-            value_category: ValueCategory::Lvalue,
-            concrete_type: None,
+            vcat: ValueCategory::LValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(loc, self.get_current_module_file_path()),
         })
     }
@@ -3007,29 +2999,29 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         assignment: &Assignment,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs)?;
         let rhs = self.resolve_expr(module_id, local_scope_opt, &assignment.rhs)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Assignment(TypedAssignment {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Assign(TypedAssignExpr {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
                 kind: assignment.kind.clone(),
                 loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
         })
     }
 
-    fn resolve_literal_expr(&mut self, literal: &Literal) -> Option<TypedExpression> {
+    fn resolve_literal_expr(&mut self, literal: &Literal) -> Option<TypedExprStmt> {
         let literal_type: Option<SemanticType> = match &literal.kind {
             LiteralKind::Integer(_, suffix_opt) | LiteralKind::Float(_, suffix_opt) => {
                 if let Some(token_kind) = suffix_opt {
                     match SemanticType::try_from(*token_kind.clone()) {
-                        Ok(concrete_type) => Some(concrete_type),
+                        Ok(sema_ty) => Some(sema_ty),
                         Err(_) => {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
@@ -3053,38 +3045,38 @@ impl Resolver {
                         StringPrefix::B => {
                             let len = string_value.len() + 1;
                             Some(SemanticType::Array(TypedArrayType {
-                                element_type: Box::new(SemanticType::BasicType(BasicSemanticType::Char)),
+                                element_type: Box::new(SemanticType::BasicType(BasicType::Char)),
                                 capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len)),
                                 loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
                             }))
                         }
                         StringPrefix::C => Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                            BasicSemanticType::Char,
+                            BasicType::Char,
                         )))),
                     }
                 } else {
                     Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                        BasicSemanticType::Char,
+                        BasicType::Char,
                     ))))
                 }
             }
-            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicSemanticType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicSemanticType::Char)),
+            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicType::Char)),
             LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                BasicSemanticType::Void,
+                BasicType::Void,
             )))),
         };
 
-        let typed_literal = TypedLiteral {
+        let typed_literal = TypedLiteralExpr {
             ty: literal_type,
             kind: literal.kind.clone(),
             loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
         };
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Literal(typed_literal.clone()),
-            concrete_type: None,
-            value_category: ValueCategory::Rvalue,
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Literal(typed_literal.clone()),
+            sema_ty: None,
+            vcat: ValueCategory::RValue,
             loc: typed_literal.loc,
         })
     }
@@ -3094,17 +3086,17 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         unary: &UnaryExpression,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt, &*unary.operand)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Unary(TypedUnaryExpression {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Unary(TypedUnaryExpr {
                 op: unary.op.clone(),
                 operand: Box::new(operand),
                 loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -3114,18 +3106,18 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         array_index: &ArrayIndex,
-    ) -> Option<TypedExpression> {
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.operand)?;
         let index = self.resolve_expr(module_id, local_scope_opt, &array_index.index)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::ArrayIndex(TypedArrayIndex {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::ArrayIndex(TypedArrayIndexExpr {
                 operand: Box::new(operand),
                 index: Box::new(index),
                 loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Lvalue,
-            concrete_type: None,
+            vcat: ValueCategory::LValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -3134,17 +3126,17 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        address_of: &AddressOf,
-    ) -> Option<TypedExpression> {
+        address_of: &AddrOf,
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt, &address_of.expr)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::AddressOf(TypedAddressOf {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
                 operand: Box::new(operand),
                 loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Lvalue,
-            concrete_type: None,
+            vcat: ValueCategory::LValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -3153,17 +3145,17 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        dereference: &Dereference,
-    ) -> Option<TypedExpression> {
+        dereference: &Deref,
+    ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt, &dereference.expr)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Dereference(TypedDereference {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Deref(TypedDerefExpr {
                 operand: Box::new(operand),
                 loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -3172,8 +3164,8 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        unnamed_struct_value: &UnnamedStructValue,
-    ) -> Option<TypedExpression> {
+        unnamed_struct_value: &UStructValue,
+    ) -> Option<TypedExprStmt> {
         let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
 
         for field in &unnamed_struct_value.fields {
@@ -3186,7 +3178,7 @@ impl Resolver {
                     field.loc.clone(),
                     field.span.end,
                 ) {
-                    Some(concrete_type) => Some(concrete_type),
+                    Some(sema_ty) => Some(sema_ty),
                     None => continue,
                 }
             } else {
@@ -3206,16 +3198,16 @@ impl Resolver {
             });
         }
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::UnnamedStructValue(TypedUnnamedStructValue {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::UStructValue(TypedUStructValue {
                 fields,
                 unnamed_struct_type: None,
                 packed: unnamed_struct_value.packed,
                 is_const: unnamed_struct_value.is_const,
                 loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -3224,17 +3216,17 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        size_of_expression: &SizeOfExpression,
-    ) -> Option<TypedExpression> {
+        size_of_expression: &SizeOf,
+    ) -> Option<TypedExprStmt> {
         let typed_expr = self.resolve_expr(module_id, local_scope_opt, &size_of_expression.expr)?;
 
-        Some(TypedExpression {
-            kind: TypedExpressionKind::SizeOfExpression(TypedSizeOfExpression {
+        Some(TypedExprStmt {
+            kind: TypedExprKind::SizeOf(TypedSizeOfExpr {
                 expr: Box::new(typed_expr),
                 loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
         })
     }
@@ -3346,7 +3338,7 @@ impl Visiting {
     }
 }
 
-pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDecl) -> FuncSig {
+pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
     FuncSig {
         module_id: func_decl.module_id,
         name: func_decl.name.clone(),
@@ -3358,7 +3350,7 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDecl) -> FuncSig {
     }
 }
 
-pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDef) -> FuncSig {
+pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
     FuncSig {
         module_id: func_def.module_id,
         name: func_def.name.clone(),
@@ -3380,7 +3372,7 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     }
 }
 
-pub fn typed_struct_as_struct_sig(typed_struct: &TypedStruct) -> StructSig {
+pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
     StructSig {
         name: typed_struct.name.clone(),
         fields: typed_struct.fields.clone(),
@@ -3393,7 +3385,7 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStruct) -> StructSig {
     }
 }
 
-pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnum) -> EnumSig {
+pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
     EnumSig {
         symbol_id: typed_enum.symbol_id,
         name: typed_enum.name.clone(),
@@ -3405,7 +3397,7 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnum) -> EnumSig {
     }
 }
 
-pub fn typed_union_as_union_sig(typed_union: &TypedUnion) -> UnionSig {
+pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
     UnionSig {
         symbol_id: typed_union.symbol_id,
         name: typed_union.name.clone(),
@@ -3440,8 +3432,8 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
         variadic: match &params.variadic {
             Some(variadic) => match variadic {
                 TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-                TypedFuncVariadicParams::Typed(_, concrete_type) => {
-                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type.clone())))
+                TypedFuncVariadicParams::Typed(_, sema_ty) => {
+                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty.clone())))
                 }
             },
             None => None,

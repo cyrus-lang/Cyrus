@@ -1,7 +1,7 @@
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParamKind, TypedFuncParams,
+    ModuleID, SymbolID, TypedEnumVariant, TypedExprStmt, TypedFuncDeclStmt, TypedFuncParamKind, TypedFuncParams,
     TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::SemanticType,
 };
 
@@ -64,7 +64,7 @@ pub struct InterfaceSig {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
-    pub methods: Vec<TypedFuncDecl>,
+    pub methods: Vec<TypedFuncDeclStmt>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -74,7 +74,7 @@ pub struct GlobalVarSig {
     pub module_id: ModuleID,
     pub name: String,
     pub ty: Option<SemanticType>,
-    pub rhs: Option<TypedExpression>,
+    pub rhs: Option<TypedExprStmt>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }

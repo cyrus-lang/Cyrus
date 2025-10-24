@@ -19,8 +19,8 @@ use inkwell::{
 };
 use resolver::{scope::LocalScopeRef, typed_func_type_from_func_sig};
 use typed_ast::{
-    ModuleID, SymbolID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams,
-    TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedLambda, TypedVariable,
+    ModuleID, SymbolID, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams,
+    TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedLambdaExpr, TypedVarStmt,
     types::{SemanticType, TypedFuncType},
 };
 
@@ -71,7 +71,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_lambda_expr(&mut self, lambda: &TypedLambda) -> InternalValue<'a> {
+    pub(crate) fn build_lambda_expr(&mut self, lambda: &TypedLambdaExpr) -> InternalValue<'a> {
         let fn_type = self.build_func_type(
             get_func_type_params_from_func_params(&lambda.params),
             lambda.return_type.clone(),
@@ -134,7 +134,7 @@ impl<'a> CodeGenBuilder<'a> {
         fn_value: FunctionValue<'a>,
     ) {
         params.list.iter().enumerate().for_each(|(param_idx, param_kind)| {
-            let (name, concrete_type, loc) = match param_kind {
+            let (name, sema_ty, loc) = match param_kind {
                 TypedFuncParamKind::FuncParam(typed_func_param) => (
                     typed_func_param.name.clone(),
                     typed_func_param.ty.clone(),
@@ -156,15 +156,15 @@ impl<'a> CodeGenBuilder<'a> {
             if basic_value.is_pointer_value() {
                 self.insert_ir_value(
                     local_param_symbol_id,
-                    LocalIRValue::RValue(basic_value, SemanticType::Pointer(Box::new(concrete_type))),
+                    LocalIRValue::RValue(basic_value, SemanticType::Pointer(Box::new(sema_ty))),
                 );
             } else {
                 let lvalue_pointer = self.build_local_variable(
                     local_scope_opt.clone(),
-                    &TypedVariable {
+                    &TypedVarStmt {
                         symbol_id: local_param_symbol_id,
                         name: name.clone(),
-                        ty: Some(concrete_type.clone()),
+                        ty: Some(sema_ty.clone()),
                         rhs: None,
                         is_const: false,
                         loc,
@@ -177,7 +177,7 @@ impl<'a> CodeGenBuilder<'a> {
         })
     }
 
-    pub(crate) fn build_func_def(&mut self, func_def: &TypedFuncDef) {
+    pub(crate) fn build_func_def(&mut self, func_def: &TypedFuncDefStmt) {
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, func_def.body.scope_id);
         let local_ir_value = self.get_ir_value(func_def.symbol_id).unwrap();
 
@@ -334,8 +334,8 @@ fn get_func_type_params_from_func_params(func_params: &TypedFuncParams) -> Typed
         variadic: match &func_params.variadic {
             Some(variadic) => Some(Box::new(match variadic {
                 TypedFuncVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
-                TypedFuncVariadicParams::Typed(_, concrete_type) => {
-                    TypedFuncTypeVariadicParams::Typed(concrete_type.clone())
+                TypedFuncVariadicParams::Typed(_, sema_ty) => {
+                    TypedFuncTypeVariadicParams::Typed(sema_ty.clone())
                 }
             })),
             None => None,

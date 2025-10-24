@@ -11,6 +11,7 @@ members = [
     "crates/cli",
     "crates/semantic",
     "crates/resolver",
+    "crates/cir",
 ]
 default-members = ["crates/cli"]
 

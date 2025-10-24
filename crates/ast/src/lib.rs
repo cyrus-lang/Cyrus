@@ -73,21 +73,21 @@ pub enum Expression {
     Unary(UnaryExpression),
     Array(Array),
     ArrayIndex(ArrayIndex),
-    AddressOf(AddressOf),
-    Dereference(Dereference),
+    AddrOf(AddrOf),
+    Deref(Deref),
     StructInit(StructInit),
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
-    UnnamedStructValue(UnnamedStructValue),
-    SizeOfExpression(SizeOfExpression),
+    UStructValue(UStructValue),
+    SizeOf(SizeOf),
     Lambda(Lambda),
     Tuple(TupleValue),
-    TupleMemberAccess(TupleMemberAccess),
+    TupleAccess(TupleAccess),
 }
 
 #[derive(Debug, Clone)]
-pub struct TupleMemberAccess {
+pub struct TupleAccess {
     pub operand: Box<Expression>,
     pub index: Box<Expression>,
     pub loc: Location,
@@ -102,28 +102,28 @@ pub struct TupleValue {
 }
 
 #[derive(Debug, Clone)]
-pub struct SizeOfExpression {
+pub struct SizeOf {
     pub expr: Box<Expression>,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct Dereference {
+pub struct Deref {
     pub expr: Box<Expression>,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct AddressOf {
+pub struct AddrOf {
     pub expr: Box<Expression>,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct UnnamedStructValue {
+pub struct UStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub packed: bool,
     pub is_const: bool,
@@ -313,7 +313,7 @@ pub enum TypeSpecifier {
     Const(Box<TypeSpecifier>),
     Array(ArrayTypeSpecifier),
     ModuleImport(ModuleImport),
-    Dereference(Box<TypeSpecifier>),
+    Deref(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
     FuncType(Box<FuncType>),
     Tuple(TupleType),
@@ -344,7 +344,7 @@ impl TypeSpecifier {
             TypeSpecifier::Const(inner) => inner.get_loc(),
             TypeSpecifier::Array(array) => array.element_type.get_loc(),
             TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
-            TypeSpecifier::Dereference(inner) => inner.get_loc(),
+            TypeSpecifier::Deref(inner) => inner.get_loc(),
             TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
             TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
             TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
@@ -438,7 +438,7 @@ pub struct ArrayIndex {
 pub enum Statement {
     Interface(Interface),
     Variable(Variable),
-    ExportTupleValues(ExportTupleValues),
+    ExportTuple(ExportTuple),
     Expression(Expression),
     If(If),
     Return(Return),
@@ -794,7 +794,7 @@ pub struct Variable {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExportTupleValues {
+pub struct ExportTuple {
     pub exports: Vec<Identifier>,
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expression>,
@@ -899,7 +899,7 @@ impl Statement {
         match self {
             Statement::Interface(interface) => interface.loc.clone(),
             Statement::Variable(variable) => variable.loc.clone(),
-            Statement::ExportTupleValues(export_tuple_values) => export_tuple_values.loc.clone(),
+            Statement::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
             Statement::If(if_stmt) => if_stmt.loc.clone(),
             Statement::Return(ret) => ret.loc.clone(),
             Statement::FuncDef(func_def) => func_def.loc.clone(),

@@ -14,93 +14,86 @@ pub type SymbolID = u32;
 pub type ModuleID = u64;
 
 #[derive(Debug)]
-pub enum TypedProgram {
-    ProgramTree(TypedProgramTree),
-    Statement(TypedStatement),
-    Expression(TypedExpression),
-}
-
-#[derive(Debug)]
 pub struct TypedProgramTree {
-    pub body: Vec<TypedStatement>,
+    pub body: Vec<TypedStmt>,
 }
 
 // Expressions
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedExpression {
-    pub kind: TypedExpressionKind,
-    pub concrete_type: Option<SemanticType>,
-    pub value_category: ValueCategory,
+pub struct TypedExprStmt {
+    pub kind: TypedExprKind,
+    pub sema_ty: Option<SemanticType>,
+    pub vcat: ValueCategory,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ValueCategory {
-    Lvalue,
-    Rvalue,
+    LValue,
+    RValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypedExpressionKind {
+pub enum TypedExprKind {
     Symbol(SymbolID, SourceLoc),
-    Literal(TypedLiteral),
-    Prefix(TypedPrefixExpression),
-    Infix(TypedInfixExpression),
-    Unary(TypedUnaryExpression),
-    Assignment(TypedAssignment),
-    Cast(TypedCast),
-    Array(TypedArray),
-    ArrayIndex(TypedArrayIndex),
-    AddressOf(TypedAddressOf),
-    Dereference(TypedDereference),
-    StructInit(TypedStructInit),
+    Literal(TypedLiteralExpr),
+    Prefix(TypedPrefixExpr),
+    Infix(TypedInfixExpr),
+    Unary(TypedUnaryExpr),
+    Assign(TypedAssignExpr),
+    Cast(TypedCastExpr),
+    AddrOf(TypedAddrOfExpr),
+    Deref(TypedDerefExpr),
+    Array(TypedArrayExpr),
+    ArrayIndex(TypedArrayIndexExpr),
+    StructInit(TypedStructInitExpr),
+    UStructValue(TypedUStructValue),
     FuncCall(TypedFuncCall),
-    FieldAccess(TypedFieldAccess),
     MethodCall(TypedMethodCall),
-    UnnamedStructValue(TypedUnnamedStructValue),
-    SizeOfExpression(TypedSizeOfExpression),
-    Lambda(TypedLambda),
-    Tuple(TypedTupleValue),
+    FieldAccess(TypedFieldAccess),
+    SizeOf(TypedSizeOfExpr),
+    Lambda(TypedLambdaExpr),
+    Tuple(TypedTupleExpr),
+    TupleAccess(TypedTupleAccessExpr),
     SemanticType(SemanticType),
-    TupleMemberAccess(TypedTupleMemberAccess),
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedTupleMemberAccess {
-    pub operand: Box<TypedExpression>,
-    pub index: Box<TypedExpression>,
+pub struct TypedTupleAccessExpr {
+    pub operand: Box<TypedExprStmt>,
+    pub index: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedTupleValue {
-    pub expr_list: Vec<TypedExpression>,
+pub struct TypedTupleExpr {
+    pub expr_list: Vec<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedLambda {
+pub struct TypedLambdaExpr {
     pub params: TypedFuncParams,
-    pub body: Box<TypedBlockStatement>,
+    pub body: Box<TypedBlockStmt>,
     pub return_type: SemanticType,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedSizeOfExpression {
-    pub expr: Box<TypedExpression>,
+pub struct TypedSizeOfExpr {
+    pub expr: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedLiteral {
+pub struct TypedLiteralExpr {
     pub ty: Option<SemanticType>,
     pub kind: LiteralKind,
     pub loc: SourceLoc,
 }
 
-impl TypedLiteral {
+impl TypedLiteralExpr {
     pub fn format_kind(&self) -> String {
         match &self.kind {
             LiteralKind::Integer(..) => "integer",
@@ -114,22 +107,22 @@ impl TypedLiteral {
     }
 }
 
-impl TypedExpression {
+impl TypedExprStmt {
     pub fn is_lvalue(&self) -> bool {
-        self.value_category == ValueCategory::Lvalue
+        self.vcat == ValueCategory::LValue
     }
 
     pub fn is_rvalue(&self) -> bool {
-        self.value_category == ValueCategory::Rvalue
+        self.vcat == ValueCategory::RValue
     }
 }
 
-impl TypedExpressionKind {
+impl TypedExprKind {
     pub fn is_comptime_valid(&self) -> bool {
         match self {
-            TypedExpressionKind::Literal(_) => true,
-            TypedExpressionKind::Lambda(_) => true,
-            TypedExpressionKind::Tuple(tuple_value) => {
+            TypedExprKind::Literal(_) => true,
+            TypedExprKind::Lambda(_) => true,
+            TypedExprKind::Tuple(tuple_value) => {
                 let mut comptime_valid = true;
 
                 for expr in &tuple_value.expr_list {
@@ -141,63 +134,63 @@ impl TypedExpressionKind {
 
                 comptime_valid
             }
-            TypedExpressionKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
-            TypedExpressionKind::Infix(infix) => {
+            TypedExprKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
+            TypedExprKind::Infix(infix) => {
                 infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid()
             }
-            TypedExpressionKind::Unary(unary) => unary.operand.kind.is_comptime_valid(),
-            TypedExpressionKind::Cast(cast) => cast.operand.kind.is_comptime_valid(),
-            TypedExpressionKind::Array(typed_array) => typed_array
+            TypedExprKind::Unary(unary) => unary.operand.kind.is_comptime_valid(),
+            TypedExprKind::Cast(cast) => cast.operand.kind.is_comptime_valid(),
+            TypedExprKind::Array(typed_array) => typed_array
                 .elements
                 .iter()
                 .all(|typed_expr| typed_expr.kind.is_comptime_valid()),
-            TypedExpressionKind::StructInit(typed_struct_init) => typed_struct_init
+            TypedExprKind::StructInit(typed_struct_init) => typed_struct_init
                 .fields
                 .iter()
                 .all(|field_init| field_init.value.kind.is_comptime_valid()),
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => typed_unnamed_struct_value
+            TypedExprKind::UStructValue(typed_unnamed_struct_value) => typed_unnamed_struct_value
                 .fields
                 .iter()
                 .all(|typed_unnamed_struct_value_field| {
                     typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
                 }),
-            TypedExpressionKind::Symbol(..)
-            | TypedExpressionKind::ArrayIndex(_)
-            | TypedExpressionKind::TupleMemberAccess(_)
-            | TypedExpressionKind::Dereference(_)
-            | TypedExpressionKind::FieldAccess(_)
-            | TypedExpressionKind::MethodCall(_)
-            | TypedExpressionKind::FuncCall(_)
-            | TypedExpressionKind::Assignment(_)
-            | TypedExpressionKind::SizeOfExpression(_)
-            | TypedExpressionKind::SemanticType(_)
-            | TypedExpressionKind::AddressOf(_) => false,
+            TypedExprKind::Symbol(..)
+            | TypedExprKind::ArrayIndex(_)
+            | TypedExprKind::TupleAccess(_)
+            | TypedExprKind::Deref(_)
+            | TypedExprKind::FieldAccess(_)
+            | TypedExprKind::MethodCall(_)
+            | TypedExprKind::FuncCall(_)
+            | TypedExprKind::Assign(_)
+            | TypedExprKind::SizeOf(_)
+            | TypedExprKind::SemanticType(_)
+            | TypedExprKind::AddrOf(_) => false,
         }
     }
 
     pub fn is_lvalue(&self) -> bool {
         match self {
-            TypedExpressionKind::Symbol(..) => true,
-            TypedExpressionKind::ArrayIndex(_) => true,
-            TypedExpressionKind::Dereference(_) => true,
-            TypedExpressionKind::FieldAccess(_) => true,
-            TypedExpressionKind::TupleMemberAccess(_) => true,
-            TypedExpressionKind::MethodCall(_) => false,
-            TypedExpressionKind::FuncCall(_) => false,
-            TypedExpressionKind::StructInit(_) => false,
-            TypedExpressionKind::UnnamedStructValue(_) => false,
-            TypedExpressionKind::Literal(_) => false,
-            TypedExpressionKind::Prefix(_) => false,
-            TypedExpressionKind::Infix(_) => false,
-            TypedExpressionKind::Unary(_) => false,
-            TypedExpressionKind::Assignment(_) => false,
-            TypedExpressionKind::Cast(_) => false,
-            TypedExpressionKind::AddressOf(_) => false,
-            TypedExpressionKind::Array(_) => false,
-            TypedExpressionKind::SizeOfExpression(_) => false,
-            TypedExpressionKind::SemanticType(_) => false,
-            TypedExpressionKind::Lambda(_) => false,
-            TypedExpressionKind::Tuple(_) => false,
+            TypedExprKind::Symbol(..) => true,
+            TypedExprKind::ArrayIndex(_) => true,
+            TypedExprKind::Deref(_) => true,
+            TypedExprKind::FieldAccess(_) => true,
+            TypedExprKind::TupleAccess(_) => true,
+            TypedExprKind::MethodCall(_) => false,
+            TypedExprKind::FuncCall(_) => false,
+            TypedExprKind::StructInit(_) => false,
+            TypedExprKind::UStructValue(_) => false,
+            TypedExprKind::Literal(_) => false,
+            TypedExprKind::Prefix(_) => false,
+            TypedExprKind::Infix(_) => false,
+            TypedExprKind::Unary(_) => false,
+            TypedExprKind::Assign(_) => false,
+            TypedExprKind::Cast(_) => false,
+            TypedExprKind::AddrOf(_) => false,
+            TypedExprKind::Array(_) => false,
+            TypedExprKind::SizeOf(_) => false,
+            TypedExprKind::SemanticType(_) => false,
+            TypedExprKind::Lambda(_) => false,
+            TypedExprKind::Tuple(_) => false,
         }
     }
 }
@@ -210,70 +203,70 @@ pub struct TypedIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedPrefixExpression {
+pub struct TypedPrefixExpr {
     pub op: PrefixOperator,
-    pub operand: Box<TypedExpression>,
+    pub operand: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedUnaryExpression {
-    pub operand: Box<TypedExpression>,
+pub struct TypedUnaryExpr {
+    pub operand: Box<TypedExprStmt>,
     pub op: UnaryOperator,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedInfixExpression {
+pub struct TypedInfixExpr {
     pub op: InfixOperator,
-    pub lhs: Box<TypedExpression>,
-    pub rhs: Box<TypedExpression>,
+    pub lhs: Box<TypedExprStmt>,
+    pub rhs: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedAssignment {
-    pub lhs: Box<TypedExpression>,
-    pub rhs: Box<TypedExpression>,
+pub struct TypedAssignExpr {
+    pub lhs: Box<TypedExprStmt>,
+    pub rhs: Box<TypedExprStmt>,
     pub kind: AssignmentKind,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedCast {
-    pub operand: Box<TypedExpression>,
+pub struct TypedCastExpr {
+    pub operand: Box<TypedExprStmt>,
     pub target_type: SemanticType,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedArray {
+pub struct TypedArrayExpr {
     pub array_type: SemanticType,
-    pub elements: Vec<TypedExpression>,
+    pub elements: Vec<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedArrayIndex {
-    pub operand: Box<TypedExpression>,
-    pub index: Box<TypedExpression>,
+pub struct TypedArrayIndexExpr {
+    pub operand: Box<TypedExprStmt>,
+    pub index: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedAddressOf {
-    pub operand: Box<TypedExpression>,
+pub struct TypedAddrOfExpr {
+    pub operand: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedDereference {
-    pub operand: Box<TypedExpression>,
+pub struct TypedDerefExpr {
+    pub operand: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedStructInit {
+pub struct TypedStructInitExpr {
     pub symbol_id: SymbolID,
     pub type_args: Option<TypedTypeArgs>,
     pub fields: Vec<TypedStructFieldInit>,
@@ -284,20 +277,20 @@ pub struct TypedStructInit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructFieldInit {
     pub name: String,
-    pub value: TypedExpression,
+    pub value: TypedExprStmt,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncCall {
-    pub operand: Box<TypedExpression>,
-    pub args: Vec<TypedExpression>,
+    pub operand: Box<TypedExprStmt>,
+    pub args: Vec<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFieldAccess {
-    pub operand: Box<TypedExpression>,
+    pub operand: Box<TypedExprStmt>,
     pub object_symbol_id: Option<SymbolID>,
     pub field_name: String,
     pub field_index: Option<usize>,
@@ -309,17 +302,17 @@ pub struct TypedFieldAccess {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
-    pub operand: Box<TypedExpression>,
+    pub operand: Box<TypedExprStmt>,
     pub object_symbol_id: Option<SymbolID>,
     pub method_name: String,
-    pub args: Vec<TypedExpression>,
+    pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedUnnamedStructValue {
+pub struct TypedUStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub unnamed_struct_type: Option<TypedUnnamedStructType>,
     pub packed: bool,
@@ -331,89 +324,89 @@ pub struct TypedUnnamedStructValue {
 pub struct TypedUnnamedStructValueField {
     pub field_name: String,
     pub field_type: Option<SemanticType>,
-    pub field_value: Box<TypedExpression>,
+    pub field_value: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 // Statements
 
 #[derive(Debug, Clone)]
-pub enum TypedStatement {
-    Variable(TypedVariable),
-    Typedef(TypedTypedef),
-    GlobalVariable(TypedGlobalVariable),
-    FuncDef(TypedFuncDef),
-    FuncDecl(TypedFuncDecl),
-    BlockStatement(TypedBlockStatement),
-    If(TypedIf),
-    Return(TypedReturn),
-    Break(TypedBreak),
-    Continue(TypedContinue),
-    For(TypedFor),
-    While(TypedWhile),
-    Switch(TypedSwitch),
-    Struct(TypedStruct),
-    Enum(TypedEnum),
-    Union(TypedUnion),
-    Interface(TypedInterface),
-    Expression(TypedExpression),
-    Defer(TypedDefer),
-    ExportTupleValues(TypedExportTupleValues),
+pub enum TypedStmt {
+    Variable(TypedVarStmt),
+    Typedef(TypedTypedefStmt),
+    GlobalVariable(TypedGlobalVarStmt),
+    FuncDef(TypedFuncDefStmt),
+    FuncDecl(TypedFuncDeclStmt),
+    BlockStatement(TypedBlockStmt),
+    If(TypedIfStmt),
+    Return(TypedReturnStmt),
+    Break(TypedBreakStmt),
+    Continue(TypedContinueStmt),
+    For(TypedForStmt),
+    While(TypedWhileStmt),
+    Switch(TypedSwitchStmt),
+    Struct(TypedStructStmt),
+    Enum(TypedEnumStmt),
+    Union(TypedUnionStmt),
+    Interface(TypedInterfaceStmt),
+    Expression(TypedExprStmt),
+    Defer(TypedDeferStmt),
+    ExportTuple(TypedExportTupleStmt),
 }
 
-impl TypedStatement {
+impl TypedStmt {
     pub fn get_loc(&self) -> SourceLoc {
         match self {
-            TypedStatement::Variable(typed_variable) => typed_variable.loc.clone(),
-            TypedStatement::Typedef(typed_typedef) => typed_typedef.loc.clone(),
-            TypedStatement::GlobalVariable(typed_global_variable) => typed_global_variable.loc.clone(),
-            TypedStatement::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
-            TypedStatement::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
-            TypedStatement::BlockStatement(typed_block_statement) => typed_block_statement.loc.clone(),
-            TypedStatement::If(typed_if) => typed_if.loc.clone(),
-            TypedStatement::Return(typed_return) => typed_return.loc.clone(),
-            TypedStatement::Break(typed_break) => typed_break.loc.clone(),
-            TypedStatement::Continue(typed_continue) => typed_continue.loc.clone(),
-            TypedStatement::For(typed_for) => typed_for.loc.clone(),
-            TypedStatement::Switch(typed_switch) => typed_switch.loc.clone(),
-            TypedStatement::Struct(typed_struct) => typed_struct.loc.clone(),
-            TypedStatement::Enum(typed_enum) => typed_enum.loc.clone(),
-            TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
-            TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
-            TypedStatement::Union(union_stmt) => union_stmt.loc.clone(),
-            TypedStatement::Defer(typed_defer) => typed_defer.loc.clone(),
-            TypedStatement::ExportTupleValues(export_tuple_values) => export_tuple_values.loc.clone(),
+            TypedStmt::Variable(typed_variable) => typed_variable.loc.clone(),
+            TypedStmt::Typedef(typed_typedef) => typed_typedef.loc.clone(),
+            TypedStmt::GlobalVariable(typed_global_variable) => typed_global_variable.loc.clone(),
+            TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
+            TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
+            TypedStmt::BlockStatement(typed_block_statement) => typed_block_statement.loc.clone(),
+            TypedStmt::If(typed_if) => typed_if.loc.clone(),
+            TypedStmt::Return(typed_return) => typed_return.loc.clone(),
+            TypedStmt::Break(typed_break) => typed_break.loc.clone(),
+            TypedStmt::Continue(typed_continue) => typed_continue.loc.clone(),
+            TypedStmt::For(typed_for) => typed_for.loc.clone(),
+            TypedStmt::Switch(typed_switch) => typed_switch.loc.clone(),
+            TypedStmt::Struct(typed_struct) => typed_struct.loc.clone(),
+            TypedStmt::Enum(typed_enum) => typed_enum.loc.clone(),
+            TypedStmt::Interface(typed_interface) => typed_interface.loc.clone(),
+            TypedStmt::Expression(typed_expression) => typed_expression.loc.clone(),
+            TypedStmt::While(while_stmt) => while_stmt.loc.clone(),
+            TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
+            TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
+            TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedExportTupleValues {
+pub struct TypedExportTupleStmt {
     pub exports: Vec<SymbolID>,
     pub ty: Option<SemanticType>,
-    pub rhs: Option<TypedExpression>,
+    pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedDefer {
-    pub operand: Box<TypedStatement>,
+pub struct TypedDeferStmt {
+    pub operand: Box<TypedStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedInterface {
+pub struct TypedInterfaceStmt {
     pub name: String,
     pub symbol_id: SymbolID,
-    pub methods: Vec<TypedFuncDecl>,
+    pub methods: Vec<TypedFuncDeclStmt>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedEnum {
+pub struct TypedEnumStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub is_local: Option<ScopeID>,
@@ -428,7 +421,7 @@ pub struct TypedEnum {
 #[derive(Debug, Clone)]
 pub enum TypedEnumVariant {
     Identifier(Identifier),
-    Valued(Identifier, Box<TypedExpression>),
+    Valued(Identifier, Box<TypedExprStmt>),
     Variant(Identifier, Vec<TypedEnumValuedField>),
 }
 
@@ -449,7 +442,7 @@ pub struct TypedEnumValuedField {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedStruct {
+pub struct TypedStructStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub is_local: Option<ScopeID>,
@@ -464,7 +457,7 @@ pub struct TypedStruct {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedUnion {
+pub struct TypedUnionStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub is_local: Option<ScopeID>,
@@ -492,25 +485,25 @@ pub struct TypedStructField {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedReturn {
-    pub argument: Option<TypedExpression>,
+pub struct TypedReturnStmt {
+    pub argument: Option<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedGlobalVariable {
+pub struct TypedGlobalVarStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemanticType>,
-    pub expr: Option<TypedExpression>,
+    pub expr: Option<TypedExprStmt>,
     pub is_const: bool,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedTypedef {
+pub struct TypedTypedefStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: SemanticType,
@@ -519,14 +512,14 @@ pub struct TypedTypedef {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedBlockStatement {
+pub struct TypedBlockStmt {
     pub scope_id: ScopeID,
-    pub exprs: Vec<TypedStatement>,
-    pub defers: Vec<TypedDefer>,
+    pub exprs: Vec<TypedStmt>,
+    pub defers: Vec<TypedDeferStmt>,
     pub loc: SourceLoc,
 }
 
-impl TypedBlockStatement {
+impl TypedBlockStmt {
     pub fn new_empty(scope_id: ScopeID, loc: SourceLoc) -> Self {
         Self {
             scope_id,
@@ -538,38 +531,38 @@ impl TypedBlockStatement {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedVariable {
+pub struct TypedVarStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemanticType>,
-    pub rhs: Option<TypedExpression>,
+    pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedIf {
-    pub condition: TypedExpression,
-    pub consequent: Box<TypedBlockStatement>,
-    pub branches: Vec<TypedIf>,
-    pub alternate: Option<Box<TypedBlockStatement>>,
+pub struct TypedIfStmt {
+    pub condition: TypedExprStmt,
+    pub consequent: Box<TypedBlockStmt>,
+    pub branches: Vec<TypedIfStmt>,
+    pub alternate: Option<Box<TypedBlockStmt>>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedFuncDef {
+pub struct TypedFuncDefStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
-    pub body: Box<TypedBlockStatement>,
+    pub body: Box<TypedBlockStmt>,
     pub return_type: SemanticType,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedFuncDecl {
+pub struct TypedFuncDeclStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
@@ -627,50 +620,50 @@ pub struct TypedFuncParam {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedFor {
-    pub initializer: Option<TypedVariable>,
-    pub condition: Option<TypedExpression>,
-    pub increment: Option<TypedExpression>,
-    pub body: Box<TypedBlockStatement>,
+pub struct TypedForStmt {
+    pub initializer: Option<TypedVarStmt>,
+    pub condition: Option<TypedExprStmt>,
+    pub increment: Option<TypedExprStmt>,
+    pub body: Box<TypedBlockStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedWhile {
-    pub condition: TypedExpression,
-    pub body: Box<TypedBlockStatement>,
+pub struct TypedWhileStmt {
+    pub condition: TypedExprStmt,
+    pub body: Box<TypedBlockStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedSwitch {
-    pub operand: TypedExpression,
+pub struct TypedSwitchStmt {
+    pub operand: TypedExprStmt,
     pub cases: Vec<TypedSwitchCase>,
-    pub default_case: Option<TypedBlockStatement>,
+    pub default_case: Option<TypedBlockStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
     pub pattern: TypedSwitchCasePattern,
-    pub body: Box<TypedBlockStatement>,
+    pub body: Box<TypedBlockStmt>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
-    Expression(TypedExpression, SourceLoc),
+    Expression(TypedExprStmt, SourceLoc),
     Identifier(String, SourceLoc),
     EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedBreak {
+pub struct TypedBreakStmt {
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedContinue {
+pub struct TypedContinueStmt {
     pub loc: SourceLoc,
 }
 
@@ -716,19 +709,19 @@ impl PartialEq for TypedTypeArg {
     }
 }
 
-impl PartialEq for TypedLambda {
+impl PartialEq for TypedLambdaExpr {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params && self.return_type == other.return_type
     }
 }
 
-impl PartialEq for TypedTupleValue {
+impl PartialEq for TypedTupleExpr {
     fn eq(&self, other: &Self) -> bool {
         self.expr_list == other.expr_list
     }
 }
 
-impl PartialEq for TypedTupleMemberAccess {
+impl PartialEq for TypedTupleAccessExpr {
     fn eq(&self, other: &Self) -> bool {
         self.operand == other.operand && self.index == other.index
     }

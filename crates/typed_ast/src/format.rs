@@ -1,16 +1,16 @@
 use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
 
 use crate::{
-    SymbolID, TypedExpression, TypedExpressionKind, TypedFuncParamKind, TypedFuncTypeVariadicParams,
-    TypedFuncVariadicParams, TypedLambda, TypedTypeArg,
+    SymbolID, TypedExprStmt, TypedExprKind, TypedFuncParamKind, TypedFuncTypeVariadicParams,
+    TypedFuncVariadicParams, TypedLambdaExpr, TypedTypeArg,
     types::{
-        BasicSemanticType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        BasicType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedFuncType, TypedUnnamedStructType,
     },
 };
 
 pub fn format_typed_exprs<'a>(
-    exprs: &Vec<TypedExpression>,
+    exprs: &Vec<TypedExprStmt>,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     exprs
@@ -21,12 +21,12 @@ pub fn format_typed_exprs<'a>(
 }
 
 pub fn format_typed_expr<'a>(
-    typed_expr: &TypedExpression,
+    typed_expr: &TypedExprStmt,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     match &typed_expr.kind {
-        TypedExpressionKind::Symbol(symbol_id, ..) => format_symbol(*symbol_id),
-        TypedExpressionKind::Literal(typed_literal) => match &typed_literal.kind {
+        TypedExprKind::Symbol(symbol_id, ..) => format_symbol(*symbol_id),
+        TypedExprKind::Literal(typed_literal) => match &typed_literal.kind {
             LiteralKind::Integer(value, token_kind_opt) => {
                 let mut fmt = String::new();
                 fmt.push_str(&value.to_string());
@@ -66,20 +66,20 @@ pub fn format_typed_expr<'a>(
             LiteralKind::Char(value) => return value.to_string(),
             LiteralKind::Null => return "null".to_string(),
         },
-        TypedExpressionKind::Prefix(typed_prefix_expr) => {
+        TypedExprKind::Prefix(typed_prefix_expr) => {
             let mut fmt = String::new();
             fmt.push_str(&typed_prefix_expr.op.to_string());
             fmt.push_str(&format_typed_expr(&typed_prefix_expr.operand, format_symbol));
             return fmt;
         }
-        TypedExpressionKind::Infix(typed_infix_expr) => {
+        TypedExprKind::Infix(typed_infix_expr) => {
             let mut fmt = String::new();
             fmt.push_str(&format_typed_expr(&typed_infix_expr.lhs, format_symbol));
             fmt.push_str(&typed_infix_expr.op.to_string());
             fmt.push_str(&format_typed_expr(&typed_infix_expr.rhs, format_symbol));
             return fmt;
         }
-        TypedExpressionKind::Unary(typed_unary_expr) => {
+        TypedExprKind::Unary(typed_unary_expr) => {
             let operand_fmt = &format_typed_expr(&typed_unary_expr.operand, format_symbol);
             match typed_unary_expr.op {
                 UnaryOperator::PreIncrement => return format!("++{}", operand_fmt),
@@ -88,7 +88,7 @@ pub fn format_typed_expr<'a>(
                 UnaryOperator::PostDecrement => return format!("{}--", operand_fmt),
             }
         }
-        TypedExpressionKind::Assignment(typed_assign) => {
+        TypedExprKind::Assign(typed_assign) => {
             let mut fmt = String::new();
             fmt.push_str(&format_typed_expr(&typed_assign.lhs, format_symbol));
             match &typed_assign.kind {
@@ -107,14 +107,14 @@ pub fn format_typed_expr<'a>(
             fmt.push_str(&format_typed_expr(&typed_assign.rhs, format_symbol));
             fmt
         }
-        TypedExpressionKind::Cast(typed_cast) => {
+        TypedExprKind::Cast(typed_cast) => {
             let mut fmt = String::new();
             let operand_fmt = &format_typed_expr(&typed_cast.operand, format_symbol);
             let target_type_fmt = format_concrete_type(typed_cast.target_type.clone(), format_symbol);
             fmt.push_str(&format!("cast({}, {})", operand_fmt, target_type_fmt));
             fmt
         }
-        TypedExpressionKind::Array(typed_array) => {
+        TypedExprKind::Array(typed_array) => {
             let mut fmt = String::new();
             let array_type_fmt = format_concrete_type(typed_array.array_type.clone(), format_symbol);
             fmt.push_str(&format!(
@@ -124,20 +124,20 @@ pub fn format_typed_expr<'a>(
             ));
             fmt
         }
-        TypedExpressionKind::ArrayIndex(typed_array_index) => {
+        TypedExprKind::ArrayIndex(typed_array_index) => {
             let operand_fmt = &format_typed_expr(&typed_array_index.operand, format_symbol);
             let index_fmt = &format_typed_expr(&typed_array_index.index, format_symbol);
             return format!("{}[{}]", operand_fmt, index_fmt);
         }
-        TypedExpressionKind::AddressOf(typed_address_of) => {
+        TypedExprKind::AddrOf(typed_address_of) => {
             let operand_fmt = &format_typed_expr(&typed_address_of.operand, format_symbol);
             return format!("&{}", operand_fmt);
         }
-        TypedExpressionKind::Dereference(typed_dereference) => {
+        TypedExprKind::Deref(typed_dereference) => {
             let operand_fmt = &format_typed_expr(&typed_dereference.operand, format_symbol);
             return format!("*{}", operand_fmt);
         }
-        TypedExpressionKind::StructInit(typed_struct_init) => {
+        TypedExprKind::StructInit(typed_struct_init) => {
             let mut fmt = String::new();
             let struct_name = format_symbol(typed_struct_init.symbol_id);
             fmt.push_str(&struct_name);
@@ -156,14 +156,14 @@ pub fn format_typed_expr<'a>(
             fmt.push_str(" }}");
             return fmt;
         }
-        TypedExpressionKind::FuncCall(typed_func_call) => {
+        TypedExprKind::FuncCall(typed_func_call) => {
             format!(
                 "{}({})",
                 format_typed_expr(&typed_func_call.operand, format_symbol),
                 format_typed_exprs(&typed_func_call.args, format_symbol)
             )
         }
-        TypedExpressionKind::FieldAccess(field_access) => {
+        TypedExprKind::FieldAccess(field_access) => {
             let mut fmt = String::new();
             let operand_fmt = &format_typed_expr(&field_access.operand, format_symbol);
             fmt.push_str(operand_fmt);
@@ -175,14 +175,14 @@ pub fn format_typed_expr<'a>(
             fmt.push_str(&field_access.field_name);
             fmt
         }
-        TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
+        TypedExprKind::TupleAccess(tuple_member_access) => {
             format!(
                 "{}.{}",
                 format_typed_expr(&tuple_member_access.operand, format_symbol),
                 format_typed_expr(&tuple_member_access.operand, format_symbol)
             )
         }
-        TypedExpressionKind::MethodCall(typed_method_call) => {
+        TypedExprKind::MethodCall(typed_method_call) => {
             let mut fmt = String::new();
             let operand_fmt = &format_typed_expr(&typed_method_call.operand, format_symbol);
             fmt.push_str(operand_fmt);
@@ -194,7 +194,7 @@ pub fn format_typed_expr<'a>(
             fmt.push_str(&typed_method_call.method_name);
             fmt
         }
-        TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+        TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
             let mut fmt = String::new();
             if typed_unnamed_struct_value.is_const {
                 fmt.push_str("const ");
@@ -212,8 +212,8 @@ pub fn format_typed_expr<'a>(
                     .map(|field| {
                         let mut lfmt = String::new();
                         lfmt.push_str(&field.field_name);
-                        if let Some(concrete_type) = &field.field_type {
-                            let type_fmt = format_concrete_type(concrete_type.clone(), format_symbol);
+                        if let Some(sema_ty) = &field.field_type {
+                            let type_fmt = format_concrete_type(sema_ty.clone(), format_symbol);
                             lfmt.push_str(": ");
                             lfmt.push_str(&type_fmt);
                         }
@@ -226,13 +226,13 @@ pub fn format_typed_expr<'a>(
             fmt.push_str(" }}");
             fmt
         }
-        TypedExpressionKind::SizeOfExpression(typed_size_of_expr) => {
+        TypedExprKind::SizeOf(typed_size_of_expr) => {
             let operand_fmt = &format_typed_expr(&typed_size_of_expr.expr, format_symbol);
             return format!("sizeof({})", operand_fmt);
         }
-        TypedExpressionKind::SemanticType(concrete_type) => format_concrete_type(concrete_type.clone(), format_symbol),
-        TypedExpressionKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),
-        TypedExpressionKind::Tuple(tuple_value) => {
+        TypedExprKind::SemanticType(sema_ty) => format_concrete_type(sema_ty.clone(), format_symbol),
+        TypedExprKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),
+        TypedExprKind::Tuple(tuple_value) => {
             format!(
                 "({})",
                 tuple_value
@@ -281,10 +281,10 @@ pub fn format_unnamed_struct_type<'a>(
 }
 
 pub fn format_concrete_type<'a>(
-    concrete_type: SemanticType,
+    sema_ty: SemanticType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
-    match concrete_type {
+    match sema_ty {
         SemanticType::UnresolvedSymbol(..) => unreachable!(),
         SemanticType::GenericParam(identifier) => identifier.name.clone(),
         SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
@@ -299,29 +299,29 @@ pub fn format_concrete_type<'a>(
             ResolvedSymbol::Union(symbol_id) => format_symbol(symbol_id),
         },
         SemanticType::BasicType(basic_concrete_type) => match basic_concrete_type {
-            BasicSemanticType::UIntPtr => "uintptr".to_string(),
-            BasicSemanticType::IntPtr => "intptr".to_string(),
-            BasicSemanticType::SizeT => "size_t".to_string(),
-            BasicSemanticType::Int => "int".to_string(),
-            BasicSemanticType::Int8 => "int8".to_string(),
-            BasicSemanticType::Int16 => "int16".to_string(),
-            BasicSemanticType::Int32 => "int32".to_string(),
-            BasicSemanticType::Int64 => "int64".to_string(),
-            BasicSemanticType::Int128 => "int128".to_string(),
-            BasicSemanticType::UInt => "uint".to_string(),
-            BasicSemanticType::UInt8 => "uint8".to_string(),
-            BasicSemanticType::UInt16 => "uint16".to_string(),
-            BasicSemanticType::UInt32 => "uint32".to_string(),
-            BasicSemanticType::UInt64 => "uint64".to_string(),
-            BasicSemanticType::UInt128 => "uint128".to_string(),
-            BasicSemanticType::Float16 => "float16".to_string(),
-            BasicSemanticType::Float32 => "float32".to_string(),
-            BasicSemanticType::Float64 => "float64".to_string(),
-            BasicSemanticType::Float128 => "float128".to_string(),
-            BasicSemanticType::Char => "char".to_string(),
-            BasicSemanticType::Bool => "bool".to_string(),
-            BasicSemanticType::Void => "void".to_string(),
-            BasicSemanticType::Null => "null".to_string(),
+            BasicType::UIntPtr => "uintptr".to_string(),
+            BasicType::IntPtr => "intptr".to_string(),
+            BasicType::SizeT => "size_t".to_string(),
+            BasicType::Int => "int".to_string(),
+            BasicType::Int8 => "int8".to_string(),
+            BasicType::Int16 => "int16".to_string(),
+            BasicType::Int32 => "int32".to_string(),
+            BasicType::Int64 => "int64".to_string(),
+            BasicType::Int128 => "int128".to_string(),
+            BasicType::UInt => "uint".to_string(),
+            BasicType::UInt8 => "uint8".to_string(),
+            BasicType::UInt16 => "uint16".to_string(),
+            BasicType::UInt32 => "uint32".to_string(),
+            BasicType::UInt64 => "uint64".to_string(),
+            BasicType::UInt128 => "uint128".to_string(),
+            BasicType::Float16 => "float16".to_string(),
+            BasicType::Float32 => "float32".to_string(),
+            BasicType::Float64 => "float64".to_string(),
+            BasicType::Float128 => "float128".to_string(),
+            BasicType::Char => "char".to_string(),
+            BasicType::Bool => "bool".to_string(),
+            BasicType::Void => "void".to_string(),
+            BasicType::Null => "null".to_string(),
         },
         SemanticType::Array(typed_array_type) => {
             let mut fmt = String::new();
@@ -341,11 +341,11 @@ pub fn format_concrete_type<'a>(
             fmt.push_str("]");
             fmt
         }
-        SemanticType::Const(concrete_type) => {
-            format!("const {}", format_concrete_type(*concrete_type, format_symbol))
+        SemanticType::Const(sema_ty) => {
+            format!("const {}", format_concrete_type(*sema_ty, format_symbol))
         }
-        SemanticType::Pointer(concrete_type) => {
-            format!("{}*", format_concrete_type(*concrete_type, format_symbol))
+        SemanticType::Pointer(sema_ty) => {
+            format!("{}*", format_concrete_type(*sema_ty, format_symbol))
         }
         SemanticType::UnnamedStruct(unnamed_struct_type) => {
             format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
@@ -368,8 +368,8 @@ pub fn format_concrete_type<'a>(
                 .type_args
                 .iter()
                 .map(|type_arg| match type_arg {
-                    TypedTypeArg::Positional(concrete_type) => {
-                        format_concrete_type(concrete_type.clone(), format_symbol)
+                    TypedTypeArg::Positional(sema_ty) => {
+                        format_concrete_type(sema_ty.clone(), format_symbol)
                     }
                     TypedTypeArg::Named { value, .. } => format_concrete_type(value.clone(), format_symbol),
                 })
@@ -392,8 +392,8 @@ pub fn format_func_type<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(S
     if let Some(variadic) = func_type.params.variadic.clone() {
         match *variadic {
             TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncTypeVariadicParams::Typed(concrete_type) => {
-                params.push_str(&format!(", {}...", format_concrete_type(concrete_type, format_symbol)))
+            TypedFuncTypeVariadicParams::Typed(sema_ty) => {
+                params.push_str(&format!(", {}...", format_concrete_type(sema_ty, format_symbol)))
             }
         }
     }
@@ -402,7 +402,7 @@ pub fn format_func_type<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(S
     format!("fn({}) {}", params, ret)
 }
 
-pub fn format_lambda<'a>(lambda: &TypedLambda, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
+pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     let mut params = lambda
         .params
         .list
@@ -423,10 +423,10 @@ pub fn format_lambda<'a>(lambda: &TypedLambda, format_symbol: &(dyn Fn(SymbolID)
     if let Some(variadic) = lambda.params.variadic.clone() {
         match &variadic {
             TypedFuncVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncVariadicParams::Typed(identifier, concrete_type) => params.push_str(&format!(
+            TypedFuncVariadicParams::Typed(identifier, sema_ty) => params.push_str(&format!(
                 ", {}: ...{}",
                 identifier,
-                format_concrete_type(concrete_type.clone(), format_symbol)
+                format_concrete_type(sema_ty.clone(), format_symbol)
             )),
         }
     }

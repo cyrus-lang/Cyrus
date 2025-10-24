@@ -1,7 +1,7 @@
 use crate::context::AnalysisContext;
 use resolver::{
     Resolver,
-    scope::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},
+    symbols::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},
 };
 use typed_ast::{ModuleID, ScopeID, SymbolID};
 
@@ -26,11 +26,11 @@ impl<'a> AnalysisContext<'a> {
     ) -> String {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| resolver.get_scope_ref(module_id, scope_id).clone());
 
-        let local_or_global_symbol = resolver
+        let sym = resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
             .unwrap();
 
-        match local_or_global_symbol {
+        match sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Variable(resolved_variable) => resolved_variable.typed_variable.name.clone(),
                 LocalSymbolKind::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),

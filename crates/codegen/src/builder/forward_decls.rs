@@ -3,36 +3,36 @@ use resolver::{
     typed_enum_as_enum_sig, typed_func_decl_as_func_sig, typed_func_def_as_func_sig, typed_func_type_from_func_sig,
     typed_struct_as_struct_sig, typed_union_as_union_sig,
 };
-use typed_ast::{TypedEnum, TypedStatement, TypedStruct, TypedUnion, types::SemanticType};
+use typed_ast::{TypedEnumStmt, TypedStmt, TypedStructStmt, TypedUnionStmt, types::SemanticType};
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
+    pub(crate) fn build_forward_decls(&mut self, stmts: &Vec<TypedStmt>) {
         for stmt in stmts {
             match stmt {
-                TypedStatement::Struct(typed_struct) => {
+                TypedStmt::Struct(typed_struct) => {
                     self.build_struct_forward_decl(&typed_struct);
                 }
-                TypedStatement::Enum(typed_enum) => {
+                TypedStmt::Enum(typed_enum) => {
                     self.build_enum_forward_decl(&typed_enum);
                 }
-                TypedStatement::Union(typed_union) => {
+                TypedStmt::Union(typed_union) => {
                     self.build_union_forward_decl(&typed_union);
                 }
-                TypedStatement::Interface(..) => continue,
+                TypedStmt::Interface(..) => continue,
                 _ => continue,
             }
         }
 
         for stmt in stmts {
             match stmt {
-                TypedStatement::GlobalVariable(typed_global_var) => {
+                TypedStmt::GlobalVariable(typed_global_var) => {
                     let global_value = self.build_global_var_decl(typed_global_var);
                     self.insert_ir_value(
                         typed_global_var.symbol_id,
                         LocalIRValue::GlobalValue(global_value, typed_global_var.ty.clone().unwrap()),
                     );
                 }
-                TypedStatement::FuncDef(typed_func_def) => {
+                TypedStmt::FuncDef(typed_func_def) => {
                     let fn_value = self.build_func_decl(
                         typed_func_def.name.clone(),
                         false,
@@ -51,7 +51,7 @@ impl<'a> CodeGenBuilder<'a> {
                         ),
                     );
                 }
-                TypedStatement::FuncDecl(typed_func_decl) => {
+                TypedStmt::FuncDecl(typed_func_decl) => {
                     let fn_value = self.build_func_decl(
                         typed_func_decl.name.clone(),
                         true,
@@ -75,7 +75,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_enum_forward_decl(&mut self, typed_enum: &TypedEnum) {
+    fn build_enum_forward_decl(&mut self, typed_enum: &TypedEnumStmt) {
         if typed_enum.generic_params.is_none() {
             self.get_or_declare_enum(typed_enum.symbol_id, &typed_enum_as_enum_sig(typed_enum));
         } else {
@@ -83,7 +83,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_union_forward_decl(&mut self, typed_union: &TypedUnion) {
+    fn build_union_forward_decl(&mut self, typed_union: &TypedUnionStmt) {
         if typed_union.generic_params.is_none() {
             self.get_or_declare_union(typed_union.symbol_id, &typed_union_as_union_sig(typed_union));
         } else {
@@ -91,7 +91,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_struct_forward_decl(&mut self, typed_struct: &TypedStruct) {
+    fn build_struct_forward_decl(&mut self, typed_struct: &TypedStructStmt) {
         if typed_struct.generic_params.is_none() {
             self.get_or_declare_struct(typed_struct.symbol_id, &typed_struct_as_struct_sig(typed_struct));
         } else {

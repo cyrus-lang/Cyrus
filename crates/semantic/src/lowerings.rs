@@ -4,25 +4,25 @@ use ast::{
     operators::{InfixOperator, PrefixOperator},
 };
 use typed_ast::{
-    ScopeID, TypedAssignment, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral,
-    TypedPrefixExpression, ValueCategory,
-    types::{BasicSemanticType, SemanticType},
+    ScopeID, TypedAssignExpr, TypedExprStmt, TypedExprKind, TypedInfixExpr, TypedLiteralExpr,
+    TypedPrefixExpr, ValueCategory,
+    types::{BasicType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn apply_possible_expr_lowerings(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_expr: &mut TypedExpression,
+        typed_expr: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
     ) {
         match &mut typed_expr.kind {
-            TypedExpressionKind::Assignment(typed_assignment) => {
+            TypedExprKind::Assignment(typed_assignment) => {
                 if typed_assignment.kind != AssignmentKind::Default {
                     typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
                 }
             }
-            TypedExpressionKind::Prefix(prefix_expr) => {
+            TypedExprKind::Prefix(prefix_expr) => {
                 match prefix_expr.op {
                     PrefixOperator::Bang => {
                         if let Some(lowered_typed_expr) = self.lower_prefix_bang_with_pointer_operand(
@@ -44,41 +44,41 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         expected_type: Option<SemanticType>,
-        prefix_expr: &mut TypedPrefixExpression,
-    ) -> Option<TypedExpression> {
+        prefix_expr: &mut TypedPrefixExpr,
+    ) -> Option<TypedExprStmt> {
         let operand_type =
             match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return None,
             };
 
-        let null_literal_expr = TypedExpression {
-            kind: TypedExpressionKind::Literal(TypedLiteral {
+        let null_literal_expr = TypedExprStmt {
+            kind: TypedExprKind::Literal(TypedLiteralExpr {
                 ty: Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                    BasicSemanticType::Void,
+                    BasicType::Void,
                 )))),
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc.clone(),
             }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
+            vcat: ValueCategory::RValue,
+            sema_ty: None,
             loc: prefix_expr.loc.clone(),
         };
 
         if operand_type.is_pointer() {
             let lhs = prefix_expr.operand.clone();
 
-            let new_infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
+            let new_infix_expr = TypedExprKind::Infix(TypedInfixExpr {
                 op: InfixOperator::Equal,
                 lhs,
                 rhs: Box::new(null_literal_expr),
                 loc: prefix_expr.loc.clone(),
             });
 
-            Some(TypedExpression {
+            Some(TypedExprStmt {
                 kind: new_infix_expr,
-                value_category: ValueCategory::Rvalue,
-                concrete_type: None,
+                vcat: ValueCategory::RValue,
+                sema_ty: None,
                 loc: prefix_expr.loc.clone(),
             })
         } else {
@@ -86,21 +86,21 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignment) -> TypedExpressionKind {
-        let infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
+    pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignExpr) -> TypedExprKind {
+        let infix_expr = TypedExprKind::Infix(TypedInfixExpr {
             op: assign.kind.to_infix_operator(),
             lhs: assign.lhs.clone(),
             rhs: assign.rhs.clone(),
             loc: assign.loc.clone(),
         });
 
-        TypedExpressionKind::Assignment(TypedAssignment {
+        TypedExprKind::Assignment(TypedAssignExpr {
             lhs: assign.lhs.clone(),
-            rhs: Box::new(TypedExpression {
+            rhs: Box::new(TypedExprStmt {
                 kind: infix_expr,
-                concrete_type: None,
+                sema_ty: None,
                 loc: assign.loc.clone(),
-                value_category: ValueCategory::Rvalue,
+                vcat: ValueCategory::RValue,
             }),
             kind: AssignmentKind::Default,
             loc: assign.loc.clone(),

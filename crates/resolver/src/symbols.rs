@@ -1,9 +1,9 @@
-use crate::signatures::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
+use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{
-    ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedGenericParamsList, TypedVariable,
+    ModuleID, ScopeID, SymbolID, TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt,
 };
 
 // Symbol Table (Per Module)
@@ -66,7 +66,7 @@ pub struct ResolvedMethod {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
-    pub func_body: Option<Box<TypedBlockStatement>>,
+    pub func_body: Option<Box<TypedBlockStmt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,7 @@ pub struct ResolvedInterface {
 pub struct ResolvedVariable {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
-    pub typed_variable: TypedVariable,
+    pub typed_variable: TypedVarStmt,
 }
 
 // Local Scope

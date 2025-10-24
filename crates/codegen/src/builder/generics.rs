@@ -7,7 +7,7 @@ use crate::builder::{
 use inkwell::types::{AnyTypeEnum, ArrayType, StructType};
 use resolver::{
     scope::{LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion},
-    signatures::{EnumSig, StructSig, UnionSig},
+    sigs::{EnumSig, StructSig, UnionSig},
 };
 use semantic::{
     monomorph::{MonomorphKey, NormalizedTypeArgs},
@@ -41,12 +41,12 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedUnion {
         symbol_id: SymbolID,
         type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a> {
-        let local_or_global_symbol = codegen
+        let sym = codegen
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .unwrap();
 
-        let resolved_union = local_or_global_symbol.as_union().unwrap();
+        let resolved_union = sym.as_union().unwrap();
         codegen.get_or_declare_union_monomorph(resolved_union, type_args).into()
     }
 }
@@ -59,12 +59,12 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedStruct {
         symbol_id: SymbolID,
         type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a> {
-        let local_or_global_symbol = codegen
+        let sym = codegen
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .unwrap();
 
-        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+        let resolved_struct = sym.as_struct().unwrap();
         codegen
             .get_or_declare_struct_monomorph(resolved_struct, type_args)
             .into()
@@ -79,12 +79,12 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedEnum {
         symbol_id: SymbolID,
         type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a> {
-        let local_or_global_symbol = codegen
+        let sym = codegen
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .unwrap();
 
-        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+        let resolved_enum = sym.as_enum().unwrap();
         let enum_struct_type = codegen.get_or_declare_enum_monomorph(resolved_enum, type_args).0;
         enum_struct_type.into()
     }
@@ -96,12 +96,12 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         resolved_generic: &GenericType,
     ) -> AnyTypeEnum<'a> {
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), resolved_generic.base)
             .unwrap();
 
-        if let Some(resolved) = local_or_global_symbol.as_struct() {
+        if let Some(resolved) = sym.as_struct() {
             return resolved.build_monomorph(
                 self,
                 local_scope_opt,
@@ -110,7 +110,7 @@ impl<'a> CodeGenBuilder<'a> {
             );
         }
 
-        if let Some(resolved) = local_or_global_symbol.as_enum() {
+        if let Some(resolved) = sym.as_enum() {
             return resolved.build_monomorph(
                 self,
                 local_scope_opt,
@@ -119,7 +119,7 @@ impl<'a> CodeGenBuilder<'a> {
             );
         }
 
-        if let Some(resolved) = local_or_global_symbol.as_union() {
+        if let Some(resolved) = sym.as_union() {
             return resolved.build_monomorph(
                 self,
                 local_scope_opt,
@@ -360,7 +360,7 @@ impl<'a> CodeGenBuilder<'a> {
         type_args
             .iter()
             .map(|type_arg| match type_arg {
-                TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
+                TypedTypeArg::Positional(sema_ty) => sema_ty.clone(),
                 TypedTypeArg::Named { value, .. } => value.clone(),
             })
             .collect()
@@ -393,7 +393,7 @@ impl<'a> CodeGenBuilder<'a> {
                         .params
                         .list
                         .iter()
-                        .map(|concrete_type| self.substitute_concrete_type(&concrete_type, subst_map))
+                        .map(|sema_ty| self.substitute_concrete_type(&sema_ty, subst_map))
                         .collect(),
                     variadic: func_ty.params.variadic.as_ref().map(|variadic| match &**variadic {
                         TypedFuncTypeVariadicParams::UntypedCStyle => {
