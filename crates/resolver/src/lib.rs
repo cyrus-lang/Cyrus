@@ -1991,9 +1991,9 @@ impl Resolver {
         }
 
         Some(TypedIfStmt {
-            condition: typed_condition,
-            consequent: typed_consequent,
-            alternate: typed_alternate,
+            cond: typed_condition,
+            else_block: typed_alternate,
+            then_block: typed_consequent,
             branches,
             loc: SourceLoc::from_loc(if_stmt.loc.clone(), self.get_current_module_file_path()),
         })
@@ -2959,9 +2959,7 @@ impl Resolver {
         let (loc, span_end) = type_specifier.get_loc();
 
         let symbol_id = match type_specifier {
-            TypeSpecifier::Identifier(identifier) => {
-                self.resolve_ident(local_scope_opt, module_id, &identifier)?
-            }
+            TypeSpecifier::Identifier(identifier) => self.resolve_ident(local_scope_opt, module_id, &identifier)?,
             TypeSpecifier::ModuleImport(module_import) => {
                 self.resolve_module_import(module_id, module_import.clone())?
             }

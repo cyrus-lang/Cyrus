@@ -1,5 +1,8 @@
 default: run
 
+cir:
+	cargo run -j24 -p cir -- ./tmp/main.cyrus --disable-warnings $(ARGS)
+
 semantic:
 	cargo run -j24 -p semantic -- ./tmp/main.cyrus --disable-warnings $(ARGS)
 

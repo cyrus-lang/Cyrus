@@ -5,3 +5,13 @@ edition = "2024"
 
 [dependencies]
 typed_ast = { path = "../typed_ast", version = "*" }
+ast = { path = "../ast", version = "*" }
+
+[lib]
+name = "cir"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "cir"
+path = "./src/cli.rs"
+
