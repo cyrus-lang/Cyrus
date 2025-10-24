@@ -124,7 +124,7 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::Identifier(identifier) => write!(f, "{}", identifier),
             TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
             TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
-            TypeSpecifier::Dereference(type_specifier) => write!(f, "{}*", type_specifier),
+            TypeSpecifier::Deref(type_specifier) => write!(f, "{}*", type_specifier),
             TypeSpecifier::Array(array_type_specifier) => {
                 write!(
                     f,
@@ -285,8 +285,8 @@ impl fmt::Display for Expression {
             Expression::Assignment(assignment) => {
                 write!(f, "{} = {}", assignment.lhs, assignment.rhs)
             }
-            Expression::AddressOf(address_of) => write!(f, "&({})", address_of.expr),
-            Expression::Dereference(dereference) => write!(f, "(*{})", dereference.expr),
+            Expression::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
+            Expression::Deref(dereference) => write!(f, "(*{})", dereference.expr),
             Expression::StructInit(struct_init) => {
                 write!(
                     f,
@@ -298,7 +298,7 @@ impl fmt::Display for Expression {
                 }
                 write!(f, "}}")
             }
-            Expression::UnnamedStructValue(unnamed_struct_value) => {
+            Expression::UStructValue(unnamed_struct_value) => {
                 write!(f, "struct {{ ")?;
                 for (idx, field) in unnamed_struct_value.fields.iter().enumerate() {
                     if let Some(field_type) = &field.field_type {
@@ -322,7 +322,7 @@ impl fmt::Display for Expression {
                 write!(f, "{}", module_import.to_string())
             }
             Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
-            Expression::SizeOfExpression(size_of_expression) => {
+            Expression::SizeOf(size_of_expression) => {
                 write!(f, "sizeof {}", size_of_expression.expr)
             }
             Expression::Tuple(tuple_value) => {
@@ -337,7 +337,7 @@ impl fmt::Display for Expression {
                         .join(", ")
                 )
             }
-            Expression::TupleMemberAccess(tuple_member_access) => {
+            Expression::TupleAccess(tuple_member_access) => {
                 write!(f, "{}.{}", tuple_member_access.operand, tuple_member_access.index)
             }
         }
@@ -377,7 +377,7 @@ impl fmt::Display for ModuleImport {
     }
 }
 
-impl fmt::Display for UnnamedStructValue {
+impl fmt::Display for UStructValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.packed {
             write!(f, "bits")?;

@@ -7,19 +7,19 @@ use inkwell::{
     basic_block::BasicBlock,
     values::{BasicValue, BasicValueEnum, IntValue},
 };
-use resolver::scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum};
+use resolver::symbols::{LocalScopeRef, LocalSymbolKind, ResolvedEnum};
 use std::collections::HashMap;
 use typed_ast::{
-    SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnumVariant, TypedExpression, TypedExpressionKind,
-    TypedFor, TypedIf, TypedReturn, TypedSwitch, TypedSwitchCasePattern, TypedWhile,
-    types::{BasicSemanticType, SemanticType},
+    SymbolID, TypedBlockStmt, TypedBreakStmt, TypedContinueStmt, TypedEnumVariant, TypedExprStmt, TypedExprKind,
+    TypedForStmt, TypedIfStmt, TypedReturnStmt, TypedSwitchStmt, TypedSwitchCasePattern, TypedWhileStmt,
+    types::{BasicType, SemanticType},
 };
 
 #[derive(Debug, Clone)]
 struct SwitchCaseItem<'a> {
     block_id: u32,
     value: InternalValue<'a>,
-    body: Box<TypedBlockStatement>,
+    body: Box<TypedBlockStmt>,
 }
 
 type SwitchCaseList<'a> = Vec<SwitchCaseItem<'a>>;
@@ -107,7 +107,7 @@ macro_rules! build_loop_statement {
 }
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_switch(&mut self, local_scope_opt: Option<LocalScopeRef>, switch: &TypedSwitch) {
+    pub(crate) fn build_switch(&mut self, local_scope_opt: Option<LocalScopeRef>, switch: &TypedSwitchStmt) {
         let smart_switch = self.detect_smart_switch(switch);
 
         let lvalue = self.build_expr(local_scope_opt.clone(), &switch.operand);
@@ -138,7 +138,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.blockreg.current_loop_ref = current_loop_ref_copy;
     }
 
-    pub(crate) fn build_return(&mut self, local_scope_opt: Option<LocalScopeRef>, return_stmt: &TypedReturn) {
+    pub(crate) fn build_return(&mut self, local_scope_opt: Option<LocalScopeRef>, return_stmt: &TypedReturnStmt) {
         let current_block = self.blockreg.current_block_ref.unwrap();
         self.mark_block_terminated(current_block);
 
@@ -154,7 +154,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_continue(&mut self, _: &TypedContinue) {
+    pub(crate) fn build_continue(&mut self, _: &TypedContinueStmt) {
         let current_block = self.blockreg.current_block_ref.unwrap();
 
         let loop_end_block = match &self.blockreg.current_loop_ref {
@@ -169,7 +169,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmbuilder.position_at_end(loop_end_block);
     }
 
-    pub(crate) fn build_break(&mut self, _: &TypedBreak) {
+    pub(crate) fn build_break(&mut self, _: &TypedBreakStmt) {
         let current_block = self.blockreg.current_block_ref.unwrap();
         self.mark_block_terminated(current_block);
 
@@ -193,9 +193,9 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_conditional_for_statement(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        unevaluated_cond_value: &TypedExpression,
-        body: &TypedBlockStatement,
-        increment: Option<TypedExpression>,
+        unevaluated_cond_value: &TypedExprStmt,
+        body: &TypedBlockStmt,
+        increment: Option<TypedExprStmt>,
     ) {
         build_loop_statement!(
             self,
@@ -215,7 +215,7 @@ impl<'a> CodeGenBuilder<'a> {
         );
     }
 
-    pub(crate) fn build_for(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_for: &TypedFor) {
+    pub(crate) fn build_for(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_for: &TypedForStmt) {
         // unconditional for loop
         if typed_for.condition.is_none() && typed_for.increment.is_none() {
             if let Some(initializer) = &typed_for.initializer {
@@ -245,7 +245,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_while(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_while: &TypedWhile) {
+    pub(crate) fn build_while(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_while: &TypedWhileStmt) {
         build_loop_statement!(
             self,
             scope,
@@ -260,7 +260,7 @@ impl<'a> CodeGenBuilder<'a> {
         );
     }
 
-    pub(crate) fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
+    pub(crate) fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIfStmt) {
         // important to build condition before building new blocks
         let cond_lvalue = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
         let cond_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), cond_lvalue);
@@ -380,11 +380,11 @@ impl<'a> CodeGenBuilder<'a> {
             .push(TerminatedBlockMetadata { basic_block });
     }
 
-    fn detect_smart_switch(&self, switch: &TypedSwitch) -> bool {
+    fn detect_smart_switch(&self, switch: &TypedSwitchStmt) -> bool {
         for case in &switch.cases {
             match &case.pattern {
                 TypedSwitchCasePattern::Expression(typed_expr, _) => match &typed_expr.kind {
-                    TypedExpressionKind::Literal(typed_literal) => match &typed_literal.kind {
+                    TypedExprKind::Literal(typed_literal) => match &typed_literal.kind {
                         LiteralKind::Integer(..) | LiteralKind::Bool(..) | LiteralKind::Char(..) => continue,
                         LiteralKind::Float(..) | LiteralKind::String(..) | LiteralKind::Null => return true,
                     },
@@ -399,7 +399,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     fn collect_switch_on_enum_case_list(
         &mut self,
-        switch: &TypedSwitch,
+        switch: &TypedSwitchStmt,
         resolved_enum: &ResolvedEnum,
         operand_rvalue: InternalValue<'a>,
     ) -> SwitchCaseList<'a> {
@@ -492,7 +492,7 @@ impl<'a> CodeGenBuilder<'a> {
             };
 
             let case_internal_value = InternalValue::new(
-                SemanticType::BasicType(BasicSemanticType::Int32),
+                SemanticType::BasicType(BasicType::Int32),
                 InternalValueKind::RValue(case_int_value.as_basic_value_enum()),
             );
 
@@ -512,15 +512,15 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_switch_on_enum(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        switch: &TypedSwitch,
+        switch: &TypedSwitchStmt,
         operand_rvalue: InternalValue<'a>,
         enum_symbol_id: SymbolID,
     ) {
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id)
             .unwrap();
-        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+        let resolved_enum = sym.as_enum().unwrap();
         let case_list = self.collect_switch_on_enum_case_list(switch, &resolved_enum, operand_rvalue.clone());
 
         if case_list.len() == 0 {
@@ -623,7 +623,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn collect_switch_case_list(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        switch: &TypedSwitch,
+        switch: &TypedSwitchStmt,
     ) -> SwitchCaseList<'a> {
         let mut case_list: SwitchCaseList<'a> = Vec::new();
         let mut block_id = 0;
@@ -653,7 +653,7 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         operand: &InternalValue<'a>,
         case_list: &SwitchCaseList<'a>,
-        default_case: &Option<TypedBlockStatement>,
+        default_case: &Option<TypedBlockStmt>,
     ) {
         let current_func = self.blockreg.current_func_ref.unwrap();
 
@@ -748,7 +748,7 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         operand: &InternalValue<'a>,
         case_list: &SwitchCaseList<'a>,
-        default_case: &Option<TypedBlockStatement>,
+        default_case: &Option<TypedBlockStmt>,
     ) {
         let current_func = self.blockreg.current_func_ref.unwrap();
 
@@ -923,7 +923,7 @@ impl<'a> CodeGenBuilder<'a> {
             .collect()
     }
 
-    fn build_infinite_for_statement(&mut self, for_stmt: &TypedFor) {
+    fn build_infinite_for_statement(&mut self, for_stmt: &TypedForStmt) {
         let always_true_condition = self.llvmctx.bool_type().const_int(1, false);
 
         build_loop_statement!(

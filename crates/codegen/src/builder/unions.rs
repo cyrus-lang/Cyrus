@@ -1,11 +1,11 @@
 use inkwell::types::{AnyType, BasicTypeEnum, StructType};
-use resolver::{signatures::UnionSig, typed_union_as_union_sig};
-use typed_ast::TypedUnion;
+use resolver::{sigs::UnionSig, typed_union_as_union_sig};
+use typed_ast::TypedUnionStmt;
 
 use crate::builder::{abi::generate_union_abi_name, module::CodeGenBuilder};
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_union_def(&mut self, typed_union: &TypedUnion) {
+    pub(crate) fn build_union_def(&mut self, typed_union: &TypedUnionStmt) {
         if typed_union.generic_params.is_none() {
             self.get_or_declare_union(typed_union.symbol_id, &typed_union_as_union_sig(typed_union));
             self.build_methods(typed_union.module_id, &typed_union.methods);

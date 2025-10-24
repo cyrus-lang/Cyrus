@@ -6,28 +6,28 @@ use crate::{
 use inkwell::debug_info::AsDIScope;
 use inkwell::{types::BasicTypeEnum, values::BasicValueEnum};
 use resolver::{scope::LocalScopeRef, typed_struct_as_struct_sig};
-use typed_ast::{TypedBlockStatement, TypedExportTupleValues, TypedStatement, TypedStruct};
+use typed_ast::{TypedBlockStmt, TypedExportTupleStmt, TypedStmt, TypedStructStmt};
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_toplevel_statements(&mut self, stmts: &Vec<TypedStatement>) {
+    pub(crate) fn build_toplevel_statements(&mut self, stmts: &Vec<TypedStmt>) {
         self.build_forward_decls(stmts);
 
         for stmt in stmts {
             llvm_set_current_location!(&self, stmt.get_loc());
 
             match stmt {
-                TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
-                TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
-                TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
-                TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
-                TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
-                TypedStatement::Interface(..) | TypedStatement::FuncDecl(..) => {}
+                TypedStmt::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
+                TypedStmt::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
+                TypedStmt::Enum(typed_enum) => self.build_enum_def(typed_enum),
+                TypedStmt::Union(typed_union) => self.build_union_def(typed_union),
+                TypedStmt::Struct(typed_struct) => self.build_struct_def(typed_struct),
+                TypedStmt::Interface(..) | TypedStmt::FuncDecl(..) => {}
                 _ => continue,
             }
         }
     }
 
-    pub(crate) fn build_block_statement(&mut self, block_stmt: &TypedBlockStatement) {
+    pub(crate) fn build_block_statement(&mut self, block_stmt: &TypedBlockStmt) {
         let local_scope_opt = Some(
             self.resolver
                 .get_scope_ref(self.module_id, block_stmt.scope_id)
@@ -44,44 +44,44 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_statement(&mut self, local_scope_opt: Option<LocalScopeRef>, stmt: &TypedStatement) {
+    pub(crate) fn build_statement(&mut self, local_scope_opt: Option<LocalScopeRef>, stmt: &TypedStmt) {
         match stmt {
-            TypedStatement::Defer(..) => unreachable!(),
-            TypedStatement::Variable(typed_variable) => {
+            TypedStmt::Defer(..) => unreachable!(),
+            TypedStmt::Variable(typed_variable) => {
                 self.build_local_variable(local_scope_opt.clone(), typed_variable, true);
             }
-            TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
-            TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
-            TypedStatement::While(typed_while) => self.build_while(local_scope_opt.clone(), typed_while),
-            TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
-            TypedStatement::Break(typed_break) => self.build_break(typed_break),
-            TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
-            TypedStatement::Switch(typed_switch) => self.build_switch(local_scope_opt.clone(), typed_switch),
-            TypedStatement::Struct(typed_struct) => {
+            TypedStmt::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
+            TypedStmt::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
+            TypedStmt::While(typed_while) => self.build_while(local_scope_opt.clone(), typed_while),
+            TypedStmt::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
+            TypedStmt::Break(typed_break) => self.build_break(typed_break),
+            TypedStmt::Continue(typed_continue) => self.build_continue(typed_continue),
+            TypedStmt::Switch(typed_switch) => self.build_switch(local_scope_opt.clone(), typed_switch),
+            TypedStmt::Struct(typed_struct) => {
                 self.get_or_declare_struct(typed_struct.symbol_id, &typed_struct_as_struct_sig(typed_struct));
             }
-            TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
-            TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
-            TypedStatement::Expression(typed_expr) => {
+            TypedStmt::Enum(typed_enum) => self.build_enum_def(typed_enum),
+            TypedStmt::Union(typed_union) => self.build_union_def(typed_union),
+            TypedStmt::Expression(typed_expr) => {
                 self.build_expr(local_scope_opt.clone(), typed_expr);
             }
-            TypedStatement::BlockStatement(typed_block_statement) => {
+            TypedStmt::BlockStatement(typed_block_statement) => {
                 self.build_block_statement(typed_block_statement);
             }
-            TypedStatement::ExportTupleValues(export_tuple_values) => {
+            TypedStmt::ExportTuple(export_tuple_values) => {
                 self.build_export_tuple_values(local_scope_opt, export_tuple_values);
             }
             // Skipped statements
-            TypedStatement::Interface(..) => {}
-            TypedStatement::Typedef(_) => {}
+            TypedStmt::Interface(..) => {}
+            TypedStmt::Typedef(_) => {}
             // Invalid statements
-            TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {
+            TypedStmt::FuncDef(_) | TypedStmt::FuncDecl(_) | TypedStmt::GlobalVariable(_) => {
                 unreachable!()
             }
         }
     }
 
-    fn build_struct_def(&mut self, typed_struct: &TypedStruct) {
+    fn build_struct_def(&mut self, typed_struct: &TypedStructStmt) {
         if typed_struct.generic_params.is_none() {
             self.get_or_declare_struct(typed_struct.symbol_id, &typed_struct_as_struct_sig(typed_struct));
             self.build_methods(typed_struct.module_id, &typed_struct.methods);
@@ -93,7 +93,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_export_tuple_values(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        export_tuple_values: &TypedExportTupleValues,
+        export_tuple_values: &TypedExportTupleStmt,
     ) {
         let tuple_concrete_type = export_tuple_values
             .ty
@@ -102,7 +102,7 @@ impl<'a> CodeGenBuilder<'a> {
                 export_tuple_values
                     .rhs
                     .clone()
-                    .and_then(|typed_expr| typed_expr.concrete_type)
+                    .and_then(|typed_expr| typed_expr.sema_ty)
             })
             .expect("Type must either be explicitly provided or inferred from RHS");
 

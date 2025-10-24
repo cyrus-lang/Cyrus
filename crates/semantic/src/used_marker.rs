@@ -1,5 +1,5 @@
 use crate::context::AnalysisContext;
-use resolver::scope::LocalScopeRef;
+use resolver::symbols::LocalScopeRef;
 use typed_ast::{ModuleID, SymbolID};
 
 // FIXME Symbol marking not finished yet.

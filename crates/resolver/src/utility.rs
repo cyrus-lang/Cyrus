@@ -1,6 +1,6 @@
 use crate::{
     Resolver,
-    scope::{
+    symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, ResolvedEnum, ResolvedFunction, ResolvedGlobalVar,
         ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef, ResolvedUnion, ResolvedVariable,
         SymbolEntry,

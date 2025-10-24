@@ -4,18 +4,18 @@ use crate::{
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
-    scope::{
+    symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind,
     },
-    signatures::{FuncSig, UnionSig},
+    sigs::{FuncSig, UnionSig},
     typed_func_params_as_func_type_params,
 };
 use std::collections::HashMap;
 use typed_ast::{
     format::{format_concrete_type, format_func_type, format_typed_expr},
     types::{
-        BasicSemanticType, SemanticType, GenericType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        BasicType, SemanticType, GenericType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
     *,
@@ -24,7 +24,7 @@ use typed_ast::{
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_literal_type(
         &mut self,
-        typed_literal: &mut TypedLiteral,
+        typed_literal: &mut TypedLiteralExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let ty_opt = match &typed_literal.kind {
@@ -46,25 +46,25 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
-            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicSemanticType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicSemanticType::Char)),
-            LiteralKind::Null => Some(SemanticType::BasicType(BasicSemanticType::Null)),
+            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicType::Char)),
+            LiteralKind::Null => Some(SemanticType::BasicType(BasicType::Null)),
             LiteralKind::String(value, prefix_opt) => {
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
                         StringPrefix::C => {
-                            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicSemanticType::Char)))
+                            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Char)))
                         }
                         StringPrefix::B => SemanticType::Array(TypedArrayType {
                             element_type: Box::new(SemanticType::Const(Box::new(SemanticType::BasicType(
-                                BasicSemanticType::Char,
+                                BasicType::Char,
                             )))),
                             capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
                             loc: typed_literal.loc.clone(),
                         }),
                     }
                 } else {
-                    SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicSemanticType::Char)))
+                    SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Char)))
                 };
                 Some(ty)
             }
@@ -80,73 +80,73 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_typed_expr_type_non_terminal(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_expr: &mut TypedExpression,
+        typed_expr: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         self.apply_possible_expr_lowerings(scope_id_opt, typed_expr, expected_type.clone());
 
-        let concrete_type = match &mut typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, ..) => {
+        let sema_ty = match &mut typed_expr.kind {
+            TypedExprKind::Symbol(symbol_id, ..) => {
                 let local_scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-                let local_or_global_symbol = self
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)?;
 
-                self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
+                self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)
             }
-            TypedExpressionKind::Literal(typed_literal) => self.analyze_literal_type(typed_literal, expected_type),
-            TypedExpressionKind::Prefix(typed_prefix_expr) => {
+            TypedExprKind::Literal(typed_literal) => self.analyze_literal_type(typed_literal, expected_type),
+            TypedExprKind::Prefix(typed_prefix_expr) => {
                 self.analyze_prefix_expr_type(scope_id_opt, typed_prefix_expr, expected_type)
             }
-            TypedExpressionKind::Infix(typed_infix_expr) => {
+            TypedExprKind::Infix(typed_infix_expr) => {
                 self.analyze_infix_expr_type(scope_id_opt, typed_infix_expr, expected_type)
             }
-            TypedExpressionKind::Unary(typed_unary_expr) => {
+            TypedExprKind::Unary(typed_unary_expr) => {
                 self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr)
             }
-            TypedExpressionKind::Assignment(typed_assignment) => {
+            TypedExprKind::Assignment(typed_assignment) => {
                 self.analyze_assignment(scope_id_opt, typed_assignment);
                 None
             }
-            TypedExpressionKind::Cast(typed_cast) => self.analyze_cast_expr_type(scope_id_opt, typed_cast),
-            TypedExpressionKind::Array(typed_array) => self.analyze_array_expr_type(scope_id_opt, typed_array),
-            TypedExpressionKind::ArrayIndex(typed_array_index) => {
+            TypedExprKind::Cast(typed_cast) => self.analyze_cast_expr_type(scope_id_opt, typed_cast),
+            TypedExprKind::Array(typed_array) => self.analyze_array_expr_type(scope_id_opt, typed_array),
+            TypedExprKind::ArrayIndex(typed_array_index) => {
                 self.analyze_array_index_expr_type(scope_id_opt, typed_array_index)
             }
-            TypedExpressionKind::AddressOf(typed_address_of) => {
+            TypedExprKind::AddrOf(typed_address_of) => {
                 self.analyze_address_of_expr_type(scope_id_opt, typed_address_of)
             }
-            TypedExpressionKind::Dereference(typed_dereference) => {
+            TypedExprKind::Deref(typed_dereference) => {
                 self.analyze_dereference_expr_type(scope_id_opt, typed_dereference)
             }
-            TypedExpressionKind::StructInit(struct_init) => {
+            TypedExprKind::StructInit(struct_init) => {
                 self.analyze_struct_init(scope_id_opt, struct_init, expected_type)
             }
-            TypedExpressionKind::FuncCall(typed_func_call) => {
+            TypedExprKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
             }
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+            TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
-            TypedExpressionKind::FieldAccess(field_access) => {
+            TypedExprKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
             }
-            TypedExpressionKind::MethodCall(method_call) => {
+            TypedExprKind::MethodCall(method_call) => {
                 self.analyze_method_call_expr_type(scope_id_opt, method_call, expected_type)
             }
-            TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
+            TypedExprKind::SizeOf(typed_size_of_expression) => {
                 self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
             }
-            TypedExpressionKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
-            TypedExpressionKind::Tuple(tuple_value) => {
+            TypedExprKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
+            TypedExprKind::Tuple(tuple_value) => {
                 self.analyze_tuple_value(scope_id_opt, tuple_value, expected_type)
             }
-            TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
+            TypedExprKind::TupleAccess(tuple_member_access) => {
                 self.analyze_tuple_member_access(scope_id_opt, tuple_member_access, expected_type)
             }
-            TypedExpressionKind::SemanticType(..) => {
+            TypedExprKind::SemanticType(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::InvalidUsageOfTheSemanticType,
@@ -157,15 +157,15 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.loc.clone());
-        typed_expr.concrete_type = normalized_type.clone();
+        let normalized_type = self.normalize_type(scope_id_opt, sema_ty.clone()?, typed_expr.loc.clone());
+        typed_expr.sema_ty = normalized_type.clone();
 
         if cfg!(debug_assertions) {
-            if let Some(concrete_type_clone) = typed_expr.concrete_type.clone() {
+            if let Some(concrete_type_clone) = typed_expr.sema_ty.clone() {
                 let is_unresolved_symbol = matches!(concrete_type_clone, SemanticType::UnresolvedSymbol(..));
                 assert!(is_unresolved_symbol == false);
             }
-            assert!(typed_expr.concrete_type != None);
+            assert!(typed_expr.sema_ty != None);
         }
 
         normalized_type
@@ -174,19 +174,19 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_expr: &mut TypedExpression,
+        typed_expr: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         match &typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, _) => {
+            TypedExprKind::Symbol(symbol_id, _) => {
                 let local_scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-                let local_or_global_symbol = self
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)?;
 
-                if !local_or_global_symbol.is_kind_of_variable() {
+                if !sym.is_kind_of_variable() {
                     let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
 
                     self.reporter.report(Diag {
@@ -204,8 +204,8 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_typed_expr_type_non_terminal(scope_id_opt, typed_expr, expected_type)
     }
 
-    pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: SemanticType, loc: SourceLoc) {
-        if !concrete_type.is_bool() {
+    pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_ty: SemanticType, loc: SourceLoc) {
+        if !sema_ty.is_bool() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ConditionExprMustBeOfTypeBool,
@@ -218,7 +218,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_tuple_member_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        tuple_member_access: &mut TypedTupleMemberAccess,
+        tuple_member_access: &mut TypedTupleAccessExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let operand_type =
@@ -280,7 +280,7 @@ impl<'a> AnalysisContext<'a> {
         Some(element_type.clone())
     }
 
-    fn analyze_lambda_expr(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambda) -> Option<SemanticType> {
+    fn analyze_lambda_expr(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
         let current_func_clone = self.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc.clone());
@@ -304,13 +304,13 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_tuple_value(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        tuple_value: &mut TypedTupleValue,
+        tuple_value: &mut TypedTupleExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let mut type_list: Vec<SemanticType> = Vec::new();
 
         let tuple_type_opt = match expected_type {
-            Some(concrete_type) => concrete_type.as_tuple_type().cloned(),
+            Some(sema_ty) => sema_ty.as_tuple_type().cloned(),
             None => None,
         };
 
@@ -321,7 +321,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             match self.analyze_typed_expr_type(scope_id_opt, expr, expected_type) {
-                Some(concrete_type) => type_list.push(concrete_type),
+                Some(sema_ty) => type_list.push(sema_ty),
                 None => continue,
             }
         }
@@ -335,14 +335,14 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_unnamed_struct_value_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        unnamed_struct_value: &mut TypedUnnamedStructValue,
+        unnamed_struct_value: &mut TypedUStructValue,
     ) -> Option<SemanticType> {
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
         for field in &mut unnamed_struct_value.fields {
             let field_value_type =
                 match self.analyze_typed_expr_type(scope_id_opt, &mut field.field_value, field.field_type.clone()) {
-                    Some(concrete_type) => concrete_type,
+                    Some(sema_ty) => sema_ty,
                     None => continue,
                 };
 
@@ -373,10 +373,10 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_array_index_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        array_index: &mut TypedArrayIndex,
+        array_index: &mut TypedArrayIndexExpr,
     ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.operand, None) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return None,
         };
 
@@ -392,10 +392,10 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let index_inner_type = array_index.index.concrete_type.clone();
+        let index_inner_type = array_index.index.sema_ty.clone();
         let index_concrete_type =
             match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.index, index_inner_type) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return None,
             };
 
@@ -416,14 +416,14 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let concrete_type = array_index.operand.concrete_type.clone().unwrap();
+        let sema_ty = array_index.operand.sema_ty.clone().unwrap();
 
         if is_operand_array {
-            let array_type = concrete_type.as_array_type().unwrap();
+            let array_type = sema_ty.as_array_type().unwrap();
             Some(*array_type.element_type.clone())
         } else {
             // array index on pointer operand
-            let element_type = concrete_type.get_pointer_inner().unwrap();
+            let element_type = sema_ty.get_pointer_inner().unwrap();
 
             if element_type.is_void() {
                 self.reporter.report(Diag {
@@ -441,7 +441,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn validate_field_access(
         &mut self,
-        operand: &TypedExpression,
+        operand: &TypedExprStmt,
         field_access: &TypedFieldAccess,
         field_vis: AccessSpecifier,
         struct_methods: &HashMap<String, SymbolID>,
@@ -475,7 +475,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let base_type = operand
-            .concrete_type
+            .sema_ty
             .as_ref()
             .expect("SemanticType should be set before field access")
             .get_const_inner();
@@ -540,11 +540,11 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return None,
         };
 
-        field_access.operand.concrete_type = Some(operand_type.clone());
+        field_access.operand.sema_ty = Some(operand_type.clone());
 
         let union_field_idx = match union_sig
             .fields
@@ -569,7 +569,7 @@ impl<'a> AnalysisContext<'a> {
         let union_field = &union_sig.fields[union_field_idx];
         let union_field_type = match self.normalize_type(scope_id_opt, union_field.ty.clone(), field_access.loc.clone())
         {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return None,
         };
 
@@ -578,13 +578,13 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExpression {
-                kind: TypedExpressionKind::Dereference(TypedDereference {
+            field_access.operand = Box::new(TypedExprStmt {
+                kind: TypedExprKind::Deref(TypedDerefExpr {
                     operand: field_access.operand.clone(),
                     loc: field_access.loc.clone(),
                 }),
-                concrete_type: None,
-                value_category: ValueCategory::Lvalue,
+                sema_ty: None,
+                vcat: ValueCategory::LValue,
                 loc: field_access.loc.clone(),
             });
         }
@@ -604,11 +604,11 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return None,
         };
 
-        field_access.operand.concrete_type = Some(operand_type.clone());
+        field_access.operand.sema_ty = Some(operand_type.clone());
 
         let field_idx = match unnamed_struct_type
             .fields
@@ -635,7 +635,7 @@ impl<'a> AnalysisContext<'a> {
 
         let field = &unnamed_struct_type.fields[field_idx];
         let field_type = match self.normalize_type(scope_id_opt, *field.field_type.clone(), field_access.loc.clone()) {
-            Some(concrete_type) => concrete_type,
+            Some(sema_ty) => sema_ty,
             None => return None,
         };
 
@@ -737,7 +737,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let operand_ty = method_call.operand.concrete_type.clone().unwrap();
+        let operand_ty = method_call.operand.sema_ty.clone().unwrap();
         let generic_type_opt = operand_ty.as_generic_type();
 
         let mut enum_sig = resolved_enum.enum_sig.clone();
@@ -767,7 +767,7 @@ impl<'a> AnalysisContext<'a> {
         //     {
         //         for (idx, (typed_expr, enum_valued_field)) in method_call.args.iter_mut().zip(valued_fields).enumerate()
         //         {
-        //             typed_expr.concrete_type = self.substitute_type_or_infer_with(
+        //             typed_expr.sema_ty = self.substitute_type_or_infer_with(
         //                 scope_id_opt,
         //                 enum_valued_field.field_type.clone(),
         //                 typed_expr,
@@ -877,40 +877,40 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
-        operand: &mut TypedExpression,
+        operand: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
         loc: SourceLoc,
     ) -> Option<MemberAccessKind> {
         let operand_type = match &operand.kind {
-            TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
+            TypedExprKind::Symbol(instance_symbol_id, ..) => {
                 let resolved_var_type = match self.analyze_var_or_global_var_type(
                     scope_id_opt,
                     local_scope_opt.clone(),
                     *instance_symbol_id,
                     loc.clone(),
                 ) {
-                    Some(concrete_type) => concrete_type,
+                    Some(sema_ty) => sema_ty,
                     None => return None,
                 };
 
                 resolved_var_type.clone()
             }
             _ => match self.analyze_typed_expr_type(scope_id_opt, operand, expected_type.clone()) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return None,
             },
         };
 
         let object_symbol_id = match match operand_type.get_const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-            SemanticType::Pointer(concrete_type) => {
-                if concrete_type.is_void() {
+            SemanticType::Pointer(sema_ty) => {
+                if sema_ty.is_void() {
                     return None;
-                } else if let Some(unnamed_struct_type) = concrete_type.as_unnamed_struct() {
+                } else if let Some(unnamed_struct_type) = sema_ty.as_unnamed_struct() {
                     return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type)));
                 }
 
-                self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), loc.clone())
+                self.extract_object_symbol_id(scope_id_opt, *sema_ty.clone(), loc.clone())
             }
             SemanticType::UnnamedStruct(unnamed_struct_type) => {
                 return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));
@@ -924,19 +924,19 @@ impl<'a> AnalysisContext<'a> {
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let local_or_global_symbol = match self
+        let sym = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
         {
-            Some(local_or_global_symbol) => local_or_global_symbol,
+            Some(sym) => sym,
             None => return None,
         };
 
-        local_or_global_symbol
+        sym
             .as_struct()
             .map(|resolved_struct| MemberAccessKind::NamedStruct(Box::new(resolved_struct.clone())))
             .or_else(|| {
-                local_or_global_symbol
+                sym
                     .as_union()
                     .map(|resolved_union| MemberAccessKind::Union(Box::new(resolved_union.clone())))
             })
@@ -967,7 +967,7 @@ impl<'a> AnalysisContext<'a> {
         // check for enum variant
 
         match &field_access.operand.kind {
-            TypedExpressionKind::Symbol(symbol_id, _) => {
+            TypedExprKind::Symbol(symbol_id, _) => {
                 if let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), *symbol_id) {
                     let enum_variant_opt = resolved_enum
                         .enum_sig
@@ -975,15 +975,15 @@ impl<'a> AnalysisContext<'a> {
                         .iter()
                         .find(|variant| variant.get_identifier().as_string() == field_access.field_name);
 
-                    let concrete_type = self.analyze_enum_variant_no_field(
+                    let sema_ty = self.analyze_enum_variant_no_field(
                         scope_id_opt,
                         &resolved_enum,
                         field_access,
                         enum_variant_opt,
                         expected_type,
                     );
-                    field_access.operand.concrete_type = concrete_type.clone();
-                    return concrete_type;
+                    field_access.operand.sema_ty = sema_ty.clone();
+                    return sema_ty;
                 };
             }
             _ => {}
@@ -1001,11 +1001,11 @@ impl<'a> AnalysisContext<'a> {
 
         // multiplex field access
 
-        let concrete_type =
+        let sema_ty =
             self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
 
-        field_access.operand.concrete_type = Some(concrete_type.get_const_inner().clone());
-        let operand_ty = concrete_type.get_const_inner();
+        field_access.operand.sema_ty = Some(sema_ty.get_const_inner().clone());
+        let operand_ty = sema_ty.get_const_inner();
 
         let generic_type_opt = operand_ty.as_generic_type();
 
@@ -1072,7 +1072,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_union_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        struct_init: &mut TypedStructInit,
+        struct_init: &mut TypedStructInitExpr,
         resolved_union: &ResolvedUnion,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -1166,7 +1166,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_struct_init(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        struct_init: &mut TypedStructInit,
+        struct_init: &mut TypedStructInitExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
@@ -1180,23 +1180,23 @@ impl<'a> AnalysisContext<'a> {
             .get_symbol_id()
             .or_else(|| object_ct.as_generic_type().map(|gt| gt.base))?;
 
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), unresolved_object_id)
             .unwrap();
 
-        let resolved_object_symbol_id = self.resolver.resolve_base_symbol_id(&local_or_global_symbol);
+        let resolved_object_symbol_id = self.resolver.resolve_base_symbol_id(&sym);
 
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), resolved_object_symbol_id)
             .unwrap();
 
         struct_init.symbol_id = resolved_object_symbol_id;
 
-        if let Some(resolved_union) = local_or_global_symbol.as_union() {
+        if let Some(resolved_union) = sym.as_union() {
             self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, expected_type)
-        } else if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+        } else if let Some(resolved_struct) = sym.as_struct() {
             self.analyze_struct_init_expr_type(
                 scope_id_opt,
                 struct_init,
@@ -1221,7 +1221,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_struct_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        struct_init: &mut TypedStructInit,
+        struct_init: &mut TypedStructInitExpr,
         resolved_struct: &ResolvedStruct,
         expected_type: Option<SemanticType>,
         generic_params: &Option<TypedGenericParamsList>,
@@ -1296,7 +1296,7 @@ impl<'a> AnalysisContext<'a> {
                         &mut mapping_ctx,
                         Some(idx),
                     ) {
-                        field_init.value.concrete_type = Some(inferred_ty);
+                        field_init.value.sema_ty = Some(inferred_ty);
                     }
 
                     let missing_fields_idx = match missing_fields
@@ -1364,7 +1364,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_sig: &mut FuncSig,
-        args: &mut Vec<TypedExpression>,
+        args: &mut Vec<TypedExprStmt>,
         loc: SourceLoc,
         instance_method_call: bool,
     ) -> Option<SemanticType> {
@@ -1401,7 +1401,7 @@ impl<'a> AnalysisContext<'a> {
                     TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
                         for (idx, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) =
-                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone())
+                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
                             {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
@@ -1431,7 +1431,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncVariadicParams::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone());
                         }
                     }
                 }
@@ -1467,7 +1467,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
             let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => continue,
             };
 
@@ -1499,7 +1499,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_type: &mut TypedFuncType,
-        args: &mut Vec<TypedExpression>,
+        args: &mut Vec<TypedExprStmt>,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         let is_variadic = func_type.params.variadic.is_some();
@@ -1531,7 +1531,7 @@ impl<'a> AnalysisContext<'a> {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
                         for (idx, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) =
-                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone())
+                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
                             {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
@@ -1561,7 +1561,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncTypeVariadicParams::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone());
                         }
                     }
                 }
@@ -1581,7 +1581,7 @@ impl<'a> AnalysisContext<'a> {
             let param_type = self.normalize_type(scope_id_opt, param.clone(), loc.clone()).unwrap();
 
             let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => continue,
             };
 
@@ -1653,7 +1653,7 @@ impl<'a> AnalysisContext<'a> {
 
         match normalized {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-            SemanticType::Pointer(concrete_type) => self.extract_object_symbol_id(scope_id_opt, *concrete_type, loc),
+            SemanticType::Pointer(sema_ty) => self.extract_object_symbol_id(scope_id_opt, *sema_ty, loc),
             _ => None,
         }
     }
@@ -1667,17 +1667,17 @@ impl<'a> AnalysisContext<'a> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
 
-        method_call.operand.concrete_type = match self.analyze_typed_expr_type_non_terminal(
+        method_call.operand.sema_ty = match self.analyze_typed_expr_type_non_terminal(
             scope_id_opt,
             &mut method_call.operand,
             expected_type.clone(),
         ) {
-            Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type, loc.clone()),
+            Some(sema_ty) => self.normalize_type(scope_id_opt, sema_ty, loc.clone()),
             None => return None,
         };
 
         if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
-            method_call.operand.concrete_type
+            method_call.operand.sema_ty
         {
             let local_scope_opt =
                 scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
@@ -1709,7 +1709,7 @@ impl<'a> AnalysisContext<'a> {
 
         let object_symbol_id = {
             let operand_type = match &method_call.operand.kind {
-                TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
+                TypedExprKind::Symbol(instance_symbol_id, ..) => {
                     let local_scope_opt =
                         scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
@@ -1720,9 +1720,9 @@ impl<'a> AnalysisContext<'a> {
                     );
 
                     if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(..))) =
-                        method_call.operand.concrete_type
+                        method_call.operand.sema_ty
                     {
-                        method_call.operand.concrete_type.clone().unwrap()
+                        method_call.operand.sema_ty.clone().unwrap()
                     } else {
                         let resolved_var_type = self
                             .analyze_var_or_global_var_type(
@@ -1742,7 +1742,7 @@ impl<'a> AnalysisContext<'a> {
                         &mut method_call.operand,
                         expected_type.clone(),
                     ) {
-                        Some(concrete_type) => concrete_type,
+                        Some(sema_ty) => sema_ty,
                         None => return None,
                     }
                 }
@@ -1750,8 +1750,8 @@ impl<'a> AnalysisContext<'a> {
 
             match operand_type.get_const_inner() {
                 SemanticType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
-                SemanticType::Pointer(concrete_type) => {
-                    if concrete_type.is_void() {
+                SemanticType::Pointer(sema_ty) => {
+                    if sema_ty.is_void() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: AnalyzerDiagKind::ObjectNotSupportsFields,
@@ -1761,7 +1761,7 @@ impl<'a> AnalysisContext<'a> {
                         return None;
                     }
 
-                    self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), loc.clone())
+                    self.extract_object_symbol_id(scope_id_opt, *sema_ty.clone(), loc.clone())
                         .unwrap()
                 }
                 _ => {
@@ -1778,11 +1778,11 @@ impl<'a> AnalysisContext<'a> {
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let local_or_global_symbol = match self
+        let sym = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
         {
-            Some(local_or_global_symbol) => local_or_global_symbol,
+            Some(sym) => sym,
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1795,16 +1795,16 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let struct_ids_opt = {
-            if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+            if let Some(resolved_struct) = sym.as_struct() {
                 // static method call
                 Some((resolved_struct.module_id, resolved_struct.symbol_id))
-            } else if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
+            } else if let Some(resolved_enum) = sym.as_enum() {
                 Some((resolved_enum.module_id, resolved_enum.symbol_id))
-            } else if let Some(resolved_union) = local_or_global_symbol.as_union() {
+            } else if let Some(resolved_union) = sym.as_union() {
                 Some((resolved_union.module_id, resolved_union.symbol_id))
             } else {
                 // instance method call
-                if let Some(resolved_var) = local_or_global_symbol.as_variable() {
+                if let Some(resolved_var) = sym.as_variable() {
                     let var_type = resolved_var
                         .typed_variable
                         .ty
@@ -1824,7 +1824,7 @@ impl<'a> AnalysisContext<'a> {
                         Some(struct_id) => Some((resolved_var.module_id, struct_id)),
                         None => None,
                     }
-                } else if let Some(resolved_global_var) = local_or_global_symbol.as_global_var() {
+                } else if let Some(resolved_global_var) = sym.as_global_var() {
                     let var_type = resolved_global_var
                         .global_var_sig
                         .ty
@@ -1982,24 +1982,24 @@ impl<'a> AnalysisContext<'a> {
 
         let is_pointer = method_call
             .operand
-            .concrete_type
+            .sema_ty
             .clone()
             .unwrap()
             .get_const_inner()
             .is_pointer();
         let is_struct = method_call
             .operand
-            .concrete_type
+            .sema_ty
             .clone()
             .unwrap()
             .get_const_inner()
             .is_resolved_symbol();
 
-        let is_operand_const = method_call.operand.concrete_type.clone().unwrap().is_const();
+        let is_operand_const = method_call.operand.sema_ty.clone().unwrap().is_const();
 
         if method_call.is_fat_arrow {
             if !is_pointer {
-                dbg!(method_call.operand.concrete_type.clone());
+                dbg!(method_call.operand.sema_ty.clone());
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -2049,11 +2049,11 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_array_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_array: &mut TypedArray,
+        typed_array: &mut TypedArrayExpr,
     ) -> Option<SemanticType> {
         typed_array.array_type =
             match self.normalize_type(scope_id_opt, typed_array.array_type.clone(), typed_array.loc.clone()) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return None,
             };
 
@@ -2063,7 +2063,7 @@ impl<'a> AnalysisContext<'a> {
                 argument,
                 Some(*typed_array.array_type.as_array_type().unwrap().element_type.clone()),
             ) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => continue,
             };
 
@@ -2072,7 +2072,7 @@ impl<'a> AnalysisContext<'a> {
                 *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
                 argument.loc.clone(),
             ) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => continue,
             };
 
@@ -2125,10 +2125,10 @@ impl<'a> AnalysisContext<'a> {
         ))
     }
 
-    fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<SemanticType> {
+    fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCastExpr) -> Option<SemanticType> {
         let operand =
             match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
-                Some(concrete_type) => concrete_type,
+                Some(sema_ty) => sema_ty,
                 None => return None,
             };
 
@@ -2161,17 +2161,17 @@ impl<'a> AnalysisContext<'a> {
         instance_symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
             .unwrap();
 
-        let concrete_type = match match &local_or_global_symbol {
+        let sema_ty = match match &sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
                 let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
 
                 match &typed_variable.ty {
-                    Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone()),
+                    Some(sema_ty) => self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone()),
                     None => {
                         let rhs = typed_variable.rhs.clone().unwrap();
                         self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone(), None)
@@ -2183,13 +2183,13 @@ impl<'a> AnalysisContext<'a> {
                 None => None,
             },
         } {
-            Some(concrete_type) => Some(concrete_type),
+            Some(sema_ty) => Some(sema_ty),
             None => None,
         };
 
-        if concrete_type.is_some() {
+        if sema_ty.is_some() {
             let normalized_type = self
-                .normalize_type(scope_id_opt, concrete_type.unwrap(), loc.clone())
+                .normalize_type(scope_id_opt, sema_ty.unwrap(), loc.clone())
                 .unwrap();
 
             Some(normalized_type)
@@ -2207,7 +2207,7 @@ enum MemberAccessKind {
 }
 
 fn infer_integer_type(
-    literal: &TypedLiteral,
+    literal: &TypedLiteralExpr,
     suffix_opt: &Option<Box<TokenKind>>,
     expected: Option<SemanticType>,
 ) -> Result<SemanticType, Diag<AnalyzerDiagKind>> {
@@ -2225,15 +2225,15 @@ fn infer_integer_type(
         if is_integer_type(&ctx_ty) {
             Ok(ctx_ty)
         } else {
-            Ok(SemanticType::BasicType(BasicSemanticType::Int)) // safe default
+            Ok(SemanticType::BasicType(BasicType::Int)) // safe default
         }
     } else {
-        Ok(SemanticType::BasicType(BasicSemanticType::Int))
+        Ok(SemanticType::BasicType(BasicType::Int))
     }
 }
 
 fn infer_float_type(
-    literal: &TypedLiteral,
+    literal: &TypedLiteralExpr,
     suffix_opt: &Option<Box<TokenKind>>,
     expected: Option<SemanticType>,
 ) -> Result<SemanticType, Diag<AnalyzerDiagKind>> {
@@ -2251,30 +2251,30 @@ fn infer_float_type(
         if is_float_type(&ctx_ty) {
             Ok(ctx_ty)
         } else {
-            Ok(SemanticType::BasicType(BasicSemanticType::Float64)) // safe default
+            Ok(SemanticType::BasicType(BasicType::Float64)) // safe default
         }
     } else {
-        Ok(SemanticType::BasicType(BasicSemanticType::Float64))
+        Ok(SemanticType::BasicType(BasicType::Float64))
     }
 }
 
 fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
-        TokenKind::UIntPtr => BasicSemanticType::UIntPtr,
-        TokenKind::IntPtr => BasicSemanticType::IntPtr,
-        TokenKind::SizeT => BasicSemanticType::SizeT,
-        TokenKind::Int => BasicSemanticType::Int,
-        TokenKind::Int8 => BasicSemanticType::Int8,
-        TokenKind::Int16 => BasicSemanticType::Int16,
-        TokenKind::Int32 => BasicSemanticType::Int32,
-        TokenKind::Int64 => BasicSemanticType::Int64,
-        TokenKind::Int128 => BasicSemanticType::Int128,
-        TokenKind::UInt => BasicSemanticType::UInt,
-        TokenKind::UInt8 => BasicSemanticType::UInt8,
-        TokenKind::UInt16 => BasicSemanticType::UInt16,
-        TokenKind::UInt32 => BasicSemanticType::UInt32,
-        TokenKind::UInt64 => BasicSemanticType::UInt64,
-        TokenKind::UInt128 => BasicSemanticType::UInt128,
+        TokenKind::UIntPtr => BasicType::UIntPtr,
+        TokenKind::IntPtr => BasicType::IntPtr,
+        TokenKind::SizeT => BasicType::SizeT,
+        TokenKind::Int => BasicType::Int,
+        TokenKind::Int8 => BasicType::Int8,
+        TokenKind::Int16 => BasicType::Int16,
+        TokenKind::Int32 => BasicType::Int32,
+        TokenKind::Int64 => BasicType::Int64,
+        TokenKind::Int128 => BasicType::Int128,
+        TokenKind::UInt => BasicType::UInt,
+        TokenKind::UInt8 => BasicType::UInt8,
+        TokenKind::UInt16 => BasicType::UInt16,
+        TokenKind::UInt32 => BasicType::UInt32,
+        TokenKind::UInt64 => BasicType::UInt64,
+        TokenKind::UInt128 => BasicType::UInt128,
         _ => return None,
     };
     Some(SemanticType::BasicType(ty))
@@ -2282,10 +2282,10 @@ fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
 
 fn map_float_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
-        TokenKind::Float16 => BasicSemanticType::Float16,
-        TokenKind::Float32 => BasicSemanticType::Float32,
-        TokenKind::Float64 => BasicSemanticType::Float64,
-        TokenKind::Float128 => BasicSemanticType::Float128,
+        TokenKind::Float16 => BasicType::Float16,
+        TokenKind::Float32 => BasicType::Float32,
+        TokenKind::Float64 => BasicType::Float64,
+        TokenKind::Float128 => BasicType::Float128,
         _ => return None,
     };
     Some(SemanticType::BasicType(ty))
@@ -2295,21 +2295,21 @@ fn is_integer_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
         SemanticType::BasicType(
-            BasicSemanticType::Int
-                | BasicSemanticType::Int8
-                | BasicSemanticType::Int16
-                | BasicSemanticType::Int32
-                | BasicSemanticType::Int64
-                | BasicSemanticType::Int128
-                | BasicSemanticType::UInt
-                | BasicSemanticType::UInt8
-                | BasicSemanticType::UInt16
-                | BasicSemanticType::UInt32
-                | BasicSemanticType::UInt64
-                | BasicSemanticType::UInt128
-                | BasicSemanticType::IntPtr
-                | BasicSemanticType::UIntPtr
-                | BasicSemanticType::SizeT
+            BasicType::Int
+                | BasicType::Int8
+                | BasicType::Int16
+                | BasicType::Int32
+                | BasicType::Int64
+                | BasicType::Int128
+                | BasicType::UInt
+                | BasicType::UInt8
+                | BasicType::UInt16
+                | BasicType::UInt32
+                | BasicType::UInt64
+                | BasicType::UInt128
+                | BasicType::IntPtr
+                | BasicType::UIntPtr
+                | BasicType::SizeT
         )
     )
 }
@@ -2318,10 +2318,10 @@ fn is_float_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
         SemanticType::BasicType(
-            BasicSemanticType::Float16
-                | BasicSemanticType::Float32
-                | BasicSemanticType::Float64
-                | BasicSemanticType::Float128
+            BasicType::Float16
+                | BasicType::Float32
+                | BasicType::Float64
+                | BasicType::Float128
         )
     )
 }

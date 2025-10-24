@@ -3,11 +3,11 @@ use ast::{
     LiteralKind,
     operators::{InfixOperator, PrefixOperator},
 };
-use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef};
-use typed_ast::{ScopeID, SymbolID, TypedExpression, TypedExpressionKind, TypedLiteral};
+use resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef};
+use typed_ast::{ScopeID, SymbolID, TypedExprStmt, TypedExprKind, TypedLiteralExpr};
 
 impl<'a> AnalysisContext<'a> {
-    fn extract_literal_value(&self, typed_literal: &TypedLiteral) -> Option<i64> {
+    fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i64> {
         match &typed_literal.kind {
             LiteralKind::Integer(value, ..) => Some(*value),
             _ => None,
@@ -18,26 +18,26 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
-    ) -> Option<TypedExpression> {
-        let local_or_global_symbol = self
+    ) -> Option<TypedExprStmt> {
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
             .unwrap();
 
-        match match &local_or_global_symbol {
+        match match &sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
                 let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
                 let mut typed_expr = typed_variable.rhs.clone().unwrap();
-                if let Some(concrete_type) = &typed_variable.ty {
-                    typed_expr.concrete_type = Some(concrete_type.clone());
+                if let Some(sema_ty) = &typed_variable.ty {
+                    typed_expr.sema_ty = Some(sema_ty.clone());
                 }
                 Some(typed_expr)
             }
             LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
                 Some(resolved_global_var) => {
                     let mut typed_expr = resolved_global_var.global_var_sig.rhs.clone().unwrap();
-                    if let Some(concrete_type) = &resolved_global_var.global_var_sig.ty {
-                        typed_expr.concrete_type = Some(concrete_type.clone());
+                    if let Some(sema_ty) = &resolved_global_var.global_var_sig.ty {
+                        typed_expr.sema_ty = Some(sema_ty.clone());
                     }
                     Some(typed_expr)
                 }
@@ -52,15 +52,15 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn const_expr_as_raw_integer(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_expr: &TypedExpression,
+        typed_expr: &TypedExprStmt,
     ) -> Option<i64> {  
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let integer_result = match &typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, ..) => {
+            TypedExprKind::Symbol(symbol_id, ..) => {
                 match self.resolve_var_or_global_var_rhs_expr(local_scope_opt, *symbol_id) {
                     Some(var_rhs_typed_expr) => {
-                        if var_rhs_typed_expr.concrete_type.clone().unwrap().is_const() {
+                        if var_rhs_typed_expr.sema_ty.clone().unwrap().is_const() {
                             Some(self.const_expr_as_raw_integer(scope_id_opt, &var_rhs_typed_expr)?)
                         } else {
                             None
@@ -69,8 +69,8 @@ impl<'a> AnalysisContext<'a> {
                     None => None,
                 }
             }
-            TypedExpressionKind::Literal(typed_literal) => self.extract_literal_value(typed_literal),
-            TypedExpressionKind::Prefix(typed_prefix_expr) => {
+            TypedExprKind::Literal(typed_literal) => self.extract_literal_value(typed_literal),
+            TypedExprKind::Prefix(typed_prefix_expr) => {
                 let integer = self.const_expr_as_raw_integer(scope_id_opt, &typed_prefix_expr.operand)?;
 
                 let result = match &typed_prefix_expr.op {
@@ -87,7 +87,7 @@ impl<'a> AnalysisContext<'a> {
 
                 Some(result)
             }
-            TypedExpressionKind::Infix(typed_infix_expr) => {
+            TypedExprKind::Infix(typed_infix_expr) => {
                 let lhs = self.const_expr_as_raw_integer(scope_id_opt, &typed_infix_expr.lhs)?;
                 let rhs = self.const_expr_as_raw_integer(scope_id_opt, &typed_infix_expr.rhs)?;
 

@@ -8,12 +8,12 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{GlobalValue, PointerValue},
 };
-use resolver::{scope::LocalScopeRef, signatures::GlobalVarSig};
-use typed_ast::{TypedGlobalVariable, TypedVariable};
+use resolver::{scope::LocalScopeRef, sigs::GlobalVarSig};
+use typed_ast::{TypedGlobalVarStmt, TypedVarStmt};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn get_or_declare_global_var(&mut self, global_var_sig: GlobalVarSig) -> GlobalValue<'a> {
-        let concrete_type: BasicTypeEnum<'a> = self
+        let sema_ty: BasicTypeEnum<'a> = self
             .build_concrete_type(None, global_var_sig.ty.unwrap())
             .try_into()
             .unwrap();
@@ -26,7 +26,7 @@ impl<'a> CodeGenBuilder<'a> {
         let llvmmodule = self.llvmmodule.borrow_mut();
         let global_value = match llvmmodule.get_global(&abi_name) {
             Some(global_value) => global_value,
-            None => llvmmodule.add_global(concrete_type, None, &abi_name),
+            None => llvmmodule.add_global(sema_ty, None, &abi_name),
         };
         global_value.set_linkage(Linkage::External);
         drop(llvmmodule);
@@ -34,12 +34,12 @@ impl<'a> CodeGenBuilder<'a> {
         global_value
     }
 
-    pub(crate) fn build_global_var_decl(&mut self, global_var: &TypedGlobalVariable) -> GlobalValue<'a> {
+    pub(crate) fn build_global_var_decl(&mut self, global_var: &TypedGlobalVarStmt) -> GlobalValue<'a> {
         let linkage = self.build_global_variable_linkage(global_var.vis.clone());
 
         let mut global_var_type = {
-            if let Some(concrete_type) = &global_var.ty {
-                Some(self.build_concrete_type(None, concrete_type.clone()))
+            if let Some(sema_ty) = &global_var.ty {
+                Some(self.build_concrete_type(None, sema_ty.clone()))
             } else {
                 None
             }
@@ -48,7 +48,7 @@ impl<'a> CodeGenBuilder<'a> {
         if global_var_type.is_none() {
             dbg!(global_var.clone());
             let typed_expr = global_var.expr.clone().unwrap();
-            global_var_type = Some(self.build_concrete_type(None, typed_expr.concrete_type.unwrap()));
+            global_var_type = Some(self.build_concrete_type(None, typed_expr.sema_ty.unwrap()));
         }
 
         let global_var_type: BasicTypeEnum<'a> = global_var_type.unwrap().try_into().unwrap();
@@ -67,12 +67,12 @@ impl<'a> CodeGenBuilder<'a> {
         global_var_value
     }
 
-    pub(crate) fn build_global_var_def(&mut self, global_var: &TypedGlobalVariable) {
+    pub(crate) fn build_global_var_def(&mut self, global_var: &TypedGlobalVarStmt) {
         let local_ir_value = self.get_ir_value(global_var.symbol_id).unwrap();
         let global_value = local_ir_value.as_global_value().unwrap().0.clone();
 
-        if let Some(concrete_type) = &global_var.ty {
-            global_value.set_constant(concrete_type.is_const());
+        if let Some(sema_ty) = &global_var.ty {
+            global_value.set_constant(sema_ty.is_const());
         }
 
         if global_var.expr.is_some() {
@@ -111,7 +111,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_local_variable(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        variable: &TypedVariable,
+        variable: &TypedVarStmt,
         zero_init_by_default: bool,
     ) -> PointerValue<'a> {
         let rhs_value_opt = variable.rhs.as_ref().map(|rhs_expr| {
@@ -137,7 +137,7 @@ impl<'a> CodeGenBuilder<'a> {
         let initial_concrete_type = variable
             .ty
             .clone()
-            .or_else(|| variable.rhs.as_ref().unwrap().concrete_type.clone())
+            .or_else(|| variable.rhs.as_ref().unwrap().sema_ty.clone())
             .unwrap();
 
         self.insert_ir_value(

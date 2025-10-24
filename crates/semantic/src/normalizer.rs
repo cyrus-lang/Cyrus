@@ -1,7 +1,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
+use resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
     TypedTypeArg,
@@ -33,12 +33,12 @@ impl<'a> AnalysisContext<'a> {
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Variable(symbol_id))
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Func(symbol_id))
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Method(symbol_id)) => {
-                let local_or_global_symbol = self
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)?;
 
                 // mark symbol used
-                match local_or_global_symbol {
+                match sym {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
                         if let Some(local_scope) = self
                             .resolver
@@ -61,9 +61,9 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::GenericType(mut generic_type) => {
                 for type_arg in &mut generic_type.type_args {
                     let normalized_type_arg = match type_arg {
-                        TypedTypeArg::Positional(concrete_type) => {
+                        TypedTypeArg::Positional(sema_ty) => {
                             let normalized_ty =
-                                self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone())?;
+                                self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone())?;
                             TypedTypeArg::Positional(normalized_ty)
                         }
                         TypedTypeArg::Named { key, value } => {
@@ -85,16 +85,16 @@ impl<'a> AnalysisContext<'a> {
                 self.normalize_type(scope_id_opt, resolved, loc)
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
-                let local_or_global_symbol =
+                let sym =
                     match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
-                        Some(local_or_global_symbol) => local_or_global_symbol,
+                        Some(sym) => sym,
                         None => {
                             self.report_non_type_symbol(symbol_id, loc.clone());
                             return None;
                         }
                     };
 
-                let resolved_typedef_opt = match &local_or_global_symbol {
+                let resolved_typedef_opt = match &sym {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_typedef(),
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_typedef(),
                 };
@@ -177,8 +177,8 @@ impl<'a> AnalysisContext<'a> {
                 if let Some(variadic) = func_type.params.variadic.clone() {
                     match *variadic {
                         TypedFuncTypeVariadicParams::UntypedCStyle => {}
-                        TypedFuncTypeVariadicParams::Typed(concrete_type) => {
-                            match self.normalize_type(scope_id_opt, concrete_type, loc.clone()) {
+                        TypedFuncTypeVariadicParams::Typed(sema_ty) => {
+                            match self.normalize_type(scope_id_opt, sema_ty, loc.clone()) {
                                 Some(normalized) => {
                                     func_type.params.variadic =
                                         Some(Box::new(TypedFuncTypeVariadicParams::Typed(normalized)))
@@ -201,8 +201,8 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::Tuple(tuple_type) => {
                 let mut type_list: Vec<SemanticType> = Vec::new();
 
-                for concrete_type in &tuple_type.type_list {
-                    match self.normalize_type(scope_id_opt, concrete_type.clone(), tuple_type.loc.clone()) {
+                for sema_ty in &tuple_type.type_list {
+                    match self.normalize_type(scope_id_opt, sema_ty.clone(), tuple_type.loc.clone()) {
                         Some(normalized) => type_list.push(normalized),
                         None => continue,
                     }
@@ -256,15 +256,15 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn resolve_full_type_from_local_or_global_symbol(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_or_global_symbol: LocalOrGlobalSymbol,
+        sym: LocalOrGlobalSymbol,
     ) -> Option<SemanticType> {
-        match local_or_global_symbol {
+        match sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
                 LocalSymbolKind::Variable(resolved_variable) => {
-                    if let Some(concrete_type) = &resolved_variable.typed_variable.ty {
+                    if let Some(sema_ty) = &resolved_variable.typed_variable.ty {
                         self.normalize_type(
                             scope_id_opt,
-                            concrete_type.clone(),
+                            sema_ty.clone(),
                             resolved_variable.typed_variable.loc.clone(),
                         )
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
@@ -313,8 +313,8 @@ impl<'a> AnalysisContext<'a> {
                                 TypedFuncVariadicParams::UntypedCStyle => {
                                     Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle))
                                 }
-                                TypedFuncVariadicParams::Typed(_, concrete_type) => {
-                                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type)))
+                                TypedFuncVariadicParams::Typed(_, sema_ty) => {
+                                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty)))
                                 }
                             },
                             None => None,
@@ -349,8 +349,8 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 SymbolEntryKind::Typedef(resolved_typedef) => self
                     .resolve_typedef_inner_type(&resolved_typedef)
-                    .and_then(|concrete_type| {
-                        self.normalize_type(scope_id_opt, concrete_type, resolved_typedef.typedef_sig.loc.clone())
+                    .and_then(|sema_ty| {
+                        self.normalize_type(scope_id_opt, sema_ty, resolved_typedef.typedef_sig.loc.clone())
                     }),
             },
         }

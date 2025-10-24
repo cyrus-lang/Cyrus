@@ -5,7 +5,7 @@ use inkwell::{
     values::FunctionValue,
 };
 use resolver::{
-    signatures::{EnumSig, FuncSig, StructSig, UnionSig},
+    sigs::{EnumSig, FuncSig, StructSig, UnionSig},
     typed_func_type_from_func_sig,
 };
 use typed_ast::{SymbolID, types::SemanticType};

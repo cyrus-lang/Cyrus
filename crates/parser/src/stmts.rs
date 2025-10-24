@@ -1105,7 +1105,7 @@ impl Parser {
         }
 
         if self.current_token_is(TokenKind::Semicolon) {
-            return Ok(Statement::ExportTupleValues(ExportTupleValues {
+            return Ok(Statement::ExportTuple(ExportTuple {
                 exports,
                 ty: variable_type,
                 rhs: None,
@@ -1122,7 +1122,7 @@ impl Parser {
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
         self.expect_peek(TokenKind::Semicolon)?;
 
-        Ok(Statement::ExportTupleValues(ExportTupleValues {
+        Ok(Statement::ExportTuple(ExportTuple {
             exports,
             rhs: Some(expr),
             span: Span { start, end: span.end },

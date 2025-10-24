@@ -3,7 +3,7 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{BasicValueEnum, FunctionValue, PointerValue},
 };
-use resolver::scope::LocalScopeRef;
+use resolver::symbols::LocalScopeRef;
 use typed_ast::types::SemanticType;
 
 impl<'a> CodeGenBuilder<'a> {

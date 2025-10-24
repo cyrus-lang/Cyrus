@@ -181,14 +181,14 @@ pub enum LocalIRValue<'a> {
 impl<'a> LocalIRValue<'a> {
     pub fn as_func(&self) -> Option<(&FunctionValue<'a>, &SemanticType)> {
         match self {
-            LocalIRValue::Func(fn_value, concrete_type) => Some((fn_value, concrete_type)),
+            LocalIRValue::Func(fn_value, sema_ty) => Some((fn_value, sema_ty)),
             _ => None,
         }
     }
 
     pub fn as_global_value(&self) -> Option<(&GlobalValue<'a>, &SemanticType)> {
         match self {
-            LocalIRValue::GlobalValue(global_value, concrete_type) => Some((global_value, concrete_type)),
+            LocalIRValue::GlobalValue(global_value, sema_ty) => Some((global_value, sema_ty)),
             _ => None,
         }
     }
@@ -209,14 +209,14 @@ impl<'a> LocalIRValue<'a> {
 
     pub fn as_lvalue(&self) -> Option<(&PointerValue<'a>, &SemanticType)> {
         match self {
-            LocalIRValue::LValue(pointer, concrete_type) => Some((pointer, concrete_type)),
+            LocalIRValue::LValue(pointer, sema_ty) => Some((pointer, sema_ty)),
             _ => None,
         }
     }
 
     pub fn as_rvalue(&self) -> Option<(&BasicValueEnum<'a>, &SemanticType)> {
         match self {
-            LocalIRValue::RValue(basic_value, concrete_type) => Some((basic_value, concrete_type)),
+            LocalIRValue::RValue(basic_value, sema_ty) => Some((basic_value, sema_ty)),
             _ => None,
         }
     }

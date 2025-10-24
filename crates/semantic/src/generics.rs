@@ -1,10 +1,10 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::signatures::{EnumSig, StructSig, UnionSig};
+use resolver::sigs::{EnumSig, StructSig, UnionSig};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{
-    ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParamsList, TypedIdentifier,
+    ScopeID, SymbolID, TypedEnumVariant, TypedExprStmt, TypedFuncTypeParams, TypedGenericParamsList, TypedIdentifier,
     TypedTypeArg, TypedTypeArgs,
     format::format_concrete_type,
     types::{
@@ -48,11 +48,11 @@ impl<'a> AnalysisContext<'a> {
     )> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let local_or_global_symbol = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)?;
 
-        if let Some(resolved_typedef) = local_or_global_symbol.as_typedef() {
+        if let Some(resolved_typedef) = sym.as_typedef() {
             if let Some(generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type() {
                 let inner_symbol = self
                     .resolver
@@ -87,7 +87,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        match self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)? {
+        match self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)? {
             SemanticType::GenericType(generic_type) => {
                 self.resolve_generic_typedef(mapping_ctx, scope_id_opt, generic_type.base)
             }
@@ -98,12 +98,12 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_field_access_type(
         &mut self,
         mapping_ctx: &mut GenericMappingCtx,
-        field_access_operand: &mut TypedExpression,
+        field_access_operand: &mut TypedExprStmt,
         generic_params: &Option<TypedGenericParamsList>,
         generic_type_opt: Option<&GenericType>,
         loc: SourceLoc,
     ) {
-        match (generic_type_opt, field_access_operand.concrete_type.clone()) {
+        match (generic_type_opt, field_access_operand.sema_ty.clone()) {
             (Some(generic_type), Some(operand_ty)) => {
                 let mapping_ctx = self.get_generic_mapping_ctx(
                     mapping_ctx,
@@ -111,7 +111,7 @@ impl<'a> AnalysisContext<'a> {
                     &Some(generic_type.type_args.clone()),
                     loc,
                 );
-                field_access_operand.concrete_type = self.substitute_type(operand_ty, &mapping_ctx, None);
+                field_access_operand.sema_ty = self.substitute_type(operand_ty, &mapping_ctx, None);
             }
             _ => {}
         }
@@ -133,8 +133,8 @@ impl<'a> AnalysisContext<'a> {
                     loc,
                 );
                 struct_sig.fields.iter_mut().enumerate().for_each(|(idx, field)| {
-                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)) {
-                        field.ty = concrete_type;
+                    if let Some(sema_ty) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)) {
+                        field.ty = sema_ty;
                     }
                 });
             }
@@ -158,8 +158,8 @@ impl<'a> AnalysisContext<'a> {
                     loc,
                 );
                 union_sig.fields.iter_mut().enumerate().for_each(|(idx, field)| {
-                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)) {
-                        field.ty = concrete_type;
+                    if let Some(sema_ty) = self.substitute_type(field.ty.clone(), &mapping_ctx, Some(idx)) {
+                        field.ty = sema_ty;
                     }
                 });
             }
@@ -191,8 +191,8 @@ impl<'a> AnalysisContext<'a> {
                         TypedEnumVariant::Identifier(..) => {}
                         TypedEnumVariant::Valued(_, typed_expr) => {
                             self.analyze_typed_expr_type(scope_id_opt, typed_expr, None)
-                                .inspect(|concrete_type| {
-                                    self.substitute_type(concrete_type.clone(), &mapping_ctx, Some(idx));
+                                .inspect(|sema_ty| {
+                                    self.substitute_type(sema_ty.clone(), &mapping_ctx, Some(idx));
                                 });
                         }
                         TypedEnumVariant::Variant(_, typed_enum_valued_fields) => {
@@ -213,7 +213,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn inferred_types_as_positional_type_args(&self, types: Vec<SemanticType>) -> TypedTypeArgs {
         types
             .iter()
-            .map(|concrete_type| TypedTypeArg::Positional(concrete_type.clone()))
+            .map(|sema_ty| TypedTypeArg::Positional(sema_ty.clone()))
             .collect()
     }
 
@@ -221,20 +221,20 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         generic_params_opt: &Option<TypedGenericParamsList>,
-        concrete_type: SemanticType,
-        expr: &mut TypedExpression,
+        sema_ty: SemanticType,
+        expr: &mut TypedExprStmt,
         generic_mapping_ctx: &mut GenericMappingCtx,
         positional_index: Option<usize>,
     ) -> Option<SemanticType> {
         // evaluate expr type before substitution
         let expr_concrete_typ = expr
-            .concrete_type
+            .sema_ty
             .clone()
             .or(self.analyze_typed_expr_type(scope_id_opt, expr, None));
 
         // substitute or infer
         let final_concrete_type =
-            match self.substitute_type(concrete_type.clone(), generic_mapping_ctx, positional_index) {
+            match self.substitute_type(sema_ty.clone(), generic_mapping_ctx, positional_index) {
                 Some(substituted) => {
                     self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone()));
                     Some(substituted)
@@ -301,18 +301,18 @@ impl<'a> AnalysisContext<'a> {
                 // link positional and named type arguments
                 for (idx, arg) in type_args.iter().enumerate() {
                     match arg {
-                        TypedTypeArg::Positional(concrete_type) => {
+                        TypedTypeArg::Positional(sema_ty) => {
                             let current_gp = match generic_params.get(idx) {
                                 Some(gp) => gp,
                                 None => continue, // skip if there's no corresponding param
                             };
 
-                            if let Some(generic_param) = concrete_type.as_generic_param() {
+                            if let Some(generic_param) = sema_ty.as_generic_param() {
                                 // Link generic → generic (e.g. T = U)
                                 mapping_ctx.insert_linked(current_gp.param_name.symbol_id, generic_param.symbol_id);
                             } else {
                                 // Bind concrete type to generic param
-                                mapping_ctx.insert_named(current_gp.param_name.clone(), concrete_type.clone());
+                                mapping_ctx.insert_named(current_gp.param_name.clone(), sema_ty.clone());
                             }
                         }
 
@@ -425,11 +425,11 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn substitute_type(
         &self,
-        concrete_type: SemanticType,
+        sema_ty: SemanticType,
         generic_mapping_ctx: &GenericMappingCtx,
         positional_index: Option<usize>,
     ) -> Option<SemanticType> {
-        match concrete_type {
+        match sema_ty {
             SemanticType::GenericParam(param) => generic_mapping_ctx.get_with_symbol_id(param.symbol_id),
             SemanticType::Pointer(inner) => Some(SemanticType::Pointer(Box::new(self.substitute_type(
                 *inner,
@@ -547,8 +547,8 @@ impl<'a> AnalysisContext<'a> {
         //         }
         //     });
 
-        //     if let Some(concrete_type) = concrete {
-        //         merged_args.push(concrete_type);
+        //     if let Some(sema_ty) = concrete {
+        //         merged_args.push(sema_ty);
         //     } else {
         //         // could not infer this generic param
         //         return None;

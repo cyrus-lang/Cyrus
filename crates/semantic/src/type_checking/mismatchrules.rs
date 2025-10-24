@@ -2,7 +2,7 @@ use crate::context::AnalysisContext;
 use ast::source_loc::SourceLoc;
 use typed_ast::{
     ScopeID,
-    types::{BasicSemanticType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    types::{BasicType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -54,13 +54,13 @@ impl<'a> AnalysisContext<'a> {
             }
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
-            (SemanticType::BasicType(BasicSemanticType::Null), SemanticType::Pointer(..)) => true,
+            (SemanticType::BasicType(BasicType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
     }
 
-    pub(crate) fn check_basic_type_mismatch(&self, value: BasicSemanticType, target: BasicSemanticType) -> bool {
-        use BasicSemanticType::*;
+    pub(crate) fn check_basic_type_mismatch(&self, value: BasicType, target: BasicType) -> bool {
+        use BasicType::*;
 
         match (value, target) {
             // Same type is always compatible
@@ -95,17 +95,17 @@ impl<'a> AnalysisContext<'a> {
 
             // Integer to intptr (safe if value fits)
             (
-                BasicSemanticType::Int | BasicSemanticType::Int8 | BasicSemanticType::Int16 | BasicSemanticType::Int32,
-                BasicSemanticType::IntPtr,
+                BasicType::Int | BasicType::Int8 | BasicType::Int16 | BasicType::Int32,
+                BasicType::IntPtr,
             ) => true,
 
             // Unsigned to intptr (less safe, maybe allow some)
             (
-                BasicSemanticType::UInt
-                | BasicSemanticType::UInt8
-                | BasicSemanticType::UInt16
-                | BasicSemanticType::UInt32,
-                BasicSemanticType::UIntPtr,
+                BasicType::UInt
+                | BasicType::UInt8
+                | BasicType::UInt16
+                | BasicType::UInt32,
+                BasicType::UIntPtr,
             ) => true,
 
             (Null, Null) => true,
@@ -155,29 +155,29 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // Bool to anything integer-ish (common in C-style languages)
-            (SemanticType::BasicType(BasicSemanticType::Bool), SemanticType::BasicType(target))
+            (SemanticType::BasicType(BasicType::Bool), SemanticType::BasicType(target))
                 if target.is_integer() =>
             {
                 true
             }
 
             // Char to integer and back
-            (SemanticType::BasicType(BasicSemanticType::Char), SemanticType::BasicType(target))
+            (SemanticType::BasicType(BasicType::Char), SemanticType::BasicType(target))
                 if target.is_integer() =>
             {
                 true
             }
-            (SemanticType::BasicType(value), SemanticType::BasicType(BasicSemanticType::Char))
+            (SemanticType::BasicType(value), SemanticType::BasicType(BasicType::Char))
                 if value.is_integer() =>
             {
                 true
             }
 
             // void* <-> intptr/uintptr
-            (SemanticType::Pointer(..), SemanticType::BasicType(BasicSemanticType::IntPtr))
-            | (SemanticType::Pointer(..), SemanticType::BasicType(BasicSemanticType::UIntPtr))
-            | (SemanticType::BasicType(BasicSemanticType::IntPtr), SemanticType::Pointer(..))
-            | (SemanticType::BasicType(BasicSemanticType::UIntPtr), SemanticType::Pointer(..)) => true,
+            (SemanticType::Pointer(..), SemanticType::BasicType(BasicType::IntPtr))
+            | (SemanticType::Pointer(..), SemanticType::BasicType(BasicType::UIntPtr))
+            | (SemanticType::BasicType(BasicType::IntPtr), SemanticType::Pointer(..))
+            | (SemanticType::BasicType(BasicType::UIntPtr), SemanticType::Pointer(..)) => true,
 
             (SemanticType::FuncType(..), SemanticType::Pointer(pointer_type)) => pointer_type.is_void(),
 

@@ -134,7 +134,7 @@ impl Parser {
                 let start = self.current_token().span.start;
                 let loc = self.current_token().loc.clone();
                 self.next_token();
-                Expression::AddressOf(AddressOf {
+                Expression::AddrOf(AddrOf {
                     expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
@@ -144,7 +144,7 @@ impl Parser {
                 let start = self.current_token().span.start;
                 let loc = self.current_token().loc.clone();
                 self.next_token();
-                Expression::Dereference(Dereference {
+                Expression::Deref(Deref {
                     expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
@@ -394,7 +394,7 @@ impl Parser {
         }
         self.next_token();
 
-        Ok(Expression::SizeOfExpression(SizeOfExpression {
+        Ok(Expression::SizeOf(SizeOf {
             expr: Box::new(expr),
             loc,
             span: Span::new(start, self.current_token().span.end),
@@ -765,7 +765,7 @@ impl Parser {
         } else {
             let index = self.parse_expression(Precedence::Lowest)?.0;
 
-            Ok(Expression::TupleMemberAccess(TupleMemberAccess {
+            Ok(Expression::TupleAccess(TupleAccess {
                 operand: Box::new(operand),
                 index: Box::new(index),
                 loc,
@@ -1233,7 +1233,7 @@ impl Parser {
             }
         }
 
-        Ok(Expression::UnnamedStructValue(UnnamedStructValue {
+        Ok(Expression::UStructValue(UStructValue {
             fields,
             packed,
             is_const,

@@ -10,12 +10,12 @@ use inkwell::{
 };
 use resolver::{
     scope::{LocalScopeRef, ResolvedEnum},
-    signatures::EnumSig,
+    sigs::EnumSig,
     typed_enum_as_enum_sig,
 };
 use typed_ast::{
-    TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedTypeArgs,
-    types::{BasicSemanticType, SemanticType, ResolvedSymbol},
+    TypedEnumStmt, TypedEnumValuedField, TypedEnumVariant, TypedExprStmt, TypedTypeArgs,
+    types::{BasicType, SemanticType, ResolvedSymbol},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -46,7 +46,7 @@ impl<'a> CodeGenBuilder<'a> {
         let tag1 = self.build_enum_extract_index(struct_value1);
         let tag2 = self.build_enum_extract_index(struct_value2);
 
-        let tag_concrete_type = SemanticType::BasicType(BasicSemanticType::UInt32);
+        let tag_concrete_type = SemanticType::BasicType(BasicType::UInt32);
         let tag_cmp_result = if cmp_eq {
             self.build_cmp_eq(
                 local_scope_opt,
@@ -111,7 +111,7 @@ impl<'a> CodeGenBuilder<'a> {
         phi.add_incoming(&[(&payload_eq, payload_cmp_block)]);
 
         InternalValue::new(
-            SemanticType::BasicType(BasicSemanticType::Bool),
+            SemanticType::BasicType(BasicType::Bool),
             InternalValueKind::RValue(phi.as_basic_value()),
         )
     }
@@ -138,7 +138,7 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
         variant_name: String,
-        args: &Vec<TypedExpression>,
+        args: &Vec<TypedExprStmt>,
         type_args: &Option<TypedTypeArgs>,
     ) -> InternalValue<'a> {
         let (enum_struct_type, enum_payload_type) = self.get_or_declare_enum_monomorph(resolved_enum, type_args);
@@ -327,7 +327,7 @@ impl<'a> CodeGenBuilder<'a> {
         (enum_opaque_struct, payload_type)
     }
 
-    pub(crate) fn build_enum_def(&mut self, typed_enum: &TypedEnum) {
+    pub(crate) fn build_enum_def(&mut self, typed_enum: &TypedEnumStmt) {
         if typed_enum.generic_params.is_none() {
             let enum_name = typed_enum.name.clone();
 
