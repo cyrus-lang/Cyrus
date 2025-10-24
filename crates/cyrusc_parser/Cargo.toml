@@ -1,0 +1,18 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lexer = { path = "../cyrusc_lexer", version = "*" }
+ast = { path = "../cyrusc_ast", version = "*" }
+utils = { path = "../cyrusc_utils", version = "*" }
+diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+
+[lib]
+name = "parser"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "parser"
+path = "./src/cli.rs"

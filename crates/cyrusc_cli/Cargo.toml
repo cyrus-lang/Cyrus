@@ -1,0 +1,25 @@
+[package]
+name = "cli"
+version = "0.0.3"
+edition = "2024"
+
+[dependencies]
+codegen_llvm = { path = "../cyrusc_codegen_llvm", version = "*" }
+sema = { path = "../cyrusc_sema", version = "*" }
+scaffold = { path = "../cyrusc_scaffold", version = "*" }
+parser = { path = "../cyrusc_parser", version = "*" }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+lexer = { path = "../cyrusc_lexer", version = "*" }
+utils = { path = "../cyrusc_utils", version = "*" }
+ast = { path = "../cyrusc_ast", version = "*" }
+tast = { path = "../cyrusc_tast", version = "*" }
+resolver = { path = "../cyrusc_resolver", version = "*" }
+clap = { version = "4.5.41", features = ["derive"] }
+colorized = "1.0.0"
+toml = "0.8.20"
+
+[[bin]]
+name = "cyrus"
+path = "./src/main.rs"
