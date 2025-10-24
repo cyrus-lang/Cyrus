@@ -1,18 +1,18 @@
 [workspace]
 members = [
-    "crates/codegen",
-    "crates/lexer",
-    "crates/parser",
-    "crates/ast",
-    "crates/utils",
-    "crates/project_layout",
-    "crates/diagcentral",
-    "crates/typed_ast",
-    "crates/cli",
-    "crates/semantic",
-    "crates/resolver",
-    "crates/cir",
+    # "crates/cyrusc_codegen_llvm",
+    "crates/cyrusc_lexer",
+    "crates/cyrusc_parser",
+    "crates/cyrusc_ast",
+    "crates/cyrusc_utils",
+    "crates/cyrusc_scaffold",
+    "crates/cyrusc_diagcentral",
+    "crates/cyrusc_tast",
+    "crates/cyrusc_cli",
+    "crates/cyrusc_sema",
+    "crates/cyrusc_resolver",
+    "crates/cyrusc_cir",
 ]
-default-members = ["crates/cli"]
+default-members = ["crates/cyrusc_cli"]
 
 resolver = "3"

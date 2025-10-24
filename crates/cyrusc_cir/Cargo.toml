@@ -1,0 +1,8 @@
+[package]
+name = "cir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tast = { path = "../cyrusc_tast", version = "*" }
+ast = { path = "../cyrusc_ast", version = "*" }

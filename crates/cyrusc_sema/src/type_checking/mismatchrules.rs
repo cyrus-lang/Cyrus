@@ -1,0 +1,187 @@
+use crate::context::AnalysisContext;
+use ast::source_loc::SourceLoc;
+use tast::{
+    ScopeID,
+    types::{BasicType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+};
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn check_type_mismatch(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        value_type: SemanticType,
+        target_type: SemanticType,
+        loc: SourceLoc,
+    ) -> bool {
+        match (
+            value_type.get_const_inner().clone(),
+            target_type.get_const_inner().clone(),
+        ) {
+            (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
+                resolved_symbol1 == resolved_symbol2
+            }
+            (SemanticType::BasicType(basic_concrete_type1), SemanticType::BasicType(basic_concrete_type2)) => {
+                self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
+            }
+            (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
+                let valid_capacity = self.check_const_str_to_array_assignment(array_type1.clone(), array_type2.clone());
+
+                valid_capacity
+                    && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
+            }
+            (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
+                if let Some(arr_type) = inner_concrete_type1.as_array_type() {
+                    *arr_type.element_type == *inner_concrete_type2
+                } else {
+                    (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
+                        || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
+                }
+            }
+            (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
+                let packed = unnamed_struct1.packed == unnamed_struct2.packed;
+                let mut fields = true;
+                for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
+                    if *field1 != field2 {
+                        fields = false;
+                        break;
+                    }
+                }
+                packed && fields
+            }
+            (SemanticType::GenericType(resolved_generic1), SemanticType::GenericType(resolved_generic2)) => {
+                resolved_generic1.base == resolved_generic2.base
+                    && resolved_generic1.type_args == resolved_generic2.type_args
+            }
+            (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
+            (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
+            (SemanticType::BasicType(BasicType::Null), SemanticType::Pointer(..)) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn check_basic_type_mismatch(&self, value: BasicType, target: BasicType) -> bool {
+        use BasicType::*;
+
+        match (value, target) {
+            // Same type is always compatible
+            (a, b) if a == b => true,
+
+            // Integer compatibility (widening is allowed)
+            (Int8, Int16 | Int32 | Int64 | Int128 | Int) => true,
+            (Int16, Int32 | Int64 | Int128 | Int) => true,
+            (Int32, Int64 | Int128 | Int) => true,
+            (Int64, Int128) => true,
+            (Int, Int64 | Int128) => true,
+
+            (UInt8, UInt16 | UInt32 | UInt64 | UInt128 | UInt) => true,
+            (UInt16, UInt32 | UInt64 | UInt128 | UInt) => true,
+            (UInt32, UInt64 | UInt128 | UInt) => true,
+            (UInt64, UInt128) => true,
+            (UInt, UInt64 | UInt128) => true,
+
+            // Cross unsigned-to-signed conversions (only if target is wider)
+            (UInt8, Int16 | Int32 | Int64 | Int128 | Int) => true,
+            (UInt16, Int32 | Int64 | Int128 | Int) => true,
+            (UInt32, Int64 | Int128 | Int) => true,
+            (UInt64, Int128 | Int) => true,
+
+            // Floating-point widening
+            (Float16, Float32 | Float64 | Float128) => true,
+            (Float32, Float64 | Float128) => true,
+            (Float64, Float128) => true,
+
+            // Pointer int compatibility (if same bit width)
+            (UIntPtr, IntPtr) | (IntPtr, UIntPtr) => true,
+
+            // Integer to intptr (safe if value fits)
+            (
+                BasicType::Int | BasicType::Int8 | BasicType::Int16 | BasicType::Int32,
+                BasicType::IntPtr,
+            ) => true,
+
+            // Unsigned to intptr (less safe, maybe allow some)
+            (
+                BasicType::UInt
+                | BasicType::UInt8
+                | BasicType::UInt16
+                | BasicType::UInt32,
+                BasicType::UIntPtr,
+            ) => true,
+
+            (Null, Null) => true,
+
+            // char to int
+            (Char, Int8 | Int16 | Int32 | Int64 | Int128 | Int) => true,
+
+            // int8 to char
+            (Int8, Char) => true,
+
+            // Bool to Int
+            (Bool, Int8 | UInt8) => true,
+
+            (Bool, Bool) => true,
+
+            _ => false,
+        }
+    }
+
+    fn check_const_str_to_array_assignment(&self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
+        match (value_type.capacity, target_type.capacity) {
+            (
+                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value_capacity)),
+                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(target_capacity)),
+            ) => value_capacity == target_capacity,
+            _ => false, // not valid
+        }
+    }
+
+    pub(crate) fn check_explicit_typecast(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
+        match (value_type, target_type) {
+            // Same type, always fine
+            (a, b) if a == b => true,
+
+            // Any integer to any integer
+            (SemanticType::BasicType(value), SemanticType::BasicType(target))
+                if value.is_integer() && target.is_integer() =>
+            {
+                true
+            }
+
+            // Any float to any float
+            (SemanticType::BasicType(value), SemanticType::BasicType(target))
+                if value.is_float() && target.is_float() =>
+            {
+                true
+            }
+
+            // Bool to anything integer-ish (common in C-style languages)
+            (SemanticType::BasicType(BasicType::Bool), SemanticType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+
+            // Char to integer and back
+            (SemanticType::BasicType(BasicType::Char), SemanticType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+            (SemanticType::BasicType(value), SemanticType::BasicType(BasicType::Char))
+                if value.is_integer() =>
+            {
+                true
+            }
+
+            // void* <-> intptr/uintptr
+            (SemanticType::Pointer(..), SemanticType::BasicType(BasicType::IntPtr))
+            | (SemanticType::Pointer(..), SemanticType::BasicType(BasicType::UIntPtr))
+            | (SemanticType::BasicType(BasicType::IntPtr), SemanticType::Pointer(..))
+            | (SemanticType::BasicType(BasicType::UIntPtr), SemanticType::Pointer(..)) => true,
+
+            (SemanticType::FuncType(..), SemanticType::Pointer(pointer_type)) => pointer_type.is_void(),
+
+            _ => false,
+        }
+    }
+}
