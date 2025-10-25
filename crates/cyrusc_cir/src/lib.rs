@@ -30,7 +30,9 @@ pub enum CIRStmt {
     If(CIRIfStmt),
     For(CIRForStmt),
     While(CIRWhileStmt),
-    Switch(CIRSwitchStmt),
+    SwitchInteger(CIRSwitchIntegerStmt),
+    SwitchValue(CIRSwitchValueStmt),
+    SwitchEnumVariant(CIRSwitchEnumVariantStmt),
     Return(CIRReturnStmt),
     Break(CIRBreakStmt),
     Continue(CIRContinueStmt),
@@ -191,6 +193,7 @@ pub struct CIRVarStmt {
 pub struct CIRFuncDefStmt {
     pub name: String,
     pub params: Vec<CIRTy>,
+    pub is_var: bool,
     pub body: Box<CIRBlockStmt>,
     pub ret: CIRTy,
     pub vis: AccessSpecifier,
@@ -200,6 +203,7 @@ pub struct CIRFuncDefStmt {
 pub struct CIRFuncDeclStmt {
     pub name: String,
     pub params: Vec<CIRTy>,
+    pub is_var: bool,
     pub ret: CIRTy,
     pub vis: AccessSpecifier,
 }
@@ -232,7 +236,13 @@ pub struct CIRWhileStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRSwitchStmt {} // FIXME
+pub struct CIRSwitchIntegerStmt {} // TODO
+
+#[derive(Debug, Clone)]
+pub struct CIRSwitchValueStmt {} // TODO
+
+#[derive(Debug, Clone)]
+pub struct CIRSwitchEnumVariantStmt {} // TODO
 
 #[derive(Debug, Clone)]
 pub struct CIRContinueStmt;

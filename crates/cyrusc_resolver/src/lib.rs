@@ -2031,7 +2031,7 @@ impl Resolver {
 
         Some(TypedBlockStmt {
             scope_id,
-            exprs: typed_body,
+            stmts: typed_body,
             defers,
             loc: SourceLoc::from_loc(block_statement.loc.clone(), self.get_current_module_file_path()),
         })

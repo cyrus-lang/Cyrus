@@ -147,7 +147,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {
         let mut state = FlowState::Reachable;
-        for typed_stmt in &mut block_stmt.exprs {
+        for typed_stmt in &mut block_stmt.stmts {
             let stmt_state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
 
             match stmt_state {

@@ -514,7 +514,7 @@ pub struct TypedTypedefStmt {
 #[derive(Debug, Clone)]
 pub struct TypedBlockStmt {
     pub scope_id: ScopeID,
-    pub exprs: Vec<TypedStmt>,
+    pub stmts: Vec<TypedStmt>,
     pub defers: Vec<TypedDeferStmt>,
     pub loc: SourceLoc,
 }
@@ -523,7 +523,7 @@ impl TypedBlockStmt {
     pub fn new_empty(scope_id: ScopeID, loc: SourceLoc) -> Self {
         Self {
             scope_id,
-            exprs: Vec::new(),
+            stmts: Vec::new(),
             defers: Vec::new(),
             loc,
         }
