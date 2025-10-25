@@ -1,7 +1,7 @@
 use crate::concrete_type::{CIRStructTy, CIRTy};
 use ast::{
     AccessSpecifier, StringPrefix,
-    operators::{PrefixOperator, UnaryOperator},
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use tast::{TypedExprStmt, types::BasicType};
 
@@ -104,7 +104,7 @@ pub struct CIRTupleExpr {
 #[derive(Debug, Clone)]
 pub struct CIRArrayIndexExpr {
     pub operand: Box<CIRExpr>,
-    pub index: Box<TypedExprStmt>,
+    pub index: Box<CIRExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ pub struct CIRSizeOfExpr {
 
 #[derive(Debug, Clone)]
 pub struct CIRInfixExpr {
-    pub op: PrefixOperator,
+    pub op: InfixOperator,
     pub lhs: Box<CIRExpr>,
     pub rhs: Box<CIRExpr>,
 }
@@ -161,12 +161,12 @@ pub struct CIRUnaryExpr {
 
 #[derive(Debug, Clone)]
 pub enum CIRLiteral {
-    Integer(i64, Option<Box<BasicType>>),
-    Float(f64, Option<Box<BasicType>>),
-    String(String, Option<StringPrefix>),
+    Integer(i64),
+    Float(f64),
     Bool(bool),
     Char(char),
     Null,
+    String(String, Option<StringPrefix>),
 }
 
 #[derive(Debug, Clone)]
@@ -224,8 +224,8 @@ pub struct CIRIfStmt {
 #[derive(Debug, Clone)]
 pub struct CIRForStmt {
     pub initializer: Option<CIRVarStmt>,
-    pub cond: Box<CIRExpr>,
-    pub increment: Vec<CIRExpr>,
+    pub cond: Option<CIRExpr>,
+    pub increment: Option<CIRExpr>,
     pub body: Box<CIRBlockStmt>,
 }
 
@@ -274,7 +274,7 @@ pub struct CIREnumStmt {
 pub enum CIREnumVariant {
     Ident,
     Valued(Box<CIRExpr>),
-    Field(Vec<CIRTy>),
+    Fielded(Vec<CIRTy>),
 }
 
 #[derive(Debug, Clone)]

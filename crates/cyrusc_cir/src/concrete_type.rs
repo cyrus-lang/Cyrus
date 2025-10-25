@@ -28,6 +28,7 @@ pub struct CIRArrayTy {
 #[derive(Debug, Clone)]
 pub struct CIRFuncTy {
     pub params: Vec<CIRTy>,
+    pub is_var: bool,
     pub ret: Box<CIRTy>,
 }
 

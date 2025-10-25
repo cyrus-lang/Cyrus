@@ -663,7 +663,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_while_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_while: &mut TypedWhileStmt) -> FlowState {
         if let Some(sema_ty) = self.analyze_typed_expr_type(
             scope_id_opt,
-            &mut typed_while.condition,
+            &mut typed_while.cond,
             Some(SemanticType::BasicType(BasicType::Bool)),
         ) {
             self.check_expr_type_must_be_condition(sema_ty, typed_while.loc.clone());
@@ -681,7 +681,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_variable(scope_id_opt, initializer);
         }
 
-        if let Some(typed_expr) = &mut typed_for.condition {
+        if let Some(typed_expr) = &mut typed_for.cond {
             if let Some(sema_ty) = self.analyze_typed_expr_type(
                 scope_id_opt,
                 typed_expr,
@@ -708,14 +708,14 @@ impl<'a> AnalysisContext<'a> {
             .normalize_type(Some(scope_id), *func_type.return_type, typed_return.loc.clone())
             .unwrap();
 
-        if return_type.is_void() && typed_return.argument.is_some() {
+        if return_type.is_void() && typed_return.arg.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::VoidFunctionReturnsValue,
                 location: Some(DiagLoc::new(typed_return.loc.clone())),
                 hint: None,
             });
-        } else if let Some(typed_expr) = &mut typed_return.argument {
+        } else if let Some(typed_expr) = &mut typed_return.arg {
             if let Some(sema_ty) =
                 self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone()))
             {
@@ -731,7 +731,7 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
-        } else if !return_type.is_void() && typed_return.argument.is_none() {
+        } else if !return_type.is_void() && typed_return.arg.is_none() {
             let argument_type = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
             self.reporter.report(Diag {
