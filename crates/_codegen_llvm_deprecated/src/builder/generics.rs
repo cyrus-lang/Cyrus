@@ -18,7 +18,7 @@ use tast::{
     SymbolID, TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg,
     TypedTypeArgs, TypedUnionField,
     types::{
-        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -439,7 +439,7 @@ impl<'a> CodeGenBuilder<'a> {
                     })
                     .collect();
 
-                SemanticType::UnnamedStruct(TypedUnnamedStructType {
+                SemanticType::UnnamedStruct(TypedUStructType {
                     fields: new_fields,
                     packed: unnamed.packed,
                     loc: unnamed.loc.clone(),

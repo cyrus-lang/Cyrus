@@ -4,19 +4,19 @@ use crate::{
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
+    sigs::{FuncSig, UnionSig},
     symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind,
     },
-    sigs::{FuncSig, UnionSig},
     typed_func_params_as_func_type_params,
 };
 use std::collections::HashMap;
 use tast::{
     format::{format_concrete_type, format_func_type, format_typed_expr},
     types::{
-        BasicType, SemanticType, GenericType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+        BasicType, GenericType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType, TypedUnnamedStructTypeField,
     },
     *,
 };
@@ -52,9 +52,7 @@ impl<'a> AnalysisContext<'a> {
             LiteralKind::String(value, prefix_opt) => {
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
-                        StringPrefix::C => {
-                            SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Char)))
-                        }
+                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Char))),
                         StringPrefix::B => SemanticType::Array(TypedArrayType {
                             element_type: Box::new(SemanticType::Const(Box::new(SemanticType::BasicType(
                                 BasicType::Char,
@@ -103,9 +101,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Infix(typed_infix_expr) => {
                 self.analyze_infix_expr_type(scope_id_opt, typed_infix_expr, expected_type)
             }
-            TypedExprKind::Unary(typed_unary_expr) => {
-                self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr)
-            }
+            TypedExprKind::Unary(typed_unary_expr) => self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr),
             TypedExprKind::Assign(typed_assignment) => {
                 self.analyze_assignment(scope_id_opt, typed_assignment);
                 None
@@ -124,9 +120,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::StructInit(struct_init) => {
                 self.analyze_struct_init(scope_id_opt, struct_init, expected_type)
             }
-            TypedExprKind::FuncCall(typed_func_call) => {
-                self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
-            }
+            TypedExprKind::FuncCall(typed_func_call) => self.analyze_func_call_expr_type(scope_id_opt, typed_func_call),
             TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
@@ -140,9 +134,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
             }
             TypedExprKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
-            TypedExprKind::Tuple(tuple_value) => {
-                self.analyze_tuple_value(scope_id_opt, tuple_value, expected_type)
-            }
+            TypedExprKind::Tuple(tuple_value) => self.analyze_tuple_value(scope_id_opt, tuple_value, expected_type),
             TypedExprKind::TupleAccess(tuple_member_access) => {
                 self.analyze_tuple_member_access(scope_id_opt, tuple_member_access, expected_type)
             }
@@ -223,7 +215,6 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let operand_type =
             self.analyze_typed_expr_type(scope_id_opt, &mut tuple_member_access.operand, expected_type)?;
-        let index_type = self.analyze_typed_expr_type(scope_id_opt, &mut tuple_member_access.index, None)?;
 
         if !operand_type.get_const_inner().as_tuple_type().is_some() {
             self.reporter.report(Diag {
@@ -235,38 +226,15 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        if !index_type.is_integer() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::TupleNonIntegerIndex,
-                location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
-                hint: None,
-            });
-            return None;
-        }
-
-        let index_value = match self.const_expr_as_raw_integer(scope_id_opt, &tuple_member_access.index) {
-            Some(index_value) => index_value,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::TupleNonIntegerIndex,
-                    location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
-                    hint: None,
-                });
-                return None;
-            }
-        };
-
         let tuple_type = operand_type.as_tuple_type().unwrap();
 
         // inbounds check for tuple type
 
-        if index_value > (tuple_type.type_list.len() - 1).try_into().unwrap() {
+        if tuple_member_access.index > (tuple_type.type_list.len() - 1) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::TupleIndexOutOfRange {
-                    index: index_value.try_into().unwrap(),
+                    index: tuple_member_access.index.try_into().unwrap(),
                     length: tuple_type.type_list.len(),
                 },
                 location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
@@ -275,12 +243,16 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let element_type = tuple_type.type_list.get(index_value as usize).unwrap();
+        let element_type = tuple_type.type_list.get(tuple_member_access.index).unwrap();
 
         Some(element_type.clone())
     }
 
-    fn analyze_lambda_expr(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
+    fn analyze_lambda_expr(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        lambda: &mut TypedLambdaExpr,
+    ) -> Option<SemanticType> {
         let current_func_clone = self.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc.clone());
@@ -353,7 +325,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let unnamed_struct_type = TypedUnnamedStructType {
+        let unnamed_struct_type = TypedUStructType {
             fields,
             packed: unnamed_struct_value.packed,
             loc: unnamed_struct_value.loc.clone(),
@@ -599,7 +571,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_unnamed_struct_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        unnamed_struct_type: &TypedUnnamedStructType,
+        unnamed_struct_type: &TypedUStructType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -932,12 +904,10 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        sym
-            .as_struct()
+        sym.as_struct()
             .map(|resolved_struct| MemberAccessKind::NamedStruct(Box::new(resolved_struct.clone())))
             .or_else(|| {
-                sym
-                    .as_union()
+                sym.as_union()
                     .map(|resolved_union| MemberAccessKind::Union(Box::new(resolved_union.clone())))
             })
     }
@@ -1001,8 +971,7 @@ impl<'a> AnalysisContext<'a> {
 
         // multiplex field access
 
-        let sema_ty =
-            self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
+        let sema_ty = self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
 
         field_access.operand.sema_ty = Some(sema_ty.get_const_inner().clone());
         let operand_ty = sema_ty.get_const_inner();
@@ -1400,8 +1369,7 @@ impl<'a> AnalysisContext<'a> {
                 match var_param.clone() {
                     TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
                         for (idx, arg) in variadic_args.iter_mut().enumerate() {
-                            if let Some(arg_type) =
-                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
+                            if let Some(arg_type) = self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
                             {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
@@ -1530,8 +1498,7 @@ impl<'a> AnalysisContext<'a> {
                 match *var_param.clone() {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
                         for (idx, arg) in variadic_args.iter_mut().enumerate() {
-                            if let Some(arg_type) =
-                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
+                            if let Some(arg_type) = self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
                             {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
@@ -1676,9 +1643,7 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
-            method_call.operand.sema_ty
-        {
+        if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) = method_call.operand.sema_ty {
             let local_scope_opt =
                 scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
@@ -2125,7 +2090,11 @@ impl<'a> AnalysisContext<'a> {
         ))
     }
 
-    fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCastExpr) -> Option<SemanticType> {
+    fn analyze_cast_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        cast: &mut TypedCastExpr,
+    ) -> Option<SemanticType> {
         let operand =
             match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
                 Some(sema_ty) => sema_ty,
@@ -2201,7 +2170,7 @@ impl<'a> AnalysisContext<'a> {
 
 #[derive(Debug, Clone)]
 enum MemberAccessKind {
-    UnnamedStruct(Box<TypedUnnamedStructType>),
+    UnnamedStruct(Box<TypedUStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
 }
@@ -2317,11 +2286,6 @@ fn is_integer_type(ty: &SemanticType) -> bool {
 fn is_float_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
-        SemanticType::BasicType(
-            BasicType::Float16
-                | BasicType::Float32
-                | BasicType::Float64
-                | BasicType::Float128
-        )
+        SemanticType::BasicType(BasicType::Float16 | BasicType::Float32 | BasicType::Float64 | BasicType::Float128)
     )
 }

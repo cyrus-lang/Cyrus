@@ -296,6 +296,29 @@ impl Parser {
         }
     }
 
+    fn parse_integer_literal(&self) -> Result<usize, Diag<ParserDiagKind>> {
+        match match self.current_token().kind {
+            TokenKind::Literal(literal) => match &literal.kind {
+                LiteralKind::Integer(value, _) => Some(*value),
+                _ => None,
+            },
+            _ => None,
+        } {
+            Some(value) => Ok(value.try_into().unwrap()),
+            None => {
+                return Err(Diag {
+                    kind: ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        self.current_token().loc.clone(),
+                        self.file_name.clone(),
+                    ))),
+                    hint: None,
+                });
+            }
+        }
+    }
+
     fn parse_tuple_value(&mut self, first_expr: Expression) -> Result<Expression, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
@@ -763,11 +786,11 @@ impl Parser {
                 }))
             }
         } else {
-            let index = self.parse_expression(Precedence::Lowest)?.0;
+            let index = self.parse_integer_literal()?;
 
             Ok(Expression::TupleAccess(TupleAccess {
                 operand: Box::new(operand),
-                index: Box::new(index),
+                index,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }))

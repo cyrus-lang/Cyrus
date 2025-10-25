@@ -1,8 +1,9 @@
 use crate::{
     CIRAddrOfExpr, CIRArrayExpr, CIRArrayIndexExpr, CIRAssignExpr, CIRBlockStmt, CIRBreakStmt, CIRCastExpr,
-    CIRContinueStmt, CIRDerefExpr, CIREnumStmt, CIREnumVariant, CIRExpr, CIRExprKind, CIRForStmt, CIRFuncDeclStmt,
-    CIRFuncDefStmt, CIRGlobalVarStmt, CIRIfStmt, CIRInfixExpr, CIRLiteral, CIRPrefixExpr, CIRProgramTree,
-    CIRReturnStmt, CIRStmt, CIRStructStmt, CIRUnaryExpr, CIRUnionStmt, CIRValueRef, CIRVarStmt, CIRWhileStmt,
+    CIRContinueStmt, CIRDerefExpr, CIREnumStmt, CIREnumVariant, CIRExpr, CIRExprKind, CIRForStmt, CIRFuncCall,
+    CIRFuncDeclStmt, CIRFuncDefStmt, CIRGlobalVarStmt, CIRIfStmt, CIRInfixExpr, CIRLiteral, CIRPrefixExpr,
+    CIRProgramTree, CIRReturnStmt, CIRSizeOfExpr, CIRStmt, CIRStructInitExpr, CIRStructStmt, CIRTupleAccessExpr,
+    CIRTupleExpr, CIRUnaryExpr, CIRUnionStmt, CIRValueRef, CIRVarStmt, CIRWhileStmt,
     concrete_type::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
 };
 use ast::LiteralKind;
@@ -10,10 +11,11 @@ use resolver::typed_func_params_as_func_type_params;
 use tast::{
     TypedAddrOfExpr, TypedArrayExpr, TypedArrayIndexExpr, TypedAssignExpr, TypedBlockStmt, TypedBreakStmt,
     TypedCastExpr, TypedContinueStmt, TypedDerefExpr, TypedEnumStmt, TypedEnumVariant, TypedExportTupleStmt,
-    TypedExprKind, TypedExprStmt, TypedForStmt, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncTypeParams,
-    TypedFuncTypeVariadicParams, TypedGlobalVarStmt, TypedIfStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr,
-    TypedProgramTree, TypedReturnStmt, TypedStmt, TypedStructStmt, TypedUnaryExpr, TypedUnionStmt, TypedVarStmt,
-    TypedWhileStmt,
+    TypedExprKind, TypedExprStmt, TypedFieldAccess, TypedForStmt, TypedFuncCall, TypedFuncDeclStmt, TypedFuncDefStmt,
+    TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedGlobalVarStmt, TypedIfStmt, TypedInfixExpr, TypedLambdaExpr,
+    TypedLiteralExpr, TypedMethodCall, TypedPrefixExpr, TypedProgramTree, TypedReturnStmt, TypedSizeOfExpr, TypedStmt,
+    TypedStructStmt, TypedTupleAccessExpr, TypedTupleExpr, TypedUStructValue, TypedUnaryExpr, TypedUnionStmt,
+    TypedVarStmt, TypedWhileStmt,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 
@@ -282,19 +284,88 @@ impl CIRWalk {
             TypedExprKind::Deref(deref_expr) => self.lower_deref(deref_expr),
             TypedExprKind::Array(array_expr) => self.lower_array(array_expr),
             TypedExprKind::ArrayIndex(array_index_expr) => self.lower_array_index(array_index_expr),
-            TypedExprKind::StructInit(struct_init_expr) => todo!(),
-            TypedExprKind::UStructValue(ustruct_value) => todo!(),
-            TypedExprKind::FuncCall(func_call) => todo!(),
-            TypedExprKind::MethodCall(method_call) => todo!(),
+            TypedExprKind::UStructValue(ustruct_value) => self.lower_ustruct_value(ustruct_value),
+            TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
+            TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call),
             TypedExprKind::FieldAccess(field_access) => todo!(),
-            TypedExprKind::SizeOf(size_of_expr) => todo!(),
-            TypedExprKind::Lambda(lambda_expr) => todo!(),
-            TypedExprKind::Tuple(tuple_expr) => todo!(),
-            TypedExprKind::TupleAccess(tuple_access_expr) => todo!(),
-            TypedExprKind::SemanticType(semantic_type) => todo!(),
+            TypedExprKind::StructInit(struct_init_expr) => todo!(),
+            TypedExprKind::SizeOf(size_of_expr) => self.lower_size_of(size_of_expr),
+            TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(lambda_expr),
+            TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
+            TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
+            // skipped
+            TypedExprKind::SemanticType(..) => unreachable!(),
         };
 
         CIRExpr { kind, ty }
+    }
+
+    fn lower_tuple_access(&self, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
+        let operand = Box::new(self.lower_expr(&tuple_access.operand));
+        CIRExprKind::TupleAccess(CIRTupleAccessExpr {
+            operand,
+            index: tuple_access.index,
+        })
+    }
+
+    fn lower_tuple(&self, tuple: &TypedTupleExpr) -> CIRExprKind {
+        let elms: Vec<CIRExpr> = tuple.expr_list.iter().map(|expr| self.lower_expr(expr)).collect();
+        CIRExprKind::Tuple(CIRTupleExpr { elms })
+    }
+
+    // TODO
+    fn lower_lambda(&self, lambda: &TypedLambdaExpr) -> CIRExprKind {
+        todo!();
+    }
+
+    fn lower_method_call(&self, method_call: &TypedMethodCall) -> CIRExprKind {
+        let args: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+
+        CIRExprKind::FuncCall(CIRFuncCall {
+            operand: Box::new(self.lower_expr(&method_call.operand)),
+            args,
+        })
+    }
+
+    fn lower_field_access(&self, field_access: &TypedFieldAccess) -> CIRExprKind {
+        // TODO Separate struct_field access from union and enum!
+        todo!()
+
+        // CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
+        //     operand: todo!(),
+        //     field_idx: todo!(),
+        //     field_ty: todo!(),
+        // })
+    }
+
+    fn lower_func_call(&self, func_call: &TypedFuncCall) -> CIRExprKind {
+        let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+
+        CIRExprKind::FuncCall(CIRFuncCall {
+            operand: Box::new(self.lower_expr(&func_call.operand)),
+            args,
+        })
+    }
+
+    fn lower_ustruct_value(&self, ustruct_value: &TypedUStructValue) -> CIRExprKind {
+        let fields: Vec<CIRExpr> = ustruct_value
+            .fields
+            .iter()
+            .map(|field| self.lower_expr(&field.field_value))
+            .collect();
+
+        let struct_ty = CIRStructTy {
+            tys: ustruct_value
+                .unnamed_struct_type
+                .clone()
+                .unwrap()
+                .fields
+                .iter()
+                .map(|field| self.lower_sema_ty(&field.field_type))
+                .collect(),
+        };
+
+        CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
     }
 
     fn lower_array_index(&self, array_index: &TypedArrayIndexExpr) -> CIRExprKind {
@@ -322,6 +393,12 @@ impl CIRWalk {
     fn lower_addr_of(&self, addr_of: &TypedAddrOfExpr) -> CIRExprKind {
         CIRExprKind::AddrOf(CIRAddrOfExpr {
             operand: Box::new(self.lower_expr(&addr_of.operand)),
+        })
+    }
+
+    fn lower_size_of(&self, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
+        CIRExprKind::SizeOf(CIRSizeOfExpr {
+            operand: Box::new(self.lower_expr(&sizeof.operand)),
         })
     }
 

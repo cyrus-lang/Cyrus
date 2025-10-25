@@ -10,7 +10,7 @@ pub enum SemanticType {
     Array(TypedArrayType),
     Const(Box<SemanticType>),
     Pointer(Box<SemanticType>),
-    UnnamedStruct(TypedUnnamedStructType),
+    UnnamedStruct(TypedUStructType),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
     GenericType(GenericType),
@@ -267,14 +267,14 @@ impl SemanticType {
         }
     }
 
-    pub fn as_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
+    pub fn as_unnamed_struct(&self) -> Option<TypedUStructType> {
         match self {
             SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
             _ => None,
         }
     }
 
-    pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
+    pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUStructType> {
         match self {
             SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
             SemanticType::Const(inner_concrete_type) => inner_concrete_type.as_unnamed_struct(),
@@ -452,19 +452,19 @@ impl TypedArrayFixedCapacityValue {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedStructType {
+pub struct TypedUStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub packed: bool,
     pub loc: SourceLoc,
 }
 
-impl PartialEq for TypedUnnamedStructType {
+impl PartialEq for TypedUStructType {
     fn eq(&self, other: &Self) -> bool {
         self.fields == other.fields && self.packed == other.packed
     }
 }
 
-impl Hash for TypedUnnamedStructType {
+impl Hash for TypedUStructType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.fields.hash(state);
         self.packed.hash(state);

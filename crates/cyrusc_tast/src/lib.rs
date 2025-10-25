@@ -1,4 +1,4 @@
-use crate::types::{SemanticType, TypedUnnamedStructType};
+use crate::types::{SemanticType, TypedUStructType};
 use ast::{
     AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -62,7 +62,7 @@ pub enum TypedExprKind {
 #[derive(Debug, Clone)]
 pub struct TypedTupleAccessExpr {
     pub operand: Box<TypedExprStmt>,
-    pub index: Box<TypedExprStmt>,
+    pub index: usize,
     pub loc: SourceLoc,
 }
 
@@ -82,7 +82,7 @@ pub struct TypedLambdaExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedSizeOfExpr {
-    pub expr: Box<TypedExprStmt>,
+    pub operand: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
@@ -313,15 +313,15 @@ pub struct TypedMethodCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUStructValue {
-    pub fields: Vec<TypedUnnamedStructValueField>,
-    pub unnamed_struct_type: Option<TypedUnnamedStructType>,
+    pub fields: Vec<TypedUStructValueField>,
+    pub unnamed_struct_type: Option<TypedUStructType>,
     pub packed: bool,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedUnnamedStructValueField {
+pub struct TypedUStructValueField {
     pub field_name: String,
     pub field_type: Option<SemanticType>,
     pub field_value: Box<TypedExprStmt>,

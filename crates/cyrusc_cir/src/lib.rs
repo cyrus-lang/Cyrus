@@ -68,6 +68,13 @@ pub enum CIRExprKind {
     StructInit(CIRStructInitExpr),
     StructFieldAccess(CIRStructFieldAccessExpr),
     UnionFieldAccess(CIRUnionFieldAccessExpr),
+    FuncCall(CIRFuncCall)
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRFuncCall {
+    pub operand: Box<CIRExpr>,
+    pub args: Vec<CIRExpr>
 }
 
 #[derive(Debug, Clone)]

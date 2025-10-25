@@ -5,7 +5,7 @@ use crate::{
     TypedFuncVariadicParams, TypedLambdaExpr, TypedTypeArg,
     types::{
         BasicType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedFuncType, TypedUnnamedStructType,
+        TypedFuncType, TypedUStructType,
     },
 };
 
@@ -227,7 +227,7 @@ pub fn format_typed_expr<'a>(
             fmt
         }
         TypedExprKind::SizeOf(typed_size_of_expr) => {
-            let operand_fmt = &format_typed_expr(&typed_size_of_expr.expr, format_symbol);
+            let operand_fmt = &format_typed_expr(&typed_size_of_expr.operand, format_symbol);
             return format!("sizeof({})", operand_fmt);
         }
         TypedExprKind::SemanticType(sema_ty) => format_concrete_type(sema_ty.clone(), format_symbol),
@@ -247,7 +247,7 @@ pub fn format_typed_expr<'a>(
 }
 
 pub fn format_unnamed_struct_type<'a>(
-    typed_unnamed_struct_type: &TypedUnnamedStructType,
+    typed_unnamed_struct_type: &TypedUStructType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     let mut fmt = String::new();
