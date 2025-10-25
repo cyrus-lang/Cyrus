@@ -2132,13 +2132,13 @@ impl Resolver {
                 Some(TypedStmt::If(typed_if))
             }
             Statement::Return(return_stmt) => {
-                let argument = if let Some(argument) = &return_stmt.argument {
+                let arg = if let Some(argument) = &return_stmt.argument {
                     Some(self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), argument)?)
                 } else {
                     None
                 };
                 Some(TypedStmt::Return(TypedReturnStmt {
-                    argument,
+                    arg,
                     loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
@@ -2154,7 +2154,7 @@ impl Resolver {
                     None
                 };
 
-                let condition = if let Some(expr) = &for_stmt.condition {
+                let cond = if let Some(expr) = &for_stmt.condition {
                     Some(self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr)?)
                 } else {
                     None
@@ -2171,7 +2171,7 @@ impl Resolver {
 
                 Some(TypedStmt::For(TypedForStmt {
                     initializer,
-                    condition,
+                    cond,
                     increment,
                     body: for_typed_body,
                     loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.get_current_module_file_path()),
@@ -2182,13 +2182,13 @@ impl Resolver {
                 let body_scope = LocalScope::deep_clone(&local_scope);
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
-                let condition = self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition)?;
+                let cond = self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition)?;
 
                 let while_typed_body =
                     Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body)?);
 
                 Some(TypedStmt::While(TypedWhileStmt {
-                    condition,
+                    cond,
                     body: while_typed_body,
                     loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.get_current_module_file_path()),
                 }))

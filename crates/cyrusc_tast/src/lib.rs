@@ -486,7 +486,7 @@ pub struct TypedStructField {
 
 #[derive(Debug, Clone)]
 pub struct TypedReturnStmt {
-    pub argument: Option<TypedExprStmt>,
+    pub arg: Option<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
@@ -622,7 +622,7 @@ pub struct TypedFuncParam {
 #[derive(Debug, Clone)]
 pub struct TypedForStmt {
     pub initializer: Option<TypedVarStmt>,
-    pub condition: Option<TypedExprStmt>,
+    pub cond: Option<TypedExprStmt>,
     pub increment: Option<TypedExprStmt>,
     pub body: Box<TypedBlockStmt>,
     pub loc: SourceLoc,
@@ -630,7 +630,7 @@ pub struct TypedForStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedWhileStmt {
-    pub condition: TypedExprStmt,
+    pub cond: TypedExprStmt,
     pub body: Box<TypedBlockStmt>,
     pub loc: SourceLoc,
 }
