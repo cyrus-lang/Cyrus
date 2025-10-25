@@ -1,6 +1,7 @@
 use crate::diagnostics::ResolverDiagKind;
 use ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
 use diagcentral::{Diag, DiagLevel, display_single_diag};
+use fs_utils::find_file_from_sources;
 use lexer::Lexer;
 use parser::Parser;
 use std::{
@@ -9,7 +10,6 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
-use utils::fs::find_file_from_sources;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleAlias {

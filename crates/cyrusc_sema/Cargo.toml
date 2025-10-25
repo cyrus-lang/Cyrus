@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 tast = { path = "../cyrusc_tast", version = "*" }
 ast = { path = "../cyrusc_ast", version = "*" }
 parser = { path = "../cyrusc_parser", version = "*" }
 lexer = { path = "../cyrusc_lexer", version = "*" }
-utils = { path = "../cyrusc_utils", version = "*" }
 resolver = { path = "../cyrusc_resolver", version = "*" }
 diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 fx-hash = "0.1.0"

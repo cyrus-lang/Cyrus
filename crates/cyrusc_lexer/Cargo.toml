@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+strescape = { path = "../cyrusc_strescape", version = "*" }
+fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 ast = { path = "../cyrusc_ast", version = "*" }
-utils = { path = "../cyrusc_utils", version = "*" }
 diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 unicode-segmentation = "1.9.0"
 

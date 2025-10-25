@@ -4,7 +4,6 @@ members = [
     "crates/cyrusc_lexer",
     "crates/cyrusc_parser",
     "crates/cyrusc_ast",
-    "crates/cyrusc_utils",
     "crates/cyrusc_scaffold",
     "crates/cyrusc_diagcentral",
     "crates/cyrusc_tast",
@@ -12,6 +11,9 @@ members = [
     "crates/cyrusc_sema",
     "crates/cyrusc_resolver",
     "crates/cyrusc_cir",
+    "crates/cyrusc_fs_utils",
+    "crates/cyrusc_strescape",
+    "crates/cyrusc_tui_utils",
 ]
 default-members = ["crates/cyrusc_cli"]
 

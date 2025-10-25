@@ -1,8 +1,8 @@
+use fs_utils::{get_directory_of_file, read_file};
 use lexer::Lexer;
 use parser::Parser;
 use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
 use std::{env, process::exit, vec};
-use utils::fs::read_file;
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
@@ -17,7 +17,7 @@ pub fn main() {
             current_dir.push("./stdlib");
             let stdlib_path = current_dir.canonicalize().unwrap().to_str().unwrap().to_string();
 
-            let input_file_dir = utils::fs::get_directory_of_file(file_path.clone()).unwrap();
+            let input_file_dir = get_directory_of_file(file_path.clone()).unwrap();
             let module_loader_opts = ModuleLoaderOptions {
                 stdlib_path: Some(stdlib_path.clone()),
                 source_dirs: vec![input_file_dir],

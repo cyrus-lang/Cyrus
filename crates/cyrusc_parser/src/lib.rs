@@ -2,14 +2,14 @@ use crate::diagnostics::ParserDiagKind;
 use ast::source_loc::SourceLoc;
 use ast::token::*;
 use ast::*;
-use diagcentral::display_single_diag;
-use diagcentral::reporter::DiagReporter;
 use diagcentral::Diag;
 use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
+use diagcentral::display_single_diag;
+use diagcentral::reporter::DiagReporter;
+use fs_utils::read_file;
 use lexer::*;
 use std::rc::Rc;
-use utils::fs::read_file;
 
 mod common;
 mod diagnostics;

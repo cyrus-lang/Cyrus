@@ -3,7 +3,7 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{self, Display};
 use std::fs;
-use utils::escaping::{saturating_sub, spaces};
+use strescape::{saturating_sub, spaces};
 
 const PANEL_LENGTH: usize = 2;
 
@@ -72,8 +72,9 @@ impl<K: Display> DiagReporter<K> {
             for line_no in start_line..(loc.line + PANEL_LENGTH) {
                 if let Some(content) = lines.get(line_no) {
                     if line_no + 1 == loc.line && user_attended() {
-                        formatted
-                            .push_str(&format!("{}{}  |  {}", spaces(2), line_no + 1, content).color(get_highlight_color!()));
+                        formatted.push_str(
+                            &format!("{}{}  |  {}", spaces(2), line_no + 1, content).color(get_highlight_color!()),
+                        );
                     } else {
                         formatted.push_str(&format!("{}{}  |  {}", spaces(2), line_no + 1, content));
                     }

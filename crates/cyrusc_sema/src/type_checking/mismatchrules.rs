@@ -94,19 +94,10 @@ impl<'a> AnalysisContext<'a> {
             (UIntPtr, IntPtr) | (IntPtr, UIntPtr) => true,
 
             // Integer to intptr (safe if value fits)
-            (
-                BasicType::Int | BasicType::Int8 | BasicType::Int16 | BasicType::Int32,
-                BasicType::IntPtr,
-            ) => true,
+            (BasicType::Int | BasicType::Int8 | BasicType::Int16 | BasicType::Int32, BasicType::IntPtr) => true,
 
             // Unsigned to intptr (less safe, maybe allow some)
-            (
-                BasicType::UInt
-                | BasicType::UInt8
-                | BasicType::UInt16
-                | BasicType::UInt32,
-                BasicType::UIntPtr,
-            ) => true,
+            (BasicType::UInt | BasicType::UInt8 | BasicType::UInt16 | BasicType::UInt32, BasicType::UIntPtr) => true,
 
             (Null, Null) => true,
 
@@ -155,23 +146,11 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // Bool to anything integer-ish (common in C-style languages)
-            (SemanticType::BasicType(BasicType::Bool), SemanticType::BasicType(target))
-                if target.is_integer() =>
-            {
-                true
-            }
+            (SemanticType::BasicType(BasicType::Bool), SemanticType::BasicType(target)) if target.is_integer() => true,
 
             // Char to integer and back
-            (SemanticType::BasicType(BasicType::Char), SemanticType::BasicType(target))
-                if target.is_integer() =>
-            {
-                true
-            }
-            (SemanticType::BasicType(value), SemanticType::BasicType(BasicType::Char))
-                if value.is_integer() =>
-            {
-                true
-            }
+            (SemanticType::BasicType(BasicType::Char), SemanticType::BasicType(target)) if target.is_integer() => true,
+            (SemanticType::BasicType(value), SemanticType::BasicType(BasicType::Char)) if value.is_integer() => true,
 
             // void* <-> intptr/uintptr
             (SemanticType::Pointer(..), SemanticType::BasicType(BasicType::IntPtr))

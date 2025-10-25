@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 lexer = { path = "../cyrusc_lexer", version = "*" }
 ast = { path = "../cyrusc_ast", version = "*" }
-utils = { path = "../cyrusc_utils", version = "*" }
 diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 
 [lib]
 name = "parser"
