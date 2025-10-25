@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 sema = { path = "../cyrusc_sema", version = "*" }
-utils = { path = "../cyrusc_utils", version = "*" }
 resolver = { path = "../cyrusc_resolver", version = "*" }
 diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 inkwell = { version = "0.6.0", features = ["llvm18-1"] }

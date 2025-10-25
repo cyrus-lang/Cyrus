@@ -4,7 +4,7 @@ use ast::{Literal, LiteralKind, StringPrefix};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
 use diagnostics::{LexicalDiagKind, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};
-use utils::escaping::escape_string;
+use strescape::escape_string;
 
 mod diagnostics;
 mod format;

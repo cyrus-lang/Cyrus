@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 tast = { path = "../cyrusc_tast", version = "*" }
 parser = { path = "../cyrusc_parser", version = "*" }
 lexer = { path = "../cyrusc_lexer", version = "*" }
-utils = { path = "../cyrusc_utils", version = "*" }
 ast = { path = "../cyrusc_ast", version = "*" }
 rand = "0.9.0"
 

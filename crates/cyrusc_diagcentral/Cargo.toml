@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+strescape = { path = "../cyrusc_strescape", version = "*" }
 ast = { path = "../cyrusc_ast", version = "*" }
-utils = { path = "../cyrusc_utils", version = "*" }
 colorized = "1.0.0"
 console = "0.15.11"

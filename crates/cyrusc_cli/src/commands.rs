@@ -5,13 +5,14 @@ use codegen_llvm::{
     options::{BuildDir, CodeGenOptions, OutputKind},
 };
 use diagcentral::{display_single_custom_diag, reporter::DiagReporter};
+use fs_utils::file_name_without_extension;
 use lexer::Lexer;
 use parser::Parser;
-use scaffold::{OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH};
 use resolver::{
     Resolver, Visiting, generate_module_id,
     modulefsloader::{ModuleFilePath, ModuleLoaderOptions},
 };
+use scaffold::{OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH};
 use sema::{context::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     cell::RefCell,
@@ -23,10 +24,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tast::{ModuleID, TypedProgramTree};
-use utils::{
-    fs::{ensure_output_dir, get_directory_of_file},
-    generate_random_hex::generate_random_hex,
-};
+use utils::fs::{ensure_output_dir, get_directory_of_file};
 
 fn get_program_trees(
     options: &mut CodeGenOptions,
@@ -145,7 +143,12 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
         prepare_compilation(&mut options, file_path);
 
     let mut temp = env::temp_dir();
-    temp.push(format!("exec_{}", generate_random_hex()));
+    temp.push(
+        options
+            .project_name
+            .or(file_name_without_extension(file_path))
+            .unwrap_or("executable"),
+    );
     let temp_file_path = temp.clone();
 
     let context = CodeGenContext::new(

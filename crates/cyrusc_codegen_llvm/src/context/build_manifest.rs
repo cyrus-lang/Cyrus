@@ -8,7 +8,6 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use utils::{fs::read_file, generate_random_hex::generate_random_hex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildManifest {

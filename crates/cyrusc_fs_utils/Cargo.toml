@@ -1,0 +1,7 @@
+[package]
+name = "fs_utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tui_utils = { path = "../cyrusc_tui_utils", version = "*" }

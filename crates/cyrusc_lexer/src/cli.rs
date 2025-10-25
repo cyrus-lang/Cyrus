@@ -1,7 +1,6 @@
-use std::env;
-
+use fs_utils::read_file;
 use lexer::Lexer;
-use utils::fs::read_file;
+use std::env;
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
