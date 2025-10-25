@@ -132,7 +132,7 @@ impl<'a> AnalysisContext<'a> {
         sizeof_expr: &mut TypedSizeOfExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let symbol_id = match &sizeof_expr.expr.kind {
+        let symbol_id = match &sizeof_expr.operand.kind {
             TypedExprKind::SemanticType(sema_ty) => {
                 if let SemanticType::UnresolvedSymbol(symbol_id) = sema_ty {
                     *symbol_id
@@ -143,7 +143,7 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExprKind::Symbol(symbol_id, ..) => *symbol_id,
             _ => {
-                self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+                self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.operand, expected_type);
                 return Some(SemanticType::BasicType(BasicType::SizeT));
             }
         };
@@ -157,7 +157,7 @@ impl<'a> AnalysisContext<'a> {
 
         if sym.as_global_var().is_some() || sym.as_variable().is_some() {
             // consider as expr
-            self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+            self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.operand, expected_type);
         } else {
             // consider as type
             self.normalize_type(

@@ -24,11 +24,15 @@ pub enum ParserDiagKind {
     NonArrayDataTypeForArrayConstruction,
     SingleElementTupleType,
     IncompleteVariableDeclaration,
+    ExpectedIntegerLiteral(TokenKind)
 }
 
 impl fmt::Display for ParserDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ParserDiagKind::ExpectedIntegerLiteral(token_kind) => {
+                write!(f, "Expected integer literal, but found '{}'", token_kind)
+            }
             ParserDiagKind::SingleElementTupleType => {
                 write!(f, "Tuple type must contain at least two elements.")
             }

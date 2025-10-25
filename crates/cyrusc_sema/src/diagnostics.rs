@@ -109,7 +109,6 @@ pub enum AnalyzerDiagKind {
     ArrayNonIntegerIndex {
         found_type: String,
     },
-    TupleNonIntegerIndex,
     ArrayIndexOnNonArrayOperand,
     TupleMemberAccessOnNonTupleOperand,
     TupleExportedValuesAndTupleElementsCountMismatch,
@@ -555,9 +554,6 @@ impl fmt::Display for AnalyzerDiagKind {
             }
             AnalyzerDiagKind::ArrayNonIntegerIndex { found_type } => {
                 write!(f, "Array index must be an integer (found '{}').", found_type)
-            }
-            AnalyzerDiagKind::TupleNonIntegerIndex => {
-                write!(f, "Tuple index must be an integer.")
             }
             AnalyzerDiagKind::ArrayIndexOnNonArrayOperand => {
                 write!(f, "Cannot index non-array value.")

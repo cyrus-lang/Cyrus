@@ -18,7 +18,7 @@ use tast::{
     SymbolID, TypedTupleExpr,
     types::{
         BasicType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedArrayType, TypedTupleType, TypedUnnamedStructType,
+        TypedArrayType, TypedTupleType, TypedUStructType,
     },
 };
 
@@ -291,7 +291,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_unnamed_struct_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        unnamed_struct_type: &TypedUnnamedStructType,
+        unnamed_struct_type: &TypedUStructType,
     ) -> AnyTypeEnum<'a> {
         let field_types: Vec<BasicTypeEnum<'_>> = unnamed_struct_type
             .fields

@@ -725,7 +725,7 @@ impl Resolver {
                     }
                 }
 
-                Ok(SemanticType::UnnamedStruct(TypedUnnamedStructType {
+                Ok(SemanticType::UnnamedStruct(TypedUStructType {
                     fields,
                     packed: struct_spec.packed,
                     loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.get_current_module_file_path()),
@@ -2615,12 +2615,11 @@ impl Resolver {
         tuple_member_access: &TupleAccess,
     ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &tuple_member_access.operand)?;
-        let index = self.resolve_expr(module_id, local_scope_opt, &tuple_member_access.index)?;
-
+    
         Some(TypedExprStmt {
             kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                 operand: Box::new(operand),
-                index: Box::new(index),
+                index: tuple_member_access.index,
                 loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.get_current_module_file_path()),
             }),
             sema_ty: None,
@@ -3164,7 +3163,7 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         unnamed_struct_value: &UStructValue,
     ) -> Option<TypedExprStmt> {
-        let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
+        let mut fields: Vec<TypedUStructValueField> = Vec::new();
 
         for field in &unnamed_struct_value.fields {
             let field_type = if let Some(type_specifier) = &field.field_type {
@@ -3188,7 +3187,7 @@ impl Resolver {
                 None => continue,
             };
 
-            fields.push(TypedUnnamedStructValueField {
+            fields.push(TypedUStructValueField {
                 field_name: field.field_name.name.clone(),
                 field_type,
                 field_value: Box::new(field_value),
@@ -3220,7 +3219,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::SizeOf(TypedSizeOfExpr {
-                expr: Box::new(typed_expr),
+                operand: Box::new(typed_expr),
                 loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
             }),
             vcat: ValueCategory::RValue,

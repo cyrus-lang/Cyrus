@@ -8,7 +8,7 @@ use tast::{
     TypedTypeArg, TypedTypeArgs,
     format::format_concrete_type,
     types::{
-        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -497,7 +497,7 @@ impl<'a> AnalysisContext<'a> {
                         })
                     })
                     .collect::<Option<Vec<_>>>()?;
-                Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
+                Some(SemanticType::UnnamedStruct(TypedUStructType {
                     fields: new_fields,
                     packed: s.packed,
                     loc: s.loc.clone(),

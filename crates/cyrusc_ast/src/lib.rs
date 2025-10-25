@@ -73,7 +73,7 @@ pub enum Expression {
 #[derive(Debug, Clone)]
 pub struct TupleAccess {
     pub operand: Box<Expression>,
-    pub index: Box<Expression>,
+    pub index: usize,
     pub loc: Location,
     pub span: Span,
 }
