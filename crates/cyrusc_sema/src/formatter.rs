@@ -5,17 +5,19 @@ use resolver::{
 };
 use tast::{ModuleID, ScopeID, SymbolID};
 
+type SymbolFormatterFn<'a> = Box<dyn Fn(SymbolID) -> String + 'a>;
+
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn build_symbol_formatter(
         resolver: &'a Resolver,
         module_id: ModuleID,
-    ) -> Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a> {
+    ) -> Box<dyn Fn(Option<ScopeID>) -> SymbolFormatterFn<'a> + 'a> {
         Box::new(move |scope_id_opt: Option<ScopeID>| {
             let resolver = resolver;
             Box::new(move |symbol_id: SymbolID| -> String {
                 Self::format_symbol_name(resolver, module_id, scope_id_opt, symbol_id)
             }) as Box<dyn Fn(SymbolID) -> String + 'a>
-        }) as Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>
+        }) as Box<dyn Fn(Option<ScopeID>) -> SymbolFormatterFn<'a> + 'a>
     }
 
     pub(crate) fn format_symbol_name(
