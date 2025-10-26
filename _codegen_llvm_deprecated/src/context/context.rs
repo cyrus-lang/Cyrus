@@ -5,16 +5,16 @@ use crate::{
 };
 use diagcentral::display_single_custom_diag;
 use inkwell::{
-    OptimizationLevel,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    OptimizationLevel,
 };
+use resolver::{modulefsloader::ModuleFilePath, Resolver};
 use scaffold::OBJECTS_FILENAME;
-use resolver::{Resolver, modulefsloader::ModuleFilePath};
 use sema::monomorph::MonomorphRegistry;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
-    process::{Command, exit},
+    process::{exit, Command},
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -421,7 +421,11 @@ pub(crate) fn make_module_name(master_module_file_path: String, current_module_f
         .components()
         .filter_map(|c| {
             let s = c.as_os_str().to_string_lossy().into_owned();
-            if s.is_empty() { None } else { Some(s) } // drop empties
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            } // drop empties
         })
         .collect();
 
