@@ -2,18 +2,18 @@ use crate::Parser;
 use crate::ParserError;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::*;
-use ast::operators::InfixOperator;
-use ast::operators::PrefixOperator;
-use ast::operators::UnaryOperator;
-use ast::source_loc::SourceLoc;
-use ast::token::*;
-use ast::*;
-use diagcentral::Diag;
-use diagcentral::DiagLevel;
-use diagcentral::DiagLoc;
+use cyrusc_ast::operators::InfixOperator;
+use cyrusc_ast::operators::PrefixOperator;
+use cyrusc_ast::operators::UnaryOperator;
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_ast::token::*;
+use cyrusc_ast::*;
+use cyrusc_diagcentral::Diag;
+use cyrusc_diagcentral::DiagLevel;
+use cyrusc_diagcentral::DiagLoc;
 
 impl Parser {
-    pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParserError> {
+    pub(crate) fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParserError> {
         let mut left_start = self.current_token().span.start;
         let mut left = self.parse_prefix_expression()?;
 
@@ -88,7 +88,132 @@ impl Parser {
         Ok((left, Span { start: left_start, end }))
     }
 
-    pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParserError> {
+    pub(crate) fn parse_module_import(&mut self) -> Result<ModuleImport, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let mut segments = match self.current_token().kind {
+            TokenKind::Identifier { name } => {
+                vec![ModuleSegment::SubModule(Identifier {
+                    name,
+                    span: Span {
+                        start,
+                        end: self.current_token().span.end - 1,
+                    },
+                    loc: loc.clone(),
+                })]
+            }
+            _ => {
+                return Err(Diag {
+                    kind: ParserDiagKind::ExpectedIdentifier,
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
+                    hint: None,
+                });
+            }
+        };
+
+        if !self.peek_token_is(TokenKind::DoubleColon) {
+            return Ok(ModuleImport {
+                segments,
+                span: Span::new(start, self.current_token().span.end),
+                loc,
+            });
+        }
+
+        self.next_token(); // consume first identifier
+
+        loop {
+            if self.current_token_is(TokenKind::DoubleColon) {
+                self.next_token(); // consume double colon
+            } else if let TokenKind::Identifier { name } = self.current_token().kind {
+                segments.push(ModuleSegment::SubModule(Identifier {
+                    name,
+                    span: Span {
+                        start,
+                        end: self.peek_token().span.end - 1,
+                    },
+                    loc: loc.clone(),
+                }));
+
+                if self.peek_token_is(TokenKind::DoubleColon) {
+                    self.next_token();
+                    continue;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(ModuleImport {
+            segments,
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        })
+    }
+
+    pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let mut module_path = ModulePath {
+            alias: None,
+            segments: Vec::new(),
+            loc: loc.clone(),
+            span: Span::default(),
+        };
+
+        while !self.current_token_is(TokenKind::Semicolon) {
+            match self.current_token().kind {
+                TokenKind::Identifier { name: identifier } => {
+                    let span = self.current_token().span.clone();
+                    self.next_token(); // consume identifier
+
+                    module_path.segments.push(ModuleSegment::SubModule(Identifier {
+                        name: identifier.clone(),
+                        span: span.clone(),
+                        loc: loc.clone(),
+                    }));
+
+                    if self.current_token_is(TokenKind::DoubleColon) {
+                        continue;
+                    } else if self.current_token_is(TokenKind::Semicolon) {
+                        return Ok(module_path);
+                    } else if self.current_token_is(TokenKind::As) {
+                        self.next_token(); // consume as
+
+                        let alias = self.parse_identifier()?;
+                        self.next_token();
+
+                        module_path.alias = Some(alias.as_string());
+                        break;
+                    } else {
+                        break;
+                    }
+                }
+                TokenKind::DoubleColon => {
+                    self.next_token();
+                    continue;
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::ExpectedIdentifier,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        module_path.span = Span::new(start, self.current_token().span.end);
+
+        Ok(module_path)
+    }
+
+    fn parse_prefix_expression(&mut self) -> Result<Expression, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -424,7 +549,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_infix_expression(
+    fn parse_infix_expression(
         &mut self,
         left: Expression,
         left_start: usize,
@@ -516,7 +641,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expression>, Span), ParserError> {
+    fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expression>, Span), ParserError> {
         let start = self.current_token().span.start;
         let mut series: Vec<Expression> = Vec::new();
 
@@ -545,131 +670,6 @@ impl Parser {
                 end: self.current_token().span.end,
             },
         ))
-    }
-
-    pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParserError> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
-
-        let mut segments = match self.current_token().kind {
-            TokenKind::Identifier { name } => {
-                vec![ModuleSegment::SubModule(Identifier {
-                    name,
-                    span: Span {
-                        start,
-                        end: self.current_token().span.end - 1,
-                    },
-                    loc: loc.clone(),
-                })]
-            }
-            _ => {
-                return Err(Diag {
-                    kind: ParserDiagKind::ExpectedIdentifier,
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                    hint: None,
-                });
-            }
-        };
-
-        if !self.peek_token_is(TokenKind::DoubleColon) {
-            return Ok(ModuleImport {
-                segments,
-                span: Span::new(start, self.current_token().span.end),
-                loc,
-            });
-        }
-
-        self.next_token(); // consume first identifier
-
-        loop {
-            if self.current_token_is(TokenKind::DoubleColon) {
-                self.next_token(); // consume double colon
-            } else if let TokenKind::Identifier { name } = self.current_token().kind {
-                segments.push(ModuleSegment::SubModule(Identifier {
-                    name,
-                    span: Span {
-                        start,
-                        end: self.peek_token().span.end - 1,
-                    },
-                    loc: loc.clone(),
-                }));
-
-                if self.peek_token_is(TokenKind::DoubleColon) {
-                    self.next_token();
-                    continue;
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-
-        Ok(ModuleImport {
-            segments,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
-        })
-    }
-
-    pub fn parse_module_path(&mut self) -> Result<ModulePath, ParserError> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
-
-        let mut module_path = ModulePath {
-            alias: None,
-            segments: Vec::new(),
-            loc: loc.clone(),
-            span: Span::default(),
-        };
-
-        while !self.current_token_is(TokenKind::Semicolon) {
-            match self.current_token().kind {
-                TokenKind::Identifier { name: identifier } => {
-                    let span = self.current_token().span.clone();
-                    self.next_token(); // consume identifier
-
-                    module_path.segments.push(ModuleSegment::SubModule(Identifier {
-                        name: identifier.clone(),
-                        span: span.clone(),
-                        loc: loc.clone(),
-                    }));
-
-                    if self.current_token_is(TokenKind::DoubleColon) {
-                        continue;
-                    } else if self.current_token_is(TokenKind::Semicolon) {
-                        return Ok(module_path);
-                    } else if self.current_token_is(TokenKind::As) {
-                        self.next_token(); // consume as
-
-                        let alias = self.parse_identifier()?;
-                        self.next_token();
-
-                        module_path.alias = Some(alias.as_string());
-                        break;
-                    } else {
-                        break;
-                    }
-                }
-                TokenKind::DoubleColon => {
-                    self.next_token();
-                    continue;
-                }
-                _ => {
-                    return Err(Diag {
-                        kind: ParserDiagKind::ExpectedIdentifier,
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                        hint: None,
-                    });
-                }
-            }
-        }
-
-        module_path.span = Span::new(start, self.current_token().span.end);
-
-        Ok(module_path)
     }
 
     fn parse_cast_expression(&mut self) -> Result<Expression, ParserError> {
@@ -701,7 +701,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_method_call(
+    fn parse_method_call(
         &mut self,
         operand: Expression,
         method_name: Identifier,
@@ -740,7 +740,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_field_access(&mut self, operand: Expression) -> Result<Expression, ParserError> {
+    fn parse_field_access(&mut self, operand: Expression) -> Result<Expression, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -797,7 +797,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, ParserError> {
+    fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -821,7 +821,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_struct_init(
+    fn parse_struct_init(
         &mut self,
         struct_name: ModuleImport,
         type_args: Option<TypeArgs>,
@@ -910,11 +910,7 @@ impl Parser {
         })
     }
 
-    pub fn parse_assignment_kind(
-        &mut self,
-        token_kind: TokenKind,
-        loc: Location,
-    ) -> Result<AssignmentKind, ParserError> {
+    fn parse_assignment_kind(&mut self, token_kind: TokenKind, loc: Location) -> Result<AssignmentKind, ParserError> {
         match token_kind {
             TokenKind::Plus => Ok(AssignmentKind::AddAssign),
             TokenKind::Minus => Ok(AssignmentKind::SubAssign),
@@ -937,7 +933,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_assignment(
+    fn parse_assignment(
         &mut self,
         lhs: Expression,
         kind: AssignmentKind,
@@ -957,7 +953,7 @@ impl Parser {
         })))
     }
 
-    pub fn parse_array_index(&mut self, expr: Expression) -> Result<Expression, ParserError> {
+    fn parse_array_index(&mut self, expr: Expression) -> Result<Expression, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1033,7 +1029,7 @@ impl Parser {
         Ok(base_index)
     }
 
-    pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParserError> {
+    fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1156,7 +1152,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expression, ParserError> {
+    fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expression, ParserError> {
         let struct_start = self.current_token().span.start;
 
         let packed = {

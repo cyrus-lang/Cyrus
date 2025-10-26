@@ -1,7 +1,7 @@
 use crate::exprs::{TypedExprStmt, TypedIdentifier};
 use crate::stmts::{TypedFuncTypeParams, TypedTypeArgs};
 use crate::{ModuleID, SourceLoc, SymbolID};
-use ast::{AccessSpecifier, token::TokenKind};
+use cyrusc_ast::{AccessSpecifier, token::TokenKind};
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

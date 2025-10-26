@@ -4,18 +4,18 @@ version = "0.0.3"
 edition = "2024"
 
 [dependencies]
-fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
-codegen_llvm = { path = "../cyrusc_codegen_llvm", version = "*" }
-sema = { path = "../cyrusc_sema", version = "*" }
-scaffold = { path = "../cyrusc_scaffold", version = "*" }
-parser = { path = "../cyrusc_parser", version = "*" }
+cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+cyrusc_codegen_llvm = { path = "../cyrusc_codegen_llvm", version = "*" }
+cyrusc_sema = { path = "../cyrusc_sema", version = "*" }
+cyrusc_scaffold = { path = "../cyrusc_scaffold", version = "*" }
+cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-lexer = { path = "../cyrusc_lexer", version = "*" }
-ast = { path = "../cyrusc_ast", version = "*" }
-tast = { path = "../cyrusc_tast", version = "*" }
-resolver = { path = "../cyrusc_resolver", version = "*" }
 clap = { version = "4.5.41", features = ["derive"] }
 colorized = "1.0.0"
 toml = "0.8.20"

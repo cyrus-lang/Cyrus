@@ -1,44 +1,29 @@
-use ast::source_loc::SourceLoc;
-use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
-use std::fmt;
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Error, Clone)]
 pub enum LexicalDiagKind {
-    UnterminatedStringLiteral,
-    InvalidFloatLiteral,
-    InvalidIntegerLiteral,
-    UnterminatedMultiLineComment,
-    InvalidChar(char),
-    EmptyCharLiteral,
+    #[error("Character literal must be a single unit.")]
     CharLiteralMustBeASingleUnit,
-}
 
-impl fmt::Display for LexicalDiagKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LexicalDiagKind::CharLiteralMustBeASingleUnit => {
-                write!(f, "Character literal must be a single unit.")
-            }
-            LexicalDiagKind::UnterminatedStringLiteral => {
-                write!(f, "Unterminated string literal, expected a closing quote.")
-            }
-            LexicalDiagKind::InvalidFloatLiteral => {
-                write!(f, "Invalid float literal.")
-            }
-            LexicalDiagKind::InvalidIntegerLiteral => {
-                write!(f, "Invalid integer literal.")
-            }
-            LexicalDiagKind::UnterminatedMultiLineComment => {
-                write!(f, "Unterminated multi-line comment.")
-            }
-            LexicalDiagKind::EmptyCharLiteral => {
-                write!(f, "Empty char literal is invalid.")
-            }
-            LexicalDiagKind::InvalidChar(c) => {
-                write!(f, "Invalid character: '{}'.", c)
-            }
-        }
-    }
+    #[error("Unterminated string literal, expected a closing quote.")]
+    UnterminatedStringLiteral,
+
+    #[error("Invalid float literal.")]
+    InvalidFloatLiteral,
+
+    #[error("Invalid integer literal.")]
+    InvalidIntegerLiteral,
+
+    #[error("Unterminated multi-line comment.")]
+    UnterminatedMultiLineComment,
+
+    #[error("Empty char literal is invalid.")]
+    EmptyCharLiteral,
+
+    #[error("Invalid character: '{0}'.")]
+    InvalidChar(char),
 }
 
 pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag<LexicalDiagKind> {

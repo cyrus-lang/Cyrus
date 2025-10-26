@@ -1,5 +1,5 @@
 use crate::stmts::TypedStmt;
-use ast::source_loc::SourceLoc;
+use cyrusc_ast::source_loc::SourceLoc;
 
 pub mod exprs;
 pub mod format;

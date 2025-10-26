@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use tast::{SymbolID, types::SemanticType};
+use cyrusc_tast::{SymbolID, types::SemanticType};
 
 pub type MonomorphID = u32;
 pub type NormalizedTypeArgs = Vec<SemanticType>;

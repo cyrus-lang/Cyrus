@@ -1,6 +1,6 @@
-use fs_utils::read_file;
-use lexer::Lexer;
-use parser::Parser;
+use cyrusc_fs_utils::read_file;
+use cyrusc_lexer::Lexer;
+use cyrusc_parser::Parser;
 use std::env;
 
 pub fn main() {

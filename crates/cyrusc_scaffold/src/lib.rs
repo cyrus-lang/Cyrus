@@ -1,5 +1,5 @@
 use crate::diagnostics::ProjectLayoutDiagKind;
-use diagcentral::{Diag, DiagLevel, display_single_diag};
+use cyrusc_diagcentral::{Diag, DiagLevel, display_single_diag};
 use std::{
     fs::{self, File},
     io::Write,

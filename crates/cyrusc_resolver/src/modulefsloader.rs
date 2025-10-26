@@ -1,9 +1,9 @@
 use crate::diagnostics::ResolverDiagKind;
-use ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
-use diagcentral::{Diag, DiagLevel, display_single_diag};
-use fs_utils::find_file_from_sources;
-use lexer::Lexer;
-use parser::Parser;
+use cyrusc_ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
+use cyrusc_diagcentral::{Diag, DiagLevel, display_single_diag};
+use cyrusc_fs_utils::find_file_from_sources;
+use cyrusc_lexer::Lexer;
+use cyrusc_parser::Parser;
 use std::{
     env,
     hash::{Hash, Hasher},

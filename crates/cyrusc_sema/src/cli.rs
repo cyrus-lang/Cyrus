@@ -1,9 +1,9 @@
-use diagcentral::reporter::DiagReporter;
-use fs_utils::{get_directory_of_file, read_file};
-use lexer::Lexer;
-use parser::Parser;
-use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
-use sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
+use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_fs_utils::{get_directory_of_file, read_file};
+use cyrusc_lexer::Lexer;
+use cyrusc_parser::Parser;
+use cyrusc_resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
+use cyrusc_sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     env,
     process::exit,

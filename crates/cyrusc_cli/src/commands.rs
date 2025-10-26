@@ -1,10 +1,10 @@
 use crate::CompilerOptions;
-use ast::token::TokenKind;
+use cyrusc_ast::token::TokenKind;
 use codegen_llvm::{
     context::context::CodeGenContext,
     options::{BuildDir, CodeGenOptions, OutputKind},
 };
-use diagcentral::{display_single_custom_diag, reporter::DiagReporter};
+use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
 use fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
 use lexer::Lexer;
 use parser::Parser;
@@ -23,7 +23,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use tast::{ModuleID, TypedProgramTree};
+use cyrusc_tast::{ModuleID, TypedProgramTree};
 
 fn get_program_trees(
     options: &mut CodeGenOptions,

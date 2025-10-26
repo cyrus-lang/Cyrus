@@ -1,7 +1,7 @@
 [package]
-name = "scaffold"
+name = "cyrusc_scaffold"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }

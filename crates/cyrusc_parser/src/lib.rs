@@ -1,14 +1,14 @@
 use crate::diagnostics::ParserDiagKind;
-use ast::source_loc::SourceLoc;
-use ast::token::*;
-use ast::*;
-use diagcentral::Diag;
-use diagcentral::DiagLevel;
-use diagcentral::DiagLoc;
-use diagcentral::display_single_diag;
-use diagcentral::reporter::DiagReporter;
-use fs_utils::read_file;
-use lexer::*;
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_ast::token::*;
+use cyrusc_ast::*;
+use cyrusc_diagcentral::Diag;
+use cyrusc_diagcentral::DiagLevel;
+use cyrusc_diagcentral::DiagLoc;
+use cyrusc_diagcentral::display_single_diag;
+use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_fs_utils::read_file;
+use cyrusc_lexer::*;
 use std::rc::Rc;
 
 mod common;
@@ -95,7 +95,7 @@ impl Parser {
     }
 
     /// Finalizes the program parse by checking for errors.
-    pub fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParserError>> {
+    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParserError>> {
         if self.errors.is_empty() {
             Ok(program)
         } else {
@@ -103,7 +103,7 @@ impl Parser {
         }
     }
 
-    pub fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> Token {
         let peek_token = match self.tokens.get(self.cur_token_idx) {
             Some(token) => token,
             None => {
@@ -122,7 +122,7 @@ impl Parser {
         peek_token.clone()
     }
 
-    pub fn current_token_is(&self, token_kind: TokenKind) -> bool {
+    fn current_token_is(&self, token_kind: TokenKind) -> bool {
         let current_token = match self.tokens.get(self.cur_token_idx) {
             Some(token) => token,
             None => {
@@ -136,7 +136,7 @@ impl Parser {
         current_token.kind == token_kind
     }
 
-    pub fn peek_token_is(&self, token_kind: TokenKind) -> bool {
+    fn peek_token_is(&self, token_kind: TokenKind) -> bool {
         let peek_token = match self.tokens.get(self.cur_token_idx + 1) {
             Some(token) => token,
             None => {
@@ -150,7 +150,7 @@ impl Parser {
         peek_token.kind == token_kind
     }
 
-    pub fn current_token(&self) -> Token {
+    fn current_token(&self) -> Token {
         match self.tokens.get(self.cur_token_idx).cloned() {
             Some(token) => token,
             None => Token {
@@ -161,7 +161,7 @@ impl Parser {
         }
     }
 
-    pub fn peek_token(&self) -> Token {
+    fn peek_token(&self) -> Token {
         match self.tokens.get(self.cur_token_idx + 1).cloned() {
             Some(token) => token,
             None => Token {
@@ -172,21 +172,14 @@ impl Parser {
         }
     }
 
-    pub fn peek_peek_token_is(&self, token_kind: TokenKind) -> Option<bool> {
-        match self.tokens.get(self.cur_token_idx + 2) {
-            Some(token) => Some(token.kind == token_kind),
-            None => None,
-        }
-    }
-
-    pub fn peek_n_token(&self, n: usize) -> Option<Token> {
+    fn peek_n_token(&self, n: usize) -> Option<Token> {
         self.tokens.get(self.cur_token_idx + n).cloned()
     }
 
     /// This function peeks at the next token without advancing the lexer. If the token matches
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
-    pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
+    fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
         if self.peek_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
@@ -205,7 +198,7 @@ impl Parser {
 
     /// This function checks the current token and consumes it if it matches the expected kind.
     /// If the current token does not match, it returns an error indicating the mismatch.
-    pub fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
+    fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
         if self.current_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());

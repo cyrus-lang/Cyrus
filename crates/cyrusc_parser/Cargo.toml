@@ -1,18 +1,19 @@
 [package]
-name = "parser"
+name = "cyrusc_parser"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-lexer = { path = "../cyrusc_lexer", version = "*" }
-ast = { path = "../cyrusc_ast", version = "*" }
-diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+thiserror = "2.0.17"
 
 [lib]
-name = "parser"
+name = "cyrusc_parser"
 path = "./src/lib.rs"
 
 [[bin]]
-name = "parser"
+name = "cyrusc_parser"
 path = "./src/cli.rs"

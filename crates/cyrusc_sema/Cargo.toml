@@ -1,23 +1,24 @@
 [package]
-name = "sema"
+name = "cyrusc_sema"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
-tast = { path = "../cyrusc_tast", version = "*" }
-ast = { path = "../cyrusc_ast", version = "*" }
-parser = { path = "../cyrusc_parser", version = "*" }
-lexer = { path = "../cyrusc_lexer", version = "*" }
-resolver = { path = "../cyrusc_resolver", version = "*" }
-diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
+cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
+cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+thiserror = "2.0.17"
 fx-hash = "0.1.0"
 smallvec = "1.15.1"
 
 [lib]
-name = "sema"
+name = "cyrusc_sema"
 path = "./src/lib.rs"
 
 [[bin]]
-name = "sema"
+name = "cyrusc_sema"
 path = "./src/cli.rs"

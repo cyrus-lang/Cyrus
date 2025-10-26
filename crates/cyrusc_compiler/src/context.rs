@@ -5,7 +5,7 @@ use crate::{
     options::{CodeGenOptions, LinkerOutputKind},
     target_machine_info::TargetMachineInfo,
 };
-use buildmanifest::BuildManifest;
+use cyrusc_buildmanifest::BuildManifest;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},

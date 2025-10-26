@@ -1,6 +1,6 @@
 use crate::analyze::AnalysisContext;
-use ast::source_loc::SourceLoc;
-use tast::{
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_tast::{
     ScopeID,
     types::{BasicType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };

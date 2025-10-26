@@ -2,15 +2,13 @@ use crate::Parser;
 use crate::ParserError;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
-use ast::source_loc::SourceLoc;
-use ast::token::*;
-use ast::*;
-use diagcentral::Diag;
-use diagcentral::DiagLevel;
-use diagcentral::DiagLoc;
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_ast::token::*;
+use cyrusc_ast::*;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 
 impl Parser {
-    pub fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
+    pub(crate) fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
         match self.current_token().kind {
             TokenKind::Identifier { name } => Ok(Identifier {
                 name,
@@ -31,42 +29,7 @@ impl Parser {
         }
     }
 
-    pub fn is_array_constructor_start(&mut self) -> bool {
-        if !self.matches_type_token(self.current_token().kind) {
-            return false;
-        }
-
-        let mut i = 1; // token after type
-        let mut bracket_count = 0;
-
-        while let Some(tok) = self.peek_n_token(i) {
-            match &tok.kind {
-                TokenKind::LeftBracket => {
-                    bracket_count += 1;
-                }
-                TokenKind::RightBracket => {
-                    if bracket_count == 0 {
-                        return false; // unmatched
-                    }
-                    bracket_count -= 1;
-                    if bracket_count == 0 {
-                        // next token after last closing bracket
-                        if let Some(next_tok) = self.peek_n_token(i + 1) {
-                            return next_tok.kind == TokenKind::LeftBrace;
-                        } else {
-                            return false;
-                        }
-                    }
-                }
-                _ => {}
-            };
-            i += 1;
-        }
-
-        false
-    }
-
-    pub fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
+    pub(crate) fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(&token_kind) {
             true
         } else if let TokenKind::Identifier { .. } = token_kind {
@@ -79,7 +42,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, ParserError> {
+    pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, ParserError> {
         let mut base_type = self.parse_base_type_token()?;
 
         loop {
@@ -112,7 +75,165 @@ impl Parser {
         }
     }
 
-    pub fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, ParserError> {
+    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, ParserError> {
+        self.expect_current(TokenKind::LessThan)?;
+
+        let mut generic_params: GenericParamsList = GenericParamsList::new();
+
+        loop {
+            generic_params.push(self.parse_generic_param()?);
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        self.expect_current(TokenKind::GreaterThan)?;
+        Ok(generic_params)
+    }
+
+    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, ParserError> {
+        self.expect_current(TokenKind::LessThan)?;
+
+        let mut args = Vec::new();
+
+        loop {
+            if matches!(self.current_token().kind, TokenKind::Identifier { .. })
+                && self.peek_token_is(TokenKind::Assign)
+            {
+                let key = self.parse_identifier()?;
+                self.next_token(); // consume identifier
+                self.expect_current(TokenKind::Assign)?;
+
+                let val = self.parse_type_specifier()?;
+                self.next_token();
+
+                args.push(TypeArg::Named { key, value: val });
+            } else {
+                let ty = self.parse_type_specifier()?;
+                self.next_token();
+                args.push(TypeArg::Positional(ty));
+            }
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                TokenKind::GreaterThan => {
+                    // self.next_token();
+                    break;
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc.clone(),
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(args)
+    }
+
+    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expression: Expression) -> bool {
+        if !self.current_expr_is_path_like(last_parsed_expression) {
+            return false;
+        }
+
+        if !self.peek_token_is(TokenKind::LessThan) {
+            return false;
+        }
+
+        let mut i = 1;
+        let mut depth = 0;
+
+        while let Some(tok) = self.peek_n_token(i) {
+            match tok.kind {
+                TokenKind::LessThan => {
+                    depth += 1;
+                }
+                TokenKind::GreaterThan => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return true;
+                    }
+                }
+                TokenKind::Semicolon | TokenKind::EOF => {
+                    return false;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+
+        false
+    }
+
+    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {
+        self.expect_current(TokenKind::LeftBracket)?;
+
+        if self.current_token_is(TokenKind::RightBracket) {
+            return Err(Diag {
+                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            });
+        }
+        let index = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::RightBracket)?;
+        Ok(index)
+    }
+
+    pub(crate) fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
+        let access_specifier: AccessSpecifier = {
+            if self.current_token_is(TokenKind::Inline) {
+                self.next_token();
+                AccessSpecifier::Inline
+            } else if self.current_token_is(TokenKind::Extern) {
+                self.next_token();
+                AccessSpecifier::Extern
+            } else if self.current_token_is(TokenKind::Public) {
+                self.next_token();
+                if self.current_token_is(TokenKind::Inline) {
+                    self.next_token();
+                    AccessSpecifier::PublicInline
+                } else if self.current_token_is(TokenKind::Extern) {
+                    self.next_token();
+                    AccessSpecifier::PublicExtern
+                } else {
+                    AccessSpecifier::Public
+                }
+            } else {
+                return Err(Diag {
+                    kind: ParserDiagKind::InvalidToken(token.kind),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        token.loc.clone(),
+                        self.file_name.clone(),
+                    ))),
+                    hint: None,
+                });
+            }
+        };
+
+        Ok(access_specifier)
+    }
+
+    fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, ParserError> {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
@@ -315,60 +436,6 @@ impl Parser {
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
-    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {
-        self.expect_current(TokenKind::LeftBracket)?;
-
-        if self.current_token_is(TokenKind::RightBracket) {
-            return Err(Diag {
-                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            });
-        }
-        let index = self.parse_expression(Precedence::Lowest)?.0;
-        self.expect_peek(TokenKind::RightBracket)?;
-        Ok(index)
-    }
-
-    pub(crate) fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
-        let access_specifier: AccessSpecifier = {
-            if self.current_token_is(TokenKind::Inline) {
-                self.next_token();
-                AccessSpecifier::Inline
-            } else if self.current_token_is(TokenKind::Extern) {
-                self.next_token();
-                AccessSpecifier::Extern
-            } else if self.current_token_is(TokenKind::Public) {
-                self.next_token();
-                if self.current_token_is(TokenKind::Inline) {
-                    self.next_token();
-                    AccessSpecifier::PublicInline
-                } else if self.current_token_is(TokenKind::Extern) {
-                    self.next_token();
-                    AccessSpecifier::PublicExtern
-                } else {
-                    AccessSpecifier::Public
-                }
-            } else {
-                return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(token.kind),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        token.loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                });
-            }
-        };
-
-        Ok(access_specifier)
-    }
-
     fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
@@ -515,114 +582,10 @@ impl Parser {
         })
     }
 
-    pub fn parse_generic_params(&mut self) -> Result<GenericParamsList, ParserError> {
-        self.expect_current(TokenKind::LessThan)?;
-
-        let mut generic_params: GenericParamsList = GenericParamsList::new();
-
-        loop {
-            generic_params.push(self.parse_generic_param()?);
-
-            match self.current_token().kind {
-                TokenKind::Comma => {
-                    self.next_token();
-                    continue;
-                }
-                _ => break,
-            }
-        }
-
-        self.expect_current(TokenKind::GreaterThan)?;
-        Ok(generic_params)
-    }
-
-    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, ParserError> {
-        self.expect_current(TokenKind::LessThan)?;
-
-        let mut args = Vec::new();
-
-        loop {
-            if matches!(self.current_token().kind, TokenKind::Identifier { .. })
-                && self.peek_token_is(TokenKind::Assign)
-            {
-                let key = self.parse_identifier()?;
-                self.next_token(); // consume identifier
-                self.expect_current(TokenKind::Assign)?;
-
-                let val = self.parse_type_specifier()?;
-                self.next_token();
-
-                args.push(TypeArg::Named { key, value: val });
-            } else {
-                let ty = self.parse_type_specifier()?;
-                self.next_token();
-                args.push(TypeArg::Positional(ty));
-            }
-
-            match self.current_token().kind {
-                TokenKind::Comma => {
-                    self.next_token();
-                    continue;
-                }
-                TokenKind::GreaterThan => {
-                    // self.next_token();
-                    break;
-                }
-                _ => {
-                    return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc.clone(),
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
-                }
-            }
-        }
-
-        Ok(args)
-    }
-
     fn current_expr_is_path_like(&self, last_parsed_expression: Expression) -> bool {
         matches!(
             last_parsed_expression,
             Expression::Identifier(..) | Expression::ModuleImport(..)
         )
-    }
-
-    pub fn is_type_arg_start(&mut self, last_parsed_expression: Expression) -> bool {
-        if !self.current_expr_is_path_like(last_parsed_expression) {
-            return false;
-        }
-
-        if !self.peek_token_is(TokenKind::LessThan) {
-            return false;
-        }
-
-        let mut i = 1;
-        let mut depth = 0;
-
-        while let Some(tok) = self.peek_n_token(i) {
-            match tok.kind {
-                TokenKind::LessThan => {
-                    depth += 1;
-                }
-                TokenKind::GreaterThan => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return true;
-                    }
-                }
-                TokenKind::Semicolon | TokenKind::EOF => {
-                    return false;
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-
-        false
     }
 }

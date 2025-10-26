@@ -1,712 +1,334 @@
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
-    InfiniteRecursiveType {
-        type_name: String,
-    },
-    InternalSymbolAccess {
-        symbol_name: String,
-    },
-    SymbolMustBeAnInterface {
-        symbol_name: String,
-    },
-    MissingInterfaceMethodImpl {
-        object_name: String,
-        method_name: String,
-        interface_name: String,
-    },
+    #[error("Cannot infer all generic parameters for type '{type_name}'.")]
+    ExplicitTypeArgsRequired { type_name: String },
+
+    #[error("Type arguments supplied to a non-generic type.")]
+    UnexpectedTypeArgs,
+
+    #[error(
+        "Generic arity mismatch because this type expects {expected} generic parameters but {provided} arguments were supplied."
+    )]
+    GenericArityMismatch { expected: usize, provided: usize },
+
+    #[error("Unknown symbol '{symbol_name}'.")]
+    UnknownSymbol { symbol_name: String },
+
+    #[error("Type '{type_name}' contains a field of its own type, causing infinite recursion.")]
+    InfiniteRecursiveType { type_name: String },
+
+    #[error(
+        "Method '{method_name}' implemented in object '{object_name}' does not match the method from interface '{interface_name}'."
+    )]
     InterfaceMethodTypeMismatch {
         method_name: String,
         object_name: String,
         interface_name: String,
     },
-    PrivateFunctionCall {
-        name: String,
+
+    #[error("Internal symbol '{symbol_name}' is not accessible here.")]
+    InternalSymbolAccess { symbol_name: String },
+
+    #[error("'{symbol_name}' must be an interface.")]
+    SymbolMustBeAnInterface { symbol_name: String },
+
+    #[error(
+        "Object '{object_name}' does not implement required method '{method_name}' from interface '{interface_name}'."
+    )]
+    MissingInterfaceMethodImpl {
+        object_name: String,
+        method_name: String,
+        interface_name: String,
     },
+
+    #[error("Mismatch between number of exported values and tuple elements.")]
+    TupleExportedValuesAndTupleElementsCountMismatch,
+
+    #[error("Tuple member access with index {index} exceeds tuple length {length}.")]
+    TupleIndexOutOfRange { index: usize, length: usize },
+
+    #[error("Function '{name}' is private and cannot be called.")]
+    PrivateFunctionCall { name: String },
+
+    #[error("Lambda cannot be left uninitialized.")]
     UninitializedLambda,
+
+    #[error("The type 'void' cannot be used in this context.")]
     VoidVariableType,
-    NegativeArrayCapacity,
-    ValueIsNotACompTimeConst,
-    SwitchFallthroughIntoValuedFieldCase,
+
+    #[error("Enum variant '{variant_name}' expects {expected} fields, but {provided} arguments were provided.")]
     EnumVariantArgCountMismatch {
         variant_name: String,
         expected: u32,
         provided: u32,
     },
-    EnumVariantDoesNotAcceptFields {
-        variant_name: String,
-    },
-    NoSuchEnumVariant {
-        enum_name: String,
-        variant_name: String,
-    },
+
+    #[error("Array capacity cannot be a negative integer.")]
+    NegativeArrayCapacity,
+
+    #[error("Value is not a compile-time constant.")]
+    ValueIsNotACompTimeConst,
+
+    #[error("Falling through into a case with fields may cause undefined behavior.")]
+    SwitchFallthroughIntoValuedFieldCase,
+
+    #[error("Enum variant '{variant_name}' does not accept fields.")]
+    EnumVariantDoesNotAcceptFields { variant_name: String },
+
+    #[error("Enum '{enum_name}' does not have a variant named '{variant_name}'.")]
+    NoSuchEnumVariant { enum_name: String, variant_name: String },
+
+    #[error("Only enum variants are allowed here.")]
     ExpressionPatternInAEnumSwitch,
-    SwitchOperandIsNotEnum {
-        expr_type: String,
-    },
-    VariantMissingFields {
-        enum_name: String,
-        variant_name: String,
-    },
-    VariantNotDefinedForEnum {
-        enum_name: String,
-        variant_name: String,
-    },
+
+    #[error("Switch expression must be an enum type, but found '{expr_type}'.")]
+    SwitchOperandIsNotEnum { expr_type: String },
+
+    #[error("Variant '{enum_name}.{variant_name}' is missing fields.")]
+    VariantMissingFields { enum_name: String, variant_name: String },
+
+    #[error("Enum '{enum_name}' has no variant named '{variant_name}'.")]
+    VariantNotDefinedForEnum { enum_name: String, variant_name: String },
+
+    #[error("Union initializer must specify exactly one field.")]
     UnionInitWithInvalidFields,
+
+    #[error(
+        "Switch statement must contain at least one case or consider removing it or replacing it with an if statement."
+    )]
     EmptyCaseSwitchStatement,
+
+    #[error("Literal of type {literal_type} is not assignable to expected type '{expected_type}'.")]
     TypeMismatchLiteral {
         literal_type: String,
         expected_type: String,
     },
-    ObjectNotSupportsMethods,
-    ObjectNotSupportsFields,
-    InvalidFatArrow,
+
+    #[error("Case pattern with type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
+    TypeMismatchInCasePattern { operand_type: String, pattern_type: String },
+
+    #[error("Cannot call method '{method_name}' on constant instance '{instance_name}'.")]
+    MutationPossibleMethodCallOnConstInstance { method_name: String, instance_name: String },
+
+    #[error("Cannot access internal field '{field_name}' of struct '{struct_name}' from outside its definition.")]
+    InternalFieldAccess { field_name: String, struct_name: String },
+
+    #[error("Cannot call internal method '{method_name}' of object '{object_name}' from outside its definition.")]
+    InternalMethodCall { method_name: String, object_name: String },
+
+    #[error("Use '->' instead of '.' when accessing a member via a pointer.")]
     UseFatArrow,
-    InternalFieldAccess {
-        field_name: String,
-        struct_name: String,
-    },
-    InternalMethodCall {
-        method_name: String,
-        object_name: String,
-    },
-    MutationPossibleMethodCallOnConstInstance {
-        method_name: String,
-        instance_name: String,
-    },
-    StructMethodNotDefined {
-        struct_name: String,
-        method_name: String,
-    },
+
+    #[error("Invalid usage of the concrete type.")]
+    InvalidUsageOfTheSemanticType,
+
+    #[error("Invalid field access (not supported for this symbol).")]
+    ObjectNotSupportsFields,
+
+    #[error("Invalid method call (not supported for this symbol).")]
+    ObjectNotSupportsMethods,
+
+    #[error("Invalid usage of the fat arrow.")]
+    InvalidFatArrow,
+
+    #[error("Method '{method_name}' not defined for struct '{struct_name}'.")]
+    StructMethodNotDefined { struct_name: String, method_name: String },
+
+    #[error("Rhs of the shift must be unsigned integer.")]
     RhsOfShiftMustBeUnsignedInteger,
-    CyclicTypeDefinition {
-        symbol: String,
-    },
+
+    #[error("Constant variable must be initialized with a value.")]
+    ConstVariableMustBeInitialized,
+
+    #[error("Cyclic type definition found for type '{symbol}'.")]
+    CyclicTypeDefinition { symbol: String },
+
+    #[error("No entry point found (missing 'main' function).")]
+    MissingEntryPoint,
+
+    #[error("Multiple entry points are not allowed.")]
+    MultipleEntryPoints,
+
+    #[error("Missing return statement.")]
     MissingReturn,
+
+    #[error("Return statement requires an argument of type '{argument_type}'.")]
+    ReturnStatementNeedsAnArgument { argument_type: String },
+
+    #[error("Return statement argument must be a value of type '{expected}' but got '{got}'.")]
+    ReturnStatementTypeMismatch { expected: String, got: String },
+
+    #[error("Function with void return type cannot return a value.")]
     VoidFunctionReturnsValue,
+
+    #[error("Unreachable code.")]
     UnreachableCode,
-    InvalidBreakStatement,
+
+    #[error("Invalid usage of the continue statement. It must be inside a loop statement.")]
     InvalidContinueStatement,
+
+    #[error("Invalid usage of the break statement. It must be inside a loop/switch statement.")]
+    InvalidBreakStatement,
+
+    #[error("Condition expression must be of type 'bool'.")]
     ConditionExprMustBeOfTypeBool,
+
+    #[error("Interfaces must be declared globally.")]
     InternalInterfaceIsNotValid,
+
+    #[error("{kind} '{name}' does not follow {expected} naming convention.")]
     NamingConv {
         kind: String,
         name: String,
         expected: String,
     },
-    UnknownSymbol {
-        symbol_name: String,
-    },
-    UnusedSymbol {
-        symbol_name: String,
-    },
+
+    #[error("'{symbol_name}' is declared but never used.")]
+    UnusedSymbol { symbol_name: String },
+
+    #[error("Global variable expression is not valid at compile time.")]
     GlobalVariableExprNotComptimeValid,
+
+    #[error("Expression is not valid at compile time.")]
     ExprNotComptimeValid,
+
+    #[error("Cannot assign to immutable lvalue.")]
     CannotAssignToConstLValue,
-    InvalidIntegerLiteralSuffix,
-    InvalidFloatLiteralSuffix,
-    ArrayNonIntegerIndex {
-        found_type: String,
-    },
-    ArrayIndexOnNonArrayOperand,
-    TupleMemberAccessOnNonTupleOperand,
-    TupleExportedValuesAndTupleElementsCountMismatch,
-    TupleIndexOutOfRange {
-        index: usize,
-        length: usize,
-    },
-    ObjectHasNoFieldNamed {
-        struct_name: String,
-        field_name: String,
-    },
+
+    #[error("Missing required fields {missing_field_names:?} in struct '{struct_name}'.")]
     StructMissingFields {
         struct_name: String,
         missing_field_names: Vec<String>,
     },
+
+    #[error("'{struct_name}' has no field named '{field_name}'.")]
+    ObjectHasNoFieldNamed { struct_name: String, field_name: String },
+
+    #[error("Invalid integer literal suffix.")]
+    InvalidIntegerLiteralSuffix,
+
+    #[error("Invalid float literal suffix.")]
+    InvalidFloatLiteralSuffix,
+
+    #[error(
+        "Type mismatch for field '{field_name}' in struct '{struct_name}' (expected '{expected_type}', found '{found_type}')."
+    )]
     StructFieldTypeMismatch {
         struct_name: String,
         field_name: String,
         expected_type: String,
         found_type: String,
     },
-    ReturnStatementTypeMismatch {
-        expected: String,
-        got: String,
-    },
-    ReturnStatementNeedsAnArgument {
-        argument_type: String,
-    },
-    AssignmentTypeMismatch {
-        lhs_type: String,
-        rhs_type: String,
-    },
-    ArrayElementsCountMismatch {
-        elements: u32,
-        expected: u32,
-    },
-    FuncCallArgsCountMismatch {
-        args: u32,
-        expected: u32,
-        func_name: String,
-    },
-    FuncCallVariadicParamTypeMismatch {
-        param_type: String,
-        argument_idx: u32,
-        argument_type: String,
-    },
-    FuncCallParamTypeMismatch {
-        param_type: String,
-        argument_idx: u32,
-        argument_type: String,
-    },
-    ArrayElementTypeMismatch {
-        element_type: String,
-        element_index: u32,
-        expected_type: String,
-    },
-    CastTypeMismatch {
-        lhs_type: String,
-        rhs_type: String,
-    },
-    TypeMismatchInCasePattern {
-        operand_type: String,
-        pattern_type: String,
-    },
-    PrefixMinusOnNonInteger {
-        operand_type: String,
-    },
-    PrefixBangOnNonBool {
-        operand_type: String,
-    },
-    InvalidInfix {
-        lhs_type: String,
-        rhs_type: String,
-    },
-    InvalidUnary {
-        operand_type: String,
-    },
-    InterfaceDuplicateMethod {
-        interface_name: String,
-        method_name: String,
-    },
-    NonFunctionSymbol {
-        symbol_name: String,
-    },
-    NonTypeSymbol {
-        symbol_name: String,
-    },
-    NonStructSymbol {
-        symbol_name: String,
-    },
-    NonUnionSymbol {
-        symbol_name: String,
-    },
-    DuplicateFuncParameter {
-        param_name: String,
-        param_idx: u32,
-    },
-    DuplicateFuncVariadicParameter {
-        param_name: String,
-    },
-    DuplicateFieldName {
-        object_name: String,
-        field_name: String,
-    },
-    DuplicateEnumVariantName {
-        enum_name: String,
-        variant_name: String,
-    },
+
+    #[error("Array index must be an integer (found '{found_type}').")]
+    ArrayNonIntegerIndex { found_type: String },
+
+    #[error("Cannot index non-array value.")]
+    ArrayIndexOnNonArrayOperand,
+
+    #[error("Cannot access member of non-tuple value.")]
+    TupleMemberAccessOnNonTupleOperand,
+
+    #[error("Cannot take the address of a temporary value.")]
+    AddressOfRvalue,
+
+    #[error("Cannot dereference non-pointer value.")]
+    DerefNonPointerValue,
+
+    #[error("Cannot dereference a pointer of type 'void*'.")]
+    DerefVoidPointerValue,
+
+    #[error("Duplicate parameter name '{param_name}' at index {param_idx}.")]
+    DuplicateFuncParameter { param_name: String, param_idx: u32 },
+
+    #[error("Duplicate declaration of variadic parameter '{param_name}'.")]
+    DuplicateFuncVariadicParameter { param_name: String },
+
+    #[error("Duplicate declaration of enum variant '{variant_name}' in enum '{enum_name}'.")]
+    DuplicateEnumVariantName { enum_name: String, variant_name: String },
+
+    #[error("Duplicate field name '{field_name}' in variant '{variant_name}' of enum '{enum_name}'.")]
     DuplicateEnumFieldName {
         enum_name: String,
         field_name: String,
         variant_name: String,
     },
-    AddressOfRvalue,
-    DerefNonPointerValue,
-    DerefVoidPointerValue,
-    MultipleEntryPoints,
-    MissingEntryPoint,
-    ConstVariableMustBeInitialized,
-    InvalidUsageOfTheSemanticType,
-    GenericArityMismatch {
-        expected: usize,
-        provided: usize,
-    },
-    UnexpectedTypeArgs,
-    ExplicitTypeArgsRequired {
-        type_name: String,
-    },
-}
 
-impl fmt::Display for AnalyzerDiagKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name } => {
-                write!(f, "Cannot infer all generic parameters for type '{}'.", type_name)
-            }
-            AnalyzerDiagKind::UnexpectedTypeArgs => {
-                write!(f, "Type arguments supplied to a non-generic type.")
-            }
-            AnalyzerDiagKind::GenericArityMismatch { expected, provided } => {
-                write!(
-                    f,
-                    "Generic arity mismatch because this type expects {} generic parameters but {} arguments were supplied.",
-                    expected, provided
-                )
-            }
-            AnalyzerDiagKind::UnknownSymbol { symbol_name } => {
-                write!(f, "Unknown symbol '{}'.", symbol_name)
-            }
-            AnalyzerDiagKind::InfiniteRecursiveType { type_name } => {
-                write!(
-                    f,
-                    "Type '{}' contains a field of its own type, causing infinite recursion.",
-                    type_name
-                )
-            }
-            AnalyzerDiagKind::InterfaceMethodTypeMismatch {
-                method_name,
-                object_name,
-                interface_name,
-            } => {
-                write!(
-                    f,
-                    "Method '{}' implemented in object '{}' does not match the method from interface '{}'.",
-                    method_name, object_name, interface_name
-                )
-            }
-            AnalyzerDiagKind::InternalSymbolAccess { symbol_name } => {
-                write!(f, "Internal symbol '{}' is not accessible here.", symbol_name)
-            }
-            AnalyzerDiagKind::SymbolMustBeAnInterface { symbol_name } => {
-                write!(f, "'{}' must be an interface.", symbol_name)
-            }
-            AnalyzerDiagKind::MissingInterfaceMethodImpl {
-                object_name,
-                method_name,
-                interface_name,
-            } => {
-                write!(
-                    f,
-                    "Object '{}' does not implement required method '{}' from interface '{}'.",
-                    object_name, method_name, interface_name
-                )
-            }
-            AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch => {
-                write!(f, "Mismatch between number of exported values and tuple elements.")
-            }
-            AnalyzerDiagKind::TupleIndexOutOfRange { index, length } => {
-                write!(
-                    f,
-                    "Tuple member access with index {} exceeds tuple length {}.",
-                    index, length
-                )
-            }
-            AnalyzerDiagKind::PrivateFunctionCall { name } => {
-                write!(f, "Function '{}' is private and cannot be called.", name)
-            }
-            AnalyzerDiagKind::UninitializedLambda => {
-                write!(f, "Lambda cannot be left uninitialized.")
-            }
-            AnalyzerDiagKind::VoidVariableType => {
-                write!(f, "The type 'void' cannot be used in this context.")
-            }
-            AnalyzerDiagKind::EnumVariantArgCountMismatch {
-                variant_name,
-                expected,
-                provided,
-            } => {
-                write!(
-                    f,
-                    "Enum variant '{}' expects {} fields, but {} arguments were provided.",
-                    variant_name, expected, provided
-                )
-            }
-            AnalyzerDiagKind::NegativeArrayCapacity => {
-                write!(f, "Array capacity cannot be a negative integer.")
-            }
-            AnalyzerDiagKind::ValueIsNotACompTimeConst => {
-                write!(f, "Value is not a compile-time constant.")
-            }
-            AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase => {
-                write!(
-                    f,
-                    "Falling through into a case with fields may cause undefined behavior."
-                )
-            }
-            AnalyzerDiagKind::EnumVariantDoesNotAcceptFields { variant_name } => {
-                write!(f, "Enum variant '{}' does not accept fields.", variant_name)
-            }
-            AnalyzerDiagKind::NoSuchEnumVariant {
-                enum_name,
-                variant_name,
-            } => {
-                write!(
-                    f,
-                    "Enum '{}' does not have a variant named '{}'.",
-                    enum_name, variant_name
-                )
-            }
-            AnalyzerDiagKind::ExpressionPatternInAEnumSwitch => {
-                write!(f, "Only enum variants are allowed here.")
-            }
-            AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type } => {
-                write!(f, "Switch expression must be an enum type, but found '{}'.", expr_type)
-            }
-            AnalyzerDiagKind::VariantMissingFields {
-                enum_name,
-                variant_name,
-            } => {
-                write!(f, "Variant '{}.{}' is missing fields.", enum_name, variant_name)
-            }
-            AnalyzerDiagKind::VariantNotDefinedForEnum {
-                enum_name,
-                variant_name,
-            } => {
-                write!(f, "Enum '{}' has no variant named '{}'.", enum_name, variant_name)
-            }
-            AnalyzerDiagKind::UnionInitWithInvalidFields => {
-                write!(f, "Union initializer must specify exactly one field.")
-            }
-            AnalyzerDiagKind::EmptyCaseSwitchStatement => {
-                write!(
-                    f,
-                    "Switch statement must contain at least one case or consider to remove it or replace it with a if statement."
-                )
-            }
-            AnalyzerDiagKind::TypeMismatchLiteral {
-                literal_type,
-                expected_type,
-            } => {
-                write!(
-                    f,
-                    "Literal of type {} is not assignable to expected type '{}'.",
-                    literal_type, expected_type
-                )
-            }
-            AnalyzerDiagKind::TypeMismatchInCasePattern {
-                operand_type,
-                pattern_type,
-            } => {
-                write!(
-                    f,
-                    "Case pattern with type '{}' is not compatible with switch operand of type '{}'.",
-                    pattern_type, operand_type
-                )
-            }
-            AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
-                method_name,
-                instance_name,
-            } => {
-                write!(
-                    f,
-                    "Cannot call method '{}' on constant instance '{}'.",
-                    method_name, instance_name
-                )
-            }
-            AnalyzerDiagKind::InternalFieldAccess {
-                field_name,
-                struct_name,
-            } => {
-                write!(
-                    f,
-                    "Cannot access internal field '{}' of struct '{}' from outside its definition.",
-                    field_name, struct_name
-                )
-            }
-            AnalyzerDiagKind::InternalMethodCall {
-                method_name,
-                object_name,
-            } => {
-                write!(
-                    f,
-                    "Cannot call internal method '{}' of object '{}' from outside its definition.",
-                    method_name, object_name
-                )
-            }
-            AnalyzerDiagKind::UseFatArrow => {
-                write!(f, "Use '->' instead of '.' when accessing a member via a pointer.")
-            }
-            AnalyzerDiagKind::InvalidUsageOfTheSemanticType => {
-                write!(f, "Invalid usage of the concrete type.")
-            }
-            AnalyzerDiagKind::ObjectNotSupportsFields => {
-                write!(f, "Invalid field access (not supported for this symbol).")
-            }
-            AnalyzerDiagKind::ObjectNotSupportsMethods => {
-                write!(f, "Invalid method call (not supported for this symbol).")
-            }
-            AnalyzerDiagKind::InvalidFatArrow => {
-                write!(f, "Invalid usage of the fat arrow.")
-            }
-            AnalyzerDiagKind::StructMethodNotDefined {
-                struct_name,
-                method_name,
-            } => {
-                write!(f, "Method '{}' not defined for struct '{}'.", method_name, struct_name)
-            }
-            AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger => {
-                write!(f, "Rhs of the shift must be unsigned integer.")
-            }
-            AnalyzerDiagKind::ConstVariableMustBeInitialized => {
-                write!(f, "Constant variable must be initialized with a value.")
-            }
-            AnalyzerDiagKind::CyclicTypeDefinition { symbol } => {
-                write!(f, "Cyclic type definition found for type '{}'.", symbol)
-            }
-            AnalyzerDiagKind::MissingEntryPoint => {
-                write!(f, "No entry point found (missing 'main' function).")
-            }
-            AnalyzerDiagKind::MultipleEntryPoints => {
-                write!(f, "Multiple entry points are not allowed.")
-            }
-            AnalyzerDiagKind::MissingReturn => {
-                write!(f, "Missing return statement.")
-            }
-            AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type } => {
-                write!(f, "Return statement requires an argument of type '{}'.", argument_type)
-            }
-            AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got } => {
-                write!(
-                    f,
-                    "Return statement argument must be a value of type '{}' but got '{}'.",
-                    expected, got
-                )
-            }
-            AnalyzerDiagKind::VoidFunctionReturnsValue => {
-                write!(f, "Function with void return type cannot return a value.")
-            }
-            AnalyzerDiagKind::UnreachableCode => {
-                write!(f, "Unreachable code.")
-            }
-            AnalyzerDiagKind::InvalidContinueStatement => {
-                write!(
-                    f,
-                    "Invalid usage of the continue statement. It must be inside a loop statement."
-                )
-            }
-            AnalyzerDiagKind::InvalidBreakStatement => {
-                write!(
-                    f,
-                    "Invalid usage of the break statement. It must be inside a loop/switch statement."
-                )
-            }
-            AnalyzerDiagKind::ConditionExprMustBeOfTypeBool => {
-                write!(f, "Condition expression must be of type 'bool'.")
-            }
-            AnalyzerDiagKind::InternalInterfaceIsNotValid => {
-                write!(f, "Interfaces must be declared globally.")
-            }
-            AnalyzerDiagKind::NamingConv { kind, name, expected } => {
-                write!(f, "{} '{}' does not follow {} naming convention.", kind, name, expected)
-            }
-            AnalyzerDiagKind::UnusedSymbol { symbol_name } => {
-                write!(f, "'{}' is declared but never used.", symbol_name)
-            }
-            AnalyzerDiagKind::GlobalVariableExprNotComptimeValid => {
-                write!(f, "Global variable expression is not valid at compile time.")
-            }
-            AnalyzerDiagKind::ExprNotComptimeValid => {
-                write!(f, "Expression is not valid at compile time.")
-            }
-            AnalyzerDiagKind::CannotAssignToConstLValue => {
-                write!(f, "Cannot assign to immutable lvalue.")
-            }
-            AnalyzerDiagKind::StructMissingFields {
-                struct_name,
-                missing_field_names,
-            } => {
-                write!(
-                    f,
-                    "Missing required fields {} in struct '{}'.",
-                    missing_field_names
-                        .iter()
-                        .map(|f| format!("'{}'", f))
-                        .collect::<Vec<String>>()
-                        .join(", "),
-                    struct_name
-                )
-            }
-            AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                struct_name,
-                field_name,
-            } => {
-                write!(f, "'{}' has no field named '{}'.", struct_name, field_name)
-            }
-            AnalyzerDiagKind::InvalidIntegerLiteralSuffix => {
-                write!(f, "Invalid integer literal suffix.")
-            }
-            AnalyzerDiagKind::InvalidFloatLiteralSuffix => {
-                write!(f, "Invalid float literal suffix.")
-            }
-            AnalyzerDiagKind::StructFieldTypeMismatch {
-                struct_name,
-                field_name,
-                expected_type,
-                found_type,
-            } => {
-                write!(
-                    f,
-                    "Type mismatch for field '{}' in struct '{}' (expected '{}', found '{}').",
-                    field_name, struct_name, expected_type, found_type
-                )
-            }
-            AnalyzerDiagKind::ArrayNonIntegerIndex { found_type } => {
-                write!(f, "Array index must be an integer (found '{}').", found_type)
-            }
-            AnalyzerDiagKind::ArrayIndexOnNonArrayOperand => {
-                write!(f, "Cannot index non-array value.")
-            }
-            AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand => {
-                write!(f, "Cannot access member of non-tuple value.")
-            }
-            AnalyzerDiagKind::AddressOfRvalue => {
-                write!(f, "Cannot take the address of a temporary value.")
-            }
-            AnalyzerDiagKind::DerefNonPointerValue => {
-                write!(f, "Cannot dereference non-pointer value.")
-            }
-            AnalyzerDiagKind::DerefVoidPointerValue => {
-                write!(f, "Cannot dereference a pointer of type 'void*'.")
-            }
-            AnalyzerDiagKind::DuplicateFuncParameter { param_idx, param_name } => {
-                write!(f, "Duplicate parameter name '{}' at index {}.", param_name, param_idx)
-            }
-            AnalyzerDiagKind::DuplicateFuncVariadicParameter { param_name } => {
-                write!(f, "Duplicate declaration of variadic parameter '{}'.", param_name)
-            }
-            AnalyzerDiagKind::DuplicateEnumVariantName {
-                enum_name,
-                variant_name,
-            } => {
-                write!(
-                    f,
-                    "Duplicate declaration of enum variant '{}' in enum '{}'.",
-                    variant_name, enum_name
-                )
-            }
-            AnalyzerDiagKind::DuplicateEnumFieldName {
-                enum_name,
-                field_name,
-                variant_name,
-            } => {
-                write!(
-                    f,
-                    "Duplicate field name '{}' in variant '{}' of enum '{}'.",
-                    field_name, variant_name, enum_name
-                )
-            }
+    #[error("Duplicate declaration of field '{field_name}' in '{object_name}'.")]
+    DuplicateFieldName { object_name: String, field_name: String },
 
-            AnalyzerDiagKind::DuplicateFieldName {
-                object_name,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "Duplicate declaration of field '{}' in '{}'.",
-                    field_name, object_name
-                )
-            }
-            AnalyzerDiagKind::FuncCallArgsCountMismatch {
-                args,
-                expected,
-                func_name,
-            } => {
-                write!(
-                    f,
-                    "Function '{}' expects {} arguments, but {} was provided.",
-                    func_name, expected, args
-                )
-            }
-            AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                param_type,
-                argument_idx,
-                argument_type,
-            } => {
-                write!(
-                    f,
-                    "Argument at index {} has type '{}', but the variadic parameter expects type '{}'.",
-                    argument_idx, argument_type, param_type
-                )
-            }
-            AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                param_type,
-                argument_idx,
-                argument_type,
-            } => {
-                write!(
-                    f,
-                    "Argument at index {} has type '{}', but the expected parameter type is '{}'.",
-                    argument_idx, argument_type, param_type
-                )
-            }
-            AnalyzerDiagKind::NonFunctionSymbol { symbol_name } => {
-                write!(f, "Symbol '{}' is not a function.", symbol_name)
-            }
-            AnalyzerDiagKind::NonStructSymbol { symbol_name } => {
-                write!(f, "Symbol '{}' is not a struct.", symbol_name)
-            }
-            AnalyzerDiagKind::NonUnionSymbol { symbol_name } => {
-                write!(f, "Symbol '{}' is not a union.", symbol_name)
-            }
-            AnalyzerDiagKind::NonTypeSymbol { symbol_name } => {
-                write!(f, "Symbol '{}' is not a type.", symbol_name)
-            }
-            AnalyzerDiagKind::ArrayElementsCountMismatch { elements, expected } => {
-                write!(f, "Cannot use {} elements in an array of size {}.", elements, expected)
-            }
-            AnalyzerDiagKind::ArrayElementTypeMismatch {
-                element_type,
-                element_index,
-                expected_type,
-            } => {
-                write!(
-                    f,
-                    "Type mismatch for value of type '{}' at index {} for array of type '{}'.",
-                    element_type, element_index, expected_type
-                )
-            }
-            AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type } => {
-                write!(
-                    f,
-                    "Cannot assign value of type '{}' to variable of type '{}'.",
-                    rhs_type, lhs_type
-                )
-            }
-            AnalyzerDiagKind::CastTypeMismatch { lhs_type, rhs_type } => {
-                write!(f, "Cannot cast value of type '{}' to type '{}'.", rhs_type, lhs_type)
-            }
-            AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type } => {
-                write!(f, "Cannot apply minus operator to value of type '{}'.", operand_type)
-            }
-            AnalyzerDiagKind::PrefixBangOnNonBool { operand_type } => {
-                write!(
-                    f,
-                    "Cannot apply logical-not operator to value of type '{}'.",
-                    operand_type
-                )
-            }
-            AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type } => {
-                write!(
-                    f,
-                    "Cannot apply infix operator between values of type '{}' and '{}'.",
-                    lhs_type, rhs_type
-                )
-            }
-            AnalyzerDiagKind::InvalidUnary { operand_type } => {
-                write!(f, "Cannot apply unary operator to value of type '{}'.", operand_type)
-            }
-            AnalyzerDiagKind::InterfaceDuplicateMethod {
-                interface_name,
-                method_name,
-            } => {
-                write!(
-                    f,
-                    "Duplicate method '{}' in interface '{}'.",
-                    method_name, interface_name
-                )
-            }
-        }
-    }
+    #[error("Function '{func_name}' expects {expected} arguments, but {args} was provided.")]
+    FuncCallArgsCountMismatch {
+        args: u32,
+        expected: u32,
+        func_name: String,
+    },
+
+    #[error(
+        "Argument at index {argument_idx} has type '{argument_type}', but the variadic parameter expects type '{param_type}'."
+    )]
+    FuncCallVariadicParamTypeMismatch {
+        param_type: String,
+        argument_idx: u32,
+        argument_type: String,
+    },
+
+    #[error(
+        "Argument at index {argument_idx} has type '{argument_type}', but the expected parameter type is '{param_type}'."
+    )]
+    FuncCallParamTypeMismatch {
+        param_type: String,
+        argument_idx: u32,
+        argument_type: String,
+    },
+
+    #[error("Symbol '{symbol_name}' is not a function.")]
+    NonFunctionSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a struct.")]
+    NonStructSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a union.")]
+    NonUnionSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a type.")]
+    NonTypeSymbol { symbol_name: String },
+
+    #[error("Cannot use {elements} elements in an array of size {expected}.")]
+    ArrayElementsCountMismatch { elements: u32, expected: u32 },
+
+    #[error(
+        "Type mismatch for value of type '{element_type}' at index {element_index} for array of type '{expected_type}'."
+    )]
+    ArrayElementTypeMismatch {
+        element_type: String,
+        element_index: u32,
+        expected_type: String,
+    },
+
+    #[error("Cannot assign value of type '{rhs_type}' to variable of type '{lhs_type}'.")]
+    AssignmentTypeMismatch { lhs_type: String, rhs_type: String },
+
+    #[error("Cannot cast value of type '{rhs_type}' to type '{lhs_type}'.")]
+    CastTypeMismatch { lhs_type: String, rhs_type: String },
+
+    #[error("Cannot apply minus operator to value of type '{operand_type}'.")]
+    PrefixMinusOnNonInteger { operand_type: String },
+
+    #[error("Cannot apply logical-not operator to value of type '{operand_type}'.")]
+    PrefixBangOnNonBool { operand_type: String },
+
+    #[error("Cannot apply infix operator between values of type '{lhs_type}' and '{rhs_type}'.")]
+    InvalidInfix { lhs_type: String, rhs_type: String },
+
+    #[error("Cannot apply unary operator to value of type '{operand_type}'.")]
+    InvalidUnary { operand_type: String },
+
+    #[error("Duplicate method '{method_name}' in interface '{interface_name}'.")]
+    InterfaceDuplicateMethod {
+        interface_name: String,
+        method_name: String,
+    },
 }

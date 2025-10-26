@@ -1,9 +1,9 @@
 use crate::{
     analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, generics::GenericMappingCtx,
 };
-use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
-use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::{
+use cyrusc_ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_resolver::{
     sigs::{FuncSig, UnionSig},
     symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
@@ -12,7 +12,7 @@ use resolver::{
     typed_func_params_as_func_type_params,
 };
 use std::collections::HashMap;
-use tast::{
+use cyrusc_tast::{
     exprs::*,
     format::{format_concrete_type, format_func_type, format_typed_expr},
     stmts::{

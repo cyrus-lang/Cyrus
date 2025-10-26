@@ -1,8 +1,8 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::source_loc::SourceLoc;
-use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
-use tast::{
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
+use cyrusc_tast::{
     ScopeID, SymbolID, stmts::{TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg}, types::{
         ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType, TypedTupleType
     }

@@ -1,11 +1,11 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::{
+use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator},
     source_loc::SourceLoc,
 };
-use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::symbols::LocalScopeRef;
-use tast::{
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_resolver::symbols::LocalScopeRef;
+use cyrusc_tast::{
     ScopeID,
     exprs::*,
     format::format_concrete_type,

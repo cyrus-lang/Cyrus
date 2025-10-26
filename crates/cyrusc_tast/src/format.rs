@@ -7,7 +7,7 @@ use crate::{
         TypedUStructType,
     },
 };
-use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
+use cyrusc_ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
 
 pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     exprs

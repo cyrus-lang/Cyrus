@@ -1,5 +1,5 @@
-use diagcentral::display_single_custom_diag;
-use scaffold::{MANIFEST_FILENAME, SOURCES_DIR_PATH};
+use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_scaffold::{MANIFEST_FILENAME, SOURCES_DIR_PATH};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,

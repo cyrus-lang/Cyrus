@@ -1,6 +1,6 @@
 use core::fmt;
 use inkwell::targets::{CodeModel, RelocMode};
-use scaffold_parser::ScaffoldConfig;
+use cyrusc_scaffold_parser::ScaffoldConfig;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]

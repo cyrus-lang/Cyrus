@@ -3,7 +3,7 @@ use crate::{
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
     types::{SemanticType, TypedUStructType},
 };
-use ast::{
+use cyrusc_ast::{
     AssignmentKind, LiteralKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     source_loc::SourceLoc,
