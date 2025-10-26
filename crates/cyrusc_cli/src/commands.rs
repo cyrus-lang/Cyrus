@@ -5,7 +5,7 @@ use codegen_llvm::{
     options::{BuildDir, CodeGenOptions, OutputKind},
 };
 use diagcentral::{display_single_custom_diag, reporter::DiagReporter};
-use fs_utils::file_name_without_extension;
+use fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
 use lexer::Lexer;
 use parser::Parser;
 use resolver::{
@@ -24,7 +24,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tast::{ModuleID, TypedProgramTree};
-use utils::fs::{ensure_output_dir, get_directory_of_file};
 
 fn get_program_trees(
     options: &mut CodeGenOptions,
@@ -38,12 +37,12 @@ fn get_program_trees(
     // Disabled temporarily.
     options.disable_warnings = true;
 
-    let file_content = utils::fs::read_file(file_path.clone()).0;
+    let file_content = read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_path.clone());
 
-    let node = match parser.parse() {
-        Ok(node) => node,
+    let program = match parser.parse() {
+        Ok(program) => program,
         Err(errors) => {
             parser.display_parser_errors(errors.clone());
             exit(1);
@@ -60,13 +59,7 @@ fn get_program_trees(
 
     let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
     let module_id = generate_module_id();
-    match resolver.resolve_module(
-        module_id,
-        node.as_program(),
-        &mut Visiting::new(),
-        true,
-        file_path.clone(),
-    ) {
+    match resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path.clone()) {
         Some(..) => {}
         None => unreachable!(),
     };
@@ -146,7 +139,7 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
     temp.push(
         options
             .project_name
-            .or(file_name_without_extension(file_path))
+            .or(file_name_without_extension(&file_path))
             .unwrap_or("executable"),
     );
     let temp_file_path = temp.clone();
@@ -313,7 +306,7 @@ pub(crate) fn command_dylib(mut options: CodeGenOptions, file_path: Option<Strin
 }
 
 pub(crate) fn command_lex_only(file_path: String) {
-    let (file_content, file_name) = utils::fs::read_file(file_path.clone());
+    let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name);
     loop {
         let token = lexer.next_token();
@@ -329,7 +322,7 @@ pub(crate) fn command_lex_only(file_path: String) {
 }
 
 pub(crate) fn command_parse_only(file_path: String) {
-    let (file_content, file_name) = utils::fs::read_file(file_path.clone());
+    let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_name);
 
@@ -343,12 +336,12 @@ pub(crate) fn command_parse_only(file_path: String) {
 }
 
 pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: String) {
-    let file_content = utils::fs::read_file(file_path.clone()).0;
+    let file_content = read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_path.clone());
 
-    let node = match parser.parse() {
-        Ok(node) => node,
+    let program = match parser.parse() {
+        Ok(program) => program,
         Err(errors) => {
             parser.display_parser_errors(errors.clone());
             exit(1);
@@ -365,13 +358,7 @@ pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: Str
 
     let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
     let module_id = generate_module_id();
-    match resolver.resolve_module(
-        module_id,
-        node.as_program(),
-        &mut Visiting::new(),
-        true,
-        file_path.clone(),
-    ) {
+    match resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path.clone()) {
         Some(..) => {}
         None => unreachable!(),
     };
