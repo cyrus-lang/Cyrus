@@ -9,8 +9,8 @@ use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     sigs::{EnumSig, FuncSig},
+    symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use std::{
@@ -21,7 +21,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tast::{
+    exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
     format::format_concrete_type,
+    stmts::*,
     types::{BasicType, SemanticType, TypedFuncType},
     *,
 };
@@ -184,9 +186,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_variable(Some(scope_id), typed_variable);
                 FlowState::Reachable
             }
-            TypedStmt::BlockStatement(typed_block_statement) => {
-                self.analyze_block_statement(typed_block_statement)
-            }
+            TypedStmt::BlockStatement(typed_block_statement) => self.analyze_block_statement(typed_block_statement),
             TypedStmt::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
             TypedStmt::Return(typed_return) => self.analyze_return(scope_id, typed_return),
             TypedStmt::Break(typed_break) => {
@@ -230,10 +230,7 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             // Invalid statements
-            TypedStmt::Defer(..)
-            | TypedStmt::FuncDef(_)
-            | TypedStmt::FuncDecl(_)
-            | TypedStmt::GlobalVariable(_) => {
+            TypedStmt::Defer(..) | TypedStmt::FuncDef(_) | TypedStmt::FuncDecl(_) | TypedStmt::GlobalVariable(_) => {
                 unreachable!()
             }
         }
@@ -245,11 +242,10 @@ impl<'a> AnalysisContext<'a> {
         export_tuple_values: &mut TypedExportTupleStmt,
     ) {
         if let Some(typed_expr) = &mut export_tuple_values.rhs {
-            let sema_ty =
-                match self.analyze_typed_expr_type(scope_id_opt, typed_expr, export_tuple_values.ty.clone()) {
-                    Some(sema_ty) => sema_ty,
-                    None => return,
-                };
+            let sema_ty = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, export_tuple_values.ty.clone()) {
+                Some(sema_ty) => sema_ty,
+                None => return,
+            };
 
             if export_tuple_values.ty.is_none() {
                 export_tuple_values.ty = Some(sema_ty);
@@ -257,11 +253,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(sema_ty) = &mut export_tuple_values.ty {
-            *sema_ty =
-                match self.normalize_type(scope_id_opt, sema_ty.clone(), export_tuple_values.loc.clone()) {
-                    Some(normalized) => normalized,
-                    None => return,
-                };
+            *sema_ty = match self.normalize_type(scope_id_opt, sema_ty.clone(), export_tuple_values.loc.clone()) {
+                Some(normalized) => normalized,
+                None => return,
+            };
         }
 
         let sema_ty = match self.normalize_type(
@@ -682,11 +677,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(typed_expr) = &mut typed_for.cond {
-            if let Some(sema_ty) = self.analyze_typed_expr_type(
-                scope_id_opt,
-                typed_expr,
-                Some(SemanticType::BasicType(BasicType::Bool)),
-            ) {
+            if let Some(sema_ty) =
+                self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(SemanticType::BasicType(BasicType::Bool)))
+            {
                 self.check_expr_type_must_be_condition(sema_ty, typed_for.loc.clone());
             }
         }
@@ -716,9 +709,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.arg {
-            if let Some(sema_ty) =
-                self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone()))
-            {
+            if let Some(sema_ty) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
                 let expected = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
                 let got = format_concrete_type(sema_ty.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
@@ -870,10 +861,7 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().sema_ty.unwrap()),
         };
 
-        if matches!(
-            typed_global_var.ty,
-            Some(SemanticType::BasicType(BasicType::Void))
-        ) {
+        if matches!(typed_global_var.ty, Some(SemanticType::BasicType(BasicType::Void))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::VoidVariableType,
@@ -924,8 +912,7 @@ impl<'a> AnalysisContext<'a> {
                     typed_global_var.loc.clone(),
                 ) {
                     let lhs_type = format_concrete_type(target_type.clone(), &(self.symbol_formatter)(None));
-                    let rhs_type =
-                        format_concrete_type(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
+                    let rhs_type = format_concrete_type(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1304,7 +1291,12 @@ impl<'a> AnalysisContext<'a> {
         update_union_symbol_entry(self, &typed_union);
     }
 
-    pub(crate) fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt, is_local: bool) {
+    pub(crate) fn analyze_enum(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_enum: &mut TypedEnumStmt,
+        is_local: bool,
+    ) {
         fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnumStmt) {
             if let Some(scope_id) = typed_enum.is_local {
                 update_local_symbol!(this, scope_id, typed_enum.symbol_id,
@@ -1627,10 +1619,7 @@ impl<'a> AnalysisContext<'a> {
                     None => return,
                 };
 
-                if matches!(
-                    normalized_concrete_type,
-                    SemanticType::BasicType(BasicType::Void)
-                ) {
+                if matches!(normalized_concrete_type, SemanticType::BasicType(BasicType::Void)) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::VoidVariableType,
@@ -1671,10 +1660,7 @@ impl<'a> AnalysisContext<'a> {
                         None => return,
                     };
 
-                    if matches!(
-                        normalized_concrete_type,
-                        SemanticType::BasicType(BasicType::Void)
-                    ) {
+                    if matches!(normalized_concrete_type, SemanticType::BasicType(BasicType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: AnalyzerDiagKind::VoidVariableType,
@@ -1751,15 +1737,13 @@ impl<'a> AnalysisContext<'a> {
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
                 if let Some(sema_ty) = &typed_variable.ty {
-                    typed_variable.ty =
-                        self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
+                    typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
                 }
 
-                let sema_ty =
-                    match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
-                        Some(sema_ty) => sema_ty,
-                        None => return,
-                    };
+                let sema_ty = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
+                    Some(sema_ty) => sema_ty,
+                    None => return,
+                };
 
                 typed_expr.sema_ty = Some(sema_ty.clone());
                 Some(sema_ty)
@@ -1800,10 +1784,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if matches!(
-            typed_variable.ty,
-            Some(SemanticType::BasicType(BasicType::Void))
-        ) {
+        if matches!(typed_variable.ty, Some(SemanticType::BasicType(BasicType::Void))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::VoidVariableType,
@@ -1870,7 +1851,12 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if assign.kind == AssignmentKind::Default {
-            if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.as_rvalue(true).clone(), assign.loc.clone()) {
+            if !self.check_type_mismatch(
+                scope_id_opt,
+                rhs_type.clone(),
+                lhs_type.as_rvalue(true).clone(),
+                assign.loc.clone(),
+            ) {
                 let lhs_type = format_concrete_type(lhs_type, &(self.symbol_formatter)(scope_id_opt));
                 let rhs_type = format_concrete_type(rhs_type, &(self.symbol_formatter)(scope_id_opt));
 

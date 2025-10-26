@@ -16,6 +16,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use tast::exprs::*;
+use tast::stmts::*;
 use tast::types::*;
 use tast::*;
 
@@ -2615,7 +2617,7 @@ impl Resolver {
         tuple_member_access: &TupleAccess,
     ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &tuple_member_access.operand)?;
-    
+
         Some(TypedExprStmt {
             kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                 operand: Box::new(operand),

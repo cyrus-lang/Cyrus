@@ -13,7 +13,7 @@ use resolver::{
     modulefsloader::{ModuleFilePath, ModuleLoaderOptions},
 };
 use scaffold::{OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH};
-use sema::{context::AnalysisContext, monomorph::MonomorphRegistry};
+use sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     cell::RefCell,
     env, fs,

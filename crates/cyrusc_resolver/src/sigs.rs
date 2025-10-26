@@ -1,8 +1,13 @@
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use std::collections::HashMap;
 use tast::{
-    ModuleID, SymbolID, TypedEnumVariant, TypedExprStmt, TypedFuncDeclStmt, TypedFuncParamKind, TypedFuncParams,
-    TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::SemanticType,
+    ModuleID, SymbolID,
+    exprs::{TypedExprStmt, TypedIdentifier},
+    stmts::{
+        TypedEnumVariant, TypedFuncDeclStmt, TypedFuncParamKind, TypedFuncParams, TypedGenericParamsList,
+        TypedStructField, TypedUnionField,
+    },
+    types::SemanticType,
 };
 
 #[derive(Debug, Clone)]

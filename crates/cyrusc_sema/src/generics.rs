@@ -1,14 +1,15 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::sigs::{EnumSig, StructSig, UnionSig};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use tast::{
-    ScopeID, SymbolID, TypedEnumVariant, TypedExprStmt, TypedFuncTypeParams, TypedGenericParamsList, TypedIdentifier,
-    TypedTypeArg, TypedTypeArgs,
+    ScopeID, SymbolID,
+    exprs::{TypedExprStmt, TypedIdentifier},
     format::format_concrete_type,
+    stmts::*,
     types::{
-        SemanticType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType,
+        GenericType, SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -233,32 +234,31 @@ impl<'a> AnalysisContext<'a> {
             .or(self.analyze_typed_expr_type(scope_id_opt, expr, None));
 
         // substitute or infer
-        let final_concrete_type =
-            match self.substitute_type(sema_ty.clone(), generic_mapping_ctx, positional_index) {
-                Some(substituted) => {
-                    self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone()));
-                    Some(substituted)
-                }
-                None => {
-                    // insert freshly inferred generic param to mapping ctx
-                    if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
-                        self.substitute_type(expr_type, generic_mapping_ctx, positional_index)
-                            .and_then(|substituted| {
-                                if let Some(generic_params) = generic_params_opt {
-                                    if let Some(idx) = positional_index {
-                                        if let Some(generic_param) = generic_params.get(idx) {
-                                            generic_mapping_ctx
-                                                .insert_named(generic_param.param_name.clone(), substituted.clone());
-                                        }
+        let final_concrete_type = match self.substitute_type(sema_ty.clone(), generic_mapping_ctx, positional_index) {
+            Some(substituted) => {
+                self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone()));
+                Some(substituted)
+            }
+            None => {
+                // insert freshly inferred generic param to mapping ctx
+                if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
+                    self.substitute_type(expr_type, generic_mapping_ctx, positional_index)
+                        .and_then(|substituted| {
+                            if let Some(generic_params) = generic_params_opt {
+                                if let Some(idx) = positional_index {
+                                    if let Some(generic_param) = generic_params.get(idx) {
+                                        generic_mapping_ctx
+                                            .insert_named(generic_param.param_name.clone(), substituted.clone());
                                     }
                                 }
-                                Some(substituted)
-                            })
-                    } else {
-                        None
-                    }
+                            }
+                            Some(substituted)
+                        })
+                } else {
+                    None
                 }
-            };
+            }
+        };
 
         // check mismatch with original expr type
         if let Some(expr_ty) = &expr_concrete_typ {

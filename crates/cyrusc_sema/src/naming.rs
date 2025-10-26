@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 

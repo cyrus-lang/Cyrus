@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::{
     operators::{InfixOperator, PrefixOperator},
     source_loc::SourceLoc,
@@ -6,8 +6,8 @@ use ast::{
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::symbols::LocalScopeRef;
 use tast::{
-    ScopeID, TypedAddrOfExpr, TypedDerefExpr, TypedExprKind, TypedInfixExpr, TypedPrefixExpr,
-    TypedSizeOfExpr, TypedUnaryExpr,
+    ScopeID,
+    exprs::*,
     format::format_concrete_type,
     types::{BasicType, SemanticType},
 };
@@ -410,9 +410,7 @@ impl<'a> AnalysisContext<'a> {
                 // allow pointer comparisons
                 if let (SemanticType::Pointer(_), SemanticType::Pointer(_)) = (&lhs, &rhs) {
                     Some(BasicType::Bool)
-                } else if let (SemanticType::Pointer(_), SemanticType::BasicType(BasicType::Null)) =
-                    (&lhs, &rhs)
-                {
+                } else if let (SemanticType::Pointer(_), SemanticType::BasicType(BasicType::Null)) = (&lhs, &rhs) {
                     Some(BasicType::Bool)
                 } else {
                     None

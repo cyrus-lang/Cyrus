@@ -1,14 +1,11 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use tast::{
-    ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
-    TypedTypeArg,
-    types::{
-        SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
-        TypedTupleType,
-    },
+    ScopeID, SymbolID, stmts::{TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg}, types::{
+        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType, TypedTupleType
+    }
 };
 
 impl<'a> AnalysisContext<'a> {

@@ -1,5 +1,5 @@
 mod const_fold;
-pub mod context;
+pub mod analyze;
 mod diagnostics;
 mod flowstate;
 mod formatter;
