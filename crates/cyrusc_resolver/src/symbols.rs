@@ -3,7 +3,8 @@ use ast::{AccessSpecifier, source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use tast::{
-    ModuleID, ScopeID, SymbolID, TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt,
+    ModuleID, ScopeID, SymbolID,
+    stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
 };
 
 // Symbol Table (Per Module)

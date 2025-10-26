@@ -9,13 +9,9 @@ use crate::{
 use ast::LiteralKind;
 use resolver::typed_func_params_as_func_type_params;
 use tast::{
-    TypedAddrOfExpr, TypedArrayExpr, TypedArrayIndexExpr, TypedAssignExpr, TypedBlockStmt, TypedBreakStmt,
-    TypedCastExpr, TypedContinueStmt, TypedDerefExpr, TypedEnumStmt, TypedEnumVariant, TypedExportTupleStmt,
-    TypedExprKind, TypedExprStmt, TypedFieldAccess, TypedForStmt, TypedFuncCall, TypedFuncDeclStmt, TypedFuncDefStmt,
-    TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedGlobalVarStmt, TypedIfStmt, TypedInfixExpr, TypedLambdaExpr,
-    TypedLiteralExpr, TypedMethodCall, TypedPrefixExpr, TypedProgramTree, TypedReturnStmt, TypedSizeOfExpr, TypedStmt,
-    TypedStructStmt, TypedTupleAccessExpr, TypedTupleExpr, TypedUStructValue, TypedUnaryExpr, TypedUnionStmt,
-    TypedVarStmt, TypedWhileStmt,
+    TypedProgramTree,
+    exprs::*,
+    stmts::*,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 

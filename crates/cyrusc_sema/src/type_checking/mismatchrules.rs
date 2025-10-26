@@ -1,4 +1,4 @@
-use crate::context::AnalysisContext;
+use crate::analyze::AnalysisContext;
 use ast::source_loc::SourceLoc;
 use tast::{
     ScopeID,

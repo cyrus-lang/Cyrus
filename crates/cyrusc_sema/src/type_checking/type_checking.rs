@@ -1,5 +1,5 @@
 use crate::{
-    context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, generics::GenericMappingCtx,
+    analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, generics::GenericMappingCtx,
 };
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
@@ -13,11 +13,13 @@ use resolver::{
 };
 use std::collections::HashMap;
 use tast::{
+    exprs::*,
     format::{format_concrete_type, format_func_type, format_typed_expr},
-    types::{
-        BasicType, GenericType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType, TypedUnnamedStructTypeField,
+    stmts::{
+        TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
+        TypedGenericParamsList, TypedStructField,
     },
+    types::*,
     *,
 };
 
@@ -81,7 +83,7 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        self.apply_possible_expr_lowerings(scope_id_opt, typed_expr, expected_type.clone());
+        self.lower_special_exprs(scope_id_opt, typed_expr, expected_type.clone());
 
         let sema_ty = match &mut typed_expr.kind {
             TypedExprKind::Symbol(symbol_id, ..) => {

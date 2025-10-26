@@ -3,7 +3,6 @@ use ast::{
     AccessSpecifier, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use tast::{TypedExprStmt, types::BasicType};
 
 pub mod concrete_type;
 pub mod walk;

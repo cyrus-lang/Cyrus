@@ -1,10 +1,10 @@
-use crate::context::AnalysisContext;
+use crate::analyze::AnalysisContext;
 use ast::{
     LiteralKind,
     operators::{InfixOperator, PrefixOperator},
 };
 use resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef};
-use tast::{ScopeID, SymbolID, TypedExprStmt, TypedExprKind, TypedLiteralExpr};
+use tast::{ScopeID, SymbolID, exprs::{TypedExprKind, TypedExprStmt, TypedLiteralExpr}};
 
 impl<'a> AnalysisContext<'a> {
     fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i64> {

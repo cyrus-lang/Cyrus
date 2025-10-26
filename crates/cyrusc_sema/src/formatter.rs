@@ -1,4 +1,4 @@
-use crate::context::AnalysisContext;
+use crate::analyze::AnalysisContext;
 use resolver::{
     Resolver,
     symbols::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},

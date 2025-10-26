@@ -3,7 +3,7 @@ use fs_utils::{get_directory_of_file, read_file};
 use lexer::Lexer;
 use parser::Parser;
 use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
-use sema::{context::AnalysisContext, monomorph::MonomorphRegistry};
+use sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     env,
     process::exit,

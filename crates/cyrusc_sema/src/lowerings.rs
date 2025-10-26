@@ -1,16 +1,18 @@
-use crate::context::AnalysisContext;
+use crate::analyze::AnalysisContext;
 use ast::{
     AssignmentKind, LiteralKind,
     operators::{InfixOperator, PrefixOperator},
 };
 use tast::{
-    ScopeID, TypedAssignExpr, TypedExprStmt, TypedExprKind, TypedInfixExpr, TypedLiteralExpr,
-    TypedPrefixExpr, ValueCategory,
+    ScopeID,
+    exprs::{
+        TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, ValueCategory,
+    },
     types::{BasicType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn apply_possible_expr_lowerings(
+    pub(crate) fn lower_special_exprs(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
