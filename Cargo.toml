@@ -13,7 +13,7 @@ members = [
     "crates/cyrusc_cir",
     "crates/cyrusc_fs_utils",
     "crates/cyrusc_strescape",
-    "crates/cyrusc_tui_utils",
+    "crates/cyrusc_tui_utils", "crates/cyrusc_compiler",
 ]
 default-members = ["crates/cyrusc_cli"]
 
