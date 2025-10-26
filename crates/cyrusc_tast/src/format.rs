@@ -1,18 +1,15 @@
-use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
-
 use crate::{
-    SymbolID, TypedExprStmt, TypedExprKind, TypedFuncParamKind, TypedFuncTypeVariadicParams,
-    TypedFuncVariadicParams, TypedLambdaExpr, TypedTypeArg,
+    SymbolID,
+    exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr},
+    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg},
     types::{
-        BasicType, SemanticType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedFuncType, TypedUStructType,
+        BasicType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
+        TypedUStructType,
     },
 };
+use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
 
-pub fn format_typed_exprs<'a>(
-    exprs: &Vec<TypedExprStmt>,
-    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
-) -> String {
+pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     exprs
         .iter()
         .map(|expr| format_typed_expr(expr, format_symbol))
@@ -20,10 +17,7 @@ pub fn format_typed_exprs<'a>(
         .join(", ")
 }
 
-pub fn format_typed_expr<'a>(
-    typed_expr: &TypedExprStmt,
-    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
-) -> String {
+pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match &typed_expr.kind {
         TypedExprKind::Symbol(symbol_id, ..) => format_symbol(*symbol_id),
         TypedExprKind::Literal(typed_literal) => match &typed_literal.kind {
@@ -280,10 +274,7 @@ pub fn format_unnamed_struct_type<'a>(
     fmt
 }
 
-pub fn format_concrete_type<'a>(
-    sema_ty: SemanticType,
-    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
-) -> String {
+pub fn format_concrete_type<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match sema_ty {
         SemanticType::UnresolvedSymbol(..) => unreachable!(),
         SemanticType::GenericParam(identifier) => identifier.name.clone(),
@@ -368,9 +359,7 @@ pub fn format_concrete_type<'a>(
                 .type_args
                 .iter()
                 .map(|type_arg| match type_arg {
-                    TypedTypeArg::Positional(sema_ty) => {
-                        format_concrete_type(sema_ty.clone(), format_symbol)
-                    }
+                    TypedTypeArg::Positional(sema_ty) => format_concrete_type(sema_ty.clone(), format_symbol),
                     TypedTypeArg::Named { value, .. } => format_concrete_type(value.clone(), format_symbol),
                 })
                 .collect::<Vec<String>>()

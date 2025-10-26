@@ -1,4 +1,6 @@
-use crate::{ModuleID, SourceLoc, SymbolID, TypedExprStmt, TypedFuncTypeParams, TypedIdentifier, TypedTypeArgs};
+use crate::exprs::{TypedExprStmt, TypedIdentifier};
+use crate::stmts::{TypedFuncTypeParams, TypedTypeArgs};
+use crate::{ModuleID, SourceLoc, SymbolID};
 use ast::{AccessSpecifier, token::TokenKind};
 use std::hash::{Hash, Hasher};
 
@@ -192,9 +194,7 @@ impl SemanticType {
         if lvalue {
             match self {
                 SemanticType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
-                SemanticType::Pointer(sema_ty) => {
-                    sema_ty.get_pointer_inner().unwrap_or(*sema_ty.clone())
-                }
+                SemanticType::Pointer(sema_ty) => sema_ty.get_pointer_inner().unwrap_or(*sema_ty.clone()),
                 _ => self.clone(),
             }
         } else {
@@ -312,10 +312,7 @@ impl BasicType {
     pub fn is_float(&self) -> bool {
         matches!(
             self,
-            BasicType::Float16
-                | BasicType::Float32
-                | BasicType::Float64
-                | BasicType::Float128
+            BasicType::Float16 | BasicType::Float32 | BasicType::Float64 | BasicType::Float128
         )
     }
 
