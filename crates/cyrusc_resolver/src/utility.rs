@@ -6,7 +6,7 @@ use crate::{
         SymbolEntry,
     },
 };
-use tast::{ModuleID, ScopeID, SymbolID};
+use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 
 impl Resolver {
     /// Safely gets a reference to a local scope. Returns `None` if the

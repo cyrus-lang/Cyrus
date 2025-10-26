@@ -1,8 +1,8 @@
 [package]
-name = "tast"
+name = "cyrusc_tast"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ast = { path = "../cyrusc_ast", version = "*" }
-diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }

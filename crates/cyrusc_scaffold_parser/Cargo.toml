@@ -1,5 +1,5 @@
 [package]
-name = "scaffold_parser"
+name = "cyrusc_scaffold_parser"
 version = "0.1.0"
 edition = "2024"
 

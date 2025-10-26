@@ -1,9 +1,9 @@
-use ast::token::TokenKind;
+use cyrusc_ast::token::TokenKind;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
     Lowest,
-    Assignment,  // =
+    Assignment, // =
     Sizeof,
     Or,          // ||
     And,         // &&
@@ -13,7 +13,6 @@ pub enum Precedence {
     Product,     // *, /, %
     Bitwise,     // &, |, ~, &~, ^, <<, >>
     Prefix,      // -X, !X, &X
-    Cast,        // Type conversion
     Call,        // my_function(x)
     Index,       // array[index]
     Field,       // . and ->

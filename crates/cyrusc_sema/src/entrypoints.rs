@@ -1,6 +1,6 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::source_loc::SourceLoc;
-use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
 use std::sync::{Arc, Mutex};
 
 impl<'a> AnalysisContext<'a> {

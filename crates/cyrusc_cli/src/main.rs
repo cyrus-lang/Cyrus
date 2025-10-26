@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use codegen_llvm::options::{BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions};
 use commands::*;
-use diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::display_single_custom_diag;
 use scaffold::PROJECT_FILE_PATH;
 use serde::Deserialize;
 

@@ -1,9 +1,9 @@
 use crate::analyze::AnalysisContext;
-use ast::{
+use cyrusc_ast::{
     AssignmentKind, LiteralKind,
     operators::{InfixOperator, PrefixOperator},
 };
-use tast::{
+use cyrusc_tast::{
     ScopeID,
     exprs::{
         TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, ValueCategory,

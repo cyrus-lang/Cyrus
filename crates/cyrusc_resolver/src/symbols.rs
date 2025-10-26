@@ -1,8 +1,8 @@
 use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
-use ast::{AccessSpecifier, source_loc::SourceLoc};
+use cyrusc_ast::{AccessSpecifier, source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use tast::{
+use cyrusc_tast::{
     ModuleID, ScopeID, SymbolID,
     stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
 };

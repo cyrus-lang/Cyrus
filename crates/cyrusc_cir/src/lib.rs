@@ -1,13 +1,13 @@
-use crate::concrete_type::{CIRStructTy, CIRTy};
-use ast::{
+use crate::types::{CIRStructTy, CIRTy};
+use cyrusc_ast::{
     AccessSpecifier, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 
-pub mod concrete_type;
+pub mod types;
 pub mod walk;
 
-pub type IRValueId = u32;
+pub type IRValueID = u32;
 
 #[derive(Debug)]
 pub struct CIRModule {
@@ -67,13 +67,13 @@ pub enum CIRExprKind {
     StructInit(CIRStructInitExpr),
     StructFieldAccess(CIRStructFieldAccessExpr),
     UnionFieldAccess(CIRUnionFieldAccessExpr),
-    FuncCall(CIRFuncCall)
+    FuncCall(CIRFuncCall),
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRFuncCall {
     pub operand: Box<CIRExpr>,
-    pub args: Vec<CIRExpr>
+    pub args: Vec<CIRExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -177,7 +177,7 @@ pub enum CIRLiteral {
 
 #[derive(Debug, Clone)]
 pub struct CIRValueRef {
-    pub irv_id: IRValueId,
+    pub irv_id: IRValueID,
 }
 
 #[derive(Debug, Clone)]

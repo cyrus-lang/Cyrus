@@ -5,9 +5,9 @@ use crate::{
     monomorph::MonomorphRegistry,
     type_cache::TypeResolverCaches,
 };
-use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
-use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
-use resolver::{
+use cyrusc_ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
+use cyrusc_resolver::{
     Resolver,
     sigs::{EnumSig, FuncSig},
     symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
@@ -20,7 +20,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use tast::{
+use cyrusc_tast::{
     exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
     format::format_concrete_type,
     stmts::*,

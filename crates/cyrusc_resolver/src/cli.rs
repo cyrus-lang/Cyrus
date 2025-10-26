@@ -1,7 +1,7 @@
-use fs_utils::{get_directory_of_file, read_file};
-use lexer::Lexer;
-use parser::Parser;
-use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
+use cyrusc_fs_utils::{get_directory_of_file, read_file};
+use cyrusc_lexer::Lexer;
+use cyrusc_parser::Parser;
+use cyrusc_resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
 use std::{env, process::exit, vec};
 
 pub fn main() {

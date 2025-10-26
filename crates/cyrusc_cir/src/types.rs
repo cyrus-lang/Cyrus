@@ -1,5 +1,5 @@
 use crate::CIRExpr;
-use tast::types::BasicType;
+use cyrusc_tast::types::BasicType;
 
 #[derive(Debug, Clone)]
 pub enum CIRTy {

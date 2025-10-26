@@ -1,39 +1,6 @@
-use std::fmt;
+use crate::diagnostics::UnescapeError;
 
-#[derive(Debug, PartialEq)]
-pub enum UnescapeError {
-    IncompleteHexEscape,
-    InvalidHexEscape(String),
-    InvalidOctalEscape(String),
-    TrailingBackslash,
-    InvalidUnicodeEscape(String),
-    IncompleteUnicodeEscape(String),
-    InvalidUnicodeCodePoint(u32),
-}
-
-impl fmt::Display for UnescapeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::IncompleteHexEscape => {
-                write!(f, "Incomplete hex escape: \\x was not followed by two hex digits.")
-            }
-            Self::InvalidHexEscape(hex) => write!(f, "Invalid hex escape sequence: '\\x{}'.", hex),
-            Self::InvalidOctalEscape(oct) => write!(f, "Invalid octal escape sequence: '\\{}'.", oct),
-            Self::TrailingBackslash => write!(f, "Unexpected end of input after a backslash."),
-            Self::InvalidUnicodeEscape(hex) => {
-                write!(f, "Invalid Unicode escape sequence: '\\u{}';", hex)
-            }
-            Self::IncompleteUnicodeEscape(hex) => {
-                write!(f, "Incomplete Unicode escape sequence: '\\u{}'.", hex)
-            }
-            Self::InvalidUnicodeCodePoint(code) => {
-                write!(f, "Invalid Unicode code point: 'U+{:X}'.", code)
-            }
-        }
-    }
-}
-
-impl std::error::Error for UnescapeError {}
+mod diagnostics;
 
 pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
     let mut result = String::new();

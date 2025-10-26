@@ -71,10 +71,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
-name = "ast"
-version = "0.1.0"
-
-[[package]]
 name = "bitflags"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -91,18 +87,6 @@ dependencies = [
  "cc",
  "cfg-if",
  "constant_time_eq",
-]
-
-[[package]]
-name = "buildmanifest"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "diagcentral",
- "scaffold",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -126,20 +110,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "cir"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "fs_utils",
- "lexer",
- "parser",
- "resolver",
- "sema",
- "tast",
-]
 
 [[package]]
 name = "clap"
@@ -185,32 +155,18 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 name = "cli"
 version = "0.0.3"
 dependencies = [
- "ast",
  "clap",
- "codegen_llvm",
  "colorized",
- "diagcentral",
- "fs_utils",
- "lexer",
- "parser",
- "resolver",
- "scaffold",
- "sema",
- "serde",
- "serde_json",
- "tast",
- "toml",
-]
-
-[[package]]
-name = "codegen_llvm"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "diagcentral",
- "inkwell",
- "resolver",
- "sema",
+ "cyrusc_ast",
+ "cyrusc_codegen_llvm",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_lexer",
+ "cyrusc_parser",
+ "cyrusc_resolver",
+ "cyrusc_scaffold",
+ "cyrusc_sema",
+ "cyrusc_tast",
  "serde",
  "serde_json",
  "toml",
@@ -248,23 +204,166 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 
 [[package]]
+name = "cyrusc_ast"
+version = "0.1.0"
+
+[[package]]
+name = "cyrusc_buildmanifest"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cyrusc_diagcentral",
+ "cyrusc_scaffold",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "cyrusc_cir"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_lexer",
+ "cyrusc_parser",
+ "cyrusc_resolver",
+ "cyrusc_sema",
+ "cyrusc_tast",
+]
+
+[[package]]
+name = "cyrusc_codegen_llvm"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cyrusc_diagcentral",
+ "cyrusc_resolver",
+ "cyrusc_sema",
+ "inkwell",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "cyrusc_compiler"
 version = "0.1.0"
 dependencies = [
- "buildmanifest",
+ "cyrusc_buildmanifest",
+ "cyrusc_scaffold_parser",
  "inkwell",
- "scaffold_parser",
  "serde",
 ]
 
 [[package]]
-name = "diagcentral"
+name = "cyrusc_diagcentral"
 version = "0.1.0"
 dependencies = [
- "ast",
  "colorized",
  "console",
- "strescape",
+ "cyrusc_ast",
+ "cyrusc_strescape",
+]
+
+[[package]]
+name = "cyrusc_fs_utils"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_tui_utils",
+]
+
+[[package]]
+name = "cyrusc_lexer"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_strescape",
+ "thiserror 2.0.17",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "cyrusc_parser"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_lexer",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "cyrusc_resolver"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_lexer",
+ "cyrusc_parser",
+ "cyrusc_tast",
+ "rand",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "cyrusc_scaffold"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_diagcentral",
+]
+
+[[package]]
+name = "cyrusc_scaffold_parser"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.17",
+ "toml",
+]
+
+[[package]]
+name = "cyrusc_sema"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_lexer",
+ "cyrusc_parser",
+ "cyrusc_resolver",
+ "cyrusc_tast",
+ "fx-hash",
+ "smallvec",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "cyrusc_strescape"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "cyrusc_tast"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+]
+
+[[package]]
+name = "cyrusc_tui_utils"
+version = "0.1.0"
+dependencies = [
+ "colorized",
+ "console",
 ]
 
 [[package]]
@@ -290,13 +389,6 @@ name = "find-msvc-tools"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
-
-[[package]]
-name = "fs_utils"
-version = "0.1.0"
-dependencies = [
- "tui_utils",
-]
 
 [[package]]
 name = "fx-hash"
@@ -392,17 +484,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "lexer"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "fs_utils",
- "strescape",
- "unicode-segmentation",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -439,16 +520,6 @@ name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
-
-[[package]]
-name = "parser"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "fs_utils",
- "lexer",
-]
 
 [[package]]
 name = "ppv-lite86"
@@ -520,19 +591,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d942b98df5e658f56f20d592c7f868833fe38115e65c33003d8cd224b0155da"
 
 [[package]]
-name = "resolver"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "fs_utils",
- "lexer",
- "parser",
- "rand",
- "tast",
-]
-
-[[package]]
 name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -543,37 +601,6 @@ name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
-
-[[package]]
-name = "scaffold"
-version = "0.1.0"
-dependencies = [
- "diagcentral",
-]
-
-[[package]]
-name = "scaffold_parser"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror 2.0.17",
- "toml",
-]
-
-[[package]]
-name = "sema"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
- "fs_utils",
- "fx-hash",
- "lexer",
- "parser",
- "resolver",
- "smallvec",
- "tast",
-]
 
 [[package]]
 name = "semver"
@@ -645,10 +672,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
-name = "strescape"
-version = "0.1.0"
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -663,14 +686,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tast"
-version = "0.1.0"
-dependencies = [
- "ast",
- "diagcentral",
 ]
 
 [[package]]
@@ -745,14 +760,6 @@ dependencies = [
  "serde_spanned",
  "toml_datetime",
  "winnow",
-]
-
-[[package]]
-name = "tui_utils"
-version = "0.1.0"
-dependencies = [
- "colorized",
- "console",
 ]
 
 [[package]]

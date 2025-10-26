@@ -1,6 +1,6 @@
-use ast::{AccessSpecifier, source_loc::SourceLoc};
+use cyrusc_ast::{AccessSpecifier, source_loc::SourceLoc};
 use std::collections::HashMap;
-use tast::{
+use cyrusc_tast::{
     ModuleID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier},
     stmts::{

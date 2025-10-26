@@ -1,10 +1,12 @@
-use ast::source_loc::SourceLoc;
-use ast::token::*;
-use ast::{Literal, LiteralKind, StringPrefix};
-use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
-use diagnostics::{LexicalDiagKind, lexer_invalid_char_error};
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_ast::token::*;
+use cyrusc_ast::{Literal, LiteralKind, StringPrefix};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use cyrusc_strescape::escape_string;
+use diagnostics::lexer_invalid_char_error;
 use std::{fmt::Debug, process::exit};
-use strescape::escape_string;
+
+use crate::diagnostics::LexicalDiagKind;
 
 mod diagnostics;
 mod format;

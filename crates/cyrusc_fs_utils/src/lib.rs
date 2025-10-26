@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use tui_utils::tui_error;
+use cyrusc_tui_utils::tui_error;
 
 /// Reads a file from the given path and returns its contents along with the file name.
 ///

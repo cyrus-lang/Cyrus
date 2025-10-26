@@ -3,7 +3,7 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{self, Display};
 use std::fs;
-use strescape::{saturating_sub, spaces};
+use cyrusc_strescape::{saturating_sub, spaces};
 
 const PANEL_LENGTH: usize = 2;
 
@@ -96,7 +96,7 @@ impl<K: Display> DiagReporter<K> {
 #[macro_export]
 macro_rules! display_single_diag {
     ($diag:expr) => {
-        diagcentral::reporter::DiagReporter::display_single($diag);
+        cyrusc_diagcentral::reporter::DiagReporter::display_single($diag);
         std::process::exit(1);
     };
 }
@@ -118,9 +118,9 @@ impl fmt::Display for CustomDiagKind {
 #[macro_export]
 macro_rules! display_single_custom_diag {
     ($msg:expr) => {
-        diagcentral::reporter::DiagReporter::display_single(diagcentral::Diag {
-            level: diagcentral::DiagLevel::Error,
-            kind: diagcentral::reporter::CustomDiagKind::Custom($msg),
+        cyrusc_diagcentral::reporter::DiagReporter::display_single(cyrusc_diagcentral::Diag {
+            level: cyrusc_diagcentral::DiagLevel::Error,
+            kind: cyrusc_diagcentral::reporter::CustomDiagKind::Custom($msg),
             location: None,
             hint: None,
         });

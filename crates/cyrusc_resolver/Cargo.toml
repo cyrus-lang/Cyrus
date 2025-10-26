@@ -1,21 +1,22 @@
 [package]
-name = "resolver"
+name = "cyrusc_resolver"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
-tast = { path = "../cyrusc_tast", version = "*" }
-parser = { path = "../cyrusc_parser", version = "*" }
-lexer = { path = "../cyrusc_lexer", version = "*" }
-ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
+cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+thiserror = "2.0.17"
 rand = "0.9.0"
 
 [lib]
-name = "resolver"
+name = "cyrusc_resolver"
 path = "./src/lib.rs"
 
 [[bin]]
-name = "resolver"
+name = "cyrusc_resolver"
 path = "./src/cli.rs"

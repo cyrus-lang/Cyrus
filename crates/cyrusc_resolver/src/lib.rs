@@ -5,21 +5,21 @@ use crate::{
     diagnostics::ResolverDiagKind,
     sigs::{FuncSig, TypedefSig},
 };
-use ast::format::module_segments_as_string;
-use ast::source_loc::SourceLoc;
-use ast::token::{Location, Span, Token, TokenKind};
-use ast::*;
-use diagcentral::{reporter::DiagReporter, *};
+use cyrusc_ast::format::module_segments_as_string;
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_ast::token::{Location, Span, Token, TokenKind};
+use cyrusc_ast::*;
+use cyrusc_diagcentral::{reporter::DiagReporter, *};
+use cyrusc_tast::exprs::*;
+use cyrusc_tast::stmts::*;
+use cyrusc_tast::types::*;
+use cyrusc_tast::*;
 use rand::Rng;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use tast::exprs::*;
-use tast::stmts::*;
-use tast::types::*;
-use tast::*;
 
 mod diagnostics;
 pub mod modulefsloader;

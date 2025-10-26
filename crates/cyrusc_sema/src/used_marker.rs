@@ -1,6 +1,6 @@
 use crate::analyze::AnalysisContext;
-use resolver::symbols::LocalScopeRef;
-use tast::{ModuleID, SymbolID};
+use cyrusc_resolver::symbols::LocalScopeRef;
+use cyrusc_tast::{ModuleID, SymbolID};
 
 // FIXME Symbol marking not finished yet.
 impl<'a> AnalysisContext<'a> {

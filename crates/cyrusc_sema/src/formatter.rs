@@ -1,9 +1,9 @@
 use crate::analyze::AnalysisContext;
-use resolver::{
+use cyrusc_resolver::{
     Resolver,
     symbols::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},
 };
-use tast::{ModuleID, ScopeID, SymbolID};
+use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 
 type SymbolFormatterFn<'a> = Box<dyn Fn(SymbolID) -> String + 'a>;
 

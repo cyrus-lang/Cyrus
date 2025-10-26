@@ -1,9 +1,9 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
-use ast::source_loc::SourceLoc;
-use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::sigs::{EnumSig, StructSig, UnionSig};
+use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_resolver::sigs::{EnumSig, StructSig, UnionSig};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use tast::{
+use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier},
     format::format_concrete_type,

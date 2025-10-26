@@ -1,4 +1,4 @@
-use ast::source_loc::SourceLoc;
+use cyrusc_ast::source_loc::SourceLoc;
 
 pub mod reporter;
 mod tests;
