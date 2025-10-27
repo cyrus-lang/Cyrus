@@ -252,6 +252,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
+ "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_sema",
@@ -322,6 +323,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_modulefsloader"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_lexer",
+ "cyrusc_parser",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "cyrusc_parser"
 version = "0.1.0"
 dependencies = [
@@ -340,6 +353,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
+ "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_tast",
  "rand",
@@ -370,6 +384,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
+ "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_tast",

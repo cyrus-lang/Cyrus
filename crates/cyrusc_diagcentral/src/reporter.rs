@@ -1,23 +1,22 @@
 use crate::{Diag, DiagLevel};
 use colorized::{Color, Colors};
 use console::user_attended;
-use std::fmt::{self, Display};
-use std::fs;
 use cyrusc_strescape::{saturating_sub, spaces};
+use std::fmt::{self};
+use std::fs;
 
 const PANEL_LENGTH: usize = 2;
 
-#[derive(Debug, Clone)]
-pub struct DiagReporter<K> {
-    pub diags: Vec<Diag<K>>,
+pub struct DiagReporter {
+    pub diags: Vec<Diag>,
 }
 
-impl<K> DiagReporter<K> {
+impl DiagReporter {
     pub fn new() -> Self {
         Self { diags: Vec::new() }
     }
 
-    pub fn report(&mut self, diag: Diag<K>) -> &mut Self {
+    pub fn report(&mut self, diag: Diag) -> &mut Self {
         self.diags.push(diag);
         self
     }
@@ -27,7 +26,7 @@ impl<K> DiagReporter<K> {
     }
 }
 
-impl<K: Display> DiagReporter<K> {
+impl DiagReporter {
     pub fn display(&self) {
         for diag in self.diags.iter().rev() {
             match diag.level {
@@ -37,13 +36,13 @@ impl<K: Display> DiagReporter<K> {
         }
     }
 
-    pub fn display_single(diag: Diag<K>) {
+    pub fn display_single(diag: Diag) {
         let mut reporter = Self::new();
         reporter.report(diag);
         reporter.display();
     }
 
-    pub fn format_panel(diag: &Diag<K>) -> String {
+    pub fn format_panel(diag: &Diag) -> String {
         let mut formatted = String::new();
 
         macro_rules! get_highlight_color {
@@ -101,6 +100,7 @@ macro_rules! display_single_diag {
     };
 }
 
+#[derive(Clone)]
 pub enum CustomDiagKind {
     Custom(String),
 }
@@ -120,7 +120,7 @@ macro_rules! display_single_custom_diag {
     ($msg:expr) => {
         cyrusc_diagcentral::reporter::DiagReporter::display_single(cyrusc_diagcentral::Diag {
             level: cyrusc_diagcentral::DiagLevel::Error,
-            kind: cyrusc_diagcentral::reporter::CustomDiagKind::Custom($msg),
+            kind: Box::new(cyrusc_diagcentral::reporter::CustomDiagKind::Custom($msg)),
             location: None,
             hint: None,
         });

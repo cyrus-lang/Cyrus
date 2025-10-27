@@ -17,8 +17,6 @@ mod exprs;
 mod prec;
 mod stmts;
 
-pub type ParserError = Diag<ParserDiagKind>;
-
 /// Parses the program from the given file path.
 ///
 /// # Parameters
@@ -50,7 +48,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     cur_token_idx: usize,
     file_name: String,
-    errors: Vec<ParserError>,
+    errors: Vec<Diag>,
 }
 
 impl Parser {
@@ -63,7 +61,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<ProgramTree, Vec<ParserError>> {
+    pub fn parse(&mut self) -> Result<ProgramTree, Vec<Diag>> {
         self.parse_program()
     }
 
@@ -71,7 +69,7 @@ impl Parser {
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParserError>> {
+    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<Diag>> {
         let mut body: Vec<Statement> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
@@ -86,7 +84,7 @@ impl Parser {
         self.finalize_program_parse(program)
     }
 
-    pub fn display_parser_errors(&mut self, errors: Vec<ParserError>) {
+    pub fn display_parser_errors(&mut self, errors: Vec<Diag>) {
         let len = errors.len();
         if len > 0 {
             let diag = errors.first().unwrap().clone();
@@ -95,7 +93,7 @@ impl Parser {
     }
 
     /// Finalizes the program parse by checking for errors.
-    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParserError>> {
+    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<Diag>> {
         if self.errors.is_empty() {
             Ok(program)
         } else {
@@ -108,7 +106,7 @@ impl Parser {
             Some(token) => token,
             None => {
                 display_single_diag!(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
+                    kind: Box::new(ParserDiagKind::InvalidToken(self.peek_token().kind)),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         self.current_token().loc.clone(),
@@ -179,14 +177,14 @@ impl Parser {
     /// This function peeks at the next token without advancing the lexer. If the token matches
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
-    fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
+    fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), Diag> {
         if self.peek_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
         Err(Diag {
-            kind: ParserDiagKind::ExpectedToken(token_kind),
+            kind: Box::new(ParserDiagKind::ExpectedToken(token_kind)),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(SourceLoc::from_loc(
                 self.current_token().loc,
@@ -198,14 +196,14 @@ impl Parser {
 
     /// This function checks the current token and consumes it if it matches the expected kind.
     /// If the current token does not match, it returns an error indicating the mismatch.
-    fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
+    fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), Diag> {
         if self.current_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
         Err(Diag {
-            kind: ParserDiagKind::UnexpectedToken(self.current_token().kind, token_kind),
+            kind: Box::new(ParserDiagKind::UnexpectedToken(self.current_token().kind, token_kind)),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(SourceLoc::from_loc(
                 self.current_token().loc,

@@ -1,18 +1,17 @@
+use crate::Diag;
 use crate::Parser;
-use crate::ParserError;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::*;
 use cyrusc_ast::*;
-use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
 
 const SWITCH_ENDING_TOKENS: &[TokenKind; 3] = &[TokenKind::Case, TokenKind::Default, TokenKind::RightBrace];
 
 impl Parser {
-    pub(crate) fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, ParserError> {
+    pub(crate) fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, Diag> {
         if self.current_token_is(TokenKind::Extern)
             || self.current_token_is(TokenKind::Inline)
             || self.current_token_is(TokenKind::Public)
@@ -77,7 +76,7 @@ impl Parser {
                 TokenKind::Import => self.parse_import(),
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc,
@@ -90,13 +89,13 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_block_statement(&mut self) -> Result<BlockStatement, ParserError> {
+    pub(crate) fn parse_block_statement(&mut self) -> Result<BlockStatement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
         if self.peek_token_is(TokenKind::EOF) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingClosingBrace,
+                kind: Box::new(ParserDiagKind::MissingClosingBrace),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc,
@@ -144,7 +143,7 @@ impl Parser {
         })
     }
 
-    pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, ParserError> {
+    pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -161,7 +160,7 @@ impl Parser {
 
                     if self.current_token_is(TokenKind::Comma) {
                         return Err(Diag {
-                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                            kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 self.current_token().loc,
@@ -181,7 +180,7 @@ impl Parser {
 
                     if &identifier.name != "self" {
                         return Err(Diag {
-                            kind: ParserDiagKind::ExpectedSelfModifier(identifier.name.clone()),
+                            kind: Box::new(ParserDiagKind::ExpectedSelfModifier(identifier.name.clone())),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                             hint: None,
@@ -246,7 +245,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::ExpectedIdentifier,
+                        kind: Box::new(ParserDiagKind::ExpectedIdentifier),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: None,
@@ -264,7 +263,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::MissingComma,
+                        kind: Box::new(ParserDiagKind::MissingComma),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: None,
@@ -275,7 +274,7 @@ impl Parser {
 
         if self_modifier_count > 1 {
             return Err(Diag {
-                kind: ParserDiagKind::SeveralSelfModifierDefinition,
+                kind: Box::new(ParserDiagKind::SeveralSelfModifierDefinition),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -287,13 +286,13 @@ impl Parser {
         Ok(FuncParams { list, variadic })
     }
 
-    fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
+    fn parse_expression_statement(&mut self) -> Result<Statement, Diag> {
         let expr = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         Ok(Statement::Expression(expr))
     }
 
-    fn parse_enum_field(&mut self) -> Result<EnumVariant, ParserError> {
+    fn parse_enum_field(&mut self) -> Result<EnumVariant, Diag> {
         let loc = self.current_token().loc.clone();
 
         let variant_name = self.parse_identifier()?;
@@ -314,7 +313,7 @@ impl Parser {
             loop {
                 if self.current_token_is(TokenKind::RightParen) {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: Some(String::from(
@@ -346,7 +345,7 @@ impl Parser {
         }
     }
 
-    fn parse_union_field(&mut self) -> Result<UnionField, ParserError> {
+    fn parse_union_field(&mut self) -> Result<UnionField, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -372,7 +371,7 @@ impl Parser {
         Ok(field)
     }
 
-    fn parse_union(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+    fn parse_union(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -412,7 +411,7 @@ impl Parser {
                 }
                 TokenKind::EOF => {
                     return Err(Diag {
-                        kind: ParserDiagKind::MissingClosingBrace,
+                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc,
@@ -445,7 +444,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc,
@@ -468,7 +467,7 @@ impl Parser {
         }))
     }
 
-    fn parse_enum(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+    fn parse_enum(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, Diag> {
         let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
@@ -564,7 +563,7 @@ impl Parser {
         }))
     }
 
-    fn parse_struct(&mut self, vis: Option<AccessSpecifier>, packed: bool) -> Result<Statement, ParserError> {
+    fn parse_struct(&mut self, vis: Option<AccessSpecifier>, packed: bool) -> Result<Statement, Diag> {
         let loc = self.current_token().loc.clone();
         let struct_start = self.current_token().span.start.clone();
 
@@ -594,7 +593,7 @@ impl Parser {
                     }
                     TokenKind::EOF => {
                         return Err(Diag {
-                            kind: ParserDiagKind::MissingOpeningBrace,
+                            kind: Box::new(ParserDiagKind::MissingOpeningBrace),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                             hint: None,
@@ -614,7 +613,7 @@ impl Parser {
                     }
                     _ => {
                         return Err(Diag {
-                            kind: ParserDiagKind::ExpectedIdentifier,
+                            kind: Box::new(ParserDiagKind::ExpectedIdentifier),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                             hint: None,
@@ -636,7 +635,7 @@ impl Parser {
                 }
                 TokenKind::EOF => {
                     return Err(Diag {
-                        kind: ParserDiagKind::MissingClosingBrace,
+                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc,
@@ -674,7 +673,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc,
@@ -702,7 +701,7 @@ impl Parser {
         }))
     }
 
-    fn parse_struct_field(&mut self, vis: Option<AccessSpecifier>) -> Result<StructField, ParserError> {
+    fn parse_struct_field(&mut self, vis: Option<AccessSpecifier>) -> Result<StructField, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -729,14 +728,14 @@ impl Parser {
         Ok(field)
     }
 
-    fn parse_break(&mut self) -> Result<Statement, ParserError> {
+    fn parse_break(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingSemicolon,
+                kind: Box::new(ParserDiagKind::MissingSemicolon),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -749,14 +748,14 @@ impl Parser {
         }
     }
 
-    fn parse_continue(&mut self) -> Result<Statement, ParserError> {
+    fn parse_continue(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingSemicolon,
+                kind: Box::new(ParserDiagKind::MissingSemicolon),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -769,7 +768,7 @@ impl Parser {
         }
     }
 
-    fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, ParserError> {
+    fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, Diag> {
         if self.current_token_is(TokenKind::LeftBrace) {
             self.next_token();
 
@@ -807,7 +806,7 @@ impl Parser {
         }
     }
 
-    fn parse_interface(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+    fn parse_interface(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
         let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
@@ -837,7 +836,7 @@ impl Parser {
                         _ => {
                             return Err(Diag {
                                 level: DiagLevel::Error,
-                                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                                     self.current_token().loc,
                                     self.file_name.clone(),
@@ -870,7 +869,7 @@ impl Parser {
         }))
     }
 
-    fn parse_import(&mut self) -> Result<Statement, ParserError> {
+    fn parse_import(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -901,7 +900,7 @@ impl Parser {
                     }
                     _ => {
                         return Err(Diag {
-                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                            kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 self.current_token().loc,
@@ -930,7 +929,7 @@ impl Parser {
         }));
     }
 
-    fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParserError> {
+    fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, Diag> {
         let loc = self.current_token().loc.clone();
 
         let body: Box<BlockStatement>;
@@ -942,7 +941,7 @@ impl Parser {
             }
         } else {
             return Err(Diag {
-                kind: ParserDiagKind::MissingOpeningBrace,
+                kind: Box::new(ParserDiagKind::MissingOpeningBrace),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -951,7 +950,7 @@ impl Parser {
         Ok(body)
     }
 
-    fn parse_foreach(&mut self) -> Result<Statement, ParserError> {
+    fn parse_foreach(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.end;
         let loc = self.current_token().loc.clone();
 
@@ -988,7 +987,7 @@ impl Parser {
         }))
     }
 
-    fn parse_while_loop(&mut self) -> Result<Statement, ParserError> {
+    fn parse_while_loop(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1008,7 +1007,7 @@ impl Parser {
         }))
     }
 
-    fn parse_for_loop(&mut self) -> Result<Statement, ParserError> {
+    fn parse_for_loop(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1025,7 +1024,7 @@ impl Parser {
                 }
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::MissingOpeningBrace,
+                    kind: Box::new(ParserDiagKind::MissingOpeningBrace),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                     hint: None,
@@ -1099,7 +1098,7 @@ impl Parser {
         }))
     }
 
-    fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<Statement, ParserError> {
+    fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1107,7 +1106,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::RightParen) {
             return Err(Diag {
-                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
@@ -1140,7 +1139,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Err(Diag {
-                kind: ParserDiagKind::IncompleteVariableDeclaration,
+                kind: Box::new(ParserDiagKind::IncompleteVariableDeclaration),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
@@ -1186,7 +1185,7 @@ impl Parser {
         }))
     }
 
-    fn parse_variable(&mut self) -> Result<Statement, ParserError> {
+    fn parse_variable(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1209,7 +1208,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Err(Diag {
-                kind: ParserDiagKind::IncompleteVariableDeclaration,
+                kind: Box::new(ParserDiagKind::IncompleteVariableDeclaration),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -1252,7 +1251,7 @@ impl Parser {
         }))
     }
 
-    fn parse_func(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+    fn parse_func(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1328,7 +1327,7 @@ impl Parser {
                 self.next_token();
             } else if self.peek_token_is(TokenKind::LeftBrace) {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
+                    kind: Box::new(ParserDiagKind::InvalidToken(self.peek_token().kind)),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                     hint: Some(String::from(
@@ -1365,7 +1364,7 @@ impl Parser {
         }));
     }
 
-    fn parse_return(&mut self) -> Result<Statement, ParserError> {
+    fn parse_return(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1384,7 +1383,7 @@ impl Parser {
 
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingSemicolon,
+                kind: Box::new(ParserDiagKind::MissingSemicolon),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -1400,7 +1399,7 @@ impl Parser {
         }))
     }
 
-    fn parse_global_variable(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+    fn parse_global_variable(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1445,7 +1444,7 @@ impl Parser {
         }))
     }
 
-    fn parse_typedef(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+    fn parse_typedef(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1474,7 +1473,7 @@ impl Parser {
         }))
     }
 
-    fn parse_case_body(&mut self) -> Result<BlockStatement, ParserError> {
+    fn parse_case_body(&mut self) -> Result<BlockStatement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1512,7 +1511,7 @@ impl Parser {
         })
     }
 
-    fn parse_switch(&mut self) -> Result<Statement, ParserError> {
+    fn parse_switch(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1532,7 +1531,7 @@ impl Parser {
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, ParserError> {
+                fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
                     let case_pattern = if this.current_token_is(TokenKind::Dot) {
                         this.next_token();
                         let identifier = this.parse_identifier()?;
@@ -1599,7 +1598,7 @@ impl Parser {
 
         if !self.current_token_is(TokenKind::RightBrace) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingClosingBrace,
+                kind: Box::new(ParserDiagKind::MissingClosingBrace),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -1615,7 +1614,7 @@ impl Parser {
         }))
     }
 
-    fn parse_if(&mut self) -> Result<Statement, ParserError> {
+    fn parse_if(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1672,7 +1671,7 @@ impl Parser {
 
                 if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                     return Err(Diag {
-                        kind: ParserDiagKind::MissingClosingBrace,
+                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: None,
@@ -1683,7 +1682,7 @@ impl Parser {
 
         if !self.current_token_is(TokenKind::RightBrace) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingClosingBrace,
+                kind: Box::new(ParserDiagKind::MissingClosingBrace),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                 hint: None,
@@ -1702,7 +1701,7 @@ impl Parser {
         }))
     }
 
-    fn parse_defer(&mut self) -> Result<Statement, ParserError> {
+    fn parse_defer(&mut self) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc;
 

@@ -22,7 +22,7 @@ fn create_common_files(output: String) -> Result<(), String> {
     if fs::exists(output.clone()).map_err(|err| err.to_string())? {
         display_single_diag!(Diag {
             level: DiagLevel::Error,
-            kind: ProjectLayoutDiagKind::DuplicateProjectName { name: output.clone() },
+            kind: Box::new(ProjectLayoutDiagKind::DuplicateProjectName { name: output.clone() }),
             location: None,
             hint: None
         });

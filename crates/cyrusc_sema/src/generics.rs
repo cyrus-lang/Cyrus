@@ -2,7 +2,6 @@ use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomo
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::sigs::{EnumSig, StructSig, UnionSig};
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier},
@@ -13,6 +12,7 @@ use cyrusc_tast::{
         TypedUnnamedStructTypeField,
     },
 };
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[macro_export]
 macro_rules! generic_mapping_ctx_scope {
@@ -59,7 +59,7 @@ impl<'a> AnalysisContext<'a> {
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)?;
 
-                // traverse in the target generic type, and link them to the external type_args
+                // Traverse in the target generic type, and link them to the external type_args
                 // for example:
                 //   struct Record<K, V> {
                 //     pub key: K;
@@ -274,10 +274,10 @@ impl<'a> AnalysisContext<'a> {
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::AssignmentTypeMismatch {
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
                         lhs_type: expected_type,
                         rhs_type: found_type,
-                    },
+                    }),
                     location: Some(DiagLoc::new(expr.loc.clone())),
                     hint: None,
                 });
@@ -328,7 +328,7 @@ impl<'a> AnalysisContext<'a> {
                 if type_args.len() > generic_params.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::UnexpectedTypeArgs,
+                        kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
                         location: Some(DiagLoc::new(loc.clone())),
                         hint: Some(format!(
                             "Too many positional type arguments (expected ≤ {}, found {}).",
@@ -341,7 +341,7 @@ impl<'a> AnalysisContext<'a> {
         } else if input_type_args_opt.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::UnexpectedTypeArgs,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
                 location: Some(DiagLoc::new(loc.clone())),
                 hint: Some("Remove the type arguments or add generic parameters to the type.".to_string()),
             });
@@ -405,7 +405,7 @@ impl<'a> AnalysisContext<'a> {
             let hint = format!("Provide explicit type arguments for {}", missing.join(", "));
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name },
+                kind: Box::new(AnalyzerDiagKind::ExplicitTypeArgsRequired { type_name }),
                 location: Some(DiagLoc::new(loc)),
                 hint: Some(hint),
             });

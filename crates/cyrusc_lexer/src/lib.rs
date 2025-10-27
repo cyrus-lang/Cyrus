@@ -444,7 +444,7 @@ impl Lexer {
             if self.ch.len_utf8() != 1 {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
-                    kind: LexicalDiagKind::CharLiteralMustBeASingleUnit,
+                    kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
                     location: Some(DiagLoc::new(SourceLoc {
                         line: self.line,
                         column: self.column,
@@ -459,7 +459,7 @@ impl Lexer {
             if self.is_eof() {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
-                    kind: LexicalDiagKind::UnterminatedStringLiteral,
+                    kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
                     location: Some(DiagLoc::new(SourceLoc {
                         line: self.line,
                         column: self.column,
@@ -490,7 +490,7 @@ impl Lexer {
         } else {
             display_single_diag!(Diag {
                 level: DiagLevel::Error,
-                kind: LexicalDiagKind::EmptyCharLiteral,
+                kind: Box::new(LexicalDiagKind::EmptyCharLiteral),
                 location: Some(DiagLoc::new(SourceLoc {
                     line: self.line,
                     column: self.column,
@@ -518,7 +518,7 @@ impl Lexer {
             if self.is_eof() {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
-                    kind: LexicalDiagKind::UnterminatedStringLiteral,
+                    kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
                     location: Some(DiagLoc::new(SourceLoc {
                         line: self.line,
                         column: self.column,
@@ -608,7 +608,7 @@ impl Lexer {
                 Err(_) => {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
-                        kind: LexicalDiagKind::InvalidIntegerLiteral,
+                        kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
                         location: Some(DiagLoc::new(SourceLoc {
                             line: self.line,
                             column: self.column,
@@ -670,7 +670,7 @@ impl Lexer {
                     Err(_) => {
                         display_single_diag!(Diag {
                             level: DiagLevel::Error,
-                            kind: LexicalDiagKind::InvalidFloatLiteral,
+                            kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
                             location: Some(DiagLoc::new(SourceLoc {
                                 line: self.line,
                                 column: self.column,
@@ -690,7 +690,7 @@ impl Lexer {
                     Err(_) => {
                         display_single_diag!(Diag {
                             level: DiagLevel::Error,
-                            kind: LexicalDiagKind::InvalidIntegerLiteral,
+                            kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
                             location: Some(DiagLoc::new(SourceLoc {
                                 line: self.line,
                                 column: self.column,
@@ -784,7 +784,7 @@ impl Lexer {
                 if depth > 0 {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
-                        kind: LexicalDiagKind::UnterminatedMultiLineComment,
+                        kind: Box::new(LexicalDiagKind::UnterminatedMultiLineComment),
                         location: Some(DiagLoc::new(SourceLoc {
                             line: self.line,
                             column: self.column,

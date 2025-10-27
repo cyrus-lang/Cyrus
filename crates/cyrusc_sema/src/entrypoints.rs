@@ -11,7 +11,7 @@ impl<'a> AnalysisContext<'a> {
         if entry_points.len() == 0 {
             display_single_diag!(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::MissingEntryPoint,
+                kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
                 location: None,
                 hint: None,
             });
@@ -20,7 +20,7 @@ impl<'a> AnalysisContext<'a> {
 
             display_single_diag!(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::MultipleEntryPoints,
+                kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
                 location: Some(DiagLoc::new(loc)),
                 hint: {
                     if let Some(another_decl_loc) = entry_points_clone.pop() {

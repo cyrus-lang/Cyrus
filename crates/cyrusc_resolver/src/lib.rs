@@ -1,4 +1,3 @@
-use crate::modulefsloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
 use crate::sigs::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::symbols::*;
 use crate::{
@@ -10,6 +9,7 @@ use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::{Location, Span, Token, TokenKind};
 use cyrusc_ast::*;
 use cyrusc_diagcentral::{reporter::DiagReporter, *};
+use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
 use cyrusc_tast::exprs::*;
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::types::*;
@@ -22,7 +22,6 @@ use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 mod diagnostics;
-pub mod modulefsloader;
 pub mod sigs;
 pub mod symbols;
 pub mod utility;
@@ -36,9 +35,9 @@ pub struct Resolver {
     // lists imported modules by current module by their alias
     pub module_aliases: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
-    pub program_trees: Arc<Mutex<Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
-    pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
-    pub reporter: DiagReporter<ResolverDiagKind>,
+    pub program_trees: Arc<Mutex<Vec<(String, String, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
+    pub file_paths: Arc<Mutex<HashMap<ModuleID, String>>>,
+    pub reporter: DiagReporter,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
     already_imported_modules: HashSet<ImportKey>,
@@ -54,8 +53,8 @@ struct ImportKey {
 
 // Used to check import cycles.
 pub struct Visiting {
-    pub active: HashSet<ModuleFilePath>, // stack of modules currently being resolved
-    pub done: HashSet<ModuleFilePath>,   // modules fully resolved
+    pub active: HashSet<String>, // stack of modules currently being resolved
+    pub done: HashSet<String>,   // modules fully resolved
 }
 
 macro_rules! is_unscoped_expr {
@@ -63,7 +62,7 @@ macro_rules! is_unscoped_expr {
         if $local_scope_opt.is_none() {
             $self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::RequiresLocalScope,
+                kind: Box::new(ResolverDiagKind::RequiresLocalScope),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     $loc,
                     $self.get_current_module_file_path(),
@@ -114,7 +113,7 @@ impl Resolver {
         ast: &ProgramTree,
         mut visiting: &mut Visiting,
         is_master: bool,
-        module_file_path: ModuleFilePath,
+        module_file_path: String,
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.current_module = Some(module_id);
         self.init_imported_modules_for_module();
@@ -183,12 +182,12 @@ impl Resolver {
         let loaded_modules_list = self.module_loader.load_module(&import);
 
         for loaded_module in loaded_modules_list {
-            let (module_alias, module_path, module_file_path, program_tree) = match loaded_module {
+            let loaded_module = match loaded_module {
                 Ok(m) => m,
                 Err(diag_kind) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: diag_kind,
+                        kind: Box::new(diag_kind),
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             import.loc.clone(),
                             current_module_file_path.clone(),
@@ -200,10 +199,10 @@ impl Resolver {
             };
 
             // check for self-import
-            if module_file_path == current_module_file_path {
+            if loaded_module.file_path == current_module_file_path {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ModuleCannotImportItself,
+                    kind: Box::new(ResolverDiagKind::ModuleCannotImportItself),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         import.loc.clone(),
                         current_module_file_path.clone(),
@@ -214,7 +213,7 @@ impl Resolver {
             }
 
             let module_id = self
-                .get_module_id_by_file_path(module_file_path.clone())
+                .get_module_id_by_file_path(loaded_module.file_path.clone())
                 .unwrap_or_else(generate_module_id);
 
             {
@@ -224,19 +223,19 @@ impl Resolver {
 
             // check duplicates using module file + alias
             let import_key = ImportKey {
-                module_file_path: module_file_path.clone(),
-                alias: module_alias.clone(),
+                module_file_path: loaded_module.file_path.clone(),
+                alias: loaded_module.alias.clone(),
             };
             let already_directly_imported = self.already_imported_modules.contains(&import_key);
             self.already_imported_modules.insert(import_key);
 
             // cycle detection
-            if visiting.active.contains(&module_file_path) {
+            if visiting.active.contains(&loaded_module.file_path) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportCycle {
+                    kind: Box::new(ResolverDiagKind::ImportCycle {
                         module_names: visiting.active.iter().cloned().collect(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         import.loc.clone(),
                         current_module_file_path.clone(),
@@ -246,11 +245,11 @@ impl Resolver {
                 continue;
             }
 
-            visiting.active.insert(module_file_path.clone());
+            visiting.active.insert(loaded_module.file_path.clone());
 
             // load symbols even if module was processed
-            if visiting.done.contains(&module_file_path) {
-                match module_alias {
+            if visiting.done.contains(&loaded_module.file_path) {
+                match loaded_module.alias {
                     ModuleAlias::Group(group_name) => {
                         self.insert_module_alias(parent_module_id, group_name, module_id);
                     }
@@ -263,12 +262,12 @@ impl Resolver {
                         );
                     }
                 }
-                visiting.active.remove(&module_file_path);
+                visiting.active.remove(&loaded_module.file_path);
                 continue;
             }
 
-            if self.skip_module_if_loaded_once(module_file_path.clone()) {
-                match module_alias {
+            if self.skip_module_if_loaded_once(loaded_module.file_path.clone()) {
+                match loaded_module.alias {
                     ModuleAlias::Group(group_name) => {
                         self.insert_module_alias(parent_module_id, group_name, module_id);
                     }
@@ -282,14 +281,14 @@ impl Resolver {
                     }
                 }
             } else {
-                self.insert_module_file_path(module_id, module_file_path.clone());
+                self.insert_module_file_path(module_id, loaded_module.file_path.clone());
 
                 if let Some(typed_program_tree) = self.resolve_module(
                     module_id,
-                    program_tree.as_ref(),
+                    &loaded_module.program.as_ref(),
                     visiting,
                     false,
-                    module_file_path.clone(),
+                    loaded_module.file_path.clone(),
                 ) {
                     let module_file_path = self.get_current_module_file_path();
                     let mut program_trees = self.program_trees.lock().unwrap();
@@ -297,7 +296,7 @@ impl Resolver {
                     program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
                     drop(program_trees);
 
-                    match module_alias {
+                    match loaded_module.alias {
                         ModuleAlias::Group(group_name) => {
                             self.insert_module_alias(parent_module_id, group_name, module_id);
                         }
@@ -313,16 +312,16 @@ impl Resolver {
                 }
             }
 
-            visiting.active.remove(&module_file_path);
-            visiting.done.insert(module_file_path);
+            visiting.active.remove(&loaded_module.file_path);
+            visiting.done.insert(loaded_module.file_path);
 
             // warn only for exact duplicate (same module + same import type)
             if already_directly_imported {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportTwice {
-                        module_name: module_segments_as_string(module_path.segments.clone()),
-                    },
+                    kind: Box::new(ResolverDiagKind::ImportTwice {
+                        module_name: module_segments_as_string(loaded_module.path.segments.clone()),
+                    }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         import.loc.clone(),
                         current_module_file_path.clone(),
@@ -349,9 +348,9 @@ impl Resolver {
             let Some(symbol_id) = self.lookup_symbol_id(imported_module_id, &actual_name) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::SymbolNotFound {
+                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
                         name: renamed_name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         loc.clone(),
                         self.get_module_file_path(parent_module_id).unwrap(),
@@ -374,9 +373,9 @@ impl Resolver {
                 if symbol_table.names.contains_key(&actual_name) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: ResolverDiagKind::DuplicateSymbol {
+                        kind: Box::new(ResolverDiagKind::DuplicateSymbol {
                             symbol_name: renamed_name.clone(),
-                        },
+                        }),
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             loc.clone(),
                             self.get_module_file_path(parent_module_id).unwrap(),
@@ -401,9 +400,9 @@ impl Resolver {
         if vis.is_private() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::ImportSinglePrivateSymbol {
+                kind: Box::new(ResolverDiagKind::ImportSinglePrivateSymbol {
                     symbol_name: single_name,
-                },
+                }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     loc,
                     self.get_current_module_file_path(),
@@ -754,7 +753,7 @@ impl Resolver {
             Err(kind) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind,
+                    kind: Box::new(kind),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         loc,
                         self.get_current_module_file_path(),
@@ -1035,7 +1034,7 @@ impl Resolver {
                 Err(loc) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: ResolverDiagKind::InvalidTopLevelStatement,
+                        kind: Box::new(ResolverDiagKind::InvalidTopLevelStatement),
                         location: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
@@ -1066,7 +1065,7 @@ impl Resolver {
                 if func_decl.renamed_as.is_some() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: ResolverDiagKind::RenameInterfaceMethod,
+                        kind: Box::new(ResolverDiagKind::RenameInterfaceMethod),
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             func_decl.loc.clone(),
                             self.get_current_module_file_path(),
@@ -1382,10 +1381,10 @@ impl Resolver {
             if method_names.contains(&method_name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::DuplicateMethodName {
+                    kind: Box::new(ResolverDiagKind::DuplicateMethodName {
                         struct_name: struct_name.to_string(),
                         method_name: method_name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         func_def.loc.clone(),
                         self.get_current_module_file_path(),
@@ -1547,9 +1546,9 @@ impl Resolver {
                     None => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: ResolverDiagKind::SymbolNotFound {
+                            kind: Box::new(ResolverDiagKind::SymbolNotFound {
                                 name: identifier.as_string(),
-                            },
+                            }),
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 identifier.loc.clone(),
                                 self.get_current_module_file_path(),
@@ -1699,7 +1698,7 @@ impl Resolver {
                         None => {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
-                                kind: ResolverDiagKind::InvalidUntypedFuncParam,
+                                kind: Box::new(ResolverDiagKind::InvalidUntypedFuncParam),
                                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                                     func_param.loc.clone(),
                                     self.get_current_module_file_path(),
@@ -1892,9 +1891,9 @@ impl Resolver {
         if local_scope_rc.borrow().resolve(&variable.identifier.name).is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::DuplicateSymbolInThisScope {
+                kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
                     symbol_name: variable.identifier.name.clone(),
-                },
+                }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     variable.loc.clone(),
                     self.get_current_module_file_path(),
@@ -2091,9 +2090,9 @@ impl Resolver {
                     if local_scope_ref.resolve(&identifier.name).is_some() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: ResolverDiagKind::DuplicateSymbolInThisScope {
+                            kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
                                 symbol_name: identifier.name.clone(),
-                            },
+                            }),
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 identifier.loc.clone(),
                                 self.get_current_module_file_path(),
@@ -2352,7 +2351,7 @@ impl Resolver {
             | Statement::Import(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::InvalidStatement,
+                    kind: Box::new(ResolverDiagKind::InvalidStatement),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         stmt.get_loc(),
                         self.get_current_module_file_path(),
@@ -2384,9 +2383,9 @@ impl Resolver {
 
         self.reporter.report(Diag {
             level: DiagLevel::Error,
-            kind: ResolverDiagKind::SymbolNotFound {
+            kind: Box::new(ResolverDiagKind::SymbolNotFound {
                 name: identifier.name.clone(),
-            },
+            }),
             location: Some(DiagLoc::new(SourceLoc::from_loc(
                 identifier.loc.clone(),
                 self.get_current_module_file_path(),
@@ -2417,9 +2416,9 @@ impl Resolver {
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::SymbolNotFound {
+                kind: Box::new(ResolverDiagKind::SymbolNotFound {
                     name: identifier.name.clone(),
-                },
+                }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     identifier.loc.clone(),
                     self.get_current_module_file_path(),
@@ -2441,9 +2440,9 @@ impl Resolver {
                 }
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::SymbolNotFound {
+                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
                         name: ident.name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         ident.loc.clone(),
                         self.get_current_module_file_path(),
@@ -2453,7 +2452,7 @@ impl Resolver {
             } else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                    kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         module_import.loc.clone(),
                         self.get_current_module_file_path(),
@@ -2467,7 +2466,7 @@ impl Resolver {
         let Some(last_segment) = module_import.segments.pop() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     module_import.loc.clone(),
                     self.get_current_module_file_path(),
@@ -2480,7 +2479,7 @@ impl Resolver {
         let Some(symbol_ident) = last_segment.as_identifier_opt() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     module_import.loc,
                     self.get_current_module_file_path(),
@@ -2495,9 +2494,9 @@ impl Resolver {
         let Some(target_module_id) = self.get_module_alias(&module_alias) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::ModuleImportNotFound {
+                kind: Box::new(ResolverDiagKind::ModuleImportNotFound {
                     module_name: module_alias,
-                },
+                }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     module_import.loc.clone(),
                     self.get_current_module_file_path(),
@@ -2510,10 +2509,10 @@ impl Resolver {
         let Some(symbol_id) = self.lookup_symbol_id(target_module_id, &symbol_name) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
+                kind: Box::new(ResolverDiagKind::SymbolIsNotDefinedInModule {
                     symbol_name,
                     module_name: module_alias,
-                },
+                }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     module_import.loc.clone(),
                     self.get_current_module_file_path(),
@@ -3024,7 +3023,7 @@ impl Resolver {
                         Err(_) => {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
-                                kind: ResolverDiagKind::InvalidLiteralSuffix,
+                                kind: Box::new(ResolverDiagKind::InvalidLiteralSuffix),
                                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                                     literal.loc.clone(),
                                     self.get_current_module_file_path(),
@@ -3235,7 +3234,7 @@ impl Resolver {
             Some(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: ResolverDiagKind::DuplicateSymbol { symbol_name },
+                    kind: Box::new(ResolverDiagKind::DuplicateSymbol { symbol_name }),
                     location: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
@@ -3266,7 +3265,7 @@ impl Resolver {
         option
     }
 
-    fn get_module_id_by_file_path(&self, module_file_path: ModuleFilePath) -> Option<ModuleID> {
+    fn get_module_id_by_file_path(&self, module_file_path: String) -> Option<ModuleID> {
         let file_paths = self.file_paths.lock().unwrap();
         let module_id_opt = match file_paths.iter().find(|(_, fp)| **fp == module_file_path) {
             Some((module_id, _)) => Some(*module_id),
@@ -3276,7 +3275,7 @@ impl Resolver {
         module_id_opt
     }
 
-    fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: ModuleFilePath) {
+    fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: String) {
         let mut file_paths = self.file_paths.lock().unwrap();
         file_paths.insert(module_id, module_file_path);
         drop(file_paths);
@@ -3289,7 +3288,7 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    pub fn get_current_module_file_path(&self) -> ModuleFilePath {
+    pub fn get_current_module_file_path(&self) -> String {
         let current_module_id = self.current_module.unwrap();
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&current_module_id) {
@@ -3300,7 +3299,7 @@ impl Resolver {
         file_path
     }
 
-    pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {
+    pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<String> {
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&module_id) {
             Some(module_file_path) => Some(module_file_path.clone()),

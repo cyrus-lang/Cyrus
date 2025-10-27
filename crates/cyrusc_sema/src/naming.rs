@@ -50,11 +50,11 @@ impl<'a> AnalysisContext<'a> {
             if !is_snake_case(&name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Warning,
-                    kind: AnalyzerDiagKind::NamingConv {
+                    kind: Box::new(AnalyzerDiagKind::NamingConv {
                         name,
                         kind: "Method".to_string(),
                         expected: "snake_case".to_string(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
@@ -68,11 +68,11 @@ impl<'a> AnalysisContext<'a> {
 
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
-                kind: AnalyzerDiagKind::NamingConv {
+                kind: Box::new(AnalyzerDiagKind::NamingConv {
                     kind,
                     name,
                     expected: expected.to_string(),
-                },
+                }),
                 location: Some(DiagLoc::new(loc)),
                 hint: None,
             });

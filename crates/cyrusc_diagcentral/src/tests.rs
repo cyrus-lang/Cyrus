@@ -21,7 +21,7 @@ mod tests {
     fn test_diag_display_formatting() {
         let diag = Diag {
             level: DiagLevel::Error,
-            kind: DummyDiagKind::Mismatch,
+            kind: Box::new(DummyDiagKind::Mismatch),
             location: Some(DiagLoc::new(SourceLoc {
                 line: 5,
                 column: 10,
@@ -30,7 +30,6 @@ mod tests {
             hint: Some("A simple example of hint message.".to_string()),
         };
 
-        DiagReporter::new().report(diag.clone());
         let output = DiagReporter::format_panel(&diag);
         assert!(output.contains("error"));
         assert!(output.contains("Type mismatch occurred"));

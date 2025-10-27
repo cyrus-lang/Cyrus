@@ -9,14 +9,8 @@ pub enum ResolverDiagKind {
     #[error("Expected an identifier in module import path, but found something else.")]
     ExpectedIdentifierInImport,
 
-    #[error("Module '{module_name}' cannot exist as both a file and a directory.")]
-    DuplicateModule { module_name: String },
-
     #[error("Symbol '{symbol_name}' is private and cannot be imported.")]
     ImportSinglePrivateSymbol { symbol_name: String },
-
-    #[error("Module directory '{module_name}' must contain an 'index.cyr' file for it to be importable.")]
-    ModuleIndexNotFound { module_name: String },
 
     #[error("Invalid literal suffix.")]
     InvalidLiteralSuffix,
@@ -74,27 +68,19 @@ pub enum ResolverDiagKind {
     #[error("Invalid operand for method call.")]
     InvalidOperandForMethodCall,
 
+    #[error("Module '{module_name}' not found.")]
+    ModuleImportNotFound { module_name: String },
+
     #[error(
         "An import cycle was found, indicating a circular dependency between modules.\nCycle Path: {module_names:?}\nConsider resolving the cycle by refactoring the modules."
     )]
     ImportCycle { module_names: Vec<String> },
-
-    #[error(
-        "Couldn't find stdlib anywhere. You can set it with 'CYRUS_STDLIB_PATH' environment variable or '--stdlib' command line argument."
-    )]
-    StdlibNotFound,
 
     #[error("Cannot rename imported module when you considered to import singles.")]
     InvalidRenameWhenImportingModule,
 
     #[error("Cannot import directory as module.")]
     CannotImportDirectoryAsModule,
-
-    #[error("Module '{module_name}' couldn't be found in any of the specified source directories.")]
-    ModuleNotFound { module_name: String },
-
-    #[error("Module '{module_name}' not found.")]
-    ModuleImportNotFound { module_name: String },
 
     #[error("Cannot import module '{module_name}' twice.")]
     ImportTwice { module_name: String },
