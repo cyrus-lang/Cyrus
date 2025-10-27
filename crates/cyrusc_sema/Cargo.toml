@@ -11,6 +11,7 @@ cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
 thiserror = "2.0.17"
 fx-hash = "0.1.0"
 smallvec = "1.15.1"

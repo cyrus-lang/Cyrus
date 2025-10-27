@@ -26,10 +26,10 @@ pub enum LexicalDiagKind {
     InvalidChar(char),
 }
 
-pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag<LexicalDiagKind> {
+pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag {
     display_single_diag!(Diag {
         level: DiagLevel::Error,
-        kind: LexicalDiagKind::InvalidChar(ch),
+        kind: Box::new(LexicalDiagKind::InvalidChar(ch)),
         location: Some(DiagLoc::new(SourceLoc {
             file_path: file,
             column,

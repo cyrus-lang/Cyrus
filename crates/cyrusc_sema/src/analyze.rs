@@ -13,19 +13,19 @@ use cyrusc_resolver::{
     symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    mem,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
 use cyrusc_tast::{
     exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
     format::format_concrete_type,
     stmts::*,
     types::{BasicType, SemanticType, TypedFuncType},
     *,
+};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    mem,
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 
 #[macro_export]
@@ -67,7 +67,7 @@ macro_rules! update_local_symbol {
 pub struct AnalysisContext<'a> {
     pub ast: Rc<RefCell<TypedProgramTree>>,
     pub resolver: &'a Resolver,
-    pub reporter: DiagReporter<AnalyzerDiagKind>,
+    pub reporter: DiagReporter,
     pub module_id: ModuleID,
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub ty_caches: TypeResolverCaches,
@@ -215,7 +215,7 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Interface(typed_interface) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
+                    kind: Box::new(AnalyzerDiagKind::InternalInterfaceIsNotValid),
                     location: Some(DiagLoc::new(typed_interface.loc.clone())),
                     hint: None,
                 });
@@ -273,7 +273,7 @@ impl<'a> AnalysisContext<'a> {
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand,
+                    kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
                     location: Some(DiagLoc::new(export_tuple_values.loc.clone())),
                     hint: None,
                 });
@@ -284,7 +284,7 @@ impl<'a> AnalysisContext<'a> {
         if export_tuple_values.exports.len() != tuple_type.type_list.len() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch,
+                kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
                 location: Some(DiagLoc::new(export_tuple_values.loc.clone())),
                 hint: None,
             });
@@ -329,10 +329,10 @@ impl<'a> AnalysisContext<'a> {
                         if field_names.contains(&valued_field.name) {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::DuplicateEnumVariantName {
+                                kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
                                     enum_name: enum_sig.name.clone(),
                                     variant_name: valued_field.name.clone(),
-                                },
+                                }),
                                 location: Some(DiagLoc::new(loc.clone())),
                                 hint: None,
                             });
@@ -347,7 +347,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedSwitchCasePattern::Expression(..) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::ExpressionPatternInAEnumSwitch,
+                        kind: Box::new(AnalyzerDiagKind::ExpressionPatternInAEnumSwitch),
                         location: Some(DiagLoc::new(typed_switch.loc.clone())),
                         hint: None,
                     });
@@ -363,10 +363,10 @@ impl<'a> AnalysisContext<'a> {
             if variant_opt.is_none() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::NoSuchEnumVariant {
+                    kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
                         enum_name: enum_sig.name.clone(),
                         variant_name: identifier.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(typed_switch.loc.clone())),
                     hint: None,
                 });
@@ -385,11 +385,11 @@ impl<'a> AnalysisContext<'a> {
                 if valued_fields.len() != actual_enum_fields_len {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                        kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
                             variant_name: variant_opt.unwrap().get_identifier().as_string(),
                             expected: actual_enum_fields_len as u32,
                             provided: valued_fields.len() as u32,
-                        },
+                        }),
                         location: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     });
@@ -439,7 +439,7 @@ impl<'a> AnalysisContext<'a> {
                 if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase,
+                        kind: Box::new(AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase),
                         location: Some(DiagLoc::new(next_case.loc.clone())),
                         hint: None,
                     });
@@ -482,7 +482,7 @@ impl<'a> AnalysisContext<'a> {
         if typed_switch.cases.is_empty() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::EmptyCaseSwitchStatement,
+                kind: Box::new(AnalyzerDiagKind::EmptyCaseSwitchStatement),
                 location: Some(DiagLoc::new(typed_switch.loc.clone())),
                 hint: None,
             });
@@ -514,7 +514,7 @@ impl<'a> AnalysisContext<'a> {
                     let expr_type = (self.symbol_formatter)(scope_id_opt)(generic_type.base);
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type },
+                        kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type }),
                         location: Some(DiagLoc::new(typed_switch.loc.clone())),
                         hint: None,
                     });
@@ -568,10 +568,10 @@ impl<'a> AnalysisContext<'a> {
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::TypeMismatchInCasePattern {
+                            kind: Box::new(AnalyzerDiagKind::TypeMismatchInCasePattern {
                                 operand_type,
                                 pattern_type,
-                            },
+                            }),
                             location: Some(DiagLoc::new(case.loc.clone())),
                             hint: None,
                         });
@@ -583,7 +583,7 @@ impl<'a> AnalysisContext<'a> {
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type },
+                        kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type }),
                         location: Some(DiagLoc::new(typed_switch.loc.clone())),
                         hint: None,
                     });
@@ -704,7 +704,7 @@ impl<'a> AnalysisContext<'a> {
         if return_type.is_void() && typed_return.arg.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::VoidFunctionReturnsValue,
+                kind: Box::new(AnalyzerDiagKind::VoidFunctionReturnsValue),
                 location: Some(DiagLoc::new(typed_return.loc.clone())),
                 hint: None,
             });
@@ -716,7 +716,7 @@ impl<'a> AnalysisContext<'a> {
                 if !self.check_type_mismatch(Some(scope_id), sema_ty, return_type, typed_return.loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got },
+                        kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got }),
                         location: Some(DiagLoc::new(typed_return.loc.clone())),
                         hint: None,
                     });
@@ -727,7 +727,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type },
+                kind: Box::new(AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type }),
                 location: Some(DiagLoc::new(typed_return.loc.clone())),
                 hint: None,
             });
@@ -740,7 +740,7 @@ impl<'a> AnalysisContext<'a> {
         if self.control_stack.is_empty() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::InvalidBreakStatement,
+                kind: Box::new(AnalyzerDiagKind::InvalidBreakStatement),
                 location: Some(DiagLoc::new(typed_break.loc.clone())),
                 hint: None,
             });
@@ -760,7 +760,7 @@ impl<'a> AnalysisContext<'a> {
         if !inside_loop {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::InvalidContinueStatement,
+                kind: Box::new(AnalyzerDiagKind::InvalidContinueStatement),
                 location: Some(DiagLoc::new(typed_continue.loc.clone())),
                 hint: None,
             });
@@ -774,7 +774,7 @@ impl<'a> AnalysisContext<'a> {
         if !self.disable_warnings {
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
-                kind: AnalyzerDiagKind::UnreachableCode,
+                kind: Box::new(AnalyzerDiagKind::UnreachableCode),
                 location: Some(DiagLoc::new(typed_stmt.get_loc())),
                 hint: None,
             });
@@ -802,7 +802,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
                 location: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
@@ -840,7 +840,7 @@ impl<'a> AnalysisContext<'a> {
                 } else {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+                        kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
                         location: Some(DiagLoc::new(typed_global_var.loc.clone())),
                         hint: None,
                     });
@@ -864,7 +864,7 @@ impl<'a> AnalysisContext<'a> {
         if matches!(typed_global_var.ty, Some(SemanticType::BasicType(BasicType::Void))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::VoidVariableType,
+                kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                 location: Some(DiagLoc::new(typed_global_var.loc.clone())),
                 hint: None,
             });
@@ -873,7 +873,7 @@ impl<'a> AnalysisContext<'a> {
         if matches!(typed_global_var.ty, Some(SemanticType::FuncType(..))) && typed_global_var.expr.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::UninitializedLambda,
+                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
                 location: Some(DiagLoc::new(typed_global_var.loc.clone())),
                 hint: None,
             });
@@ -888,7 +888,7 @@ impl<'a> AnalysisContext<'a> {
             if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
                     location: Some(DiagLoc::new(typed_global_var.loc.clone())),
                     hint: None,
                 });
@@ -916,7 +916,7 @@ impl<'a> AnalysisContext<'a> {
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
                         location: Some(DiagLoc::new(typed_global_var.loc.clone())),
                         hint: None,
                     });
@@ -971,7 +971,7 @@ impl<'a> AnalysisContext<'a> {
                     if !self.disable_warnings {
                         self.reporter.report(Diag {
                             level: DiagLevel::Warning,
-                            kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                            kind: Box::new(AnalyzerDiagKind::UnusedSymbol { symbol_name }),
                             location: Some(DiagLoc::new(loc)),
                             hint: None,
                         });
@@ -1028,7 +1028,7 @@ impl<'a> AnalysisContext<'a> {
                 if !self.disable_warnings {
                     self.reporter.report(Diag {
                         level: DiagLevel::Warning,
-                        kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                        kind: Box::new(AnalyzerDiagKind::UnusedSymbol { symbol_name }),
                         location: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
@@ -1059,9 +1059,9 @@ impl<'a> AnalysisContext<'a> {
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::SymbolMustBeAnInterface {
+                        kind: Box::new(AnalyzerDiagKind::SymbolMustBeAnInterface {
                             symbol_name: identifier.name.clone(),
-                        },
+                        }),
                         location: Some(DiagLoc::new(identifier.loc.clone())),
                         hint: None,
                     });
@@ -1074,9 +1074,9 @@ impl<'a> AnalysisContext<'a> {
             {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InternalSymbolAccess {
+                    kind: Box::new(AnalyzerDiagKind::InternalSymbolAccess {
                         symbol_name: identifier.name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(identifier.loc.clone())),
                     hint: None,
                 });
@@ -1090,11 +1090,11 @@ impl<'a> AnalysisContext<'a> {
                     // method missing
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::MissingInterfaceMethodImpl {
+                        kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
                             object_name: object_name.clone(),
                             method_name: func_decl.name.clone(),
                             interface_name: identifier.name.clone(),
-                        },
+                        }),
                         location: Some(DiagLoc::new(identifier.loc.clone())),
                         hint: None,
                     });
@@ -1130,11 +1130,11 @@ impl<'a> AnalysisContext<'a> {
                 if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
                             object_name: object_name.clone(),
                             interface_name: identifier.name.clone(),
                             method_name: func_decl.name.clone(),
-                        },
+                        }),
                         location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),
                         hint: None,
                     });
@@ -1173,10 +1173,10 @@ impl<'a> AnalysisContext<'a> {
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::DuplicateFieldName {
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
                         object_name: typed_struct.name.clone(),
                         field_name: field.name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(field.loc.clone())),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
@@ -1198,7 +1198,7 @@ impl<'a> AnalysisContext<'a> {
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InfiniteRecursiveType { type_name },
+                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
                     location: Some(DiagLoc::new(field.loc.clone())),
                     hint: None,
                 });
@@ -1252,10 +1252,10 @@ impl<'a> AnalysisContext<'a> {
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::DuplicateFieldName {
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
                         field_name: field.name.clone(),
                         object_name: typed_union.name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(field.loc.clone())),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
@@ -1278,7 +1278,7 @@ impl<'a> AnalysisContext<'a> {
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InfiniteRecursiveType { type_name },
+                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
                     location: Some(DiagLoc::new(field.loc.clone())),
                     hint: None,
                 });
@@ -1346,7 +1346,7 @@ impl<'a> AnalysisContext<'a> {
 
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::InfiniteRecursiveType { type_name },
+                                kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
                                 location: Some(DiagLoc::new(field.loc.clone())),
                                 hint: None,
                             });
@@ -1360,10 +1360,10 @@ impl<'a> AnalysisContext<'a> {
             if variant_names.contains(&variant_identifier.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::DuplicateEnumVariantName {
+                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
                         enum_name: typed_enum.name.clone(),
                         variant_name: variant_identifier.name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         variant_identifier.loc.clone(),
                         typed_enum.loc.file_path.clone(),
@@ -1393,10 +1393,10 @@ impl<'a> AnalysisContext<'a> {
                     if param_names.contains(&typed_func_param.name) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::DuplicateFuncParameter {
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
                                 param_name: typed_func_param.name.clone(),
                                 param_idx: param_idx.try_into().unwrap(),
-                            },
+                            }),
                             location: Some(location.clone()),
                             hint: Some("Consider to rename the parameter to a different name.".to_string()),
                         });
@@ -1417,9 +1417,9 @@ impl<'a> AnalysisContext<'a> {
                     if param_names.contains(identifier) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::DuplicateFuncVariadicParameter {
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
                                 param_name: identifier.clone(),
-                            },
+                            }),
                             location: Some(location.clone()),
                             hint: Some("Consider to rename the parameter to a different name.".to_string()),
                         });
@@ -1450,7 +1450,7 @@ impl<'a> AnalysisContext<'a> {
         if !return_type.is_void() && state != FlowState::Returns {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::MissingReturn,
+                kind: Box::new(AnalyzerDiagKind::MissingReturn),
                 location: Some(DiagLoc::new(loc.clone())),
                 hint: Some("Not all control paths return a value.".to_string()),
             });
@@ -1533,7 +1533,7 @@ impl<'a> AnalysisContext<'a> {
             if !func_sig.return_type.is_void() && state != FlowState::Returns {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::MissingReturn,
+                    kind: Box::new(AnalyzerDiagKind::MissingReturn),
                     location: Some(DiagLoc::new(func_sig.loc.clone())),
                     hint: Some("Not all control paths return a value.".to_string()),
                 });
@@ -1582,7 +1582,7 @@ impl<'a> AnalysisContext<'a> {
                     if matches!(normalized_type, SemanticType::BasicType(BasicType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::VoidVariableType,
+                            kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                             location: Some(DiagLoc::new(typed_func_param.loc.clone())),
                             hint: None,
                         });
@@ -1622,7 +1622,7 @@ impl<'a> AnalysisContext<'a> {
                 if matches!(normalized_concrete_type, SemanticType::BasicType(BasicType::Void)) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::VoidVariableType,
+                        kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                         location: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     });
@@ -1641,7 +1641,7 @@ impl<'a> AnalysisContext<'a> {
             if matches!(normalized_type, SemanticType::BasicType(BasicType::Void)) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::VoidVariableType,
+                    kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                     location: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
@@ -1663,7 +1663,7 @@ impl<'a> AnalysisContext<'a> {
                     if matches!(normalized_concrete_type, SemanticType::BasicType(BasicType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::VoidVariableType,
+                            kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                             location: Some(DiagLoc::new(loc.clone())),
                             hint: None,
                         });
@@ -1707,10 +1707,10 @@ impl<'a> AnalysisContext<'a> {
             if name_list.contains(&method.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InterfaceDuplicateMethod {
+                    kind: Box::new(AnalyzerDiagKind::InterfaceDuplicateMethod {
                         interface_name: interface_name.clone(),
                         method_name: method.name.clone(),
-                    },
+                    }),
                     location: Some(DiagLoc::new(method.loc.clone())),
                     hint: None,
                 });
@@ -1772,7 +1772,7 @@ impl<'a> AnalysisContext<'a> {
                 ) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
                         location: Some(DiagLoc::new(typed_variable.loc.clone())),
                         hint: None,
                     });
@@ -1787,7 +1787,7 @@ impl<'a> AnalysisContext<'a> {
         if matches!(typed_variable.ty, Some(SemanticType::BasicType(BasicType::Void))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::VoidVariableType,
+                kind: Box::new(AnalyzerDiagKind::VoidVariableType),
                 location: Some(DiagLoc::new(typed_variable.loc.clone())),
                 hint: None,
             });
@@ -1796,7 +1796,7 @@ impl<'a> AnalysisContext<'a> {
         if matches!(typed_variable.ty, Some(SemanticType::FuncType(..))) && typed_variable.rhs.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::UninitializedLambda,
+                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
                 location: Some(DiagLoc::new(typed_variable.loc.clone())),
                 hint: None,
             });
@@ -1808,7 +1808,7 @@ impl<'a> AnalysisContext<'a> {
         {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::ConstVariableMustBeInitialized,
+                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
                 location: Some(DiagLoc::new(typed_variable.loc.clone())),
                 hint: None,
             });
@@ -1843,7 +1843,7 @@ impl<'a> AnalysisContext<'a> {
         if lhs_type.as_rvalue(true).is_const() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::CannotAssignToConstLValue,
+                kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
                 location: Some(DiagLoc::new(assign.loc.clone())),
                 hint: None,
             });
@@ -1862,7 +1862,7 @@ impl<'a> AnalysisContext<'a> {
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
                     location: Some(DiagLoc::new(assign.loc.clone())),
                     hint: None,
                 });

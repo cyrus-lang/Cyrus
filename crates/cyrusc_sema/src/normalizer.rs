@@ -232,7 +232,7 @@ impl<'a> AnalysisContext<'a> {
                     } else {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::ExprNotComptimeValid,
+                            kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
                             location: Some(DiagLoc::new(typed_expr.loc.clone())),
                             hint: None,
                         });
@@ -407,7 +407,7 @@ impl<'a> AnalysisContext<'a> {
     fn report_cyclic_type_def(&mut self, symbol: String, loc: SourceLoc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
-            kind: AnalyzerDiagKind::CyclicTypeDefinition { symbol },
+            kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol }),
             location: Some(DiagLoc::new(loc)),
             hint: None,
         });
@@ -418,7 +418,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.reporter.report(Diag {
             level: DiagLevel::Error,
-            kind: AnalyzerDiagKind::NonTypeSymbol { symbol_name },
+            kind: Box::new(AnalyzerDiagKind::NonTypeSymbol { symbol_name }),
             location: Some(DiagLoc::new(loc)),
             hint: None,
         });

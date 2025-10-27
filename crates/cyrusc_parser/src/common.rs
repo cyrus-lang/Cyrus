@@ -1,14 +1,14 @@
+use crate::Diag;
 use crate::Parser;
-use crate::ParserError;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::*;
 use cyrusc_ast::*;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_diagcentral::{DiagLevel, DiagLoc};
 
 impl Parser {
-    pub(crate) fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
+    pub(crate) fn parse_identifier(&mut self) -> Result<Identifier, Diag> {
         match self.current_token().kind {
             TokenKind::Identifier { name } => Ok(Identifier {
                 name,
@@ -17,7 +17,7 @@ impl Parser {
             }),
             _ => {
                 return Err(Diag {
-                    kind: ParserDiagKind::ExpectedIdentifier,
+                    kind: Box::new(ParserDiagKind::ExpectedIdentifier),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         self.current_token().loc.clone(),
@@ -42,7 +42,7 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, ParserError> {
+    pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, Diag> {
         let mut base_type = self.parse_base_type_token()?;
 
         loop {
@@ -75,7 +75,7 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, ParserError> {
+    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
         let mut generic_params: GenericParamsList = GenericParamsList::new();
@@ -96,7 +96,7 @@ impl Parser {
         Ok(generic_params)
     }
 
-    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, ParserError> {
+    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
         let mut args = Vec::new();
@@ -130,7 +130,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc.clone(),
@@ -179,12 +179,12 @@ impl Parser {
         false
     }
 
-    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {
+    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expression, Diag> {
         self.expect_current(TokenKind::LeftBracket)?;
 
         if self.current_token_is(TokenKind::RightBracket) {
             return Err(Diag {
-                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
@@ -198,7 +198,7 @@ impl Parser {
         Ok(index)
     }
 
-    pub(crate) fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
+    pub(crate) fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, Diag> {
         let access_specifier: AccessSpecifier = {
             if self.current_token_is(TokenKind::Inline) {
                 self.next_token();
@@ -219,7 +219,7 @@ impl Parser {
                 }
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(token.kind),
+                    kind: Box::new(ParserDiagKind::InvalidToken(token.kind)),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         token.loc.clone(),
@@ -233,7 +233,7 @@ impl Parser {
         Ok(access_specifier)
     }
 
-    fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, ParserError> {
+    fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, Diag> {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
@@ -270,7 +270,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::MissingComma,
+                        kind: Box::new(ParserDiagKind::MissingComma),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: None,
@@ -284,7 +284,7 @@ impl Parser {
         Ok(FuncTypeParams { list, variadic })
     }
 
-    fn parse_func_type(&mut self) -> Result<TypeSpecifier, ParserError> {
+    fn parse_func_type(&mut self) -> Result<TypeSpecifier, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -302,7 +302,7 @@ impl Parser {
         })))
     }
 
-    fn parse_tuple(&mut self) -> Result<TypeSpecifier, ParserError> {
+    fn parse_tuple(&mut self) -> Result<TypeSpecifier, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -327,7 +327,7 @@ impl Parser {
 
         if !self.current_token_is(TokenKind::RightParen) {
             return Err(Diag {
-                kind: ParserDiagKind::MissingClosingParen,
+                kind: Box::new(ParserDiagKind::MissingClosingParen),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
@@ -339,7 +339,7 @@ impl Parser {
 
         if type_list.len() <= 1 {
             return Err(Diag {
-                kind: ParserDiagKind::SingleElementTupleType,
+                kind: Box::new(ParserDiagKind::SingleElementTupleType),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
@@ -358,7 +358,7 @@ impl Parser {
         }))
     }
 
-    fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParserError> {
+    fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, Diag> {
         let current = self.current_token().clone();
 
         let parsed_kind = match current.kind {
@@ -390,7 +390,7 @@ impl Parser {
                 }
             }
             _ => Err(Diag {
-                kind: ParserDiagKind::InvalidTypeToken(current.kind),
+                kind: Box::new(ParserDiagKind::InvalidTypeToken(current.kind)),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
@@ -403,7 +403,7 @@ impl Parser {
         parsed_kind
     }
 
-    fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParserError> {
+    fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
         let mut dimensions: Vec<ArrayCapacity> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
@@ -426,7 +426,7 @@ impl Parser {
         Ok(type_specifier)
     }
 
-    fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParserError> {
+    fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {
         self.expect_current(TokenKind::LeftBracket)?;
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
@@ -436,7 +436,7 @@ impl Parser {
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
-    fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
+    fn parse_struct_type(&mut self) -> Result<TypeSpecifier, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -449,7 +449,7 @@ impl Parser {
                 false
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         self.current_token().loc.clone(),
@@ -470,7 +470,7 @@ impl Parser {
                 }
                 TokenKind::EOF => {
                     return Err(Diag {
-                        kind: ParserDiagKind::MissingClosingBrace,
+                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc.clone(),
@@ -509,7 +509,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc.clone(),
@@ -529,7 +529,7 @@ impl Parser {
         }))
     }
 
-    fn parse_bounds(&mut self) -> Result<Vec<Bound>, ParserError> {
+    fn parse_bounds(&mut self) -> Result<Vec<Bound>, Diag> {
         self.expect_current(TokenKind::Colon)?;
 
         let mut list: Vec<Bound> = Vec::new();
@@ -555,7 +555,7 @@ impl Parser {
         Ok(list)
     }
 
-    fn parse_generic_param(&mut self) -> Result<GenericParam, ParserError> {
+    fn parse_generic_param(&mut self) -> Result<GenericParam, Diag> {
         let param_name = self.parse_identifier()?;
         self.next_token();
 

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use cyrusc_ast::source_loc::SourceLoc;
 
 pub mod reporter;
@@ -16,10 +18,9 @@ pub struct DiagLoc {
     pub column: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Diag<K> {
+pub struct Diag {
     pub level: DiagLevel,
-    pub kind: K,
+    pub kind: Box<dyn DiagKind>,
     pub location: Option<DiagLoc>,
     pub hint: Option<String>,
 }
@@ -30,6 +31,36 @@ impl DiagLoc {
             file: loc.file_path,
             line: loc.line,
             column: loc.column,
+        }
+    }
+}
+
+pub trait DiagKind: Display + Send + Sync {
+    fn clone_box(&self) -> Box<dyn DiagKind>;
+}
+
+impl<T> DiagKind for T
+where
+    T: Display + Clone + Send + Sync + 'static,
+{
+    fn clone_box(&self) -> Box<dyn DiagKind> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn DiagKind> {
+    fn clone(&self) -> Box<dyn DiagKind> {
+        self.clone_box()
+    }
+}
+
+impl Clone for Diag {
+    fn clone(&self) -> Self {
+        Self {
+            level: self.level.clone(),
+            kind: self.kind.clone(), 
+            location: self.location.clone(),
+            hint: self.hint.clone(),
         }
     }
 }
