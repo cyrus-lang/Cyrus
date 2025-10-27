@@ -1,10 +1,11 @@
 use core::fmt;
-use inkwell::targets::{CodeModel, RelocMode};
 use cyrusc_scaffold_parser::ScaffoldConfig;
+use inkwell::targets::{CodeModel, RelocMode};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct CodeGenOptions {
+    pub jobs: Option<usize>,
     pub sanitizer: Vec<CodeGenSanitizer>,
     pub linker: Option<String>,
     pub linker_options: CodeGenLinkerOptions,
@@ -55,6 +56,7 @@ impl BuildDir {
 impl Default for CodeGenOptions {
     fn default() -> Self {
         Self {
+            jobs: None,
             linker: None,
             base_path: None,
             project_type: None,
@@ -87,6 +89,7 @@ impl Default for CodeGenOptions {
 impl CodeGenOptions {
     pub fn merge_preferring(&self, overrides: &Self) -> Self {
         Self {
+            jobs: overrides.jobs.or(self.jobs.clone()),
             linker: overrides.linker.clone().or_else(|| self.linker.clone()),
             project_type: overrides.project_type.clone().or_else(|| self.project_type.clone()),
             project_name: overrides.project_name.clone().or_else(|| self.project_name.clone()),

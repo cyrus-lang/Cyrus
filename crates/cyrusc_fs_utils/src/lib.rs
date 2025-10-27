@@ -1,15 +1,15 @@
+use cyrusc_tui_utils::tui_error;
 use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
     process::exit,
 };
-use cyrusc_tui_utils::tui_error;
 
 /// Reads a file from the given path and returns its contents along with the file name.
 ///
-/// # Behavior
-/// - On success: returns `(file_contents, file_name)`.
+/// Behavior
+/// - On success: returns `(file_content, file_name)`.
 /// - On failure (e.g. file not found or unreadable): prints a TUI error and exits the process.
 pub fn read_file(file_path: String) -> (String, String) {
     let path = Path::new(&file_path);
@@ -160,7 +160,7 @@ pub fn split_paths(path: &str) -> (String, String) {
 /// Example: "/home/user/foo.rs" -> "foo"
 pub fn file_name_without_extension(file_path: &str) -> Option<String> {
     Path::new(file_path)
-        .file_stem() 
-        .and_then(|s| s.to_str()) 
+        .file_stem()
+        .and_then(|s| s.to_str())
         .map(|s| s.to_string())
 }
