@@ -12,6 +12,7 @@ pub type IRValueID = u32;
 #[derive(Debug)]
 pub struct CIRModule {
     pub program: CIRProgramTree,
+    pub file_path: String,
 }
 
 #[derive(Debug)]
