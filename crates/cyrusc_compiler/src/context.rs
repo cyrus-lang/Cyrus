@@ -38,9 +38,9 @@ impl CodeGenContext {
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile<BackendModule, B: CodeGenBackend<BackendModule>>(
+    pub fn compile<BackendModule, Backend: CodeGenBackend<BackendModule>>(
         &self,
-        backend: &B,
+        backend: &Backend,
         cir_modules: &[Box<CIRProgramTree>],
     ) -> Vec<BackendModule> {
         match self.opts.module_kind {
