@@ -4,16 +4,20 @@ version = "0.0.3"
 edition = "2024"
 
 [dependencies]
-cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+cyrusc_compiler = { path = "../cyrusc_compiler", version = "*" }
 cyrusc_codegen_llvm = { path = "../cyrusc_codegen_llvm", version = "*" }
+cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
+cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }
 cyrusc_sema = { path = "../cyrusc_sema", version = "*" }
 cyrusc_scaffold = { path = "../cyrusc_scaffold", version = "*" }
+cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }
 cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
+cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 clap = { version = "4.5.41", features = ["derive"] }

@@ -16,7 +16,8 @@ members = [
     "crates/cyrusc_tui_utils",
     "crates/cyrusc_compiler",
     "crates/cyrusc_buildmanifest",
-    "crates/cyrusc_scaffold_parser", "crates/cyrusc_modulefsloader",
+    "crates/cyrusc_scaffold_parser",
+    "crates/cyrusc_modulefsloader",
 ]
 default-members = ["crates/cyrusc_cli"]
 
