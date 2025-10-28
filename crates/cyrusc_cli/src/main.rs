@@ -8,6 +8,7 @@ use cyrusc_scaffold_parser::PROJECT_FILE_PATH;
 use serde::Deserialize;
 
 mod commands;
+mod temp_executable_builder;
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {

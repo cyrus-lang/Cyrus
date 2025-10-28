@@ -1,28 +1,30 @@
 use crate::CompilerOptions;
+use crate::temp_executable_builder::TempExecutableBuilder;
 use cyrusc_ast::token::TokenKind;
 use cyrusc_codegen_llvm::CodeGenLLVM;
+use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{build_compilation_bundle, create_compiler_context};
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
-use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use cyrusc_tui_utils::tui_warning;
+use std::io;
 use std::io::Write;
 use std::process::Command;
 use std::process::exit;
-use std::{env, fs, io};
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
-    // build compilation bundle
     let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // build llvm codegen context
-    let llvm_backend = CodeGenLLVM::new(opts.clone(), compilation_bundle.monomorph_registry);
+    let llvm_backend = CodeGenLLVM::new(
+        opts.clone(),
+        compilation_bundle.build_dir,
+        compilation_bundle.monomorph_registry,
+    );
 
     let context = create_compiler_context(
         opts.clone(),
@@ -34,17 +36,11 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         println!("{}", context.target_machine_info(&llvm_backend));
     }
 
-    // create temp executable path
-    let mut temp_executable_file = env::temp_dir();
-    let exe_name = opts.project_name.clone().unwrap_or_else(|| {
-        compilation_bundle
-            .entry_file
-            .split(std::path::MAIN_SEPARATOR)
-            .last()
-            .unwrap_or("temp_program")
-            .replace(".cyrus", "")
-    });
-    temp_executable_file.push(exe_name);
+    let temp_exe = TempExecutableBuilder::new()
+        .project_name(opts.project_name.clone().unwrap_or_default())
+        .entry_file(compilation_bundle.entry_file.clone())
+        .build()
+        .expect("Failed to create temp executable path.");
 
     let owned_modules = context.compile(&llvm_backend, &compilation_bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
@@ -52,31 +48,21 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    // link to the temp executable
-    if let Err(err) = context.trigger_linker(object_files, temp_executable_file.to_str().unwrap().to_string()) {
+    if let Err(err) = context.trigger_linker(object_files, temp_exe.path.to_string_lossy().to_string()) {
         display_single_custom_diag!(err);
     }
 
-    // run the temporary executable
-    match Command::new(&temp_executable_file).args(program_args).output() {
+    match Command::new(&temp_exe.path).args(program_args).output() {
         Ok(output) => {
             io::stdout().write_all(&output.stdout).unwrap();
             io::stderr().write_all(&output.stderr).unwrap();
         }
         Err(err) => {
             eprintln!(
-                "Failed to execute temporary program `{}`: {err}",
-                temp_executable_file.display()
+                "Failed to execute temporary program '{}': {err}",
+                temp_exe.path.display()
             );
         }
-    }
-
-    // delete temporary executable
-    if let Err(err) = fs::remove_file(&temp_executable_file) {
-        tui_warning(format!(
-            "Failed to remove temp file {}: {err}",
-            temp_executable_file.display()
-        ));
     }
 }
 
@@ -85,7 +71,11 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
 
     // build llvm codegen context
-    let llvm_backend = CodeGenLLVM::new(opts.clone(), compilation_bundle.monomorph_registry);
+    let llvm_backend = CodeGenLLVM::new(
+        opts.clone(),
+        compilation_bundle.build_dir,
+        compilation_bundle.monomorph_registry,
+    );
 
     let context = create_compiler_context(
         opts.clone(),
@@ -97,19 +87,8 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
         println!("{}", context.target_machine_info(&llvm_backend));
     }
 
-    // create temp executable path
-    let mut temp_executable_file = env::temp_dir();
-    let exe_name = opts.project_name.clone().unwrap_or_else(|| {
-        compilation_bundle
-            .entry_file
-            .split(std::path::MAIN_SEPARATOR)
-            .last()
-            .unwrap_or("temp_program")
-            .replace(".cyrus", "")
-    });
-    temp_executable_file.push(exe_name);
-
-    context.compile(&llvm_backend, &compilation_bundle.program_trees);
+    let owned_modules = context.compile(&llvm_backend, &compilation_bundle.program_trees);
+    llvm_backend.save_modules_llvm_ir(&owned_modules);
 }
 
 pub(crate) fn command_emit_bytecode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
