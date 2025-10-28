@@ -156,7 +156,10 @@ impl Resolver {
 
         // Collect exact definitions and details of the symbols (second pass).
         let typed_body = self.resolve_definitions(module_id, &ast);
-        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { body: typed_body }));
+        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
+            body: typed_body,
+            file_path: module_file_path.clone(),
+        }));
 
         if is_master {
             let mut program_trees = self.program_trees.lock().unwrap();

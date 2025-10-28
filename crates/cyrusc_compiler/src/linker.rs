@@ -1,37 +1,66 @@
 use crate::options::{CodeGenOptions, CodeGenSanitizer, RelocModeOptions};
 use std::path::PathBuf;
 use std::process::Command;
+use which::which;
 
 #[derive(Debug, Clone)]
 pub struct Linker {
-    pub path: String,
-    pub options: Box<CodeGenOptions>,
+    pub linker_path: String,
+    pub opts: Box<CodeGenOptions>,
     pub flags: Vec<String>,
     pub sanitizers: Vec<CodeGenSanitizer>,
     pub opt_level: Option<i32>,
     pub verbose: bool,
 }
 
+/// Static mapping of platforms to default linkers
+const DEFAULT_LINKERS: &[(&str, &str)] = &[("linux", "gcc"), ("macos", "clang"), ("windows", "link.exe")];
+
 impl Linker {
+    pub fn new(opts: Box<CodeGenOptions>) -> Result<Self, String> {
+        let os = std::env::consts::OS;
+        let default_linker = DEFAULT_LINKERS
+            .iter()
+            .find(|(platform, _)| *platform == os)
+            .ok_or_else(|| format!("Unsupported platform '{}'.", os))?
+            .1;
+
+        let linker_path = opts.linker.clone().unwrap_or_else(|| default_linker.to_string());
+
+        if which(&linker_path).is_err() {
+            return Err(format!(
+                "Linker '{}' not found in system PATH. Please install it or provide a valid path.",
+                linker_path
+            ));
+        }
+
+        Ok(Self {
+            linker_path,
+            opts,
+            flags: Vec::new(),
+            sanitizers: Vec::new(),
+            opt_level: None,
+            verbose: false,
+        })
+    }
+
     /// Link object files into a binary executable
     pub fn link_executable(&self, object_files: &[String], output_path: &str) -> Result<(), String> {
-        let mut cmd = Command::new(&self.path);
+        let mut cmd = Command::new(&self.linker_path);
 
-        if self.options.linker_options.link_static {
+        if self.opts.linker_options.link_static {
             cmd.arg("-static");
         }
-        if self.options.linker_options.pie {
+        if self.opts.linker_options.pie {
             cmd.args(["-pie", "-fPIE"]);
         }
-        if self.options.linker_options.no_pie {
+        if self.opts.linker_options.no_pie {
             cmd.arg("-no-pie");
         }
-        if !self.options.linker_options.link_static
-            && (self.options.linker_options.pie || self.options.linker_options.no_pie)
-        {
+        if !self.opts.linker_options.link_static && (self.opts.linker_options.pie || self.opts.linker_options.no_pie) {
             cmd.args(["-ldl", "-rdynamic"]);
         }
-        if self.options.linker_options.link_static {
+        if self.opts.linker_options.link_static {
             cmd.arg("-lc");
         }
 
@@ -113,7 +142,7 @@ impl Linker {
         output_dir: &PathBuf,
         lib_name: &str,
     ) -> Result<PathBuf, String> {
-        let mut cmd = Command::new(&self.path);
+        let mut cmd = Command::new(&self.linker_path);
 
         #[cfg(target_os = "linux")]
         cmd.arg("-shared");
@@ -122,13 +151,13 @@ impl Linker {
         #[cfg(target_os = "windows")]
         cmd.arg("-shared");
 
-        match self.options.linker_options.link_static {
+        match self.opts.linker_options.link_static {
             true => {
                 cmd.arg("-static").arg("-lc");
             }
             false => {
                 if matches!(
-                    self.options.reloc_mode,
+                    self.opts.reloc_mode,
                     RelocModeOptions::PIC | RelocModeOptions::DynamicNoPic
                 ) {
                     cmd.args(["-ldl", "-rdynamic"]);

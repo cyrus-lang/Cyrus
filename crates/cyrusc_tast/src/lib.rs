@@ -13,4 +13,5 @@ pub type ModuleID = u64;
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
     pub body: Vec<TypedStmt>,
+    pub file_path: String,
 }

@@ -1,12 +1,12 @@
 use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
-    object_file_info::ObjectFileInfo,
+    object_file_info::{ObjectFileInfo, get_objects_file_names},
     options::{CodeGenOptions, LinkerOutputKind},
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::CIRModule;
+use cyrusc_cir::CIRProgramTree;
 use rayon::{
     ThreadPoolBuilder,
     iter::{IntoParallelRefIterator, ParallelIterator},
@@ -26,7 +26,7 @@ pub struct CodeGenContext {
 }
 
 impl CodeGenContext {
-    pub fn new(
+    pub(crate) fn new(
         opts: Box<CodeGenOptions>,
         build_manifest: Arc<Mutex<BuildManifest>>,
         master_module_file_path: String,
@@ -45,11 +45,11 @@ impl CodeGenContext {
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile(&self, cir_modules: &Vec<CIRModule>) -> Vec<ObjectFileInfo> {
+    pub fn compile(&self, cir_modules: &Vec<Box<CIRProgramTree>>) -> Vec<ObjectFileInfo> {
         self.compile_modules_in_parallel(cir_modules)
     }
 
-    fn compile_modules_in_parallel(&self, cir_modules: &Vec<CIRModule>) -> Vec<ObjectFileInfo> {
+    fn compile_modules_in_parallel(&self, cir_modules: &Vec<Box<CIRProgramTree>>) -> Vec<ObjectFileInfo> {
         let threads = std::cmp::min(num_cpus::get_physical(), self.opts.jobs.unwrap_or(num_cpus::get()));
 
         let pool = ThreadPoolBuilder::new()
@@ -60,27 +60,29 @@ impl CodeGenContext {
         pool.install(|| {
             cir_modules
                 .par_iter()
-                .filter(|m| need_to_be_recompiled(self, m.file_path.clone()))
+                .filter(|program_tree| need_to_be_recompiled(self, program_tree.file_path.clone()))
                 .map(|m| self.backend.process_module(self, m))
                 .collect()
         })
     }
 
-    pub fn trigger_linker(&self, object_files: Vec<String>, output_path: String) -> Result<(), String> {
+    pub fn trigger_linker(&self, object_files: Vec<ObjectFileInfo>, output_path: String) -> Result<(), String> {
         match self.linker_output_kind {
-            LinkerOutputKind::Executable => self.linker.link_executable(&object_files, &output_path),
+            LinkerOutputKind::Executable => self
+                .linker
+                .link_executable(&get_objects_file_names(object_files), &output_path),
             LinkerOutputKind::SharedLib => {
                 let output_dir = PathBuf::from(&output_path);
                 let lib_name = self.opts.canonical_project_name();
                 self.linker
-                    .link_shared_library(&object_files, &output_dir, lib_name)
+                    .link_shared_library(&get_objects_file_names(object_files), &output_dir, lib_name)
                     .map(|_| ())
             }
             LinkerOutputKind::StaticLib => {
                 let output_dir = PathBuf::from(&output_path);
                 let lib_name = self.opts.canonical_project_name();
                 self.linker
-                    .link_static_library(&object_files, &output_dir, lib_name)
+                    .link_static_library(&get_objects_file_names(object_files), &output_dir, lib_name)
                     .map(|_| ())
             }
             LinkerOutputKind::ObjectFile => Ok(()),

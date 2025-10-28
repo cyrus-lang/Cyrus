@@ -10,14 +10,9 @@ pub mod walk;
 pub type IRValueID = u32;
 
 #[derive(Debug)]
-pub struct CIRModule {
-    pub program: CIRProgramTree,
-    pub file_path: String,
-}
-
-#[derive(Debug)]
 pub struct CIRProgramTree {
     pub body: Vec<CIRStmt>,
+    pub file_path: String,
 }
 
 #[derive(Debug, Clone)]

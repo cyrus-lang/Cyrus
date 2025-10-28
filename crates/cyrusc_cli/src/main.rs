@@ -1,10 +1,10 @@
 use clap::{Parser, ValueEnum};
 use commands::*;
-use cyrusc_codegen_llvm::options::{
+use cyrusc_compiler::options::{
     BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_scaffold::PROJECT_FILE_PATH;
+use cyrusc_scaffold_parser::PROJECT_FILE_PATH;
 use serde::Deserialize;
 
 mod commands;
@@ -133,6 +133,9 @@ struct CompilerOptions {
     help = "Set the code model for code generation."
     )]
     code_model: CodeModel,
+
+    #[clap(long)]
+    jobs: Option<usize>,
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
@@ -213,6 +216,7 @@ impl Sanitizer {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            jobs: self.jobs,
             sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
             linker_flags: self.linkerflags.clone(),
             linker_options: CodeGenLinkerOptions::default(),
@@ -377,9 +381,9 @@ enum Commands {
 fn command_new(project_name: String, lib: bool) {
     let result = {
         if lib {
-            scaffold::create_library_project(project_name)
+            cyrusc_scaffold::create_library_project(project_name)
         } else {
-            scaffold::create_project(project_name)
+            cyrusc_scaffold::create_project(project_name)
         }
     };
 

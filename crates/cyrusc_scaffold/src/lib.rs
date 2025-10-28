@@ -8,12 +8,6 @@ use std::{
 
 mod diagnostics;
 
-pub const SOURCES_DIR_PATH: &str = "sources";
-pub const OBJECTS_FILENAME: &str = "obj";
-pub const MANIFEST_FILENAME: &str = "manifest.json";
-pub const OUTPUT_FILENAME: &str = "output";
-pub const PROJECT_FILE_PATH: &str = "Project.toml";
-
 fn cyrus_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

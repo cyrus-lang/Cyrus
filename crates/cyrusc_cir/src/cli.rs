@@ -10,14 +10,11 @@ use cyrusc_tast::TypedProgramTree;
 use std::{
     cell::RefCell,
     env,
-    ops::Deref,
     process::exit,
     rc::Rc,
     sync::{Arc, Mutex},
     vec,
 };
-
-const CIR_WALK_THREADS: usize = 4;
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
@@ -94,7 +91,7 @@ pub fn main() {
                 })
                 .collect();
 
-            let cir_program_trees = walk_program_trees_in_parallel(CIR_WALK_THREADS, cloned_program_trees);
+            let cir_program_trees = walk_program_trees_in_parallel(None, cloned_program_trees);
             dbg!(cir_program_trees);
         }
         Err(errors) => {

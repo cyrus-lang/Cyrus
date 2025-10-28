@@ -10,7 +10,6 @@ use cyrusc_tast::{
 };
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
-use std::rc::Rc;
 
 #[derive(Debug)]
 struct CIRWalk {
@@ -22,9 +21,9 @@ impl CIRWalk {
         Self { program }
     }
 
-    pub fn run_pass(&self) -> CIRProgramTree {
+    pub fn run_pass(&self, file_path: String) -> CIRProgramTree {
         let stmts = self.lower_stmts(&self.program.body);
-        CIRProgramTree { body: stmts }
+        CIRProgramTree { body: stmts, file_path }
     }
 
     fn lower_stmts(&self, stmts: &Vec<TypedStmt>) -> Vec<CIRStmt> {
@@ -501,20 +500,23 @@ impl CIRWalk {
 }
 
 pub fn walk_program_trees_in_parallel(
-    threads: usize,
+    threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
 ) -> Vec<Box<CIRProgramTree>> {
+    // detect number of threads if not specified
+    let num_threads = threads.unwrap_or_else(|| num_cpus::get().max(1));
+
     let pool = ThreadPoolBuilder::new()
-        .num_threads(threads)
+        .num_threads(num_threads)
         .build()
         .expect("Failed to build thread pool.");
 
     pool.install(|| {
         program_trees
-            .into_par_iter() 
-            .map(|tree| {
-                let cir_walk = CIRWalk::new(tree.clone()); 
-                let cir_program_tree = cir_walk.run_pass();
+            .into_par_iter()
+            .map(|program_tree| {
+                let cir_walk = CIRWalk::new(program_tree.clone());
+                let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
                 Box::new(cir_program_tree)
             })
             .collect()
