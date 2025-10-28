@@ -1,5 +1,4 @@
 use crate::{
-    codegen_traits::CodeGenBackend,
     context::CodeGenContext,
     linker::Linker,
     options::{BuildDir, CodeGenOptions, LinkerOutputKind},
@@ -33,12 +32,12 @@ pub struct CodeGenContextBundle {
     pub entry_file: String,
     pub build_dir: String,
     pub program_trees: Vec<Box<CIRProgramTree>>,
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 pub fn create_compiler_context(
     opts: CodeGenOptions,
     file_path: Option<String>,
-    backend: Arc<dyn CodeGenBackend + Send + Sync>,
     linker_output_kind: LinkerOutputKind,
 ) -> CodeGenContext {
     let entry_module_file_path = get_entry_source_code_path(opts.base_path.clone(), file_path);
@@ -58,14 +57,7 @@ pub fn create_compiler_context(
         }
     };
 
-    CodeGenContext::new(
-        opts,
-        build_manifest,
-        entry_module_file_path,
-        linker_output_kind,
-        backend,
-        linker,
-    )
+    CodeGenContext::new(opts, build_manifest, entry_module_file_path, linker_output_kind, linker)
 }
 
 pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
@@ -96,8 +88,11 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     // resolve the typed program tree
     let typed_program_tree = resolve_typed_program_tree(&mut resolver, &program_tree, entry_file.clone());
 
+    // create monomorph registry
+    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+
     // run analysis
-    let typed_program_trees = analyze_program_tree(&resolver, typed_program_tree);
+    let typed_program_trees = analyze_program_tree(&resolver, monomorph_registry.clone(), typed_program_tree);
 
     // convert Rc<RefCell> trees into boxed trees
     let boxed_trees = box_program_trees(typed_program_trees);
@@ -110,6 +105,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         entry_file,
         build_dir,
         program_trees: cir_program_trees,
+        monomorph_registry,
     }
 }
 
@@ -151,10 +147,10 @@ fn resolve_typed_program_tree(
 
 fn analyze_program_tree(
     resolver: &Resolver,
+    monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     typed_program_tree: Rc<RefCell<TypedProgramTree>>,
 ) -> Vec<Rc<RefCell<TypedProgramTree>>> {
     let entry_points = Arc::new(Mutex::new(Vec::new()));
-    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
     let mut analyzer = AnalysisContext::new(
         resolver,

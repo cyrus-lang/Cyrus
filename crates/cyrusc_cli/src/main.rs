@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::options::{
-    BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions,
+    BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind, RelocModeOptions,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::PROJECT_FILE_PATH;
@@ -134,8 +134,22 @@ struct CompilerOptions {
     )]
     code_model: CodeModel,
 
-    #[clap(long)]
-    jobs: Option<usize>,
+    #[clap(long, help = "Number of threads to use for compilation.")]
+    pub jobs: Option<usize>,
+
+    /// Module merge mode: `unified` for serial, `separate` for parallel
+    #[clap(
+        long,
+        value_enum,
+        help = "Module merge mode: 'unified' for serial, 'separate' for parallel."
+    )]
+    pub module_merge_mode: Option<ModuleMergeMode>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
+pub enum ModuleMergeMode {
+    Unified,
+    Separate,
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
@@ -216,6 +230,10 @@ impl Sanitizer {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            module_kind: self.module_merge_mode.and_then(|mmm| match mmm {
+                ModuleMergeMode::Unified => Some(ModuleKind::Unified),
+                ModuleMergeMode::Separate => Some(ModuleKind::Separate),
+            }),
             jobs: self.jobs,
             sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
             linker_flags: self.linkerflags.clone(),

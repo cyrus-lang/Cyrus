@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct CodeGenOptions {
+    pub module_kind: Option<ModuleKind>,
     pub jobs: Option<usize>,
     pub sanitizer: Vec<CodeGenSanitizer>,
     pub linker: Option<String>,
@@ -32,6 +33,12 @@ pub struct CodeGenOptions {
     pub disable_warnings: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum ModuleKind {
+    Separate,
+    Unified,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkerOutputKind {
     Executable,
@@ -55,6 +62,7 @@ impl BuildDir {
 impl Default for CodeGenOptions {
     fn default() -> Self {
         Self {
+            module_kind: None,
             jobs: None,
             linker: None,
             base_path: None,
@@ -88,6 +96,7 @@ impl Default for CodeGenOptions {
 impl CodeGenOptions {
     pub fn merge_preferring(&self, overrides: &Self) -> Self {
         Self {
+            module_kind: overrides.module_kind.clone().or(self.module_kind.clone()),
             jobs: overrides.jobs.or(self.jobs.clone()),
             linker: overrides.linker.clone().or_else(|| self.linker.clone()),
             project_type: overrides.project_type.clone().or_else(|| self.project_type.clone()),
@@ -267,6 +276,12 @@ impl fmt::Display for CodeGenSanitizer {
             CodeGenSanitizer::Undefined => write!(f, "undefined"),
             CodeGenSanitizer::Thread => write!(f, "thread"),
         }
+    }
+}
+
+impl ModuleKind {
+    pub fn is_unified(&self) -> bool {
+        matches!(self, ModuleKind::Unified)
     }
 }
 
