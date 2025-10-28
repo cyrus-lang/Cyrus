@@ -1,32 +1,57 @@
+use cyrusc_cir::CIRProgramTree;
 use cyrusc_compiler::{
-    codegen_traits::CodeGenBackend,
-    context::CodeGenContext,
+    codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
+    object_file_info::ObjectFileInfo,
     options::{CodeGenOptions, CodeModelOptions, RelocModeOptions},
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_sema::monomorph::MonomorphRegistry;
 use inkwell::{
     OptimizationLevel,
+    builder::Builder,
+    context::Context,
+    module::Module,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
 };
+use std::{
+    any::Any,
+    sync::{Arc, Mutex, RwLock},
+};
 
-#[derive(Debug)]
 pub struct CodeGenLLVM {
     opts: CodeGenOptions,
+    monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 impl CodeGenLLVM {
-    pub fn new(opts: CodeGenOptions) -> Self {
-        Self { opts }
+    pub fn new(opts: CodeGenOptions, monomorph_registry: Arc<Mutex<MonomorphRegistry>>) -> Self {
+        Self {
+            opts,
+            monomorph_registry,
+        }
+    }
+
+    fn process_module_with_local_context(
+        &self,
+        cir_module: &CIRProgramTree,
+        context: &Context,
+        builder: &Builder,
+        module: &Arc<RwLock<Module>>,
+    ) {
+        // Generate LLVM IR here safely
+        todo!()
     }
 }
 
-impl CodeGenBackend for CodeGenLLVM {
-    fn process_module(
-        &self,
-        ctx: &cyrusc_compiler::context::CodeGenContext,
-        cir_module: &cyrusc_cir::CIRProgramTree,
-    ) -> cyrusc_compiler::object_file_info::ObjectFileInfo {
+/// An owned llvm module
+pub struct OwnedModule {
+    pub module: Arc<RwLock<Module<'static>>>,
+}
+
+impl<'ctx> CodeGenBackend<OwnedModule> for CodeGenLLVM {
+    fn save_object_file(&self, module: &OwnedModule) -> ObjectFileInfo {
+        
         todo!()
     }
 
@@ -88,6 +113,61 @@ impl CodeGenBackend for CodeGenLLVM {
 
     fn name(&self) -> &'static str {
         "llvm"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_unified(&self) -> Option<&dyn UnifiedModuleSupport<OwnedModule>> {
+        Some(self)
+    }
+
+    fn as_separate(&self) -> Option<&dyn SeparateModuleSupport<OwnedModule>> {
+        Some(self)
+    }
+}
+
+impl SeparateModuleSupport<OwnedModule> for CodeGenLLVM {
+    fn process_separately(&self, cir_modules: &[Box<CIRProgramTree>]) -> Vec<OwnedModule> {
+        let mut modules = Vec::with_capacity(cir_modules.len());
+
+        for program_tree in cir_modules {
+            let context = Context::create();
+            let builder = context.create_builder();
+
+            let module = unsafe {
+                Arc::new(RwLock::new(std::mem::transmute::<Module<'_>, Module<'static>>(
+                    context.create_module("module"),
+                )))
+            };
+
+            self.process_module_with_local_context(program_tree, &context, &builder, &module);
+
+            modules.push(OwnedModule { module });
+        }
+
+        modules
+    }
+}
+
+impl UnifiedModuleSupport<OwnedModule> for CodeGenLLVM {
+    fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
+        let context = Context::create();
+        let builder = context.create_builder();
+
+        // create module and immediately erase its lifetime
+        let module = unsafe {
+            Arc::new(RwLock::new(std::mem::transmute::<Module<'_>, Module<'static>>(
+                context.create_module("unified_module"),
+            )))
+        };
+
+        for program_tree in cir_modules {
+            self.process_module_with_local_context(program_tree, &context, &builder, &module);
+        }
+
+        OwnedModule { module }
     }
 }
 

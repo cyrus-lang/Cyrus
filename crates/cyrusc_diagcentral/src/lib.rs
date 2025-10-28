@@ -35,13 +35,13 @@ impl DiagLoc {
     }
 }
 
-pub trait DiagKind: Display + Send + Sync {
+pub trait DiagKind: Display {
     fn clone_box(&self) -> Box<dyn DiagKind>;
 }
 
 impl<T> DiagKind for T
 where
-    T: Display + Clone + Send + Sync + 'static,
+    T: Display + Clone + 'static,
 {
     fn clone_box(&self) -> Box<dyn DiagKind> {
         Box::new(self.clone())
@@ -58,7 +58,7 @@ impl Clone for Diag {
     fn clone(&self) -> Self {
         Self {
             level: self.level.clone(),
-            kind: self.kind.clone(), 
+            kind: self.kind.clone(),
             location: self.location.clone(),
             hint: self.hint.clone(),
         }

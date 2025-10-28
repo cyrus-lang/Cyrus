@@ -2,15 +2,11 @@ use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
     object_file_info::{ObjectFileInfo, get_objects_file_names},
-    options::{CodeGenOptions, LinkerOutputKind},
+    options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::CIRProgramTree;
-use rayon::{
-    ThreadPoolBuilder,
-    iter::{IntoParallelRefIterator, ParallelIterator},
-};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -21,7 +17,6 @@ pub struct CodeGenContext {
     pub build_manifest: Arc<Mutex<BuildManifest>>,
     pub master_module_file_path: String,
     pub linker_output_kind: LinkerOutputKind,
-    pub backend: Arc<dyn CodeGenBackend + Send + Sync>,
     pub linker: Linker,
 }
 
@@ -31,7 +26,6 @@ impl CodeGenContext {
         build_manifest: Arc<Mutex<BuildManifest>>,
         master_module_file_path: String,
         linker_output_kind: LinkerOutputKind,
-        backend: Arc<dyn CodeGenBackend + Send + Sync>,
         linker: Linker,
     ) -> Self {
         Self {
@@ -39,31 +33,35 @@ impl CodeGenContext {
             build_manifest,
             master_module_file_path,
             linker_output_kind,
-            backend,
             linker,
         }
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile(&self, cir_modules: &Vec<Box<CIRProgramTree>>) -> Vec<ObjectFileInfo> {
-        self.compile_modules_in_parallel(cir_modules)
+    pub fn compile<BackendModule, B: CodeGenBackend<BackendModule>>(
+        &self,
+        backend: &B,
+        cir_modules: &[Box<CIRProgramTree>],
+    ) -> Vec<BackendModule> {
+        match self.opts.module_kind {
+            Some(ModuleKind::Unified) => {
+                let unified_backend = backend
+                    .as_unified()
+                    .expect("Backend does not support unified module compilation");
+                vec![unified_backend.process_unified(cir_modules)]
+            }
+            Some(ModuleKind::Separate) | None => {
+                let separate_backend = backend
+                    .as_separate()
+                    .expect("Backend does not support separate module compilation");
+                separate_backend.process_separately(cir_modules)
+            }
+        }
     }
 
-    fn compile_modules_in_parallel(&self, cir_modules: &Vec<Box<CIRProgramTree>>) -> Vec<ObjectFileInfo> {
-        let threads = std::cmp::min(num_cpus::get_physical(), self.opts.jobs.unwrap_or(num_cpus::get()));
-
-        let pool = ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .expect("Failed to build thread pool.");
-
-        pool.install(|| {
-            cir_modules
-                .par_iter()
-                .filter(|program_tree| need_to_be_recompiled(self, program_tree.file_path.clone()))
-                .map(|m| self.backend.process_module(self, m))
-                .collect()
-        })
+    /// Fetch the target machine info from the backend
+    pub fn target_machine_info<BackendModule>(&self, backend: &dyn CodeGenBackend<BackendModule>) -> TargetMachineInfo {
+        backend.get_target_machine_info()
     }
 
     pub fn trigger_linker(&self, object_files: Vec<ObjectFileInfo>, output_path: String) -> Result<(), String> {
@@ -87,10 +85,6 @@ impl CodeGenContext {
             }
             LinkerOutputKind::ObjectFile => Ok(()),
         }
-    }
-
-    pub fn target_machine_info(&self) -> TargetMachineInfo {
-        self.backend.get_target_machine_info()
     }
 }
 
