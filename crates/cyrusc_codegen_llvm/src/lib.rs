@@ -47,12 +47,38 @@ impl CodeGenLLVM {
 /// An owned llvm module
 pub struct OwnedModule {
     pub module: Arc<RwLock<Module<'static>>>,
+    pub context: Arc<RwLock<Context>>,
 }
 
 impl<'ctx> CodeGenBackend<OwnedModule> for CodeGenLLVM {
-    fn save_object_file(&self, module: &OwnedModule) -> ObjectFileInfo {
-        
-        todo!()
+    fn save_object_file(&self, owned_module: &OwnedModule) -> ObjectFileInfo {
+        // FIXME Only left to fix path_save !!
+        // let path = self.opts.build_dir. ?
+        todo!();
+
+        // let context = owned_module.context.read().unwrap();
+        // let module = owned_module.module.read().unwrap();
+
+        // let target_machine = create_target_machine(
+        //     self.opts.cpu.clone(),
+        //     self.opts.target_triple.clone(),
+        //     llvm_reloc_mode(self.opts.reloc_mode.clone()),
+        //     llvm_code_model(self.opts.code_model),
+        //     OptimizationLevel::Default,
+        // );
+
+        // target_machine
+        //     .write_to_file(&module, FileType::Object, &path)
+        //     .expect("Failed to write LLVM object file");
+
+        // ObjectFileInfo {
+        //     path: path.to_path_buf(),
+        //     size: std::fs::metadata(path)
+        //         .map(|m| m.len())
+        //         .unwrap_or_default()
+        //         .try_into()
+        //         .unwrap(),
+        // }
     }
 
     fn get_target_machine_info(&self) -> TargetMachineInfo {
@@ -133,18 +159,23 @@ impl SeparateModuleSupport<OwnedModule> for CodeGenLLVM {
         let mut modules = Vec::with_capacity(cir_modules.len());
 
         for program_tree in cir_modules {
-            let context = Context::create();
-            let builder = context.create_builder();
+            let context = Arc::new(RwLock::new(Context::create()));
+
+            let context_guard = context.read().unwrap();
+            let builder = context_guard.create_builder();
 
             let module = unsafe {
                 Arc::new(RwLock::new(std::mem::transmute::<Module<'_>, Module<'static>>(
-                    context.create_module("module"),
+                    context_guard.create_module("module"),
                 )))
             };
 
-            self.process_module_with_local_context(program_tree, &context, &builder, &module);
+            self.process_module_with_local_context(program_tree, &context_guard, &builder, &module);
 
-            modules.push(OwnedModule { module });
+            modules.push(OwnedModule {
+                module,
+                context: Arc::clone(&context),
+            });
         }
 
         modules
@@ -156,7 +187,6 @@ impl UnifiedModuleSupport<OwnedModule> for CodeGenLLVM {
         let context = Context::create();
         let builder = context.create_builder();
 
-        // create module and immediately erase its lifetime
         let module = unsafe {
             Arc::new(RwLock::new(std::mem::transmute::<Module<'_>, Module<'static>>(
                 context.create_module("unified_module"),
@@ -167,8 +197,39 @@ impl UnifiedModuleSupport<OwnedModule> for CodeGenLLVM {
             self.process_module_with_local_context(program_tree, &context, &builder, &module);
         }
 
-        OwnedModule { module }
+        drop(builder);
+
+        OwnedModule {
+            module,
+            context: Arc::new(RwLock::new(context)),
+        }
     }
+}
+
+/// Get an LLVM TargetMachine based on optional CPU, features, reloc, code model.
+/// Defaults to host if CPU/target_triple is None.
+fn create_target_machine(
+    cpu: Option<String>,
+    target_triple: Option<String>,
+    reloc: RelocMode,
+    code_model: CodeModel,
+    opt_level: OptimizationLevel,
+) -> TargetMachine {
+    Target::initialize_all(&InitializationConfig::default());
+
+    let triple = match target_triple {
+        Some(t) => TargetTriple::create(&t),
+        None => TargetMachine::get_default_triple(),
+    };
+
+    let target = Target::from_triple(&triple).expect("Failed to get LLVM Target from triple.");
+
+    let cpu_name = cpu.unwrap_or(TargetMachine::get_host_cpu_name().to_str().unwrap().to_string());
+    let features = TargetMachine::get_host_cpu_features().to_str().unwrap().to_string();
+
+    target
+        .create_target_machine(&triple, &cpu_name, &features, opt_level, reloc, code_model)
+        .expect("Failed to create TargetMachine")
 }
 
 fn llvm_reloc_mode(reloc_mode: RelocModeOptions) -> RelocMode {
