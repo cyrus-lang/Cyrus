@@ -1,34 +1,41 @@
+use crate::llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode};
 use cyrusc_cir::CIRProgramTree;
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
+    modulename::make_module_name_from_filepath,
     object_file_info::ObjectFileInfo,
-    options::{CodeGenOptions, CodeModelOptions, RelocModeOptions},
+    options::CodeGenOptions,
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_scaffold_parser::{LLVM_IR_DIR_PATH, OBJECTS_FILENAME};
 use cyrusc_sema::monomorph::MonomorphRegistry;
 use inkwell::{
-    OptimizationLevel,
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    targets::{FileType, InitializationConfig, Target, TargetMachine, TargetTriple},
 };
 use std::{
     any::Any,
+    path::Path,
     sync::{Arc, Mutex, RwLock},
 };
 
+mod llvm;
+
 pub struct CodeGenLLVM {
     opts: CodeGenOptions,
+    build_dir: String,
     monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 impl CodeGenLLVM {
-    pub fn new(opts: CodeGenOptions, monomorph_registry: Arc<Mutex<MonomorphRegistry>>) -> Self {
+    pub fn new(opts: CodeGenOptions, build_dir: String, monomorph_registry: Arc<Mutex<MonomorphRegistry>>) -> Self {
         Self {
             opts,
             monomorph_registry,
+            build_dir,
         }
     }
 
@@ -42,43 +49,66 @@ impl CodeGenLLVM {
         // Generate LLVM IR here safely
         todo!()
     }
+
+    pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>) {
+        let llvm_ir_dir = Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH);
+
+        for owned_module in owned_modules {
+            let module = owned_module.module.try_read().unwrap();
+            if let Err(llvm_str) = module.print_to_file(llvm_ir_dir.join(module.get_name().to_str().unwrap())) {
+                display_single_custom_diag!(llvm_str.to_string());
+            }
+            drop(module);
+        }
+    }
 }
 
 /// An owned llvm module
 pub struct OwnedModule {
     pub module: Arc<RwLock<Module<'static>>>,
     pub context: Arc<RwLock<Context>>,
+    pub file_path: Option<String>,
 }
 
 impl<'ctx> CodeGenBackend<OwnedModule> for CodeGenLLVM {
     fn save_object_file(&self, owned_module: &OwnedModule) -> ObjectFileInfo {
-        // FIXME Only left to fix path_save !!
-        // let path = self.opts.build_dir. ?
-        todo!();
+        let module_name = owned_module
+            .file_path
+            .clone()
+            .map(|file_path| {
+                let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
+                let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
+                make_module_name_from_filepath(file_path, base_path, stdlib_path)
+            })
+            .unwrap_or_else(|| "module".to_string());
 
-        // let context = owned_module.context.read().unwrap();
-        // let module = owned_module.module.read().unwrap();
+        let path = Path::new(&self.build_dir)
+            .join(OBJECTS_FILENAME)
+            .join(module_name)
+            .join(".o");
 
-        // let target_machine = create_target_machine(
-        //     self.opts.cpu.clone(),
-        //     self.opts.target_triple.clone(),
-        //     llvm_reloc_mode(self.opts.reloc_mode.clone()),
-        //     llvm_code_model(self.opts.code_model),
-        //     OptimizationLevel::Default,
-        // );
+        let module = owned_module.module.read().unwrap();
 
-        // target_machine
-        //     .write_to_file(&module, FileType::Object, &path)
-        //     .expect("Failed to write LLVM object file");
+        let target_machine = create_target_machine(
+            self.opts.cpu.clone(),
+            self.opts.target_triple.clone(),
+            llvm_reloc_mode(self.opts.reloc_mode.clone()),
+            llvm_code_model(self.opts.code_model.clone()),
+            llvm_opt_level(self.opts.opt_level.unwrap_or(0).try_into().unwrap()),
+        );
 
-        // ObjectFileInfo {
-        //     path: path.to_path_buf(),
-        //     size: std::fs::metadata(path)
-        //         .map(|m| m.len())
-        //         .unwrap_or_default()
-        //         .try_into()
-        //         .unwrap(),
-        // }
+        target_machine
+            .write_to_file(&module, FileType::Object, &path)
+            .expect("Failed to write LLVM object file");
+
+        ObjectFileInfo {
+            path: path.to_str().unwrap().to_string(),
+            size: std::fs::metadata(path)
+                .map(|m| m.len())
+                .unwrap_or_default()
+                .try_into()
+                .unwrap(),
+        }
     }
 
     fn get_target_machine_info(&self) -> TargetMachineInfo {
@@ -102,7 +132,7 @@ impl<'ctx> CodeGenBackend<OwnedModule> for CodeGenLLVM {
             &target_triple,
             &cpu,
             &features,
-            OptimizationLevel::Default,
+            llvm_opt_level(self.opts.opt_level.unwrap_or(0).try_into().unwrap()),
             llvm_reloc_mode(self.opts.reloc_mode.clone()),
             llvm_code_model(self.opts.code_model.clone()),
         ) {
@@ -175,6 +205,7 @@ impl SeparateModuleSupport<OwnedModule> for CodeGenLLVM {
             modules.push(OwnedModule {
                 module,
                 context: Arc::clone(&context),
+                file_path: Some(program_tree.file_path.clone()),
             });
         }
 
@@ -202,52 +233,7 @@ impl UnifiedModuleSupport<OwnedModule> for CodeGenLLVM {
         OwnedModule {
             module,
             context: Arc::new(RwLock::new(context)),
+            file_path: None,
         }
-    }
-}
-
-/// Get an LLVM TargetMachine based on optional CPU, features, reloc, code model.
-/// Defaults to host if CPU/target_triple is None.
-fn create_target_machine(
-    cpu: Option<String>,
-    target_triple: Option<String>,
-    reloc: RelocMode,
-    code_model: CodeModel,
-    opt_level: OptimizationLevel,
-) -> TargetMachine {
-    Target::initialize_all(&InitializationConfig::default());
-
-    let triple = match target_triple {
-        Some(t) => TargetTriple::create(&t),
-        None => TargetMachine::get_default_triple(),
-    };
-
-    let target = Target::from_triple(&triple).expect("Failed to get LLVM Target from triple.");
-
-    let cpu_name = cpu.unwrap_or(TargetMachine::get_host_cpu_name().to_str().unwrap().to_string());
-    let features = TargetMachine::get_host_cpu_features().to_str().unwrap().to_string();
-
-    target
-        .create_target_machine(&triple, &cpu_name, &features, opt_level, reloc, code_model)
-        .expect("Failed to create TargetMachine")
-}
-
-fn llvm_reloc_mode(reloc_mode: RelocModeOptions) -> RelocMode {
-    match reloc_mode {
-        RelocModeOptions::Default => RelocMode::Default,
-        RelocModeOptions::Static => RelocMode::Static,
-        RelocModeOptions::PIC => RelocMode::PIC,
-        RelocModeOptions::DynamicNoPic => RelocMode::DynamicNoPic,
-    }
-}
-
-fn llvm_code_model(code_model: CodeModelOptions) -> CodeModel {
-    match code_model {
-        CodeModelOptions::Default => CodeModel::Default,
-        CodeModelOptions::Tiny => CodeModel::Default,
-        CodeModelOptions::Small => CodeModel::Small,
-        CodeModelOptions::Kernel => CodeModel::Kernel,
-        CodeModelOptions::Medium => CodeModel::Medium,
-        CodeModelOptions::Large => CodeModel::Large,
     }
 }

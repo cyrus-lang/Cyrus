@@ -272,6 +272,7 @@ dependencies = [
  "cyrusc_cir",
  "cyrusc_compiler",
  "cyrusc_diagcentral",
+ "cyrusc_scaffold_parser",
  "cyrusc_sema",
  "inkwell",
  "rayon",
