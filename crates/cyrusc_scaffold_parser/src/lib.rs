@@ -10,7 +10,7 @@ pub const PROJECT_FILE_PATH: &str = "Project.toml";
 
 #[derive(Debug, Error)]
 pub enum ParseError {
-    #[error("IO error reading `{0}`: {1}")]
+    #[error("IO error reading '{0}': {1}")]
     IO(String, #[source] std::io::Error),
 
     #[error("TOML deserialization error: {0}")]

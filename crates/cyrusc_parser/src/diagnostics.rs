@@ -42,11 +42,6 @@ pub enum ParserDiagKind {
     #[error("Missing comma.")]
     MissingComma,
 
-    #[error(
-        "Defined a conditional for loop with incomplete condition. Consider adding a condition to current for loop or change it into unconditional for loop."
-    )]
-    IncompleteConditionalForLoop,
-
     #[error("If untyped array constructor would not have an item, consider removing it.")]
     InvalidUntypedArrayConstructor,
 

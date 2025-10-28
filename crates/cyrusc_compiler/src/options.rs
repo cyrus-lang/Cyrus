@@ -1,6 +1,5 @@
 use core::fmt;
 use cyrusc_scaffold_parser::ScaffoldConfig;
-use inkwell::targets::{CodeModel, RelocMode};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -203,26 +202,6 @@ pub enum RelocModeOptions {
     DynamicNoPic,
 }
 
-impl RelocModeOptions {
-    pub fn to_llvm_reloc_mode(&self) -> RelocMode {
-        match self {
-            RelocModeOptions::Default => RelocMode::Default,
-            RelocModeOptions::Static => RelocMode::Static,
-            RelocModeOptions::PIC => RelocMode::PIC,
-            RelocModeOptions::DynamicNoPic => RelocMode::DynamicNoPic,
-        }
-    }
-
-    pub fn to_linker_reloc_mode(&self) -> Option<String> {
-        match self {
-            RelocModeOptions::Default => None,
-            RelocModeOptions::Static => Some("--relocation-model=static".into()),
-            RelocModeOptions::PIC => Some("--relocation-model=pic".into()),
-            RelocModeOptions::DynamicNoPic => Some("--relocation-model=dynamic-no-pic".into()),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum CodeModelOptions {
     Default,
@@ -233,26 +212,26 @@ pub enum CodeModelOptions {
     Large,
 }
 
-impl CodeModelOptions {
-    pub fn to_llvm_code_model(&self) -> CodeModel {
+impl fmt::Display for RelocModeOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CodeModelOptions::Default => CodeModel::Default,
-            CodeModelOptions::Tiny => CodeModel::Default,
-            CodeModelOptions::Small => CodeModel::Small,
-            CodeModelOptions::Kernel => CodeModel::Kernel,
-            CodeModelOptions::Medium => CodeModel::Medium,
-            CodeModelOptions::Large => CodeModel::Large,
+            RelocModeOptions::Default => write!(f, "Default"),
+            RelocModeOptions::Static => write!(f, "Static"),
+            RelocModeOptions::PIC => write!(f, "PIE"),
+            RelocModeOptions::DynamicNoPic => write!(f, "DynamicNoPIC"),
         }
     }
+}
 
-    pub fn to_linker_code_model(&self) -> Option<String> {
+impl fmt::Display for CodeModelOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CodeModelOptions::Default => None,
-            CodeModelOptions::Tiny => Some("--code-model=tiny".into()),
-            CodeModelOptions::Small => Some("--code-model=small".into()),
-            CodeModelOptions::Kernel => Some("--code-model=kernel".into()),
-            CodeModelOptions::Medium => Some("--code-model=medium".into()),
-            CodeModelOptions::Large => Some("--code-model=large".into()),
+            CodeModelOptions::Default => write!(f, "Default"),
+            CodeModelOptions::Tiny => write!(f, "Tiny"),
+            CodeModelOptions::Small => write!(f, "Small"),
+            CodeModelOptions::Kernel => write!(f, "Kernel"),
+            CodeModelOptions::Medium => write!(f, "Medium"),
+            CodeModelOptions::Large => write!(f, "Large"),
         }
     }
 }

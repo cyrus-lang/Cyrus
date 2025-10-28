@@ -143,7 +143,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.analyze_unused_symbols();
+        // self.analyze_unused_symbols(); // FIXME
         self.program_tree.borrow_mut().body = body;
     }
 

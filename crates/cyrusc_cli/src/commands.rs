@@ -17,11 +17,11 @@ use std::{process::exit, sync::Arc};
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
     // build compilation bundle
-    let llvm_backend = CodeGenLLVM::new();
+    let llvm_backend = CodeGenLLVM::new(opts.clone());
     let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
 
     let context = create_compiler_context(
-        Box::new(opts.clone()),
+        opts.clone(),
         Some(compilation_bundle.entry_file.clone()),
         Arc::new(llvm_backend),
         LinkerOutputKind::Executable,
@@ -167,7 +167,7 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
     // context.compile_modules(program_trees, monomorph_registry);
 }
 
-pub(crate) fn command_dylib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_dylib(opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 

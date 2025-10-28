@@ -16,7 +16,7 @@ parser:
 	cargo run -j24 -p cyrusc_parser -- ./tmp/main.cyrus --stdlib=./stdlib $(ARGS)
 
 run:
-	cargo run -j24 -p cyrusc_cli -- run ./tmp/main.cyrus --stdlib=./stdlib --disable-warnings $(ARGS)
+	cargo run -j24 -- run ./tmp/main.cyrus --stdlib=./stdlib --disable-warnings $(ARGS)
 
 build:
 	cargo build -j24 $(ARGS)
