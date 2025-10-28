@@ -3,9 +3,14 @@ use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
-    ScopeID, SymbolID, stmts::{TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg}, types::{
-        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType, TypedTupleType
-    }
+    ScopeID, SymbolID,
+    stmts::{
+        TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg,
+    },
+    types::{
+        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
+        TypedTupleType,
+    },
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -47,7 +52,6 @@ impl<'a> AnalysisContext<'a> {
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
                     }
-                    _ => {}
                 };
             }
             _ => {}
@@ -59,8 +63,7 @@ impl<'a> AnalysisContext<'a> {
                 for type_arg in &mut generic_type.type_args {
                     let normalized_type_arg = match type_arg {
                         TypedTypeArg::Positional(sema_ty) => {
-                            let normalized_ty =
-                                self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone())?;
+                            let normalized_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone())?;
                             TypedTypeArg::Positional(normalized_ty)
                         }
                         TypedTypeArg::Named { key, value } => {
@@ -82,14 +85,13 @@ impl<'a> AnalysisContext<'a> {
                 self.normalize_type(scope_id_opt, resolved, loc)
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
-                let sym =
-                    match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
-                        Some(sym) => sym,
-                        None => {
-                            self.report_non_type_symbol(symbol_id, loc.clone());
-                            return None;
-                        }
-                    };
+                let sym = match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
+                    Some(sym) => sym,
+                    None => {
+                        self.report_non_type_symbol(symbol_id, loc.clone());
+                        return None;
+                    }
+                };
 
                 let resolved_typedef_opt = match &sym {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_typedef(),
@@ -344,11 +346,11 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Interface(resolved_interface) => Some(SemanticType::ResolvedSymbol(
                     ResolvedSymbol::Interface(resolved_interface.symbol_id),
                 )),
-                SymbolEntryKind::Typedef(resolved_typedef) => self
-                    .resolve_typedef_inner_type(&resolved_typedef)
-                    .and_then(|sema_ty| {
+                SymbolEntryKind::Typedef(resolved_typedef) => {
+                    self.resolve_typedef_inner_type(&resolved_typedef).and_then(|sema_ty| {
                         self.normalize_type(scope_id_opt, sema_ty, resolved_typedef.typedef_sig.loc.clone())
-                    }),
+                    })
+                }
             },
         }
     }

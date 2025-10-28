@@ -36,7 +36,7 @@ pub struct CodeGenContextBundle {
 }
 
 pub fn create_compiler_context(
-    opts: Box<CodeGenOptions>,
+    opts: CodeGenOptions,
     file_path: Option<String>,
     backend: Arc<dyn CodeGenBackend + Send + Sync>,
     linker_output_kind: LinkerOutputKind,
@@ -137,7 +137,7 @@ fn resolve_typed_program_tree(
     entry_file: String,
 ) -> Rc<RefCell<TypedProgramTree>> {
     let module_id = generate_module_id();
-    let tree = resolver
+    let program_tree = resolver
         .resolve_module(module_id, program, &mut Visiting::new(), true, entry_file)
         .unwrap_or_else(|| panic!("Failed to resolve module."));
 
@@ -146,7 +146,7 @@ fn resolve_typed_program_tree(
         exit(1);
     }
 
-    tree
+    program_tree
 }
 
 fn analyze_program_tree(
@@ -191,7 +191,7 @@ fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir
     match build_dir {
         BuildDir::Provided(path) => path,
         BuildDir::Default => {
-            // Resolve project file path
+            // resolve project file path
             let project_file = env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join(&base)
@@ -209,9 +209,7 @@ fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir
                         })
                         .unwrap_or_else(fallback_temp_dir)
                 })
-                .unwrap_or_else(|err| {
-                    display_single_custom_diag!(err.to_string());
-                })
+                .unwrap_or_else(|_| fallback_temp_dir())
         }
     }
 }

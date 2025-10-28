@@ -17,7 +17,7 @@ use std::{
 };
 
 pub struct CodeGenContext {
-    pub opts: Box<CodeGenOptions>,
+    pub opts: CodeGenOptions,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
     pub master_module_file_path: String,
     pub linker_output_kind: LinkerOutputKind,
@@ -27,7 +27,7 @@ pub struct CodeGenContext {
 
 impl CodeGenContext {
     pub(crate) fn new(
-        opts: Box<CodeGenOptions>,
+        opts: CodeGenOptions,
         build_manifest: Arc<Mutex<BuildManifest>>,
         master_module_file_path: String,
         linker_output_kind: LinkerOutputKind,
@@ -90,7 +90,7 @@ impl CodeGenContext {
     }
 
     pub fn target_machine_info(&self) -> TargetMachineInfo {
-        self.backend.get_target_machine_info(self)
+        self.backend.get_target_machine_info()
     }
 }
 

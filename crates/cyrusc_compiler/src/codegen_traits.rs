@@ -7,7 +7,7 @@ pub trait CodeGenBackend: Send + Sync {
     fn process_module(&self, ctx: &CodeGenContext, cir_program_tree: &CIRProgramTree) -> ObjectFileInfo;
 
     /// Returns the target machine info; backend owns the logic
-    fn get_target_machine_info(&self, ctx: &CodeGenContext) -> TargetMachineInfo;
+    fn get_target_machine_info(&self) -> TargetMachineInfo;
 
     /// Human-readable backend name
     fn name(&self) -> &'static str;

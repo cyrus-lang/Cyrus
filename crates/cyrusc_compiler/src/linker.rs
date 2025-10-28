@@ -6,7 +6,7 @@ use which::which;
 #[derive(Debug, Clone)]
 pub struct Linker {
     pub linker_path: String,
-    pub opts: Box<CodeGenOptions>,
+    pub opts: CodeGenOptions,
     pub flags: Vec<String>,
     pub sanitizers: Vec<CodeGenSanitizer>,
     pub opt_level: Option<i32>,
@@ -17,7 +17,7 @@ pub struct Linker {
 const DEFAULT_LINKERS: &[(&str, &str)] = &[("linux", "gcc"), ("macos", "clang"), ("windows", "link.exe")];
 
 impl Linker {
-    pub fn new(opts: Box<CodeGenOptions>) -> Result<Self, String> {
+    pub fn new(opts: CodeGenOptions) -> Result<Self, String> {
         let os = std::env::consts::OS;
         let default_linker = DEFAULT_LINKERS
             .iter()
