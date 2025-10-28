@@ -65,7 +65,7 @@ macro_rules! update_local_symbol {
 }
 
 pub struct AnalysisContext<'a> {
-    pub ast: Rc<RefCell<TypedProgramTree>>,
+    pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter,
     pub module_id: ModuleID,
@@ -84,7 +84,7 @@ impl<'a> AnalysisContext<'a> {
     pub fn new(
         resolver: &'a Resolver,
         module_id: ModuleID,
-        ast: Rc<RefCell<TypedProgramTree>>,
+        program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<Mutex<Vec<SourceLoc>>>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         disable_warnings: bool,
@@ -92,7 +92,7 @@ impl<'a> AnalysisContext<'a> {
         let symbol_formatter = Self::build_symbol_formatter(resolver, module_id);
 
         Self {
-            ast,
+            program_tree,
             resolver,
             reporter: DiagReporter::new(),
             module_id,
@@ -111,8 +111,8 @@ impl<'a> AnalysisContext<'a> {
     // Traverse TypedAST
     pub fn analyze(&mut self) {
         let mut body = {
-            let mut ast_borrowed = self.ast.borrow_mut();
-            mem::take(&mut ast_borrowed.body)
+            let mut tree_borrowed = self.program_tree.borrow_mut();
+            mem::take(&mut tree_borrowed.body)
         };
 
         for mut typed_stmt in &mut body {
@@ -144,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_unused_symbols();
-        self.ast.borrow_mut().body = body;
+        self.program_tree.borrow_mut().body = body;
     }
 
     pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {

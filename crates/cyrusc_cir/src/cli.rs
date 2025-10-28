@@ -1,3 +1,4 @@
+use cyrusc_cir::walk::walk_program_trees_in_parallel;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
@@ -5,12 +6,18 @@ use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
+use cyrusc_tast::TypedProgramTree;
 use std::{
+    cell::RefCell,
     env,
+    ops::Deref,
     process::exit,
+    rc::Rc,
     sync::{Arc, Mutex},
     vec,
 };
+
+const CIR_WALK_THREADS: usize = 4;
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
@@ -50,6 +57,8 @@ pub fn main() {
                 exit(1);
             }
 
+            let mut program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
                 let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
@@ -68,11 +77,25 @@ pub fn main() {
                 }
 
                 AnalysisContext::check_entry_points(entry_points);
+                program_trees.push(analyzer.program_tree.clone());
             }
 
-            if !resolver.reporter.has_errors() {
-                dbg!(typed_program_tree);
-            }
+            let cloned_program_trees: Vec<Box<TypedProgramTree>> = program_trees
+                .into_iter()
+                .map(|rc_refcell_tree| {
+                    match Rc::try_unwrap(rc_refcell_tree) {
+                        Ok(refcell_tree) => Box::new(refcell_tree.into_inner()),
+                        Err(rc_still_shared) => {
+                            // fallback borrow immutably and clone the inner tree
+                            let cloned_tree = rc_still_shared.borrow().clone();
+                            Box::new(cloned_tree)
+                        }
+                    }
+                })
+                .collect();
+
+            let cir_program_trees = walk_program_trees_in_parallel(CIR_WALK_THREADS, cloned_program_trees);
+            dbg!(cir_program_trees);
         }
         Err(errors) => {
             parser.display_parser_errors(errors.clone());

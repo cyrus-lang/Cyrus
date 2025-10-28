@@ -257,6 +257,7 @@ dependencies = [
  "cyrusc_resolver",
  "cyrusc_sema",
  "cyrusc_tast",
+ "rayon",
 ]
 
 [[package]]

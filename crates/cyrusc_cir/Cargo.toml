@@ -13,6 +13,7 @@ cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
+rayon = "1.11.0"
 
 [lib]
 name = "cyrusc_cir"
