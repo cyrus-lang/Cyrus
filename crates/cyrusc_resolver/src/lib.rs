@@ -35,13 +35,20 @@ pub struct Resolver {
     // lists imported modules by current module by their alias
     pub module_aliases: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
-    pub program_trees: Arc<Mutex<Vec<(String, String, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
+    pub program_trees: Arc<Mutex<Vec<Rc<ProgramTreeEntry>>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, String>>>,
     pub reporter: DiagReporter,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
     already_imported_modules: HashSet<ImportKey>,
     current_module: Option<ModuleID>,
+}
+
+pub struct ProgramTreeEntry {
+    pub module_name: String,
+    pub module_path: String,
+    pub module_id: ModuleID,
+    pub program: Rc<RefCell<TypedProgramTree>>,
 }
 
 // Track previously imported module + import kind
@@ -154,12 +161,12 @@ impl Resolver {
         if is_master {
             let mut program_trees = self.program_trees.lock().unwrap();
             let module_name = get_module_name(module_file_path.clone());
-            program_trees.push((
+            program_trees.push(Rc::new(ProgramTreeEntry {
                 module_name,
-                module_file_path.clone(),
-                self.current_module.unwrap(),
-                typed_program_tree.clone(),
-            ));
+                module_path: module_file_path.clone(),
+                module_id: self.current_module.unwrap(),
+                program: typed_program_tree.clone(),
+            }));
             drop(program_trees);
         }
 
@@ -293,7 +300,12 @@ impl Resolver {
                     let module_file_path = self.get_current_module_file_path();
                     let mut program_trees = self.program_trees.lock().unwrap();
                     let module_name = get_module_name(module_file_path.clone());
-                    program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
+                    program_trees.push(Rc::new(ProgramTreeEntry {
+                        module_name,
+                        module_path: module_file_path,
+                        module_id,
+                        program: typed_program_tree,
+                    }));
                     drop(program_trees);
 
                     match loaded_module.alias {

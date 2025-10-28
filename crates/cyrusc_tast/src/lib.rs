@@ -10,7 +10,7 @@ pub type ScopeID = u32;
 pub type SymbolID = u32;
 pub type ModuleID = u64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedProgramTree {
     pub body: Vec<TypedStmt>,
 }

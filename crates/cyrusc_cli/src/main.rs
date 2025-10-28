@@ -1,8 +1,10 @@
 use clap::{Parser, ValueEnum};
-use codegen_llvm::options::{BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions};
 use commands::*;
+use cyrusc_codegen_llvm::options::{
+    BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions,
+};
 use cyrusc_diagcentral::display_single_custom_diag;
-use scaffold::PROJECT_FILE_PATH;
+use cyrusc_scaffold::PROJECT_FILE_PATH;
 use serde::Deserialize;
 
 mod commands;
@@ -119,10 +121,7 @@ struct CompilerOptions {
     display_target_machine: bool,
 
     #[clap(long = "sanitize", help = "Enables dynamic code analysis for bug detection.")]
-    #[clap(
-        value_enum,
-        value_delimiter = ','
-    )]
+    #[clap(value_enum, value_delimiter = ',')]
     pub sanitizer: Vec<Sanitizer>,
 
     #[clap(long, value_enum, default_value_t = RelocMode::default(),
@@ -291,7 +290,7 @@ enum Commands {
         linker_options: LinkerCompilerOptions,
 
         #[clap(last = true)]
-        program_args: Vec<String>
+        program_args: Vec<String>,
     },
 
     #[clap(about = "Fetches a library into vendor directory.", display_order = 2)]
@@ -412,7 +411,7 @@ pub fn main() {
         } => {
             let mut codegen_options = compiler_options.to_compiler_options();
             codegen_options.linker_options = linker_options.to_compiler_linker_options();
-            command_run(codegen_options, file_path , program_args);
+            command_run(codegen_options, file_path, program_args);
         }
         Commands::EmitLLVM {
             file_path,

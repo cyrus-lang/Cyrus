@@ -8,13 +8,20 @@ use cyrusc_tast::{
     stmts::*,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
+use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
+use std::rc::Rc;
 
 #[derive(Debug)]
-pub struct CIRWalk {
-    program: TypedProgramTree,
+struct CIRWalk {
+    program: Box<TypedProgramTree>,
 }
 
 impl CIRWalk {
+    pub fn new(program: Box<TypedProgramTree>) -> Self {
+        Self { program }
+    }
+
     pub fn run_pass(&self) -> CIRProgramTree {
         let stmts = self.lower_stmts(&self.program.body);
         CIRProgramTree { body: stmts }
@@ -491,4 +498,25 @@ impl CIRWalk {
             }
         }
     }
+}
+
+pub fn walk_program_trees_in_parallel(
+    threads: usize,
+    program_trees: Vec<Box<TypedProgramTree>>,
+) -> Vec<Box<CIRProgramTree>> {
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .expect("Failed to build thread pool.");
+
+    pool.install(|| {
+        program_trees
+            .into_par_iter() 
+            .map(|tree| {
+                let cir_walk = CIRWalk::new(tree.clone()); 
+                let cir_program_tree = cir_walk.run_pass();
+                Box::new(cir_program_tree)
+            })
+            .collect()
+    })
 }
