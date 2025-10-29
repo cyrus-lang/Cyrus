@@ -38,11 +38,11 @@ impl CodeGenContext {
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile<BackendModule, Backend: CodeGenBackend<BackendModule>>(
-        &self,
-        backend: &Backend,
-        cir_modules: &[Box<CIRProgramTree>],
-    ) -> Vec<BackendModule> {
+    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &[Box<CIRProgramTree>]) -> Vec<M>
+    where
+        B: CodeGenBackend<'cdg, M>,
+        M: 'cdg,
+    {
         match self.opts.module_kind {
             Some(ModuleKind::Unified) => {
                 let unified_backend = backend
@@ -60,7 +60,10 @@ impl CodeGenContext {
     }
 
     /// Fetch the target machine info from the backend
-    pub fn target_machine_info<BackendModule>(&self, backend: &dyn CodeGenBackend<BackendModule>) -> TargetMachineInfo {
+    pub fn target_machine_info<'cdg, BackendModule>(
+        &self,
+        backend: &'cdg dyn CodeGenBackend<'cdg, BackendModule>,
+    ) -> TargetMachineInfo {
         backend.get_target_machine_info()
     }
 
