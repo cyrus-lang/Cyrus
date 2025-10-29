@@ -2,6 +2,7 @@ use crate::llvm::target_machine::{create_target_machine, llvm_code_model, llvm_o
 use cyrusc_cir::CIRProgramTree;
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
+    context::{CodeGenContext, need_to_be_recompiled},
     modulename::make_module_name_from_filepath,
     object_file_info::ObjectFileInfo,
     options::CodeGenOptions,
@@ -18,21 +19,29 @@ use inkwell::{
 };
 use std::{
     any::Any,
-    path::Path,
+    path::{Path, PathBuf},
+    rc::Rc,
     sync::{Arc, Mutex, RwLock},
 };
 
 mod llvm;
 
 pub struct CodeGenLLVM {
+    ctx: Rc<CodeGenContext>,
     opts: CodeGenOptions,
     build_dir: String,
     monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 impl CodeGenLLVM {
-    pub fn new(opts: CodeGenOptions, build_dir: String, monomorph_registry: Arc<Mutex<MonomorphRegistry>>) -> Self {
+    pub fn new(
+        ctx: Rc<CodeGenContext>,
+        opts: CodeGenOptions,
+        build_dir: String,
+        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    ) -> Self {
         Self {
+            ctx,
             opts,
             monomorph_registry,
             build_dir,
@@ -50,8 +59,10 @@ impl CodeGenLLVM {
         todo!()
     }
 
-    pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>) {
-        let llvm_ir_dir = Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH);
+    pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {
+        let llvm_ir_dir = output_path
+            .map(PathBuf::from)
+            .unwrap_or_else(|| Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH));
 
         for owned_module in owned_modules {
             let module = owned_module.module.try_read().unwrap();
@@ -70,7 +81,7 @@ pub struct OwnedModule {
     pub file_path: Option<String>,
 }
 
-impl<'ctx> CodeGenBackend<OwnedModule> for CodeGenLLVM {
+impl CodeGenBackend<OwnedModule> for CodeGenLLVM {
     fn save_object_file(&self, owned_module: &OwnedModule) -> ObjectFileInfo {
         let module_name = owned_module
             .file_path
@@ -189,6 +200,10 @@ impl SeparateModuleSupport<OwnedModule> for CodeGenLLVM {
         let mut modules = Vec::with_capacity(cir_modules.len());
 
         for program_tree in cir_modules {
+            if !need_to_be_recompiled(&self.ctx, program_tree.file_path.clone()) {
+                continue; // skip recompilation
+            }
+
             let context = Arc::new(RwLock::new(Context::create()));
 
             let context_guard = context.read().unwrap();

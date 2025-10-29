@@ -89,7 +89,7 @@ impl CodeGenContext {
 }
 
 /// Decides whether to recompile a module.
-fn need_to_be_recompiled(ctx: &CodeGenContext, module_file_path: String) -> bool {
+pub fn need_to_be_recompiled(ctx: &CodeGenContext, module_file_path: String) -> bool {
     let build_manifest = ctx.build_manifest.lock().unwrap();
     let is_source_changed = build_manifest.is_source_changed(module_file_path.clone()).unwrap();
 

@@ -16,20 +16,22 @@ use std::io;
 use std::io::Write;
 use std::process::Command;
 use std::process::exit;
+use std::rc::Rc;
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
     let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
 
-    let llvm_backend = CodeGenLLVM::new(
-        opts.clone(),
-        compilation_bundle.build_dir,
-        compilation_bundle.monomorph_registry,
-    );
-
-    let context = create_compiler_context(
+    let context = Rc::new(create_compiler_context(
         opts.clone(),
         Some(compilation_bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+    ));
+
+    let llvm_backend = CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        compilation_bundle.build_dir,
+        compilation_bundle.monomorph_registry,
     );
 
     if opts.display_target_machine {
@@ -70,17 +72,18 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     // build compilation bundle
     let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // build llvm codegen context
-    let llvm_backend = CodeGenLLVM::new(
-        opts.clone(),
-        compilation_bundle.build_dir,
-        compilation_bundle.monomorph_registry,
-    );
-
-    let context = create_compiler_context(
+    let context = Rc::new(create_compiler_context(
         opts.clone(),
         Some(compilation_bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+    ));
+
+    // build llvm codegen context
+    let llvm_backend = CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        compilation_bundle.build_dir,
+        compilation_bundle.monomorph_registry,
     );
 
     if opts.display_target_machine {
@@ -88,7 +91,7 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     }
 
     let owned_modules = context.compile(&llvm_backend, &compilation_bundle.program_trees);
-    llvm_backend.save_modules_llvm_ir(&owned_modules);
+    llvm_backend.save_modules_llvm_ir(&owned_modules, output_path);
 }
 
 pub(crate) fn command_emit_bytecode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
