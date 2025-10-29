@@ -288,3 +288,13 @@ pub struct CIRUnionStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRExportTupleStmt {} // FIXME
+
+pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
+    CIRFuncDeclStmt {
+        name: func_def.name.clone(),
+        params: func_def.params.clone(),
+        is_var: func_def.is_var.clone(),
+        ret: func_def.ret.clone(),
+        vis: func_def.vis.clone(),
+    }
+}

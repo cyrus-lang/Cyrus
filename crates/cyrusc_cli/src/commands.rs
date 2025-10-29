@@ -19,32 +19,32 @@ use std::process::exit;
 use std::rc::Rc;
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
-    let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
     let context = Rc::new(create_compiler_context(
         opts.clone(),
-        Some(compilation_bundle.entry_file.clone()),
+        Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
-    let llvm_backend = CodeGenLLVM::new(
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         context.clone(),
         opts.clone(),
-        compilation_bundle.build_dir,
-        compilation_bundle.monomorph_registry,
-    );
+        bundle.build_dir,
+        bundle.monomorph_registry,
+    )));
 
     if opts.display_target_machine {
-        println!("{}", context.target_machine_info(&llvm_backend));
+        println!("{}", context.target_machine_info(llvm_backend));
     }
 
     let temp_exe = TempExecutableBuilder::new()
         .project_name(opts.project_name.clone().unwrap_or_default())
-        .entry_file(compilation_bundle.entry_file.clone())
+        .entry_file(bundle.entry_file.clone())
         .build()
         .expect("Failed to create temp executable path.");
 
-    let owned_modules = context.compile(&llvm_backend, &compilation_bundle.program_trees);
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
         .iter()
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
@@ -70,27 +70,27 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
 
 pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     // build compilation bundle
-    let compilation_bundle = build_compilation_bundle(&mut opts, file_path);
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
     let context = Rc::new(create_compiler_context(
         opts.clone(),
-        Some(compilation_bundle.entry_file.clone()),
+        Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
     // build llvm codegen context
-    let llvm_backend = CodeGenLLVM::new(
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         context.clone(),
         opts.clone(),
-        compilation_bundle.build_dir,
-        compilation_bundle.monomorph_registry,
-    );
+        bundle.build_dir,
+        bundle.monomorph_registry,
+    )));
 
     if opts.display_target_machine {
-        println!("{}", context.target_machine_info(&llvm_backend));
+        println!("{}", context.target_machine_info(llvm_backend));
     }
 
-    let owned_modules = context.compile(&llvm_backend, &compilation_bundle.program_trees);
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
     llvm_backend.save_modules_llvm_ir(&owned_modules, output_path);
 }
 

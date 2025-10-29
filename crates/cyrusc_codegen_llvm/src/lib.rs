@@ -1,4 +1,7 @@
-use crate::llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode};
+use crate::{
+    cir_builder::builder::emit_cir_program_tree,
+    llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
+};
 use cyrusc_cir::CIRProgramTree;
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
@@ -19,11 +22,14 @@ use inkwell::{
 };
 use std::{
     any::Any,
+    cell::RefCell,
+    mem::transmute,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 
+mod cir_builder;
 mod llvm;
 
 pub struct CodeGenLLVM {
@@ -48,15 +54,13 @@ impl CodeGenLLVM {
         }
     }
 
-    fn process_module_with_local_context(
+    fn process_module_with_local_context<'ctx>(
         &self,
-        cir_module: &CIRProgramTree,
-        context: &Context,
-        builder: &Builder,
-        module: &Arc<RwLock<Module>>,
+        owned_module: &'ctx OwnedModule,
+        builder: Rc<Builder<'ctx>>,
+        cir_program_tree: &'ctx CIRProgramTree,
     ) {
-        // Generate LLVM IR here safely
-        todo!()
+        emit_cir_program_tree(owned_module, builder, cir_program_tree);
     }
 
     pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {
@@ -65,7 +69,7 @@ impl CodeGenLLVM {
             .unwrap_or_else(|| Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH));
 
         for owned_module in owned_modules {
-            let module = owned_module.module.try_read().unwrap();
+            let module = owned_module.module.borrow();
             if let Err(llvm_str) = module.print_to_file(llvm_ir_dir.join(module.get_name().to_str().unwrap())) {
                 display_single_custom_diag!(llvm_str.to_string());
             }
@@ -76,12 +80,12 @@ impl CodeGenLLVM {
 
 /// An owned llvm module
 pub struct OwnedModule {
-    pub module: Arc<RwLock<Module<'static>>>,
-    pub context: Arc<RwLock<Context>>,
+    pub context: Arc<Context>,
+    pub module: Rc<RefCell<Module<'static>>>,
     pub file_path: Option<String>,
 }
 
-impl CodeGenBackend<OwnedModule> for CodeGenLLVM {
+impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
     fn save_object_file(&self, owned_module: &OwnedModule) -> ObjectFileInfo {
         let module_name = owned_module
             .file_path
@@ -98,7 +102,7 @@ impl CodeGenBackend<OwnedModule> for CodeGenLLVM {
             .join(module_name)
             .join(".o");
 
-        let module = owned_module.module.read().unwrap();
+        let module = owned_module.module.borrow();
 
         let target_machine = create_target_machine(
             self.opts.cpu.clone(),
@@ -111,6 +115,8 @@ impl CodeGenBackend<OwnedModule> for CodeGenLLVM {
         target_machine
             .write_to_file(&module, FileType::Object, &path)
             .expect("Failed to write LLVM object file");
+
+        drop(module);
 
         ObjectFileInfo {
             path: path.to_str().unwrap().to_string(),
@@ -186,69 +192,67 @@ impl CodeGenBackend<OwnedModule> for CodeGenLLVM {
         self
     }
 
-    fn as_unified(&self) -> Option<&dyn UnifiedModuleSupport<OwnedModule>> {
+    fn as_unified(&self) -> Option<&dyn UnifiedModuleSupport<'static, OwnedModule>> {
         Some(self)
     }
 
-    fn as_separate(&self) -> Option<&dyn SeparateModuleSupport<OwnedModule>> {
+    fn as_separate(&self) -> Option<&dyn SeparateModuleSupport<'static, OwnedModule>> {
         Some(self)
     }
 }
 
-impl SeparateModuleSupport<OwnedModule> for CodeGenLLVM {
+impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
     fn process_separately(&self, cir_modules: &[Box<CIRProgramTree>]) -> Vec<OwnedModule> {
         let mut modules = Vec::with_capacity(cir_modules.len());
 
-        for program_tree in cir_modules {
-            if !need_to_be_recompiled(&self.ctx, program_tree.file_path.clone()) {
+        for cir_program_tree in cir_modules {
+            if !need_to_be_recompiled(&self.ctx, cir_program_tree.file_path.clone()) {
                 continue; // skip recompilation
             }
 
-            let context = Arc::new(RwLock::new(Context::create()));
+            let mut owned_module = OwnedModule::new("module");
+            let builder = owned_module.create_builder();
 
-            let context_guard = context.read().unwrap();
-            let builder = context_guard.create_builder();
+            owned_module.file_path = Some(cir_program_tree.file_path.clone());
+            self.process_module_with_local_context(&owned_module, builder, cir_program_tree);
 
-            let module = unsafe {
-                Arc::new(RwLock::new(std::mem::transmute::<Module<'_>, Module<'static>>(
-                    context_guard.create_module("module"),
-                )))
-            };
-
-            self.process_module_with_local_context(program_tree, &context_guard, &builder, &module);
-
-            modules.push(OwnedModule {
-                module,
-                context: Arc::clone(&context),
-                file_path: Some(program_tree.file_path.clone()),
-            });
+            modules.push(owned_module);
         }
 
         modules
     }
 }
 
-impl UnifiedModuleSupport<OwnedModule> for CodeGenLLVM {
+impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
     fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
-        let context = Context::create();
-        let builder = context.create_builder();
+        let mut owned_module = OwnedModule::new("unified_module");
+        let builder = owned_module.create_builder();
 
-        let module = unsafe {
-            Arc::new(RwLock::new(std::mem::transmute::<Module<'_>, Module<'static>>(
-                context.create_module("unified_module"),
-            )))
-        };
-
-        for program_tree in cir_modules {
-            self.process_module_with_local_context(program_tree, &context, &builder, &module);
+        for cir_program_tree in cir_modules {
+            owned_module.file_path = Some(cir_program_tree.file_path.clone());
+            self.process_module_with_local_context(&owned_module, builder.clone(), cir_program_tree);
         }
 
-        drop(builder);
+        owned_module
+    }
+}
 
-        OwnedModule {
+impl OwnedModule {
+    pub fn new(name: &str) -> Self {
+        let context = Arc::new(Context::create());
+        let context_ref: &'static Context = unsafe { transmute::<&Context, &'static Context>(&*context) };
+
+        let module = Rc::new(RefCell::new(context_ref.create_module(name)));
+
+        Self {
+            context,
             module,
-            context: Arc::new(RwLock::new(context)),
             file_path: None,
         }
+    }
+
+    pub fn create_builder(&self) -> Rc<Builder<'static>> {
+        let context_ref: &'static Context = unsafe { transmute::<&Context, &'static Context>(&*self.context) };
+        Rc::new(context_ref.create_builder())
     }
 }
