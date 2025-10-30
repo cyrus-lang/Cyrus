@@ -1,9 +1,9 @@
 use crate::CIRExpr;
-use cyrusc_tast::types::BasicType;
+use cyrusc_tast::types::PlainType;
 
 #[derive(Debug, Clone)]
 pub enum CIRTy {
-    BasicType(BasicType),
+    PlainType(PlainType),
     Const(Box<CIRTy>),
     Pointer(Box<CIRTy>),
     Struct(CIRStructTy),
@@ -16,7 +16,7 @@ pub enum CIRTy {
 
 #[derive(Debug, Clone)]
 pub struct CIRTupleTy {
-    pub tys: Vec<CIRTy>,
+    pub items: Vec<CIRTy>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,12 +34,13 @@ pub struct CIRFuncTy {
 
 #[derive(Debug, Clone)]
 pub struct CIRStructTy {
-    pub tys: Vec<CIRTy>,
+    pub fields: Vec<CIRTy>,
+    pub is_packed: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRUnionTy {
-    pub tys: Vec<CIRTy>,
+    pub fields: Vec<CIRTy>,
 }
 
 #[derive(Debug, Clone)]

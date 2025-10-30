@@ -37,6 +37,7 @@ pub struct CodeGenLLVM {
     opts: CodeGenOptions,
     build_dir: String,
     monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    llvmtm: TargetMachine,
 }
 
 impl CodeGenLLVM {
@@ -46,11 +47,20 @@ impl CodeGenLLVM {
         build_dir: String,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     ) -> Self {
+        let llvmtm = create_target_machine(
+            opts.cpu.clone(),
+            opts.target_triple.clone(),
+            llvm_reloc_mode(opts.reloc_mode.clone()),
+            llvm_code_model(opts.code_model.clone()),
+            llvm_opt_level(opts.opt_level.unwrap_or(0).try_into().unwrap()),
+        );
+
         Self {
             ctx,
             opts,
             monomorph_registry,
             build_dir,
+            llvmtm,
         }
     }
 
@@ -60,7 +70,7 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_program_tree: &'ctx CIRProgramTree,
     ) {
-        emit_cir_program_tree(owned_module, builder, cir_program_tree);
+        emit_cir_program_tree(owned_module, builder, cir_program_tree, &self.llvmtm);
     }
 
     pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {
@@ -104,15 +114,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
 
         let module = owned_module.module.borrow();
 
-        let target_machine = create_target_machine(
-            self.opts.cpu.clone(),
-            self.opts.target_triple.clone(),
-            llvm_reloc_mode(self.opts.reloc_mode.clone()),
-            llvm_code_model(self.opts.code_model.clone()),
-            llvm_opt_level(self.opts.opt_level.unwrap_or(0).try_into().unwrap()),
-        );
-
-        target_machine
+        self.llvmtm
             .write_to_file(&module, FileType::Object, &path)
             .expect("Failed to write LLVM object file");
 

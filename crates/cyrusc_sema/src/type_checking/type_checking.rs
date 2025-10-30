@@ -50,23 +50,23 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
-            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicType::Char)),
-            LiteralKind::Null => Some(SemanticType::BasicType(BasicType::Null)),
+            LiteralKind::Bool(_) => Some(SemanticType::PlainType(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
+            LiteralKind::Null => Some(SemanticType::PlainType(PlainType::Null)),
             LiteralKind::String(value, prefix_opt) => {
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
-                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Char))),
+                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char))),
                         StringPrefix::B => SemanticType::Array(TypedArrayType {
-                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::BasicType(
-                                BasicType::Char,
+                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
+                                PlainType::Char,
                             )))),
                             capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
                             loc: typed_literal.loc.clone(),
                         }),
                     }
                 } else {
-                    SemanticType::Pointer(Box::new(SemanticType::BasicType(BasicType::Char)))
+                    SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char)))
                 };
                 Some(ty)
             }
@@ -2198,10 +2198,10 @@ fn infer_integer_type(
         if is_integer_type(&ctx_ty) {
             Ok(ctx_ty)
         } else {
-            Ok(SemanticType::BasicType(BasicType::Int)) // safe default
+            Ok(SemanticType::PlainType(PlainType::Int)) // safe default
         }
     } else {
-        Ok(SemanticType::BasicType(BasicType::Int))
+        Ok(SemanticType::PlainType(PlainType::Int))
     }
 }
 
@@ -2224,65 +2224,65 @@ fn infer_float_type(
         if is_float_type(&ctx_ty) {
             Ok(ctx_ty)
         } else {
-            Ok(SemanticType::BasicType(BasicType::Float64)) // safe default
+            Ok(SemanticType::PlainType(PlainType::Float64)) // safe default
         }
     } else {
-        Ok(SemanticType::BasicType(BasicType::Float64))
+        Ok(SemanticType::PlainType(PlainType::Float64))
     }
 }
 
 fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
-        TokenKind::UIntPtr => BasicType::UIntPtr,
-        TokenKind::IntPtr => BasicType::IntPtr,
-        TokenKind::SizeT => BasicType::SizeT,
-        TokenKind::Int => BasicType::Int,
-        TokenKind::Int8 => BasicType::Int8,
-        TokenKind::Int16 => BasicType::Int16,
-        TokenKind::Int32 => BasicType::Int32,
-        TokenKind::Int64 => BasicType::Int64,
-        TokenKind::Int128 => BasicType::Int128,
-        TokenKind::UInt => BasicType::UInt,
-        TokenKind::UInt8 => BasicType::UInt8,
-        TokenKind::UInt16 => BasicType::UInt16,
-        TokenKind::UInt32 => BasicType::UInt32,
-        TokenKind::UInt64 => BasicType::UInt64,
-        TokenKind::UInt128 => BasicType::UInt128,
+        TokenKind::UIntPtr => PlainType::UIntPtr,
+        TokenKind::IntPtr => PlainType::IntPtr,
+        TokenKind::SizeT => PlainType::SizeT,
+        TokenKind::Int => PlainType::Int,
+        TokenKind::Int8 => PlainType::Int8,
+        TokenKind::Int16 => PlainType::Int16,
+        TokenKind::Int32 => PlainType::Int32,
+        TokenKind::Int64 => PlainType::Int64,
+        TokenKind::Int128 => PlainType::Int128,
+        TokenKind::UInt => PlainType::UInt,
+        TokenKind::UInt8 => PlainType::UInt8,
+        TokenKind::UInt16 => PlainType::UInt16,
+        TokenKind::UInt32 => PlainType::UInt32,
+        TokenKind::UInt64 => PlainType::UInt64,
+        TokenKind::UInt128 => PlainType::UInt128,
         _ => return None,
     };
-    Some(SemanticType::BasicType(ty))
+    Some(SemanticType::PlainType(ty))
 }
 
 fn map_float_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
-        TokenKind::Float16 => BasicType::Float16,
-        TokenKind::Float32 => BasicType::Float32,
-        TokenKind::Float64 => BasicType::Float64,
-        TokenKind::Float128 => BasicType::Float128,
+        TokenKind::Float16 => PlainType::Float16,
+        TokenKind::Float32 => PlainType::Float32,
+        TokenKind::Float64 => PlainType::Float64,
+        TokenKind::Float128 => PlainType::Float128,
         _ => return None,
     };
-    Some(SemanticType::BasicType(ty))
+    Some(SemanticType::PlainType(ty))
 }
 
 fn is_integer_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
-        SemanticType::BasicType(
-            BasicType::Int
-                | BasicType::Int8
-                | BasicType::Int16
-                | BasicType::Int32
-                | BasicType::Int64
-                | BasicType::Int128
-                | BasicType::UInt
-                | BasicType::UInt8
-                | BasicType::UInt16
-                | BasicType::UInt32
-                | BasicType::UInt64
-                | BasicType::UInt128
-                | BasicType::IntPtr
-                | BasicType::UIntPtr
-                | BasicType::SizeT
+        SemanticType::PlainType(
+            PlainType::Int
+                | PlainType::Int8
+                | PlainType::Int16
+                | PlainType::Int32
+                | PlainType::Int64
+                | PlainType::Int128
+                | PlainType::UInt
+                | PlainType::UInt8
+                | PlainType::UInt16
+                | PlainType::UInt32
+                | PlainType::UInt64
+                | PlainType::UInt128
+                | PlainType::IntPtr
+                | PlainType::UIntPtr
+                | PlainType::SizeT
         )
     )
 }
@@ -2290,6 +2290,6 @@ fn is_integer_type(ty: &SemanticType) -> bool {
 fn is_float_type(ty: &SemanticType) -> bool {
     matches!(
         ty,
-        SemanticType::BasicType(BasicType::Float16 | BasicType::Float32 | BasicType::Float64 | BasicType::Float128)
+        SemanticType::PlainType(PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128)
     )
 }

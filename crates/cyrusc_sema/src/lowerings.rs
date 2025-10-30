@@ -8,7 +8,7 @@ use cyrusc_tast::{
     exprs::{
         TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, ValueCategory,
     },
-    types::{BasicType, SemanticType},
+    types::{PlainType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -56,8 +56,8 @@ impl<'a> AnalysisContext<'a> {
 
         let null_literal_expr = TypedExprStmt {
             kind: TypedExprKind::Literal(TypedLiteralExpr {
-                ty: Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                    BasicType::Void,
+                ty: Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+                    PlainType::Void,
                 )))),
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc.clone(),

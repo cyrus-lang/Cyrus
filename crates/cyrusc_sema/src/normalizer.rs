@@ -196,7 +196,7 @@ impl<'a> AnalysisContext<'a> {
 
                 Some(SemanticType::FuncType(func_type))
             }
-            SemanticType::BasicType(_) | SemanticType::UnnamedStruct(_) => Some(ty),
+            SemanticType::PlainType(_) | SemanticType::UnnamedStruct(_) => Some(ty),
             SemanticType::Tuple(tuple_type) => {
                 let mut type_list: Vec<SemanticType> = Vec::new();
 

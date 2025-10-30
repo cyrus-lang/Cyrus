@@ -9,7 +9,7 @@ use cyrusc_tast::{
     ScopeID,
     exprs::*,
     format::format_concrete_type,
-    types::{BasicType, SemanticType},
+    types::{PlainType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -138,13 +138,13 @@ impl<'a> AnalysisContext<'a> {
                     *symbol_id
                 } else {
                     self.normalize_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone())?;
-                    return Some(SemanticType::BasicType(BasicType::SizeT));
+                    return Some(SemanticType::PlainType(PlainType::SizeT));
                 }
             }
             TypedExprKind::Symbol(symbol_id, ..) => *symbol_id,
             _ => {
                 self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.operand, expected_type);
-                return Some(SemanticType::BasicType(BasicType::SizeT));
+                return Some(SemanticType::PlainType(PlainType::SizeT));
             }
         };
 
@@ -167,7 +167,7 @@ impl<'a> AnalysisContext<'a> {
             )?;
         }
 
-        Some(SemanticType::BasicType(BasicType::SizeT))
+        Some(SemanticType::PlainType(PlainType::SizeT))
     }
 
     pub(crate) fn analyze_prefix_expr_type(
@@ -184,7 +184,7 @@ impl<'a> AnalysisContext<'a> {
         match prefix_expr.op {
             PrefixOperator::BitwiseNot => {
                 let valid_concrete_type = match &operand_type {
-                    SemanticType::BasicType(basic_concrete_type) => {
+                    SemanticType::PlainType(basic_concrete_type) => {
                         if basic_concrete_type.is_integer() {
                             Some(basic_concrete_type.clone())
                         } else {
@@ -195,7 +195,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_concrete_type {
-                    Some(sema_ty) => Some(SemanticType::BasicType(sema_ty.clone())),
+                    Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
                         let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -211,7 +211,7 @@ impl<'a> AnalysisContext<'a> {
             }
             PrefixOperator::Bang => {
                 let valid_concrete_type = match &operand_type {
-                    SemanticType::BasicType(basic_concrete_type) => {
+                    SemanticType::PlainType(basic_concrete_type) => {
                         if basic_concrete_type.is_bool() {
                             Some(basic_concrete_type)
                         } else {
@@ -222,7 +222,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_concrete_type {
-                    Some(sema_ty) => Some(SemanticType::BasicType(sema_ty.clone())),
+                    Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
                         let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -238,7 +238,7 @@ impl<'a> AnalysisContext<'a> {
             }
             PrefixOperator::Minus => {
                 let valid_concrete_type = match &operand_type {
-                    SemanticType::BasicType(basic_concrete_type) => {
+                    SemanticType::PlainType(basic_concrete_type) => {
                         if basic_concrete_type.is_integer() || basic_concrete_type.is_float() {
                             Some(basic_concrete_type)
                         } else {
@@ -249,7 +249,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_concrete_type {
-                    Some(sema_ty) => Some(SemanticType::BasicType(sema_ty.clone())),
+                    Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
                         let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -314,8 +314,8 @@ impl<'a> AnalysisContext<'a> {
             let valid = (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float());
 
             if valid {
-                if let (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic)) = (lhs, rhs) {
-                    BasicType::bigger_type(lhs_basic, rhs_basic)
+                if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (lhs, rhs) {
+                    PlainType::bigger_type(lhs_basic, rhs_basic)
                 } else {
                     None
                 }
@@ -348,7 +348,7 @@ impl<'a> AnalysisContext<'a> {
         let resolved_enum2 = local_or_global_symbol2.as_enum()?;
 
         if resolved_enum1.symbol_id == resolved_enum2.symbol_id {
-            Some(SemanticType::BasicType(BasicType::Bool))
+            Some(SemanticType::PlainType(PlainType::Bool))
         } else {
             None
         }
@@ -405,13 +405,13 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float()) {
-                Some(BasicType::Bool)
+                Some(PlainType::Bool)
             } else if cmp_eq {
                 // allow pointer comparisons
                 if let (SemanticType::Pointer(_), SemanticType::Pointer(_)) = (&lhs, &rhs) {
-                    Some(BasicType::Bool)
-                } else if let (SemanticType::Pointer(_), SemanticType::BasicType(BasicType::Null)) = (&lhs, &rhs) {
-                    Some(BasicType::Bool)
+                    Some(PlainType::Bool)
+                } else if let (SemanticType::Pointer(_), SemanticType::PlainType(PlainType::Null)) = (&lhs, &rhs) {
+                    Some(PlainType::Bool)
                 } else {
                     None
                 }
@@ -427,7 +427,7 @@ impl<'a> AnalysisContext<'a> {
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         loc: SourceLoc,
-        type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<BasicType>,
+        type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<PlainType>,
     ) -> Option<SemanticType> {
         let lhs_type = lhs_type.get_const_inner();
         let rhs_type = rhs_type.get_const_inner();
@@ -451,7 +451,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
-            Some(result_basic) => Some(SemanticType::BasicType(result_basic)),
+            Some(result_basic) => Some(SemanticType::PlainType(result_basic)),
             None => {
                 let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
                 let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
@@ -478,10 +478,10 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         match (lhs_type.clone(), rhs_type.clone()) {
-            (SemanticType::BasicType(BasicType::Null), SemanticType::Pointer(inner_pointer_type)) => {
+            (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(inner_pointer_type)) => {
                 Some(SemanticType::Pointer(inner_pointer_type))
             }
-            (SemanticType::Pointer(inner_pointer_type), SemanticType::BasicType(BasicType::Null)) => {
+            (SemanticType::Pointer(inner_pointer_type), SemanticType::PlainType(PlainType::Null)) => {
                 Some(SemanticType::Pointer(inner_pointer_type))
             }
             (SemanticType::Pointer(inner_pointer_type1), SemanticType::Pointer(inner_pointer_type2)) => {
@@ -492,14 +492,14 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             (
-                null_concrete_type @ SemanticType::BasicType(BasicType::Null),
-                SemanticType::BasicType(BasicType::Null),
+                null_concrete_type @ SemanticType::PlainType(PlainType::Null),
+                SemanticType::PlainType(PlainType::Null),
             ) => Some(null_concrete_type),
             _ => self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-                (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic))
+                (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic))
                     if lhs_basic.is_bool() && rhs_basic.is_bool() =>
                 {
-                    Some(BasicType::Bool)
+                    Some(PlainType::Bool)
                 }
                 _ => None,
             }),
@@ -514,10 +514,10 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-            (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic))
+            (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic))
                 if lhs_basic.is_bool() && rhs_basic.is_bool() =>
             {
-                Some(BasicType::Bool)
+                Some(PlainType::Bool)
             }
             _ => None,
         })
@@ -531,9 +531,9 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
-            if let (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic)) = (&lhs, &rhs) {
+            if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    Some(BasicType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                    Some(PlainType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
                 } else {
                     None
                 }
@@ -556,7 +556,7 @@ impl<'a> AnalysisContext<'a> {
             rhs_type.clone(),
             loc.clone(),
             |this, lhs, rhs| {
-                if let (SemanticType::BasicType(lhs_basic), SemanticType::BasicType(rhs_basic)) = (&lhs, &rhs) {
+                if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
                     // rhs must be unsigned
                     if rhs_basic.is_signed() {
                         this.reporter.report(Diag {
@@ -569,7 +569,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                        Some(BasicType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                        Some(PlainType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
                     } else {
                         None
                     }
@@ -591,7 +591,7 @@ impl<'a> AnalysisContext<'a> {
             // only allow integer types
             if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_basic_type(), rhs.as_basic_type()) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    return Some(BasicType::bigger_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
+                    return Some(PlainType::bigger_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
                 }
             }
 

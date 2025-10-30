@@ -17,7 +17,7 @@ use cyrusc_tast::{
     exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
     format::format_concrete_type,
     stmts::*,
-    types::{BasicType, SemanticType, TypedFuncType},
+    types::{PlainType, SemanticType, TypedFuncType},
     *,
 };
 use std::{
@@ -659,7 +659,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(sema_ty) = self.analyze_typed_expr_type(
             scope_id_opt,
             &mut typed_while.cond,
-            Some(SemanticType::BasicType(BasicType::Bool)),
+            Some(SemanticType::PlainType(PlainType::Bool)),
         ) {
             self.check_expr_type_must_be_condition(sema_ty, typed_while.loc.clone());
         }
@@ -678,7 +678,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(typed_expr) = &mut typed_for.cond {
             if let Some(sema_ty) =
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(SemanticType::BasicType(BasicType::Bool)))
+                self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(SemanticType::PlainType(PlainType::Bool)))
             {
                 self.check_expr_type_must_be_condition(sema_ty, typed_for.loc.clone());
             }
@@ -825,7 +825,7 @@ impl<'a> AnalysisContext<'a> {
 
             if self.check_global_var_for_const_folding(sema_ty) {
                 if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
-                    let integer_concrete_type = Some(SemanticType::BasicType(BasicType::Int));
+                    let integer_concrete_type = Some(SemanticType::PlainType(PlainType::Int));
 
                     expr = TypedExprStmt {
                         kind: TypedExprKind::Literal(TypedLiteralExpr {
@@ -861,7 +861,7 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().sema_ty.unwrap()),
         };
 
-        if matches!(typed_global_var.ty, Some(SemanticType::BasicType(BasicType::Void))) {
+        if matches!(typed_global_var.ty, Some(SemanticType::PlainType(PlainType::Void))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -1579,7 +1579,7 @@ impl<'a> AnalysisContext<'a> {
                         .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
                         .unwrap();
 
-                    if matches!(normalized_type, SemanticType::BasicType(BasicType::Void)) {
+                    if matches!(normalized_type, SemanticType::PlainType(PlainType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -1619,7 +1619,7 @@ impl<'a> AnalysisContext<'a> {
                     None => return,
                 };
 
-                if matches!(normalized_concrete_type, SemanticType::BasicType(BasicType::Void)) {
+                if matches!(normalized_concrete_type, SemanticType::PlainType(PlainType::Void)) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -1638,7 +1638,7 @@ impl<'a> AnalysisContext<'a> {
         for param in params.list.iter_mut() {
             let normalized_type = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
 
-            if matches!(normalized_type, SemanticType::BasicType(BasicType::Void)) {
+            if matches!(normalized_type, SemanticType::PlainType(PlainType::Void)) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -1660,7 +1660,7 @@ impl<'a> AnalysisContext<'a> {
                         None => return,
                     };
 
-                    if matches!(normalized_concrete_type, SemanticType::BasicType(BasicType::Void)) {
+                    if matches!(normalized_concrete_type, SemanticType::PlainType(PlainType::Void)) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -1784,7 +1784,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if matches!(typed_variable.ty, Some(SemanticType::BasicType(BasicType::Void))) {
+        if matches!(typed_variable.ty, Some(SemanticType::PlainType(PlainType::Void))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidVariableType),

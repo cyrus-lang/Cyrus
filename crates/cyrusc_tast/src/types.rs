@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 pub enum SemanticType {
     UnresolvedSymbol(SymbolID),
     ResolvedSymbol(ResolvedSymbol),
-    BasicType(BasicType),
+    PlainType(PlainType),
     Array(TypedArrayType),
     Const(Box<SemanticType>),
     Pointer(Box<SemanticType>),
@@ -20,7 +20,7 @@ pub enum SemanticType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BasicType {
+pub enum PlainType {
     UIntPtr,
     IntPtr,
     SizeT,
@@ -121,16 +121,16 @@ impl SemanticType {
 
     pub fn is_integer(&self) -> bool {
         match self.get_const_inner() {
-            SemanticType::BasicType(basic) => basic.is_integer(),
-            SemanticType::Const(inner) => matches!(&**inner, SemanticType::BasicType(b) if b.is_integer()),
+            SemanticType::PlainType(basic) => basic.is_integer(),
+            SemanticType::Const(inner) => matches!(&**inner, SemanticType::PlainType(b) if b.is_integer()),
             _ => false,
         }
     }
 
     pub fn is_float(&self) -> bool {
         match self.get_const_inner() {
-            SemanticType::BasicType(basic) => basic.is_float(),
-            SemanticType::Const(inner) => matches!(&**inner, SemanticType::BasicType(b) if b.is_float()),
+            SemanticType::PlainType(basic) => basic.is_float(),
+            SemanticType::Const(inner) => matches!(&**inner, SemanticType::PlainType(b) if b.is_float()),
             _ => false,
         }
     }
@@ -143,7 +143,10 @@ impl SemanticType {
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::BasicType(BasicType::Bool))
+        matches!(
+            self.get_const_inner(),
+            SemanticType::PlainType(PlainType::Bool)
+        )
     }
 
     pub fn is_array(&self) -> bool {
@@ -155,7 +158,10 @@ impl SemanticType {
     }
 
     pub fn is_void(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::BasicType(BasicType::Void))
+        matches!(
+            self.get_const_inner(),
+            SemanticType::PlainType(PlainType::Void)
+        )
     }
 
     pub fn is_pointer(&self) -> bool {
@@ -204,14 +210,14 @@ impl SemanticType {
 
     pub fn is_char(&self) -> bool {
         match self {
-            SemanticType::BasicType(BasicType::Char) => true,
+            SemanticType::PlainType(PlainType::Char) => true,
             _ => false,
         }
     }
 
-    pub fn as_basic_type(&self) -> Option<&BasicType> {
+    pub fn as_basic_type(&self) -> Option<&PlainType> {
         match self {
-            SemanticType::BasicType(ty) => Some(ty),
+            SemanticType::PlainType(ty) => Some(ty),
             _ => None,
         }
     }
@@ -283,72 +289,75 @@ impl SemanticType {
     }
 }
 
-impl BasicType {
+impl PlainType {
     pub fn is_bool(&self) -> bool {
-        matches!(self, BasicType::Bool)
+        matches!(self, PlainType::Bool)
     }
 
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
-            BasicType::UIntPtr
-                | BasicType::IntPtr
-                | BasicType::SizeT
-                | BasicType::Int
-                | BasicType::Int8
-                | BasicType::Int16
-                | BasicType::Int32
-                | BasicType::Int64
-                | BasicType::Int128
-                | BasicType::UInt
-                | BasicType::UInt8
-                | BasicType::UInt16
-                | BasicType::UInt32
-                | BasicType::UInt64
-                | BasicType::UInt128
+            PlainType::UIntPtr
+                | PlainType::IntPtr
+                | PlainType::SizeT
+                | PlainType::Int
+                | PlainType::Int8
+                | PlainType::Int16
+                | PlainType::Int32
+                | PlainType::Int64
+                | PlainType::Int128
+                | PlainType::UInt
+                | PlainType::UInt8
+                | PlainType::UInt16
+                | PlainType::UInt32
+                | PlainType::UInt64
+                | PlainType::UInt128
         )
     }
 
     pub fn is_float(&self) -> bool {
         matches!(
             self,
-            BasicType::Float16 | BasicType::Float32 | BasicType::Float64 | BasicType::Float128
+            PlainType::Float16
+                | PlainType::Float32
+                | PlainType::Float64
+                | PlainType::Float128
         )
     }
 
     pub fn is_signed(&self) -> bool {
         match self {
-            BasicType::UIntPtr
-            | BasicType::UInt
-            | BasicType::UInt8
-            | BasicType::UInt16
-            | BasicType::UInt32
-            | BasicType::UInt64
-            | BasicType::UInt128
-            | BasicType::SizeT
-            | BasicType::Bool
-            | BasicType::Char
-            | BasicType::Void
-            | BasicType::Null
-            | BasicType::Float16
-            | BasicType::Float32
-            | BasicType::Float64
-            | BasicType::Float128 => false,
+            PlainType::UIntPtr
+            | PlainType::UInt
+            | PlainType::UInt8
+            | PlainType::UInt16
+            | PlainType::UInt32
+            | PlainType::UInt64
+            | PlainType::UInt128
+            | PlainType::SizeT
+            | PlainType::Bool
+            | PlainType::Char
+            | PlainType::Void
+            | PlainType::Null
+            | PlainType::Float16
+            | PlainType::Float32
+            | PlainType::Float64
+            | PlainType::Float128 => false,
 
-            BasicType::IntPtr
-            | BasicType::Int
-            | BasicType::Int8
-            | BasicType::Int16
-            | BasicType::Int32
-            | BasicType::Int64
-            | BasicType::Int128 => true,
+            PlainType::IntPtr
+            | PlainType::Int
+            | PlainType::Int8
+            | PlainType::Int16
+            | PlainType::Int32
+            | PlainType::Int64
+            | PlainType::Int128 => true,
         }
     }
 
-    pub fn bigger_type(a: BasicType, b: BasicType) -> Option<BasicType> {
-        use BasicType::*;
+    pub fn bigger_type(a: PlainType, b: PlainType) -> Option<PlainType> {
+        use PlainType::*;
 
-        fn rank(ty: &BasicType) -> Option<u8> {
+        fn rank(ty: &PlainType) -> Option<u8> {
             match ty {
                 Int8 | UInt8 => Some(2),
                 Int16 | UInt16 => Some(3),
@@ -378,32 +387,32 @@ impl TryFrom<TokenKind> for SemanticType {
 
     fn try_from(token_kind: TokenKind) -> Result<Self, Self::Error> {
         let basic_type = match &token_kind {
-            TokenKind::SizeT => BasicType::SizeT,
-            TokenKind::IntPtr => BasicType::IntPtr,
-            TokenKind::UIntPtr => BasicType::UIntPtr,
-            TokenKind::Int => BasicType::Int,
-            TokenKind::Int8 => BasicType::Int8,
-            TokenKind::Int16 => BasicType::Int16,
-            TokenKind::Int32 => BasicType::Int32,
-            TokenKind::Int64 => BasicType::Int64,
-            TokenKind::Int128 => BasicType::Int128,
-            TokenKind::UInt => BasicType::UInt,
-            TokenKind::UInt8 => BasicType::UInt8,
-            TokenKind::UInt16 => BasicType::UInt16,
-            TokenKind::UInt32 => BasicType::UInt32,
-            TokenKind::UInt64 => BasicType::UInt64,
-            TokenKind::UInt128 => BasicType::UInt128,
-            TokenKind::Float16 => BasicType::Float16,
-            TokenKind::Float32 => BasicType::Float32,
-            TokenKind::Float64 => BasicType::Float64,
-            TokenKind::Float128 => BasicType::Float128,
-            TokenKind::Bool => BasicType::Bool,
-            TokenKind::Void => BasicType::Void,
-            TokenKind::Char => BasicType::Char,
+            TokenKind::SizeT => PlainType::SizeT,
+            TokenKind::IntPtr => PlainType::IntPtr,
+            TokenKind::UIntPtr => PlainType::UIntPtr,
+            TokenKind::Int => PlainType::Int,
+            TokenKind::Int8 => PlainType::Int8,
+            TokenKind::Int16 => PlainType::Int16,
+            TokenKind::Int32 => PlainType::Int32,
+            TokenKind::Int64 => PlainType::Int64,
+            TokenKind::Int128 => PlainType::Int128,
+            TokenKind::UInt => PlainType::UInt,
+            TokenKind::UInt8 => PlainType::UInt8,
+            TokenKind::UInt16 => PlainType::UInt16,
+            TokenKind::UInt32 => PlainType::UInt32,
+            TokenKind::UInt64 => PlainType::UInt64,
+            TokenKind::UInt128 => PlainType::UInt128,
+            TokenKind::Float16 => PlainType::Float16,
+            TokenKind::Float32 => PlainType::Float32,
+            TokenKind::Float64 => PlainType::Float64,
+            TokenKind::Float128 => PlainType::Float128,
+            TokenKind::Bool => PlainType::Bool,
+            TokenKind::Void => PlainType::Void,
+            TokenKind::Char => PlainType::Char,
             _ => return Err(()),
         };
 
-        Ok(SemanticType::BasicType(basic_type))
+        Ok(SemanticType::PlainType(basic_type))
     }
 }
 
