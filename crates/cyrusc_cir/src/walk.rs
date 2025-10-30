@@ -350,15 +350,18 @@ impl CIRWalk {
             .map(|field| self.lower_expr(&field.field_value))
             .collect();
 
+        let field_tys = ustruct_value
+            .unnamed_struct_type
+            .clone()
+            .unwrap()
+            .fields
+            .iter()
+            .map(|field| self.lower_sema_ty(&field.field_type))
+            .collect();
+
         let struct_ty = CIRStructTy {
-            tys: ustruct_value
-                .unnamed_struct_type
-                .clone()
-                .unwrap()
-                .fields
-                .iter()
-                .map(|field| self.lower_sema_ty(&field.field_type))
-                .collect(),
+            fields: field_tys,
+            is_packed: ustruct_value.packed,
         };
 
         CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
@@ -451,7 +454,7 @@ impl CIRWalk {
 
     fn lower_sema_ty(&self, sema_ty: &SemanticType) -> CIRTy {
         match sema_ty {
-            SemanticType::BasicType(basic_type) => CIRTy::BasicType(basic_type.clone()),
+            SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
             SemanticType::ResolvedSymbol(..) => {
                 // FIXME
                 todo!();
@@ -470,12 +473,15 @@ impl CIRWalk {
             SemanticType::Const(sema_ty) => CIRTy::Const(Box::new(self.lower_sema_ty(&*sema_ty))),
             SemanticType::Pointer(sema_ty) => CIRTy::Pointer(Box::new(self.lower_sema_ty(&*sema_ty))),
             SemanticType::UnnamedStruct(ustruct_ty) => {
-                let tys: Vec<CIRTy> = ustruct_ty
+                let field_tys: Vec<CIRTy> = ustruct_ty
                     .fields
                     .iter()
                     .map(|field| self.lower_sema_ty(&field.field_type))
                     .collect();
-                CIRTy::Struct(CIRStructTy { tys })
+                CIRTy::Struct(CIRStructTy {
+                    fields: field_tys,
+                    is_packed: ustruct_ty.packed,
+                })
             }
             SemanticType::FuncType(func_type) => {
                 let ret = Box::new(self.lower_sema_ty(&func_type.return_type));
@@ -484,13 +490,13 @@ impl CIRWalk {
                 CIRTy::FuncType(CIRFuncTy { params, is_var, ret })
             }
             SemanticType::Tuple(tuple_type) => {
-                let tys: Vec<CIRTy> = tuple_type
+                let items: Vec<CIRTy> = tuple_type
                     .type_list
                     .iter()
                     .map(|sema_ty| self.lower_sema_ty(sema_ty))
                     .collect();
 
-                CIRTy::Tuple(CIRTupleTy { tys })
+                CIRTy::Tuple(CIRTupleTy { items })
             }
             SemanticType::GenericType(_) | SemanticType::GenericParam(_) | SemanticType::UnresolvedSymbol(_) => {
                 unreachable!()

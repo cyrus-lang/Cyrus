@@ -233,6 +233,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "cyrusc_abi"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_sema",
+]
+
+[[package]]
 name = "cyrusc_ast"
 version = "0.1.0"
 
@@ -269,11 +277,13 @@ dependencies = [
 name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_cir",
  "cyrusc_compiler",
  "cyrusc_diagcentral",
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
+ "cyrusc_tast",
  "inkwell",
  "rayon",
 ]

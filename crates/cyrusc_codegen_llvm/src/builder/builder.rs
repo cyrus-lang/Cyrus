@@ -6,25 +6,27 @@ use crate::{
     },
 };
 use cyrusc_cir::{CIRProgramTree, CIRStmt, cir_func_def_as_decl};
-use inkwell::{builder::Builder, context::Context, module::Module};
+use inkwell::{builder::Builder, context::Context, module::Module, targets::TargetMachine};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 pub(crate) struct IRBuilderCtx<'ll> {
-    ctx: Arc<Context>,
-    builder: Rc<Builder<'ll>>,
-    module: Rc<RefCell<Module<'ll>>>,
+    pub(crate) llvmctx: Arc<Context>,
+    pub(crate) llvmbuilder: Rc<Builder<'ll>>,
+    pub(crate) llvmmodule: Rc<RefCell<Module<'ll>>>,
+    pub(crate) llvmtm: &'ll TargetMachine,
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub fn new(owned_module: &'ll OwnedModule, builder: Rc<Builder<'ll>>) -> Self {
-        let module = unsafe {
+    pub fn new(owned_module: &'ll OwnedModule, llvmbuilder: Rc<Builder<'ll>>, llvmtm: &'ll TargetMachine) -> Self {
+        let llvmmodule = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
         };
 
         Self {
-            ctx: owned_module.context.clone(),
-            builder,
-            module,
+            llvmctx: owned_module.context.clone(),
+            llvmbuilder,
+            llvmmodule,
+            llvmtm,
         }
     }
 }
@@ -33,21 +35,21 @@ pub fn emit_cir_program_tree<'ll>(
     owned_module: &'ll OwnedModule,
     builder: Rc<Builder<'ll>>,
     cir_program_tree: &'ll CIRProgramTree,
+    llvmtm: &'ll TargetMachine,
 ) {
     for cir_stmt in &cir_program_tree.body {
-        let ctx = Rc::new(IRBuilderCtx::new(owned_module, builder.clone()));
+        let local_ctx = Rc::new(IRBuilderCtx::new(owned_module, builder.clone(), &llvmtm));
 
         match cir_stmt {
             CIRStmt::Variable(var_stmt) => todo!(),
             CIRStmt::GlobalVar(global_var_stmt) => todo!(),
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
-                let fn_value = emit_func_decl(ctx.clone(), &func_decl);
-                emit_func_body(ctx, &func_def_stmt.body, &fn_value);
+                let fn_value = emit_func_decl(local_ctx.clone(), &func_decl);
+                emit_func_body(local_ctx, &func_def_stmt.body, &fn_value);
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
-                // TODO irreg guard
-                emit_func_decl(ctx.clone(), &func_decl_stmt);
+                emit_func_decl(local_ctx, &func_decl_stmt);
             }
             CIRStmt::Block(block_stmt) => todo!(),
             CIRStmt::If(if_stmt) => todo!(),

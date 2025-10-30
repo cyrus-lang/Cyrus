@@ -3058,25 +3058,25 @@ impl Resolver {
                         StringPrefix::B => {
                             let len = string_value.len() + 1;
                             Some(SemanticType::Array(TypedArrayType {
-                                element_type: Box::new(SemanticType::BasicType(BasicType::Char)),
+                                element_type: Box::new(SemanticType::PlainType(PlainType::Char)),
                                 capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len)),
                                 loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
                             }))
                         }
-                        StringPrefix::C => Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                            BasicType::Char,
+                        StringPrefix::C => Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+                            PlainType::Char,
                         )))),
                     }
                 } else {
-                    Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                        BasicType::Char,
+                    Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+                        PlainType::Char,
                     ))))
                 }
             }
-            LiteralKind::Bool(_) => Some(SemanticType::BasicType(BasicType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::BasicType(BasicType::Char)),
-            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::BasicType(
-                BasicType::Void,
+            LiteralKind::Bool(_) => Some(SemanticType::PlainType(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
+            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+                PlainType::Void,
             )))),
         };
 
