@@ -1,22 +1,21 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
-
 use crate::{
     OwnedModule,
-    cir_builder::{
+    builder::{
         exprs::emit_expr,
         funcs::{emit_func_body, emit_func_decl},
     },
 };
 use cyrusc_cir::{CIRProgramTree, CIRStmt, cir_func_def_as_decl};
 use inkwell::{builder::Builder, context::Context, module::Module};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-pub(crate) struct CIRBuilderCtx<'ll> {
+pub(crate) struct IRBuilderCtx<'ll> {
     ctx: Arc<Context>,
     builder: Rc<Builder<'ll>>,
     module: Rc<RefCell<Module<'ll>>>,
 }
 
-impl<'ll> CIRBuilderCtx<'ll> {
+impl<'ll> IRBuilderCtx<'ll> {
     pub fn new(owned_module: &'ll OwnedModule, builder: Rc<Builder<'ll>>) -> Self {
         let module = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
@@ -36,7 +35,7 @@ pub fn emit_cir_program_tree<'ll>(
     cir_program_tree: &'ll CIRProgramTree,
 ) {
     for cir_stmt in &cir_program_tree.body {
-        let ctx = Rc::new(CIRBuilderCtx::new(owned_module, builder.clone()));
+        let ctx = Rc::new(IRBuilderCtx::new(owned_module, builder.clone()));
 
         match cir_stmt {
             CIRStmt::Variable(var_stmt) => todo!(),
