@@ -1,5 +1,5 @@
 use crate::{
-    cir_builder::builder::emit_cir_program_tree,
+    builder::builder::emit_cir_program_tree,
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
 use cyrusc_cir::CIRProgramTree;
@@ -29,7 +29,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-mod cir_builder;
+mod builder;
 mod llvm;
 
 pub struct CodeGenLLVM {
