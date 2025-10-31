@@ -41,7 +41,7 @@ pub trait CodeGenBackend<'cdg, BackendModule> {
     ///
     /// Unified module compilation emits all CIR modules into a single LLVM module
     /// for optimizations like link-time optimization or reduced cross-module overhead.
-    fn as_unified(&'cdg self) -> Option<&'cdg dyn UnifiedModuleSupport<BackendModule>> {
+    fn as_unified(&'cdg self) -> Option<&'cdg dyn UnifiedModuleSupport<'cdg, BackendModule>> {
         None
     }
 
@@ -49,7 +49,7 @@ pub trait CodeGenBackend<'cdg, BackendModule> {
     ///
     /// Separate module compilation emits each CIR module independently,
     /// allowing parallel compilation and independent object file generation.
-    fn as_separate(&'cdg self) -> Option<&'cdg dyn SeparateModuleSupport<BackendModule>> {
+    fn as_separate(&'cdg self) -> Option<&'cdg dyn SeparateModuleSupport<'cdg, BackendModule>> {
         None
     }
 }

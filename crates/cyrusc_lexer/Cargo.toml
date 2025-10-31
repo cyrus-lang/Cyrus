@@ -10,6 +10,7 @@ cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 unicode-segmentation = "1.9.0"
 thiserror = "2.0.17"
+thiserror-impl = "2.0.17"
 
 [lib]
 name = "cyrusc_lexer"

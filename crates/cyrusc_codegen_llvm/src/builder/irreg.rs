@@ -32,24 +32,24 @@ impl<'a> LocalIRValueRegistry<'a> {
         Self { map: HashMap::new() }
     }
 
-    /// Inserts a new IR value associated with a symbol.
-    pub fn insert(&mut self, symbol_id: IRValueID, local_value: LocalIRValue<'a>) {
-        self.map.insert(symbol_id, local_value);
+    /// Inserts a new IR value associated with a id.
+    pub fn insert(&mut self, irv_id: IRValueID, local_value: LocalIRValue<'a>) {
+        self.map.insert(irv_id, local_value);
     }
 
     /// Retrieves a cloned IR value, if present.
-    pub fn get(&self, symbol_id: IRValueID) -> Option<LocalIRValue<'a>> {
-        self.map.get(&symbol_id).cloned()
+    pub fn get(&self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
+        self.map.get(&irv_id).cloned()
     }
 
     /// Removes an IR value from the registry.
-    pub fn remove(&mut self, symbol_id: IRValueID) -> Option<LocalIRValue<'a>> {
-        self.map.remove(&symbol_id)
+    pub fn remove(&mut self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
+        self.map.remove(&irv_id)
     }
 
     /// Checks whether the registry contains the given symbol ID.
-    pub fn contains(&self, symbol_id: IRValueID) -> bool {
-        self.map.contains_key(&symbol_id)
+    pub fn contains(&self, irv_id: IRValueID) -> bool {
+        self.map.contains_key(&irv_id)
     }
 
     /// Clears all registered IR values.

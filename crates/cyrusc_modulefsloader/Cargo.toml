@@ -10,3 +10,4 @@ cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 thiserror = "2.0.17"
+thiserror-impl = "2.0.17"

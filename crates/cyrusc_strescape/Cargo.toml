@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 thiserror = "2.0.17"
+thiserror-impl = "2.0.17"

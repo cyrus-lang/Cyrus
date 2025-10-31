@@ -1,5 +1,9 @@
 use cyrusc_cir::CIRExpr;
 
-pub(crate) fn emit_expr(expr: &CIRExpr) {
-    todo!();
+use crate::builder::{builder::IRBuilderCtx, values::InternalValue};
+
+impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_expr(&self, expr: &CIRExpr) -> InternalValue<'ll> {
+        todo!();
+    }
 }
