@@ -295,7 +295,7 @@ impl<'a> AnalysisContext<'a> {
         input_type_args_opt: &Option<TypedTypeArgs>,
         loc: SourceLoc,
     ) -> GenericMappingCtx {
-        // When generic parameters exist
+        // when generic parameters exist
         if let Some(generic_params) = generic_params_opt {
             if let Some(type_args) = input_type_args_opt {
                 // link positional and named type arguments
@@ -331,7 +331,7 @@ impl<'a> AnalysisContext<'a> {
                         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
                         location: Some(DiagLoc::new(loc.clone())),
                         hint: Some(format!(
-                            "Too many positional type arguments (expected ≤ {}, found {}).",
+                            "Too many positional type arguments (expected <= {}, found {}).",
                             generic_params.len(),
                             type_args.len(),
                         )),
