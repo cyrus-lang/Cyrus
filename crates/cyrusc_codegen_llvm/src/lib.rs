@@ -1,5 +1,5 @@
 use crate::{
-    builder::builder::emit_cir_program_tree,
+    builder::builder::IRBuilderCtx,
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
 use cyrusc_cir::CIRProgramTree;
@@ -36,8 +36,8 @@ pub struct CodeGenLLVM {
     ctx: Rc<CodeGenContext>,
     opts: CodeGenOptions,
     build_dir: String,
-    monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     llvmtm: TargetMachine,
+    monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 impl CodeGenLLVM {
@@ -70,7 +70,8 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_program_tree: &'ctx CIRProgramTree,
     ) {
-        emit_cir_program_tree(owned_module, builder, cir_program_tree, &self.llvmtm);
+        let ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
+        ir_builder_ctx.emit_program_tree(cir_program_tree);
     }
 
     pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {
@@ -90,7 +91,7 @@ impl CodeGenLLVM {
 
 /// An owned llvm module
 pub struct OwnedModule {
-    pub context: Arc<Context>,
+    pub context: &'static Arc<Context>,
     pub module: Rc<RefCell<Module<'static>>>,
     pub file_path: Option<String>,
 }
@@ -212,10 +213,12 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 continue; // skip recompilation
             }
 
-            let mut owned_module = OwnedModule::new("module");
+            let context = OwnedModule::create_context();
+            let mut owned_module = OwnedModule::create_owned_module(context, "module");
+            owned_module.file_path = Some(cir_program_tree.file_path.clone());
+
             let builder = owned_module.create_builder();
 
-            owned_module.file_path = Some(cir_program_tree.file_path.clone());
             self.process_module_with_local_context(&owned_module, builder, cir_program_tree);
 
             modules.push(owned_module);
@@ -227,11 +230,12 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
 impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
     fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
-        let mut owned_module = OwnedModule::new("unified_module");
-        let builder = owned_module.create_builder();
+        let context = OwnedModule::create_context();
+        let mut owned_module = OwnedModule::create_owned_module(context, "unified_module");
 
         for cir_program_tree in cir_modules {
             owned_module.file_path = Some(cir_program_tree.file_path.clone());
+            let builder = owned_module.create_builder();
             self.process_module_with_local_context(&owned_module, builder.clone(), cir_program_tree);
         }
 
@@ -240,12 +244,12 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 }
 
 impl OwnedModule {
-    pub fn new(name: &str) -> Self {
-        let context = Arc::new(Context::create());
-        let context_ref: &'static Context = unsafe { transmute::<&Context, &'static Context>(&*context) };
+    pub fn create_context() -> &'static Arc<Context> {
+        Box::leak(Box::new(Arc::new(Context::create())))
+    }
 
-        let module = Rc::new(RefCell::new(context_ref.create_module(name)));
-
+    pub fn create_owned_module(context: &'static Arc<Context>, name: &str) -> Self {
+        let module: Rc<RefCell<Module<'_>>> = Rc::new(RefCell::new(context.create_module(name)));
         Self {
             context,
             module,
@@ -253,8 +257,7 @@ impl OwnedModule {
         }
     }
 
-    pub fn create_builder(&self) -> Rc<Builder<'static>> {
-        let context_ref: &'static Context = unsafe { transmute::<&Context, &'static Context>(&*self.context) };
-        Rc::new(context_ref.create_builder())
+    pub fn create_builder(&self) -> Rc<Builder<'_>> {
+        Rc::new(self.context.create_builder())
     }
 }

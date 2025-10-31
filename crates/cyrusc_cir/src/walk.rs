@@ -42,7 +42,7 @@ impl CIRWalk {
                 TypedStmt::Continue(continue_stmt) => self.lower_continue(continue_stmt),
                 TypedStmt::For(for_stmt) => self.lower_for(for_stmt),
                 TypedStmt::While(while_stmt) => self.lower_while(while_stmt),
-                TypedStmt::Switch(switch_stmt) => todo!(),
+                TypedStmt::Switch(switch_stmt) => self.lower_switch(switch_stmt),
                 TypedStmt::Struct(struct_stmt) => self.lower_struct(struct_stmt),
                 TypedStmt::Enum(enum_stmt) => self.lower_enum(enum_stmt),
                 TypedStmt::Union(union_stmt) => self.lower_union(union_stmt),
@@ -60,7 +60,6 @@ impl CIRWalk {
         lowered_stmts
     }
 
-    // TODO
     fn lower_export_tuple(&self, export_tuple: &TypedExportTupleStmt) -> CIRStmt {
         todo!();
         // CIRStmt::ExportTuple(CIRExportTupleStmt {
@@ -120,6 +119,10 @@ impl CIRWalk {
         })
     }
 
+    fn lower_switch(&self, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
+        todo!();
+    }
+
     fn lower_while(&self, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(&while_stmt.cond));
         let body = Box::new(self.lower_block(&while_stmt.body));
@@ -146,11 +149,11 @@ impl CIRWalk {
     }
 
     fn lower_break(&self, _: &TypedBreakStmt) -> CIRStmt {
-        CIRStmt::Break(CIRBreakStmt {})
+        todo!();
     }
 
     fn lower_continue(&self, _: &TypedContinueStmt) -> CIRStmt {
-        CIRStmt::Continue(CIRContinueStmt {})
+        todo!();
     }
 
     fn lower_return(&self, ret: &TypedReturnStmt) -> CIRStmt {
@@ -186,6 +189,7 @@ impl CIRWalk {
         let expr = global_var.expr.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
+            irv_id: global_var.symbol_id,
             name: global_var.name.clone(),
             ty,
             expr,
@@ -198,6 +202,7 @@ impl CIRWalk {
         let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
         CIRVarStmt {
+            irv_id: var.symbol_id,
             name: var.name.clone(),
             ty,
             expr,
@@ -233,6 +238,7 @@ impl CIRWalk {
         let ret = self.lower_sema_ty(&func_def.return_type);
 
         CIRStmt::FuncDef(CIRFuncDefStmt {
+            irv_id: func_def.symbol_id,
             name: func_def.name.clone(),
             params,
             is_var,
@@ -248,6 +254,7 @@ impl CIRWalk {
         let ret = self.lower_sema_ty(&func_decl.return_type);
 
         CIRStmt::FuncDecl(CIRFuncDeclStmt {
+            irv_id: func_decl.symbol_id,
             name: func_decl.name.clone(),
             params,
             is_var,

@@ -1,4 +1,4 @@
-use crate::types::{CIRStructTy, CIRTy};
+use crate::types::{CIRFuncTy, CIRStructTy, CIRTy};
 use cyrusc_ast::{
     AccessSpecifier, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -8,6 +8,7 @@ pub mod types;
 pub mod walk;
 
 pub type IRValueID = u32;
+pub type CIRBlockID = u32;
 
 #[derive(Debug)]
 pub struct CIRProgramTree {
@@ -25,17 +26,12 @@ pub enum CIRStmt {
     If(CIRIfStmt),
     For(CIRForStmt),
     While(CIRWhileStmt),
-    SwitchInteger(CIRSwitchIntegerStmt),
-    SwitchValue(CIRSwitchValueStmt),
-    SwitchEnumVariant(CIRSwitchEnumVariantStmt),
+    Switch(CIRSwitchStmt),
     Return(CIRReturnStmt),
-    Break(CIRBreakStmt),
-    Continue(CIRContinueStmt),
     Struct(CIRStructStmt),
     Enum(CIREnumStmt),
     Union(CIRUnionStmt),
     ExportTuple(CIRExportTupleStmt),
-    Expr(CIRExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +174,7 @@ pub struct CIRValueRef {
 
 #[derive(Debug, Clone)]
 pub struct CIRGlobalVarStmt {
+    pub irv_id: IRValueID,
     pub name: String,
     pub ty: CIRTy,
     pub expr: Option<CIRExpr>,
@@ -186,6 +183,7 @@ pub struct CIRGlobalVarStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRVarStmt {
+    pub irv_id: IRValueID,
     pub name: String,
     pub ty: CIRTy,
     pub expr: Option<CIRExpr>,
@@ -193,6 +191,7 @@ pub struct CIRVarStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRFuncDefStmt {
+    pub irv_id: IRValueID,
     pub name: String,
     pub params: Vec<CIRTy>,
     pub is_var: bool,
@@ -203,6 +202,7 @@ pub struct CIRFuncDefStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRFuncDeclStmt {
+    pub irv_id: IRValueID,
     pub name: String,
     pub params: Vec<CIRTy>,
     pub is_var: bool,
@@ -238,13 +238,18 @@ pub struct CIRWhileStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRSwitchIntegerStmt {} // TODO
+pub struct CIRSwitchStmt {
+    kind: CIRSwitchKind,
+    value: CIRExpr,
+    cases: Vec<(CIRBlockID, Box<CIRBlockStmt>)>,
+    default: CIRBlockID,
+}
 
 #[derive(Debug, Clone)]
-pub struct CIRSwitchValueStmt {} // TODO
-
-#[derive(Debug, Clone)]
-pub struct CIRSwitchEnumVariantStmt {} // TODO
+pub enum CIRSwitchKind {
+    Plain, // integer, scalar
+    Enum,
+}
 
 #[derive(Debug, Clone)]
 pub struct CIRContinueStmt;
@@ -287,14 +292,23 @@ pub struct CIRUnionStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRExportTupleStmt {} // FIXME
+pub struct CIRExportTupleStmt {}
 
 pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
     CIRFuncDeclStmt {
+        irv_id: func_def.irv_id,
         name: func_def.name.clone(),
         params: func_def.params.clone(),
         is_var: func_def.is_var.clone(),
         ret: func_def.ret.clone(),
         vis: func_def.vis.clone(),
+    }
+}
+
+pub fn cir_func_decl_as_func_ty(func_def: &CIRFuncDeclStmt) -> CIRFuncTy {
+    CIRFuncTy {
+        params: func_def.params.clone(),
+        is_var: func_def.is_var.clone(),
+        ret: Box::new(func_def.ret.clone()),
     }
 }

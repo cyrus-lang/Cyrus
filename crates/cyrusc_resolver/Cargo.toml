@@ -12,6 +12,7 @@ cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 thiserror = "2.0.17"
+thiserror-impl = "2.0.17"
 rand = "0.9.0"
 
 [lib]

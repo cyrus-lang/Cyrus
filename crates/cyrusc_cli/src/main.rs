@@ -412,10 +412,6 @@ fn command_new(project_name: String, lib: bool) {
 }
 
 pub fn main() {
-    std::panic::set_hook(Box::new(|info| {
-        eprintln!("Compiler panic:\n{info}");
-    }));
-
     let version = env!("CARGO_PKG_VERSION");
     let args = Args::parse();
 
