@@ -3,7 +3,7 @@ use crate::{
     builder::irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
 };
 use cyrusc_abi::make_global_var_abi_name;
-use cyrusc_cir::{CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRStmt, CIRVarStmt, cir_func_def_as_decl};
+use cyrusc_cir::{CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty};
 use inkwell::{
     builder::Builder, context::Context, module::Module, targets::TargetMachine, types::BasicTypeEnum,
     values::GlobalValue,
@@ -56,9 +56,15 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.emit_func_decl(func_decl_stmt);
             }
             CIRStmt::Block(block_stmt) => self.emit_block(block_stmt),
-            CIRStmt::Struct(struct_stmt) => todo!(),
-            CIRStmt::Enum(enum_stmt) => todo!(),
-            CIRStmt::Union(union_stmt) => todo!(),
+            CIRStmt::Struct(struct_stmt) => {
+                self.emit_struct_ty(cir_struct_as_struct_ty(struct_stmt));
+            }
+            CIRStmt::Enum(enum_stmt) => {
+                self.emit_enum_ty(cir_enum_as_enum_ty(enum_stmt));
+            }
+            CIRStmt::Union(union_stmt) => {
+                self.emit_union_ty(cir_union_as_union_ty(union_stmt));
+            },
             CIRStmt::ExportTuple(export_tuple_stmt) => todo!(),
             CIRStmt::Switch(cirswitch_stmt) => todo!(),
             CIRStmt::If(if_stmt) => todo!(),

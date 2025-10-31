@@ -19,7 +19,6 @@ impl<'a> AnalysisContext<'a> {
     pub fn normalize_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-
         ty: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
@@ -40,7 +39,7 @@ impl<'a> AnalysisContext<'a> {
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)?;
 
                 // mark symbol used
-                match sym {
+                match &sym {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
                         if let Some(local_scope) = self
                             .resolver

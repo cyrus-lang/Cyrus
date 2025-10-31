@@ -743,7 +743,7 @@ impl Resolver {
 
                 Ok(SemanticType::UnnamedStruct(TypedUStructType {
                     fields,
-                    packed: struct_spec.packed,
+                    is_packed: struct_spec.is_packed,
                     loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
@@ -1628,7 +1628,7 @@ impl Resolver {
                 fields: typed_struct_fields.clone(),
                 generic_params: generic_params.clone(),
                 impls: impls.clone(),
-                packed: struct_decl.packed,
+                is_packed: struct_decl.is_packed,
                 methods: methods.clone(),
                 vis: struct_decl.vis.clone(),
                 loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
@@ -1657,7 +1657,7 @@ impl Resolver {
             generic_params,
             vis: struct_decl.vis.clone(),
             impls,
-            packed: struct_decl.packed,
+            is_packed: struct_decl.is_packed,
             loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
             is_local,
         }))
@@ -3215,7 +3215,7 @@ impl Resolver {
             kind: TypedExprKind::UStructValue(TypedUStructValue {
                 fields,
                 unnamed_struct_type: None,
-                packed: unnamed_struct_value.packed,
+                is_packed: unnamed_struct_value.is_packed,
                 is_const: unnamed_struct_value.is_const,
                 loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
             }),
@@ -3392,7 +3392,7 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
         impls: typed_struct.impls.clone(),
         methods: typed_struct.methods.clone(),
         generic_params: typed_struct.generic_params.clone(),
-        packed: typed_struct.packed,
+        is_packed: typed_struct.is_packed,
         vis: typed_struct.vis.clone(),
         loc: typed_struct.loc.clone(),
     }

@@ -369,7 +369,7 @@ impl fmt::Display for ModuleImport {
 
 impl fmt::Display for UStructValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.packed {
+        if self.is_packed {
             write!(f, "bits")?;
         } else {
             write!(f, "struct")?;

@@ -460,20 +460,20 @@ impl TypedArrayFixedCapacityValue {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
-    pub packed: bool,
+    pub is_packed: bool,
     pub loc: SourceLoc,
 }
 
 impl PartialEq for TypedUStructType {
     fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.packed == other.packed
+        self.fields == other.fields && self.is_packed == other.is_packed
     }
 }
 
 impl Hash for TypedUStructType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.fields.hash(state);
-        self.packed.hash(state);
+        self.is_packed.hash(state);
     }
 }
 

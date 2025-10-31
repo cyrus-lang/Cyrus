@@ -38,7 +38,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
-                let packed = unnamed_struct1.packed == unnamed_struct2.packed;
+                let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
                     if *field1 != field2 {
@@ -46,7 +46,7 @@ impl<'a> AnalysisContext<'a> {
                         break;
                     }
                 }
-                packed && fields
+                is_packed && fields
             }
             (SemanticType::GenericType(resolved_generic1), SemanticType::GenericType(resolved_generic2)) => {
                 resolved_generic1.base == resolved_generic2.base

@@ -324,7 +324,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                // Check for excess type arguments
+                // check for excess type arguments
                 if type_args.len() > generic_params.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -338,13 +338,6 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
-        } else if input_type_args_opt.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                location: Some(DiagLoc::new(loc.clone())),
-                hint: Some("Remove the type arguments or add generic parameters to the type.".to_string()),
-            });
         }
 
         mapping_ctx.clone()
@@ -499,7 +492,7 @@ impl<'a> AnalysisContext<'a> {
                     .collect::<Option<Vec<_>>>()?;
                 Some(SemanticType::UnnamedStruct(TypedUStructType {
                     fields: new_fields,
-                    packed: s.packed,
+                    is_packed: s.is_packed,
                     loc: s.loc.clone(),
                 }))
             }

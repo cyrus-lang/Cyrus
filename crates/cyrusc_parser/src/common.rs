@@ -440,7 +440,7 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let packed = {
+        let is_packed = {
             if self.current_token_is(TokenKind::Bits) {
                 self.next_token();
                 true
@@ -523,7 +523,7 @@ impl Parser {
 
         Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
             fields,
-            packed,
+            is_packed,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

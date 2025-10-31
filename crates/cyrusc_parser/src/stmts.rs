@@ -563,7 +563,7 @@ impl Parser {
         }))
     }
 
-    fn parse_struct(&mut self, vis: Option<AccessSpecifier>, packed: bool) -> Result<Statement, Diag> {
+    fn parse_struct(&mut self, vis: Option<AccessSpecifier>, is_packed: bool) -> Result<Statement, Diag> {
         let loc = self.current_token().loc.clone();
         let struct_start = self.current_token().span.start.clone();
 
@@ -692,7 +692,7 @@ impl Parser {
             vis,
             fields,
             methods,
-            packed,
+            is_packed,
             loc,
             span: Span {
                 start: struct_start,

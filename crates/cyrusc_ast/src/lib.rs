@@ -109,7 +109,7 @@ pub struct AddrOf {
 #[derive(Debug, Clone)]
 pub struct UStructValue {
     pub fields: Vec<UnnamedStructValueField>,
-    pub packed: bool,
+    pub is_packed: bool,
     pub is_const: bool,
     pub loc: Location,
     pub span: Span,
@@ -127,7 +127,7 @@ pub struct UnnamedStructValueField {
 #[derive(Debug, Clone)]
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
-    pub packed: bool,
+    pub is_packed: bool,
     pub loc: Location,
     pub span: Span,
 }
@@ -603,7 +603,7 @@ pub struct Struct {
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
     pub vis: AccessSpecifier,
-    pub packed: bool,
+    pub is_packed: bool,
     pub loc: Location,
     pub span: Span,
 }
