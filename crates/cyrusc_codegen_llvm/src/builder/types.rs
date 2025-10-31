@@ -1,5 +1,5 @@
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_cir::types::{CIRArrayTy, CIREnumTy, CIREnumVariantTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
+use cyrusc_cir::{CIREnumVariant, types::{CIRArrayTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy}};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace,
@@ -81,8 +81,8 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for variant in enum_ty.variants {
             match variant {
-                CIREnumVariantTy::Ident(_) => {}
-                CIREnumVariantTy::Valued(_, expr) => {
+                CIREnumVariant::Ident => {}
+                CIREnumVariant::Valued(expr) => {
                     let llvm_ty = self
                         .emit_ty(expr.ty.clone())
                         .try_into()
@@ -93,7 +93,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         largest_payload_ty = Some(llvm_ty);
                     }
                 }
-                CIREnumVariantTy::Fielded(_, field_tys) => {
+                CIREnumVariant::Fielded(field_tys) => {
                     let llvm_fields = self
                         .emit_tys(&field_tys)
                         .iter()

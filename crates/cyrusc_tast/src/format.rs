@@ -193,7 +193,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             if typed_unnamed_struct_value.is_const {
                 fmt.push_str("const ");
             }
-            if typed_unnamed_struct_value.packed {
+            if typed_unnamed_struct_value.is_packed {
                 fmt.push_str("bits ");
             } else {
                 fmt.push_str("struct ");
@@ -246,7 +246,7 @@ pub fn format_unnamed_struct_type<'a>(
 ) -> String {
     let mut fmt = String::new();
 
-    if typed_unnamed_struct_type.packed {
+    if typed_unnamed_struct_type.is_packed {
         fmt.push_str("bits");
     } else {
         fmt.push_str("struct");

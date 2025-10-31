@@ -304,7 +304,7 @@ pub struct TypedMethodCall {
 pub struct TypedUStructValue {
     pub fields: Vec<TypedUStructValueField>,
     pub unnamed_struct_type: Option<TypedUStructType>,
-    pub packed: bool,
+    pub is_packed: bool,
     pub is_const: bool,
     pub loc: SourceLoc,
 }

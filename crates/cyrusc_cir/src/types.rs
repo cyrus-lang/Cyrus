@@ -1,4 +1,4 @@
-use crate::CIRExpr;
+use crate::{CIREnumVariant, CIRExpr};
 use cyrusc_tast::types::PlainType;
 
 #[derive(Debug, Clone)]
@@ -45,12 +45,5 @@ pub struct CIRUnionTy {
 
 #[derive(Debug, Clone)]
 pub struct CIREnumTy {
-    pub variants: Vec<CIREnumVariantTy>,
-}
-
-#[derive(Debug, Clone)]
-pub enum CIREnumVariantTy {
-    Ident(String),
-    Valued(String, Box<CIRExpr>),
-    Fielded(String, Vec<CIRTy>),
+    pub variants: Vec<CIREnumVariant>,
 }

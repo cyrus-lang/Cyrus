@@ -17,7 +17,7 @@ pub struct StructSig {
     pub impls: Vec<TypedIdentifier>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub packed: bool,
+    pub is_packed: bool,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }

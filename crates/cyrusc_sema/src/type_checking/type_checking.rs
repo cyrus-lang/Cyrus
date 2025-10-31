@@ -331,7 +331,7 @@ impl<'a> AnalysisContext<'a> {
 
         let unnamed_struct_type = TypedUStructType {
             fields,
-            packed: unnamed_struct_value.packed,
+            is_packed: unnamed_struct_value.is_packed,
             loc: unnamed_struct_value.loc.clone(),
         };
 
@@ -671,6 +671,7 @@ impl<'a> AnalysisContext<'a> {
         Some(typed_struct_field.ty.clone())
     }
 
+    // FIXME
     fn analyze_enum_variant(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1042,6 +1043,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    // FIXME 
     fn analyze_union_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,

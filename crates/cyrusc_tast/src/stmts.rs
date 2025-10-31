@@ -128,7 +128,7 @@ pub struct TypedStructStmt {
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedIdentifier>,
     pub vis: AccessSpecifier,
-    pub packed: bool,
+    pub is_packed: bool,
     pub loc: SourceLoc,
 }
 

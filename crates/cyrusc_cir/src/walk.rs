@@ -2,6 +2,7 @@ use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_ast::LiteralKind;
 use cyrusc_resolver::typed_func_params_as_func_type_params;
+use cyrusc_tast::types::ResolvedSymbol;
 use cyrusc_tast::{
     TypedProgramTree,
     exprs::*,
@@ -89,7 +90,7 @@ impl CIRWalk {
 
         CIRStmt::Struct(CIRStructStmt {
             name: struct_stmt.name.clone(),
-            packed: struct_stmt.packed,
+            is_packed: struct_stmt.is_packed,
             fields,
             vis: struct_stmt.vis.clone(),
         })
@@ -198,7 +199,20 @@ impl CIRWalk {
     }
 
     fn lower_var(&self, var: &TypedVarStmt) -> CIRVarStmt {
-        let ty = self.lower_sema_ty(&var.ty.clone().unwrap_or(var.rhs.clone().unwrap().sema_ty.unwrap()));
+        dbg!(var.clone());
+
+        let ty = var
+            .ty
+            .as_ref()
+            .or_else(|| var.rhs.as_ref()?.sema_ty.as_ref())
+            .map(|t| self.lower_sema_ty(t))
+            .unwrap_or_else(|| {
+                panic!(
+                    "variable '{}' has neither explicit type nor rhs type ({}:{})",
+                    var.name, var.loc.file_path, var.loc.line
+                )
+            });
+
         let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
         CIRVarStmt {
@@ -368,7 +382,7 @@ impl CIRWalk {
 
         let struct_ty = CIRStructTy {
             fields: field_tys,
-            is_packed: ustruct_value.packed,
+            is_packed: ustruct_value.is_packed,
         };
 
         CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
@@ -461,11 +475,8 @@ impl CIRWalk {
 
     fn lower_sema_ty(&self, sema_ty: &SemanticType) -> CIRTy {
         match sema_ty {
+            SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(resolved_symbol),
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
-            SemanticType::ResolvedSymbol(..) => {
-                // FIXME
-                todo!();
-            }
             SemanticType::Array(array_type) => {
                 let ty = self.lower_sema_ty(&array_type.element_type);
                 let len = match &array_type.capacity {
@@ -487,7 +498,7 @@ impl CIRWalk {
                     .collect();
                 CIRTy::Struct(CIRStructTy {
                     fields: field_tys,
-                    is_packed: ustruct_ty.packed,
+                    is_packed: ustruct_ty.is_packed,
                 })
             }
             SemanticType::FuncType(func_type) => {
@@ -509,6 +520,12 @@ impl CIRWalk {
                 unreachable!()
             }
         }
+    }
+
+    fn lower_resolved_symbol(&self, resolved_symbol: &ResolvedSymbol) -> CIRTy {
+        // resolved_symbol.get_symbol_id()
+
+        todo!();
     }
 }
 

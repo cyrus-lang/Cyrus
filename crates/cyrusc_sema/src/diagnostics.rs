@@ -8,11 +8,6 @@ pub enum AnalyzerDiagKind {
     #[error("Type arguments supplied to a non-generic type.")]
     UnexpectedTypeArgs,
 
-    #[error(
-        "Generic arity mismatch because this type expects {expected} generic parameters but {provided} arguments were supplied."
-    )]
-    GenericArityMismatch { expected: usize, provided: usize },
-
     #[error("Unknown symbol '{symbol_name}'.")]
     UnknownSymbol { symbol_name: String },
 
@@ -211,16 +206,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Invalid float literal suffix.")]
     InvalidFloatLiteralSuffix,
-
-    #[error(
-        "Type mismatch for field '{field_name}' in struct '{struct_name}' (expected '{expected_type}', found '{found_type}')."
-    )]
-    StructFieldTypeMismatch {
-        struct_name: String,
-        field_name: String,
-        expected_type: String,
-        found_type: String,
-    },
 
     #[error("Array index must be an integer (found '{found_type}').")]
     ArrayNonIntegerIndex { found_type: String },

@@ -1,4 +1,4 @@
-use crate::types::{CIRFuncTy, CIRStructTy, CIRTy};
+use crate::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy};
 use cyrusc_ast::{
     AccessSpecifier, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -266,7 +266,7 @@ pub struct CIRReturnStmt {
 pub struct CIRStructStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
-    pub packed: bool,
+    pub is_packed: bool,
     pub vis: AccessSpecifier,
 }
 
@@ -310,5 +310,24 @@ pub fn cir_func_decl_as_func_ty(func_def: &CIRFuncDeclStmt) -> CIRFuncTy {
         params: func_def.params.clone(),
         is_var: func_def.is_var.clone(),
         ret: Box::new(func_def.ret.clone()),
+    }
+}
+
+pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
+    CIRStructTy {
+        fields: struct_stmt.fields.clone(),
+        is_packed: struct_stmt.is_packed,
+    }
+}
+
+pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
+    CIREnumTy {
+        variants: enum_stmt.variants.clone(),
+    }
+}
+
+pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
+    CIRUnionTy {
+        fields: union_stmt.fields.clone(),
     }
 }

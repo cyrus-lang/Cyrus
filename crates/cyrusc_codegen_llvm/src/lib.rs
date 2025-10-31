@@ -23,7 +23,6 @@ use inkwell::{
 use std::{
     any::Any,
     cell::RefCell,
-    mem::transmute,
     path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, Mutex},
@@ -70,6 +69,12 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_program_tree: &'ctx CIRProgramTree,
     ) {
+        {
+            let llvmmodule = owned_module.module.borrow();
+            llvmmodule.set_triple(&self.llvmtm.get_triple());
+            llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
+        }
+
         let ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
         ir_builder_ctx.emit_program_tree(cir_program_tree);
     }
@@ -81,7 +86,10 @@ impl CodeGenLLVM {
 
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
-            if let Err(llvm_str) = module.print_to_file(llvm_ir_dir.join(module.get_name().to_str().unwrap())) {
+            let mut llvm_ir_path = llvm_ir_dir.join(module.get_name().to_str().unwrap());
+            llvm_ir_path.set_extension("ll");
+
+            if let Err(llvm_str) = module.print_to_file(llvm_ir_path) {
                 display_single_custom_diag!(llvm_str.to_string());
             }
             drop(module);

@@ -1145,7 +1145,7 @@ impl Parser {
     fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expression, Diag> {
         let struct_start = self.current_token().span.start;
 
-        let packed = {
+        let is_packed = {
             if self.current_token_is(TokenKind::Struct) {
                 self.next_token(); // consume struct
                 false
@@ -1244,7 +1244,7 @@ impl Parser {
 
         Ok(Expression::UStructValue(UStructValue {
             fields,
-            packed,
+            is_packed,
             is_const,
             loc: self.current_token().loc.clone(),
             span: Span::new(struct_start, self.current_token().span.end),
