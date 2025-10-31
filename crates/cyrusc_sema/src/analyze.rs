@@ -69,13 +69,13 @@ pub struct AnalysisContext<'a> {
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter,
     pub module_id: ModuleID,
-    pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub ty_caches: TypeResolverCaches,
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
     pub(crate) generic_ctx_stack: Vec<GenericMappingCtx>,
+    pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     control_stack: Vec<ControlContext>,
 }
@@ -979,64 +979,6 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
-    }
-
-    fn analyze_unused_symbols(&mut self) {
-        let global_symbols = self.resolver.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get(&self.module_id).unwrap();
-
-        for symbol_entry in symbol_table.entries.values() {
-            if !symbol_entry.used {
-                let (symbol_name, loc) = match &symbol_entry.kind {
-                    SymbolEntryKind::Method(resolved_method) => (
-                        resolved_method.func_sig.name.clone(),
-                        resolved_method.func_sig.loc.clone(),
-                    ),
-                    SymbolEntryKind::Func(resolved_func) => {
-                        // allow unused for main function
-                        if resolved_func.func_sig.name == "main" {
-                            continue;
-                        }
-
-                        (resolved_func.func_sig.name.clone(), resolved_func.func_sig.loc.clone())
-                    }
-                    SymbolEntryKind::Typedef(resolved_typedef) => (
-                        resolved_typedef.typedef_sig.name.clone(),
-                        resolved_typedef.typedef_sig.loc.clone(),
-                    ),
-                    SymbolEntryKind::GlobalVar(resolved_global_var) => (
-                        resolved_global_var.global_var_sig.name.clone(),
-                        resolved_global_var.global_var_sig.loc.clone(),
-                    ),
-                    SymbolEntryKind::Struct(resolved_struct) => (
-                        resolved_struct.struct_sig.name.clone(),
-                        resolved_struct.struct_sig.loc.clone(),
-                    ),
-                    SymbolEntryKind::Enum(resolved_enum) => {
-                        (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
-                    }
-                    SymbolEntryKind::Union(resolved_union) => (
-                        resolved_union.union_sig.name.clone(),
-                        resolved_union.union_sig.loc.clone(),
-                    ),
-                    SymbolEntryKind::Interface(resolved_interface) => (
-                        resolved_interface.interface_sig.name.clone(),
-                        resolved_interface.interface_sig.loc.clone(),
-                    ),
-                };
-
-                if !self.disable_warnings {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Warning,
-                        kind: Box::new(AnalyzerDiagKind::UnusedSymbol { symbol_name }),
-                        location: Some(DiagLoc::new(loc)),
-                        hint: None,
-                    });
-                }
-            }
-        }
-
-        drop(global_symbols);
     }
 
     fn analyze_object_impls_interface(
