@@ -3,7 +3,7 @@ use crate::{
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
-use cyrusc_ast::{AccessSpecifier, Identifier, SelfModifierKind, source_loc::SourceLoc, token::Location};
+use cyrusc_ast::{AccessSpecifier, Identifier, SelfModifierKind, source_loc::SourceLoc};
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
