@@ -4,9 +4,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
     ScopeID, SymbolID,
-    stmts::{
-        TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg,
-    },
+    stmts::{TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
         ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
         TypedTupleType,
@@ -58,25 +56,7 @@ impl<'a> AnalysisContext<'a> {
 
         match ty {
             ty @ SemanticType::GenericParam(..) => Some(ty),
-            SemanticType::GenericType(mut generic_type) => {
-                for type_arg in &mut generic_type.type_args {
-                    let normalized_type_arg = match type_arg {
-                        TypedTypeArg::Positional(sema_ty) => {
-                            let normalized_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone())?;
-                            TypedTypeArg::Positional(normalized_ty)
-                        }
-                        TypedTypeArg::Named { key, value } => {
-                            let normalized_ty = self.normalize_type(scope_id_opt, value.clone(), loc.clone())?;
-                            TypedTypeArg::Named {
-                                key: key.clone(),
-                                value: normalized_ty,
-                            }
-                        }
-                    };
-                    *type_arg = normalized_type_arg;
-                }
-                Some(SemanticType::GenericType(generic_type))
-            }
+            ty @ SemanticType::GenericType(..) => Some(ty),
             SemanticType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 

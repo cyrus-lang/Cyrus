@@ -1,7 +1,6 @@
 use crate::{
     diagnostics::AnalyzerDiagKind,
     flowstate::{ControlContext, FlowState},
-    generics::GenericMappingCtx,
     monomorph::MonomorphRegistry,
     type_cache::TypeResolverCaches,
 };
@@ -16,6 +15,7 @@ use cyrusc_resolver::{
 use cyrusc_tast::{
     exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
     format::format_concrete_type,
+    generic_mapping_ctx::GenericMappingCtx,
     stmts::*,
     types::{PlainType, SemanticType, TypedFuncType},
     *,

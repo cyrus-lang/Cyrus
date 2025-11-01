@@ -5,6 +5,8 @@ pub mod exprs;
 pub mod format;
 pub mod stmts;
 pub mod types;
+pub mod generics;
+mod tests;
 
 pub type ScopeID = u32;
 pub type SymbolID = u32;

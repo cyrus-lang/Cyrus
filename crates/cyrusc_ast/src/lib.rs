@@ -907,7 +907,10 @@ impl Statement {
     }
 }
 
-pub type GenericParamsList = Vec<GenericParam>;
+#[derive(Debug, Clone)]
+pub struct GenericParamsList {
+    list: Vec<GenericParam>,
+}
 
 #[derive(Debug, Clone)]
 pub struct GenericParam {
