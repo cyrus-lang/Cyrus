@@ -432,6 +432,8 @@ version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
+ "thiserror 2.0.17",
+ "thiserror-impl 2.0.17",
 ]
 
 [[package]]

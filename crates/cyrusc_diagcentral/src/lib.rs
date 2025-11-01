@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{self, Debug, Display};
 
 use cyrusc_ast::source_loc::SourceLoc;
 
@@ -23,6 +23,17 @@ pub struct Diag {
     pub kind: Box<dyn DiagKind>,
     pub location: Option<DiagLoc>,
     pub hint: Option<String>,
+}
+
+impl fmt::Debug for Diag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Diag")
+            .field("level", &self.level)
+            .field("kind", &"<dyn DiagKind>")
+            .field("location", &self.location)
+            .field("hint", &self.hint)
+            .finish()
+    }
 }
 
 impl DiagLoc {

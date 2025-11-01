@@ -3,7 +3,7 @@ use crate::{
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
-use cyrusc_ast::{AccessSpecifier, Identifier, SelfModifierKind, source_loc::SourceLoc};
+use cyrusc_ast::{AccessSpecifier, Identifier, SelfModifierKind, source_loc::SourceLoc, token::Location};
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
@@ -343,7 +343,10 @@ pub struct TypedContinueStmt {
     pub loc: SourceLoc,
 }
 
-pub type TypedGenericParamsList = Vec<TypedGenericParam>;
+#[derive(Debug, Clone)]
+pub struct TypedGenericParamsList {
+    pub(crate) list: Vec<TypedGenericParam>,
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedGenericParam {
@@ -352,34 +355,82 @@ pub struct TypedGenericParam {
     pub default: Option<SemanticType>,
 }
 
+impl TypedGenericParamsList {
+    pub fn new() -> Self {
+        Self { list: Vec::new() }
+    }
+
+    pub fn push(&mut self, gp: TypedGenericParam) {
+        self.list.push(gp);
+    }
+
+    pub fn get_named(&self, name: &String) -> Option<&TypedGenericParam> {
+        self.list.iter().find(|p| &p.param_name.name == name)
+    }
+
+    pub fn get_positional(&self, idx: usize) -> Option<&TypedGenericParam> {
+        self.list.get(idx)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedBound {
     pub symbol: Identifier,
     pub type_args: Vec<TypedTypeArg>,
 }
 
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub enum TypedTypeArg {
-    Positional(SemanticType),
-    Named { key: String, value: SemanticType },
+    Positional {
+        idx: usize,
+        ty: SemanticType,
+        loc: SourceLoc,
+    },
+    Named {
+        key: String,
+        ty: SemanticType,
+        loc: SourceLoc,
+    },
 }
 
 pub type TypedTypeArgs = Vec<TypedTypeArg>;
 
+impl Hash for TypedTypeArg {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            TypedTypeArg::Positional { idx, ty, .. } => {
+                idx.hash(state);
+                ty.hash(state);
+            }
+            TypedTypeArg::Named { key, ty, .. } => {
+                key.hash(state);
+                ty.hash(state);
+            }
+        }
+    }
+}
+
 impl PartialEq for TypedTypeArg {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Positional(l0), Self::Positional(r0)) => l0 == r0,
+            (
+                Self::Positional {
+                    idx: l_idx, ty: l_ty, ..
+                },
+                Self::Positional {
+                    idx: r_idx, ty: r_ty, ..
+                },
+            ) => l_idx == r_idx && l_ty == r_ty,
+
             (
                 Self::Named {
-                    key: l_key,
-                    value: l_value,
+                    key: l_key, ty: l_ty, ..
                 },
                 Self::Named {
-                    key: r_key,
-                    value: r_value,
+                    key: r_key, ty: r_ty, ..
                 },
-            ) => l_key == r_key && l_value == r_value,
+            ) => l_key == r_key && l_ty == r_ty,
+
             _ => false,
         }
     }
@@ -417,10 +468,12 @@ impl Hash for TypedIdentifier {
 }
 
 pub fn lookup_symbol_from_generic_params(
-    list: &TypedGenericParamsList,
+    generic_params: &TypedGenericParamsList,
     symbol_id: SymbolID,
 ) -> Option<TypedGenericParam> {
-    list.iter()
+    generic_params
+        .list
+        .iter()
         .find(|generic_param| generic_param.param_name.symbol_id == symbol_id)
         .cloned()
 }

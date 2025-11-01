@@ -11,6 +11,7 @@ use cyrusc_ast::*;
 use cyrusc_diagcentral::{reporter::DiagReporter, *};
 use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
 use cyrusc_tast::exprs::*;
+use cyrusc_tast::generic_mapping_ctx::{GenericMappingCtx, GenericType, GenericTypeState};
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::types::*;
 use cyrusc_tast::*;
@@ -578,7 +579,8 @@ impl Resolver {
 
                     Ok(SemanticType::GenericType(GenericType {
                         base: symbol_id,
-                        type_args,
+                        state: GenericTypeState::Unresolved { type_args },
+                        mapping_ctx: Rc::new(GenericMappingCtx::new_root()),
                         is_const,
                     }))
                 } else {

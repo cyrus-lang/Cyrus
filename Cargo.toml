@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    # "crates/cyrusc_codegen_llvm",
     "crates/cyrusc_lexer",
     "crates/cyrusc_parser",
     "crates/cyrusc_ast",
@@ -17,8 +16,10 @@ members = [
     "crates/cyrusc_compiler",
     "crates/cyrusc_buildmanifest",
     "crates/cyrusc_scaffold_parser",
-    "crates/cyrusc_modulefsloader", "crates/cyrusc_abi",
+    "crates/cyrusc_modulefsloader",
+    "crates/cyrusc_abi",
 ]
+
 default-members = ["crates/cyrusc_cli"]
 
 resolver = "3"

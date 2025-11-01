@@ -1,7 +1,7 @@
 use crate::{
     SymbolID,
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr},
-    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg},
+    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
         TypedUStructType,
@@ -353,19 +353,7 @@ pub fn format_concrete_type<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(S
                     .join(", ")
             )
         }
-        SemanticType::GenericType(generic_type) => {
-            let base = format_symbol(generic_type.base);
-            let type_args = generic_type
-                .type_args
-                .iter()
-                .map(|type_arg| match type_arg {
-                    TypedTypeArg::Positional(sema_ty) => format_concrete_type(sema_ty.clone(), format_symbol),
-                    TypedTypeArg::Named { value, .. } => format_concrete_type(value.clone(), format_symbol),
-                })
-                .collect::<Vec<String>>()
-                .join(", ");
-            format!("{}<{}>", base, type_args)
-        }
+        SemanticType::GenericType(generic_type) => generic_type.format(format_symbol),
     }
 }
 

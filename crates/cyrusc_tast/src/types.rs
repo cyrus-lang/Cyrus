@@ -1,5 +1,6 @@
 use crate::exprs::{TypedExprStmt, TypedIdentifier};
-use crate::stmts::{TypedFuncTypeParams, TypedTypeArgs};
+use crate::generics::generic_type::GenericType;
+use crate::stmts::TypedFuncTypeParams;
 use crate::{ModuleID, SourceLoc, SymbolID};
 use cyrusc_ast::{AccessSpecifier, token::TokenKind};
 use std::hash::{Hash, Hasher};
@@ -57,13 +58,6 @@ pub enum ResolvedSymbol {
     Variable(SymbolID),
     Func(SymbolID),
     Method(SymbolID),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct GenericType {
-    pub base: SymbolID,
-    pub type_args: TypedTypeArgs,
-    pub is_const: bool,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -143,10 +137,7 @@ impl SemanticType {
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(
-            self.get_const_inner(),
-            SemanticType::PlainType(PlainType::Bool)
-        )
+        matches!(self.get_const_inner(), SemanticType::PlainType(PlainType::Bool))
     }
 
     pub fn is_array(&self) -> bool {
@@ -158,10 +149,7 @@ impl SemanticType {
     }
 
     pub fn is_void(&self) -> bool {
-        matches!(
-            self.get_const_inner(),
-            SemanticType::PlainType(PlainType::Void)
-        )
+        matches!(self.get_const_inner(), SemanticType::PlainType(PlainType::Void))
     }
 
     pub fn is_pointer(&self) -> bool {
@@ -318,10 +306,7 @@ impl PlainType {
     pub fn is_float(&self) -> bool {
         matches!(
             self,
-            PlainType::Float16
-                | PlainType::Float32
-                | PlainType::Float64
-                | PlainType::Float128
+            PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128
         )
     }
 
