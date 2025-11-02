@@ -3,6 +3,7 @@ use cyrusc_ast::{
     AccessSpecifier, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
+use cyrusc_tast::sigs::StructSig;
 
 pub mod types;
 pub mod walk;
@@ -23,9 +24,6 @@ pub enum CIRStmt {
     FuncDef(CIRFuncDefStmt),
     FuncDecl(CIRFuncDeclStmt),
     Block(CIRBlockStmt),
-    If(CIRIfStmt),
-    For(CIRForStmt),
-    While(CIRWhileStmt),
     Switch(CIRSwitchStmt),
     Return(CIRReturnStmt),
     Struct(CIRStructStmt),

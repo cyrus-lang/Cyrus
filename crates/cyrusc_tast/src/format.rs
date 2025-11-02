@@ -206,7 +206,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                     .map(|field| {
                         let mut lfmt = String::new();
                         lfmt.push_str(&field.field_name);
-                        if let Some(sema_ty) = &field.field_type {
+                        if let Some(sema_ty) = &field.field_ty {
                             let type_fmt = format_concrete_type(sema_ty.clone(), format_symbol);
                             lfmt.push_str(": ");
                             lfmt.push_str(&type_fmt);
@@ -262,7 +262,7 @@ pub fn format_unnamed_struct_type<'a>(
                 format!(
                     "{}: {}",
                     field.field_name,
-                    format_concrete_type(*field.field_type.clone(), format_symbol)
+                    format_concrete_type(*field.field_ty.clone(), format_symbol)
                 )
             })
             .collect::<Vec<String>>()

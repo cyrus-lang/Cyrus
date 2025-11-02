@@ -323,10 +323,10 @@ impl Parser {
                 }
 
                 let loc = self.current_token().loc.clone();
-                let field_type = self.parse_type_specifier()?;
+                let field_ty = self.parse_type_specifier()?;
                 self.next_token();
 
-                variant_fields.push(EnumValuedField { field_type, loc });
+                variant_fields.push(EnumValuedField { field_ty, loc });
 
                 if self.current_token_is(TokenKind::RightParen) {
                     self.next_token();

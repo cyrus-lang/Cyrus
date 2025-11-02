@@ -312,7 +312,7 @@ pub struct TypedUStructValue {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUStructValueField {
     pub field_name: String,
-    pub field_type: Option<SemanticType>,
+    pub field_ty: Option<SemanticType>,
     pub field_value: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }

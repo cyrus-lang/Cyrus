@@ -1190,14 +1190,14 @@ impl Parser {
 
                     self.next_token(); // consume identifier
 
-                    let mut field_type: Option<TypeSpecifier> = None;
+                    let mut field_ty: Option<TypeSpecifier> = None;
                     if self.current_token_is(TokenKind::Colon) {
                         self.next_token();
 
                         let type_specifier = self.parse_type_specifier()?;
                         self.next_token();
 
-                        field_type = Some(type_specifier);
+                        field_ty = Some(type_specifier);
                     }
 
                     self.expect_current(TokenKind::Assign)?;
@@ -1213,7 +1213,7 @@ impl Parser {
                             },
                             loc: loc.clone(),
                         },
-                        field_type,
+                        field_ty,
                         field_value: Box::new(field_value),
                         loc,
                         span: Span {

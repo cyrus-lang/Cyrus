@@ -98,7 +98,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     let boxed_trees = box_program_trees(typed_program_trees);
 
     // walk program trees in parallel
-    let cir_program_trees = walk_program_trees_in_parallel(opts.jobs, boxed_trees);
+    let cir_program_trees = walk_program_trees_in_parallel(opts.jobs, boxed_trees, &resolver);
 
     CodeGenContextBundle {
         options: opts.clone(),

@@ -6,9 +6,7 @@ use cyrusc_tast::{
     SymbolID,
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx},
     stmts::*,
-    types::{
-        SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType, TypedUnnamedStructTypeField,
-    },
+    types::SemanticType,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -53,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
         Ok(Some((sym.get_symbol_id(), Some(generic_type))))
     }
 
-    pub(crate) fn infer_or_substitute(
+    pub(crate) fn infer_generic_param(
         &self,
         generic_type_opt: &Option<GenericType>,
         target_ty: SemanticType,
@@ -62,7 +60,7 @@ impl<'a> AnalysisContext<'a> {
         generic_type_opt.clone().and_then(|generic_type| {
             let generic_param = target_ty.as_generic_param()?;
             let expr_ty = expr_ty?;
-            
+
             let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
             if let Some(previously_inferred_ty) = mapping_ctx.get_with_symbol_id(generic_param.symbol_id) {
                 drop(mapping_ctx);
@@ -73,89 +71,5 @@ impl<'a> AnalysisContext<'a> {
                 Some(expr_ty)
             }
         })
-    }
-
-    pub(crate) fn substitute_type(
-        &self,
-        sema_ty: SemanticType,
-        generic_mapping_ctx: &GenericMappingCtx,
-        positional_index: Option<usize>,
-    ) -> Option<SemanticType> {
-        match sema_ty {
-            SemanticType::GenericParam(param) => generic_mapping_ctx.get_with_symbol_id(param.symbol_id),
-            SemanticType::Pointer(inner) => Some(SemanticType::Pointer(Box::new(self.substitute_type(
-                *inner,
-                generic_mapping_ctx,
-                positional_index,
-            )?))),
-            SemanticType::Array(inner) => Some(SemanticType::Array(TypedArrayType {
-                element_type: Box::new(self.substitute_type(
-                    *inner.element_type,
-                    generic_mapping_ctx,
-                    positional_index,
-                )?),
-                capacity: inner.capacity,
-                loc: inner.loc.clone(),
-            })),
-            SemanticType::Const(inner) => Some(SemanticType::Const(Box::new(self.substitute_type(
-                *inner,
-                generic_mapping_ctx,
-                positional_index,
-            )?))),
-            SemanticType::Tuple(tuple) => {
-                let new_list = tuple
-                    .type_list
-                    .into_iter()
-                    .map(|t| self.substitute_type(t, generic_mapping_ctx, positional_index))
-                    .collect::<Option<Vec<_>>>()?;
-                Some(SemanticType::Tuple(TypedTupleType {
-                    type_list: new_list,
-                    loc: tuple.loc.clone(),
-                }))
-            }
-            SemanticType::FuncType(func) => {
-                let new_params = func
-                    .params
-                    .list
-                    .into_iter()
-                    .map(|p| self.substitute_type(p, generic_mapping_ctx, positional_index))
-                    .collect::<Option<Vec<_>>>()?;
-                let new_return =
-                    Box::new(self.substitute_type(*func.return_type, generic_mapping_ctx, positional_index)?);
-                Some(SemanticType::FuncType(TypedFuncType {
-                    def_module_id: func.def_module_id,
-                    params: TypedFuncTypeParams {
-                        list: new_params,
-                        variadic: func.params.variadic,
-                    },
-                    return_type: new_return,
-                    vis_opt: func.vis_opt,
-                    loc: func.loc,
-                }))
-            }
-            SemanticType::UnnamedStruct(s) => {
-                let new_fields = s
-                    .fields
-                    .iter()
-                    .map(|f| {
-                        Some(TypedUnnamedStructTypeField {
-                            field_name: f.field_name.clone(),
-                            field_type: Box::new(self.substitute_type(
-                                *f.field_type.clone(),
-                                generic_mapping_ctx,
-                                positional_index,
-                            )?),
-                            loc: f.loc.clone(),
-                        })
-                    })
-                    .collect::<Option<Vec<_>>>()?;
-                Some(SemanticType::UnnamedStruct(TypedUStructType {
-                    fields: new_fields,
-                    is_packed: s.is_packed,
-                    loc: s.loc.clone(),
-                }))
-            }
-            other => Some(other),
-        }
     }
 }

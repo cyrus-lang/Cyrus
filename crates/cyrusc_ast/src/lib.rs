@@ -118,7 +118,7 @@ pub struct UStructValue {
 #[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
     pub field_name: Identifier,
-    pub field_type: Option<TypeSpecifier>,
+    pub field_ty: Option<TypeSpecifier>,
     pub field_value: Box<Expression>,
     pub loc: Location,
     pub span: Span,
@@ -135,7 +135,7 @@ pub struct UnnamedStructType {
 #[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
     pub field_name: Identifier,
-    pub field_type: TypeSpecifier,
+    pub field_ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
 }
@@ -179,7 +179,7 @@ pub enum EnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct EnumValuedField {
-    pub field_type: TypeSpecifier,
+    pub field_ty: TypeSpecifier,
     pub loc: Location,
 }
 
