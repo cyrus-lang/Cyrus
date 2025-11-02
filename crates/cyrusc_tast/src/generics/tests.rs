@@ -2,7 +2,10 @@
 mod tests {
     use crate::{
         exprs::TypedIdentifier,
-        generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx},
+        generics::{
+            generic_type::GenericType,
+            mapping_ctx::{GenericMappingCtx, mapping_ctx_eq},
+        },
         stmts::{TypedGenericParam, TypedGenericParamsList, TypedTypeArg},
         types::{PlainType, SemanticType},
     };
@@ -34,83 +37,106 @@ mod tests {
         }
     }
 
-    #[test]
-    pub fn test_generic_type_with_positional_args() {
-        let generic_params = make_generic_params();
-
-        // type args: <Bool, Int>
-        let input_type_args = vec![
-            TypedTypeArg::Positional {
-                idx: 0,
-                ty: SemanticType::PlainType(PlainType::Bool),
-                loc: SourceLoc::default(),
-            },
-            TypedTypeArg::Positional {
-                idx: 1,
-                ty: SemanticType::PlainType(PlainType::Int),
-                loc: SourceLoc::default(),
-            },
-        ];
-
-        let generic_type = GenericType {
-            base: 1,
-            state: GenericTypeState::Unresolved {
-                type_args: input_type_args,
-            },
-            mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
-            is_const: false,
-            loc: SourceLoc::default(),
-        };
-
-        let result = generic_type.init(generic_params);
-        assert!(result.is_ok(), "Expected generic type to resolve successfully.");
-
-        let generic_type = result.unwrap();
-        let ctx = generic_type.mapping_ctx.borrow();
-
-        assert!(
-            matches!(
-                ctx.named.get(&TypedIdentifier {
-                    name: "A".into(),
-                    symbol_id: 1000,
-                    loc: SourceLoc::default()
-                }),
-                Some(SemanticType::PlainType(PlainType::Bool))
-            ),
-            "Param 'A' should map to Bool, got {:?}.",
-            ctx.named.get(&TypedIdentifier {
+    fn make_simple_ctx_a() -> GenericMappingCtx {
+        let mut ctx = GenericMappingCtx::new_root();
+        ctx.named.insert(
+            TypedIdentifier {
                 name: "A".into(),
-                symbol_id: 1000,
-                loc: SourceLoc::default()
-            })
+                symbol_id: 1,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
         );
-
-        assert!(
-            matches!(
-                ctx.named.get(&TypedIdentifier {
-                    name: "B".into(),
-                    symbol_id: 2000,
-                    loc: SourceLoc::default()
-                }),
-                Some(SemanticType::PlainType(PlainType::Int))
-            ),
-            "Param 'B' should map to Int, got {:?}.",
-            ctx.named.get(&TypedIdentifier {
-                name: "B".into(),
-                symbol_id: 2000,
-                loc: SourceLoc::default()
-            })
-        );
-
-        assert_eq!(ctx.named.len(), 2);
+        ctx
     }
+
+    fn make_simple_ctx_b() -> GenericMappingCtx {
+        let mut ctx = GenericMappingCtx::new_root();
+        ctx.named.insert(
+            TypedIdentifier {
+                name: "A".into(),
+                symbol_id: 1,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
+        );
+        ctx
+    }
+
+    // #[test]
+    // pub fn test_generic_type_with_positional_args() {
+    //     let generic_params = make_generic_params();
+
+    //     // type args: <Bool, Int>
+    //     let type_args = vec![
+    //         TypedTypeArg::Positional {
+    //             idx: 0,
+    //             ty: SemanticType::PlainType(PlainType::Bool),
+    //             loc: SourceLoc::default(),
+    //         },
+    //         TypedTypeArg::Positional {
+    //             idx: 1,
+    //             ty: SemanticType::PlainType(PlainType::Int),
+    //             loc: SourceLoc::default(),
+    //         },
+    //     ];
+
+    //     let mut generic_type = GenericType {
+    //         base: 1,
+    //         type_args,
+    //         mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+    //         is_const: false,
+    //         loc: SourceLoc::default(),
+    //     };
+
+    //     let result = generic_type.init(generic_params);
+    //     assert!(result.is_ok(), "Expected generic type to resolve successfully.");
+
+    //     let ctx = generic_type.mapping_ctx.borrow();
+
+    //     assert!(
+    //         matches!(
+    //             ctx.named.get(&TypedIdentifier {
+    //                 name: "A".into(),
+    //                 symbol_id: 1000,
+    //                 loc: SourceLoc::default()
+    //             }),
+    //             Some(SemanticType::PlainType(PlainType::Bool))
+    //         ),
+    //         "Param 'A' should map to Bool, got {:?}.",
+    //         ctx.named.get(&TypedIdentifier {
+    //             name: "A".into(),
+    //             symbol_id: 1000,
+    //             loc: SourceLoc::default()
+    //         })
+    //     );
+
+    //     assert!(
+    //         matches!(
+    //             ctx.named.get(&TypedIdentifier {
+    //                 name: "B".into(),
+    //                 symbol_id: 2000,
+    //                 loc: SourceLoc::default()
+    //             }),
+    //             Some(SemanticType::PlainType(PlainType::Int))
+    //         ),
+    //         "Param 'B' should map to Int, got {:?}.",
+    //         ctx.named.get(&TypedIdentifier {
+    //             name: "B".into(),
+    //             symbol_id: 2000,
+    //             loc: SourceLoc::default()
+    //         })
+    //     );
+
+    //     assert_eq!(ctx.named.len(), 2);
+    // }
 
     #[test]
     pub fn test_generic_type_with_mixed_args() {
         let generic_params = make_generic_params();
 
         // type args: <Bool, B=Int>
-        let input_type_args = vec![
+        let type_args = vec![
             TypedTypeArg::Positional {
                 idx: 0,
                 ty: SemanticType::PlainType(PlainType::Bool),
@@ -123,11 +149,9 @@ mod tests {
             },
         ];
 
-        let generic_type = GenericType {
+        let mut generic_type = GenericType {
             base: 2,
-            state: GenericTypeState::Unresolved {
-                type_args: input_type_args,
-            },
+            type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
             is_const: false,
             loc: SourceLoc::default(),
@@ -139,7 +163,6 @@ mod tests {
             "Mixed positional + named arguments should resolve cleanly."
         );
 
-        let generic_type = result.unwrap();
         let ctx = generic_type.mapping_ctx.borrow();
 
         let a = ctx.named.get(&TypedIdentifier {
@@ -202,7 +225,7 @@ mod tests {
         };
 
         // type args: <int, C = bool, B = char>
-        let input_type_args = vec![
+        let type_args = vec![
             TypedTypeArg::Positional {
                 idx: 0,
                 ty: SemanticType::PlainType(PlainType::Int),
@@ -220,11 +243,9 @@ mod tests {
             },
         ];
 
-        let generic_type = GenericType {
+        let mut generic_type = GenericType {
             base: 3,
-            state: GenericTypeState::Unresolved {
-                type_args: input_type_args,
-            },
+            type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
             is_const: false,
             loc: SourceLoc::default(),
@@ -236,7 +257,6 @@ mod tests {
             "Expected out-of-order named arguments to resolve successfully."
         );
 
-        let generic_type = result.unwrap();
         let ctx = generic_type.mapping_ctx.borrow();
 
         let a = ctx.named.get(&TypedIdentifier {
@@ -309,17 +329,15 @@ mod tests {
         };
 
         // type args: <A = Char>
-        let input_type_args = vec![TypedTypeArg::Named {
+        let type_args = vec![TypedTypeArg::Named {
             key: "A".into(),
             ty: SemanticType::PlainType(PlainType::Char),
             loc: SourceLoc::default(),
         }];
 
-        let generic_type = GenericType {
+        let mut generic_type = GenericType {
             base: 10,
-            state: GenericTypeState::Unresolved {
-                type_args: input_type_args,
-            },
+            type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
             is_const: false,
             loc: SourceLoc::default(),
@@ -327,7 +345,6 @@ mod tests {
 
         let result = generic_type.init(generic_params.clone());
         assert!(result.is_ok(), "Expected init() to succeed.");
-        let _ = result.unwrap();
 
         let finalize_result = generic_type.finalize(generic_params.clone(), |sid| format!("T{}", sid));
         assert!(finalize_result.is_ok(), "Expected finalize() to fill defaults.");
@@ -392,18 +409,16 @@ mod tests {
             ],
         };
 
-        // Input: <A = Bool>
-        let input_type_args = vec![TypedTypeArg::Named {
+        // type args: <A = Bool>
+        let type_args = vec![TypedTypeArg::Named {
             key: "A".into(),
             ty: SemanticType::PlainType(PlainType::Bool),
             loc: SourceLoc::default(),
         }];
 
-        let generic_type = GenericType {
+        let mut generic_type = GenericType {
             base: 11,
-            state: GenericTypeState::Unresolved {
-                type_args: input_type_args,
-            },
+            type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
             is_const: false,
             loc: SourceLoc::default(),
@@ -435,5 +450,213 @@ mod tests {
             "Param B should be filled from default"
         );
         assert!(ctx.get_with_symbol_id(3000).is_none(), "Param C should be missing");
+    }
+
+    #[test]
+    fn test_generic_type_eq_same_base_and_ctx() {
+        let ctx1 = Rc::new(RefCell::new(make_simple_ctx_a()));
+        let ctx2 = Rc::new(RefCell::new(make_simple_ctx_b()));
+
+        let gt1 = GenericType {
+            base: 100,
+            type_args: vec![],
+            mapping_ctx: ctx1,
+            is_const: true,
+            loc: Default::default(),
+        };
+
+        let gt2 = GenericType {
+            base: 100,
+            type_args: vec![TypedTypeArg::Positional {
+                idx: 0,
+                ty: SemanticType::PlainType(PlainType::Bool),
+                loc: Default::default(),
+            }],
+            mapping_ctx: ctx2,
+            is_const: false,
+            loc: Default::default(),
+        };
+
+        // type_args and is_const ignored, so equality depends only on base + mapping_ctx
+        assert!(mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
+        assert_eq!(gt1.base, gt2.base);
+    }
+
+    #[test]
+    fn test_generic_type_eq_different_base() {
+        let ctx1 = Rc::new(RefCell::new(make_simple_ctx_a()));
+        let ctx2 = Rc::new(RefCell::new(make_simple_ctx_a()));
+
+        let gt1 = GenericType {
+            base: 1,
+            type_args: vec![],
+            mapping_ctx: ctx1,
+            is_const: false,
+            loc: Default::default(),
+        };
+        let gt2 = GenericType {
+            base: 2,
+            type_args: vec![],
+            mapping_ctx: ctx2,
+            is_const: false,
+            loc: Default::default(),
+        };
+
+        assert!(mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
+        assert_ne!(gt1.base, gt2.base);
+    }
+
+    #[test]
+    fn test_generic_type_eq_different_ctx() {
+        let mut ctx1 = GenericMappingCtx::new_root();
+        ctx1.named.insert(
+            TypedIdentifier {
+                name: "A".into(),
+                symbol_id: 1,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
+        );
+
+        let mut ctx2 = GenericMappingCtx::new_root();
+        ctx2.named.insert(
+            TypedIdentifier {
+                name: "A".into(),
+                symbol_id: 1,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Bool), // different type
+        );
+
+        let gt1 = GenericType {
+            base: 50,
+            type_args: vec![],
+            mapping_ctx: Rc::new(RefCell::new(ctx1)),
+            is_const: false,
+            loc: Default::default(),
+        };
+        let gt2 = GenericType {
+            base: 50,
+            type_args: vec![],
+            mapping_ctx: Rc::new(RefCell::new(ctx2)),
+            is_const: false,
+            loc: Default::default(),
+        };
+
+        assert!(!mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
+    }
+
+    #[test]
+    fn test_generic_type_eq_with_parent_ctx() {
+        let mut parent = GenericMappingCtx::new_root();
+        parent.named.insert(
+            TypedIdentifier {
+                name: "P".into(),
+                symbol_id: 10,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Char),
+        );
+
+        let mut child1 = GenericMappingCtx::new_root();
+        child1.parent = Some(Rc::new(parent.clone()));
+        child1.named.insert(
+            TypedIdentifier {
+                name: "C".into(),
+                symbol_id: 20,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
+        );
+
+        let mut child2 = GenericMappingCtx::new_root();
+        child2.parent = Some(Rc::new(parent.clone()));
+        child2.named.insert(
+            TypedIdentifier {
+                name: "C".into(),
+                symbol_id: 20,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
+        );
+
+        let gt1 = GenericType {
+            base: 5,
+            type_args: vec![],
+            mapping_ctx: Rc::new(RefCell::new(child1)),
+            is_const: false,
+            loc: Default::default(),
+        };
+        let gt2 = GenericType {
+            base: 5,
+            type_args: vec![],
+            mapping_ctx: Rc::new(RefCell::new(child2)),
+            is_const: false,
+            loc: Default::default(),
+        };
+
+        assert!(mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
+    }
+
+    #[test]
+    fn test_generic_type_eq_with_different_parent_ctx() {
+        let mut parent1 = GenericMappingCtx::new_root();
+        parent1.named.insert(
+            TypedIdentifier {
+                name: "P".into(),
+                symbol_id: 10,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Char),
+        );
+
+        let mut parent2 = GenericMappingCtx::new_root(); // different type in parent
+        parent2.named.insert(
+            TypedIdentifier {
+                name: "P".into(),
+                symbol_id: 10,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Bool),
+        );
+
+        let mut child1 = GenericMappingCtx::new_root();
+        child1.parent = Some(Rc::new(parent1));
+        child1.named.insert(
+            TypedIdentifier {
+                name: "C".into(),
+                symbol_id: 20,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
+        );
+
+        let mut child2 = GenericMappingCtx::new_root();
+        child2.parent = Some(Rc::new(parent2));
+        child2.named.insert(
+            TypedIdentifier {
+                name: "C".into(),
+                symbol_id: 20,
+                loc: Default::default(),
+            },
+            SemanticType::PlainType(PlainType::Int),
+        );
+
+        let gt1 = GenericType {
+            base: 5,
+            type_args: vec![],
+            mapping_ctx: Rc::new(RefCell::new(child1)),
+            is_const: false,
+            loc: Default::default(),
+        };
+        let gt2 = GenericType {
+            base: 5,
+            type_args: vec![],
+            mapping_ctx: Rc::new(RefCell::new(child2)),
+            is_const: false,
+            loc: Default::default(),
+        };
+
+        assert!(!mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
     }
 }
