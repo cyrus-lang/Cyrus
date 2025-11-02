@@ -11,7 +11,8 @@ use cyrusc_ast::*;
 use cyrusc_diagcentral::{reporter::DiagReporter, *};
 use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
 use cyrusc_tast::exprs::*;
-use cyrusc_tast::generic_mapping_ctx::{GenericMappingCtx, GenericType, GenericTypeState};
+use cyrusc_tast::generics::generic_type::GenericType;
+use cyrusc_tast::generics::mapping_ctx::GenericMappingCtx;
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::types::*;
 use cyrusc_tast::*;
@@ -445,7 +446,8 @@ impl Resolver {
     ) -> Option<TypedTypeArgs> {
         type_args
             .iter()
-            .map(|type_arg| match type_arg {
+            .enumerate()
+            .map(|(idx, type_arg)| match type_arg {
                 TypeArg::Positional(type_specifier) => {
                     let ty = self.resolve_type(
                         generic_params,
@@ -455,20 +457,26 @@ impl Resolver {
                         loc.clone(),
                         span_end,
                     )?;
-                    Some(TypedTypeArg::Positional(ty))
+
+                    Some(TypedTypeArg::Positional {
+                        idx,
+                        ty,
+                        loc: SourceLoc::from_loc(type_specifier.get_loc().0, self.get_current_module_file_path()),
+                    })
                 }
-                TypeArg::Named { key, value } => {
+                TypeArg::Named { key, ty } => {
                     let ty = self.resolve_type(
                         generic_params,
                         local_scope_opt.clone(),
                         module_id,
-                        value.clone(),
+                        ty.clone(),
                         loc.clone(),
                         span_end,
                     )?;
                     Some(TypedTypeArg::Named {
                         key: key.as_string(),
-                        value: ty,
+                        ty,
+                        loc: SourceLoc::from_loc(key.loc.clone(), self.get_current_module_file_path()),
                     })
                 }
             })
@@ -476,61 +484,61 @@ impl Resolver {
     }
 
     fn resolve_generic_params(&mut self, generic_params: &GenericParamsList) -> Option<TypedGenericParamsList> {
-        Some(
-            generic_params
-                .iter()
-                .map(|generic_param| {
-                    let bounds = if let Some(bounds_list) = &generic_param.bounds {
-                        let resolved_bounds = bounds_list
-                            .iter()
-                            .map(|bound| {
-                                Some(TypedBound {
-                                    symbol: bound.symbol.clone(),
-                                    type_args: self.resolve_type_args(
-                                        &None,
-                                        self.current_module?,
-                                        None,
-                                        &bound.type_args,
-                                        generic_param.param_name.loc.clone(),
-                                        generic_param.param_name.span.end,
-                                    )?,
-                                })
+        let list = generic_params
+            .iter()
+            .map(|generic_param| {
+                let bounds = if let Some(bounds_list) = &generic_param.bounds {
+                    let resolved_bounds = bounds_list
+                        .iter()
+                        .map(|bound| {
+                            Some(TypedBound {
+                                symbol: bound.symbol.clone(),
+                                type_args: self.resolve_type_args(
+                                    &None,
+                                    self.current_module?,
+                                    None,
+                                    &bound.type_args,
+                                    generic_param.param_name.loc.clone(),
+                                    generic_param.param_name.span.end,
+                                )?,
                             })
-                            .collect::<Option<Vec<_>>>()?;
+                        })
+                        .collect::<Option<Vec<_>>>()?;
 
-                        Some(resolved_bounds)
-                    } else {
-                        None
-                    };
+                    Some(resolved_bounds)
+                } else {
+                    None
+                };
 
-                    let default = if let Some(default_type_specifier) = &generic_param.default {
-                        Some(self.resolve_type(
-                            &None,
-                            None,
-                            self.current_module?,
-                            default_type_specifier.clone(),
+                let default = if let Some(default_type_specifier) = &generic_param.default {
+                    Some(self.resolve_type(
+                        &None,
+                        None,
+                        self.current_module?,
+                        default_type_specifier.clone(),
+                        generic_param.param_name.loc.clone(),
+                        generic_param.param_name.span.end,
+                    )?)
+                } else {
+                    None
+                };
+
+                Some(TypedGenericParam {
+                    param_name: TypedIdentifier {
+                        name: generic_param.param_name.as_string(),
+                        symbol_id: generate_symbol_id(),
+                        loc: SourceLoc::from_loc(
                             generic_param.param_name.loc.clone(),
-                            generic_param.param_name.span.end,
-                        )?)
-                    } else {
-                        None
-                    };
-
-                    Some(TypedGenericParam {
-                        param_name: TypedIdentifier {
-                            name: generic_param.param_name.as_string(),
-                            symbol_id: generate_symbol_id(),
-                            loc: SourceLoc::from_loc(
-                                generic_param.param_name.loc.clone(),
-                                self.get_current_module_file_path(),
-                            ),
-                        },
-                        bounds,
-                        default,
-                    })
+                            self.get_current_module_file_path(),
+                        ),
+                    },
+                    bounds,
+                    default,
                 })
-                .collect::<Option<Vec<_>>>()?,
-        )
+            })
+            .collect::<Option<Vec<_>>>()?;
+
+        Some(TypedGenericParamsList { list })
     }
 
     fn resolve_generic_param_as_type(
@@ -540,6 +548,7 @@ impl Resolver {
     ) -> Option<SemanticType> {
         generic_params_list_opt.clone().and_then(|generic_params| {
             generic_params
+                .list
                 .iter()
                 .find(|param| param.param_name.name == identifier.as_string())
                 .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.param_name.clone())))
@@ -579,9 +588,10 @@ impl Resolver {
 
                     Ok(SemanticType::GenericType(GenericType {
                         base: symbol_id,
-                        state: GenericTypeState::Unresolved { type_args },
-                        mapping_ctx: Rc::new(GenericMappingCtx::new_root()),
+                        type_args,
+                        mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
                         is_const,
+                        loc: SourceLoc::from_loc(generic_inst.loc.clone(), self.get_current_module_file_path()),
                     }))
                 } else {
                     Err(ResolverDiagKind::TypeDoesNotAcceptTypeArgs {

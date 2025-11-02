@@ -1,5 +1,5 @@
 use crate::{SymbolID, exprs::TypedIdentifier, format::format_concrete_type, types::SemanticType};
-use std::{collections::HashMap, hash::Hash, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
 pub type ChildGenericParamSymbolID = SymbolID;
 
@@ -14,6 +14,31 @@ impl PartialEq for GenericMappingCtx {
     fn eq(&self, other: &Self) -> bool {
         self.named == other.named && self.linked_gps == other.linked_gps && self.parent == other.parent
     }
+}
+
+pub fn mapping_ctx_eq(a: &GenericMappingCtx, b: &GenericMappingCtx) -> bool {
+    if a.named.len() != b.named.len() || a.linked_gps != b.linked_gps {
+        return false;
+    }
+
+    for (k, v) in &a.named {
+        match b.named.get(k) {
+            Some(v2) if v == v2 => {}
+            _ => return false,
+        }
+    }
+
+    match (&a.parent, &b.parent) {
+        (Some(pa), Some(pb)) => mapping_ctx_eq(pa, pb),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+pub fn mapping_ctx_eq_refcell(a: &Rc<RefCell<GenericMappingCtx>>, b: &Rc<RefCell<GenericMappingCtx>>) -> bool {
+    let a_ref = a.borrow();
+    let b_ref = b.borrow();
+    mapping_ctx_eq(&a_ref, &b_ref)
 }
 
 impl GenericMappingCtx {

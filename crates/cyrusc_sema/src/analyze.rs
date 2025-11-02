@@ -13,12 +13,7 @@ use cyrusc_resolver::{
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use cyrusc_tast::{
-    exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
-    format::format_concrete_type,
-    generic_mapping_ctx::GenericMappingCtx,
-    stmts::*,
-    types::{PlainType, SemanticType, TypedFuncType},
-    *,
+    exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory}, format::format_concrete_type, generics::mapping_ctx::GenericMappingCtx, stmts::*, types::{PlainType, SemanticType, TypedFuncType}, *
 };
 use std::{
     cell::RefCell,
@@ -74,7 +69,6 @@ pub struct AnalysisContext<'a> {
     pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
-    pub(crate) generic_ctx_stack: Vec<GenericMappingCtx>,
     pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     control_stack: Vec<ControlContext>,
@@ -102,7 +96,6 @@ impl<'a> AnalysisContext<'a> {
             current_method_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
-            generic_ctx_stack: Vec::new(),
             disable_warnings,
             monomorph_registry,
         }
@@ -474,9 +467,8 @@ impl<'a> AnalysisContext<'a> {
         flow_state
     }
 
+    // FIXME Switch should also work on a Generic Type
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitchStmt) -> FlowState {
-        let mut mapping_ctx = GenericMappingCtx::new_root();
-
         self.control_stack.push(ControlContext::Switch);
 
         if typed_switch.cases.is_empty() {
@@ -532,13 +524,15 @@ impl<'a> AnalysisContext<'a> {
 
                 let resolved_enum = sym.as_enum().unwrap();
                 let mut enum_sig = resolved_enum.enum_sig.clone();
-                self.substitute_enum_type_args(
-                    &mut mapping_ctx,
-                    scope_id_opt,
-                    &mut enum_sig,
-                    generic_type_opt,
-                    typed_switch.loc.clone(),
-                );
+
+                // FIXME Substitute before analyzing switch itself!
+                // self.substitute_enum_type_args(
+                //     &mut mapping_ctx,
+                //     scope_id_opt,
+                //     &mut enum_sig,
+                //     generic_type_opt,
+                //     typed_switch.loc.clone(),
+                // );
 
                 return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);
             }

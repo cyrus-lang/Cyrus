@@ -131,7 +131,7 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
-    pub fn get_generic_type(&self) -> Option<TypedGenericParamsList> {
+    pub fn get_generic_params(&self) -> Option<TypedGenericParamsList> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Variable(_) => None,

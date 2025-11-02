@@ -167,10 +167,11 @@ impl fmt::Display for TypeSpecifier {
                     .iter()
                     .map(|type_arg| match type_arg {
                         TypeArg::Positional(type_specifier) => type_specifier.to_string(),
-                        TypeArg::Named { value, .. } => value.to_string(),
+                        TypeArg::Named { ty, .. } => ty.to_string(),
                     })
                     .collect::<Vec<String>>()
                     .join(", ");
+                
                 write!(f, "{}<{}>", generic_inst.base, type_args)
             }
         }

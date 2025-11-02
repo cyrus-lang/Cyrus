@@ -925,7 +925,7 @@ pub struct Bound {
 #[derive(Debug, Clone)]
 pub enum TypeArg {
     Positional(TypeSpecifier),
-    Named { key: Identifier, value: TypeSpecifier },
+    Named { key: Identifier, ty: TypeSpecifier },
 }
 
 pub type TypeArgs = Vec<TypeArg>;
