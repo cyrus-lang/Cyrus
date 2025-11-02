@@ -533,6 +533,8 @@ pub fn walk_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
 ) -> Vec<Box<CIRProgramTree>> {
+    use rayon::prelude::*;
+    
     // detect number of threads if not specified
     let num_threads = threads.unwrap_or_else(|| num_cpus::get().max(1));
 
@@ -543,7 +545,7 @@ pub fn walk_program_trees_in_parallel(
 
     pool.install(|| {
         program_trees
-            .into_par_iter()
+            .par_iter()
             .map(|program_tree| {
                 let cir_walk = CIRWalk::new(program_tree.clone());
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path);

@@ -109,10 +109,10 @@ impl Parser {
                 self.next_token(); // consume identifier
                 self.expect_current(TokenKind::Assign)?;
 
-                let val = self.parse_type_specifier()?;
+                let ty = self.parse_type_specifier()?;
                 self.next_token();
 
-                args.push(TypeArg::Named { key, value: val });
+                args.push(TypeArg::Named { key, ty });
             } else {
                 let ty = self.parse_type_specifier()?;
                 self.next_token();

@@ -345,7 +345,7 @@ pub struct TypedContinueStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedGenericParamsList {
-    pub(crate) list: Vec<TypedGenericParam>,
+    pub list: Vec<TypedGenericParam>,
 }
 
 #[derive(Debug, Clone)]

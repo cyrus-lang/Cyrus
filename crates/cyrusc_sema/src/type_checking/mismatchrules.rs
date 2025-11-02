@@ -1,8 +1,7 @@
 use crate::analyze::AnalysisContext;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_tast::{
-    ScopeID,
-    types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    ScopeID, generics::mapping_ctx::mapping_ctx_eq_refcell, types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType}
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -49,8 +48,7 @@ impl<'a> AnalysisContext<'a> {
                 is_packed && fields
             }
             (SemanticType::GenericType(resolved_generic1), SemanticType::GenericType(resolved_generic2)) => {
-                resolved_generic1.base == resolved_generic2.base
-                    && resolved_generic1.type_args == resolved_generic2.type_args
+                mapping_ctx_eq_refcell(&resolved_generic1.mapping_ctx, &resolved_generic2.mapping_ctx)
             }
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
