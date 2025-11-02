@@ -1,7 +1,9 @@
 use crate::analyze::AnalysisContext;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_tast::{
-    ScopeID, generics::mapping_ctx::mapping_ctx_eq_refcell, types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType}
+    ScopeID,
+    generics::mapping_ctx::mapping_ctx_eq_refcell,
+    types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {

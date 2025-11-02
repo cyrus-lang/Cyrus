@@ -56,7 +56,26 @@ impl<'a> AnalysisContext<'a> {
 
         match ty {
             ty @ SemanticType::GenericParam(..) => Some(ty),
-            ty @ SemanticType::GenericType(..) => Some(ty),
+            SemanticType::GenericType(mut generic_type) => {
+                let sym = match self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
+                {
+                    Some(sym) => sym,
+                    None => {
+                        self.report_non_type_symbol(generic_type.base, loc.clone());
+                        return None;
+                    }
+                };
+
+                let generic_params = sym.get_generic_params().unwrap();
+                if let Err(diag) = generic_type.init(generic_params) {
+                    self.reporter.report(diag);
+                    return None;
+                }
+
+                Some(SemanticType::GenericType(generic_type))
+            }
             SemanticType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 
