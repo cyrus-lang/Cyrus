@@ -91,9 +91,7 @@ pub fn main() {
                 })
                 .collect();
 
-            dbg!(cloned_program_trees.clone());
-
-            let cir_program_trees = walk_program_trees_in_parallel(None, cloned_program_trees);
+            let cir_program_trees = walk_program_trees_in_parallel(None, cloned_program_trees, &resolver);
             dbg!(cir_program_trees);
         }
         Err(errors) => {

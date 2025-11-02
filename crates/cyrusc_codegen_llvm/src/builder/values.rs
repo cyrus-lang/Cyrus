@@ -1,4 +1,10 @@
-use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
+use cyrusc_cir::types::CIRTy;
+use inkwell::{
+    types::BasicTypeEnum,
+    values::{BasicValueEnum, FunctionValue, PointerValue},
+};
+
+use crate::builder::builder::IRBuilderCtx;
 
 #[derive(Debug, Clone)]
 pub struct InternalValue<'a> {
@@ -23,5 +29,12 @@ impl<'a> InternalValue<'a> {
             InternalValueKind::RValue(value) => value.clone(),
             InternalValueKind::FuncValue(fn_value) => fn_value.as_global_value().as_pointer_value().into(),
         }
+    }
+}
+
+impl<'ll> IRBuilderCtx<'ll> {
+    pub fn zero_init(&self, ty: CIRTy) -> BasicValueEnum<'ll> {
+        let ty: BasicTypeEnum<'ll> = self.emit_ty(ty).try_into().unwrap();
+        ty.const_zero()
     }
 }

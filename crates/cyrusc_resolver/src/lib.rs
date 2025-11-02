@@ -24,7 +24,6 @@ use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 mod diagnostics;
-pub mod sigs;
 pub mod symbols;
 pub mod utility;
 
@@ -161,6 +160,7 @@ impl Resolver {
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
             body: typed_body,
             file_path: module_file_path.clone(),
+            module_id
         }));
 
         if is_master {
@@ -741,13 +741,13 @@ impl Resolver {
                         generic_params,
                         local_scope_opt.clone(),
                         module_id,
-                        field.field_type.clone(),
+                        field.field_ty.clone(),
                         field.loc.clone(),
                         field.span.end,
                     ) {
                         fields.push(TypedUnnamedStructTypeField {
                             field_name: field.field_name.name.clone(),
-                            field_type: Box::new(ft),
+                            field_ty: Box::new(ft),
                             loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
                         });
                     }
@@ -1271,11 +1271,11 @@ impl Resolver {
                 EnumVariant::Variant(identifier, enum_valued_fields) => {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
-                        let field_type = match self.resolve_type(
+                        let field_ty = match self.resolve_type(
                             &generic_params,
                             local_scope_opt.clone(),
                             module_id,
-                            valued_field.field_type.clone(),
+                            valued_field.field_ty.clone(),
                             valued_field.loc.clone(),
                             0,
                         ) {
@@ -1284,7 +1284,7 @@ impl Resolver {
                         };
 
                         fields.push(TypedEnumValuedField {
-                            field_type,
+                            field_ty,
                             loc: SourceLoc::from_loc(valued_field.loc.clone(), self.get_current_module_file_path()),
                         });
                     }
@@ -3194,7 +3194,7 @@ impl Resolver {
         let mut fields: Vec<TypedUStructValueField> = Vec::new();
 
         for field in &unnamed_struct_value.fields {
-            let field_type = if let Some(type_specifier) = &field.field_type {
+            let field_ty = if let Some(type_specifier) = &field.field_ty {
                 match self.resolve_type(
                     &None,
                     local_scope_opt.clone(),
@@ -3217,7 +3217,7 @@ impl Resolver {
 
             fields.push(TypedUStructValueField {
                 field_name: field.field_name.name.clone(),
-                field_type,
+                field_ty,
                 field_value: Box::new(field_value),
                 loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
             });
@@ -3465,3 +3465,6 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
         },
     }
 }
+
+unsafe impl Send for Resolver {}
+unsafe impl Sync for Resolver {}

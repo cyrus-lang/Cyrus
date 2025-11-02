@@ -6,6 +6,7 @@ pub mod format;
 pub mod stmts;
 pub mod types;
 pub mod generics;
+pub mod sigs;
 mod tests;
 
 pub type ScopeID = u32;
@@ -16,4 +17,8 @@ pub type ModuleID = u64;
 pub struct TypedProgramTree {
     pub body: Vec<TypedStmt>,
     pub file_path: String,
+    pub module_id: ModuleID
 }
+
+unsafe impl Send for TypedProgramTree {}
+unsafe impl Sync for TypedProgramTree {}

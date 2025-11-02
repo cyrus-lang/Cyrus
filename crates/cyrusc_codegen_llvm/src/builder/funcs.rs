@@ -16,7 +16,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         fn_value
     }
 
-    pub(crate) fn emit_func_body(&self, fn_value: FunctionValue<'ll>, cir_block: &CIRBlockStmt) {
-        self.emit_block(cir_block);
+    pub(crate) fn emit_func_body(&mut self, fn_value: FunctionValue<'ll>, cir_block: &CIRBlockStmt) {
+        
+
+        self.emit_body(cir_block);
     }
 }

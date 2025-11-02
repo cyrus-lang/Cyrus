@@ -8,12 +8,17 @@ use cyrusc_ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind,
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use cyrusc_resolver::{
     Resolver,
-    sigs::{EnumSig, FuncSig},
     symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use cyrusc_tast::{
-    exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory}, format::format_concrete_type, generics::mapping_ctx::GenericMappingCtx, stmts::*, types::{PlainType, SemanticType, TypedFuncType}, *
+    exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
+    format::format_concrete_type,
+    generics::mapping_ctx::GenericMappingCtx,
+    sigs::{EnumSig, FuncSig},
+    stmts::*,
+    types::{PlainType, SemanticType, TypedFuncType},
+    *,
 };
 use std::{
     cell::RefCell,
@@ -396,9 +401,9 @@ impl<'a> AnalysisContext<'a> {
 
                             for (enum_valued_field_idx, enum_valued_field) in enum_valued_fields.iter_mut().enumerate()
                             {
-                                enum_valued_field.field_type = match self.normalize_type(
+                                enum_valued_field.field_ty = match self.normalize_type(
                                     scope_id_opt,
-                                    enum_valued_field.field_type.clone(),
+                                    enum_valued_field.field_ty.clone(),
                                     SourceLoc::from_loc(identifier.loc.clone(), enum_sig.loc.file_path.clone()),
                                 ) {
                                     Some(sema_ty) => sema_ty,
@@ -411,7 +416,7 @@ impl<'a> AnalysisContext<'a> {
 
                                     update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
                                         LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                                            resolved_variable.typed_variable.ty = Some(enum_valued_field.field_type.clone());
+                                            resolved_variable.typed_variable.ty = Some(enum_valued_field.field_ty.clone());
                                         }
                                     );
                                 }
@@ -1266,14 +1271,14 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedEnumVariant::Variant(identifier, typed_enum_valued_fields) => {
                     for field in typed_enum_valued_fields {
-                        field.field_type =
-                            match self.normalize_type(scope_id_opt, field.field_type.clone(), field.loc.clone()) {
+                        field.field_ty =
+                            match self.normalize_type(scope_id_opt, field.field_ty.clone(), field.loc.clone()) {
                                 Some(sema_ty) => sema_ty,
                                 None => continue,
                             };
 
                         if field
-                            .field_type
+                            .field_ty
                             .as_enum_symbol_id()
                             .map(|symbol_id| symbol_id == typed_enum.symbol_id)
                             == Some(true)

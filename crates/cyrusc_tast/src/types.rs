@@ -465,20 +465,20 @@ impl Hash for TypedUStructType {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedStructTypeField {
     pub field_name: String,
-    pub field_type: Box<SemanticType>,
+    pub field_ty: Box<SemanticType>,
     pub loc: SourceLoc,
 }
 
 impl Hash for TypedUnnamedStructTypeField {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.field_name.hash(state);
-        self.field_type.hash(state);
+        self.field_ty.hash(state);
     }
 }
 
 impl PartialEq for TypedUnnamedStructTypeField {
     fn eq(&self, other: &Self) -> bool {
-        self.field_name == other.field_name && self.field_type == other.field_type
+        self.field_name == other.field_name && self.field_ty == other.field_ty
     }
 }
 

@@ -139,7 +139,7 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::UnnamedStruct(unnamed_struct) => {
                 write!(f, "struct {{ ")?;
                 for (idx, field) in unnamed_struct.fields.iter().enumerate() {
-                    write!(f, "{}: {}", field.field_name, field.field_type)?;
+                    write!(f, "{}: {}", field.field_name, field.field_ty)?;
 
                     if idx == unnamed_struct.fields.len() - 1 {
                         write!(f, " ")?;
@@ -182,7 +182,7 @@ impl fmt::Display for UnnamedStructType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "struct {{ ")?;
         for (idx, field) in self.fields.iter().enumerate() {
-            write!(f, "{}: {}", field.field_name, field.field_type)?;
+            write!(f, "{}: {}", field.field_name, field.field_ty)?;
             if idx == self.fields.len() - 1 {
                 write!(f, ", ",)?;
             }
@@ -302,8 +302,8 @@ impl fmt::Display for Expression {
             Expression::UStructValue(unnamed_struct_value) => {
                 write!(f, "struct {{ ")?;
                 for (idx, field) in unnamed_struct_value.fields.iter().enumerate() {
-                    if let Some(field_type) = &field.field_type {
-                        write!(f, "{}: {} = {}", field.field_name, field_type, field.field_value)?;
+                    if let Some(field_ty) = &field.field_ty {
+                        write!(f, "{}: {} = {}", field.field_name, field_ty, field.field_value)?;
                     } else {
                         write!(f, "{} = {}", field.field_name, field.field_value)?;
                     }
@@ -378,8 +378,8 @@ impl fmt::Display for UStructValue {
         write!(f, " {{ ")?;
         for field in self.fields.clone() {
             write!(f, "{}", field.field_name.name)?;
-            if let Some(field_type) = field.field_type {
-                write!(f, ": {}", field_type)?;
+            if let Some(field_ty) = field.field_ty {
+                write!(f, ": {}", field_ty)?;
             }
 
             write!(f, " = {}", *field.field_value)?;

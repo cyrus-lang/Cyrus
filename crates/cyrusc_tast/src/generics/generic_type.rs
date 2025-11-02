@@ -137,7 +137,16 @@ impl GenericType {
             .collect::<Vec<String>>()
             .join(", ");
 
-        format!("{}{}<{}>", is_const, base, type_args_str)
+        format!(
+            "{}{}{}",
+            is_const,
+            base,
+            if self.type_args.len() > 0 {
+                format!("<{}>", type_args_str)
+            } else {
+                "".to_string()
+            }
+        )
     }
 }
 

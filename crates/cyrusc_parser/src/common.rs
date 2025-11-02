@@ -493,7 +493,7 @@ impl Parser {
 
                     fields.push(UnnamedStructTypeField {
                         field_name,
-                        field_type: field_type_specifier,
+                        field_ty: field_type_specifier,
                         loc,
                         span: Span {
                             start,

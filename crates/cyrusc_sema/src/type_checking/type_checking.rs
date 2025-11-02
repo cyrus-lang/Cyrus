@@ -4,7 +4,6 @@ use cyrusc_ast::{
 };
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::{
-    sigs::{FuncSig, UnionSig},
     symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind,
@@ -15,6 +14,7 @@ use cyrusc_tast::{
     exprs::*,
     format::{format_concrete_type, format_func_type, format_typed_expr},
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx},
+    sigs::{FuncSig, UnionSig},
     stmts::{
         TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
         TypedGenericParamsList, TypedStructField,
@@ -316,14 +316,14 @@ impl<'a> AnalysisContext<'a> {
 
         for field in &mut unnamed_struct_value.fields {
             let field_value_type =
-                match self.analyze_typed_expr_type(scope_id_opt, &mut field.field_value, field.field_type.clone()) {
+                match self.analyze_typed_expr_type(scope_id_opt, &mut field.field_value, field.field_ty.clone()) {
                     Some(sema_ty) => sema_ty,
                     None => continue,
                 };
 
             fields.push(TypedUnnamedStructTypeField {
                 field_name: field.field_name.clone(),
-                field_type: Box::new(field.field_type.clone().unwrap_or(field_value_type)),
+                field_ty: Box::new(field.field_ty.clone().unwrap_or(field_value_type)),
                 loc: field.loc.clone(),
             });
         }
@@ -609,15 +609,15 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let field = &unnamed_struct_type.fields[field_idx];
-        let field_type = match self.normalize_type(scope_id_opt, *field.field_type.clone(), field_access.loc.clone()) {
+        let field_ty = match self.normalize_type(scope_id_opt, *field.field_ty.clone(), field_access.loc.clone()) {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
 
         field_access.field_index = Some(field_idx);
-        field_access.field_ty = Some(field_type.clone());
+        field_access.field_ty = Some(field_ty.clone());
 
-        Some(field_type.clone())
+        Some(field_ty.clone())
     }
 
     fn analyze_struct_field_access_type(
@@ -747,7 +747,7 @@ impl<'a> AnalysisContext<'a> {
         //         {
         //             typed_expr.sema_ty = self.substitute_type_or_infer_with(
         //                 scope_id_opt,
-        //                 enum_valued_field.field_type.clone(),
+        //                 enum_valued_field.field_ty.clone(),
         //                 typed_expr,
         //                 &mut mapping_ctx,
         //                 Some(idx),
@@ -1253,7 +1253,8 @@ impl<'a> AnalysisContext<'a> {
             let field_value_ty =
                 self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field.ty.clone()));
 
-            if let Some(sema_ty) = self.infer_or_substitute(generic_type_opt, field.ty, field_value_ty.clone()) {
+            if let Some(sema_ty) = self.infer_generic_param(generic_type_opt, field.ty.clone(), field_value_ty.clone())
+            {
                 field_init.value.sema_ty = Some(sema_ty);
             }
 
@@ -1298,11 +1299,13 @@ impl<'a> AnalysisContext<'a> {
             Some(SemanticType::GenericType(final_generic_type.clone()))
         } else {
             if struct_init.is_const {
-                Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
-                    struct_init.symbol_id,
-                )))))
+                Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
+                    ResolvedSymbol::NamedStruct(struct_init.symbol_id),
+                ))))
             } else {
-                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)))
+                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+                    struct_init.symbol_id,
+                )))
             }
         }
     }

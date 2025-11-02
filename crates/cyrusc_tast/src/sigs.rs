@@ -1,6 +1,4 @@
-use cyrusc_ast::{AccessSpecifier, source_loc::SourceLoc};
-use std::collections::HashMap;
-use cyrusc_tast::{
+use crate::{
     ModuleID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier},
     stmts::{
@@ -9,6 +7,8 @@ use cyrusc_tast::{
     },
     types::SemanticType,
 };
+use cyrusc_ast::{AccessSpecifier, source_loc::SourceLoc};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct StructSig {
