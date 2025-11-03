@@ -1,12 +1,12 @@
 use std::env;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 pub struct TempExecutableBuilder {
     project_name: Option<String>,
     entry_file: Option<String>,
-    keep_file: bool,
 }
 
 impl TempExecutableBuilder {
@@ -14,7 +14,6 @@ impl TempExecutableBuilder {
         Self {
             project_name: None,
             entry_file: None,
-            keep_file: false,
         }
     }
 
@@ -29,34 +28,47 @@ impl TempExecutableBuilder {
     }
 
     pub fn build(&self) -> io::Result<TempExecutable> {
-        let mut temp_path = env::temp_dir();
+        let unique_dir = env::temp_dir().join(format!("cyrus_build_{}", Uuid::new_v4()));
+        fs::create_dir_all(&unique_dir)?;
 
-        let exe_name = self.project_name.clone().unwrap_or_else(|| {
-            self.entry_file
-                .as_ref()
-                .and_then(|p| p.split(std::path::MAIN_SEPARATOR).last())
-                .unwrap_or("temp_program")
-                .replace(".cyrus", "")
-        });
+        let exe_name = self
+            .project_name
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                self.entry_file
+                    .as_ref()
+                    .and_then(|p| Path::new(p).file_stem().map(|s| s.to_string_lossy().to_string()))
+            })
+            .unwrap_or_else(|| "main".to_string());
 
-        temp_path.push(exe_name);
+        // Final executable file path
+        let exe_path = unique_dir.join(&exe_name);
+
         Ok(TempExecutable {
-            path: temp_path,
-            keep_file: self.keep_file,
+            dir: unique_dir,
+            path: exe_path,
         })
     }
 }
 
 pub struct TempExecutable {
+    pub dir: PathBuf,
     pub path: PathBuf,
-    keep_file: bool,
 }
 
 impl Drop for TempExecutable {
     fn drop(&mut self) {
-        if !self.keep_file {
-            if let Err(err) = fs::remove_file(&self.path) {
+        // remove both file and its temp directory
+        if let Err(err) = fs::remove_file(&self.path) {
+            if err.kind() != io::ErrorKind::NotFound {
                 eprintln!("Warning: failed to remove temp file {}: {err}", self.path.display());
+            }
+        }
+
+        if let Err(err) = fs::remove_dir_all(&self.dir) {
+            if err.kind() != io::ErrorKind::NotFound {
+                eprintln!("Warning: failed to remove temp directory {}: {err}", self.dir.display());
             }
         }
     }
