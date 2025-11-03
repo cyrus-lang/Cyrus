@@ -62,8 +62,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
                 let fn_value = self.emit_func_decl(&func_decl);
-                self.emit_func_body(fn_value, &func_def_stmt.body);
                 self.cur_fn = Some(fn_value);
+                self.emit_func_body(&func_def_stmt.body);
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
                 self.emit_func_decl(func_decl_stmt);

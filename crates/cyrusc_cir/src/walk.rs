@@ -75,35 +75,6 @@ impl<'resolver> CIRWalk<'resolver> {
         // })
     }
 
-    fn lower_union(&self, scope_id_opt: Option<ScopeID>, union_stmt: &TypedUnionStmt) -> CIRStmt {
-        let fields: Vec<CIRTy> = union_stmt
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
-            .collect();
-
-        CIRStmt::Union(CIRUnionStmt {
-            name: union_stmt.name.clone(),
-            fields,
-            vis: union_stmt.vis.clone(),
-        })
-    }
-
-    fn lower_struct(&self, scope_id_opt: Option<ScopeID>, struct_stmt: &TypedStructStmt) -> CIRStmt {
-        let fields: Vec<CIRTy> = struct_stmt
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
-            .collect();
-
-        CIRStmt::Struct(CIRStructStmt {
-            name: struct_stmt.name.clone(),
-            is_packed: struct_stmt.is_packed,
-            fields,
-            vis: struct_stmt.vis.clone(),
-        })
-    }
-
     fn lower_enum_variant(&self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumVariant {
         match variant {
             TypedEnumVariant::Identifier(..) => CIREnumVariant::Ident,
@@ -116,20 +87,6 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIREnumVariant::Fielded(fields)
             }
         }
-    }
-
-    fn lower_enum(&self, scope_id_opt: Option<ScopeID>, enum_stmt: &TypedEnumStmt) -> CIRStmt {
-        let variants: Vec<CIREnumVariant> = enum_stmt
-            .variants
-            .iter()
-            .map(|variant| self.lower_enum_variant(scope_id_opt, variant))
-            .collect();
-
-        CIRStmt::Enum(CIREnumStmt {
-            name: enum_stmt.name.clone(),
-            variants,
-            vis: enum_stmt.vis.clone(),
-        })
     }
 
     fn lower_switch(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
@@ -197,7 +154,6 @@ impl<'resolver> CIRWalk<'resolver> {
         //     .map(|branch| self.lower_if(scope_id_opt, branch))
         //     .collect();
 
-        
         todo!();
     }
 

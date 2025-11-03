@@ -16,9 +16,23 @@ impl<'ll> IRBuilderCtx<'ll> {
         fn_value
     }
 
-    pub(crate) fn emit_func_body(&mut self, fn_value: FunctionValue<'ll>, cir_block: &CIRBlockStmt) {
-        
-
+    pub(crate) fn emit_func_body(&mut self, cir_block: &CIRBlockStmt) {
+        self.emit_block("entry");
         self.emit_body(cir_block);
+        self.ensure_void_fn_terminated();
+    }
+
+    pub(crate) fn ensure_void_fn_terminated(&self) {
+        let cur_fn = self.cur_fn.unwrap();
+        if cur_fn.get_type().get_return_type().is_some() {
+            return; // works only for void return type
+        }
+
+        let basic_block = cur_fn.get_last_basic_block().unwrap();
+        if basic_block.get_terminator().is_some() {
+            return;
+        }
+
+        self.llvmbuilder.build_return(None).unwrap();
     }
 }

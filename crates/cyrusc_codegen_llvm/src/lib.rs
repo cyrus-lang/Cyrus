@@ -75,7 +75,7 @@ impl CodeGenLLVM {
             llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
         }
 
-        let ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
+        let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
         ir_builder_ctx.emit_program_tree(cir_program_tree);
     }
 
@@ -118,8 +118,11 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
 
         let path = Path::new(&self.build_dir)
             .join(OBJECTS_FILENAME)
-            .join(module_name)
-            .join(".o");
+            .join(format!("{}.o", module_name));
+
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).expect("Failed to create directories for object file");
+        }
 
         let module = owned_module.module.borrow();
 
@@ -131,7 +134,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
 
         ObjectFileInfo {
             path: path.to_str().unwrap().to_string(),
-            size: std::fs::metadata(path)
+            size: std::fs::metadata(&path)
                 .map(|m| m.len())
                 .unwrap_or_default()
                 .try_into()

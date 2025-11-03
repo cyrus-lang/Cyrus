@@ -23,6 +23,7 @@ serde_json = "1.0.140"
 clap = { version = "4.5.41", features = ["derive"] }
 colorized = "1.0.0"
 toml = "0.8.20"
+uuid = "1.18.1"
 
 [[bin]]
 name = "cyrus"
