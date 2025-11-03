@@ -93,9 +93,12 @@ impl<'a> AnalysisContext<'a> {
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)?;
+                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
+                    .unwrap();
 
-                self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)
+                let sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym);
+                typed_expr.sema_ty = sema_ty.clone();
+                sema_ty
             }
             TypedExprKind::Literal(typed_literal) => self.analyze_literal_type(typed_literal, expected_type),
             TypedExprKind::Prefix(typed_prefix_expr) => {
