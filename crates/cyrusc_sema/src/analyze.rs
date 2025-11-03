@@ -1671,54 +1671,20 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
-        if typed_variable.ty.is_none() && typed_variable.rhs.is_none() {
-            return;
-        }
+        if let Some(rhs) = &mut typed_variable.rhs {
+            let inferred_ty = self.analyze_typed_expr_type(scope_id_opt, rhs, typed_variable.ty.clone());
 
-        let value_type_opt = {
-            if let Some(typed_expr) = &mut typed_variable.rhs {
-                if let Some(sema_ty) = &typed_variable.ty {
-                    typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
+            if typed_variable.ty.is_none() {
+                if let Some(sema_ty) = inferred_ty {
+                    typed_variable.ty = Some(sema_ty);
                 }
-
-                let sema_ty = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
-                    Some(sema_ty) => sema_ty,
-                    None => return,
-                };
-
-                typed_expr.sema_ty = Some(sema_ty.clone());
-                Some(sema_ty)
-            } else {
-                None
             }
-        };
+        }
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         if let Some(sema_ty) = &typed_variable.ty {
             typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
-
-            if let Some(value_type) = value_type_opt {
-                let lhs_type = format_concrete_type(
-                    typed_variable.ty.clone().unwrap(),
-                    &(self.symbol_formatter)(scope_id_opt),
-                );
-                let rhs_type = format_concrete_type(value_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-
-                if !self.check_type_mismatch(
-                    scope_id_opt,
-                    value_type.clone(),
-                    typed_variable.ty.clone().unwrap(),
-                    typed_variable.loc.clone(),
-                ) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
-                        location: Some(DiagLoc::new(typed_variable.loc.clone())),
-                        hint: None,
-                    });
-                }
-            }
 
             if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
                 typed_variable.ty = Some(SemanticType::Const(Box::new(typed_variable.ty.clone().unwrap())));

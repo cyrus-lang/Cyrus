@@ -158,13 +158,17 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_global_var(&self, scope_id_opt: Option<ScopeID>, global_var: &TypedGlobalVarStmt) -> CIRStmt {
-        let ty = self.lower_sema_ty(
-            scope_id_opt,
-            &global_var
-                .ty
-                .clone()
-                .unwrap_or(global_var.expr.clone().unwrap().sema_ty.unwrap()),
-        );
+        let ty = global_var
+            .ty
+            .as_ref()
+            .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.sema_ty.as_ref()))
+            .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+            .unwrap_or_else(|| {
+                panic!(
+                    "Global var '{}' has neither explicit type nor valid initializer type",
+                    global_var.name
+                )
+            });
 
         let expr = global_var
             .expr
@@ -184,11 +188,13 @@ impl<'resolver> CIRWalk<'resolver> {
         let ty = var
             .ty
             .as_ref()
-            .or_else(|| var.rhs.as_ref()?.sema_ty.as_ref())
+            .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.sema_ty.as_ref()))
             .map(|ty| self.lower_sema_ty(scope_id_opt, ty))
             .unwrap_or_else(|| {
+                dbg!(var.clone());
+                
                 panic!(
-                    "variable '{}' has neither explicit type nor rhs type ({}:{})",
+                    "Variable '{}' has neither explicit type nor RHS type ({}:{})",
                     var.name, var.loc.file_path, var.loc.line
                 )
             });

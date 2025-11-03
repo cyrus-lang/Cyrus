@@ -122,10 +122,11 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_global_var(&self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
-        let irreg = self.irreg.borrow();
-
-        if let Some(local_ir_value) = irreg.get(cir_global_var.irv_id) {
-            return local_ir_value.as_global().cloned().unwrap();
+        {
+            let irreg = self.irreg.borrow();
+            if let Some(local_ir_value) = irreg.get(cir_global_var.irv_id) {
+                return local_ir_value.as_global().cloned().unwrap();
+            }
         }
 
         let llvmmodule = self.llvmmodule.borrow();
@@ -137,14 +138,10 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         if let Some(expr) = &cir_global_var.expr {
             let value = self.emit_expr(&expr);
-            self.llvmbuilder
-                .build_store(global_value.as_pointer_value(), value.as_basic_value())
-                .unwrap();
+            global_value.set_initializer(&value.as_basic_value());
         } else {
             // zero init
-            self.llvmbuilder
-                .build_store(global_value.as_pointer_value(), ty.const_zero())
-                .unwrap();
+            global_value.set_initializer(&ty.const_zero());
         }
 
         let mut irreg = self.irreg.borrow_mut();

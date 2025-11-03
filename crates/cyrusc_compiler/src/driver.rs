@@ -61,43 +61,85 @@ pub fn create_compiler_context(
 }
 
 pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
-    // disable modulefs cache if a specific file is being compiled
+    // disable modulefs cache if compiling a single file
     if file_path.is_some() {
         opts.disable_modulefs_cache = true;
     }
 
-    // resolve paths
+    // resolve core paths
     let entry_file = get_entry_source_code_path(opts.base_path.clone(), file_path);
     let build_dir = get_final_build_directory_path(opts.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(opts.base_path.clone(), build_dir.clone());
 
-    // read and lex the source
+    // lex & parse
     let file_content = read_file(entry_file.clone()).0;
     let mut lexer = Lexer::new(file_content, entry_file.clone());
     let mut parser = Parser::new(lexer.tokenize(), entry_file.clone());
-
-    // parse program
     let program_tree = parser.parse().unwrap_or_else(|errors| {
         parser.display_parser_errors(errors);
         exit(1);
     });
 
-    // setup module loader and resolver
-    let mut resolver = setup_resolver(entry_file.clone());
+    // discover stdlib and input source directory
+    let input_file_dir = get_directory_of_file(entry_file.clone()).unwrap();
 
-    // resolve the typed program tree
-    let typed_program_tree = resolve_typed_program_tree(&mut resolver, &program_tree, entry_file.clone());
+    // configure resolver
+    let module_loader_opts = ModuleLoaderOptions {
+        stdlib_path: opts.stdlib_path.clone(),
+        source_dirs: vec![input_file_dir],
+    };
 
-    // create monomorph registry
+    let mut resolver = Resolver::new(module_loader_opts, entry_file.clone());
+    let module_id = generate_module_id();
+
+    // resolve the entry module
+
+    let typed_program_tree =
+        match resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, entry_file.clone()) {
+            Some(tree) => tree,
+            None => {
+                resolver.reporter.display();
+                exit(1);
+            }
+        };
+
+    if resolver.reporter.has_errors() {
+        resolver.reporter.display();
+        exit(1);
+    }
+
+    // analysis
+
     let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+    let entry_points = Arc::new(Mutex::new(Vec::new()));
+    let mut analyzer = AnalysisContext::new(
+        &resolver,
+        module_id,
+        typed_program_tree.clone(),
+        entry_points.clone(),
+        monomorph_registry.clone(),
+        true,
+    );
 
-    // run analysis
-    let typed_program_trees = analyze_program_tree(&resolver, monomorph_registry.clone(), typed_program_tree);
+    analyzer.analyze();
+    DiagReporter::display(&analyzer.reporter);
 
-    // convert Rc<RefCell> trees into boxed trees
-    let boxed_trees = box_program_trees(typed_program_trees);
+    if analyzer.reporter.has_errors() {
+        exit(1);
+    }
 
-    // walk program trees in parallel
+    AnalysisContext::check_entry_points(entry_points);
+
+    // prepare trees for codegen
+
+    let boxed_trees: Vec<Box<TypedProgramTree>> = vec![typed_program_tree]
+        .into_iter()
+        .map(|rc_refcell_tree| match Rc::try_unwrap(rc_refcell_tree) {
+            Ok(refcell_tree) => Box::new(refcell_tree.into_inner()),
+            Err(rc_still_shared) => Box::new(rc_still_shared.borrow().clone()),
+        })
+        .collect();
+
     let cir_program_trees = walk_program_trees_in_parallel(opts.jobs, boxed_trees, &resolver);
 
     CodeGenContextBundle {
