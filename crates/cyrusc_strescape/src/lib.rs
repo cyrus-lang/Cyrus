@@ -1,6 +1,6 @@
 use crate::diagnostics::UnescapeError;
 
-mod diagnostics;
+pub mod diagnostics;
 
 pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
     let mut result = String::new();

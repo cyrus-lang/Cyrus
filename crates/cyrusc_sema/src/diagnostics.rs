@@ -1,7 +1,11 @@
 use thiserror::Error;
+use cyrusc_strescape::diagnostics::UnescapeError;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("{0}")]
+    UnescapeError(UnescapeError),
+
     #[error("Cannot infer all generic parameters for type '{type_name}'.")]
     ExplicitTypeArgsRequired { type_name: String },
 

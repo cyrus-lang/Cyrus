@@ -412,6 +412,7 @@ dependencies = [
  "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_resolver",
+ "cyrusc_strescape",
  "cyrusc_tast",
  "fx-hash",
  "smallvec",

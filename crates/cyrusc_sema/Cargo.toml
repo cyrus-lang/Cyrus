@@ -12,6 +12,7 @@ cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
+cyrusc_strescape = { path = "../cyrusc_strescape", version = "*" }
 thiserror = "2.0.17"
 thiserror-impl = "2.0.17"
 fx-hash = "0.1.0"
