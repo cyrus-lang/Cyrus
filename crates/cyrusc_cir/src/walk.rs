@@ -52,15 +52,13 @@ impl<'resolver> CIRWalk<'resolver> {
                 TypedStmt::For(for_stmt) => self.lower_for(scope_id_opt, for_stmt),
                 TypedStmt::While(while_stmt) => self.lower_while(scope_id_opt, while_stmt),
                 TypedStmt::ExportTuple(export_tuple_stmt) => self.lower_export_tuple(export_tuple_stmt),
+                TypedStmt::Expression(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
                 // lowered only when used
                 TypedStmt::Struct(..) | TypedStmt::Enum(..) | TypedStmt::Union(..) => {
                     continue;
                 }
                 // skipped
-                TypedStmt::Interface(..)
-                | TypedStmt::Expression(..)
-                | TypedStmt::Defer(..)
-                | TypedStmt::Typedef(..) => continue,
+                TypedStmt::Interface(..) | TypedStmt::Defer(..) | TypedStmt::Typedef(..) => continue,
             };
 
             lowered_stmts.push(lowered_stmt);
@@ -192,7 +190,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|ty| self.lower_sema_ty(scope_id_opt, ty))
             .unwrap_or_else(|| {
                 dbg!(var.clone());
-                
+
                 panic!(
                     "Variable '{}' has neither explicit type nor RHS type ({}:{})",
                     var.name, var.loc.file_path, var.loc.line
@@ -284,7 +282,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let kind = match &expr.kind {
             TypedExprKind::Symbol(symbol_id, ..) => CIRExprKind::Load(CIRValueRef { irv_id: *symbol_id }),
-            TypedExprKind::Literal(literal_expr) => self.lower_literal(literal_expr),
+            TypedExprKind::Literal(literal_expr) => self.lower_literal(scope_id_opt, literal_expr),
             TypedExprKind::Prefix(prefix_expr) => self.lower_prefix(scope_id_opt, prefix_expr),
             TypedExprKind::Infix(infix_expr) => self.lower_infix(scope_id_opt, infix_expr),
             TypedExprKind::Unary(unary_expr) => self.lower_unary(scope_id_opt, unary_expr),
@@ -338,9 +336,12 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|arg| self.lower_expr(scope_id_opt, arg))
             .collect();
 
+        let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
+
         CIRExprKind::FuncCall(CIRFuncCall {
             operand: Box::new(self.lower_expr(scope_id_opt, &method_call.operand)),
             args,
+            ret_ty
         })
     }
 
@@ -362,9 +363,12 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|arg| self.lower_expr(scope_id_opt, arg))
             .collect();
 
+        let ret_ty = self.lower_sema_ty(scope_id_opt, &func_call.return_type.clone().unwrap());
+
         CIRExprKind::FuncCall(CIRFuncCall {
             operand: Box::new(self.lower_expr(scope_id_opt, &func_call.operand)),
             args,
+            ret_ty,
         })
     }
 
@@ -466,17 +470,24 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_literal(&self, literal: &TypedLiteralExpr) -> CIRExprKind {
-        let literal = match &literal.kind {
-            LiteralKind::Integer(value, ..) => CIRLiteral::Integer(*value),
-            LiteralKind::Float(value, ..) => CIRLiteral::Float(*value),
-            LiteralKind::Bool(value) => CIRLiteral::Bool(*value),
-            LiteralKind::Char(value) => CIRLiteral::Char(*value),
-            LiteralKind::Null => CIRLiteral::Null,
-            LiteralKind::String(value, prefix_opt) => CIRLiteral::String(value.clone(), prefix_opt.clone()),
+    fn lower_literal(&self, scope_id_opt: Option<ScopeID>, lit: &TypedLiteralExpr) -> CIRExprKind {
+        let kind = match &lit.kind {
+            LiteralKind::Integer(value, ..) => {
+                let is_signed = lit.ty.clone().unwrap().as_basic_type().unwrap().is_signed();
+                CIRLiteralKind::Integer(*value, is_signed)
+            }
+            LiteralKind::Float(value, ..) => CIRLiteralKind::Float(*value),
+            LiteralKind::Bool(value) => CIRLiteralKind::Bool(*value),
+            LiteralKind::Char(value) => CIRLiteralKind::Char(*value),
+            LiteralKind::Null => CIRLiteralKind::Null,
+            LiteralKind::String(value, prefix_opt) => match prefix_opt.clone().unwrap_or(StringPrefix::C) {
+                StringPrefix::C => CIRLiteralKind::CString(value.clone()),
+                StringPrefix::B => CIRLiteralKind::ByteString(value.clone()),
+            },
         };
 
-        CIRExprKind::Literal(literal)
+        let ty = self.lower_sema_ty(scope_id_opt, &lit.ty.clone().unwrap());
+        CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
     // types

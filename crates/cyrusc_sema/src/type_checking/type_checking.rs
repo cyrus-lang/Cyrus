@@ -1580,6 +1580,7 @@ impl<'a> AnalysisContext<'a> {
             let return_type =
                 self.check_func_type_call(scope_id_opt, &mut func_type, &mut func_call.args, func_call.loc.clone());
 
+            func_call.return_type = return_type.clone();
             return_type
         } else {
             let symbol_name = format_concrete_type(operand_ty, &(self.symbol_formatter)(scope_id_opt));
