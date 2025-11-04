@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum UnescapeError {
     #[error("Incomplete hex escape: \\x was not followed by two hex digits.")]
     IncompleteHexEscape,

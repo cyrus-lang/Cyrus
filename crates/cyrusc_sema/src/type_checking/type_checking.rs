@@ -10,6 +10,7 @@ use cyrusc_resolver::{
     },
     typed_func_params_as_func_type_params,
 };
+use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
     exprs::*,
     format::{format_concrete_type, format_func_type, format_typed_expr},
@@ -30,9 +31,11 @@ impl<'a> AnalysisContext<'a> {
         typed_literal: &mut TypedLiteralExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let ty_opt = match &typed_literal.kind {
+        let typed_literal_clone = typed_literal.clone();
+
+        let ty_opt = match &mut typed_literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
-                match infer_integer_type(typed_literal, suffix_opt, expected_type.clone()) {
+                match infer_integer_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
                     Ok(ty) => Some(ty),
                     Err(diag) => {
                         self.reporter.report(diag);
@@ -41,7 +44,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             LiteralKind::Float(_, suffix_opt) => {
-                match infer_float_type(typed_literal, suffix_opt, expected_type.clone()) {
+                match infer_float_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
                     Ok(ty) => Some(ty),
                     Err(diag) => {
                         self.reporter.report(diag);
@@ -53,6 +56,19 @@ impl<'a> AnalysisContext<'a> {
             LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
             LiteralKind::Null => Some(SemanticType::PlainType(PlainType::Null)),
             LiteralKind::String(value, prefix_opt) => {
+                *value = match unescape_string(&value).and_then(|v| unescape_string(&v)) {
+                    Ok(v) => v,
+                    Err(unescape_err) => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::UnescapeError(unescape_err)),
+                            location: Some(DiagLoc::new(typed_literal.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                };
+
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
                         StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char))),
