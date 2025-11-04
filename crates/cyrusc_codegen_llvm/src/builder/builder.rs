@@ -5,7 +5,7 @@ use crate::{
 use cyrusc_abi::make_global_var_abi_name;
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-    cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
+    cir_func_decl_as_func_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, types::CIRTy,
 };
 use inkwell::{
     basic_block::BasicBlock,
@@ -64,9 +64,22 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let fn_value = self.emit_func_decl(&func_decl);
                 self.cur_fn = Some(fn_value);
                 self.emit_func_body(&func_def_stmt.body);
+                {
+                    let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
+                    let mut irreg = self.irreg.borrow_mut();
+                    irreg.insert(
+                        func_def_stmt.irv_id,
+                        LocalIRValue::Func(fn_value, CIRTy::FuncType(cir_func_ty)),
+                    );
+                }
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
-                self.emit_func_decl(func_decl_stmt);
+                let fn_value = self.emit_func_decl(func_decl_stmt);
+                {
+                    let cir_func_ty = cir_func_decl_as_func_ty(&func_decl_stmt);
+                    let mut irreg = self.irreg.borrow_mut();
+                    irreg.insert(func_decl_stmt.irv_id, LocalIRValue::Func(fn_value, CIRTy::FuncType(cir_func_ty)));
+                }
             }
             CIRStmt::Block(block_stmt) => self.emit_body(block_stmt),
             CIRStmt::Struct(struct_stmt) => {
@@ -81,6 +94,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::ExportTuple(export_tuple_stmt) => todo!(),
             CIRStmt::Switch(cirswitch_stmt) => todo!(),
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
+            CIRStmt::Expr(expr) => {
+                self.emit_expr(expr);
+            }
         }
     }
 
@@ -97,7 +113,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_ret(&self, return_stmt: &CIRReturnStmt) {
         if let Some(expr) = &return_stmt.arg {
-            let basic_value = self.emit_expr(&expr).as_basic_value();
+            let basic_value = self.load_rvalue(self.emit_expr(&expr)).as_basic_value();
             self.llvmbuilder.build_return(Some(&basic_value)).unwrap();
         } else {
             self.llvmbuilder.build_return(None).unwrap();
@@ -109,7 +125,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
 
         if let Some(expr) = &cir_var.expr {
-            let value = self.emit_expr(expr).as_basic_value();
+            let value = self.load_rvalue(self.emit_expr(expr)).as_basic_value();
             self.llvmbuilder.build_store(ptr, value).unwrap();
         } else {
             // zero init
@@ -118,7 +134,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr));
+        irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));
     }
 
     fn emit_global_var(&self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
@@ -137,15 +153,18 @@ impl<'ll> IRBuilderCtx<'ll> {
         let global_value = llvmmodule.add_global(ty, None, &name);
 
         if let Some(expr) = &cir_global_var.expr {
-            let value = self.emit_expr(&expr);
-            global_value.set_initializer(&value.as_basic_value());
+            let value = self.load_rvalue(self.emit_expr(&expr)).as_basic_value();
+            global_value.set_initializer(&value);
         } else {
             // zero init
             global_value.set_initializer(&ty.const_zero());
         }
 
         let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(cir_global_var.irv_id, LocalIRValue::Global(global_value));
+        irreg.insert(
+            cir_global_var.irv_id,
+            LocalIRValue::Global(global_value, cir_global_var.ty.clone()),
+        );
         drop(irreg);
 
         global_value

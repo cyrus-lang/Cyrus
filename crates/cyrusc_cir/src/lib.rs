@@ -30,6 +30,7 @@ pub enum CIRStmt {
     Enum(CIREnumStmt),
     Union(CIRUnionStmt),
     ExportTuple(CIRExportTupleStmt),
+    Expr(CIRExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +65,7 @@ pub enum CIRExprKind {
 pub struct CIRFuncCall {
     pub operand: Box<CIRExpr>,
     pub args: Vec<CIRExpr>,
+    pub ret_ty: CIRTy,
 }
 
 #[derive(Debug, Clone)]
@@ -156,13 +158,20 @@ pub struct CIRUnaryExpr {
 }
 
 #[derive(Debug, Clone)]
-pub enum CIRLiteral {
-    Integer(i64),
+pub struct CIRLiteral {
+    pub kind: CIRLiteralKind,
+    pub ty: CIRTy,
+}
+
+#[derive(Debug, Clone)]
+pub enum CIRLiteralKind {
+    Integer(i64, bool),
     Float(f64),
     Bool(bool),
     Char(char),
     Null,
-    String(String, Option<StringPrefix>),
+    CString(String),
+    ByteString(String),
 }
 
 #[derive(Debug, Clone)]

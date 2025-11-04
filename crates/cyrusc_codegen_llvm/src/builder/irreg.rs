@@ -1,3 +1,4 @@
+use cyrusc_cir::types::CIRTy;
 use inkwell::{
     types::{ArrayType, StructType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
@@ -18,12 +19,12 @@ pub struct LocalIRValueRegistry<'a> {
 /// Represents a local LLVM IR value.
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
-    Func(FunctionValue<'a>),
-    Struct(StructType<'a>),
+    Func(FunctionValue<'a>, CIRTy),
+    Global(GlobalValue<'a>, CIRTy),
+    LValue(PointerValue<'a>, CIRTy),
+    RValue(BasicValueEnum<'a>, CIRTy),
     Enum(StructType<'a>, ArrayType<'a>),
-    Global(GlobalValue<'a>),
-    LValue(PointerValue<'a>),
-    RValue(BasicValueEnum<'a>),
+    Struct(StructType<'a>),
 }
 
 impl<'a> LocalIRValueRegistry<'a> {
@@ -61,42 +62,42 @@ impl<'a> LocalIRValueRegistry<'a> {
 impl<'a> LocalIRValue<'a> {
     pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
         match self {
-            LocalIRValue::Func(v) => Some(v),
+            LocalIRValue::Func(func, _) => Some(func),
             _ => None,
         }
     }
 
     pub fn as_global(&self) -> Option<&GlobalValue<'a>> {
         match self {
-            LocalIRValue::Global(v) => Some(v),
+            LocalIRValue::Global(global, _) => Some(global),
             _ => None,
         }
     }
 
     pub fn as_struct(&self) -> Option<&StructType<'a>> {
         match self {
-            LocalIRValue::Struct(v) => Some(v),
+            LocalIRValue::Struct(st) => Some(st),
             _ => None,
         }
     }
 
     pub fn as_enum(&self) -> Option<(&StructType<'a>, &ArrayType<'a>)> {
         match self {
-            LocalIRValue::Enum(struct_ty, arr_ty) => Some((struct_ty, arr_ty)),
+            LocalIRValue::Enum(st, arr) => Some((st, arr)),
             _ => None,
         }
     }
 
     pub fn as_lvalue(&self) -> Option<&PointerValue<'a>> {
         match self {
-            LocalIRValue::LValue(v) => Some(v),
+            LocalIRValue::LValue(ptr, _) => Some(ptr),
             _ => None,
         }
     }
 
     pub fn as_rvalue(&self) -> Option<&BasicValueEnum<'a>> {
         match self {
-            LocalIRValue::RValue(v) => Some(v),
+            LocalIRValue::RValue(val, _) => Some(val),
             _ => None,
         }
     }

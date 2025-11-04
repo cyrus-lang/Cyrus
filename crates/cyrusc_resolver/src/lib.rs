@@ -160,7 +160,7 @@ impl Resolver {
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
             body: typed_body,
             file_path: module_file_path.clone(),
-            module_id
+            module_id,
         }));
 
         if is_master {
@@ -2787,6 +2787,7 @@ impl Resolver {
                 method_name: method_call.method_name.name.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
                 type_args,
+                return_type: None,
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
                 args,
             }),
@@ -2865,6 +2866,7 @@ impl Resolver {
             kind: TypedExprKind::FuncCall(TypedFuncCall {
                 operand: Box::new(operand),
                 args: type_args,
+                return_type: None,
                 loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
             }),
             vcat: ValueCategory::RValue,

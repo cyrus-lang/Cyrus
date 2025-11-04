@@ -274,6 +274,7 @@ pub struct TypedStructFieldInit {
 pub struct TypedFuncCall {
     pub operand: Box<TypedExprStmt>,
     pub args: Vec<TypedExprStmt>,
+    pub return_type: Option<SemanticType>,
     pub loc: SourceLoc,
 }
 
@@ -296,6 +297,7 @@ pub struct TypedMethodCall {
     pub method_name: String,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
+    pub return_type: Option<SemanticType>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
 }
