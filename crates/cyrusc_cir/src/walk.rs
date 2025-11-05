@@ -299,8 +299,8 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::UStructValue(ustruct_value) => self.lower_ustruct_value(scope_id_opt, ustruct_value),
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
-            TypedExprKind::FieldAccess(field_access) => todo!(),
-            TypedExprKind::StructInit(struct_init_expr) => todo!(),
+            TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access),
+            TypedExprKind::StructInit(struct_init_expr) => self.lower_struct_init(scope_id_opt, struct_init_expr),
             TypedExprKind::SizeOf(size_of_expr) => self.lower_size_of(scope_id_opt, size_of_expr),
             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(scope_id_opt, lambda_expr),
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(scope_id_opt, tuple_expr),
@@ -310,6 +310,41 @@ impl<'resolver> CIRWalk<'resolver> {
         };
 
         CIRExpr { kind, ty }
+    }
+
+    pub(crate) fn lower_struct_init(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        struct_init_expr: &TypedStructInitExpr,
+    ) -> CIRExprKind {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, struct_init_expr.symbol_id)
+            .unwrap();
+
+        if let Some(resolved_struct) = sym.as_struct() {
+            let fields_tys: Vec<CIRTy> = struct_init_expr
+                .fields
+                .iter()
+                .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+                .collect();
+
+            let struct_ty = CIRStructTy {
+                fields: fields_tys,
+                is_packed: resolved_struct.struct_sig.is_packed,
+            };
+
+            let fields: Vec<CIRExpr> = struct_init_expr
+                .fields
+                .iter()
+                .map(|field| self.lower_expr(scope_id_opt, &field.value))
+                .collect();
+
+            CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
+        } else {
+            unreachable!()
+        }
     }
 
     fn lower_tuple_access(&self, scope_id_opt: Option<ScopeID>, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
@@ -358,15 +393,22 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_field_access(&self, field_access: &TypedFieldAccess) -> CIRExprKind {
-        // TODO Separate struct_field access from union and enum!
-        todo!()
+    fn lower_field_access(&self, scope_id_opt: Option<ScopeID>, field_access: &TypedFieldAccess) -> CIRExprKind {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, field_access.object_symbol_id.unwrap())
+            .unwrap();
 
-        // CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
-        //     operand: todo!(),
-        //     field_idx: todo!(),
-        //     field_ty: todo!(),
-        // })
+        if sym.as_struct().is_some() {
+            CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
+                operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
+                field_idx: field_access.field_index.unwrap(),
+                field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
+            })
+        } else {
+            unreachable!()
+        }
     }
 
     fn lower_func_call(&self, scope_id_opt: Option<ScopeID>, func_call: &TypedFuncCall) -> CIRExprKind {
@@ -507,7 +549,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_sema_ty(&self, scope_id_opt: Option<ScopeID>, sema_ty: &SemanticType) -> CIRTy {
         match sema_ty {
-            SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(resolved_symbol),
+            SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(scope_id_opt, resolved_symbol),
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
             SemanticType::Array(array_type) => {
                 let ty = self.lower_sema_ty(scope_id_opt, &array_type.element_type);
@@ -622,10 +664,20 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRUnionTy { fields }
     }
 
-    fn lower_resolved_symbol(&self, resolved_symbol: &ResolvedSymbol) -> CIRTy {
-        // resolved_symbol.get_symbol_id()
+    fn lower_resolved_symbol(&self, scope_id_opt: Option<ScopeID>, resolved_symbol: &ResolvedSymbol) -> CIRTy {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, resolved_symbol.get_symbol_id())
+            .unwrap();
 
-        todo!();
+        if let Some(resolved_struct) = sym.as_struct() {
+            // resolved_struct.
+            // substitute_struct_sig(sig, ctx)
+            todo!();
+        } else {
+            unreachable!()
+        }
     }
 }
 

@@ -14,7 +14,7 @@ use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
     exprs::*,
     format::{format_concrete_type, format_func_type, format_typed_expr},
-    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx},
+    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_struct_sig},
     sigs::{FuncSig, UnionSig},
     stmts::{
         TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
@@ -948,124 +948,116 @@ impl<'a> AnalysisContext<'a> {
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        todo!();
+        macro_rules! not_supports_fields {
+            ($this:expr, $loc:expr) => {{
+                $this.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
+                    location: Some(DiagLoc::new($loc)),
+                    hint: None,
+                });
+                return None;
+            }};
+        }
 
-        // macro_rules! not_supports_fields {
-        //     ($this:expr, $loc:expr) => {{
-        //         $this.reporter.report(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
-        //             location: Some(DiagLoc::new($loc)),
-        //             hint: None,
-        //         });
-        //         return None;
-        //     }};
-        // }
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        // let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        // check for enum variant
 
-        // // check for enum variant
+        match &field_access.operand.kind {
+            TypedExprKind::Symbol(symbol_id, _) => {
+                if let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), *symbol_id) {
+                    let enum_variant_opt = resolved_enum
+                        .enum_sig
+                        .variants
+                        .iter()
+                        .find(|variant| variant.get_identifier().as_string() == field_access.field_name);
 
-        // match &field_access.operand.kind {
-        //     TypedExprKind::Symbol(symbol_id, _) => {
-        //         if let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), *symbol_id) {
-        //             let enum_variant_opt = resolved_enum
-        //                 .enum_sig
-        //                 .variants
-        //                 .iter()
-        //                 .find(|variant| variant.get_identifier().as_string() == field_access.field_name);
+                    let sema_ty = self.analyze_enum_variant_no_field(
+                        scope_id_opt,
+                        &resolved_enum,
+                        field_access,
+                        enum_variant_opt,
+                        expected_type,
+                    );
+                    field_access.operand.sema_ty = sema_ty.clone();
+                    return sema_ty;
+                };
+            }
+            _ => {}
+        };
 
-        //             let sema_ty = self.analyze_enum_variant_no_field(
-        //                 scope_id_opt,
-        //                 &resolved_enum,
-        //                 field_access,
-        //                 enum_variant_opt,
-        //                 expected_type,
-        //             );
-        //             field_access.operand.sema_ty = sema_ty.clone();
-        //             return sema_ty;
-        //         };
-        //     }
-        //     _ => {}
-        // };
+        if field_access.type_args.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
 
-        // if field_access.type_args.is_some() {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-        //         location: Some(DiagLoc::new(field_access.loc.clone())),
-        //         hint: None,
-        //     });
-        //     return None;
-        // }
+        // multiplex field access
 
-        // // multiplex field access
+        let sema_ty = self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
 
-        // let sema_ty = self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
+        field_access.operand.sema_ty = Some(sema_ty.get_const_inner().clone());
+        let operand_ty = sema_ty.get_const_inner();
 
-        // field_access.operand.sema_ty = Some(sema_ty.get_const_inner().clone());
-        // let operand_ty = sema_ty.get_const_inner();
+        let generic_type_opt = operand_ty.as_generic_type();
 
-        // let generic_type_opt = operand_ty.as_generic_type();
+        match self.resolve_member_access_kind(
+            scope_id_opt,
+            local_scope_opt.clone(),
+            &mut field_access.operand,
+            expected_type.clone(),
+            field_access.loc.clone(),
+        ) {
+            Some(member_access_kind) => match member_access_kind {
+                MemberAccessKind::UnnamedStruct(unnamed_struct_type) => self.analyze_unnamed_struct_field_access_type(
+                    scope_id_opt,
+                    &unnamed_struct_type,
+                    field_access,
+                    expected_type.clone(),
+                ),
+                MemberAccessKind::NamedStruct(resolved_struct) => {
+                    let mut struct_sig = resolved_struct.struct_sig.clone();
+                    if let Some(generic_type) = generic_type_opt {
+                        struct_sig = substitute_struct_sig(&struct_sig, generic_type.mapping_ctx.clone())?;
+                    }
 
-        // match self.resolve_member_access_kind(
-        //     scope_id_opt,
-        //     local_scope_opt.clone(),
-        //     &mut field_access.operand,
-        //     expected_type.clone(),
-        //     field_access.loc.clone(),
-        // ) {
-        //     Some(member_access_kind) => match member_access_kind {
-        //         MemberAccessKind::UnnamedStruct(unnamed_struct_type) => self.analyze_unnamed_struct_field_access_type(
-        //             scope_id_opt,
-        //             &unnamed_struct_type,
-        //             field_access,
-        //             expected_type.clone(),
-        //         ),
-        //         MemberAccessKind::NamedStruct(resolved_struct) => {
-        //             let mut struct_sig = resolved_struct.struct_sig.clone();
-        //             self.substitute_struct_type_args(
-        //                 &mut mapping_ctx,
-        //                 &mut struct_sig,
-        //                 generic_type_opt,
-        //                 field_access.loc.clone(),
-        //             );
-        //             self.substitute_field_access_type(
-        //                 &mut mapping_ctx,
-        //                 &mut field_access.operand,
-        //                 &struct_sig.generic_params,
-        //                 generic_type_opt,
-        //                 field_access.loc.clone(),
-        //             );
-        //             self.analyze_struct_field_access_type(
-        //                 scope_id_opt,
-        //                 field_access,
-        //                 struct_sig.name.clone(),
-        //                 struct_sig.fields.clone(),
-        //                 struct_sig.methods.clone(),
-        //                 resolved_struct.symbol_id,
-        //             )
-        //         }
-        //         MemberAccessKind::Union(resolved_union) => {
-        //             let mut union_sig = resolved_union.union_sig.clone();
-        //             self.substitute_union_type_args(
-        //                 &mut mapping_ctx,
-        //                 &mut union_sig,
-        //                 generic_type_opt,
-        //                 field_access.loc.clone(),
-        //             );
-        //             self.substitute_field_access_type(
-        //                 &mut mapping_ctx,
-        //                 &mut field_access.operand,
-        //                 &union_sig.generic_params,
-        //                 generic_type_opt,
-        //                 field_access.loc.clone(),
-        //             );
-        //             self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type)
-        //         }
-        //     },
-        //     None => not_supports_fields!(self, field_access.loc.clone()),
-        // }
+                    // TODO Substitute field access
+
+                    self.analyze_struct_field_access_type(
+                        scope_id_opt,
+                        field_access,
+                        struct_sig.name.clone(),
+                        struct_sig.fields.clone(),
+                        struct_sig.methods.clone(),
+                        resolved_struct.symbol_id,
+                    )
+                }
+                MemberAccessKind::Union(resolved_union) => {
+                    let mut union_sig = resolved_union.union_sig.clone();
+                    todo!();
+                    // self.substitute_union_type_args(
+                    //     &mut mapping_ctx,
+                    //     &mut union_sig,
+                    //     generic_type_opt,
+                    //     field_access.loc.clone(),
+                    // );
+                    // self.substitute_field_access_type(
+                    //     &mut mapping_ctx,
+                    //     &mut field_access.operand,
+                    //     &union_sig.generic_params,
+                    //     generic_type_opt,
+                    //     field_access.loc.clone(),
+                    // );
+                    self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type)
+                }
+            },
+            None => not_supports_fields!(self, field_access.loc.clone()),
+        }
     }
 
     // FIXME
