@@ -5,7 +5,7 @@ use crate::{
 use cyrusc_abi::make_global_var_abi_name;
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-    cir_func_decl_as_func_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, types::CIRTy,
+    cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
 };
 use inkwell::{
     basic_block::BasicBlock,
@@ -63,23 +63,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
                 let fn_value = self.emit_func_decl(&func_decl);
                 self.cur_fn = Some(fn_value);
-                self.emit_func_body(&func_def_stmt.body);
-                {
-                    let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
-                    let mut irreg = self.irreg.borrow_mut();
-                    irreg.insert(
-                        func_def_stmt.irv_id,
-                        LocalIRValue::Func(fn_value, CIRTy::FuncType(cir_func_ty)),
-                    );
-                }
+                self.emit_func_body(&func_decl.params, &func_def_stmt.body);
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
-                let fn_value = self.emit_func_decl(func_decl_stmt);
-                {
-                    let cir_func_ty = cir_func_decl_as_func_ty(&func_decl_stmt);
-                    let mut irreg = self.irreg.borrow_mut();
-                    irreg.insert(func_decl_stmt.irv_id, LocalIRValue::Func(fn_value, CIRTy::FuncType(cir_func_ty)));
-                }
+                self.emit_func_decl(func_decl_stmt);
             }
             CIRStmt::Block(block_stmt) => self.emit_body(block_stmt),
             CIRStmt::Struct(struct_stmt) => {
@@ -111,22 +98,24 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.cur_block = Some(basic_block);
     }
 
-    pub(crate) fn emit_ret(&self, return_stmt: &CIRReturnStmt) {
+    pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
         if let Some(expr) = &return_stmt.arg {
-            let basic_value = self.load_rvalue(self.emit_expr(&expr)).as_basic_value();
-            self.llvmbuilder.build_return(Some(&basic_value)).unwrap();
+            let lvalue = self.emit_expr(&expr);
+            let rvalue = self.load_rvalue(lvalue);
+            self.llvmbuilder.build_return(Some(&rvalue.as_basic_value())).unwrap();
         } else {
             self.llvmbuilder.build_return(None).unwrap();
         }
     }
 
-    fn emit_var(&self, cir_var: &CIRVarStmt) {
+    fn emit_var(&mut self, cir_var: &CIRVarStmt) {
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
 
         if let Some(expr) = &cir_var.expr {
-            let value = self.load_rvalue(self.emit_expr(expr)).as_basic_value();
-            self.llvmbuilder.build_store(ptr, value).unwrap();
+            let lvalue = self.emit_expr(expr);
+            let rvalue = self.load_rvalue(lvalue);
+            self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
         } else {
             // zero init
             let value = ty.const_zero();
@@ -137,7 +126,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));
     }
 
-    fn emit_global_var(&self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
+    fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
         {
             let irreg = self.irreg.borrow();
             if let Some(local_ir_value) = irreg.get(cir_global_var.irv_id) {
@@ -147,14 +136,17 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let llvmmodule = self.llvmmodule.borrow();
         let llvmmodule_name = llvmmodule.get_name().to_str().unwrap();
+
         let name = make_global_var_abi_name(llvmmodule_name, &cir_global_var.name, &cir_global_var.vis);
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvmmodule.add_global(ty, None, &name);
+        dbg!(llvmmodule);
 
         if let Some(expr) = &cir_global_var.expr {
-            let value = self.load_rvalue(self.emit_expr(&expr)).as_basic_value();
-            global_value.set_initializer(&value);
+            let lvalue = self.emit_expr(&expr);
+            let rvalue = self.load_rvalue(lvalue).as_basic_value();
+            global_value.set_initializer(&rvalue);
         } else {
             // zero init
             global_value.set_initializer(&ty.const_zero());

@@ -1736,9 +1736,9 @@ impl Resolver {
                         }
                     };
 
+                    let symbol_id = generate_symbol_id();
                     if let Some(local_scope_rc) = &local_scope_opt {
                         let mut local_scope = local_scope_rc.borrow_mut();
-                        let symbol_id = generate_symbol_id();
                         local_scope.insert(
                             func_param.identifier.name.clone(),
                             LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
@@ -1760,6 +1760,7 @@ impl Resolver {
                     }
 
                     typed_func_params.push(TypedFuncParamKind::FuncParam(TypedFuncParam {
+                        symbol_id,
                         name: func_param.identifier.name.clone(),
                         ty: param_type,
                         loc: SourceLoc::from_loc(func_param.loc.clone(), self.get_current_module_file_path()),

@@ -1,4 +1,4 @@
-use crate::{CIREnumVariant, CIRExpr};
+use crate::{CIREnumVariant};
 use cyrusc_tast::types::PlainType;
 
 #[derive(Debug, Clone)]
@@ -46,4 +46,13 @@ pub struct CIRUnionTy {
 #[derive(Debug, Clone)]
 pub struct CIREnumTy {
     pub variants: Vec<CIREnumVariant>,
+}
+
+impl CIRTy {
+    pub fn as_fn_ty(&self) -> Option<CIRFuncTy> {
+        match self {
+            CIRTy::FuncType(fn_ty) => Some(fn_ty.clone()),
+            _ => None
+        }
+    }
 }

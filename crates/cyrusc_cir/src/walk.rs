@@ -1,7 +1,8 @@
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_ast::LiteralKind;
-use cyrusc_resolver::{Resolver, typed_func_params_as_func_type_params};
+use cyrusc_resolver::Resolver;
+use cyrusc_resolver::symbols::generate_symbol_id;
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
 use cyrusc_tast::sigs::{EnumSig, UnionSig};
@@ -44,7 +45,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
                 TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
                 TypedStmt::GlobalVariable(global_var_stmt) => self.lower_global_var(scope_id_opt, global_var_stmt),
-                TypedStmt::BlockStatement(block_stmt) => CIRStmt::Block(self.lower_block(block_stmt)),
+                TypedStmt::BlockStatement(block_stmt) => CIRStmt::Block(self.lower_body(block_stmt)),
                 TypedStmt::If(if_stmt) => self.lower_if(scope_id_opt, if_stmt),
                 TypedStmt::Return(return_stmt) => self.lower_return(scope_id_opt, return_stmt),
                 TypedStmt::Break(break_stmt) => self.lower_break(break_stmt),
@@ -93,7 +94,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_while(&self, scope_id_opt: Option<ScopeID>, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(scope_id_opt, &while_stmt.cond));
-        let body = Box::new(self.lower_block(&while_stmt.body));
+        let body = Box::new(self.lower_body(&while_stmt.body));
 
         todo!();
     }
@@ -112,7 +113,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .and_then(|increment| Some(self.lower_expr(scope_id_opt, &increment)));
 
-        let body = Box::new(self.lower_block(&for_stmt.body));
+        let body = Box::new(self.lower_body(&for_stmt.body));
 
         // CIRStmt::For(CIRForStmt {
         //     initializer,
@@ -141,11 +142,11 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_if(&self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
         let cond = self.lower_expr(scope_id_opt, &if_stmt.cond);
-        let then_block = Box::new(self.lower_block(&if_stmt.then_block));
+        let then_block = Box::new(self.lower_body(&if_stmt.then_block));
         let else_block = if_stmt
             .else_block
             .clone()
-            .and_then(|else_block| Some(Box::new(self.lower_block(&else_block))));
+            .and_then(|else_block| Some(Box::new(self.lower_body(&else_block))));
         // let branches: Vec<CIRIfStmt> = if_stmt
         //     .branches
         //     .iter()
@@ -210,43 +211,48 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_func_params(
+    fn lower_func_type_params(
         &self,
         scope_id_opt: Option<ScopeID>,
-        func_params: &TypedFuncTypeParams,
-    ) -> (Vec<CIRTy>, bool) {
-        let mut params: Vec<CIRTy> = Vec::new();
-
-        func_params
+        func_type_params: &TypedFuncTypeParams,
+    ) -> Vec<CIRTy> {
+        func_type_params
             .list
             .iter()
-            .for_each(|sema_ty| params.push(self.lower_sema_ty(scope_id_opt, &sema_ty)));
+            .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+            .collect()
+    }
 
-        let mut is_var = false;
-        if let Some(variadic) = &func_params.variadic {
-            is_var = true;
-
-            match **variadic {
-                TypedFuncTypeVariadicParams::UntypedCStyle => {}
-                TypedFuncTypeVariadicParams::Typed(_) => todo!(), // TODO
-            }
+    fn lower_func_params(&self, scope_id_opt: Option<ScopeID>, func_params: &TypedFuncParams) -> CIRFuncParams {
+        CIRFuncParams {
+            list: func_params
+                .list
+                .iter()
+                .map(|param| match param {
+                    TypedFuncParamKind::FuncParam(typed_func_param) => CIRFuncParam {
+                        irv_id: typed_func_param.symbol_id,
+                        ty: self.lower_sema_ty(scope_id_opt, &typed_func_param.ty),
+                    },
+                    TypedFuncParamKind::SelfModifier(typed_self_modifier) => CIRFuncParam {
+                        irv_id: typed_self_modifier.symbol_id.unwrap(),
+                        ty: self.lower_sema_ty(scope_id_opt, &typed_self_modifier.ty.as_ref().unwrap()),
+                    },
+                })
+                .collect(),
+            is_var: func_params.variadic.is_some(),
         }
-
-        (params, is_var)
     }
 
     fn lower_func_def(&self, scope_id_opt: Option<ScopeID>, func_def: &TypedFuncDefStmt) -> CIRStmt {
-        let func_params = typed_func_params_as_func_type_params(&func_def.params);
-        let (params, is_var) = self.lower_func_params(scope_id_opt, &func_params);
+        let params = self.lower_func_params(scope_id_opt, &func_def.params);
 
-        let body = self.lower_block(&func_def.body);
+        let body = self.lower_body(&func_def.body);
         let ret = self.lower_sema_ty(scope_id_opt, &func_def.return_type);
 
         CIRStmt::FuncDef(CIRFuncDefStmt {
             irv_id: func_def.symbol_id,
             name: func_def.name.clone(),
             params,
-            is_var,
             body: Box::new(body),
             ret,
             vis: func_def.vis.clone(),
@@ -254,21 +260,19 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_func_decl(&self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRStmt {
-        let func_params = typed_func_params_as_func_type_params(&func_decl.params);
-        let (params, is_var) = self.lower_func_params(scope_id_opt, &func_params);
+        let params = self.lower_func_params(scope_id_opt, &func_decl.params);
         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
 
         CIRStmt::FuncDecl(CIRFuncDeclStmt {
             irv_id: func_decl.symbol_id,
             name: func_decl.name.clone(),
             params,
-            is_var,
             ret,
             vis: func_decl.vis.clone(),
         })
     }
 
-    fn lower_block(&self, block: &TypedBlockStmt) -> CIRBlockStmt {
+    fn lower_body(&self, block: &TypedBlockStmt) -> CIRBlockStmt {
         let mut stmts = self.lower_stmts(Some(block.scope_id), &block.stmts);
         let defer_stmts: Vec<TypedStmt> = block.defers.iter().map(|defer| *defer.operand.clone()).collect();
         stmts.extend(self.lower_stmts(Some(block.scope_id), &defer_stmts));
@@ -298,7 +302,7 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::FieldAccess(field_access) => todo!(),
             TypedExprKind::StructInit(struct_init_expr) => todo!(),
             TypedExprKind::SizeOf(size_of_expr) => self.lower_size_of(scope_id_opt, size_of_expr),
-            TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(lambda_expr),
+            TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(scope_id_opt, lambda_expr),
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(scope_id_opt, tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(scope_id_opt, tuple_access_expr),
             // skipped
@@ -325,8 +329,17 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExprKind::Tuple(CIRTupleExpr { elms })
     }
 
-    fn lower_lambda(&self, lambda: &TypedLambdaExpr) -> CIRExprKind {
-        todo!();
+    fn lower_lambda(&self, scope_id_opt: Option<ScopeID>, lambda: &TypedLambdaExpr) -> CIRExprKind {
+        let params = self.lower_func_params(scope_id_opt, &lambda.params);
+        let body = Box::new(self.lower_body(&lambda.body));
+        let ret = self.lower_sema_ty(scope_id_opt, &lambda.return_type);
+
+        CIRExprKind::Lambda(CIRLambda {
+            irv_id: generate_symbol_id(),
+            params,
+            ret,
+            body,
+        })
     }
 
     fn lower_method_call(&self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
@@ -341,7 +354,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExprKind::FuncCall(CIRFuncCall {
             operand: Box::new(self.lower_expr(scope_id_opt, &method_call.operand)),
             args,
-            ret_ty
+            ret_ty,
         })
     }
 
@@ -522,9 +535,13 @@ impl<'resolver> CIRWalk<'resolver> {
             }
             SemanticType::FuncType(func_type) => {
                 let ret = Box::new(self.lower_sema_ty(scope_id_opt, &func_type.return_type));
-                let (params, is_var) = self.lower_func_params(scope_id_opt, &func_type.params);
+                let params = self.lower_func_type_params(scope_id_opt, &func_type.params);
 
-                CIRTy::FuncType(CIRFuncTy { params, is_var, ret })
+                CIRTy::FuncType(CIRFuncTy {
+                    params: params,
+                    is_var: func_type.params.variadic.is_some(),
+                    ret,
+                })
             }
             SemanticType::Tuple(tuple_type) => {
                 let items: Vec<CIRTy> = tuple_type
