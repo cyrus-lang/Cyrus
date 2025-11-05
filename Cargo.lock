@@ -279,6 +279,7 @@ name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
+ "cyrusc_ast",
  "cyrusc_cir",
  "cyrusc_compiler",
  "cyrusc_diagcentral",

@@ -290,6 +290,7 @@ pub struct TypedSelfModifier {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncParam {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: SemanticType,
     pub loc: SourceLoc,

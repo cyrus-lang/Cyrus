@@ -1,19 +1,18 @@
-use cyrusc_cir::{CIRExpr, CIRExprKind, CIRFuncCall, CIRLiteral, CIRLiteralKind, CIRValueRef, types::CIRTy};
-use inkwell::{
-    AddressSpace, Either,
-    module::Linkage,
-    types::BasicTypeEnum,
-    values::{BasicMetadataValueEnum, BasicValueEnum},
-};
-
 use crate::builder::{
     builder::IRBuilderCtx,
     irreg::LocalIRValue,
     values::{InternalValue, InternalValueKind},
 };
+use cyrusc_cir::{CIRExpr, CIRExprKind, CIRFuncCall, CIRLiteral, CIRLiteralKind, CIRValueRef, types::CIRTy};
+use inkwell::{
+    AddressSpace, Either,
+    module::Linkage,
+    types::BasicTypeEnum,
+    values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue},
+};
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_expr(&self, expr: &CIRExpr) -> InternalValue<'ll> {
+    pub(crate) fn emit_expr(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
         match &expr.kind {
             CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
@@ -33,25 +32,64 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::StructFieldAccess(struct_field_access_expr) => todo!(),
             CIRExprKind::UnionFieldAccess(union_field_access_expr) => todo!(),
             CIRExprKind::FuncCall(func_call) => self.emit_func_call(func_call),
+            CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
         }
     }
 
-    pub(crate) fn emit_func_call(&self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
-        let operand = self.load_rvalue(self.emit_expr(&func_call.operand));
-        let fn_value = operand.as_func().expect("Expected function value.");
+    pub(crate) fn emit_func_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
+        let lvalue = self.emit_expr(&func_call.operand);
+        let rvalue = self.load_rvalue(lvalue);
+
+        // Check if it's a direct or indirect call
+        if let Some(fn_value) = rvalue.as_func() {
+            self.emit_direct_call(func_call, fn_value)
+        } else if rvalue.as_basic_value().is_pointer_value() {
+            self.emit_indirect_call(func_call)
+        } else {
+            panic!("Expected a function or pointer to function in call expression.")
+        }
+    }
+
+    fn emit_direct_call(&mut self, func_call: &CIRFuncCall, fn_value: &FunctionValue<'ll>) -> InternalValue<'ll> {
+        let args: Vec<BasicMetadataValueEnum<'ll>> = func_call
+            .args
+            .iter()
+            .map(|expr| {
+                let lvalue = self.emit_expr(expr);
+                self.load_rvalue(lvalue).as_basic_value().into()
+            })
+            .collect();
+
+        let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
+
+        match call_site.try_as_basic_value() {
+            Either::Left(bv) => InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(bv)),
+            Either::Right(_) => self.emit_null(func_call.ret_ty.clone()),
+        }
+    }
+
+    fn emit_indirect_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
+        let operand = self.emit_expr(&func_call.operand);
+
+        let fn_ty = self.emit_func_ty(operand.ty.as_fn_ty().unwrap());
+        let fn_ptr = operand.as_basic_value().into_pointer_value();
 
         let args: Vec<BasicMetadataValueEnum<'ll>> = func_call
             .args
             .iter()
-            .map(|expr| self.load_rvalue(self.emit_expr(expr)).as_basic_value().into())
+            .map(|expr| {
+                let lvalue = self.emit_expr(expr);
+                self.load_rvalue(lvalue).as_basic_value().into()
+            })
             .collect();
 
-        let call_site_value = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
+        let call_site = self
+            .llvmbuilder
+            .build_indirect_call(fn_ty, fn_ptr, &args, "indirect_call")
+            .unwrap();
 
-        match call_site_value.try_as_basic_value() {
-            Either::Left(basic_value) => {
-                InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))
-            }
+        match call_site.try_as_basic_value() {
+            Either::Left(bv) => InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(bv)),
             Either::Right(_) => self.emit_null(func_call.ret_ty.clone()),
         }
     }

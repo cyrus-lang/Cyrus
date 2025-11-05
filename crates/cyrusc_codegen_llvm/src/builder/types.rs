@@ -1,5 +1,8 @@
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_cir::{CIREnumVariant, types::{CIRArrayTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy}};
+use cyrusc_cir::{
+    CIREnumVariant,
+    types::{CIRArrayTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
+};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace,
@@ -7,9 +10,7 @@ use inkwell::{
         core::LLVMFunctionType,
         prelude::{LLVMBool, LLVMTypeRef},
     },
-    types::{
-        AnyType, AnyTypeEnum, AsTypeRef, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType,
-    },
+    types::{AnyType, AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum, FunctionType, StructType},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
@@ -23,7 +24,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRTy::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRTy::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
             CIRTy::Array(array_ty) => self.emit_array_ty(array_ty).as_any_type_enum(),
-            CIRTy::FuncType(func_ty) => self.emit_func_ty(func_ty).as_any_type_enum(),
+            CIRTy::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
         }
     }
 

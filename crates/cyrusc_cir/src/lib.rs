@@ -58,7 +58,16 @@ pub enum CIRExprKind {
     StructInit(CIRStructInitExpr),
     StructFieldAccess(CIRStructFieldAccessExpr),
     UnionFieldAccess(CIRUnionFieldAccessExpr),
+    Lambda(CIRLambda),
     FuncCall(CIRFuncCall),
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRLambda {
+    pub irv_id: IRValueID,
+    pub params: CIRFuncParams,
+    pub ret: CIRTy,
+    pub body: Box<CIRBlockStmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -200,8 +209,7 @@ pub struct CIRVarStmt {
 pub struct CIRFuncDefStmt {
     pub irv_id: IRValueID,
     pub name: String,
-    pub params: Vec<CIRTy>,
-    pub is_var: bool,
+    pub params: CIRFuncParams,
     pub body: Box<CIRBlockStmt>,
     pub ret: CIRTy,
     pub vis: AccessSpecifier,
@@ -211,10 +219,21 @@ pub struct CIRFuncDefStmt {
 pub struct CIRFuncDeclStmt {
     pub irv_id: IRValueID,
     pub name: String,
-    pub params: Vec<CIRTy>,
-    pub is_var: bool,
+    pub params: CIRFuncParams,
     pub ret: CIRTy,
     pub vis: AccessSpecifier,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRFuncParam {
+    pub irv_id: IRValueID,
+    pub ty: CIRTy,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRFuncParams {
+    pub list: Vec<CIRFuncParam>,
+    pub is_var: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -306,17 +325,16 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         irv_id: func_def.irv_id,
         name: func_def.name.clone(),
         params: func_def.params.clone(),
-        is_var: func_def.is_var.clone(),
         ret: func_def.ret.clone(),
         vis: func_def.vis.clone(),
     }
 }
 
-pub fn cir_func_decl_as_func_ty(func_def: &CIRFuncDeclStmt) -> CIRFuncTy {
+pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncTy {
     CIRFuncTy {
-        params: func_def.params.clone(),
-        is_var: func_def.is_var.clone(),
-        ret: Box::new(func_def.ret.clone()),
+        params: func_decl.params.list.iter().map(|param| param.ty.clone()).collect(),
+        is_var: func_decl.params.is_var,
+        ret: Box::new(func_decl.ret.clone()),
     }
 }
 
