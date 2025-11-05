@@ -35,7 +35,11 @@ impl<'a> AnalysisContext<'a> {
         let generic_params = match sym.get_generic_params() {
             Some(generic_params) => generic_params,
             None => {
-                panic!("This symbol does not accept type args!");
+                if type_args.is_empty() {
+                    return Ok(Some((sym.get_symbol_id(), None)));
+                } else {
+                    panic!("Does not accept type args.");
+                }
             }
         };
 
