@@ -23,7 +23,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRTy::Enum(enum_ty) => self.emit_enum_ty(enum_ty).as_any_type_enum(),
             CIRTy::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
             CIRTy::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
-            CIRTy::Array(array_ty) => self.emit_array_ty(array_ty).as_any_type_enum(),
+            CIRTy::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
             CIRTy::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
         }
     }
@@ -146,7 +146,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmctx.struct_type(&element_types, false)
     }
 
-    pub(crate) fn emit_array_ty(&self, array_ty: CIRArrayTy) -> AnyTypeEnum<'ll> {
+    pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayTy) -> AnyTypeEnum<'ll> {
         let elm_ty: BasicTypeEnum<'ll> = self
             .emit_ty(*array_ty.ty)
             .try_into()

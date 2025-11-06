@@ -1,4 +1,4 @@
-use crate::{CIREnumVariant};
+use crate::CIREnumVariant;
 use cyrusc_tast::types::PlainType;
 
 #[derive(Debug, Clone)]
@@ -49,10 +49,43 @@ pub struct CIREnumTy {
 }
 
 impl CIRTy {
-    pub fn as_fn_ty(&self) -> Option<CIRFuncTy> {
+    pub fn as_fn(&self) -> Option<CIRFuncTy> {
         match self {
             CIRTy::FuncType(fn_ty) => Some(fn_ty.clone()),
-            _ => None
+            CIRTy::Const(inner) => inner.as_fn(),
+            _ => None,
+        }
+    }
+
+    pub fn as_plain_ty(&self) -> Option<PlainType> {
+        match self {
+            CIRTy::PlainType(plain_type) => Some(plain_type.clone()),
+            CIRTy::Const(inner) => inner.as_plain_ty(),
+            _ => None,
+        }
+    }
+
+    pub fn as_arr_ty(&self) -> Option<CIRArrayTy> {
+        match self {
+            CIRTy::Array(arr_ty) => Some(arr_ty.clone()),
+            CIRTy::Const(inner) => inner.as_arr_ty(),
+            _ => None,
+        }
+    }
+
+    pub fn is_enum(&self) -> bool {
+        match self {
+            CIRTy::Enum(..) => true,
+            CIRTy::Const(inner) => inner.is_enum(),
+            _ => false,
+        }
+    }
+
+    pub fn is_fn(&self) -> bool {
+        match self {
+            CIRTy::FuncType(_) => true,
+            CIRTy::Const(inner) => inner.is_fn(),
+            _ => false,
         }
     }
 }

@@ -125,8 +125,8 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExprKind::Unary(typed_unary_expr) => self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr),
             TypedExprKind::Assign(typed_assignment) => {
-                self.analyze_assignment(scope_id_opt, typed_assignment);
-                None
+                self.analyze_assign(scope_id_opt, typed_assignment);
+                typed_assignment.rhs.sema_ty.clone()
             }
             TypedExprKind::Cast(typed_cast) => self.analyze_cast_expr_type(scope_id_opt, typed_cast),
             TypedExprKind::Array(typed_array) => self.analyze_array_expr_type(scope_id_opt, typed_array),
@@ -1025,8 +1025,6 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(generic_type) = generic_type_opt {
                         struct_sig = substitute_struct_sig(&struct_sig, generic_type.mapping_ctx.clone())?;
                     }
-
-                    // TODO Substitute field access
 
                     self.analyze_struct_field_access_type(
                         scope_id_opt,
@@ -1957,8 +1955,6 @@ impl<'a> AnalysisContext<'a> {
 
         if method_call.is_fat_arrow {
             if !is_pointer {
-                dbg!(method_call.operand.sema_ty.clone());
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidFatArrow),
