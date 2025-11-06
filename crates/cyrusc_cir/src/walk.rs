@@ -484,9 +484,13 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_size_of(&self, scope_id_opt: Option<ScopeID>, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
-        CIRExprKind::SizeOf(CIRSizeOfExpr {
-            operand: Box::new(self.lower_expr(scope_id_opt, &sizeof.operand)),
-        })
+        let sema_ty = match &sizeof.operand.kind {
+            TypedExprKind::SemanticType(sema_ty) => sema_ty.clone(),
+            _ => sizeof.operand.sema_ty.clone().unwrap()
+        };
+
+        let ty = self.lower_sema_ty(scope_id_opt, &sema_ty);
+        CIRExprKind::SizeOf(CIRSizeOfExpr { ty })
     }
 
     fn lower_cast(&self, scope_id_opt: Option<ScopeID>, cast: &TypedCastExpr) -> CIRExprKind {
@@ -595,13 +599,8 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIRTy::Tuple(CIRTupleTy { items })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
-            SemanticType::UnresolvedSymbol(_) => {
-                unreachable!()
-            }
-            SemanticType::GenericParam(typed_identifier) => {
-                dbg!(typed_identifier.clone());
-                todo!();
-            }
+            SemanticType::UnresolvedSymbol(_) => unreachable!(),
+            SemanticType::GenericParam(_) => unreachable!(),
         }
     }
 
@@ -672,9 +671,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         if let Some(resolved_struct) = sym.as_struct() {
-            // resolved_struct.
-            // substitute_struct_sig(sig, ctx)
-            todo!();
+            CIRTy::Struct(self.lower_struct_sig_as_struct_ty(scope_id_opt, &resolved_struct.struct_sig))
         } else {
             unreachable!()
         }

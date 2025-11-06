@@ -144,7 +144,7 @@ pub struct CIRAssignExpr {
 
 #[derive(Debug, Clone)]
 pub struct CIRSizeOfExpr {
-    pub operand: Box<CIRExpr>,
+    pub ty: CIRTy,
 }
 
 #[derive(Debug, Clone)]

@@ -1735,7 +1735,7 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignExpr) {
+    pub(crate) fn analyze_assign(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignExpr) {
         let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.lhs, None) {
             Some(sema_ty) => sema_ty,
             None => return,

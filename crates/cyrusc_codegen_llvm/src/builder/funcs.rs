@@ -6,9 +6,13 @@ use crate::builder::{
 use cyrusc_ast::AccessSpecifier;
 use cyrusc_cir::{CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty, types::CIRTy};
 use cyrusc_tast::types::PlainType;
-use inkwell::{types::BasicTypeEnum, values::FunctionValue};
+use inkwell::{types::BasicTypeEnum, values::{FunctionValue, PointerValue}};
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_fn_as_ptr(&self, fn_value: FunctionValue<'ll>) -> PointerValue<'ll> {
+        fn_value.as_global_value().as_pointer_value()
+    }
+
     pub(crate) fn emit_func_params(&self, func_params: &CIRFuncParams) {
         func_params.list.iter().enumerate().for_each(|(param_idx, param)| {
             let basic_value = self
