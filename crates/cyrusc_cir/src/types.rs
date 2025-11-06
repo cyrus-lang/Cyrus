@@ -88,4 +88,11 @@ impl CIRTy {
             _ => false,
         }
     }
+
+    pub fn get_pointer_inner(&self) -> Option<&CIRTy> {
+        match self {
+            CIRTy::Pointer(inner) => Some(&inner),
+            _ => None,
+        }
+    }
 }

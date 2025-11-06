@@ -56,6 +56,7 @@ pub enum CIRExprKind {
     Tuple(CIRTupleExpr),
     TupleAccess(CIRTupleAccessExpr),
     StructInit(CIRStructInitExpr),
+    UnionInit(CIRUnionInitExpr),
     StructFieldAccess(CIRStructFieldAccessExpr),
     UnionFieldAccess(CIRUnionFieldAccessExpr),
     Lambda(CIRLambda),
@@ -80,7 +81,6 @@ pub struct CIRFuncCall {
 #[derive(Debug, Clone)]
 pub struct CIRUnionFieldAccessExpr {
     pub operand: Box<CIRExpr>,
-    pub field_idx: usize,
     pub field_ty: CIRTy,
 }
 
@@ -95,6 +95,11 @@ pub struct CIRStructFieldAccessExpr {
 pub struct CIRStructInitExpr {
     pub ty: CIRStructTy,
     pub fields: Vec<CIRExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRUnionInitExpr {
+    pub expr: Box<CIRExpr>,
 }
 
 #[derive(Debug, Clone)]

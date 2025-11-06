@@ -342,6 +342,11 @@ impl<'resolver> CIRWalk<'resolver> {
                 .collect();
 
             CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
+        } else if let Some(_) = sym.as_union() {
+            let struct_field_init = struct_init_expr.fields.first().unwrap();
+            let expr = Box::new(self.lower_expr(scope_id_opt, &struct_field_init.value));
+
+            CIRExprKind::UnionInit(CIRUnionInitExpr { expr })
         } else {
             unreachable!()
         }
@@ -404,6 +409,11 @@ impl<'resolver> CIRWalk<'resolver> {
             CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
                 operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
                 field_idx: field_access.field_index.unwrap(),
+                field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
+            })
+        } else if sym.as_union().is_some() {
+            CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
+                operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
                 field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
             })
         } else {
@@ -486,7 +496,7 @@ impl<'resolver> CIRWalk<'resolver> {
     fn lower_size_of(&self, scope_id_opt: Option<ScopeID>, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
         let sema_ty = match &sizeof.operand.kind {
             TypedExprKind::SemanticType(sema_ty) => sema_ty.clone(),
-            _ => sizeof.operand.sema_ty.clone().unwrap()
+            _ => sizeof.operand.sema_ty.clone().unwrap(),
         };
 
         let ty = self.lower_sema_ty(scope_id_opt, &sema_ty);
@@ -672,6 +682,8 @@ impl<'resolver> CIRWalk<'resolver> {
 
         if let Some(resolved_struct) = sym.as_struct() {
             CIRTy::Struct(self.lower_struct_sig_as_struct_ty(scope_id_opt, &resolved_struct.struct_sig))
+        } else if let Some(resolved_union) = sym.as_union() {
+            CIRTy::Union(self.lower_union_sig_as_union_ty(scope_id_opt, &resolved_union.union_sig))
         } else {
             unreachable!()
         }
