@@ -14,7 +14,11 @@ use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
     exprs::*,
     format::{format_concrete_type, format_func_type, format_typed_expr},
-    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_struct_sig},
+    generics::{
+        generic_type::GenericType,
+        mapping_ctx::GenericMappingCtx,
+        substitute::{substitute_struct_sig, substitute_union_sig},
+    },
     sigs::{FuncSig, UnionSig},
     stmts::{
         TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
@@ -1037,20 +1041,10 @@ impl<'a> AnalysisContext<'a> {
                 }
                 MemberAccessKind::Union(resolved_union) => {
                     let mut union_sig = resolved_union.union_sig.clone();
-                    todo!();
-                    // self.substitute_union_type_args(
-                    //     &mut mapping_ctx,
-                    //     &mut union_sig,
-                    //     generic_type_opt,
-                    //     field_access.loc.clone(),
-                    // );
-                    // self.substitute_field_access_type(
-                    //     &mut mapping_ctx,
-                    //     &mut field_access.operand,
-                    //     &union_sig.generic_params,
-                    //     generic_type_opt,
-                    //     field_access.loc.clone(),
-                    // );
+                    if let Some(generic_type) = generic_type_opt {
+                        union_sig = substitute_union_sig(&union_sig, generic_type.mapping_ctx.clone())?;
+                    }
+
                     self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type)
                 }
             },
@@ -1058,103 +1052,80 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // FIXME
     fn analyze_union_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInitExpr,
         resolved_union: &ResolvedUnion,
-        expected_type: Option<SemanticType>,
+        generic_type_opt: &Option<GenericType>,
     ) -> Option<SemanticType> {
-        todo!();
-        // let mut mapping_ctx = GenericMappingCtx::new_root();
+        // Union must have exactly one field initialized
+        if struct_init.fields.len() != 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnionInitWithInvalidFields),
+                location: Some(DiagLoc::new(struct_init.loc.clone())),
+                hint: Some("Union initialization must contain exactly one field".to_string()),
+            });
+            return None;
+        }
 
-        // if struct_init.fields.len() > 1 || struct_init.fields.len() == 0 {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(AnalyzerDiagKind::UnionInitWithInvalidFields),
-        //         location: Some(DiagLoc::new(struct_init.loc.clone())),
-        //         hint: None,
-        //     });
-        //     return None;
-        // }
+        // Extract the single field initializer
+        let field_init = &mut struct_init.fields[0];
 
-        // let field_init = &mut struct_init.fields[0];
-        // let field = match resolved_union
-        //     .union_sig
-        //     .fields
-        //     .iter()
-        //     .find(|field| field.name == field_init.name)
-        // {
-        //     Some(union_field) => union_field,
-        //     None => {
-        //         self.reporter.report(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-        //                 struct_name: resolved_union.union_sig.name.clone(),
-        //                 field_name: field_init.name.clone(),
-        //             }),
-        //             location: Some(DiagLoc::new(struct_init.loc.clone())),
-        //             hint: None,
-        //         });
-        //         return None;
-        //     }
-        // };
+        // Ensure the field exists in the union definition
+        let field = match resolved_union
+            .union_sig
+            .fields
+            .iter()
+            .find(|f| f.name == field_init.name)
+        {
+            Some(field) => field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                        struct_name: resolved_union.union_sig.name.clone(),
+                        field_name: field_init.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(field_init.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        };
 
-        // FIXME
-        // generic_mapping_ctx_scope!(
-        //     self,
-        //     resolved_union.union_sig.generic_params,
-        //     struct_init.type_args,
-        //     struct_init.loc.clone(),
-        //     Some(&mut mapping_ctx),
-        //     mapping_ctx,
-        //     {
-        //         self.substitute_type_or_infer_with(
-        //             scope_id_opt,
-        //             field.ty.clone(),
-        //             &mut field_init.value,
-        //             &mut mapping_ctx,
-        //             Some(0),
-        //         )?;
+        let field_ty = field.ty.clone();
+        field_init.value.sema_ty =
+            self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field_ty.clone()));
 
-        //         if let Some(type_args) = self.normalize_type_args_and_register(
-        //             &mut mapping_ctx,
-        //             scope_id_opt,
-        //             resolved_union.symbol_id,
-        //             &resolved_union.union_sig.generic_params,
-        //             expected_type,
-        //             struct_init.loc.clone(),
-        //             false,
-        //             true,
-        //         ) {
-        //             struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-        //         } else {
-        //             return None;
-        //         }
-        //     }
-        // );
+        if let Some(generic_type) = generic_type_opt {
+            // validate generic type instantiation
+            let final_generic_type = match generic_type.finalize(
+                resolved_union.union_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => generic_type,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
 
-        // let pure_union_type = if struct_init.is_const {
-        //     SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
-        //         struct_init.symbol_id,
-        //     ))))
-        // } else {
-        //     SemanticType::ResolvedSymbol(ResolvedSymbol::Union(struct_init.symbol_id))
-        // };
-
-        // if let Some(type_args) = &struct_init.type_args {
-        //     Some(SemanticType::GenericType(GenericType {
-        //         base: struct_init.symbol_id,
-        //         type_args: type_args.clone(),
-        //         is_const: struct_init.is_const,
-        //     }))
-        // } else {
-        //     Some(pure_union_type)
-        // }
+            Some(SemanticType::GenericType(final_generic_type.clone()))
+        } else {
+            if struct_init.is_const {
+                Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
+                    ResolvedSymbol::NamedStruct(struct_init.symbol_id),
+                ))))
+            } else {
+                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+                    struct_init.symbol_id,
+                )))
+            }
+        }
     }
 
-    // FIXME
     fn analyze_struct_init(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1183,7 +1154,7 @@ impl<'a> AnalysisContext<'a> {
             .unwrap();
 
         if let Some(resolved_union) = sym.as_union() {
-            self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, expected_type)
+            self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt)
         } else if let Some(resolved_struct) = sym.as_struct() {
             self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, &generic_type_opt)
         } else {

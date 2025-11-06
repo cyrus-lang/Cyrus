@@ -10,7 +10,8 @@ use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{
     CIRAddrOfExpr, CIRArrayExpr, CIRArrayIndexExpr, CIRAssignExpr, CIRDerefExpr, CIRExpr, CIRExprKind, CIRFuncCall,
     CIRInfixExpr, CIRLiteral, CIRLiteralKind, CIRPrefixExpr, CIRSizeOfExpr, CIRStructFieldAccessExpr,
-    CIRStructInitExpr, CIRTupleAccessExpr, CIRTupleExpr, CIRUnaryExpr, CIRValueRef,
+    CIRStructInitExpr, CIRTupleAccessExpr, CIRTupleExpr, CIRUnaryExpr, CIRUnionFieldAccessExpr, CIRUnionInitExpr,
+    CIRValueRef,
     types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
 };
 use cyrusc_tast::types::PlainType;
@@ -48,10 +49,13 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
             CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
             CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
+            CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init(union_init_expr),
             CIRExprKind::StructFieldAccess(struct_field_access_expr) => {
                 self.emit_struct_field_access(struct_field_access_expr)
             }
-            CIRExprKind::UnionFieldAccess(union_field_access_expr) => todo!(),
+            CIRExprKind::UnionFieldAccess(union_field_access_expr) => {
+                self.emit_union_field_access(union_field_access_expr)
+            }
             CIRExprKind::FuncCall(func_call) => self.emit_func_call(func_call),
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
         }
@@ -88,48 +92,14 @@ impl<'ll> IRBuilderCtx<'ll> {
                 index_rvalue,
                 arr_ty.len.try_into().unwrap(),
             )
+        } else if let Some(pointee_ty) = lvalue.ty.get_pointer_inner() {
+            self.emit_array_index_on_pointer(
+                lvalue.as_basic_value().into_pointer_value(),
+                index_rvalue,
+                pointee_ty.clone(),
+            )
         } else {
-            todo!();
-
-            // let rvalue = self.load_rvalue(local_scope_opt.clone(), lvalue.clone());
-
-            // if let Some(element_type) = rvalue.ty.as_arr_ty().unwrap().ty {
-            //     // lvalue
-            //     if let Some(inner_element_type) = element_type.get_pointer_inner() {
-            //         // rvalue
-            //         self.build_array_index_on_pointer(
-            //             // actual element type
-            //             local_scope_opt,
-            //             rvalue.as_basic_value().into_pointer_value(),
-            //             index_rvalue,
-            //             inner_element_type,
-            //         )
-            //     } else {
-            //         if let Some(element_type) = lvalue.value_type.get_pointer_inner() {
-            //             self.build_array_index_on_pointer(
-            //                 // actual element type
-            //                 local_scope_opt,
-            //                 rvalue.as_basic_value().into_pointer_value(),
-            //                 index_rvalue,
-            //                 element_type,
-            //             )
-            //         } else {
-            //             unreachable!()
-            //         }
-            //     }
-            // } else {
-            //     if let Some(element_type) = lvalue.value_type.get_pointer_inner() {
-            //         self.build_array_index_on_pointer(
-            //             // actual element type
-            //             local_scope_opt,
-            //             rvalue.as_basic_value().into_pointer_value(),
-            //             index_rvalue,
-            //             element_type,
-            //         )
-            //     } else {
-            //         unreachable!()
-            //     }
-            // }
+            unreachable!("Expected array or pointer type for array indexing expression");
         }
     }
 
@@ -821,6 +791,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
+    pub(crate) fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
+        let lvalue = self.emit_expr(&field_access.operand);
+        let ptr = lvalue.as_basic_value().into_pointer_value();
+        InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(ptr.into()))
+    }
+
     pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&field_access.operand);
 
@@ -874,6 +850,11 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRTy::Tuple(CIRTupleTy { items: tys }),
             InternalValueKind::RValue(struct_value.into()),
         )
+    }
+
+    pub(crate) fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
+        let lvalue = self.emit_expr(&union_init_expr.expr);
+        self.load_rvalue(lvalue)
     }
 
     pub(crate) fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
