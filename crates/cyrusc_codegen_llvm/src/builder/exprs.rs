@@ -7,19 +7,15 @@ use crate::{
     llvm::constness::is_basic_value_constant,
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_cir::{
-    CIRAddrOfExpr, CIRArrayExpr, CIRArrayIndexExpr, CIRAssignExpr, CIRDerefExpr, CIRExpr, CIRExprKind, CIRFuncCall,
-    CIRInfixExpr, CIRLiteral, CIRLiteralKind, CIRPrefixExpr, CIRSizeOfExpr, CIRStructFieldAccessExpr,
-    CIRStructInitExpr, CIRTupleAccessExpr, CIRTupleExpr, CIRUnaryExpr, CIRUnionFieldAccessExpr, CIRUnionInitExpr,
-    CIRValueRef,
-    types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
-};
+use cyrusc_cir::{types::*, *};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, Either, FloatPredicate, IntPredicate,
     module::Linkage,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum},
-    values::{AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue, StructValue},
+    values::{
+        AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue, StructValue,
+    },
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
@@ -50,6 +46,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
             CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
             CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init(union_init_expr),
+            CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
             CIRExprKind::StructFieldAccess(struct_field_access_expr) => {
                 self.emit_struct_field_access(struct_field_access_expr)
             }
@@ -700,7 +697,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             _ => {
                 if lhs_rvalue.ty.is_enum() && rhs_rvalue.ty.is_enum() {
-                    return self.build_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), true);
+                    return self.emit_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), true);
                 }
 
                 unreachable!()
@@ -737,7 +734,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             _ => {
                 if lhs_rvalue.ty.is_enum() && rhs_rvalue.ty.is_enum() {
-                    return self.build_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), false);
+                    return self.emit_compare_enum_variants(lhs_rvalue.clone(), rhs_rvalue.clone(), false);
                 }
 
                 unreachable!()
@@ -849,6 +846,86 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(
             CIRTy::Tuple(CIRTupleTy { items: tys }),
             InternalValueKind::RValue(struct_value.into()),
+        )
+    }
+
+    pub(crate) fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
+        let enum_ty = &enum_init_expr.enum_ty;
+
+        let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
+        let (payload_ty, _) = self.enum_payload_ty(enum_ty);
+
+        let mut enum_value = enum_struct_ty.get_undef();
+
+        let tag_val = self.llvmctx.i32_type().const_int(enum_init_expr.tag as u64, false);
+
+        enum_value = self
+            .llvmbuilder
+            .build_insert_value(enum_value, tag_val, 0, "enum.set_tag")
+            .expect("insert tag")
+            .into_struct_value();
+
+        match &enum_init_expr.variant {
+            CIREnumInitVariant::Identifier => {
+                let zero_payload = payload_ty.const_zero();
+                enum_value = self
+                    .llvmbuilder
+                    .build_insert_value(enum_value, zero_payload, 1, "enum.zero_payload")
+                    .expect("insert zero payload")
+                    .into_struct_value();
+            }
+
+            CIREnumInitVariant::Valued(expr) => {
+                let lvalue = self.emit_expr(expr);
+                let rvalue = self.load_rvalue(lvalue);
+
+                let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_ty);
+
+                enum_value = self
+                    .llvmbuilder
+                    .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
+                    .expect("insert payload")
+                    .into_struct_value();
+            }
+
+            CIREnumInitVariant::Fielded(field_exprs) => {
+                let field_basic_tys: Vec<BasicTypeEnum<'ll>> = field_exprs
+                    .iter()
+                    .map(|fld| {
+                        self.emit_ty(fld.ty.clone())
+                            .try_into()
+                            .expect("field must be basic type")
+                    })
+                    .collect();
+
+                let payload_struct_ty = self.llvmctx.struct_type(&field_basic_tys, false);
+
+                let mut payload_value = payload_struct_ty.get_undef();
+                for (idx, field_expr) in field_exprs.iter().enumerate() {
+                    let lvalue = self.emit_expr(&field_expr);
+                    let rvalue = self.load_rvalue(lvalue);
+
+                    payload_value = self
+                        .llvmbuilder
+                        .build_insert_value(payload_value, rvalue.as_basic_value(), idx as u32, "payload.insert")
+                        .expect("insert field into payload")
+                        .into_struct_value();
+                }
+
+                let copied_payload =
+                    self.intrinsic_copy_payload_to_buffer(payload_value.as_basic_value_enum(), payload_ty);
+
+                enum_value = self
+                    .llvmbuilder
+                    .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
+                    .expect("insert payload")
+                    .into_struct_value();
+            }
+        }
+
+        InternalValue::new(
+            CIRTy::Enum(enum_init_expr.enum_ty.clone()),
+            InternalValueKind::RValue(enum_value.as_basic_value_enum()),
         )
     }
 

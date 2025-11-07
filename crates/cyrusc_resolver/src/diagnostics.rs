@@ -1,4 +1,5 @@
 use cyrusc_ast::token::Location;
+use cyrusc_diagcentral::DiagKind;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -106,3 +107,5 @@ pub enum ResolverDiagKind {
     #[error("Interface methods cannot be renamed.")]
     RenameInterfaceMethod,
 }
+
+impl DiagKind for ResolverDiagKind {}

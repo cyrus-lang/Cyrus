@@ -1,3 +1,4 @@
+use cyrusc_diagcentral::DiagKind;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -14,3 +15,5 @@ impl fmt::Display for ProjectLayoutDiagKind {
         }
     }
 }
+
+impl DiagKind for ProjectLayoutDiagKind {}

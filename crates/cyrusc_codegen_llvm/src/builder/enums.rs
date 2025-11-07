@@ -1,7 +1,7 @@
 use crate::builder::{builder::IRBuilderCtx, values::InternalValue};
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn build_compare_enum_variants(
+    pub(crate) fn emit_compare_enum_variants(
         &mut self,
         lhs: InternalValue<'ll>,
         rhs: InternalValue<'ll>,

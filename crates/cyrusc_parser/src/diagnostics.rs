@@ -1,4 +1,5 @@
 use cyrusc_ast::token::TokenKind;
+use cyrusc_diagcentral::DiagKind;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -66,3 +67,5 @@ pub enum ParserDiagKind {
     #[error("Variable declaration requires an explicit type or an initializer expression.")]
     IncompleteVariableDeclaration,
 }
+
+impl DiagKind for ParserDiagKind {}

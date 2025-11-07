@@ -1,5 +1,5 @@
 use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -25,6 +25,8 @@ pub enum LexicalDiagKind {
     #[error("Invalid character: '{0}'.")]
     InvalidChar(char),
 }
+
+impl DiagKind for LexicalDiagKind {}
 
 pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag {
     display_single_diag!(Diag {

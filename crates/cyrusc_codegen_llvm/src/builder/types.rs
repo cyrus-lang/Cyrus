@@ -1,6 +1,6 @@
 use crate::builder::builder::IRBuilderCtx;
 use cyrusc_cir::{
-    CIREnumVariant,
+    CIREnumTyVariant,
     types::{CIRArrayTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
 };
 use cyrusc_tast::types::PlainType;
@@ -10,7 +10,7 @@ use inkwell::{
         core::LLVMFunctionType,
         prelude::{LLVMBool, LLVMTypeRef},
     },
-    types::{AnyType, AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum, FunctionType, StructType},
+    types::{AnyType, AnyTypeEnum, ArrayType, AsTypeRef, BasicType, BasicTypeEnum, FunctionType, StructType},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
@@ -72,46 +72,64 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmctx.struct_type(&field_types, struct_ty.is_packed)
     }
 
-    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> StructType<'ll> {
-        let llvmctx = &self.llvmctx;
+    pub(crate) fn enum_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
-        let tag_type = llvmctx.i32_type();
+        let mut max_payload_size: u64 = 0;
+        let mut max_payload_align: u64 = 1;
 
-        let mut largest_payload_ty: Option<BasicTypeEnum<'ll>> = None;
-        let mut max_payload_size = 0u64;
-
-        for variant in enum_ty.variants {
-            match variant {
-                CIREnumVariant::Ident => {}
-                CIREnumVariant::Valued(expr) => {
-                    let llvm_ty = self
+        for variant in &enum_ty.variants {
+            let (payload_size, payload_align) = match variant {
+                CIREnumTyVariant::Identifier => (0, 1),
+                CIREnumTyVariant::Valued(expr) => {
+                    let llvm_ty: BasicTypeEnum<'ll> = self
                         .emit_ty(expr.ty.clone())
                         .try_into()
                         .expect("Enum value payload must be a valid llvm type.");
                     let size = target_data.get_store_size(&llvm_ty);
-                    if size > max_payload_size {
-                        max_payload_size = size;
-                        largest_payload_ty = Some(llvm_ty);
+                    let align = target_data.get_abi_alignment(&llvm_ty) as u64;
+                    (size, align)
+                }
+                CIREnumTyVariant::Fielded(field_tys) => {
+                    if field_tys.is_empty() {
+                        (0, 1)
+                    } else {
+                        let llvm_fields: Vec<BasicTypeEnum<'ll>> = self
+                            .emit_tys(field_tys)
+                            .iter()
+                            .map(|ty| (*ty).try_into().unwrap())
+                            .collect();
+
+                        let struct_ty = self.llvmctx.struct_type(&llvm_fields, false);
+                        let size = target_data.get_store_size(&struct_ty);
+                        let align = target_data.get_abi_alignment(&struct_ty) as u64;
+                        (size, align)
                     }
                 }
-                CIREnumVariant::Fielded(field_tys) => {
-                    let llvm_fields = self
-                        .emit_tys(&field_tys)
-                        .iter()
-                        .map(|ty| (*ty).try_into().unwrap())
-                        .collect::<Vec<BasicTypeEnum<'ll>>>();
-                    let struct_ty = llvmctx.struct_type(&llvm_fields, false);
-                    let size = target_data.get_store_size(&struct_ty);
-                    if size > max_payload_size {
-                        max_payload_size = size;
-                        largest_payload_ty = Some(struct_ty.as_basic_type_enum());
-                    }
-                }
+            };
+
+            if payload_size > max_payload_size {
+                max_payload_size = payload_size;
+                max_payload_align = payload_align;
             }
         }
 
-        let payload_ty = largest_payload_ty.unwrap_or_else(|| llvmctx.i8_type().as_basic_type_enum());
-        llvmctx.struct_type(&[tag_type.as_basic_type_enum(), payload_ty], false)
+        if max_payload_size == 0 {
+            max_payload_size = 1;
+            max_payload_align = 1;
+        }
+
+        // round up size to alignment boundary
+        let aligned_size = ((max_payload_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
+
+        let payload_buffer_ty = self.llvmctx.i8_type().array_type(aligned_size as u32);
+        (payload_buffer_ty, aligned_size)
+    }
+
+    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> StructType<'ll> {
+        let tag_type = self.llvmctx.i32_type();
+        let (payload_ty, _) = self.enum_payload_ty(&enum_ty);
+        self.llvmctx
+            .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
     }
 
     pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionTy) -> StructType<'ll> {

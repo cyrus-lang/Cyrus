@@ -1,4 +1,4 @@
-use crate::{Diag, DiagLevel};
+use crate::{Diag, DiagKind, DiagLevel};
 use colorized::{Color, Colors};
 use console::user_attended;
 use cyrusc_strescape::{saturating_sub, spaces};
@@ -100,17 +100,17 @@ macro_rules! display_single_diag {
     };
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum CustomDiagKind {
     Custom(String),
 }
 
+impl DiagKind for CustomDiagKind {}
+
 impl fmt::Display for CustomDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CustomDiagKind::Custom(message) => {
-                write!(f, "{}", message)
-            }
+            CustomDiagKind::Custom(message) => write!(f, "{}", message),
         }
     }
 }
