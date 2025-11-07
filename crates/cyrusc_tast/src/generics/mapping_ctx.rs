@@ -1,4 +1,4 @@
-use crate::{SymbolID, exprs::TypedIdentifier, format::format_concrete_type, types::SemanticType};
+use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
 use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
 pub type ChildGenericParamSymbolID = SymbolID;
@@ -96,7 +96,7 @@ impl GenericMappingCtx {
 
         for (param_id, sema_ty) in &self.named {
             let param_name = format_symbol(param_id.symbol_id);
-            let type_str = format_concrete_type(sema_ty.clone(), format_symbol);
+            let type_str = format_sema_ty(sema_ty.clone(), format_symbol);
             parts.push(format!("{} = {}", param_name, type_str));
         }
 

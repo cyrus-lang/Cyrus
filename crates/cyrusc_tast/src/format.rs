@@ -104,13 +104,13 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
         TypedExprKind::Cast(typed_cast) => {
             let mut fmt = String::new();
             let operand_fmt = &format_typed_expr(&typed_cast.operand, format_symbol);
-            let target_type_fmt = format_concrete_type(typed_cast.target_type.clone(), format_symbol);
+            let target_type_fmt = format_sema_ty(typed_cast.target_type.clone(), format_symbol);
             fmt.push_str(&format!("cast({}, {})", operand_fmt, target_type_fmt));
             fmt
         }
         TypedExprKind::Array(typed_array) => {
             let mut fmt = String::new();
-            let array_type_fmt = format_concrete_type(typed_array.array_type.clone(), format_symbol);
+            let array_type_fmt = format_sema_ty(typed_array.array_type.clone(), format_symbol);
             fmt.push_str(&format!(
                 "{}{{{}}}",
                 array_type_fmt,
@@ -207,7 +207,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                         let mut lfmt = String::new();
                         lfmt.push_str(&field.field_name);
                         if let Some(sema_ty) = &field.field_ty {
-                            let type_fmt = format_concrete_type(sema_ty.clone(), format_symbol);
+                            let type_fmt = format_sema_ty(sema_ty.clone(), format_symbol);
                             lfmt.push_str(": ");
                             lfmt.push_str(&type_fmt);
                         }
@@ -224,7 +224,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             let operand_fmt = &format_typed_expr(&typed_size_of_expr.operand, format_symbol);
             return format!("sizeof({})", operand_fmt);
         }
-        TypedExprKind::SemanticType(sema_ty) => format_concrete_type(sema_ty.clone(), format_symbol),
+        TypedExprKind::SemanticType(sema_ty) => format_sema_ty(sema_ty.clone(), format_symbol),
         TypedExprKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),
         TypedExprKind::Tuple(tuple_value) => {
             format!(
@@ -240,7 +240,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
     }
 }
 
-pub fn format_unnamed_struct_type<'a>(
+pub fn format_unnamed_struct_ty<'a>(
     typed_unnamed_struct_type: &TypedUStructType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
@@ -262,7 +262,7 @@ pub fn format_unnamed_struct_type<'a>(
                 format!(
                     "{}: {}",
                     field.field_name,
-                    format_concrete_type(*field.field_ty.clone(), format_symbol)
+                    format_sema_ty(*field.field_ty.clone(), format_symbol)
                 )
             })
             .collect::<Vec<String>>()
@@ -274,7 +274,7 @@ pub fn format_unnamed_struct_type<'a>(
     fmt
 }
 
-pub fn format_concrete_type<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
+pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match sema_ty {
         SemanticType::UnresolvedSymbol(..) => unreachable!(),
         SemanticType::GenericParam(identifier) => identifier.name.clone(),
@@ -316,7 +316,7 @@ pub fn format_concrete_type<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(S
         },
         SemanticType::Array(typed_array_type) => {
             let mut fmt = String::new();
-            fmt.push_str(&format_concrete_type(*typed_array_type.element_type, format_symbol));
+            fmt.push_str(&format_sema_ty(*typed_array_type.element_type, format_symbol));
             fmt.push_str("[");
             match typed_array_type.capacity {
                 TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
@@ -333,22 +333,22 @@ pub fn format_concrete_type<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(S
             fmt
         }
         SemanticType::Const(sema_ty) => {
-            format!("const {}", format_concrete_type(*sema_ty, format_symbol))
+            format!("const {}", format_sema_ty(*sema_ty, format_symbol))
         }
         SemanticType::Pointer(sema_ty) => {
-            format!("{}*", format_concrete_type(*sema_ty, format_symbol))
+            format!("{}*", format_sema_ty(*sema_ty, format_symbol))
         }
         SemanticType::UnnamedStruct(unnamed_struct_type) => {
-            format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
+            format_unnamed_struct_ty(&unnamed_struct_type, format_symbol)
         }
-        SemanticType::FuncType(func_type) => format_func_type(&func_type, format_symbol),
+        SemanticType::FuncType(func_type) => format_func_ty(&func_type, format_symbol),
         SemanticType::Tuple(tuple_type) => {
             format!(
                 "({})",
                 tuple_type
                     .type_list
                     .iter()
-                    .map(|t| format_concrete_type(t.clone(), format_symbol))
+                    .map(|t| format_sema_ty(t.clone(), format_symbol))
                     .collect::<Vec<String>>()
                     .join(", ")
             )
@@ -357,12 +357,12 @@ pub fn format_concrete_type<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(S
     }
 }
 
-pub fn format_func_type<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
+pub fn format_func_ty<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     let mut params = func_type
         .params
         .list
         .iter()
-        .map(|param| format_concrete_type(param.clone(), format_symbol))
+        .map(|param| format_sema_ty(param.clone(), format_symbol))
         .collect::<Vec<String>>()
         .join(", ");
 
@@ -370,12 +370,12 @@ pub fn format_func_type<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(S
         match *variadic {
             TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
             TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                params.push_str(&format!(", {}...", format_concrete_type(sema_ty, format_symbol)))
+                params.push_str(&format!(", {}...", format_sema_ty(sema_ty, format_symbol)))
             }
         }
     }
 
-    let ret = format_concrete_type(*func_type.return_type.clone(), format_symbol);
+    let ret = format_sema_ty(*func_type.return_type.clone(), format_symbol);
     format!("fn({}) {}", params, ret)
 }
 
@@ -389,7 +389,7 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, format_symbol: &(dyn Fn(Symbo
                 format!(
                     "{}: {}",
                     typed_func_param.name,
-                    format_concrete_type(typed_func_param.ty.clone(), format_symbol)
+                    format_sema_ty(typed_func_param.ty.clone(), format_symbol)
                 )
             }
             TypedFuncParamKind::SelfModifier(..) => unreachable!(),
@@ -403,11 +403,11 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, format_symbol: &(dyn Fn(Symbo
             TypedFuncVariadicParams::Typed(identifier, sema_ty) => params.push_str(&format!(
                 ", {}: ...{}",
                 identifier,
-                format_concrete_type(sema_ty.clone(), format_symbol)
+                format_sema_ty(sema_ty.clone(), format_symbol)
             )),
         }
     }
 
-    let ret = format_concrete_type(lambda.return_type.clone(), format_symbol);
+    let ret = format_sema_ty(lambda.return_type.clone(), format_symbol);
     format!("fn({}) {} {{ ... }}", params, ret)
 }

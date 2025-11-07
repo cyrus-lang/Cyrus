@@ -13,7 +13,7 @@ use cyrusc_resolver::{
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
     exprs::*,
-    format::{format_concrete_type, format_func_type, format_typed_expr},
+    format::{format_sema_ty, format_func_ty, format_typed_expr},
     generics::{
         generic_type::GenericType,
         mapping_ctx::GenericMappingCtx,
@@ -403,7 +403,7 @@ impl<'a> AnalysisContext<'a> {
             .and_then(|b| Some(b.is_integer()))
             .is_some()
         {
-            let found_type = format_concrete_type(index_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+            let found_type = format_sema_ty(index_concrete_type, &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -618,7 +618,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: format_concrete_type(
+                        struct_name: format_sema_ty(
                             SemanticType::UnnamedStruct(unnamed_struct_type.clone()),
                             &(self.symbol_formatter)(scope_id_opt),
                         ),
@@ -1347,11 +1347,11 @@ impl<'a> AnalysisContext<'a> {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                            param_type: format_concrete_type(
+                                            param_type: format_sema_ty(
                                                 variadic_param_type.clone(),
                                                 &(self.symbol_formatter)(scope_id_opt),
                                             ),
-                                            argument_type: format_concrete_type(
+                                            argument_type: format_sema_ty(
                                                 arg_type,
                                                 &(self.symbol_formatter)(scope_id_opt),
                                             ),
@@ -1410,8 +1410,8 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_concrete_type(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                        argument_type: format_concrete_type(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                        param_type: format_sema_ty(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
                         argument_idx: param_idx as u32,
                     }),
                     location: Some(DiagLoc::new(loc.clone())),
@@ -1439,7 +1439,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
-        let func_name = format_func_type(func_type, &(self.symbol_formatter)(scope_id_opt));
+        let func_name = format_func_ty(func_type, &(self.symbol_formatter)(scope_id_opt));
 
         // check argument count
         if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
@@ -1476,11 +1476,11 @@ impl<'a> AnalysisContext<'a> {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                            param_type: format_concrete_type(
+                                            param_type: format_sema_ty(
                                                 variadic_param_type.clone(),
                                                 &(self.symbol_formatter)(scope_id_opt),
                                             ),
-                                            argument_type: format_concrete_type(
+                                            argument_type: format_sema_ty(
                                                 arg_type,
                                                 &(self.symbol_formatter)(scope_id_opt),
                                             ),
@@ -1523,8 +1523,8 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_concrete_type(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                        argument_type: format_concrete_type(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                        param_type: format_sema_ty(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
                         argument_idx: param_idx as u32,
                     }),
                     location: Some(DiagLoc::new(loc.clone())),
@@ -1566,7 +1566,7 @@ impl<'a> AnalysisContext<'a> {
             func_call.return_type = return_type.clone();
             return_type
         } else {
-            let symbol_name = format_concrete_type(operand_ty, &(self.symbol_formatter)(scope_id_opt));
+            let symbol_name = format_sema_ty(operand_ty, &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -2008,8 +2008,8 @@ impl<'a> AnalysisContext<'a> {
             };
 
             if !self.check_type_mismatch(scope_id_opt, argument_type.clone(), element_type, argument.loc.clone()) {
-                let element_type = format_concrete_type(argument_type, &(self.symbol_formatter)(scope_id_opt));
-                let expected_type = format_concrete_type(
+                let element_type = format_sema_ty(argument_type, &(self.symbol_formatter)(scope_id_opt));
+                let expected_type = format_sema_ty(
                     *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
                     &(self.symbol_formatter)(scope_id_opt),
                 );
@@ -2074,8 +2074,8 @@ impl<'a> AnalysisContext<'a> {
             cast.loc.clone(),
         ) || self.check_explicit_typecast(operand.clone(), cast.target_type.clone()))
         {
-            let lhs_type = format_concrete_type(cast.target_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type = format_concrete_type(operand, &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type = format_sema_ty(cast.target_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type = format_sema_ty(operand, &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

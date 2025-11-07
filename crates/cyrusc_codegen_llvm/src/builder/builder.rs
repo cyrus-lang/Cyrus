@@ -135,12 +135,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let llvmmodule = self.llvmmodule.borrow();
         let llvmmodule_name = llvmmodule.get_name().to_str().unwrap();
-
         let name = make_global_var_abi_name(llvmmodule_name, &cir_global_var.name, &cir_global_var.vis);
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvmmodule.add_global(ty, None, &name);
-        dbg!(llvmmodule);
+        drop(llvmmodule);
 
         if let Some(expr) = &cir_global_var.expr {
             let lvalue = self.emit_expr(&expr);

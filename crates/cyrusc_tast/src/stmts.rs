@@ -10,10 +10,10 @@ use std::{collections::HashMap, hash::Hash};
 pub enum TypedStmt {
     Variable(TypedVarStmt),
     Typedef(TypedTypedefStmt),
-    GlobalVariable(TypedGlobalVarStmt),
+    GlobalVar(TypedGlobalVarStmt),
     FuncDef(TypedFuncDefStmt),
     FuncDecl(TypedFuncDeclStmt),
-    BlockStatement(TypedBlockStmt),
+    BlockStmt(TypedBlockStmt),
     If(TypedIfStmt),
     Return(TypedReturnStmt),
     Break(TypedBreakStmt),
@@ -25,7 +25,7 @@ pub enum TypedStmt {
     Enum(TypedEnumStmt),
     Union(TypedUnionStmt),
     Interface(TypedInterfaceStmt),
-    Expression(TypedExprStmt),
+    Expr(TypedExprStmt),
     Defer(TypedDeferStmt),
     ExportTuple(TypedExportTupleStmt),
 }
@@ -35,10 +35,10 @@ impl TypedStmt {
         match self {
             TypedStmt::Variable(typed_variable) => typed_variable.loc.clone(),
             TypedStmt::Typedef(typed_typedef) => typed_typedef.loc.clone(),
-            TypedStmt::GlobalVariable(typed_global_variable) => typed_global_variable.loc.clone(),
+            TypedStmt::GlobalVar(typed_global_variable) => typed_global_variable.loc.clone(),
             TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
             TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
-            TypedStmt::BlockStatement(typed_block_statement) => typed_block_statement.loc.clone(),
+            TypedStmt::BlockStmt(typed_block_statement) => typed_block_statement.loc.clone(),
             TypedStmt::If(typed_if) => typed_if.loc.clone(),
             TypedStmt::Return(typed_return) => typed_return.loc.clone(),
             TypedStmt::Break(typed_break) => typed_break.loc.clone(),
@@ -48,7 +48,7 @@ impl TypedStmt {
             TypedStmt::Struct(typed_struct) => typed_struct.loc.clone(),
             TypedStmt::Enum(typed_enum) => typed_enum.loc.clone(),
             TypedStmt::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStmt::Expression(typed_expression) => typed_expression.loc.clone(),
+            TypedStmt::Expr(typed_expression) => typed_expression.loc.clone(),
             TypedStmt::While(while_stmt) => while_stmt.loc.clone(),
             TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
             TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
@@ -344,7 +344,7 @@ pub struct TypedSwitchCase {
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
-    Expression(TypedExprStmt, SourceLoc),
+    Expr(TypedExprStmt, SourceLoc),
     Identifier(String, SourceLoc),
     EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
 }

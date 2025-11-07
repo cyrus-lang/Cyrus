@@ -8,7 +8,7 @@ use cyrusc_resolver::symbols::LocalScopeRef;
 use cyrusc_tast::{
     ScopeID,
     exprs::*,
-    format::format_concrete_type,
+    format::format_sema_ty,
     types::{PlainType, SemanticType},
 };
 
@@ -197,7 +197,7 @@ impl<'a> AnalysisContext<'a> {
                 match valid_concrete_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -224,7 +224,7 @@ impl<'a> AnalysisContext<'a> {
                 match valid_concrete_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -251,7 +251,7 @@ impl<'a> AnalysisContext<'a> {
                 match valid_concrete_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -289,7 +289,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if !operand_type.is_integer() {
-            let operand_type = format_concrete_type(operand_type, &(self.symbol_formatter)(scope_id_opt));
+            let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -366,8 +366,8 @@ impl<'a> AnalysisContext<'a> {
         let rhs_type = rhs_type.get_const_inner();
 
         if lhs_type.is_enum() && rhs_type.is_enum() {
-            let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
             let local_scope_opt =
                 scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
@@ -388,8 +388,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
-            let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -433,8 +433,8 @@ impl<'a> AnalysisContext<'a> {
         let rhs_type = rhs_type.get_const_inner();
 
         if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
-            let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -453,8 +453,8 @@ impl<'a> AnalysisContext<'a> {
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
             Some(result_basic) => Some(SemanticType::PlainType(result_basic)),
             None => {
-                let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-                let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

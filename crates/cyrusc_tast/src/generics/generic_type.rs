@@ -1,6 +1,6 @@
 use crate::{
     SymbolID,
-    format::format_concrete_type,
+    format::format_sema_ty,
     generics::{
         diagnostics::GenericTypesDiagKind,
         mapping_ctx::{GenericMappingCtx, mapping_ctx_eq_refcell},
@@ -129,9 +129,9 @@ impl GenericType {
             .type_args
             .iter()
             .map(|type_arg| match type_arg {
-                TypedTypeArg::Positional { ty, .. } => format_concrete_type(ty.clone(), &format_symbol),
+                TypedTypeArg::Positional { ty, .. } => format_sema_ty(ty.clone(), &format_symbol),
                 TypedTypeArg::Named { key, ty, .. } => {
-                    format!("{}: {}", key, format_concrete_type(ty.clone(), &format_symbol))
+                    format!("{}: {}", key, format_sema_ty(ty.clone(), &format_symbol))
                 }
             })
             .collect::<Vec<String>>()

@@ -871,7 +871,7 @@ impl Resolver {
     fn resolve_decl_names(&mut self, module_id: ModuleID, ast: &ProgramTree) {
         for stmt in ast.body.as_ref() {
             match stmt {
-                Statement::Interface(interface) => {
+                Stmt::Interface(interface) => {
                     if self.duplicate_symbol(
                         module_id,
                         interface.identifier.name.clone(),
@@ -882,7 +882,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &interface.identifier.name.clone());
                 }
-                Statement::Union(union_decl) => {
+                Stmt::Union(union_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         union_decl.identifier.name.clone(),
@@ -893,7 +893,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &union_decl.identifier.name.clone());
                 }
-                Statement::Typedef(typedef) => {
+                Stmt::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
                         typedef.identifier.name.clone(),
@@ -904,7 +904,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &typedef.identifier.name.clone());
                 }
-                Statement::FuncDef(func_def) => {
+                Stmt::FuncDef(func_def) => {
                     if self.duplicate_symbol(
                         module_id,
                         func_def.identifier.name.clone(),
@@ -915,7 +915,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &func_def.identifier.name.clone());
                 }
-                Statement::FuncDecl(func_decl) => {
+                Stmt::FuncDecl(func_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         func_decl.identifier.name.clone(),
@@ -926,7 +926,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &func_decl.get_usable_name());
                 }
-                Statement::GlobalVariable(global_variable) => {
+                Stmt::GlobalVar(global_variable) => {
                     if self.duplicate_symbol(
                         module_id,
                         global_variable.identifier.name.clone(),
@@ -937,7 +937,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &global_variable.identifier.name.clone());
                 }
-                Statement::Struct(struct_decl) => {
+                Stmt::Struct(struct_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         struct_decl.identifier.name.clone(),
@@ -948,7 +948,7 @@ impl Resolver {
 
                     self.insert_symbol_name(module_id, &struct_decl.identifier.name.clone());
                 }
-                Statement::Enum(enum_decl) => {
+                Stmt::Enum(enum_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         enum_decl.identifier.name.clone(),
@@ -970,88 +970,88 @@ impl Resolver {
 
         for stmt in ast.body.as_ref() {
             let valid_top_level_stmt: Result<TypedStmt, SourceLoc> = match stmt {
-                Statement::Import(..) => continue,
-                Statement::GlobalVariable(global_var) => match self.resolve_global_var_stmt(module_id, global_var) {
+                Stmt::Import(..) => continue,
+                Stmt::GlobalVar(global_var) => match self.resolve_global_var_stmt(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Typedef(typedef) => match self.resolve_typedef_stmt(module_id, None, typedef) {
+                Stmt::Typedef(typedef) => match self.resolve_typedef_stmt(module_id, None, typedef) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::FuncDef(func_def) => match self.resolve_func_def_stmt(module_id, func_def) {
+                Stmt::FuncDef(func_def) => match self.resolve_func_def_stmt(module_id, func_def) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::FuncDecl(func_decl) => match self.resolve_func_decl_stmt(module_id, func_decl) {
+                Stmt::FuncDecl(func_decl) => match self.resolve_func_decl_stmt(module_id, func_decl) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Struct(struct_decl) => match self.resolve_struct_stmt(module_id, None, struct_decl, None) {
+                Stmt::Struct(struct_decl) => match self.resolve_struct_stmt(module_id, None, struct_decl, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Enum(enum_decl) => match self.resolve_enum_stmt(module_id, None, enum_decl, None) {
+                Stmt::Enum(enum_decl) => match self.resolve_enum_stmt(module_id, None, enum_decl, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Interface(interface) => match self.resolve_interface_stmt(module_id, None, interface) {
+                Stmt::Interface(interface) => match self.resolve_interface_stmt(module_id, None, interface) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Union(union_stmt) => match self.resolve_union_stmt(module_id, None, union_stmt, None) {
+                Stmt::Union(union_stmt) => match self.resolve_union_stmt(module_id, None, union_stmt, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Variable(variable) => Err(SourceLoc::from_loc(
+                Stmt::Variable(variable) => Err(SourceLoc::from_loc(
                     variable.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::If(if_stmt) => Err(SourceLoc::from_loc(
+                Stmt::If(if_stmt) => Err(SourceLoc::from_loc(
                     if_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Return(return_stmt) => Err(SourceLoc::from_loc(
+                Stmt::Return(return_stmt) => Err(SourceLoc::from_loc(
                     return_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::For(for_stmt) => Err(SourceLoc::from_loc(
+                Stmt::For(for_stmt) => Err(SourceLoc::from_loc(
                     for_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Foreach(foreach) => Err(SourceLoc::from_loc(
+                Stmt::Foreach(foreach) => Err(SourceLoc::from_loc(
                     foreach.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Switch(switch) => Err(SourceLoc::from_loc(
+                Stmt::Switch(switch) => Err(SourceLoc::from_loc(
                     switch.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::BlockStatement(block_statement) => Err(SourceLoc::from_loc(
+                Stmt::BlockStmt(block_statement) => Err(SourceLoc::from_loc(
                     block_statement.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Break(break_stmt) => Err(SourceLoc::from_loc(
+                Stmt::Break(break_stmt) => Err(SourceLoc::from_loc(
                     break_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Continue(continue_stmt) => Err(SourceLoc::from_loc(
+                Stmt::Continue(continue_stmt) => Err(SourceLoc::from_loc(
                     continue_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Defer(defer) => Err(SourceLoc::from_loc(
+                Stmt::Defer(defer) => Err(SourceLoc::from_loc(
                     defer.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::While(while_stmt) => Err(SourceLoc::from_loc(
+                Stmt::While(while_stmt) => Err(SourceLoc::from_loc(
                     while_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::ExportTuple(export_tuple_values) => Err(SourceLoc::from_loc(
+                Stmt::ExportTuple(export_tuple_values) => Err(SourceLoc::from_loc(
                     export_tuple_values.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
-                Statement::Expression(..) => continue,
+                Stmt::Expr(..) => continue,
             };
 
             match valid_top_level_stmt {
@@ -1355,7 +1355,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_global_var_stmt(&mut self, module_id: ModuleID, global_var: &GlobalVariable) -> Option<TypedStmt> {
+    fn resolve_global_var_stmt(&mut self, module_id: ModuleID, global_var: &GlobalVar) -> Option<TypedStmt> {
         let sema_ty = global_var
             .type_specifier
             .clone()
@@ -1387,7 +1387,7 @@ impl Resolver {
             SymbolEntry::new(SymbolEntryKind::GlobalVar(resolved_global_var)),
         );
 
-        Some(TypedStmt::GlobalVariable(TypedGlobalVarStmt {
+        Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
             module_id,
             symbol_id,
             name: global_var.identifier.name.clone(),
@@ -1432,7 +1432,7 @@ impl Resolver {
         struct_symbol_id: SymbolID,
     ) -> Option<HashMap<String, SymbolID>> {
         let mut methods: HashMap<String, SymbolID> = HashMap::new();
-        let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStatement>, ScopeID)> = HashMap::new();
+        let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStmt>, ScopeID)> = HashMap::new();
 
         for func_def in methods_list {
             let method_scope_id = generate_scope_id();
@@ -2032,7 +2032,7 @@ impl Resolver {
         &mut self,
         scope_id: ScopeID,
         local_scope: LocalScopeRef,
-        block_statement: &BlockStatement,
+        block_statement: &BlockStmt,
     ) -> Option<TypedBlockStmt> {
         let module_id = self.current_module.unwrap();
         let mut typed_body: Vec<TypedStmt> = Vec::new();
@@ -2040,7 +2040,7 @@ impl Resolver {
 
         for stmt in &block_statement.exprs {
             match stmt {
-                Statement::Defer(defer) => {
+                Stmt::Defer(defer) => {
                     if let Some(typed_stmt) =
                         self.resolve_stmt(module_id, scope_id, local_scope.clone(), &defer.operand)
                     {
@@ -2189,25 +2189,25 @@ impl Resolver {
         module_id: ModuleID,
         scope_id: ScopeID,
         local_scope: LocalScopeRef,
-        stmt: &Statement,
+        stmt: &Stmt,
     ) -> Option<TypedStmt> {
         match stmt {
-            Statement::ExportTuple(export_tuple) => {
+            Stmt::ExportTuple(export_tuple) => {
                 self.resolve_export_tuple(module_id, scope_id, local_scope, export_tuple)
             }
-            Statement::Variable(variable) => {
+            Stmt::Variable(variable) => {
                 let typed_var = self.declare_local_variable(module_id, local_scope.clone(), &variable)?;
                 Some(TypedStmt::Variable(typed_var))
             }
-            Statement::Expression(expr) => {
+            Stmt::Expr(expr) => {
                 let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr)?;
-                Some(TypedStmt::Expression(typed_expr))
+                Some(TypedStmt::Expr(typed_expr))
             }
-            Statement::If(if_stmt) => {
+            Stmt::If(if_stmt) => {
                 let typed_if = self.resolve_if_stmt(module_id, Rc::clone(&local_scope), if_stmt)?;
                 Some(TypedStmt::If(typed_if))
             }
-            Statement::Return(return_stmt) => {
+            Stmt::Return(return_stmt) => {
                 let arg = if let Some(argument) = &return_stmt.argument {
                     Some(self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), argument)?)
                 } else {
@@ -2218,8 +2218,8 @@ impl Resolver {
                     loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
-            Statement::Foreach(..) => todo!(),
-            Statement::For(for_stmt) => {
+            Stmt::Foreach(..) => todo!(),
+            Stmt::For(for_stmt) => {
                 let body_scope_id = generate_scope_id();
                 let body_scope = LocalScope::deep_clone(&local_scope);
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
@@ -2253,7 +2253,7 @@ impl Resolver {
                     loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
-            Statement::While(while_stmt) => {
+            Stmt::While(while_stmt) => {
                 let body_scope_id = generate_scope_id();
                 let body_scope = LocalScope::deep_clone(&local_scope);
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
@@ -2269,7 +2269,7 @@ impl Resolver {
                     loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
-            Statement::Switch(switch) => {
+            Stmt::Switch(switch) => {
                 let operand = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &switch.operand)?;
 
                 let mut cases: Vec<TypedSwitchCase> = Vec::new();
@@ -2279,10 +2279,10 @@ impl Resolver {
                     self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
 
                     let pattern = match &case.pattern {
-                        SwitchCasePattern::Expression(expr) => {
+                        SwitchCasePattern::Expr(expr) => {
                             let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr)?;
                             let loc = typed_expr.loc.clone();
-                            TypedSwitchCasePattern::Expression(typed_expr, loc)
+                            TypedSwitchCasePattern::Expr(typed_expr, loc)
                         }
                         SwitchCasePattern::Identifier(identifier) => {
                             let symbol_id = generate_symbol_id();
@@ -2382,48 +2382,48 @@ impl Resolver {
                     loc: SourceLoc::from_loc(switch.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
-            Statement::Enum(enum_decl) => {
+            Stmt::Enum(enum_decl) => {
                 let typed_stmt =
                     self.resolve_enum_stmt(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
-            Statement::Union(union_decl) => {
+            Stmt::Union(union_decl) => {
                 let typed_stmt =
                     self.resolve_union_stmt(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
-            Statement::Interface(interface) => {
+            Stmt::Interface(interface) => {
                 let typed_stmt = self.resolve_interface_stmt(module_id, Some(local_scope.clone()), interface)?;
                 Some(typed_stmt)
             }
-            Statement::Struct(struct_decl) => {
+            Stmt::Struct(struct_decl) => {
                 let typed_stmt =
                     self.resolve_struct_stmt(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
-            Statement::BlockStatement(block_statement) => {
+            Stmt::BlockStmt(block_statement) => {
                 let scope_id = generate_scope_id();
                 let local_scope_copy = LocalScope::deep_clone(&local_scope);
                 self.insert_scope_ref(module_id, scope_id, local_scope_copy.clone());
 
                 let typed_stmt = self.resolve_block_statement(scope_id, local_scope_copy, block_statement)?;
-                Some(TypedStmt::BlockStatement(typed_stmt))
+                Some(TypedStmt::BlockStmt(typed_stmt))
             }
-            Statement::Break(break_stmt) => Some(TypedStmt::Break(TypedBreakStmt {
+            Stmt::Break(break_stmt) => Some(TypedStmt::Break(TypedBreakStmt {
                 loc: SourceLoc::from_loc(break_stmt.loc.clone(), self.get_current_module_file_path()),
             })),
-            Statement::Continue(continue_stmt) => Some(TypedStmt::Continue(TypedContinueStmt {
+            Stmt::Continue(continue_stmt) => Some(TypedStmt::Continue(TypedContinueStmt {
                 loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.get_current_module_file_path()),
             })),
-            Statement::Typedef(typedef) => {
+            Stmt::Typedef(typedef) => {
                 let typed_stmt = self.resolve_typedef_stmt(module_id, Some(local_scope.clone()), &typedef)?;
                 Some(typed_stmt)
             }
             // Invalid statements.
-            Statement::GlobalVariable(..)
-            | Statement::FuncDef(..)
-            | Statement::FuncDecl(..)
-            | Statement::Import(..) => {
+            Stmt::GlobalVar(..)
+            | Stmt::FuncDef(..)
+            | Stmt::FuncDecl(..)
+            | Stmt::Import(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::InvalidStatement),
@@ -2435,7 +2435,7 @@ impl Resolver {
                 });
                 None
             }
-            Statement::Defer(_) => unreachable!("Handled directly in resolve_block_statement"),
+            Stmt::Defer(_) => unreachable!("Handled directly in resolve_block_statement"),
         }
     }
 
@@ -2642,43 +2642,43 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        expr: &Expression,
+        expr: &Expr,
     ) -> Option<TypedExprStmt> {
         match expr {
-            Expression::FieldAccess(field_access) => {
+            Expr::FieldAccess(field_access) => {
                 self.resolve_field_access(module_id, local_scope_opt, field_access)
             }
-            Expression::MethodCall(method_call) => self.resolve_method_call(module_id, local_scope_opt, method_call),
-            Expression::StructInit(struct_init) => self.resolve_struct_init(module_id, local_scope_opt, struct_init),
-            Expression::ModuleImport(module_import) => {
+            Expr::MethodCall(method_call) => self.resolve_method_call(module_id, local_scope_opt, method_call),
+            Expr::StructInit(struct_init) => self.resolve_struct_init(module_id, local_scope_opt, struct_init),
+            Expr::ModuleImport(module_import) => {
                 self.resolve_module_import_expr(module_id, local_scope_opt, module_import)
             }
-            Expression::Identifier(identifier) => self.resolve_ident_expr(local_scope_opt, module_id, identifier),
-            Expression::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
-            Expression::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
-            Expression::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
-            Expression::Prefix(prefix) => self.resolve_prefix_expr(module_id, local_scope_opt, prefix),
-            Expression::Cast(cast) => self.resolve_cast_expr(module_id, local_scope_opt, cast),
-            Expression::TypeSpecifier(type_specifier) => {
+            Expr::Identifier(identifier) => self.resolve_ident_expr(local_scope_opt, module_id, identifier),
+            Expr::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
+            Expr::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
+            Expr::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
+            Expr::Prefix(prefix) => self.resolve_prefix_expr(module_id, local_scope_opt, prefix),
+            Expr::Cast(cast) => self.resolve_cast_expr(module_id, local_scope_opt, cast),
+            Expr::TypeSpecifier(type_specifier) => {
                 self.resolve_type_specifier_expr(module_id, local_scope_opt, type_specifier)
             }
-            Expression::Assignment(assignment) => self.resolve_assign_expr(module_id, local_scope_opt, assignment),
-            Expression::Literal(literal) => self.resolve_literal_expr(literal),
-            Expression::Unary(unary) => self.resolve_unary_expr(module_id, local_scope_opt, unary),
-            Expression::ArrayIndex(array_index) => {
+            Expr::Assign(assignment) => self.resolve_assign_expr(module_id, local_scope_opt, assignment),
+            Expr::Literal(literal) => self.resolve_literal_expr(literal),
+            Expr::Unary(unary) => self.resolve_unary_expr(module_id, local_scope_opt, unary),
+            Expr::ArrayIndex(array_index) => {
                 self.resolve_array_index_expr(module_id, local_scope_opt, array_index)
             }
-            Expression::AddrOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
-            Expression::Deref(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
-            Expression::UStructValue(unnamed_struct_value) => {
+            Expr::AddrOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
+            Expr::Deref(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
+            Expr::UStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(module_id, local_scope_opt, unnamed_struct_value)
             }
-            Expression::SizeOf(size_of_expression) => {
+            Expr::SizeOf(size_of_expression) => {
                 self.resolve_size_of_expr(module_id, local_scope_opt, size_of_expression)
             }
-            Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
-            Expression::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, local_scope_opt, tuple_value),
-            Expression::TupleAccess(tuple_member_access) => {
+            Expr::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
+            Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, local_scope_opt, tuple_value),
+            Expr::TupleAccess(tuple_member_access) => {
                 self.resolve_tuple_member_access(module_id, local_scope_opt, tuple_member_access)
             }
         }
@@ -2960,7 +2960,7 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        bin: &InfixExpression,
+        bin: &InfixExpr,
     ) -> Option<TypedExprStmt> {
         let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs)?;
         let rhs = self.resolve_expr(module_id, local_scope_opt, &*bin.rhs)?;
@@ -2982,7 +2982,7 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        prefix: &PrefixExpression,
+        prefix: &PrefixExpr,
     ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt, &*prefix.operand)?;
 
@@ -3073,7 +3073,7 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        assignment: &Assignment,
+        assignment: &Assign,
     ) -> Option<TypedExprStmt> {
         let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs)?;
         let rhs = self.resolve_expr(module_id, local_scope_opt, &assignment.rhs)?;
@@ -3160,7 +3160,7 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        unary: &UnaryExpression,
+        unary: &UnaryExpr,
     ) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(module_id, local_scope_opt, &*unary.operand)?;
 

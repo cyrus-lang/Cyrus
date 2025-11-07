@@ -1,7 +1,7 @@
 use crate::*;
 use core::fmt;
 
-impl fmt::Display for BlockStatement {
+impl fmt::Display for BlockStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format_statements(&self.exprs))
     }
@@ -227,10 +227,10 @@ impl fmt::Display for InfixOperator {
     }
 }
 
-impl fmt::Display for Expression {
+impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Lambda(lambda) => {
+            Expr::Lambda(lambda) => {
                 write!(f, "fn(")?;
                 lambda.params.list.iter().for_each(|param| match param {
                     FuncParamKind::FuncParam(func_param) => {
@@ -247,28 +247,28 @@ impl fmt::Display for Expression {
                 write!(f, ") {}", lambda.return_type.clone())?;
                 write!(f, "{{ {} }}", format_statements(&lambda.body.exprs))
             }
-            Expression::Unary(unary_expr) => {
+            Expr::Unary(unary_expr) => {
                 write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
             }
-            Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
-            Expression::Literal(literal) => write!(f, "{}", literal.to_string()),
-            Expression::Prefix(prefix_expr) => {
+            Expr::Identifier(identifier) => write!(f, "{}", identifier.name),
+            Expr::Literal(literal) => write!(f, "{}", literal.to_string()),
+            Expr::Prefix(prefix_expr) => {
                 write!(f, "({}{})", prefix_expr.op.clone(), prefix_expr.operand.clone())
             }
-            Expression::Infix(infix_expr) => {
+            Expr::Infix(infix_expr) => {
                 write!(f, "({} {} {})", infix_expr.lhs, infix_expr.op, infix_expr.rhs)
             }
-            Expression::FuncCall(func_call) => {
+            Expr::FuncCall(func_call) => {
                 write!(f, "{}", func_call)
             }
-            Expression::FieldAccess(field_access) => {
+            Expr::FieldAccess(field_access) => {
                 if field_access.is_fat_arrow {
                     write!(f, "{}->{}", field_access.operand, field_access.field_name)
                 } else {
                     write!(f, "{}.{}", field_access.operand, field_access.field_name)
                 }
             }
-            Expression::MethodCall(method_call) => {
+            Expr::MethodCall(method_call) => {
                 write!(
                     f,
                     "{}.{}({})",
@@ -277,29 +277,29 @@ impl fmt::Display for Expression {
                     expression_series_to_string(method_call.args.clone())
                 )
             }
-            Expression::Array(array) => {
+            Expr::Array(array) => {
                 write!(f, "[{}]", expression_series_to_string(array.elements.clone()))
             }
-            Expression::ArrayIndex(array_index) => {
+            Expr::ArrayIndex(array_index) => {
                 write!(f, "{}[{}]", array_index.operand, array_index.index)
             }
-            Expression::Assignment(assignment) => {
+            Expr::Assign(assignment) => {
                 write!(f, "{} = {}", assignment.lhs, assignment.rhs)
             }
-            Expression::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
-            Expression::Deref(dereference) => write!(f, "(*{})", dereference.expr),
-            Expression::StructInit(struct_init) => {
+            Expr::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
+            Expr::Deref(dereference) => write!(f, "(*{})", dereference.expr),
+            Expr::StructInit(struct_init) => {
                 write!(
                     f,
                     "{} {{",
-                    Expression::ModuleImport(struct_init.struct_name.clone()).to_string()
+                    Expr::ModuleImport(struct_init.struct_name.clone()).to_string()
                 )?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.identifier, field.value)?;
                 }
                 write!(f, "}}")
             }
-            Expression::UStructValue(unnamed_struct_value) => {
+            Expr::UStructValue(unnamed_struct_value) => {
                 write!(f, "struct {{ ")?;
                 for (idx, field) in unnamed_struct_value.fields.iter().enumerate() {
                     if let Some(field_ty) = &field.field_ty {
@@ -316,17 +316,17 @@ impl fmt::Display for Expression {
                 }
                 write!(f, "}}")
             }
-            Expression::Cast(cast_as) => {
+            Expr::Cast(cast_as) => {
                 write!(f, "{}", cast_as)
             }
-            Expression::ModuleImport(module_import) => {
+            Expr::ModuleImport(module_import) => {
                 write!(f, "{}", module_import.to_string())
             }
-            Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
-            Expression::SizeOf(size_of_expression) => {
+            Expr::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
+            Expr::SizeOf(size_of_expression) => {
                 write!(f, "sizeof {}", size_of_expression.expr)
             }
-            Expression::Tuple(tuple_value) => {
+            Expr::Tuple(tuple_value) => {
                 write!(
                     f,
                     "({})",
@@ -338,19 +338,19 @@ impl fmt::Display for Expression {
                         .join(", ")
                 )
             }
-            Expression::TupleAccess(tuple_member_access) => {
+            Expr::TupleAccess(tuple_member_access) => {
                 write!(f, "{}.{}", tuple_member_access.operand, tuple_member_access.index)
             }
         }
     }
 }
 
-fn expression_series_to_string(exprs: Vec<Expression>) -> String {
+fn expression_series_to_string(exprs: Vec<Expr>) -> String {
     let str = exprs.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
     str
 }
 
-impl fmt::Display for Statement {
+impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -419,10 +419,10 @@ pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
     out
 }
 
-pub fn format_expressions(exprs: &Vec<Expression>) -> String {
+pub fn format_expressions(exprs: &Vec<Expr>) -> String {
     exprs.iter().map(|expr| expr.to_string()).collect()
 }
 
-pub fn format_statements(stmts: &Vec<Statement>) -> String {
+pub fn format_statements(stmts: &Vec<Stmt>) -> String {
     stmts.iter().map(|stmt| stmt.to_string()).collect()
 }
