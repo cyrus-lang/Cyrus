@@ -14,7 +14,7 @@ pub mod token;
 
 #[derive(Debug)]
 pub struct ProgramTree {
-    pub body: Rc<Vec<Statement>>,
+    pub body: Rc<Vec<Stmt>>,
 }
 
 impl Default for ProgramTree {
@@ -34,7 +34,7 @@ impl ProgramTree {
         let mut imports: Vec<Import> = Vec::new();
 
         self.body.iter().for_each(|stmt| match stmt {
-            Statement::Import(import) => {
+            Stmt::Import(import) => {
                 imports.push(import.clone());
             }
             _ => {}
@@ -45,16 +45,16 @@ impl ProgramTree {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expression {
+pub enum Expr {
     Cast(Cast),
     Identifier(Identifier),
     TypeSpecifier(TypeSpecifier),
     ModuleImport(ModuleImport),
-    Assignment(Box<Assignment>),
+    Assign(Box<Assign>),
     Literal(Literal),
-    Prefix(PrefixExpression),
-    Infix(InfixExpression),
-    Unary(UnaryExpression),
+    Prefix(PrefixExpr),
+    Infix(InfixExpr),
+    Unary(UnaryExpr),
     Array(Array),
     ArrayIndex(ArrayIndex),
     AddrOf(AddrOf),
@@ -72,7 +72,7 @@ pub enum Expression {
 
 #[derive(Debug, Clone)]
 pub struct TupleAccess {
-    pub operand: Box<Expression>,
+    pub operand: Box<Expr>,
     pub index: usize,
     pub loc: Location,
     pub span: Span,
@@ -80,28 +80,28 @@ pub struct TupleAccess {
 
 #[derive(Debug, Clone)]
 pub struct TupleValue {
-    pub expr_list: Vec<Expression>,
+    pub expr_list: Vec<Expr>,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct SizeOf {
-    pub expr: Box<Expression>,
+    pub expr: Box<Expr>,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct Deref {
-    pub expr: Box<Expression>,
+    pub expr: Box<Expr>,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct AddrOf {
-    pub expr: Box<Expression>,
+    pub expr: Box<Expr>,
     pub loc: Location,
     pub span: Span,
 }
@@ -119,7 +119,7 @@ pub struct UStructValue {
 pub struct UnnamedStructValueField {
     pub field_name: Identifier,
     pub field_ty: Option<TypeSpecifier>,
-    pub field_value: Box<Expression>,
+    pub field_value: Box<Expr>,
     pub loc: Location,
     pub span: Span,
 }
@@ -174,7 +174,7 @@ pub struct Enum {
 pub enum EnumVariant {
     Identifier(Identifier),
     Variant(Identifier, Vec<EnumValuedField>),
-    Valued(Identifier, Box<Expression>),
+    Valued(Identifier, Box<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -185,15 +185,15 @@ pub struct EnumValuedField {
 
 #[derive(Debug, Clone)]
 pub struct Cast {
-    pub expr: Box<Expression>,
+    pub expr: Box<Expr>,
     pub target_type: TypeSpecifier,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
-pub struct PrefixExpression {
-    pub operand: Box<Expression>,
+pub struct PrefixExpr {
+    pub operand: Box<Expr>,
     pub op: PrefixOperator,
     pub span: Span,
     pub loc: Location,
@@ -201,8 +201,8 @@ pub struct PrefixExpression {
 
 #[derive(Debug, Clone)]
 pub struct FuncCall {
-    pub operand: Box<Expression>,
-    pub args: Vec<Expression>,
+    pub operand: Box<Expr>,
+    pub args: Vec<Expr>,
     pub span: Span,
     pub loc: Location,
 }
@@ -210,7 +210,7 @@ pub struct FuncCall {
 #[derive(Debug, Clone)]
 pub struct FieldAccess {
     pub is_fat_arrow: bool,
-    pub operand: Box<Expression>,
+    pub operand: Box<Expr>,
     pub field_name: Identifier,
     pub type_args: Option<TypeArgs>,
     pub span: Span,
@@ -220,9 +220,9 @@ pub struct FieldAccess {
 #[derive(Debug, Clone)]
 pub struct MethodCall {
     pub is_fat_arrow: bool,
-    pub operand: Box<Expression>,
+    pub operand: Box<Expr>,
     pub method_name: Identifier,
-    pub args: Vec<Expression>,
+    pub args: Vec<Expr>,
     pub type_args: Option<TypeArgs>,
     pub span: Span,
     pub loc: Location,
@@ -360,13 +360,13 @@ pub struct ArrayTypeSpecifier {
 
 #[derive(Debug, Clone)]
 pub enum ArrayCapacity {
-    Fixed(Box<Expression>),
+    Fixed(Box<Expr>),
     Dynamic,
 }
 
 #[derive(Debug, Clone)]
-pub struct UnaryExpression {
-    pub operand: Box<Expression>,
+pub struct UnaryExpr {
+    pub operand: Box<Expr>,
     pub op: UnaryOperator,
     pub span: Span,
     pub loc: Location,
@@ -394,10 +394,10 @@ pub enum FuncTypeVariadicParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct InfixExpression {
+pub struct InfixExpr {
     pub op: InfixOperator,
-    pub lhs: Box<Expression>,
-    pub rhs: Box<Expression>,
+    pub lhs: Box<Expr>,
+    pub rhs: Box<Expr>,
     pub span: Span,
     pub loc: Location,
 }
@@ -405,25 +405,25 @@ pub struct InfixExpression {
 #[derive(Debug, Clone)]
 pub struct Array {
     pub data_type: TypeSpecifier,
-    pub elements: Vec<Expression>,
+    pub elements: Vec<Expr>,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct ArrayIndex {
-    pub operand: Box<Expression>,
-    pub index: Box<Expression>,
+    pub operand: Box<Expr>,
+    pub index: Box<Expr>,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement {
-    Interface(Interface),
+pub enum Stmt {
+    Import(Import),
     Variable(Variable),
     ExportTuple(ExportTuple),
-    Expression(Expression),
+    Expr(Expr),
     If(If),
     Return(Return),
     FuncDef(FuncDef),
@@ -432,21 +432,21 @@ pub enum Statement {
     While(While),
     Foreach(Foreach),
     Switch(Switch),
+    BlockStmt(BlockStmt),
+    Interface(Interface),
     Struct(Struct),
-    Import(Import),
-    BlockStatement(BlockStatement),
     Enum(Enum),
     Union(Union),
     Break(Break),
     Continue(Continue),
     Typedef(Typedef),
-    GlobalVariable(GlobalVariable),
+    GlobalVar(GlobalVar),
     Defer(Defer),
 }
 
 #[derive(Debug, Clone)]
 pub struct Defer {
-    pub operand: Box<Statement>,
+    pub operand: Box<Stmt>,
     pub loc: Location,
     pub span: Span,
 }
@@ -461,11 +461,11 @@ pub struct Interface {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalVariable {
+pub struct GlobalVar {
     pub vis: AccessSpecifier,
     pub identifier: Identifier,
     pub type_specifier: Option<TypeSpecifier>,
-    pub expr: Option<Expression>,
+    pub expr: Option<Expr>,
     pub is_const: bool,
     pub loc: Location,
     pub span: Span,
@@ -495,7 +495,7 @@ pub struct Continue {
 
 #[derive(Debug, Clone)]
 pub struct Return {
-    pub argument: Option<Expression>,
+    pub argument: Option<Expr>,
     pub span: Span,
     pub loc: Location,
 }
@@ -630,14 +630,14 @@ pub struct StructField {
 #[derive(Debug, Clone)]
 pub struct FieldInit {
     pub identifier: Identifier,
-    pub value: Expression,
+    pub value: Expr,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct While {
-    pub condition: Expression,
-    pub body: Box<BlockStatement>,
+    pub condition: Expr,
+    pub body: Box<BlockStmt>,
     pub span: Span,
     pub loc: Location,
 }
@@ -645,9 +645,9 @@ pub struct While {
 #[derive(Debug, Clone)]
 pub struct For {
     pub initializer: Option<Variable>,
-    pub condition: Option<Expression>,
-    pub increment: Option<Expression>,
-    pub body: Box<BlockStatement>,
+    pub condition: Option<Expr>,
+    pub increment: Option<Expr>,
+    pub body: Box<BlockStmt>,
     pub span: Span,
     pub loc: Location,
 }
@@ -656,17 +656,17 @@ pub struct For {
 pub struct Foreach {
     pub item: Identifier,
     pub index: Option<Identifier>,
-    pub expr: Expression,
-    pub body: Box<BlockStatement>,
+    pub expr: Expr,
+    pub body: Box<BlockStmt>,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct Switch {
-    pub operand: Expression,
+    pub operand: Expr,
     pub cases: Vec<SwitchCase>,
-    pub default_case: Option<BlockStatement>,
+    pub default_case: Option<BlockStmt>,
     pub span: Span,
     pub loc: Location,
 }
@@ -674,14 +674,14 @@ pub struct Switch {
 #[derive(Debug, Clone)]
 pub struct SwitchCase {
     pub pattern: SwitchCasePattern,
-    pub body: BlockStatement,
+    pub body: BlockStmt,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub enum SwitchCasePattern {
-    Expression(Expression),
+    Expr(Expr),
     Identifier(Identifier),
     EnumVariant(Identifier, Vec<Identifier>),
 }
@@ -689,7 +689,7 @@ pub enum SwitchCasePattern {
 #[derive(Debug, Clone)]
 pub struct Lambda {
     pub params: FuncParams,
-    pub body: Box<BlockStatement>,
+    pub body: Box<BlockStmt>,
     pub return_type: TypeSpecifier,
     pub span: Span,
     pub loc: Location,
@@ -699,7 +699,7 @@ pub struct Lambda {
 pub struct FuncDef {
     pub identifier: Identifier,
     pub params: FuncParams,
-    pub body: Box<BlockStatement>,
+    pub body: Box<BlockStmt>,
     pub return_type: Option<TypeSpecifier>,
     pub vis: AccessSpecifier,
     pub span: Span,
@@ -761,8 +761,8 @@ impl AccessSpecifier {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockStatement {
-    pub exprs: Vec<Statement>,
+pub struct BlockStmt {
+    pub exprs: Vec<Stmt>,
     pub span: Span,
     pub loc: Location,
 }
@@ -771,7 +771,7 @@ pub struct BlockStatement {
 pub struct Variable {
     pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
-    pub rhs: Option<Expression>,
+    pub rhs: Option<Expr>,
     pub is_const: bool,
     pub span: Span,
     pub loc: Location,
@@ -781,7 +781,7 @@ pub struct Variable {
 pub struct ExportTuple {
     pub pattern: ExportPattern,
     pub ty: Option<TypeSpecifier>,
-    pub rhs: Option<Expression>,
+    pub rhs: Option<Expr>,
     pub is_const: bool,
     pub span: Span,
     pub loc: Location,
@@ -794,9 +794,9 @@ pub enum ExportPattern {
 }
 
 #[derive(Debug, Clone)]
-pub struct Assignment {
-    pub lhs: Expression,
-    pub rhs: Expression,
+pub struct Assign {
+    pub lhs: Expr,
+    pub rhs: Expr,
     pub kind: AssignmentKind,
     pub span: Span,
     pub loc: Location,
@@ -876,39 +876,39 @@ pub enum FuncVariadicParams {
 
 #[derive(Debug, Clone)]
 pub struct If {
-    pub condition: Expression,
-    pub consequent: Box<BlockStatement>,
+    pub condition: Expr,
+    pub consequent: Box<BlockStmt>,
     pub branches: Vec<If>,
-    pub alternate: Option<Box<BlockStatement>>,
+    pub alternate: Option<Box<BlockStmt>>,
     pub span: Span,
     pub loc: Location,
 }
 
-impl Statement {
+impl Stmt {
     pub fn get_loc(&self) -> Location {
         match self {
-            Statement::Interface(interface) => interface.loc.clone(),
-            Statement::Variable(variable) => variable.loc.clone(),
-            Statement::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
-            Statement::If(if_stmt) => if_stmt.loc.clone(),
-            Statement::Return(ret) => ret.loc.clone(),
-            Statement::FuncDef(func_def) => func_def.loc.clone(),
-            Statement::FuncDecl(func_decl) => func_decl.loc.clone(),
-            Statement::For(for_stmt) => for_stmt.loc.clone(),
-            Statement::While(while_stmt) => while_stmt.loc.clone(),
-            Statement::Foreach(foreach) => foreach.loc.clone(),
-            Statement::Switch(switch) => switch.loc.clone(),
-            Statement::Struct(struct_stmt) => struct_stmt.loc.clone(),
-            Statement::Import(import) => import.loc.clone(),
-            Statement::BlockStatement(block_stmt) => block_stmt.loc.clone(),
-            Statement::Enum(enum_stmt) => enum_stmt.loc.clone(),
-            Statement::Union(union) => union.loc.clone(),
-            Statement::Break(brk) => brk.loc.clone(),
-            Statement::Continue(cont) => cont.loc.clone(),
-            Statement::Typedef(typedef) => typedef.loc.clone(),
-            Statement::GlobalVariable(global_variable) => global_variable.loc.clone(),
-            Statement::Defer(defer) => defer.loc.clone(),
-            Statement::Expression(..) => unreachable!(),
+            Stmt::Interface(interface) => interface.loc.clone(),
+            Stmt::Variable(variable) => variable.loc.clone(),
+            Stmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
+            Stmt::If(if_stmt) => if_stmt.loc.clone(),
+            Stmt::Return(ret) => ret.loc.clone(),
+            Stmt::FuncDef(func_def) => func_def.loc.clone(),
+            Stmt::FuncDecl(func_decl) => func_decl.loc.clone(),
+            Stmt::For(for_stmt) => for_stmt.loc.clone(),
+            Stmt::While(while_stmt) => while_stmt.loc.clone(),
+            Stmt::Foreach(foreach) => foreach.loc.clone(),
+            Stmt::Switch(switch) => switch.loc.clone(),
+            Stmt::Struct(struct_stmt) => struct_stmt.loc.clone(),
+            Stmt::Import(import) => import.loc.clone(),
+            Stmt::BlockStmt(block_stmt) => block_stmt.loc.clone(),
+            Stmt::Enum(enum_stmt) => enum_stmt.loc.clone(),
+            Stmt::Union(union) => union.loc.clone(),
+            Stmt::Break(brk) => brk.loc.clone(),
+            Stmt::Continue(cont) => cont.loc.clone(),
+            Stmt::Typedef(typedef) => typedef.loc.clone(),
+            Stmt::GlobalVar(global_variable) => global_variable.loc.clone(),
+            Stmt::Defer(defer) => defer.loc.clone(),
+            Stmt::Expr(..) => unreachable!(),
         }
     }
 }

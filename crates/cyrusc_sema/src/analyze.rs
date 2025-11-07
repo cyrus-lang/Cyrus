@@ -16,11 +16,10 @@ use cyrusc_tast::{
         TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, TypedTupleAccessExpr,
         ValueCategory,
     },
-    format::format_concrete_type,
-    generics::mapping_ctx::GenericMappingCtx,
+    format::format_sema_ty,
     sigs::{EnumSig, FuncSig},
     stmts::*,
-    types::{PlainType, SemanticType, TypedFuncType, TypedTupleType},
+    types::{PlainType, SemanticType, TypedFuncType},
     *,
 };
 use std::{
@@ -118,7 +117,7 @@ impl<'a> AnalysisContext<'a> {
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
-                TypedStmt::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
+                TypedStmt::GlobalVar(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStmt::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStmt::Interface(typed_interface) => self.analyze_interface(typed_interface),
@@ -129,7 +128,7 @@ impl<'a> AnalysisContext<'a> {
                 // Invalid top-level statements
                 TypedStmt::Variable(_)
                 | TypedStmt::ExportTuple(_)
-                | TypedStmt::BlockStatement(_)
+                | TypedStmt::BlockStmt(_)
                 | TypedStmt::Defer(_)
                 | TypedStmt::If(_)
                 | TypedStmt::Return(_)
@@ -138,7 +137,7 @@ impl<'a> AnalysisContext<'a> {
                 | TypedStmt::For(_)
                 | TypedStmt::While(_)
                 | TypedStmt::Switch(_)
-                | TypedStmt::Expression(_) => {
+                | TypedStmt::Expr(_) => {
                     unreachable!()
                 }
             }
@@ -187,7 +186,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_variable(Some(scope_id), typed_variable);
                 FlowState::Reachable
             }
-            TypedStmt::BlockStatement(typed_block_statement) => self.analyze_block_statement(typed_block_statement),
+            TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_statement(typed_block_statement),
             TypedStmt::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
             TypedStmt::Return(typed_return) => self.analyze_return(scope_id, typed_return),
             TypedStmt::Break(typed_break) => {
@@ -209,7 +208,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_enum(Some(scope_id), typed_enum, true);
                 FlowState::Reachable
             }
-            TypedStmt::Expression(typed_expr) => {
+            TypedStmt::Expr(typed_expr) => {
                 self.analyze_typed_expr_type(Some(scope_id), typed_expr, typed_expr.sema_ty.clone());
                 FlowState::Reachable
             }
@@ -231,7 +230,7 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             // Invalid statements
-            TypedStmt::Defer(..) | TypedStmt::FuncDef(_) | TypedStmt::FuncDecl(_) | TypedStmt::GlobalVariable(_) => {
+            TypedStmt::Defer(..) | TypedStmt::FuncDef(_) | TypedStmt::FuncDecl(_) | TypedStmt::GlobalVar(_) => {
                 unreachable!()
             }
         }
@@ -293,8 +292,8 @@ impl<'a> AnalysisContext<'a> {
                 target_type.clone(),
                 export_tuple.loc.clone(),
             ) {
-                let lhs_type = format_concrete_type(target_type, &(self.symbol_formatter)(scope_id_opt));
-                let rhs_type = format_concrete_type(expr_sema_ty, &(self.symbol_formatter)(scope_id_opt));
+                let lhs_type = format_sema_ty(target_type, &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type = format_sema_ty(expr_sema_ty, &(self.symbol_formatter)(scope_id_opt));
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
@@ -401,6 +400,8 @@ impl<'a> AnalysisContext<'a> {
         if let Some(scope_id) = scope_id_opt {
             update_local_symbol!(self, scope_id, symbol_id,
                 LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                    dbg!(ty.clone());
+                    
                     resolved_variable.typed_variable.ty = Some(ty);
                     resolved_variable.typed_variable.rhs = Some(rhs.clone());
                 }
@@ -444,7 +445,7 @@ impl<'a> AnalysisContext<'a> {
 
                     identifier
                 }
-                TypedSwitchCasePattern::Expression(..) => {
+                TypedSwitchCasePattern::Expr(..) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ExpressionPatternInAEnumSwitch),
@@ -650,7 +651,7 @@ impl<'a> AnalysisContext<'a> {
 
         for case in &mut typed_switch.cases {
             match &mut case.pattern {
-                TypedSwitchCasePattern::Expression(typed_expr, _) => {
+                TypedSwitchCasePattern::Expr(typed_expr, _) => {
                     let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
                         Some(sema_ty) => sema_ty,
                         None => continue,
@@ -663,9 +664,9 @@ impl<'a> AnalysisContext<'a> {
                         typed_switch.loc.clone(),
                     ) {
                         let operand_type =
-                            format_concrete_type(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+                            format_sema_ty(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
                         let pattern_type =
-                            format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+                            format_sema_ty(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -680,7 +681,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 TypedSwitchCasePattern::Identifier(..) | TypedSwitchCasePattern::EnumVariant(..) => {
-                    let expr_type = format_concrete_type(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+                    let expr_type = format_sema_ty(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -811,8 +812,8 @@ impl<'a> AnalysisContext<'a> {
             });
         } else if let Some(typed_expr) = &mut typed_return.arg {
             if let Some(sema_ty) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
-                let expected = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
-                let got = format_concrete_type(sema_ty.clone(), &(self.symbol_formatter)(Some(scope_id)));
+                let expected = format_sema_ty(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
+                let got = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
                 if !self.check_type_mismatch(Some(scope_id), sema_ty, return_type, typed_return.loc.clone()) {
                     self.reporter.report(Diag {
@@ -824,7 +825,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if !return_type.is_void() && typed_return.arg.is_none() {
-            let argument_type = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
+            let argument_type = format_sema_ty(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -898,8 +899,8 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if !compatible_type {
-            let lhs_type = format_concrete_type(global_var_type, &(self.symbol_formatter)(None));
-            let rhs_type = format_concrete_type(expr_type, &(self.symbol_formatter)(None));
+            let lhs_type = format_sema_ty(global_var_type, &(self.symbol_formatter)(None));
+            let rhs_type = format_sema_ty(expr_type, &(self.symbol_formatter)(None));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1012,8 +1013,8 @@ impl<'a> AnalysisContext<'a> {
                     target_type.clone(),
                     typed_global_var.loc.clone(),
                 ) {
-                    let lhs_type = format_concrete_type(target_type.clone(), &(self.symbol_formatter)(None));
-                    let rhs_type = format_concrete_type(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
+                    let lhs_type = format_sema_ty(target_type.clone(), &(self.symbol_formatter)(None));
+                    let rhs_type = format_sema_ty(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1866,8 +1867,8 @@ impl<'a> AnalysisContext<'a> {
                 lhs_type.as_rvalue(true).clone(),
                 assign.loc.clone(),
             ) {
-                let lhs_type = format_concrete_type(lhs_type, &(self.symbol_formatter)(scope_id_opt));
-                let rhs_type = format_concrete_type(rhs_type, &(self.symbol_formatter)(scope_id_opt));
+                let lhs_type = format_sema_ty(lhs_type, &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type = format_sema_ty(rhs_type, &(self.symbol_formatter)(scope_id_opt));
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

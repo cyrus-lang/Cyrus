@@ -70,7 +70,7 @@ impl Parser {
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
     pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<Diag>> {
-        let mut body: Vec<Statement> = Vec::new();
+        let mut body: Vec<Stmt> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
             match self.parse_statement(true) {

@@ -6,7 +6,7 @@ use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
 use cyrusc_tast::sigs::{EnumSig, UnionSig};
-use cyrusc_tast::types::{ResolvedSymbol, TypedTupleType};
+use cyrusc_tast::types::ResolvedSymbol;
 use cyrusc_tast::{ModuleID, ScopeID};
 use cyrusc_tast::{
     TypedProgramTree,
@@ -44,8 +44,8 @@ impl<'resolver> CIRWalk<'resolver> {
                 TypedStmt::FuncDecl(func_decl_stmt) => self.lower_func_decl(scope_id_opt, func_decl_stmt),
                 TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
                 TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
-                TypedStmt::GlobalVariable(global_var_stmt) => self.lower_global_var(scope_id_opt, global_var_stmt),
-                TypedStmt::BlockStatement(block_stmt) => CIRStmt::Block(self.lower_body(block_stmt)),
+                TypedStmt::GlobalVar(global_var_stmt) => self.lower_global_var(scope_id_opt, global_var_stmt),
+                TypedStmt::BlockStmt(block_stmt) => CIRStmt::Block(self.lower_body(block_stmt)),
                 TypedStmt::If(if_stmt) => self.lower_if(scope_id_opt, if_stmt),
                 TypedStmt::Return(return_stmt) => self.lower_return(scope_id_opt, return_stmt),
                 TypedStmt::Break(break_stmt) => self.lower_break(break_stmt),
@@ -60,7 +60,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         });
                     continue;
                 }
-                TypedStmt::Expression(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
+                TypedStmt::Expr(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
                 // lowered only when used
                 TypedStmt::Struct(..) | TypedStmt::Enum(..) | TypedStmt::Union(..) => {
                     continue;

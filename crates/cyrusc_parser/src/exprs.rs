@@ -12,7 +12,7 @@ use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
 
 impl Parser {
-    pub(crate) fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), Diag> {
+    pub(crate) fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expr, Span), Diag> {
         let mut left_start = self.current_token().span.start;
         let mut left = self.parse_prefix_expression()?;
 
@@ -35,7 +35,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 let span = Span::new(left_start, self.current_token().span.end);
                 return Ok((
-                    Expression::Unary(UnaryExpression {
+                    Expr::Unary(UnaryExpr {
                         operand: Box::new(left),
                         op: UnaryOperator::PostIncrement,
                         span: span.clone(),
@@ -48,7 +48,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 let span = Span::new(left_start, self.current_token().span.end);
                 return Ok((
-                    Expression::Unary(UnaryExpression {
+                    Expr::Unary(UnaryExpr {
                         operand: Box::new(left),
                         op: UnaryOperator::PostDecrement,
                         span: span.clone(),
@@ -64,7 +64,7 @@ impl Parser {
                 match self.parse_infix_expression(left.clone(), left_start) {
                     Some(infix) => {
                         left = infix?;
-                        if let Expression::Infix(b) = left.clone() {
+                        if let Expr::Infix(b) = left.clone() {
                             left_start = b.span.start;
                         }
                     }
@@ -212,7 +212,7 @@ impl Parser {
         Ok(module_path)
     }
 
-    fn parse_prefix_expression(&mut self) -> Result<Expression, Diag> {
+    fn parse_prefix_expression(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -232,7 +232,7 @@ impl Parser {
 
                     let mut struct_init = self.parse_struct_init(module_import, None)?;
                     struct_init.is_const = true;
-                    Expression::StructInit(struct_init)
+                    Expr::StructInit(struct_init)
                 } else {
                     return Err(Diag {
                         kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
@@ -249,16 +249,16 @@ impl Parser {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
-                    Expression::StructInit(self.parse_struct_init(module_import, None)?)
+                    Expr::StructInit(self.parse_struct_init(module_import, None)?)
                 } else {
-                    Expression::ModuleImport(module_import)
+                    Expr::ModuleImport(module_import)
                 }
             }
             TokenKind::Ampersand => {
                 let start = self.current_token().span.start;
                 let loc = self.current_token().loc.clone();
                 self.next_token();
-                Expression::AddrOf(AddrOf {
+                Expr::AddrOf(AddrOf {
                     expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
@@ -268,13 +268,13 @@ impl Parser {
                 let start = self.current_token().span.start;
                 let loc = self.current_token().loc.clone();
                 self.next_token();
-                Expression::Deref(Deref {
+                Expr::Deref(Deref {
                     expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
             }
-            TokenKind::Null => Expression::Literal(Literal {
+            TokenKind::Null => Expr::Literal(Literal {
                 kind: LiteralKind::Null,
                 span: Span::new(start, self.current_token().span.end),
                 loc: loc.clone(),
@@ -302,8 +302,8 @@ impl Parser {
                     TokenKind::Identifier { .. } => {
                         let module_import = self.parse_module_import()?;
 
-                        Expression::Unary(UnaryExpression {
-                            operand: Box::new(Expression::ModuleImport(module_import)),
+                        Expr::Unary(UnaryExpr {
+                            operand: Box::new(Expr::ModuleImport(module_import)),
                             op: unary_operator,
                             span: Span {
                                 start,
@@ -332,13 +332,13 @@ impl Parser {
                     _ => panic!(),
                 };
 
-                Expression::Literal(Literal {
+                Expr::Literal(Literal {
                     kind: LiteralKind::Bool(value),
                     span: Span::new(start, self.current_token().span.end),
                     loc: loc.clone(),
                 })
             }
-            TokenKind::Literal(value) => Expression::Literal(value.clone()),
+            TokenKind::Literal(value) => Expr::Literal(value.clone()),
             token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::Tilde => {
                 let start = self.current_token().span.start;
                 let prefix_operator = match token_kind {
@@ -356,7 +356,7 @@ impl Parser {
                 };
                 self.next_token(); // consume the prefix operator
                 let (expr, span) = self.parse_expression(Precedence::Prefix)?;
-                Expression::Prefix(PrefixExpression {
+                Expr::Prefix(PrefixExpr {
                     op: prefix_operator,
                     operand: Box::new(expr),
                     span: Span { start, end: span.end },
@@ -385,7 +385,7 @@ impl Parser {
                     return Ok(self.parse_array(type_specifier)?);
                 }
 
-                Expression::TypeSpecifier(type_specifier)
+                Expr::TypeSpecifier(type_specifier)
             }
         };
 
@@ -397,11 +397,11 @@ impl Parser {
         }
 
         if self.peek_token_is(TokenKind::LeftBrace) {
-            if let Expression::ModuleImport(module_import) = expr.clone() {
+            if let Expr::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
 
                 let struct_init = self.parse_struct_init(module_import, type_args_opt)?;
-                return Ok(Expression::StructInit(struct_init));
+                return Ok(Expr::StructInit(struct_init));
             } else {
                 return Err(Diag {
                     kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
@@ -443,11 +443,11 @@ impl Parser {
         }
     }
 
-    fn parse_tuple_value(&mut self, first_expr: Expression) -> Result<Expression, Diag> {
+    fn parse_tuple_value(&mut self, first_expr: Expr) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let mut expr_list: Vec<Expression> = vec![first_expr];
+        let mut expr_list: Vec<Expr> = vec![first_expr];
 
         loop {
             let expr = self.parse_expression(Precedence::Lowest)?.0;
@@ -476,14 +476,14 @@ impl Parser {
             });
         }
 
-        Ok(Expression::Tuple(TupleValue {
+        Ok(Expr::Tuple(TupleValue {
             expr_list,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_lambda_expr(&mut self) -> Result<Expression, Diag> {
+    fn parse_lambda_expr(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -494,7 +494,7 @@ impl Parser {
 
         let body = self.parse_block_statement()?;
 
-        Ok(Expression::Lambda(Lambda {
+        Ok(Expr::Lambda(Lambda {
             params,
             body: Box::new(body),
             return_type,
@@ -503,7 +503,7 @@ impl Parser {
         }))
     }
 
-    fn parse_sizeof_expression(&mut self) -> Result<Expression, Diag> {
+    fn parse_sizeof_expression(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc;
 
@@ -523,7 +523,7 @@ impl Parser {
         let expr = if let Some(token) = self.peek_n_token(1) {
             if self.matches_type_token(self.current_token().kind) && self.matches_type_token(token.kind) {
                 let type_specifier = self.parse_type_specifier()?;
-                Expression::TypeSpecifier(type_specifier)
+                Expr::TypeSpecifier(type_specifier)
             } else {
                 self.parse_expression(Precedence::Lowest)?.0
             }
@@ -541,14 +541,14 @@ impl Parser {
         }
         self.next_token();
 
-        Ok(Expression::SizeOf(SizeOf {
+        Ok(Expr::SizeOf(SizeOf {
             expr: Box::new(expr),
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_infix_expression(&mut self, left: Expression, left_start: usize) -> Option<Result<Expression, Diag>> {
+    fn parse_infix_expression(&mut self, left: Expr, left_start: usize) -> Option<Result<Expr, Diag>> {
         let loc = self.current_token().loc.clone();
 
         match self.peek_token().kind {
@@ -621,7 +621,7 @@ impl Parser {
                 };
                 let (right, span) = self.parse_expression(precedence).ok()?;
 
-                Some(Ok(Expression::Infix(InfixExpression {
+                Some(Ok(Expr::Infix(InfixExpr {
                     op,
                     lhs: Box::new(left),
                     rhs: Box::new(right),
@@ -636,9 +636,9 @@ impl Parser {
         }
     }
 
-    fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expression>, Span), Diag> {
+    fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
         let start = self.current_token().span.start;
-        let mut series: Vec<Expression> = Vec::new();
+        let mut series: Vec<Expr> = Vec::new();
 
         // detect empty series of expressions
         if self.peek_token_is(end.clone()) {
@@ -667,7 +667,7 @@ impl Parser {
         ))
     }
 
-    fn parse_cast_expression(&mut self) -> Result<Expression, Diag> {
+    fn parse_cast_expression(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -688,7 +688,7 @@ impl Parser {
             });
         }
 
-        Ok(Expression::Cast(Cast {
+        Ok(Expr::Cast(Cast {
             expr: Box::new(expr),
             target_type,
             span: Span::new(start, self.current_token().span.end),
@@ -698,13 +698,13 @@ impl Parser {
 
     fn parse_method_call(
         &mut self,
-        operand: Expression,
+        operand: Expr,
         method_name: Identifier,
         is_fat_arrow: bool,
         type_args: Option<TypeArgs>,
         start: usize,
         loc: Location,
-    ) -> Result<Expression, Diag> {
+    ) -> Result<Expr, Diag> {
         if !self.current_token_is(TokenKind::LeftParen) {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::MissingOpeningParen),
@@ -724,7 +724,7 @@ impl Parser {
             });
         }
 
-        Ok(Expression::MethodCall(MethodCall {
+        Ok(Expr::MethodCall(MethodCall {
             is_fat_arrow,
             operand: Box::new(operand),
             method_name,
@@ -735,7 +735,7 @@ impl Parser {
         }))
     }
 
-    fn parse_field_access(&mut self, operand: Expression) -> Result<Expression, Diag> {
+    fn parse_field_access(&mut self, operand: Expr) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -771,7 +771,7 @@ impl Parser {
 
                 return self.parse_method_call(operand, identifier, is_fat_arrow, type_args_opt, start, loc);
             } else {
-                Ok(Expression::FieldAccess(FieldAccess {
+                Ok(Expr::FieldAccess(FieldAccess {
                     is_fat_arrow,
                     operand: Box::new(operand),
                     field_name: identifier,
@@ -783,7 +783,7 @@ impl Parser {
         } else {
             let index = self.parse_integer_literal()?;
 
-            Ok(Expression::TupleAccess(TupleAccess {
+            Ok(Expr::TupleAccess(TupleAccess {
                 operand: Box::new(operand),
                 index,
                 loc,
@@ -792,7 +792,7 @@ impl Parser {
         }
     }
 
-    fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, Diag> {
+    fn parse_func_call(&mut self, operand: Expr) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -808,7 +808,7 @@ impl Parser {
             });
         }
 
-        Ok(Expression::FuncCall(FuncCall {
+        Ok(Expr::FuncCall(FuncCall {
             operand: Box::new(operand),
             args,
             span: Span::new(start, self.current_token().span.end),
@@ -928,13 +928,13 @@ impl Parser {
         }
     }
 
-    fn parse_assignment(&mut self, lhs: Expression, kind: AssignmentKind, start: usize) -> Result<Expression, Diag> {
+    fn parse_assignment(&mut self, lhs: Expr, kind: AssignmentKind, start: usize) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::Assign)?;
         let rhs = self.parse_expression(Precedence::Lowest)?.0;
         let end = self.current_token().span.end;
-        Ok(Expression::Assignment(Box::new(Assignment {
+        Ok(Expr::Assign(Box::new(Assign {
             lhs,
             rhs,
             kind,
@@ -943,14 +943,14 @@ impl Parser {
         })))
     }
 
-    fn parse_array_index(&mut self, expr: Expression) -> Result<Expression, Diag> {
+    fn parse_array_index(&mut self, expr: Expr) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
         let index_expr = self.parse_single_array_index()?;
-        let mut indexes_backup: Vec<Expression> = vec![index_expr.clone()];
+        let mut indexes_backup: Vec<Expr> = vec![index_expr.clone()];
 
-        let mut base_index = Expression::ArrayIndex(ArrayIndex {
+        let mut base_index = Expr::ArrayIndex(ArrayIndex {
             operand: Box::new(expr.clone()),
             index: Box::new(index_expr.clone()),
             span: Span::new(start, self.current_token().span.end),
@@ -965,7 +965,7 @@ impl Parser {
         while self.current_token_is(TokenKind::LeftBracket) {
             let index_expr = self.parse_single_array_index()?;
 
-            base_index = Expression::ArrayIndex(ArrayIndex {
+            base_index = Expr::ArrayIndex(ArrayIndex {
                 operand: Box::new(base_index),
                 index: Box::new(index_expr.clone()),
                 span: Span::new(start, self.current_token().span.end),
@@ -983,9 +983,9 @@ impl Parser {
         if self.peek_token_is(TokenKind::LeftBrace) {
             let element_type = {
                 match expr.clone() {
-                    Expression::Identifier(identifier) => TypeSpecifier::Identifier(identifier),
-                    Expression::ModuleImport(module_import) => TypeSpecifier::ModuleImport(module_import),
-                    Expression::TypeSpecifier(type_specifier) => type_specifier,
+                    Expr::Identifier(identifier) => TypeSpecifier::Identifier(identifier),
+                    Expr::ModuleImport(module_import) => TypeSpecifier::ModuleImport(module_import),
+                    Expr::TypeSpecifier(type_specifier) => type_specifier,
                     _ => {
                         return Err(Diag {
                             kind: Box::new(ParserDiagKind::InvalidToken(self.peek_token().kind)),
@@ -1019,7 +1019,7 @@ impl Parser {
         Ok(base_index)
     }
 
-    fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, Diag> {
+    fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1047,11 +1047,11 @@ impl Parser {
             });
         }
 
-        let mut elements: Vec<Expression> = Vec::new();
+        let mut elements: Vec<Expr> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
-            return Ok(Expression::Array(Array {
+            return Ok(Expr::Array(Array {
                 elements,
                 data_type,
                 span: Span::new(start, self.current_token().span.end),
@@ -1062,7 +1062,7 @@ impl Parser {
         loop {
             if self.current_token_is(TokenKind::LeftBrace) {
                 let untyped_array_start = self.current_token().span.start;
-                let mut untyped_array: Vec<Expression> = Vec::new();
+                let mut untyped_array: Vec<Expr> = Vec::new();
                 self.next_token(); // consume left brace
 
                 loop {
@@ -1098,14 +1098,14 @@ impl Parser {
 
                 if let TypeSpecifier::Array(inner_type_specifier, ..) = data_type.clone() {
                     let data_type = TypeSpecifier::Array(ArrayTypeSpecifier {
-                        size: ArrayCapacity::Fixed(Box::new(Expression::Literal(Literal {
+                        size: ArrayCapacity::Fixed(Box::new(Expr::Literal(Literal {
                             kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
                             span: Span::new(untyped_array_start, self.current_token().span.end),
                             loc: loc.clone(),
                         }))),
                         element_type: inner_type_specifier.element_type,
                     });
-                    elements.push(Expression::Array(Array {
+                    elements.push(Expr::Array(Array {
                         data_type,
                         elements: untyped_array,
                         span: Span::new(untyped_array_start, self.current_token().span.end),
@@ -1134,7 +1134,7 @@ impl Parser {
 
         self.expect_peek(TokenKind::RightBrace)?;
 
-        Ok(Expression::Array(Array {
+        Ok(Expr::Array(Array {
             elements,
             data_type,
             span: Span::new(start, self.current_token().span.end),
@@ -1142,7 +1142,7 @@ impl Parser {
         }))
     }
 
-    fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expression, Diag> {
+    fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expr, Diag> {
         let struct_start = self.current_token().span.start;
 
         let is_packed = {
@@ -1242,7 +1242,7 @@ impl Parser {
             }
         }
 
-        Ok(Expression::UStructValue(UStructValue {
+        Ok(Expr::UStructValue(UStructValue {
             fields,
             is_packed,
             is_const,

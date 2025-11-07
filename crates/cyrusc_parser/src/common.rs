@@ -145,7 +145,7 @@ impl Parser {
         Ok(args)
     }
 
-    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expression: Expression) -> bool {
+    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expression: Expr) -> bool {
         if !self.current_expr_is_path_like(last_parsed_expression) {
             return false;
         }
@@ -179,7 +179,7 @@ impl Parser {
         false
     }
 
-    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expression, Diag> {
+    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expr, Diag> {
         self.expect_current(TokenKind::LeftBracket)?;
 
         if self.current_token_is(TokenKind::RightBracket) {
@@ -582,10 +582,10 @@ impl Parser {
         })
     }
 
-    fn current_expr_is_path_like(&self, last_parsed_expression: Expression) -> bool {
+    fn current_expr_is_path_like(&self, last_parsed_expression: Expr) -> bool {
         matches!(
             last_parsed_expression,
-            Expression::Identifier(..) | Expression::ModuleImport(..)
+            Expr::Identifier(..) | Expr::ModuleImport(..)
         )
     }
 }

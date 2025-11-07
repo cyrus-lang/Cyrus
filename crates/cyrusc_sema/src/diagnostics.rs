@@ -194,7 +194,7 @@ pub enum AnalyzerDiagKind {
     #[error("Global variable expression is not valid at compile time.")]
     GlobalVariableExprNotComptimeValid,
 
-    #[error("Expression is not valid at compile time.")]
+    #[error("Expr is not valid at compile time.")]
     ExprNotComptimeValid,
 
     #[error("Cannot assign to immutable lvalue.")]
