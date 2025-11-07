@@ -12,12 +12,15 @@ use cyrusc_resolver::{
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use cyrusc_tast::{
-    exprs::{TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, ValueCategory},
+    exprs::{
+        TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, TypedTupleAccessExpr,
+        ValueCategory,
+    },
     format::format_concrete_type,
     generics::mapping_ctx::GenericMappingCtx,
     sigs::{EnumSig, FuncSig},
     stmts::*,
-    types::{PlainType, SemanticType, TypedFuncType},
+    types::{PlainType, SemanticType, TypedFuncType, TypedTupleType},
     *,
 };
 use std::{
@@ -234,75 +237,174 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_export_tuple_values(
+    pub(crate) fn analyze_export_tuple_values(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        export_tuple_values: &mut TypedExportTupleStmt,
+        export_tuple: &mut TypedExportTupleStmt,
     ) {
-        if let Some(typed_expr) = &mut export_tuple_values.rhs {
-            let sema_ty = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, export_tuple_values.ty.clone()) {
-                Some(sema_ty) => sema_ty,
-                None => return,
-            };
+        let explicit_sema_ty = export_tuple
+            .ty
+            .as_ref()
+            .and_then(|sema_ty| self.normalize_type(scope_id_opt, sema_ty.clone(), export_tuple.loc.clone()));
 
-            if export_tuple_values.ty.is_none() {
-                export_tuple_values.ty = Some(sema_ty);
-            }
-        }
-
-        if let Some(sema_ty) = &mut export_tuple_values.ty {
-            *sema_ty = match self.normalize_type(scope_id_opt, sema_ty.clone(), export_tuple_values.loc.clone()) {
-                Some(normalized) => normalized,
-                None => return,
-            };
-        }
-
-        let sema_ty = match self.normalize_type(
-            scope_id_opt,
-            export_tuple_values.ty.clone().unwrap(),
-            export_tuple_values.loc.clone(),
-        ) {
-            Some(sema_ty) => sema_ty,
-            None => return,
-        };
-
-        let tuple_type = match sema_ty.as_tuple_type() {
-            Some(tuple_type) => tuple_type.clone(),
+        match &mut export_tuple.rhs {
+            Some(expr) => expr.clone(),
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                    location: Some(DiagLoc::new(export_tuple_values.loc.clone())),
+                    kind: Box::new(AnalyzerDiagKind::DestructureTupleWithNoRhs),
+                    location: Some(DiagLoc::new(export_tuple.loc.clone())),
                     hint: None,
                 });
                 return;
             }
         };
 
-        if export_tuple_values.exports.len() != tuple_type.type_list.len() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
-                location: Some(DiagLoc::new(export_tuple_values.loc.clone())),
-                hint: None,
-            });
-            return;
+        let expr_sema_ty = match self.analyze_typed_expr_type(
+            scope_id_opt,
+            &mut export_tuple.rhs.as_mut().unwrap(),
+            explicit_sema_ty.clone(),
+        ) {
+            Some(ty) => ty,
+            None => return,
+        };
+
+        let tuple_type = match expr_sema_ty.as_tuple_type() {
+            Some(t) => t.clone(),
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
+                    location: Some(DiagLoc::new(export_tuple.loc.clone())),
+                    hint: None,
+                });
+                return;
+            }
+        };
+
+        if explicit_sema_ty.is_none() {
+            export_tuple.ty = Some(expr_sema_ty.clone());
         }
 
-        // update type and rhs metadata in local scope
-
-        for (symbol_id, mut sema_ty) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
-            if export_tuple_values.is_const && !matches!(sema_ty, SemanticType::Const(..)) {
-                sema_ty = SemanticType::Const(Box::new(sema_ty.clone()));
+        if let Some(target_type) = explicit_sema_ty {
+            if !self.check_type_mismatch(
+                scope_id_opt,
+                expr_sema_ty.clone(),
+                target_type.clone(),
+                export_tuple.loc.clone(),
+            ) {
+                let lhs_type = format_concrete_type(target_type, &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type = format_concrete_type(expr_sema_ty, &(self.symbol_formatter)(scope_id_opt));
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
+                    location: Some(DiagLoc::new(export_tuple.loc.clone())),
+                    hint: None,
+                });
+                return;
             }
+        }
 
-            scope_id_opt.inspect(|scope_id| {
-                update_local_symbol!(self, *scope_id, *symbol_id,
-                    LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                        resolved_variable.typed_variable.ty = Some(sema_ty);
+        let tuple_patterns = export_tuple.pattern.into_tuple();
+        for (i, (pattern, sema_ty)) in tuple_patterns.iter().zip(tuple_type.type_list.iter()).enumerate() {
+            self.analyze_tuple_pattern(
+                scope_id_opt,
+                export_tuple.is_const,
+                pattern,
+                sema_ty,
+                &export_tuple.rhs.as_mut().unwrap(),
+                export_tuple.loc.clone(),
+                vec![i],
+            );
+        }
+    }
+
+    fn analyze_tuple_pattern(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        is_const: bool,
+        pattern: &TypedExportPattern,
+        sema_ty: &SemanticType,
+        expr: &TypedExprStmt,
+        loc: SourceLoc,
+        access_path: Vec<usize>,
+    ) {
+        match pattern {
+            TypedExportPattern::Identifier(symbol_id) => {
+                let mut rhs_element = expr.clone();
+                let rhs_element_ty = rhs_element.sema_ty.clone().unwrap();
+                let tuple_type = rhs_element_ty.as_tuple_type().unwrap();
+
+                for &idx in &access_path {
+                    rhs_element = TypedExprStmt {
+                        kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
+                            operand: Box::new(rhs_element),
+                            index: idx,
+                            loc: loc.clone(),
+                        }),
+                        sema_ty: Some(tuple_type.type_list.get(idx).unwrap().clone()),
+                        vcat: ValueCategory::LValue,
+                        loc: loc.clone(),
+                    };
+                }
+                self.analyze_tuple_identifier_pattern(scope_id_opt, is_const, *symbol_id, sema_ty, &rhs_element);
+            }
+            TypedExportPattern::Tuple(patterns) => {
+                if let Some(tuple_type) = sema_ty.as_tuple_type() {
+                    if patterns.len() != tuple_type.type_list.len() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: None,
+                        });
+                        return;
                     }
-                );
-            });
+                    for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.type_list).enumerate() {
+                        let mut new_path = access_path.clone();
+                        new_path.push(i);
+                        self.analyze_tuple_pattern(
+                            scope_id_opt,
+                            is_const,
+                            sub_pattern,
+                            sub_ty,
+                            expr,
+                            loc.clone(),
+                            new_path,
+                        );
+                    }
+                } else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
+                }
+            }
+        }
+    }
+
+    fn analyze_tuple_identifier_pattern(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        is_const: bool,
+        symbol_id: SymbolID,
+        sema_ty: &SemanticType,
+        rhs: &TypedExprStmt,
+    ) {
+        let mut ty = sema_ty.clone();
+        if is_const && !matches!(ty, SemanticType::Const(..)) {
+            ty = SemanticType::Const(Box::new(ty));
+        }
+
+        if let Some(scope_id) = scope_id_opt {
+            update_local_symbol!(self, scope_id, symbol_id,
+                LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                    resolved_variable.typed_variable.ty = Some(ty);
+                    resolved_variable.typed_variable.rhs = Some(rhs.clone());
+                }
+            );
         }
     }
 

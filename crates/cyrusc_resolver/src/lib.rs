@@ -2066,6 +2066,124 @@ impl Resolver {
         })
     }
 
+    fn resolve_export_tuple(
+        &mut self,
+        module_id: ModuleID,
+        scope_id: ScopeID,
+        local_scope: LocalScopeRef,
+        export_tuple: &ExportTuple,
+    ) -> Option<TypedStmt> {
+        let var_type = export_tuple.ty.as_ref().and_then(|ty_spec| {
+            self.resolve_type(
+                &None,
+                Some(local_scope.clone()),
+                module_id,
+                ty_spec.clone(),
+                export_tuple.loc.clone(),
+                export_tuple.span.end,
+            )
+        });
+
+        let typed_rhs = export_tuple
+            .rhs
+            .as_ref()
+            .and_then(|expr| self.resolve_expr(module_id, Some(local_scope.clone()), expr));
+
+        let define_identifier = |this: &mut Resolver, identifier: &Identifier| -> Option<SymbolID> {
+            let symbol_id = generate_symbol_id();
+
+            let mut local_scope_ref = local_scope.borrow_mut();
+
+            if local_scope_ref.resolve(&identifier.name).is_some() {
+                this.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
+                        symbol_name: identifier.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        identifier.loc.clone(),
+                        this.get_current_module_file_path(),
+                    ))),
+                    hint: None,
+                });
+                return None;
+            }
+
+            let typed_variable = TypedVarStmt {
+                symbol_id,
+                name: identifier.as_string(),
+                ty: None,
+                rhs: None,
+                is_const: false,
+                loc: SourceLoc::from_loc(identifier.loc.clone(), this.get_current_module_file_path()),
+            };
+
+            let resolved_var = ResolvedVariable {
+                module_id,
+                symbol_id,
+                typed_variable: typed_variable.clone(),
+            };
+
+            local_scope_ref.insert(
+                identifier.as_string(),
+                LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
+            );
+
+            drop(local_scope_ref);
+            Some(symbol_id)
+        };
+
+        let pattern = match &export_tuple.pattern {
+            ExportPattern::Identifier(identifier) => {
+                let symbol_id = define_identifier(self, identifier)?;
+                TypedExportPattern::Identifier(symbol_id)
+            }
+            ExportPattern::Tuple(patterns) => {
+                let mut typed_patterns = Vec::new();
+
+                for sub_pattern in patterns {
+                    match sub_pattern {
+                        ExportPattern::Identifier(identifier) => {
+                            let symbol_id = define_identifier(self, identifier)?;
+                            typed_patterns.push(TypedExportPattern::Identifier(symbol_id));
+                        }
+                        ExportPattern::Tuple(inner) => {
+                            let inner_export = ExportPattern::Tuple(inner.clone());
+                            let inner_stmt = self.resolve_export_tuple(
+                                module_id,
+                                scope_id,
+                                local_scope.clone(),
+                                &ExportTuple {
+                                    pattern: inner_export,
+                                    ty: None,
+                                    rhs: None,
+                                    is_const: export_tuple.is_const,
+                                    loc: export_tuple.loc.clone(),
+                                    span: export_tuple.span.clone(),
+                                },
+                            )?;
+
+                            if let TypedStmt::ExportTuple(inner_typed) = inner_stmt {
+                                typed_patterns
+                                    .push(TypedExportPattern::Tuple(inner_typed.pattern.into_tuple().to_vec()));
+                            }
+                        }
+                    }
+                }
+
+                TypedExportPattern::Tuple(typed_patterns)
+            }
+        };
+
+        Some(TypedStmt::ExportTuple(TypedExportTupleStmt {
+            pattern,
+            ty: var_type,
+            rhs: typed_rhs,
+            is_const: export_tuple.is_const,
+            loc: SourceLoc::from_loc(export_tuple.loc.clone(), self.get_current_module_file_path()),
+        }))
+    }
+
     fn resolve_stmt(
         &mut self,
         module_id: ModuleID,
@@ -2074,79 +2192,8 @@ impl Resolver {
         stmt: &Statement,
     ) -> Option<TypedStmt> {
         match stmt {
-            Statement::ExportTuple(export_tuple_values) => {
-                let var_type = export_tuple_values.ty.as_ref().and_then(|ty_spec| {
-                    self.resolve_type(
-                        &None,
-                        Some(local_scope.clone()),
-                        module_id,
-                        ty_spec.clone(),
-                        export_tuple_values.loc.clone(),
-                        export_tuple_values.span.end,
-                    )
-                });
-
-                let typed_rhs = export_tuple_values
-                    .rhs
-                    .as_ref()
-                    .and_then(|expr| self.resolve_expr(module_id, Some(local_scope.clone()), expr));
-
-                let mut local_scope_ref = local_scope.borrow_mut();
-
-                let mut exports: Vec<SymbolID> = Vec::new();
-
-                for identifier in &export_tuple_values.exports {
-                    let symbol_id = generate_symbol_id();
-
-                    // do not store type and rhs for exported identifiers!
-                    // analyzer would infer it.
-                    let typed_variable = TypedVarStmt {
-                        symbol_id,
-                        name: identifier.as_string(),
-                        ty: None,
-                        rhs: None,
-                        is_const: false,
-                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-                    };
-
-                    let resolved_var = ResolvedVariable {
-                        module_id,
-                        symbol_id,
-                        typed_variable: typed_variable.clone(),
-                    };
-
-                    if local_scope_ref.resolve(&identifier.name).is_some() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
-                                symbol_name: identifier.name.clone(),
-                            }),
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                identifier.loc.clone(),
-                                self.get_current_module_file_path(),
-                            ))),
-                            hint: None,
-                        });
-                        return None;
-                    }
-
-                    local_scope_ref.insert(
-                        identifier.as_string(),
-                        LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
-                    );
-
-                    exports.push(symbol_id);
-                }
-
-                drop(local_scope_ref);
-
-                Some(TypedStmt::ExportTuple(TypedExportTupleStmt {
-                    exports,
-                    ty: var_type,
-                    rhs: typed_rhs,
-                    is_const: export_tuple_values.is_const,
-                    loc: SourceLoc::from_loc(export_tuple_values.loc.clone(), self.get_current_module_file_path()),
-                }))
+            Statement::ExportTuple(export_tuple) => {
+                self.resolve_export_tuple(module_id, scope_id, local_scope, export_tuple)
             }
             Statement::Variable(variable) => {
                 let typed_var = self.declare_local_variable(module_id, local_scope.clone(), &variable)?;

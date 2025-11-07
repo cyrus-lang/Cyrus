@@ -779,12 +779,18 @@ pub struct Variable {
 
 #[derive(Debug, Clone)]
 pub struct ExportTuple {
-    pub exports: Vec<Identifier>,
+    pub pattern: ExportPattern,
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expression>,
     pub is_const: bool,
     pub span: Span,
     pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExportPattern {
+    Identifier(Identifier),
+    Tuple(Vec<ExportPattern>),
 }
 
 #[derive(Debug, Clone)]

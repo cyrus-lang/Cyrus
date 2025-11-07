@@ -59,11 +59,26 @@ impl TypedStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedExportTupleStmt {
-    pub exports: Vec<SymbolID>,
+    pub pattern: TypedExportPattern,
     pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedExportPattern {
+    Identifier(SymbolID),
+    Tuple(Vec<TypedExportPattern>),
+}
+
+impl TypedExportPattern {
+    pub fn into_tuple(&self) -> &Vec<TypedExportPattern> {
+        match self {
+            TypedExportPattern::Identifier(_) => unreachable!(),
+            TypedExportPattern::Tuple(patterns) => patterns,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

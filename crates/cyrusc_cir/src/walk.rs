@@ -2,11 +2,11 @@ use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_ast::LiteralKind;
 use cyrusc_resolver::Resolver;
-use cyrusc_resolver::symbols::generate_symbol_id;
+use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
 use cyrusc_tast::sigs::{EnumSig, UnionSig};
-use cyrusc_tast::types::ResolvedSymbol;
+use cyrusc_tast::types::{ResolvedSymbol, TypedTupleType};
 use cyrusc_tast::{ModuleID, ScopeID};
 use cyrusc_tast::{
     TypedProgramTree,
@@ -52,7 +52,14 @@ impl<'resolver> CIRWalk<'resolver> {
                 TypedStmt::Continue(continue_stmt) => self.lower_continue(continue_stmt),
                 TypedStmt::For(for_stmt) => self.lower_for(scope_id_opt, for_stmt),
                 TypedStmt::While(while_stmt) => self.lower_while(scope_id_opt, while_stmt),
-                TypedStmt::ExportTuple(export_tuple_stmt) => self.lower_export_tuple(export_tuple_stmt),
+                TypedStmt::ExportTuple(export_tuple_stmt) => {
+                    self.lower_export_tuple_to_vars(scope_id_opt, export_tuple_stmt)
+                        .iter()
+                        .for_each(|var| {
+                            lowered_stmts.push(CIRStmt::Variable(var.clone()));
+                        });
+                    continue;
+                }
                 TypedStmt::Expression(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
                 // lowered only when used
                 TypedStmt::Struct(..) | TypedStmt::Enum(..) | TypedStmt::Union(..) => {
@@ -68,10 +75,56 @@ impl<'resolver> CIRWalk<'resolver> {
         lowered_stmts
     }
 
-    fn lower_export_tuple(&self, export_tuple: &TypedExportTupleStmt) -> CIRStmt {
-        todo!();
-        // CIRStmt::ExportTuple(CIRExportTupleStmt {
-        // })
+    pub fn lower_export_tuple_to_vars(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        export_tuple: &TypedExportTupleStmt,
+    ) -> Vec<CIRVarStmt> {
+        let local_scope = self
+            .resolver
+            .get_scope_ref(self.module_id, scope_id_opt.unwrap())
+            .unwrap();
+
+        let mut vars = Vec::new();
+        self.lower_export_pattern_recursive(scope_id_opt, &local_scope, &export_tuple.pattern, &mut vars);
+        vars
+    }
+
+    fn lower_export_pattern_recursive(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_rc: &LocalScopeRef,
+        pattern: &TypedExportPattern,
+        vars: &mut Vec<CIRVarStmt>,
+    ) {
+        match pattern {
+            TypedExportPattern::Identifier(symbol_id) => {
+                let local_scope = local_scope_rc.borrow();
+                let resolved_variable = local_scope
+                    .resolve_with_symbol_id(*symbol_id)
+                    .as_ref()
+                    .unwrap()
+                    .as_variable()
+                    .unwrap();
+
+                let var_name = resolved_variable.typed_variable.name.clone();
+                let var_ty = self.lower_sema_ty(scope_id_opt, &resolved_variable.typed_variable.ty.as_ref().unwrap());
+                let var_rhs = self.lower_expr(scope_id_opt, &resolved_variable.typed_variable.rhs.as_ref().unwrap());
+                drop(local_scope);
+
+                vars.push(CIRVarStmt {
+                    irv_id: *symbol_id,
+                    name: format!("tuple.{}", var_name),
+                    ty: var_ty,
+                    expr: Some(var_rhs),
+                });
+            }
+            TypedExportPattern::Tuple(patterns) => {
+                for pattern in patterns {
+                    self.lower_export_pattern_recursive(scope_id_opt, local_scope_rc, pattern, vars);
+                }
+            }
+        }
     }
 
     fn lower_if(&self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
