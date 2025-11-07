@@ -5,64 +5,34 @@ use cyrusc_ast::source_loc::SourceLoc;
 pub mod reporter;
 mod tests;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum DiagLevel {
     Error,
     Warning,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DiagLoc {
     pub file: String,
     pub line: usize,
     pub column: usize,
 }
 
-pub struct Diag {
-    pub level: DiagLevel,
-    pub kind: Box<dyn DiagKind>,
-    pub location: Option<DiagLoc>,
-    pub hint: Option<String>,
-}
-
-impl fmt::Debug for Diag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Diag")
-            .field("level", &self.level)
-            .field("kind", &"<dyn DiagKind>")
-            .field("location", &self.location)
-            .field("hint", &self.hint)
-            .finish()
-    }
-}
-
 impl DiagLoc {
     pub fn new(loc: SourceLoc) -> Self {
         Self {
-            file: loc.file_path,
+            file: loc.file_path.clone(),
             line: loc.line,
             column: loc.column,
         }
     }
 }
 
-pub trait DiagKind: Display {
-    fn clone_box(&self) -> Box<dyn DiagKind>;
-}
-
-impl<T> DiagKind for T
-where
-    T: Display + Clone + 'static,
-{
-    fn clone_box(&self) -> Box<dyn DiagKind> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn DiagKind> {
-    fn clone(&self) -> Box<dyn DiagKind> {
-        self.clone_box()
-    }
+pub struct Diag {
+    pub level: DiagLevel,
+    pub kind: Box<dyn DiagKindClone>,
+    pub location: Option<DiagLoc>,
+    pub hint: Option<String>,
 }
 
 impl Clone for Diag {
@@ -75,3 +45,39 @@ impl Clone for Diag {
         }
     }
 }
+
+pub trait DiagKind: Display + Debug + Send + Sync {}
+
+pub trait DiagKindClone: DiagKind {
+    fn clone_box(&self) -> Box<dyn DiagKindClone>;
+}
+
+impl<T> DiagKindClone for T
+where
+    T: DiagKind + Clone + 'static,
+{
+    fn clone_box(&self) -> Box<dyn DiagKindClone> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn DiagKindClone> {
+    fn clone(&self) -> Box<dyn DiagKindClone> {
+        self.clone_box()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CustomDiagKind {
+    Custom(String),
+}
+
+impl Display for CustomDiagKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CustomDiagKind::Custom(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl DiagKind for CustomDiagKind {}

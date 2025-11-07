@@ -1,7 +1,8 @@
+use cyrusc_diagcentral::DiagKind;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
-pub enum ModuleFSSLoaderDiagKind {
+pub enum ModuleFSLoaderDiagKind {
     #[error("Module '{module_name}' couldn't be found in any of the specified source directories.")]
     ModuleNotFound { module_name: String },
 
@@ -19,3 +20,5 @@ pub enum ModuleFSSLoaderDiagKind {
     #[error("Module '{module_name}' cannot exist as both a file and a directory.")]
     DuplicateModule { module_name: String },
 }
+
+impl DiagKind for ModuleFSLoaderDiagKind {}

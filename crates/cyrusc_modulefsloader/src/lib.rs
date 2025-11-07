@@ -12,7 +12,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::diagnostics::ModuleFSSLoaderDiagKind;
+use crate::diagnostics::ModuleFSLoaderDiagKind;
 
 mod diagnostics;
 
@@ -46,8 +46,8 @@ impl ModuleLoader {
         ModuleLoader { opts }
     }
 
-    pub fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, ModuleFSSLoaderDiagKind>> {
-        let mut loaded_modules_list: Vec<Result<LoadedModule, ModuleFSSLoaderDiagKind>> = Vec::new();
+    pub fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, ModuleFSLoaderDiagKind>> {
+        let mut loaded_modules_list: Vec<Result<LoadedModule, ModuleFSLoaderDiagKind>> = Vec::new();
 
         for sub_import in &import.paths {
             let mut module_file_path = match self.get_imported_module_path(sub_import.segments.clone()) {
@@ -62,7 +62,7 @@ impl ModuleLoader {
             if path_buf.is_dir() {
                 let index_path = path_buf.join("index.cyrus");
                 if !index_path.exists() {
-                    loaded_modules_list.push(Err(ModuleFSSLoaderDiagKind::ModuleIndexNotFound {
+                    loaded_modules_list.push(Err(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
                         module_name: module_segments_as_string(sub_import.segments.clone()),
                     }));
                     continue;
@@ -73,7 +73,7 @@ impl ModuleLoader {
             let file_content = match std::fs::read_to_string(&module_file_path) {
                 Ok(content) => content,
                 Err(_) => {
-                    loaded_modules_list.push(Err(ModuleFSSLoaderDiagKind::ModuleNotFound {
+                    loaded_modules_list.push(Err(ModuleFSLoaderDiagKind::ModuleNotFound {
                         module_name: module_segments_as_string(sub_import.segments.clone()),
                     }));
                     continue;
@@ -116,7 +116,7 @@ impl ModuleLoader {
         loaded_modules_list
     }
 
-    fn get_imported_module_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSSLoaderDiagKind> {
+    fn get_imported_module_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSLoaderDiagKind> {
         let mut sources = self.opts.source_dirs.clone();
 
         let mut segments = segments;
@@ -135,7 +135,7 @@ impl ModuleLoader {
         segments: &[ModuleSegment],
         sources: Vec<String>,
         mut module_file_path: String,
-    ) -> Result<String, ModuleFSSLoaderDiagKind> {
+    ) -> Result<String, ModuleFSLoaderDiagKind> {
         let module_name = module_segments_as_string(segments.to_vec());
 
         for (idx, segment) in segments.iter().enumerate() {
@@ -158,7 +158,7 @@ impl ModuleLoader {
 
                     match (file_exists, dir_exists) {
                         (Some(_), Some(_)) => {
-                            return Err(ModuleFSSLoaderDiagKind::DuplicateModule {
+                            return Err(ModuleFSLoaderDiagKind::DuplicateModule {
                                 module_name: identifier.name.clone(),
                             });
                         }
@@ -175,7 +175,7 @@ impl ModuleLoader {
                                 // last segment (require index.cyr)
                                 let index_path = dir_buf.join("index.cyrus");
                                 if !index_path.exists() {
-                                    return Err(ModuleFSSLoaderDiagKind::ModuleIndexNotFound {
+                                    return Err(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
                                         module_name: identifier.name.clone(),
                                     });
                                 }
@@ -187,7 +187,7 @@ impl ModuleLoader {
                                 }
                             }
                         }
-                        (None, None) => return Err(ModuleFSSLoaderDiagKind::ModuleNotFound { module_name }),
+                        (None, None) => return Err(ModuleFSLoaderDiagKind::ModuleNotFound { module_name }),
                     }
                 }
                 ModuleSegment::Single(_) => {
@@ -208,7 +208,7 @@ impl ModuleLoader {
                 Err(_) => {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(ModuleFSSLoaderDiagKind::StdlibNotFound),
+                        kind: Box::new(ModuleFSLoaderDiagKind::StdlibNotFound),
                         location: None,
                         hint: None
                     });

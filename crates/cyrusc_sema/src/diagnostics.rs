@@ -1,3 +1,4 @@
+use cyrusc_diagcentral::DiagKind;
 use thiserror::Error;
 use cyrusc_strescape::diagnostics::UnescapeError;
 
@@ -321,3 +322,5 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
 }
+
+impl DiagKind for AnalyzerDiagKind {}

@@ -693,189 +693,198 @@ impl<'a> AnalysisContext<'a> {
         Some(typed_struct_field.ty.clone())
     }
 
-    // FIXME
     fn analyze_enum_variant(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        enum_symbol_id: SymbolID,
-        enum_variant: &TypedEnumVariant,
+        local_scope_opt: Option<LocalScopeRef>,
+        enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
         expected_typed: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        todo!();
+        let mut valued_fields = match enum_variant {
+            TypedEnumVariant::Variant(_, valued_fields) => {
+                if valued_fields.len() != method_call.args.len() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                            variant_name: method_call.method_name.clone(),
+                            expected: valued_fields.len() as u32,
+                            provided: method_call.args.len() as u32,
+                        }),
+                        location: Some(DiagLoc::new(method_call.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
 
-        // let mut mapping_ctx = GenericMappingCtx::new_root();
+                valued_fields
+            }
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
+                        variant_name: method_call.method_name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(method_call.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        };
 
-        // let valued_fields = match enum_variant {
-        //     TypedEnumVariant::Variant(_, valued_fields) => {
-        //         if valued_fields.len() != method_call.args.len() {
-        //             self.reporter.report(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
-        //                     variant_name: method_call.method_name.clone(),
-        //                     expected: valued_fields.len() as u32,
-        //                     provided: method_call.args.len() as u32,
-        //                 }),
-        //                 location: Some(DiagLoc::new(method_call.loc.clone())),
-        //                 hint: None,
-        //             });
-        //             return None;
-        //         }
+        let is_const = false;
 
-        //         valued_fields
-        //     }
-        //     _ => {
-        //         self.reporter.report(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
-        //                 variant_name: method_call.method_name.clone(),
-        //             }),
-        //             location: Some(DiagLoc::new(method_call.loc.clone())),
-        //             hint: None,
-        //         });
-        //         return None;
-        //     }
-        // };
+        let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            local_scope_opt.clone(),
+            resolved_enum.symbol_id,
+            &method_call.type_args,
+            is_const,
+            method_call.loc.clone(),
+        ) {
+            Ok(opt) => opt?,
+            Err(diag) => {
+                self.reporter.report(diag);
+                return None;
+            }
+        };
+        
+        method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
-        // let operand_ty = method_call.operand.sema_ty.clone().unwrap();
-        // let generic_type_opt = operand_ty.as_generic_type();
+        for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields.iter_mut()) {
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.field_ty.clone()));
 
-        // let mut enum_sig = resolved_enum.enum_sig.clone();
-        // self.substitute_enum_type_args(
-        //     &mut mapping_ctx,
-        //     scope_id_opt,
-        //     &mut enum_sig,
-        //     generic_type_opt,
-        //     method_call.loc.clone(),
-        // );
-        // self.substitute_field_access_type(
-        //     &mut mapping_ctx,
-        //     &mut method_call.operand,
-        //     &enum_sig.generic_params,
-        //     generic_type_opt,
-        //     method_call.loc.clone(),
-        // );
+            if let Some(sema_ty) = self.infer_generic_param(
+                &generic_type_opt,
+                enum_valued_field.field_ty.clone(),
+                typed_expr.sema_ty.clone(),
+            ) {
+                enum_valued_field.field_ty = sema_ty;
+            }
+        }
 
-        // FIXME
-        // generic_mapping_ctx_scope!(
-        //     self,
-        //     resolved_enum.enum_sig.generic_params,
-        //     method_call.type_args,
-        //     method_call.loc.clone(),
-        //     Some(&mut mapping_ctx),
-        //     mapping_ctx,
-        //     {
-        //         for (idx, (typed_expr, enum_valued_field)) in method_call.args.iter_mut().zip(valued_fields).enumerate()
-        //         {
-        //             typed_expr.sema_ty = self.substitute_type_or_infer_with(
-        //                 scope_id_opt,
-        //                 enum_valued_field.field_ty.clone(),
-        //                 typed_expr,
-        //                 &mut mapping_ctx,
-        //                 Some(idx),
-        //             );
-        //         }
+        if let Some(generic_type) = generic_type_opt {
+            // validate generic type instantiation
+            let final_generic_type = match generic_type.finalize(
+                resolved_enum.enum_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => generic_type,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
 
-        //         if let Some(type_args) = self.normalize_type_args_and_register(
-        //             &mut mapping_ctx,
-        //             scope_id_opt,
-        //             enum_symbol_id,
-        //             &resolved_enum.enum_sig.generic_params,
-        //             expected_typed,
-        //             method_call.loc.clone(),
-        //             false,
-        //             true,
-        //         ) {
-        //             method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-        //         } else {
-        //             return None;
-        //         }
-        //     }
-        // );
+            method_call.operand.sema_ty = Some(SemanticType::GenericType(final_generic_type.clone()));
+            Some(SemanticType::GenericType(final_generic_type.clone()))
+        } else {
+            method_call.operand.sema_ty = Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
+                resolved_enum.symbol_id,
+            )));
 
-        // if let Some(type_args) = &method_call.type_args {
-        //     Some(SemanticType::GenericType(GenericType {
-        //         base: resolved_enum.symbol_id,
-        //         type_args: type_args.clone(),
-        //         is_const: false,
-        //     }))
-        // } else {
-        //     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
-        // }
-
-        todo!()
+            if is_const {
+                Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
+                    ResolvedSymbol::NamedStruct(resolved_enum.symbol_id),
+                ))))
+            } else {
+                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
+                    resolved_enum.symbol_id,
+                )))
+            }
+        }
     }
 
     fn analyze_enum_variant_no_field(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
-        enum_variant_opt: Option<&TypedEnumVariant>,
-        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        todo!();
+        field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
-        // if enum_variant_opt.is_none() {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(AnalyzerDiagKind::VariantNotDefinedForEnum {
-        //             enum_name: resolved_enum.enum_sig.name.clone(),
-        //             variant_name: field_access.field_name.clone(),
-        //         }),
-        //         location: Some(DiagLoc::new(field_access.loc.clone())),
-        //         hint: None,
-        //     });
-        //     return None;
-        // } else if matches!(enum_variant_opt, Some(TypedEnumVariant::Variant(..))) {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
-        //             enum_name: resolved_enum.enum_sig.name.clone(),
-        //             variant_name: field_access.field_name.clone(),
-        //         }),
-        //         location: Some(DiagLoc::new(field_access.loc.clone())),
-        //         hint: None,
-        //     });
-        //     return None;
-        // }
+        let enum_variant_idx_opt = resolved_enum
+            .enum_sig
+            .variants
+            .iter()
+            .position(|variant| variant.get_identifier().as_string() == field_access.field_name);
 
-        // if resolved_enum.enum_sig.generic_params.is_some() {
-        //     let mut mapping_ctx = GenericMappingCtx::new_root();
+        let enum_variant_opt =
+            enum_variant_idx_opt.and_then(|idx| Some(resolved_enum.enum_sig.variants.get(idx).unwrap()));
 
-        //     let generic_mapping_ctx = self.get_generic_mapping_ctx(
-        //         &mut mapping_ctx,
-        //         &resolved_enum.enum_sig.generic_params,
-        //         &field_access.type_args,
-        //         field_access.loc.clone(),
-        //     );
+        if enum_variant_opt.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VariantNotDefinedForEnum {
+                    enum_name: resolved_enum.enum_sig.name.clone(),
+                    variant_name: field_access.field_name.clone(),
+                }),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            return None;
+        } else if matches!(enum_variant_opt, Some(TypedEnumVariant::Variant(..))) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
+                    enum_name: resolved_enum.enum_sig.name.clone(),
+                    variant_name: field_access.field_name.clone(),
+                }),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
 
-        //     let type_args = self.normalize_type_args_and_register(
-        //         &generic_mapping_ctx,
-        //         scope_id_opt,
-        //         resolved_enum.symbol_id,
-        //         &resolved_enum.enum_sig.generic_params,
-        //         expected_type.clone(),
-        //         field_access.loc.clone(),
-        //         false,
-        //         true,
-        //     )?;
+        field_access.field_index = Some(enum_variant_idx_opt.unwrap());
 
-        //     let type_args = self.inferred_types_as_positional_type_args(type_args);
+        let is_const = false;
 
-        //     field_access.type_args = Some(type_args.clone());
+        let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            local_scope_opt.clone(),
+            resolved_enum.symbol_id,
+            &field_access.type_args,
+            is_const,
+            field_access.loc.clone(),
+        ) {
+            Ok(opt) => opt?,
+            Err(diag) => {
+                self.reporter.report(diag);
+                return None;
+            }
+        };
 
-        //     Some(SemanticType::GenericType(GenericType {
-        //         base: resolved_enum.symbol_id,
-        //         type_args,
-        //         is_const: false,
-        //     }))
-        // } else {
-        //     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
-        //         resolved_enum.symbol_id,
-        //     )))
-        // }
+        if let Some(generic_type) = generic_type_opt {
+            // validate generic type instantiation
+            let final_generic_type = match generic_type.finalize(
+                resolved_enum.enum_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => generic_type,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
+
+            field_access.operand.sema_ty = Some(SemanticType::GenericType(final_generic_type.clone()));
+            Some(SemanticType::GenericType(final_generic_type.clone()))
+        } else {
+            field_access.operand.sema_ty = Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
+                resolved_enum.symbol_id,
+            )));
+
+            if is_const {
+                Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
+                    ResolvedSymbol::NamedStruct(resolved_enum.symbol_id),
+                ))))
+            } else {
+                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
+                    resolved_enum.symbol_id,
+                )))
+            }
+        }
     }
 
     fn resolve_member_access_kind(
@@ -945,7 +954,6 @@ impl<'a> AnalysisContext<'a> {
             })
     }
 
-    // FIXME
     fn analyze_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -971,35 +979,27 @@ impl<'a> AnalysisContext<'a> {
         match &field_access.operand.kind {
             TypedExprKind::Symbol(symbol_id, _) => {
                 if let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), *symbol_id) {
-                    let enum_variant_opt = resolved_enum
-                        .enum_sig
-                        .variants
-                        .iter()
-                        .find(|variant| variant.get_identifier().as_string() == field_access.field_name);
-
-                    let sema_ty = self.analyze_enum_variant_no_field(
+                    return self.analyze_enum_variant_no_field(
                         scope_id_opt,
+                        local_scope_opt,
                         &resolved_enum,
                         field_access,
-                        enum_variant_opt,
-                        expected_type,
                     );
-                    field_access.operand.sema_ty = sema_ty.clone();
-                    return sema_ty;
                 };
             }
             _ => {}
         };
 
-        if field_access.type_args.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: None,
-            });
-            return None;
-        }
+        // REVIEW
+        // if field_access.type_args.is_some() {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+        //         location: Some(DiagLoc::new(field_access.loc.clone())),
+        //         hint: None,
+        //     });
+        //     return None;
+        // }
 
         // multiplex field access
 
@@ -1052,6 +1052,50 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_struct_init(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        struct_init: &mut TypedStructInitExpr,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        let (base_symbol_id, generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            local_scope_opt.clone(),
+            struct_init.symbol_id,
+            &struct_init.type_args,
+            struct_init.is_const,
+            struct_init.loc.clone(),
+        ) {
+            Ok(opt) => opt?,
+            Err(diag) => {
+                self.reporter.report(diag);
+                return None;
+            }
+        };
+
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), base_symbol_id)
+            .unwrap();
+
+        if let Some(resolved_union) = sym.as_union() {
+            self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt)
+        } else if let Some(resolved_struct) = sym.as_struct() {
+            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, &generic_type_opt)
+        } else {
+            let symbol_name = (self.symbol_formatter)(scope_id_opt)(base_symbol_id);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
+                location: Some(DiagLoc::new(struct_init.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
+    }
+
     fn analyze_union_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1099,6 +1143,12 @@ impl<'a> AnalysisContext<'a> {
         field_init.value.sema_ty =
             self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field_ty.clone()));
 
+        if let Some(sema_ty) =
+            self.infer_generic_param(generic_type_opt, field.ty.clone(), field_init.value.sema_ty.clone())
+        {
+            field_init.value.sema_ty = Some(sema_ty);
+        }
+
         if let Some(generic_type) = generic_type_opt {
             // validate generic type instantiation
             let final_generic_type = match generic_type.finalize(
@@ -1123,50 +1173,6 @@ impl<'a> AnalysisContext<'a> {
                     struct_init.symbol_id,
                 )))
             }
-        }
-    }
-
-    fn analyze_struct_init(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        struct_init: &mut TypedStructInitExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-
-        let (base_symbol_id, generic_type_opt) = match self.init_generic_type_with_symbol_id(
-            local_scope_opt.clone(),
-            struct_init.symbol_id,
-            &struct_init.type_args,
-            struct_init.is_const,
-            struct_init.loc.clone(),
-        ) {
-            Ok(opt) => opt?,
-            Err(diag) => {
-                self.reporter.report(diag);
-                return None;
-            }
-        };
-
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), base_symbol_id)
-            .unwrap();
-
-        if let Some(resolved_union) = sym.as_union() {
-            self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt)
-        } else if let Some(resolved_struct) = sym.as_struct() {
-            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, &generic_type_opt)
-        } else {
-            let symbol_name = (self.symbol_formatter)(scope_id_opt)(base_symbol_id);
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
-                location: Some(DiagLoc::new(struct_init.loc.clone())),
-                hint: None,
-            });
-            return None;
         }
     }
 
@@ -1625,8 +1631,8 @@ impl<'a> AnalysisContext<'a> {
             if let Some(enum_variant) = enum_variant_opt {
                 return self.analyze_enum_variant(
                     scope_id_opt,
-                    enum_symbol_id,
-                    enum_variant,
+                    local_scope_opt,
+                    enum_variant.clone(),
                     method_call,
                     &resolved_enum,
                     expected_type,

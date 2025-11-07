@@ -1,3 +1,4 @@
+use cyrusc_diagcentral::DiagKind;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -11,3 +12,5 @@ pub enum GenericTypesDiagKind {
     #[error("Generic type '{ty}' requires explicit type arguments.")]
     RequiresExplicitTypeArgs { ty: String },
 }
+
+impl DiagKind for GenericTypesDiagKind {}

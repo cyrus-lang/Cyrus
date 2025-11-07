@@ -57,6 +57,7 @@ pub enum CIRExprKind {
     TupleAccess(CIRTupleAccessExpr),
     StructInit(CIRStructInitExpr),
     UnionInit(CIRUnionInitExpr),
+    EnumInit(CIREnumInitExpr),
     StructFieldAccess(CIRStructFieldAccessExpr),
     UnionFieldAccess(CIRUnionFieldAccessExpr),
     Lambda(CIRLambda),
@@ -95,6 +96,13 @@ pub struct CIRStructFieldAccessExpr {
 pub struct CIRStructInitExpr {
     pub ty: CIRStructTy,
     pub fields: Vec<CIRExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIREnumInitExpr {
+    pub tag: usize,
+    pub variant: CIREnumInitVariant,
+    pub enum_ty: CIREnumTy
 }
 
 #[derive(Debug, Clone)]
@@ -304,15 +312,22 @@ pub struct CIRStructStmt {
 #[derive(Debug, Clone)]
 pub struct CIREnumStmt {
     pub name: String,
-    pub variants: Vec<CIREnumVariant>,
+    pub variants: Vec<CIREnumTyVariant>,
     pub vis: AccessSpecifier,
 }
 
 #[derive(Debug, Clone)]
-pub enum CIREnumVariant {
-    Ident,
+pub enum CIREnumTyVariant {
+    Identifier,
     Valued(Box<CIRExpr>),
     Fielded(Vec<CIRTy>),
+}
+
+#[derive(Debug, Clone)]
+pub enum CIREnumInitVariant {
+    Identifier,
+    Valued(Box<CIRExpr>),
+    Fielded(Vec<CIRExpr>),
 }
 
 #[derive(Debug, Clone)]

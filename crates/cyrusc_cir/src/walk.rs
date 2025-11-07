@@ -74,18 +74,20 @@ impl<'resolver> CIRWalk<'resolver> {
         // })
     }
 
-    fn lower_enum_variant(&self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumVariant {
-        match variant {
-            TypedEnumVariant::Identifier(..) => CIREnumVariant::Ident,
-            TypedEnumVariant::Valued(_, expr) => CIREnumVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr))),
-            TypedEnumVariant::Variant(_, fielded) => {
-                let fields: Vec<CIRTy> = fielded
-                    .iter()
-                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.field_ty))
-                    .collect();
-                CIREnumVariant::Fielded(fields)
-            }
-        }
+    fn lower_if(&self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
+        let cond = self.lower_expr(scope_id_opt, &if_stmt.cond);
+        let then_block = Box::new(self.lower_body(&if_stmt.then_block));
+        let else_block = if_stmt
+            .else_block
+            .clone()
+            .and_then(|else_block| Some(Box::new(self.lower_body(&else_block))));
+        // let branches: Vec<CIRIfStmt> = if_stmt
+        //     .branches
+        //     .iter()
+        //     .map(|branch| self.lower_if(scope_id_opt, branch))
+        //     .collect();
+
+        todo!();
     }
 
     fn lower_switch(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
@@ -138,22 +140,6 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .and_then(|arg| Some(self.lower_expr(scope_id_opt, &arg)));
         CIRStmt::Return(CIRReturnStmt { arg })
-    }
-
-    fn lower_if(&self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
-        let cond = self.lower_expr(scope_id_opt, &if_stmt.cond);
-        let then_block = Box::new(self.lower_body(&if_stmt.then_block));
-        let else_block = if_stmt
-            .else_block
-            .clone()
-            .and_then(|else_block| Some(Box::new(self.lower_body(&else_block))));
-        // let branches: Vec<CIRIfStmt> = if_stmt
-        //     .branches
-        //     .iter()
-        //     .map(|branch| self.lower_if(scope_id_opt, branch))
-        //     .collect();
-
-        todo!();
     }
 
     fn lower_global_var(&self, scope_id_opt: Option<ScopeID>, global_var: &TypedGlobalVarStmt) -> CIRStmt {
@@ -383,19 +369,64 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_method_call(&self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
-        let args: Vec<CIRExpr> = method_call
-            .args
-            .iter()
-            .map(|arg| self.lower_expr(scope_id_opt, arg))
-            .collect();
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, method_call.object_symbol_id.unwrap())
+            .unwrap();
 
-        let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
+        if let Some(resolved_enum) = sym.as_enum() {
+            let sema_ty = method_call.operand.sema_ty.as_ref().unwrap();
 
-        CIRExprKind::FuncCall(CIRFuncCall {
-            operand: Box::new(self.lower_expr(scope_id_opt, &method_call.operand)),
-            args,
-            ret_ty,
-        })
+            let typed_variant_idx = resolved_enum
+                .enum_sig
+                .variants
+                .iter()
+                .position(|variant| variant.get_identifier().as_string() == method_call.method_name)
+                .unwrap();
+            let typed_variant = resolved_enum.enum_sig.variants.get(typed_variant_idx).unwrap();
+
+            let variant: CIREnumInitVariant;
+            let enum_ty: CIREnumTy;
+            if let Some(generic_type) = sema_ty.as_generic_type() {
+                let enum_sig = substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap();
+                enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
+            } else {
+                enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
+            }
+
+            variant = match typed_variant {
+                TypedEnumVariant::Variant(..) => {
+                    let values: Vec<CIRExpr> = method_call
+                        .args
+                        .iter()
+                        .map(|arg| self.lower_expr(scope_id_opt, arg))
+                        .collect();
+                    CIREnumInitVariant::Fielded(values)
+                }
+                _ => unreachable!(),
+            };
+
+            CIRExprKind::EnumInit(CIREnumInitExpr {
+                tag: typed_variant_idx,
+                variant,
+                enum_ty,
+            })
+        } else {
+            let args: Vec<CIRExpr> = method_call
+                .args
+                .iter()
+                .map(|arg| self.lower_expr(scope_id_opt, arg))
+                .collect();
+
+            let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
+
+            CIRExprKind::FuncCall(CIRFuncCall {
+                operand: Box::new(self.lower_expr(scope_id_opt, &method_call.operand)),
+                args,
+                ret_ty,
+            })
+        }
     }
 
     fn lower_field_access(&self, scope_id_opt: Option<ScopeID>, field_access: &TypedFieldAccess) -> CIRExprKind {
@@ -415,6 +446,36 @@ impl<'resolver> CIRWalk<'resolver> {
             CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
                 operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
                 field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
+            })
+        } else if let Some(resolved_enum) = sym.as_enum() {
+            let sema_ty = field_access.operand.sema_ty.as_ref().unwrap();
+
+            let variant: CIREnumInitVariant;
+            let enum_ty: CIREnumTy;
+            if let Some(generic_type) = sema_ty.as_generic_type() {
+                todo!();
+            } else {
+                let typed_variant = resolved_enum
+                    .enum_sig
+                    .variants
+                    .get(field_access.field_index.unwrap())
+                    .unwrap();
+
+                variant = match typed_variant {
+                    TypedEnumVariant::Identifier(..) => CIREnumInitVariant::Identifier,
+                    TypedEnumVariant::Valued(_, expr) => {
+                        CIREnumInitVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
+                    }
+                    TypedEnumVariant::Variant(..) => unreachable!(),
+                };
+
+                enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
+            }
+
+            CIRExprKind::EnumInit(CIREnumInitExpr {
+                tag: field_access.field_index.unwrap(),
+                variant,
+                enum_ty,
             })
         } else {
             unreachable!()
@@ -621,7 +682,12 @@ impl<'resolver> CIRWalk<'resolver> {
             .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
             .unwrap();
         let generic_params = sym.get_generic_params().unwrap();
-        generic_type.init(generic_params).unwrap();
+        match generic_type.init(generic_params) {
+            Ok(val) => val,
+            Err(e) => {
+                eprintln!("Failed to init generic type: {:?}.", e.kind.to_string())
+            }
+        }
 
         if let Some(resolved_struct) = sym.as_struct() {
             let struct_sig = substitute_struct_sig(&resolved_struct.struct_sig, generic_type.mapping_ctx).unwrap();
@@ -653,11 +719,27 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
+    fn lower_enum_ty_variant(&self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumTyVariant {
+        match variant {
+            TypedEnumVariant::Identifier(..) => CIREnumTyVariant::Identifier,
+            TypedEnumVariant::Valued(_, expr) => {
+                CIREnumTyVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
+            }
+            TypedEnumVariant::Variant(_, fields) => {
+                let fields: Vec<CIRTy> = fields
+                    .iter()
+                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.field_ty))
+                    .collect();
+                CIREnumTyVariant::Fielded(fields)
+            }
+        }
+    }
+
     fn lower_enum_sig_as_enum_ty(&self, scope_id_opt: Option<ScopeID>, enum_sig: &EnumSig) -> CIREnumTy {
-        let variants: Vec<CIREnumVariant> = enum_sig
+        let variants: Vec<CIREnumTyVariant> = enum_sig
             .variants
             .iter()
-            .map(|variant| self.lower_enum_variant(scope_id_opt, variant))
+            .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
             .collect();
 
         CIREnumTy { variants }
@@ -684,6 +766,15 @@ impl<'resolver> CIRWalk<'resolver> {
             CIRTy::Struct(self.lower_struct_sig_as_struct_ty(scope_id_opt, &resolved_struct.struct_sig))
         } else if let Some(resolved_union) = sym.as_union() {
             CIRTy::Union(self.lower_union_sig_as_union_ty(scope_id_opt, &resolved_union.union_sig))
+        } else if let Some(resolved_enum) = sym.as_enum() {
+            let variants = resolved_enum
+                .enum_sig
+                .variants
+                .iter()
+                .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
+                .collect();
+
+            CIRTy::Enum(CIREnumTy { variants })
         } else {
             unreachable!()
         }
