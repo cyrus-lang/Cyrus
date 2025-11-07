@@ -13,7 +13,6 @@ use cyrusc_compiler::{
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{LLVM_IR_DIR_PATH, OBJECTS_FILENAME};
-use cyrusc_sema::monomorph::MonomorphRegistry;
 use inkwell::{
     builder::Builder,
     context::Context,
