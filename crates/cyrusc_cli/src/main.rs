@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::options::{
-    BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind, RelocModeOptions,
+    BuildDir, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind, RelocModeOptions
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::PROJECT_FILE_PATH;
@@ -135,6 +135,9 @@ struct CompilerOptions {
     )]
     code_model: CodeModel,
 
+    #[clap(long, value_enum, help = "Set endianness (default uses target machine endianness).")]
+    pub endianness: Option<Endianness>,
+
     #[clap(long, help = "Number of threads to use for compilation.")]
     pub jobs: Option<usize>,
 
@@ -145,6 +148,12 @@ struct CompilerOptions {
         help = "Module merge mode: 'unified' for serial, 'separate' for parallel."
     )]
     pub module_merge_mode: Option<ModuleMergeMode>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
+pub enum Endianness {
+    Little,
+    Big,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
@@ -231,6 +240,10 @@ impl Sanitizer {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            endianness: self.endianness.and_then(|endianness| match endianness {
+                Endianness::Little => Some(CodeGenEndianness::Little),
+                Endianness::Big => Some(CodeGenEndianness::Big),
+            }),
             module_kind: self.module_merge_mode.and_then(|mmm| match mmm {
                 ModuleMergeMode::Unified => Some(ModuleKind::Unified),
                 ModuleMergeMode::Separate => Some(ModuleKind::Separate),
