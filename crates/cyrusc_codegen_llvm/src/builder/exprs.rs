@@ -281,7 +281,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
         let rvalue = self.load_rvalue(lvalue);
 
-        let signed = rvalue.ty.as_plain_ty().unwrap().is_signed();
+        let signed = rvalue.ty.as_plain().unwrap().is_signed();
 
         let unit_type = self.emit_ty(rvalue.ty.clone()).into_int_type();
         let unit_value = InternalValue::new(
@@ -329,7 +329,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
         let rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
 
-        let get_signed = || rhs_rvalue.ty.as_plain_ty().unwrap().is_signed();
+        let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
         match infix_expr.op {
             InfixOperator::Add => self.build_add(lhs_rvalue, rhs_rvalue),
@@ -536,7 +536,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let signed = rhs_rvalue.ty.as_plain_ty().unwrap().is_signed();
+                let signed = rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
                 let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "lshift").unwrap();
                 InternalValue::new(

@@ -49,6 +49,13 @@ pub struct CIREnumTy {
 }
 
 impl CIRTy {
+    pub fn as_tuple(&self) -> Option<CIRTupleTy> {
+        match self {
+            CIRTy::Tuple(tuple) => Some(tuple.clone()),
+            _ => None,
+        }
+    }
+
     pub fn as_fn(&self) -> Option<CIRFuncTy> {
         match self {
             CIRTy::FuncType(fn_ty) => Some(fn_ty.clone()),
@@ -57,10 +64,10 @@ impl CIRTy {
         }
     }
 
-    pub fn as_plain_ty(&self) -> Option<PlainType> {
+    pub fn as_plain(&self) -> Option<PlainType> {
         match self {
             CIRTy::PlainType(plain_type) => Some(plain_type.clone()),
-            CIRTy::Const(inner) => inner.as_plain_ty(),
+            CIRTy::Const(inner) => inner.as_plain(),
             _ => None,
         }
     }

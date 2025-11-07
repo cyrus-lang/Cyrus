@@ -1098,6 +1098,59 @@ impl Parser {
         }))
     }
 
+    fn parse_export_pattern(&mut self) -> Result<ExportPattern, Diag> {
+        match self.current_token().kind {
+            TokenKind::Identifier { .. } => {
+                let ident = self.parse_identifier()?;
+                Ok(ExportPattern::Identifier(ident))
+            }
+            TokenKind::LeftParen => {
+                self.next_token();
+                let mut patterns = Vec::new();
+
+                loop {
+                    let pattern = self.parse_export_pattern()?;
+                    self.next_token();
+
+                    patterns.push(pattern);
+
+                    match self.current_token().kind {
+                        TokenKind::Comma => {
+                            self.next_token();
+                            continue;
+                        }
+                        TokenKind::RightParen => {
+                            // self.next_token();
+                            break;
+                        }
+                        _ => {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind.clone())),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                    self.current_token().loc.clone(),
+                                    self.file_name.clone(),
+                                ))),
+                                hint: Some("Expected ',' or ')' in tuple pattern.".to_string()),
+                            });
+                        }
+                    }
+                }
+
+                Ok(ExportPattern::Tuple(patterns))
+            }
+            _ => Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind.clone())),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: Some("Expected identifier or '('.".to_string()),
+            }),
+        }
+    }
+
     fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<Statement, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
@@ -1116,28 +1169,39 @@ impl Parser {
             });
         }
 
-        let mut exports: Vec<Identifier> = Vec::new();
+        let mut items = Vec::new();
 
         loop {
-            let identifier = self.parse_identifier()?;
+            let pattern = self.parse_export_pattern()?;
             self.next_token();
 
-            exports.push(identifier);
+            items.push(pattern);
 
             match self.current_token().kind {
                 TokenKind::Comma => {
                     self.next_token();
                     continue;
                 }
-                _ => {
+                TokenKind::RightParen => {
                     break;
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind.clone())),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc.clone(),
+                            self.file_name.clone(),
+                        ))),
+                        hint: Some("Expected ',' or ')' in tuple export.".to_string()),
+                    });
                 }
             }
         }
 
-        self.expect_current(TokenKind::RightParen)?;
+        let pattern = ExportPattern::Tuple(items);
 
-        if self.current_token_is(TokenKind::Semicolon) {
+        if self.peek_token_is(TokenKind::Semicolon) {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::IncompleteVariableDeclaration),
                 level: DiagLevel::Error,
@@ -1150,16 +1214,15 @@ impl Parser {
         }
 
         let mut variable_type: Option<TypeSpecifier> = None;
-        if self.current_token_is(TokenKind::Colon) {
-            self.next_token(); // consume the colon
-
+        if self.peek_token_is(TokenKind::Colon) {
+            self.next_token(); // consume last token
+            self.next_token(); // consume colon
             variable_type = Some(self.parse_type_specifier()?);
-            self.next_token();
         }
 
-        if self.current_token_is(TokenKind::Semicolon) {
+        if self.peek_token_is(TokenKind::Semicolon) {
             return Ok(Statement::ExportTuple(ExportTuple {
-                exports,
+                pattern,
                 ty: variable_type,
                 rhs: None,
                 is_const,
@@ -1170,17 +1233,19 @@ impl Parser {
                 loc,
             }));
         }
-        self.expect_current(TokenKind::Assign)?;
+
+        self.expect_peek(TokenKind::Assign)?;
+        self.next_token(); // consume assign
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
         self.expect_peek(TokenKind::Semicolon)?;
 
         Ok(Statement::ExportTuple(ExportTuple {
-            exports,
+            pattern,
             rhs: Some(expr),
-            span: Span { start, end: span.end },
             ty: variable_type,
             is_const,
+            span: Span { start, end: span.end },
             loc,
         }))
     }
@@ -1198,7 +1263,7 @@ impl Parser {
             is_const = false;
         }
 
-        // considered as group tuple export
+        // considered as grouped tuple export
         if self.current_token_is(TokenKind::LeftParen) {
             return self.parse_grouped_tuple_export(is_const);
         }

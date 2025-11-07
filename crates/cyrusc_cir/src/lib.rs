@@ -1,4 +1,4 @@
-use crate::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy};
+use crate::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
 use cyrusc_ast::{
     AccessSpecifier, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -29,7 +29,6 @@ pub enum CIRStmt {
     Struct(CIRStructStmt),
     Enum(CIREnumStmt),
     Union(CIRUnionStmt),
-    ExportTuple(CIRExportTupleStmt),
     Expr(CIRExpr),
 }
 
@@ -102,7 +101,7 @@ pub struct CIRStructInitExpr {
 pub struct CIREnumInitExpr {
     pub tag: usize,
     pub variant: CIREnumInitVariant,
-    pub enum_ty: CIREnumTy
+    pub enum_ty: CIREnumTy,
 }
 
 #[derive(Debug, Clone)]
@@ -336,9 +335,6 @@ pub struct CIRUnionStmt {
     pub fields: Vec<CIRTy>,
     pub vis: AccessSpecifier,
 }
-
-#[derive(Debug, Clone)]
-pub struct CIRExportTupleStmt {}
 
 pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
     CIRFuncDeclStmt {

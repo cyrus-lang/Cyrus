@@ -1,9 +1,12 @@
 use cyrusc_diagcentral::DiagKind;
-use thiserror::Error;
 use cyrusc_strescape::diagnostics::UnescapeError;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Cannot destructure tuple in export without a value.")]
+    DestructureTupleWithNoRhs,
+
     #[error("{0}")]
     UnescapeError(UnescapeError),
 

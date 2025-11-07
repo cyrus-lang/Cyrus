@@ -78,7 +78,6 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Union(union_stmt) => {
                 self.emit_union_ty(cir_union_as_union_ty(union_stmt));
             }
-            CIRStmt::ExportTuple(export_tuple_stmt) => todo!(),
             CIRStmt::Switch(cirswitch_stmt) => todo!(),
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
             CIRStmt::Expr(expr) => {
