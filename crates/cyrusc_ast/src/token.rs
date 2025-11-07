@@ -111,10 +111,26 @@ pub enum TokenKind {
     As,
     Const,
 
-    // Object Visibility Keywords
+    // Modifiers
+    Weak,
+    LinkOnce,
+    Callconv,
+    Naked,
+    NoReturn,
+    Hot,
+    Cold,
     Extern,
     Public,
     Inline,
+    NoInline,
+    AlwaysInline,
+    DllImport,
+    DllExport,
+    OptSize,
+    OptNone,
+    NoSanitize,
+    NoUnwind,
+    Section,
 }
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
@@ -232,6 +248,20 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "public"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
+            Self::Weak => write!(f, "weak"),
+            Self::LinkOnce => write!(f, "linkonce"),
+            Self::Callconv => write!(f, "callconv"),
+            Self::Naked => write!(f, "naked"),
+            Self::NoReturn => write!(f, "noreturn"),
+            Self::Hot => write!(f, "hot"),
+            Self::Cold => write!(f, "cold"),
+            Self::DllImport => write!(f, "dllimport"),
+            Self::DllExport => write!(f, "dllexport"),
+            Self::OptSize => write!(f, "optsize"),
+            Self::OptNone => write!(f, "optnone"),
+            Self::NoSanitize => write!(f, "no_sanitize"),
+            Self::NoUnwind => write!(f, "nounwind"),
+            Self::Section => write!(f, "section"),
             Self::Literal(literal) => write!(f, "{}", literal),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),

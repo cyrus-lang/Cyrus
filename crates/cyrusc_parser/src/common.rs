@@ -2,6 +2,13 @@ use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
+use cyrusc_abi::callconv::CallConv;
+use cyrusc_abi::export::ExportKind;
+use cyrusc_abi::flags::OptionalFlag;
+use cyrusc_abi::inline::Inlining;
+use cyrusc_abi::linkage::Linkage;
+use cyrusc_abi::prologue::Prologue;
+use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::*;
 use cyrusc_ast::*;
@@ -198,39 +205,141 @@ impl Parser {
         Ok(index)
     }
 
-    pub(crate) fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, Diag> {
-        let access_specifier: AccessSpecifier = {
-            if self.current_token_is(TokenKind::Inline) {
-                self.next_token();
-                AccessSpecifier::Inline
-            } else if self.current_token_is(TokenKind::Extern) {
-                self.next_token();
-                AccessSpecifier::Extern
-            } else if self.current_token_is(TokenKind::Public) {
-                self.next_token();
-                if self.current_token_is(TokenKind::Inline) {
-                    self.next_token();
-                    AccessSpecifier::PublicInline
-                } else if self.current_token_is(TokenKind::Extern) {
-                    self.next_token();
-                    AccessSpecifier::PublicExtern
-                } else {
-                    AccessSpecifier::Public
-                }
-            } else {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(token.kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        token.loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                });
-            }
-        };
+    pub(crate) fn parse_placement(&mut self, token: Token) -> Result<Option<String>, Diag> {
+        if matches!(token.kind, TokenKind::Section) {
+            self.next_token();
 
-        Ok(access_specifier)
+            self.expect_current(TokenKind::LeftParen)?;
+            let section_name = self.parse_string_literal()?;
+            self.expect_current(TokenKind::RightParen)?;
+
+            Ok(Some(section_name))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn parse_optional_flag(&mut self, token: Token) -> Result<Option<OptionalFlag>, Diag> {
+        match token.kind {
+            TokenKind::NoReturn => {
+                self.next_token();
+                Ok(Some(OptionalFlag::NoReturn))
+            }
+            TokenKind::NoUnwind => {
+                self.next_token();
+                Ok(Some(OptionalFlag::NoUnwind))
+            }
+            TokenKind::Cold => {
+                self.next_token();
+                Ok(Some(OptionalFlag::Cold))
+            }
+            TokenKind::Hot => {
+                self.next_token();
+                Ok(Some(OptionalFlag::Hot))
+            }
+            TokenKind::OptSize => {
+                self.next_token();
+                Ok(Some(OptionalFlag::OptSize))
+            }
+            TokenKind::OptNone => {
+                self.next_token();
+                Ok(Some(OptionalFlag::OptNone))
+            }
+            TokenKind::NoSanitize => {
+                self.next_token();
+                self.expect_current(TokenKind::LeftParen)?;
+                let arg = self.parse_string_literal()?;
+                self.expect_current(TokenKind::RightParen)?;
+                Ok(Some(OptionalFlag::NoSanitize(arg)))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub(crate) fn parse_callconv(&mut self, token: Token) -> Result<Option<CallConv>, Diag> {
+        if matches!(token.kind, TokenKind::Callconv) {
+            let loc = self.current_token().loc.clone();
+
+            self.expect_current(TokenKind::Callconv)?;
+            self.expect_current(TokenKind::LeftParen)?;
+            let callconv_str = self.parse_identifier()?;
+            self.next_token(); // consume 
+            self.expect_current(TokenKind::RightParen)?;
+
+            match CallConv::try_from(callconv_str.as_string()) {
+                Ok(callconv) => Ok(Some(callconv)),
+                Err(err) => {
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidCallConv(err.0)),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn parse_export_kind(&mut self, token: Token) -> Option<ExportKind> {
+        if matches!(token.kind, TokenKind::DllExport) {
+            self.next_token();
+            Some(ExportKind::DllExport)
+        } else if matches!(token.kind, TokenKind::DllImport) {
+            self.next_token();
+            Some(ExportKind::DllImport)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn parse_prologue(&mut self, token: Token) -> Option<Prologue> {
+        if matches!(token.kind, TokenKind::Naked) {
+            self.next_token();
+            Some(Prologue::Naked)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn parse_inlining(&mut self, token: Token) -> Option<Inlining> {
+        if matches!(token.kind, TokenKind::Inline) {
+            self.next_token();
+            Some(Inlining::Inline)
+        } else if matches!(token.kind, TokenKind::NoInline) {
+            self.next_token();
+            Some(Inlining::NoInline)
+        } else if matches!(token.kind, TokenKind::AlwaysInline) {
+            self.next_token();
+            Some(Inlining::AlwaysInline)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn parse_linkage(&mut self, token: Token) -> Option<Linkage> {
+        if matches!(token.kind, TokenKind::Extern) {
+            self.next_token();
+            Some(Linkage::Extern)
+        } else if matches!(token.kind, TokenKind::Weak) {
+            self.next_token();
+            Some(Linkage::Weak)
+        } else if matches!(token.kind, TokenKind::LinkOnce) {
+            self.next_token();
+            Some(Linkage::LinkOnce)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn parse_vis(&mut self, token: Token) -> Option<Visibility> {
+        if matches!(token.kind, TokenKind::Public) {
+            self.next_token();
+            Some(Visibility::Public)
+        } else {
+            None
+        }
     }
 
     fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, Diag> {
@@ -583,9 +692,38 @@ impl Parser {
     }
 
     fn current_expr_is_path_like(&self, last_parsed_expression: Expr) -> bool {
-        matches!(
-            last_parsed_expression,
-            Expr::Identifier(..) | Expr::ModuleImport(..)
-        )
+        matches!(last_parsed_expression, Expr::Identifier(..) | Expr::ModuleImport(..))
+    }
+
+    fn parse_string_literal(&mut self) -> Result<String, Diag> {
+        let loc = self.current_token().loc.clone();
+
+        match self.current_token().kind {
+            TokenKind::Literal(literal) => match literal.kind {
+                LiteralKind::String(value, string_prefix) => {
+                    if string_prefix.is_some() {
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::ExpectedStringLiteral),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                            hint: Some("Consider to remove the string prefix.".to_string()),
+                        });
+                    }
+                    Ok(value)
+                }
+                _ => Err(Diag {
+                    kind: Box::new(ParserDiagKind::ExpectedStringLiteral),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                    hint: Some("Expected string literal as argument".to_string()),
+                }),
+            },
+            _ => Err(Diag {
+                kind: Box::new(ParserDiagKind::ExpectedStringLiteral),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: Some("Expected string literal as argument".to_string()),
+            }),
+        }
     }
 }

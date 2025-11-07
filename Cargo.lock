@@ -236,14 +236,13 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "cyrusc_abi"
 version = "0.1.0"
-dependencies = [
- "cyrusc_ast",
- "cyrusc_sema",
-]
 
 [[package]]
 name = "cyrusc_ast"
 version = "0.1.0"
+dependencies = [
+ "cyrusc_abi",
+]
 
 [[package]]
 name = "cyrusc_buildmanifest"
@@ -361,6 +360,7 @@ dependencies = [
 name = "cyrusc_parser"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",

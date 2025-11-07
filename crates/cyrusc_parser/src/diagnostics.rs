@@ -4,7 +4,13 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ParserDiagKind {
-    #[error("Expected integer literal, but found '{0}'")]
+    #[error("{0}")]
+    InvalidCallConv(String),
+
+    #[error("Expected string literal.")]
+    ExpectedStringLiteral,
+
+    #[error("Expected integer literal, but found '{0}'.")]
     ExpectedIntegerLiteral(TokenKind),
 
     #[error("Tuple type must contain at least two elements.")]

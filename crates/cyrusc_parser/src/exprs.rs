@@ -14,7 +14,7 @@ use cyrusc_diagcentral::DiagLoc;
 impl Parser {
     pub(crate) fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expr, Span), Diag> {
         let mut left_start = self.current_token().span.start;
-        let mut left = self.parse_prefix_expression()?;
+        let mut left = self.parse_prefix_expr()?;
 
         loop {
             if self.peek_token_is(TokenKind::LeftBracket) {
@@ -212,7 +212,7 @@ impl Parser {
         Ok(module_path)
     }
 
-    fn parse_prefix_expression(&mut self) -> Result<Expr, Diag> {
+    fn parse_prefix_expr(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 

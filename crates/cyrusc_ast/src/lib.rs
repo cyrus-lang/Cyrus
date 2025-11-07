@@ -1,3 +1,5 @@
+use cyrusc_abi::visibility::Visibility;
+
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::*,
@@ -146,7 +148,7 @@ pub struct Union {
     pub fields: Vec<UnionField>,
     pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: Location,
     pub span: Span,
 }
@@ -165,7 +167,7 @@ pub struct Enum {
     pub variants: Vec<EnumVariant>,
     pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: Location,
     pub span: Span,
 }
@@ -376,7 +378,7 @@ pub struct UnaryExpr {
 pub struct FuncType {
     pub params: FuncTypeParams,
     pub return_type: Box<TypeSpecifier>,
-    pub vis_opt: Option<AccessSpecifier>,
+    pub vis_opt: Option<Visibility>,
     pub span: Span,
     pub loc: Location,
 }
@@ -455,14 +457,14 @@ pub struct Defer {
 pub struct Interface {
     pub identifier: Identifier,
     pub methods: Vec<FuncDecl>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct GlobalVar {
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub identifier: Identifier,
     pub type_specifier: Option<TypeSpecifier>,
     pub expr: Option<Expr>,
@@ -476,7 +478,7 @@ pub struct Typedef {
     pub identifier: Identifier,
     pub type_specifier: TypeSpecifier,
     pub generic_params: Option<GenericParamsList>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: Location,
     pub span: Span,
 }
@@ -602,7 +604,7 @@ pub struct Struct {
     pub impls: Vec<Identifier>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub is_packed: bool,
     pub loc: Location,
     pub span: Span,
@@ -621,7 +623,7 @@ pub struct StructInit {
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub identifier: Identifier,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -701,7 +703,7 @@ pub struct FuncDef {
     pub params: FuncParams,
     pub body: Box<BlockStmt>,
     pub return_type: Option<TypeSpecifier>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub span: Span,
     pub loc: Location,
 }
@@ -711,7 +713,7 @@ pub struct FuncDecl {
     pub identifier: Identifier,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub renamed_as: Option<Identifier>,
     pub span: Span,
     pub loc: Location,
@@ -737,26 +739,6 @@ impl FuncDecl {
             Some(identifier) => identifier.name.clone(),
             None => self.identifier.name.clone(),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AccessSpecifier {
-    Extern,
-    Public,
-    Internal,
-    Inline,
-    PublicInline,
-    PublicExtern,
-}
-
-impl AccessSpecifier {
-    pub fn is_private(&self) -> bool {
-        matches!(self, Self::Internal | Self::Inline | Self::Extern)
-    }
-
-    pub fn is_public(&self) -> bool {
-        matches!(self, Self::Public | Self::PublicInline | Self::PublicExtern)
     }
 }
 
