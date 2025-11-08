@@ -40,7 +40,7 @@ impl Parser {
             let typedef_modifiers =
                 modifiers.into_typedef_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
             return self.parse_typedef(typedef_modifiers.vis);
-        } else if self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const) {
+        } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
             return self.parse_global_variable(modifiers.clone());
         } else if self.current_token_is(TokenKind::Interface) {
             let interface_modifiers =
