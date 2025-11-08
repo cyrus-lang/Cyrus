@@ -1,7 +1,14 @@
 use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
+use crate::modifiers::UnresolvedModifiers;
 use crate::prec::Precedence;
+use cyrusc_abi::modifiers::EnumModifiers;
+use cyrusc_abi::modifiers::FuncModifiers;
+use cyrusc_abi::modifiers::GlobalVarModifiers;
+use cyrusc_abi::modifiers::StructModifiers;
+use cyrusc_abi::modifiers::UnionModifiers;
+use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::*;
 use cyrusc_ast::*;
@@ -12,45 +19,34 @@ const SWITCH_ENDING_TOKENS: &[TokenKind; 3] = &[TokenKind::Case, TokenKind::Defa
 
 impl Parser {
     pub(crate) fn parse_statement(&mut self, toplevel: bool) -> Result<Stmt, Diag> {
-        if self.current_token_is(TokenKind::Extern)
-            || self.current_token_is(TokenKind::Inline)
-            || self.current_token_is(TokenKind::Public)
-        {
-            let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+        let modifiers = self.parse_unresolved_modifiers()?;
+        let loc = self.current_token().loc.clone();
 
-            if self.current_token_is(TokenKind::Function) {
-                return self.parse_func(Some(vis));
-            } else if self.current_token_is(TokenKind::Struct) {
-                return self.parse_struct(Some(vis), false);
-            } else if self.current_token_is(TokenKind::Bits) {
-                return self.parse_struct(Some(vis), true);
-            } else if self.current_token_is(TokenKind::Enum) {
-                return self.parse_enum(Some(vis));
-            } else if self.current_token_is(TokenKind::Union) {
-                return self.parse_union(Some(vis));
-            } else if self.current_token_is(TokenKind::Typedef) {
-                return self.parse_typedef(Some(vis));
-            } else if self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const) {
-                return self.parse_global_variable(Some(vis));
-            } else if self.current_token_is(TokenKind::Interface) {
-                return self.parse_interface(Some(vis));
-            }
-        } else if self.current_token_is(TokenKind::Function) {
-            return self.parse_func(None);
+        if self.current_token_is(TokenKind::Function) {
+            let func_modifiers = modifiers.into_func_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_func(func_modifiers);
         } else if self.current_token_is(TokenKind::Struct) {
-            return self.parse_struct(None, false);
+            let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_struct(struct_modifiers, false);
         } else if self.current_token_is(TokenKind::Bits) {
-            return self.parse_struct(None, true);
+            let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_struct(struct_modifiers, true);
         } else if self.current_token_is(TokenKind::Enum) {
-            return self.parse_enum(None);
+            let enum_modifiers = modifiers.into_enum_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_enum(enum_modifiers);
         } else if self.current_token_is(TokenKind::Union) {
-            return self.parse_union(None);
+            let union_modifiers = modifiers.into_union_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_union(union_modifiers);
         } else if self.current_token_is(TokenKind::Typedef) {
-            return self.parse_typedef(None);
+            let typedef_modifiers =
+                modifiers.into_typedef_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_typedef(typedef_modifiers.vis);
+        } else if self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const) {
+            return self.parse_global_variable(modifiers.clone());
         } else if self.current_token_is(TokenKind::Interface) {
-            return self.parse_interface(None);
-        } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
-            return self.parse_global_variable(None);
+            let interface_modifiers =
+                modifiers.into_interface_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            return self.parse_interface(interface_modifiers.vis);
         }
 
         if !toplevel {
@@ -371,11 +367,13 @@ impl Parser {
         Ok(field)
     }
 
-    fn parse_union(&mut self, vis: Option<AccessSpecifier>) -> Result<Stmt, Diag> {
+    fn parse_union(&mut self, mut modifiers: UnionModifiers) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::Union)?;
+
+        modifiers.repr = Some(self.parse_repr()?);
 
         let identifier = self.parse_identifier()?;
         self.next_token();
@@ -395,7 +393,7 @@ impl Parser {
                 methods: Vec::new(),
                 fields: Vec::new(),
                 generic_params,
-                vis: vis.unwrap_or(AccessSpecifier::Internal),
+                modifiers,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }));
@@ -420,24 +418,25 @@ impl Parser {
                         hint: None,
                     });
                 }
-                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+                // FIXME
+                // TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                //     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
 
-                    let method = match self.parse_func(Some(vis))? {
-                        Stmt::FuncDef(func_def) => func_def,
-                        _ => unreachable!(),
-                    };
-                    self.next_token(); // consume right brace
-                    methods.push(method);
-                }
-                TokenKind::Function => {
-                    if let Stmt::FuncDef(method) = self.parse_func(None)? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        unreachable!();
-                    }
-                }
+                //     let method = match self.parse_func(Some(vis))? {
+                //         Stmt::FuncDef(func_def) => func_def,
+                //         _ => unreachable!(),
+                //     };
+                //     self.next_token(); // consume right brace
+                //     methods.push(method);
+                // }
+                // TokenKind::Function => {
+                //     if let Stmt::FuncDef(method) = self.parse_func(None)? {
+                //         self.next_token(); // consume right brace
+                //         methods.push(method);
+                //     } else {
+                //         unreachable!();
+                //     }
+                // }
                 TokenKind::Identifier { .. } => {
                     let field = self.parse_union_field()?;
                     fields.push(field);
@@ -461,18 +460,19 @@ impl Parser {
             methods,
             fields,
             generic_params,
-            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            modifiers,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_enum(&mut self, vis: Option<AccessSpecifier>) -> Result<Stmt, Diag> {
-        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
+    fn parse_enum(&mut self, mut modifiers: EnumModifiers) -> Result<Stmt, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
         self.next_token(); // parse enum keyword
+
+        modifiers.repr = Some(self.parse_repr()?);
 
         let enum_name = self.parse_identifier()?;
         self.next_token(); // consume enum name
@@ -494,7 +494,7 @@ impl Parser {
                 variants: enum_fields,
                 generic_params,
                 methods: Vec::new(),
-                vis,
+                modifiers,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }));
@@ -529,23 +529,24 @@ impl Parser {
 
         loop {
             match self.current_token().kind {
-                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
-                    if let Stmt::FuncDef(method) = self.parse_func(Some(vis))? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        unreachable!();
-                    }
-                }
-                TokenKind::Function => {
-                    if let Stmt::FuncDef(method) = self.parse_func(None)? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        unreachable!();
-                    }
-                }
+                // FIXME
+                // TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                //     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+                //     if let Stmt::FuncDef(method) = self.parse_func(Some(vis))? {
+                //         self.next_token(); // consume right brace
+                //         methods.push(method);
+                //     } else {
+                //         unreachable!();
+                //     }
+                // }
+                // TokenKind::Function => {
+                //     if let Stmt::FuncDef(method) = self.parse_func(None)? {
+                //         self.next_token(); // consume right brace
+                //         methods.push(method);
+                //     } else {
+                //         unreachable!();
+                //     }
+                // }
                 _ => {
                     break;
                 }
@@ -557,18 +558,19 @@ impl Parser {
             variants: enum_fields,
             generic_params,
             methods,
-            vis,
+            modifiers,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_struct(&mut self, vis: Option<AccessSpecifier>, is_packed: bool) -> Result<Stmt, Diag> {
+    fn parse_struct(&mut self, mut modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
         let loc = self.current_token().loc.clone();
         let struct_start = self.current_token().span.start.clone();
 
-        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
-        self.next_token(); // consume struct token
+        self.next_token(); // consume struct/bits token
+
+        modifiers.repr = Some(self.parse_repr()?);
 
         let struct_name = self.parse_identifier()?;
         self.next_token(); // consume struct name
@@ -644,7 +646,8 @@ impl Parser {
                         hint: None,
                     });
                 }
-                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                // FIXME
+                /* TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
                     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
 
                     if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
@@ -666,7 +669,7 @@ impl Parser {
                     } else {
                         unreachable!();
                     }
-                }
+                } */
                 TokenKind::Identifier { .. } => {
                     let field = self.parse_struct_field(None)?;
                     fields.push(field);
@@ -689,7 +692,7 @@ impl Parser {
             identifier: struct_name,
             generic_params,
             impls,
-            vis,
+            modifiers,
             fields,
             methods,
             is_packed,
@@ -701,7 +704,7 @@ impl Parser {
         }))
     }
 
-    fn parse_struct_field(&mut self, vis: Option<AccessSpecifier>) -> Result<StructField, Diag> {
+    fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -716,7 +719,7 @@ impl Parser {
         let field = StructField {
             identifier,
             ty: type_token,
-            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            vis: vis.unwrap_or_default(),
             loc,
             span: Span {
                 start,
@@ -806,10 +809,9 @@ impl Parser {
         }
     }
 
-    fn parse_interface(&mut self, vis: Option<AccessSpecifier>) -> Result<Stmt, Diag> {
+    fn parse_interface(&mut self, vis: Visibility) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
-        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
 
         self.next_token();
         let identifier = self.parse_identifier()?;
@@ -831,7 +833,7 @@ impl Parser {
         loop {
             match self.current_token().kind {
                 TokenKind::Function => {
-                    let func_decl = match self.parse_func(Some(vis.clone()))? {
+                    let func_decl = match self.parse_func(FuncModifiers::default())? {
                         Stmt::FuncDecl(func_decl) => func_decl,
                         _ => {
                             return Err(Diag {
@@ -1316,13 +1318,11 @@ impl Parser {
         }))
     }
 
-    fn parse_func(&mut self, vis: Option<AccessSpecifier>) -> Result<Stmt, Diag> {
+    fn parse_func(&mut self, modifiers: FuncModifiers) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
-
-        self.next_token(); // consume the fn token
+        self.expect_current(TokenKind::Function)?;
 
         let func_name = self.parse_identifier()?; // export the name of the function
         self.next_token(); // consume the name of the identifier
@@ -1339,7 +1339,7 @@ impl Parser {
                 identifier: func_name,
                 params,
                 return_type: None,
-                vis,
+                modifiers,
                 renamed_as: None,
                 span: Span {
                     start,
@@ -1356,7 +1356,7 @@ impl Parser {
                 identifier: func_name,
                 params,
                 return_type: None,
-                vis,
+                modifiers,
                 renamed_as: Some(renamed_as),
                 span: Span {
                     start,
@@ -1374,7 +1374,7 @@ impl Parser {
                 identifier: func_name,
                 params,
                 return_type,
-                vis,
+                modifiers,
                 renamed_as: None,
                 span: Span {
                     start,
@@ -1405,7 +1405,7 @@ impl Parser {
                 identifier: func_name,
                 params,
                 return_type,
-                vis,
+                modifiers,
                 renamed_as: Some(renamed_as),
                 span: Span {
                     start,
@@ -1423,7 +1423,7 @@ impl Parser {
             params,
             body,
             return_type,
-            vis,
+            modifiers,
             span: Span { start, end },
             loc,
         }));
@@ -1464,7 +1464,7 @@ impl Parser {
         }))
     }
 
-    fn parse_global_variable(&mut self, vis: Option<AccessSpecifier>) -> Result<Stmt, Diag> {
+    fn parse_global_variable(&mut self, modifiers: UnresolvedModifiers) -> Result<Stmt, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1476,6 +1476,9 @@ impl Parser {
             self.expect_current(TokenKind::Var)?;
             is_const = false;
         }
+
+        let global_var_modifiers =
+            modifiers.into_global_var_modifiers(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))?;
 
         let identifier = self.parse_identifier()?;
         self.next_token();
@@ -1499,17 +1502,17 @@ impl Parser {
         };
 
         Ok(Stmt::GlobalVar(GlobalVar {
-            vis: vis.unwrap_or(AccessSpecifier::Internal),
             identifier,
             type_specifier,
             expr,
             is_const,
+            global_var_modifiers,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_typedef(&mut self, vis: Option<AccessSpecifier>) -> Result<Stmt, Diag> {
+    fn parse_typedef(&mut self, vis: Visibility) -> Result<Stmt, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -1529,7 +1532,7 @@ impl Parser {
         let type_specifier = self.parse_type_specifier()?;
         self.next_token();
         Ok(Stmt::Typedef(Typedef {
-            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            vis,
             identifier,
             type_specifier,
             generic_params,

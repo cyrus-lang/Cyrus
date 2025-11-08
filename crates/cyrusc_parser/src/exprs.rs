@@ -420,7 +420,7 @@ impl Parser {
         }
     }
 
-    fn parse_integer_literal(&self) -> Result<usize, Diag> {
+    pub(crate) fn parse_integer_literal(&self) -> Result<usize, Diag> {
         match match self.current_token().kind {
             TokenKind::Literal(literal) => match &literal.kind {
                 LiteralKind::Integer(value, _) => Some(*value),
