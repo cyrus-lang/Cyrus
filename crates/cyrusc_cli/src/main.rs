@@ -1,7 +1,8 @@
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::options::{
-    BuildDir, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind, RelocModeOptions
+    BuildDir, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind,
+    RelocModeOptions,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::PROJECT_FILE_PATH;
@@ -165,8 +166,9 @@ pub enum ModuleMergeMode {
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
 pub enum Sanitizer {
     Address,
-    Undefined,
+    Memory,
     Thread,
+    HWAddress,
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
@@ -231,8 +233,9 @@ impl Sanitizer {
     pub fn to_compiler_sanitizer(&self) -> CodeGenSanitizer {
         match self {
             Sanitizer::Address => CodeGenSanitizer::Address,
-            Sanitizer::Undefined => CodeGenSanitizer::Undefined,
+            Sanitizer::Memory => CodeGenSanitizer::Memory,
             Sanitizer::Thread => CodeGenSanitizer::Thread,
+            Sanitizer::HWAddress => CodeGenSanitizer::HWAddress,
         }
     }
 }

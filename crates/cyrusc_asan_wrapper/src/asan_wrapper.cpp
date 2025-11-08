@@ -9,10 +9,9 @@
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/JumpThreading.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
-#include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm-c/Core.h"
-#include "llvm-c/TargetMachine.h"
 #include <optional>
 
 extern "C"
@@ -30,15 +29,14 @@ extern "C"
     } SanitizerOptions;
 
     void run_sanitizer_passes(LLVMModuleRef module_ref,
-                              LLVMTargetMachineRef tm_ref,
+                              llvm::TargetMachine *Machine,
                               int opt_level,
                               SanitizerOptions opts)
     {
-        if (!module_ref || !tm_ref)
+        if (!module_ref || !Machine)
             return;
 
         llvm::Module *Mod = llvm::unwrap(module_ref);
-        llvm::TargetMachine *Machine = llvm::unwrap(tm_ref);
 
         llvm::PassInstrumentationCallbacks PIC;
         llvm::PipelineTuningOptions PTO{};
@@ -61,9 +59,6 @@ extern "C"
         PB.registerModuleAnalyses(MAM);
         PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-        llvm::StandardInstrumentations SI(Mod->getContext(), /*debug=*/false, /*verify=*/true);
-        SI.registerCallbacks(PIC, &MAM);
-
         llvm::OptimizationLevel level;
         switch (opt_level)
         {
@@ -84,8 +79,10 @@ extern "C"
             break;
         }
 
-        llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(level, llvm::ThinOrFullLTOPhase::None);
+        // build the default per-module optimization pipeline
+        llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(level, false);
 
+        // add sanitizer passes
         if (opts.mem_sanitize)
         {
             llvm::MemorySanitizerOptions MSO(/*TrackOrigins=*/true, opts.recover, false, false);
@@ -95,7 +92,7 @@ extern "C"
         if (opts.thread_sanitize)
         {
             MPM.addPass(llvm::ModuleThreadSanitizerPass());
-            MPM.addPass(createModuleToFunctionPassAdaptor(llvm::ThreadSanitizerPass()));
+            MPM.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::ThreadSanitizerPass()));
         }
 
         if (opts.address_sanitize)
@@ -107,6 +104,7 @@ extern "C"
             ASO.UseAfterReturn = opts.asan_use_after_return
                                      ? llvm::AsanDetectStackUseAfterReturnMode::Always
                                      : llvm::AsanDetectStackUseAfterReturnMode::Never;
+
             bool is_windows = Machine->getTargetTriple().isOSWindows();
             MPM.addPass(llvm::AddressSanitizerPass(ASO, false, !is_windows, llvm::AsanDtorKind::None));
         }
@@ -116,13 +114,15 @@ extern "C"
             MPM.addPass(llvm::HWAddressSanitizerPass({false, opts.recover, opt_level == 0}));
         }
 
+        // function-level optimization passes
         llvm::FunctionPassManager FPM;
         FPM.addPass(llvm::EarlyCSEPass(true));
         FPM.addPass(llvm::InstCombinePass());
         FPM.addPass(llvm::JumpThreadingPass());
         FPM.addPass(llvm::GVNPass());
         FPM.addPass(llvm::InstCombinePass());
-        MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
+
+        MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
 
         MPM.run(*Mod, MAM);
     }

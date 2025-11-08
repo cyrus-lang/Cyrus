@@ -89,7 +89,12 @@ impl CodeGenLLVM {
             llvmmodule.set_triple(&self.llvmtm.get_triple());
             llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
             self.set_endianness(&llvmmodule);
-            enable_asan_for_owned_module(&self.opts, owned_module);
+            enable_asan_for_owned_module(
+                &self.opts,
+                owned_module,
+                &self.llvmtm,
+                self.opts.opt_level.unwrap_or_default(),
+            );
         }
 
         let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);

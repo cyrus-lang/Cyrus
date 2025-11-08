@@ -29,9 +29,6 @@
             rustup
             gcc
             libgcc
-            glibc
-            glibc.dev
-            glibc.static
             gcc_multi
             clang-tools
             clang
@@ -41,13 +38,15 @@
             llvm_18.lib
             llvm_18.dev
             libxml2
+            stdenv.cc
           ];
 
           buildPhase = ''
             export CXX=clang++
             export CC=clang
-            export GLIBC_INCLUDE_PATH=$(nix eval --raw pkgs.glibc.dev)/include
-            export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+            export GLIBC_INCLUDE_PATH="${pkgs.glibc.dev}/include:${pkgs.stdenv.cc.cc}/include"
+            export CPATH="${pkgs.glibc.dev}/include:${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}:${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}/x86_64-unknown-linux-gnu" 
+            export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
             export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
             cargo build --release
           '';
@@ -98,13 +97,11 @@
       devShells.${system} = {
         linux = pkgs.mkShell {
           name = "cyrus-dev-linux";
+          
           buildInputs = with pkgs; [
             rustup
             gcc
             libgcc
-            glibc
-            glibc.dev
-            glibc.static
             gcc_multi
             clang-tools
             clang
@@ -115,12 +112,14 @@
             llvm_18.dev
             libxml2
             lldb_18
+            stdenv.cc
           ];
           shellHook = ''
             export CXX=clang++
             export CC=clang
-            export GLIBC_INCLUDE_PATH=$(nix eval --raw pkgs.glibc.dev)/include
-            export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+            export CPATH="${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}:${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}/x86_64-unknown-linux-gnu" 
+            export GLIBC_INCLUDE_PATH="${pkgs.stdenv.cc.cc}/include"
+            export LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
             export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
             alias cyrus="cargo run -j24 --"
           '';
@@ -151,8 +150,6 @@
 
             # Add Windows target
             rustup target add x86_64-pc-windows-gnu --toolchain nightly 2>/dev/null || true
-
-            echo ${pkgs.pkgsCross.mingwW64.libffi}
 
             # Export library/include paths for cross-compile
             export LIBRARY_PATH="${pkgs.pkgsCross.mingwW64.libffi}/lib:${pkgs.pkgsCross.mingwW64.zlib}/lib:${pkgs.pkgsCross.mingwW64.libxml2}/lib:${pkgs.pkgsCross.mingwW64.ncurses}/lib:$LIBRARY_PATH"
