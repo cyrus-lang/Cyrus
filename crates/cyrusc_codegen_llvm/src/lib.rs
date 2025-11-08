@@ -1,4 +1,5 @@
 use crate::{
+    asan::enable_asan_for_owned_module,
     builder::builder::IRBuilderCtx,
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
@@ -24,9 +25,10 @@ use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
+mod asan;
 mod builder;
 mod llvm;
 
@@ -87,6 +89,7 @@ impl CodeGenLLVM {
             llvmmodule.set_triple(&self.llvmtm.get_triple());
             llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
             self.set_endianness(&llvmmodule);
+            enable_asan_for_owned_module(&self.opts, owned_module);
         }
 
         let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
