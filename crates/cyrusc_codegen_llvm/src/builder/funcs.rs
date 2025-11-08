@@ -191,10 +191,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let attr = self.llvmctx.create_enum_attribute(id, 0);
                     func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
                 }
-                OptionalFlag::NoSanitize(_kind) => {
-                    // FIXME Didn't worked and I don't know why at the moment.
-                    // let attr = self.llvmctx.create_string_attribute("no_sanitize", kind);
-                    // func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
+                OptionalFlag::NoSanitize(kind) => {
+                    let attr = self.llvmctx.create_string_attribute("no_sanitize", kind);
+                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
                 }
             }
         }
