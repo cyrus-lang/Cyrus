@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Debug, Error, Clone)]
 pub enum ParserDiagKind {
     #[error("{0}")]
-    InvalidCallConv(String),
+    InvalidModifier(String),
 
     #[error("Expected string literal.")]
     ExpectedStringLiteral,

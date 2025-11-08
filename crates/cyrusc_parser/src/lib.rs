@@ -16,6 +16,7 @@ mod diagnostics;
 mod exprs;
 mod prec;
 mod stmts;
+mod modifiers;
 
 /// Parses the program from the given file path.
 ///

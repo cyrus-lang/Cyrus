@@ -1,8 +1,10 @@
-use cyrusc_abi::visibility::Visibility;
-
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::*,
+};
+use cyrusc_abi::{
+    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+    visibility::Visibility,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -148,7 +150,7 @@ pub struct Union {
     pub fields: Vec<UnionField>,
     pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
-    pub vis: Visibility,
+    pub modifiers: UnionModifiers,
     pub loc: Location,
     pub span: Span,
 }
@@ -167,7 +169,7 @@ pub struct Enum {
     pub variants: Vec<EnumVariant>,
     pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
-    pub vis: Visibility,
+    pub modifiers: EnumModifiers,
     pub loc: Location,
     pub span: Span,
 }
@@ -464,11 +466,11 @@ pub struct Interface {
 
 #[derive(Debug, Clone)]
 pub struct GlobalVar {
-    pub vis: Visibility,
     pub identifier: Identifier,
     pub type_specifier: Option<TypeSpecifier>,
     pub expr: Option<Expr>,
     pub is_const: bool,
+    pub global_var_modifiers: GlobalVarModifiers,
     pub loc: Location,
     pub span: Span,
 }
@@ -604,7 +606,7 @@ pub struct Struct {
     pub impls: Vec<Identifier>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
-    pub vis: Visibility,
+    pub modifiers: StructModifiers,
     pub is_packed: bool,
     pub loc: Location,
     pub span: Span,
@@ -703,7 +705,7 @@ pub struct FuncDef {
     pub params: FuncParams,
     pub body: Box<BlockStmt>,
     pub return_type: Option<TypeSpecifier>,
-    pub vis: Visibility,
+    pub modifiers: FuncModifiers,
     pub span: Span,
     pub loc: Location,
 }
@@ -713,7 +715,7 @@ pub struct FuncDecl {
     pub identifier: Identifier,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
-    pub vis: Visibility,
+    pub modifiers: FuncModifiers,
     pub renamed_as: Option<Identifier>,
     pub span: Span,
     pub loc: Location,
@@ -725,7 +727,7 @@ impl FuncDef {
             identifier: self.identifier.clone(),
             params: self.params.clone(),
             return_type: self.return_type.clone(),
-            vis: self.vis.clone(),
+            modifiers: self.modifiers.clone(),
             renamed_as: None,
             span: self.span.clone(),
             loc: self.loc.clone(),

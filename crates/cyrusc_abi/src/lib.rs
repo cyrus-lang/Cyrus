@@ -8,3 +8,4 @@ pub mod naming;
 pub mod placement;
 pub mod prologue;
 pub mod visibility;
+pub mod repr;
