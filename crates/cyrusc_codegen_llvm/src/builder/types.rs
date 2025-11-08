@@ -58,7 +58,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             PlainType::Char => llvmctx.i8_type().as_any_type_enum(),
             PlainType::Bool => llvmctx.bool_type().as_any_type_enum(),
             PlainType::Void => llvmctx.void_type().as_any_type_enum(),
-            PlainType::Null => unreachable!(),
+            PlainType::Null => llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
         }
     }
 
