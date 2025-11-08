@@ -13,4 +13,5 @@ cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }
 cyrusc_sema = { path = "../cyrusc_sema", version = "*" }
+cyrusc_asan_wrapper = { path = "../cyrusc_asan_wrapper", version = "*" }
 rayon = "1.11.0"

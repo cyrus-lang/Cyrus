@@ -3,6 +3,9 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=CXX");
+    println!("cargo:rerun-if-env-changed=LLVM_CONFIG");
+    println!("cargo:rerun-if-env-changed=GLIBC_INCLUDE_PATH");
 
     let cpp_file = "src/asan_wrapper.cpp";
     println!("cargo:rerun-if-changed={}", cpp_file);
@@ -31,11 +34,20 @@ fn main() {
         .warnings(true)
         .flag_if_supported("-std=c++17")
         .flag_if_supported("-fPIC")
+        .flag_if_supported("-O0")
         .flags(cxxflags.split_whitespace())
         .flags(ldflags.split_whitespace());
 
+    if let Ok(cpath) = std::env::var("CPATH") {
+        for path in cpath.split(':') {
+            if !path.is_empty() {
+                build.include(path);
+            }
+        }
+    }
+
     if let Ok(glibc_include) = env::var("GLIBC_INCLUDE_PATH") {
-        build.include(glibc_include);
+        build.include(&glibc_include);
     }
 
     build.compile("cyrusc_asan_wrapper");

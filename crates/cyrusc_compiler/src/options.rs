@@ -131,7 +131,7 @@ impl CodeGenOptions {
                 out.into_iter()
                     .filter_map(|s| match s.as_str() {
                         "address" => Some(CodeGenSanitizer::Address),
-                        "undefined" => Some(CodeGenSanitizer::Undefined),
+                        "memory" => Some(CodeGenSanitizer::Memory),
                         "thread" => Some(CodeGenSanitizer::Thread),
                         _ => None,
                     })
@@ -274,16 +274,18 @@ impl Default for CodeGenLinkerOptions {
 #[derive(Debug, Clone)]
 pub enum CodeGenSanitizer {
     Address,
-    Undefined,
+    Memory,
     Thread,
+    HWAddress,
 }
 
 impl fmt::Display for CodeGenSanitizer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CodeGenSanitizer::Address => write!(f, "address"),
-            CodeGenSanitizer::Undefined => write!(f, "undefined"),
+            CodeGenSanitizer::Memory => write!(f, "memory"),
             CodeGenSanitizer::Thread => write!(f, "thread"),
+            CodeGenSanitizer::HWAddress => write!(f, "hwaddress"),
         }
     }
 }
