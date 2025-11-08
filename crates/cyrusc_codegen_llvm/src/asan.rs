@@ -20,10 +20,11 @@ pub(crate) fn enable_asan_for_owned_module(
 
     add_asan_metadata_flags_to_module(opts, context, &llvmmodule);
 
-    if !is_hwasan_supported() {
-        display_single_custom_diag!("HWASan not supported on this platform.".to_string());
-    }
     opts.sanitizer.iter().for_each(|sanitizer| {
+        if matches!(sanitizer, CodeGenSanitizer::HWAddress) && !is_hwasan_supported() {
+            display_single_custom_diag!("HWASan not supported on this platform.".to_string());
+        }
+
         if !is_sanitizer_support_in_linker(&opts.linker.as_ref().unwrap(), sanitizer) {
             display_single_custom_diag!(format!(
                 "Sanitizer not supported for linker: '{}'.",
