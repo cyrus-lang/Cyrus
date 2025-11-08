@@ -3,7 +3,11 @@ use crate::{
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
-use cyrusc_ast::{AccessSpecifier, Identifier, SelfModifierKind, source_loc::SourceLoc};
+use cyrusc_abi::{
+    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+    visibility::Visibility,
+};
+use cyrusc_ast::{Identifier, SelfModifierKind, source_loc::SourceLoc};
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
@@ -92,7 +96,7 @@ pub struct TypedInterfaceStmt {
     pub name: String,
     pub symbol_id: SymbolID,
     pub methods: Vec<TypedFuncDeclStmt>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: SourceLoc,
 }
 
@@ -105,7 +109,7 @@ pub struct TypedEnumStmt {
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub vis: AccessSpecifier,
+    pub modifiers: EnumModifiers,
     pub loc: SourceLoc,
 }
 
@@ -142,7 +146,7 @@ pub struct TypedStructStmt {
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedIdentifier>,
-    pub vis: AccessSpecifier,
+    pub modifiers: StructModifiers,
     pub is_packed: bool,
     pub loc: SourceLoc,
 }
@@ -156,7 +160,7 @@ pub struct TypedUnionStmt {
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub vis: AccessSpecifier,
+    pub modifiers: UnionModifiers,
     pub loc: SourceLoc,
 }
 
@@ -171,7 +175,7 @@ pub struct TypedUnionField {
 pub struct TypedStructField {
     pub name: String,
     pub ty: SemanticType,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: SourceLoc,
 }
 
@@ -189,7 +193,7 @@ pub struct TypedGlobalVarStmt {
     pub ty: Option<SemanticType>,
     pub expr: Option<TypedExprStmt>,
     pub is_const: bool,
-    pub vis: AccessSpecifier,
+    pub modifiers: GlobalVarModifiers,
     pub loc: SourceLoc,
 }
 
@@ -198,7 +202,7 @@ pub struct TypedTypedefStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: SemanticType,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: SourceLoc,
 }
 
@@ -248,7 +252,7 @@ pub struct TypedFuncDefStmt {
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStmt>,
     pub return_type: SemanticType,
-    pub vis: AccessSpecifier,
+    pub modifiers: FuncModifiers,
     pub loc: SourceLoc,
 }
 
@@ -259,7 +263,7 @@ pub struct TypedFuncDeclStmt {
     pub name: String,
     pub params: TypedFuncParams,
     pub return_type: SemanticType,
-    pub vis: AccessSpecifier,
+    pub modifiers: FuncModifiers,
     pub renamed_as: Option<String>,
     pub loc: SourceLoc,
 }

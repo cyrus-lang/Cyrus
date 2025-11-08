@@ -1,4 +1,4 @@
-use crate::options::{CodeGenOptions, CodeGenSanitizer, RelocModeOptions};
+use crate::options::{CodeGenOptions, RelocModeOptions};
 use std::path::PathBuf;
 use std::process::Command;
 use which::which;
@@ -7,10 +7,6 @@ use which::which;
 pub struct Linker {
     pub linker_path: String,
     pub opts: CodeGenOptions,
-    pub flags: Vec<String>,
-    pub sanitizers: Vec<CodeGenSanitizer>,
-    pub opt_level: Option<i32>,
-    pub verbose: bool,
 }
 
 /// Static mapping of platforms to default linkers
@@ -34,14 +30,7 @@ impl Linker {
             ));
         }
 
-        Ok(Self {
-            linker_path,
-            opts,
-            flags: Vec::new(),
-            sanitizers: Vec::new(),
-            opt_level: None,
-            verbose: false,
-        })
+        Ok(Self { linker_path, opts })
     }
 
     /// Link object files into a binary executable
@@ -66,17 +55,18 @@ impl Linker {
 
         cmd.arg("-funroll-loops").arg("-flto");
 
-        if let Some(level) = self.opt_level {
+        if let Some(level) = self.opts.opt_level {
             cmd.arg(format!("-O{}", level));
         }
 
         cmd.arg("-o").arg(output_path);
         cmd.args(object_files);
-        cmd.args(&self.flags);
+        cmd.args(&self.opts.linker_flags);
 
-        if !self.sanitizers.is_empty() {
+        if !self.opts.sanitizer.is_empty() {
             let joined_flags = self
-                .sanitizers
+                .opts
+                .sanitizer
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
@@ -84,7 +74,7 @@ impl Linker {
             cmd.arg(format!("-fsanitize={}", joined_flags));
         }
 
-        if self.verbose {
+        if self.opts.verbose {
             println!("{:?}", cmd);
         }
 
@@ -118,7 +108,7 @@ impl Linker {
 
         cmd.args(object_files);
 
-        if self.verbose {
+        if self.opts.verbose {
             println!("Static library command: {:?}", cmd);
         }
 

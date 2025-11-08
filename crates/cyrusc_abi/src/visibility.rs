@@ -9,3 +9,13 @@ impl Default for Visibility {
         Visibility::Private
     }
 }
+
+impl Visibility {
+    pub fn is_private(&self) -> bool {
+        matches!(self, Visibility::Private)
+    }
+
+    pub fn is_public(&self) -> bool {
+        matches!(self, Visibility::Public)
+    }
+}

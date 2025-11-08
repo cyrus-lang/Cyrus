@@ -470,7 +470,7 @@ pub struct GlobalVar {
     pub type_specifier: Option<TypeSpecifier>,
     pub expr: Option<Expr>,
     pub is_const: bool,
-    pub global_var_modifiers: GlobalVarModifiers,
+    pub modifiers: GlobalVarModifiers,
     pub loc: Location,
     pub span: Span,
 }

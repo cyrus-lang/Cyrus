@@ -260,6 +260,7 @@ dependencies = [
 name = "cyrusc_cir"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
@@ -373,6 +374,7 @@ dependencies = [
 name = "cyrusc_resolver"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
@@ -406,6 +408,7 @@ dependencies = [
 name = "cyrusc_sema"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
@@ -433,6 +436,7 @@ dependencies = [
 name = "cyrusc_tast"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "thiserror 2.0.17",

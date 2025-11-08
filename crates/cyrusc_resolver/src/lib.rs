@@ -4,6 +4,7 @@ use crate::{
     diagnostics::ResolverDiagKind,
     sigs::{FuncSig, TypedefSig},
 };
+use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::format::module_segments_as_string;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::{Location, Span, Token, TokenKind};
@@ -413,7 +414,7 @@ impl Resolver {
         }
     }
 
-    fn check_import_single_vis(&mut self, single_name: String, vis: AccessSpecifier, loc: Location) {
+    fn check_import_single_vis(&mut self, single_name: String, vis: Visibility, loc: Location) {
         if vis.is_private() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -669,7 +670,7 @@ impl Resolver {
                     def_module_id: None,
                     params: TypedFuncTypeParams { list: params, variadic },
                     return_type: Box::new(return_type),
-                    vis_opt: func_type.vis_opt.clone(),
+                    is_public: true,
                     loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
                 }))
             }
@@ -1112,7 +1113,7 @@ impl Resolver {
                         variadic: typed_variadic_param,
                     },
                     return_type,
-                    vis: func_decl.vis.clone(),
+                    modifiers: func_decl.modifiers.clone(),
                     renamed_as: None,
                     loc: SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
                 })
@@ -1213,7 +1214,7 @@ impl Resolver {
                 fields: typed_union_fields.clone(),
                 methods: methods.clone(),
                 generic_params: generic_params.clone(),
-                vis: union_decl.vis.clone(),
+                modifiers: union_decl.modifiers.clone(),
                 loc: SourceLoc::from_loc(union_decl.loc.clone(), self.get_current_module_file_path()),
             },
         };
@@ -1240,7 +1241,7 @@ impl Resolver {
             fields: typed_union_fields,
             methods,
             generic_params,
-            vis: union_decl.vis.clone(),
+            modifiers: union_decl.modifiers.clone(),
             loc: SourceLoc::from_loc(union_decl.identifier.loc.clone(), self.get_current_module_file_path()),
             is_local: is_local,
         }))
@@ -1322,7 +1323,7 @@ impl Resolver {
                 methods: methods.clone(),
                 variants: variants.clone(),
                 generic_params: generic_params.clone(),
-                vis: enum_decl.vis.clone(),
+                modifiers: enum_decl.modifiers.clone(),
                 loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.get_current_module_file_path()),
             },
         };
@@ -1349,7 +1350,7 @@ impl Resolver {
             variants,
             methods,
             generic_params,
-            vis: enum_decl.vis.clone(),
+            modifiers: enum_decl.modifiers.clone(),
             loc: SourceLoc::from_loc(enum_decl.identifier.loc.clone(), self.get_current_module_file_path()),
             is_local,
         }))
@@ -1376,7 +1377,7 @@ impl Resolver {
                 name: global_var.identifier.name.clone(),
                 ty: sema_ty.clone(),
                 rhs: typed_expr.clone(),
-                vis: global_var.vis.clone(),
+                modifiers: global_var.modifiers.clone(),
                 loc: SourceLoc::from_loc(global_var.loc.clone(), self.get_current_module_file_path()),
             },
         };
@@ -1393,7 +1394,7 @@ impl Resolver {
             name: global_var.identifier.name.clone(),
             ty: sema_ty,
             expr: typed_expr,
-            vis: global_var.vis.clone(),
+            modifiers: global_var.modifiers.clone(),
             is_const: global_var.is_const,
             loc: SourceLoc::from_loc(global_var.loc.clone(), self.get_current_module_file_path()),
         }))
@@ -1469,7 +1470,7 @@ impl Resolver {
                         variadic: typed_variadic_param,
                     },
                     return_type,
-                    vis: func_def.vis.clone(),
+                    modifiers: func_def.modifiers.clone(),
                     loc: SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
                 };
 
@@ -1642,7 +1643,7 @@ impl Resolver {
                 impls: impls.clone(),
                 is_packed: struct_decl.is_packed,
                 methods: methods.clone(),
-                vis: struct_decl.vis.clone(),
+                modifiers: struct_decl.modifiers.clone(),
                 loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
             },
         };
@@ -1667,7 +1668,7 @@ impl Resolver {
             fields: typed_struct_fields,
             methods,
             generic_params,
-            vis: struct_decl.vis.clone(),
+            modifiers: struct_decl.modifiers.clone(),
             impls,
             is_packed: struct_decl.is_packed,
             loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
@@ -1831,7 +1832,7 @@ impl Resolver {
                 variadic: typed_variadic_param.clone(),
             },
             return_type: return_type.clone(),
-            vis: func_decl.vis.clone(),
+            modifiers: func_decl.modifiers.clone(),
             loc: SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
         };
 
@@ -1854,7 +1855,7 @@ impl Resolver {
                 variadic: typed_variadic_param,
             },
             return_type,
-            vis: func_decl.vis.clone(),
+            modifiers: func_decl.modifiers.clone(),
             renamed_as: func_decl.renamed_as.as_ref().map(|id| id.as_string()),
             loc: SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
         }))
@@ -1879,7 +1880,7 @@ impl Resolver {
                 variadic: typed_variadic_param.clone(),
             },
             return_type: return_type.clone(),
-            vis: func_def.vis.clone(),
+            modifiers: func_def.modifiers.clone(),
             loc: SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
         };
 
@@ -1904,7 +1905,7 @@ impl Resolver {
                 variadic: typed_variadic_param,
             },
             return_type,
-            vis: func_def.vis.clone(),
+            modifiers: func_def.modifiers.clone(),
             loc: SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
             body: Box::new(typed_func_body),
         }))
@@ -2420,10 +2421,7 @@ impl Resolver {
                 Some(typed_stmt)
             }
             // Invalid statements.
-            Stmt::GlobalVar(..)
-            | Stmt::FuncDef(..)
-            | Stmt::FuncDecl(..)
-            | Stmt::Import(..) => {
+            Stmt::GlobalVar(..) | Stmt::FuncDef(..) | Stmt::FuncDecl(..) | Stmt::Import(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::InvalidStatement),
@@ -2645,9 +2643,7 @@ impl Resolver {
         expr: &Expr,
     ) -> Option<TypedExprStmt> {
         match expr {
-            Expr::FieldAccess(field_access) => {
-                self.resolve_field_access(module_id, local_scope_opt, field_access)
-            }
+            Expr::FieldAccess(field_access) => self.resolve_field_access(module_id, local_scope_opt, field_access),
             Expr::MethodCall(method_call) => self.resolve_method_call(module_id, local_scope_opt, method_call),
             Expr::StructInit(struct_init) => self.resolve_struct_init(module_id, local_scope_opt, struct_init),
             Expr::ModuleImport(module_import) => {
@@ -2665,9 +2661,7 @@ impl Resolver {
             Expr::Assign(assignment) => self.resolve_assign_expr(module_id, local_scope_opt, assignment),
             Expr::Literal(literal) => self.resolve_literal_expr(literal),
             Expr::Unary(unary) => self.resolve_unary_expr(module_id, local_scope_opt, unary),
-            Expr::ArrayIndex(array_index) => {
-                self.resolve_array_index_expr(module_id, local_scope_opt, array_index)
-            }
+            Expr::ArrayIndex(array_index) => self.resolve_array_index_expr(module_id, local_scope_opt, array_index),
             Expr::AddrOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
             Expr::Deref(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
             Expr::UStructValue(unnamed_struct_value) => {
@@ -3420,7 +3414,7 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
         params: func_decl.params.clone(),
         return_type: func_decl.return_type.clone(),
         is_func_decl: true,
-        vis: func_decl.vis.clone(),
+        modifiers: func_decl.modifiers.clone(),
         loc: func_decl.loc.clone(),
     }
 }
@@ -3432,7 +3426,7 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
         params: func_def.params.clone(),
         return_type: func_def.return_type.clone(),
         is_func_decl: false,
-        vis: func_def.vis.clone(),
+        modifiers: func_def.modifiers.clone(),
         loc: func_def.loc.clone(),
     }
 }
@@ -3442,7 +3436,7 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
         def_module_id: Some(func_sig.module_id),
         params: typed_func_params_as_func_type_params(&func_sig.params),
         return_type: Box::new(func_sig.return_type.clone()),
-        vis_opt: Some(func_sig.vis.clone()),
+        is_public: func_sig.modifiers.vis.is_public(),
         loc: func_sig.loc.clone(),
     }
 }
@@ -3455,7 +3449,7 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
         methods: typed_struct.methods.clone(),
         generic_params: typed_struct.generic_params.clone(),
         is_packed: typed_struct.is_packed,
-        vis: typed_struct.vis.clone(),
+        modifiers: typed_struct.modifiers.clone(),
         loc: typed_struct.loc.clone(),
     }
 }
@@ -3467,7 +3461,7 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
         methods: typed_enum.methods.clone(),
         variants: typed_enum.variants.clone(),
         generic_params: typed_enum.generic_params.clone(),
-        vis: typed_enum.vis.clone(),
+        modifiers: typed_enum.modifiers.clone(),
         loc: typed_enum.loc.clone(),
     }
 }
@@ -3479,7 +3473,7 @@ pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
         fields: typed_union.fields.clone(),
         methods: typed_union.methods.clone(),
         generic_params: typed_union.generic_params.clone(),
-        vis: typed_union.vis.clone(),
+        modifiers: typed_union.modifiers.clone(),
         loc: typed_union.loc.clone(),
     }
 }

@@ -2,7 +2,7 @@ use crate::exprs::{TypedExprStmt, TypedIdentifier};
 use crate::generics::generic_type::GenericType;
 use crate::stmts::TypedFuncTypeParams;
 use crate::{ModuleID, SourceLoc, SymbolID};
-use cyrusc_ast::{AccessSpecifier, token::TokenKind};
+use cyrusc_ast::token::TokenKind;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -71,7 +71,7 @@ pub struct TypedFuncType {
     pub def_module_id: Option<ModuleID>,
     pub params: TypedFuncTypeParams,
     pub return_type: Box<SemanticType>,
-    pub vis_opt: Option<AccessSpecifier>,
+    pub is_public: bool,
     pub loc: SourceLoc,
 }
 

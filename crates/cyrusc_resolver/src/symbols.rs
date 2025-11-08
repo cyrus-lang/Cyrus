@@ -1,5 +1,6 @@
 use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
-use cyrusc_ast::{AccessSpecifier, source_loc::SourceLoc};
+use cyrusc_abi::visibility::Visibility;
+use cyrusc_ast::{source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use cyrusc_tast::{
@@ -385,16 +386,16 @@ impl SymbolEntry {
         Self { used: false, kind }
     }
 
-    pub fn get_vis(&self) -> AccessSpecifier {
+    pub fn get_vis(&self) -> Visibility {
         match &self.kind {
-            SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.vis.clone(),
+            SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.modifiers.vis.clone(),
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.vis.clone(),
-            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.vis.clone(),
-            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.vis.clone(),
-            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.vis.clone(),
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.modifiers.vis.clone(),
+            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.modifiers.vis.clone(),
+            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.modifiers.vis.clone(),
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.vis.clone(),
-            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.vis.clone(),
-            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.vis.clone(),
+            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.modifiers.vis.clone(),
+            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.modifiers.vis.clone(),
         }
     }
 

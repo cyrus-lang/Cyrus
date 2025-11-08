@@ -862,6 +862,8 @@ impl Lexer {
             "void" => TokenKind::Void,
             "extern" => TokenKind::Extern,
             "inline" => TokenKind::Inline,
+            "alwaysinline" => TokenKind::AlwaysInline,
+            "noinline" => TokenKind::NoInline,
             "pub" => TokenKind::Public,
             "const" => TokenKind::Const,
             "sizeof" => TokenKind::SizeOf,
