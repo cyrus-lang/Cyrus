@@ -1,7 +1,13 @@
 use crate::OwnedModule;
 use cyrusc_asan_wrapper::{SanitizerOptions, run_sanitizers};
 use cyrusc_compiler::options::{CodeGenOptions, CodeGenSanitizer};
-use inkwell::{module::FlagBehavior, targets::TargetMachine, values::BasicMetadataValueEnum};
+use cyrusc_diagcentral::display_single_custom_diag;
+use inkwell::{
+    context::Context,
+    module::{FlagBehavior, Module},
+    targets::TargetMachine,
+    values::BasicMetadataValueEnum,
+};
 
 pub(crate) fn enable_asan_for_owned_module(
     opts: &CodeGenOptions,
@@ -12,21 +18,19 @@ pub(crate) fn enable_asan_for_owned_module(
     let llvmmodule = owned_module.module.borrow();
     let context = &owned_module.context;
 
-    for sanitizer in &opts.sanitizer {
-        let name = match sanitizer {
-            CodeGenSanitizer::Address => "SanitizeAddress",
-            CodeGenSanitizer::Memory => "SanitizeMemory",
-            CodeGenSanitizer::Thread => "SanitizeThread",
-            CodeGenSanitizer::HWAddress => "SanitizeHWAddress",
-        };
+    add_asan_metadata_flags_to_module(opts, context, &llvmmodule);
 
-        let flag_value = context.i32_type().const_int(1, false);
-        let flag_metadata = owned_module
-            .context
-            .metadata_node(&[BasicMetadataValueEnum::IntValue(flag_value)]);
-
-        llvmmodule.add_metadata_flag(name, FlagBehavior::Error, flag_metadata);
+    if !is_hwasan_supported() {
+        display_single_custom_diag!("HWASan not supported on this platform.".to_string());
     }
+    opts.sanitizer.iter().for_each(|sanitizer| {
+        if !is_sanitizer_support_in_linker(&opts.linker.as_ref().unwrap(), sanitizer) {
+            display_single_custom_diag!(format!(
+                "Sanitizer not supported for linker: '{}'.",
+                opts.linker.as_ref().unwrap()
+            ));
+        }
+    });
 
     let sanitizer_opts = SanitizerOptions {
         address_sanitize: opts.sanitizer.iter().any(|s| matches!(s, CodeGenSanitizer::Address)),
@@ -41,4 +45,31 @@ pub(crate) fn enable_asan_for_owned_module(
     run_sanitizers(&llvmmodule, tm, opt_level, sanitizer_opts);
 
     drop(llvmmodule);
+}
+
+fn add_asan_metadata_flags_to_module<'ctx>(opts: &CodeGenOptions, context: &'ctx Context, module: &Module<'ctx>) {
+    for sanitizer in &opts.sanitizer {
+        let name = match sanitizer {
+            CodeGenSanitizer::Address => "SanitizeAddress",
+            CodeGenSanitizer::Memory => "SanitizeMemory",
+            CodeGenSanitizer::Thread => "SanitizeThread",
+            CodeGenSanitizer::HWAddress => "SanitizeHWAddress",
+        };
+
+        let flag_value = context.i32_type().const_int(1, false);
+        let flag_metadata = context.metadata_node(&[BasicMetadataValueEnum::IntValue(flag_value)]);
+
+        module.add_metadata_flag(name, FlagBehavior::Error, flag_metadata);
+    }
+}
+
+fn is_sanitizer_support_in_linker(linker: &str, sanitizer: &CodeGenSanitizer) -> bool {
+    match sanitizer {
+        CodeGenSanitizer::Memory => linker.contains("clang"),
+        _ => true,
+    }
+}
+
+fn is_hwasan_supported() -> bool {
+    cfg!(target_arch = "aarch64")
 }
