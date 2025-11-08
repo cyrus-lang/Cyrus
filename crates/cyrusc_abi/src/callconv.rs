@@ -14,7 +14,7 @@ pub struct ParseCallConvError(pub String);
 
 impl std::fmt::Display for ParseCallConvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid call convention: {}", self.0)
+        write!(f, "Invalid call convention: '{}'.", self.0)
     }
 }
 

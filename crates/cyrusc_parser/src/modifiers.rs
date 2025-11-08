@@ -1,6 +1,6 @@
 use crate::{Parser, diagnostics::ParserDiagKind};
 use cyrusc_abi::export::ExportKind;
-use cyrusc_abi::flags::OptionalFlag;
+use cyrusc_abi::flags::{OptionalFlag, validate_flags};
 use cyrusc_abi::inline::Inlining;
 use cyrusc_abi::linkage::Linkage;
 use cyrusc_abi::modifiers::{EnumModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
@@ -51,18 +51,18 @@ impl Parser {
         };
 
         loop {
-            let tok = self.current_token().clone();
+            let token = self.current_token().clone();
             let mut consumed = false;
 
             macro_rules! try_set_once {
                 ($field:ident, $parser_method:ident, $err_msg:expr) => {
-                    if let Some(value) = self.$parser_method(tok.clone()) {
+                    if let Some(value) = self.$parser_method(token.clone()) {
                         if mods.$field.is_some() {
                             return Err(Diag {
                                 kind: Box::new(ParserDiagKind::InvalidModifier($err_msg.to_string())),
                                 level: DiagLevel::Error,
                                 location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                    tok.loc,
+                                    token.loc,
                                     self.file_name.clone(),
                                 ))),
                                 hint: None,
@@ -76,14 +76,14 @@ impl Parser {
 
             macro_rules! try_set_once_result {
                 ($field:ident, $parser_method:ident, $err_msg:expr) => {
-                    match self.$parser_method(tok.clone())? {
+                    match self.$parser_method(token.clone())? {
                         Some(value) => {
                             if mods.$field.is_some() {
                                 return Err(Diag {
                                     kind: Box::new(ParserDiagKind::InvalidModifier($err_msg.to_string())),
                                     level: DiagLevel::Error,
                                     location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                        tok.loc,
+                                        token.loc,
                                         self.file_name.clone(),
                                     ))),
                                     hint: None,
@@ -104,12 +104,33 @@ impl Parser {
             try_set_once!(export, parse_export_kind, "Export kind already specified.");
             try_set_once_result!(callconv, parse_callconv, "Call convention already specified.");
 
-            if let Ok(Some(flag)) = self.parse_optional_flag(tok.clone()) {
-                mods.optional_flags.push(flag);
-                consumed = true;
+            match self.parse_optional_flag(token.clone()) {
+                Ok(optional_flag) => {
+                    if let Some(flag) = optional_flag {
+                        mods.optional_flags.push(flag);
+                        consumed = true;
+                    }
+                }
+                Err(diag) => {
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidModifier(diag.kind.to_string())),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
             }
 
-            if let Ok(Some(section)) = self.parse_placement(tok.clone()) {
+            if let Err(err) = validate_flags(&mods.optional_flags) {
+                return Err(Diag {
+                    kind: Box::new(ParserDiagKind::InvalidModifier(err.to_string())),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
+                    hint: None,
+                });
+            }
+
+            if let Ok(Some(section)) = self.parse_placement(token.clone()) {
                 mods.placement.push(SectionAttr(section));
                 consumed = true;
             }
@@ -251,6 +272,7 @@ impl Parser {
                 self.next_token();
                 self.expect_current(TokenKind::LeftParen)?;
                 let arg = self.parse_string_literal()?;
+                self.next_token();
                 self.expect_current(TokenKind::RightParen)?;
                 Ok(Some(OptionalFlag::NoSanitize(arg)))
             }
@@ -272,7 +294,7 @@ impl Parser {
                 Ok(callconv) => Ok(Some(callconv)),
                 Err(err) => {
                     return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(err.0)),
+                        kind: Box::new(ParserDiagKind::InvalidModifier(err.to_string())),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: None,

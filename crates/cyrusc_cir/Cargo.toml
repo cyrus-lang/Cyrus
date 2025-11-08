@@ -8,6 +8,7 @@ cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 cyrusc_sema = { path = "../cyrusc_sema", version = "*" }
 cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
 cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }

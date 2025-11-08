@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 thiserror = "2.0.17"
 thiserror-impl = "2.0.17"

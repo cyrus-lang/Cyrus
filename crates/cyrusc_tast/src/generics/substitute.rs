@@ -59,8 +59,8 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
                     list: params,
                     variadic: func.params.variadic,
                 },
+                is_public: func.is_public,
                 return_type: ret_ty,
-                vis_opt: func.vis_opt,
                 loc: func.loc,
             }))
         }
@@ -106,7 +106,7 @@ pub fn substitute_struct_sig(sig: &StructSig, ctx: Rc<RefCell<GenericMappingCtx>
         methods: sig.methods.clone(),
         generic_params: sig.generic_params.clone(),
         is_packed: sig.is_packed,
-        vis: sig.vis.clone(),
+        modifiers: sig.modifiers.clone(),
         loc: sig.loc.clone(),
     })
 }
@@ -129,7 +129,7 @@ pub fn substitute_union_sig(sig: &UnionSig, ctx: Rc<RefCell<GenericMappingCtx>>)
         fields: new_fields,
         methods: sig.methods.clone(),
         generic_params: sig.generic_params.clone(),
-        vis: sig.vis.clone(),
+        modifiers: sig.modifiers.clone(),
         loc: sig.loc.clone(),
     })
 }
@@ -168,7 +168,7 @@ pub fn substitute_enum_sig(sig: &EnumSig, ctx: Rc<RefCell<GenericMappingCtx>>) -
         methods: sig.methods.clone(),
         variants: new_variants,
         generic_params: sig.generic_params.clone(),
-        vis: sig.vis.clone(),
+        modifiers: sig.modifiers.clone(),
         loc: sig.loc.clone(),
     })
 }

@@ -2,12 +2,16 @@ use crate::{
     OwnedModule,
     builder::irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
 };
-use cyrusc_abi::make_global_var_abi_name;
+use cyrusc_abi::{
+    export::ExportKind, flags::OptionalFlag, linkage::Linkage, modifiers::GlobalVarModifiers,
+    naming::make_global_var_abi_name,
+};
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
 };
 use inkwell::{
+    DLLStorageClass,
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,
@@ -135,7 +139,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let llvmmodule = self.llvmmodule.borrow();
         let llvmmodule_name = llvmmodule.get_name().to_str().unwrap();
-        let name = make_global_var_abi_name(llvmmodule_name, &cir_global_var.name, &cir_global_var.vis);
+        let name = make_global_var_abi_name(llvmmodule_name, &cir_global_var.name, &cir_global_var.modifiers.vis);
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvmmodule.add_global(ty, None, &name);
@@ -150,6 +154,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             global_value.set_initializer(&ty.const_zero());
         }
 
+        self.set_global_var_modifiers(&global_value, &cir_global_var.modifiers);
+
         let mut irreg = self.irreg.borrow_mut();
         irreg.insert(
             cir_global_var.irv_id,
@@ -158,5 +164,49 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(irreg);
 
         global_value
+    }
+
+    pub(crate) fn set_global_var_modifiers(&self, global_value: &GlobalValue<'ll>, modifiers: &GlobalVarModifiers) {
+        if let Some(export) = &modifiers.export {
+            match export {
+                ExportKind::DllImport => {
+                    global_value.set_dll_storage_class(DLLStorageClass::Import);
+                }
+                ExportKind::DllExport => {
+                    global_value.set_dll_storage_class(DLLStorageClass::Export);
+                }
+            }
+        }
+
+        if let Some(linkage) = &modifiers.linkage {
+            let llvm_linkage = match linkage {
+                Linkage::Extern => inkwell::module::Linkage::External,
+                Linkage::Weak => inkwell::module::Linkage::WeakAny,
+                Linkage::LinkOnce => inkwell::module::Linkage::LinkOnceAny,
+            };
+            global_value.set_linkage(llvm_linkage);
+        }
+
+        if modifiers.weak {
+            global_value.set_unnamed_addr(true);
+        }
+
+        if let Some(section) = &modifiers.section {
+            global_value.set_section(Some(section.0.as_str()));
+        }
+
+        for flag in &modifiers.optional_flags {
+            match flag {
+                OptionalFlag::Cold => global_value.set_constant(false),
+                OptionalFlag::Hot => { /* no-op or custom attribute */ }
+                OptionalFlag::NoReturn
+                | OptionalFlag::NoUnwind
+                | OptionalFlag::OptSize
+                | OptionalFlag::OptNone
+                | OptionalFlag::NoSanitize(_) => {
+                    unreachable!("Not applicable for global vars.")
+                }
+            }
+        }
     }
 }

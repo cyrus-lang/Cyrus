@@ -4,7 +4,7 @@ use crate::{
     monomorph::MonomorphRegistry,
     type_cache::TypeResolverCaches,
 };
-use cyrusc_ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
+use cyrusc_ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use cyrusc_resolver::{
     Resolver,
@@ -401,7 +401,7 @@ impl<'a> AnalysisContext<'a> {
             update_local_symbol!(self, scope_id, symbol_id,
                 LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
                     dbg!(ty.clone());
-                    
+
                     resolved_variable.typed_variable.ty = Some(ty);
                     resolved_variable.typed_variable.rhs = Some(rhs.clone());
                 }
@@ -663,8 +663,7 @@ impl<'a> AnalysisContext<'a> {
                         operand_ty.clone(),
                         typed_switch.loc.clone(),
                     ) {
-                        let operand_type =
-                            format_sema_ty(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
                         let pattern_type =
                             format_sema_ty(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -1479,14 +1478,14 @@ impl<'a> AnalysisContext<'a> {
         return_type: &mut SemanticType,
         params: &mut TypedFuncParams,
         body: &mut TypedBlockStmt,
-        vis_opt: Option<AccessSpecifier>,
+        is_public: bool,
         loc: SourceLoc,
     ) {
         self.current_func = Some(TypedFuncType {
             def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(params),
             return_type: Box::new(return_type.clone()),
-            vis_opt,
+            is_public,
             loc: loc.clone(),
         });
         let state = self.analyze_block_statement(body);
@@ -1529,13 +1528,13 @@ impl<'a> AnalysisContext<'a> {
                 def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
-                vis_opt: Some(func_sig.vis.clone()),
+                is_public: func_sig.modifiers.vis.is_public(),
                 loc: func_sig.loc.clone(),
             });
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
 
             // public methods are allowed to not be used
-            if func_sig.vis.is_public() {
+            if func_sig.modifiers.vis.is_public() {
                 self.mark_symbol_used_once(module_id, *symbol_id);
             }
 
@@ -1569,7 +1568,7 @@ impl<'a> AnalysisContext<'a> {
                 def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
-                vis_opt: Some(func_sig.vis.clone()),
+                is_public: func_sig.modifiers.vis.is_public(),
                 loc: func_sig.loc.clone(),
             });
             let state = self.analyze_block_statement(&mut func_body);
@@ -1601,7 +1600,7 @@ impl<'a> AnalysisContext<'a> {
             entry_points.push(typed_func_def.loc.clone());
         }
 
-        if typed_func_def.vis.is_public() {
+        if typed_func_def.modifiers.vis.is_public() {
             self.mark_symbol_used_once(self.module_id, typed_func_def.symbol_id);
         }
 
@@ -1609,7 +1608,7 @@ impl<'a> AnalysisContext<'a> {
             &mut typed_func_def.return_type,
             &mut typed_func_def.params,
             &mut typed_func_def.body,
-            Some(typed_func_def.vis.clone()),
+            typed_func_def.modifiers.vis.is_public(),
             typed_func_def.loc.clone(),
         );
     }

@@ -1,7 +1,6 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::{
-    AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind,
-};
+use cyrusc_abi::visibility::Visibility;
+use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::{
     symbols::{
@@ -13,16 +12,14 @@ use cyrusc_resolver::{
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
     exprs::*,
-    format::{format_sema_ty, format_func_ty, format_typed_expr},
+    format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
         generic_type::GenericType,
-        mapping_ctx::GenericMappingCtx,
         substitute::{substitute_struct_sig, substitute_union_sig},
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
-        TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
-        TypedGenericParamsList, TypedStructField,
+        TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedStructField,
     },
     types::*,
     *,
@@ -288,7 +285,7 @@ impl<'a> AnalysisContext<'a> {
             def_module_id: Some(self.module_id),
             params,
             return_type: Box::new(lambda.return_type.clone()),
-            vis_opt: None,
+            is_public: true,
             loc: lambda.loc.clone(),
         };
 
@@ -441,7 +438,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         operand: &TypedExprStmt,
         field_access: &TypedFieldAccess,
-        field_vis: AccessSpecifier,
+        field_vis: Visibility,
         struct_methods: &HashMap<String, SymbolID>,
         struct_name: &str,
     ) -> bool {
@@ -748,7 +745,7 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
-        
+
         method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
         for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields.iter_mut()) {
@@ -1544,18 +1541,16 @@ impl<'a> AnalysisContext<'a> {
         let operand_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
         if let Some(mut func_type) = operand_ty.as_func_type().cloned() {
-            if let Some(vis) = &func_type.vis_opt {
-                if vis.is_private() && func_type.def_module_id != Some(self.module_id) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::PrivateFunctionCall {
-                            name: format_typed_expr(&func_call.operand, &(self.symbol_formatter)(scope_id_opt)),
-                        }),
-                        location: Some(DiagLoc::new(func_call.loc.clone())),
-                        hint: None,
-                    });
-                    return None;
-                }
+            if !func_type.is_public && func_type.def_module_id != Some(self.module_id) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::PrivateFunctionCall {
+                        name: format_typed_expr(&func_call.operand, &(self.symbol_formatter)(scope_id_opt)),
+                    }),
+                    location: Some(DiagLoc::new(func_call.loc.clone())),
+                    hint: None,
+                });
+                return None;
             }
 
             self.normalize_func_type_params(&mut func_type.params, func_call.loc.clone());
@@ -1886,7 +1881,7 @@ impl<'a> AnalysisContext<'a> {
         resolved_method: &ResolvedMethod,
     ) -> bool {
         let mut result = true;
-        let method_vis = &resolved_method.func_sig.vis;
+        let method_vis = &resolved_method.func_sig.modifiers.vis;
 
         let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
             let method_symbol_ids = object_methods.values().cloned().collect::<Vec<SymbolID>>();

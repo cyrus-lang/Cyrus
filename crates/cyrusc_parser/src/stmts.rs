@@ -5,7 +5,6 @@ use crate::modifiers::UnresolvedModifiers;
 use crate::prec::Precedence;
 use cyrusc_abi::modifiers::EnumModifiers;
 use cyrusc_abi::modifiers::FuncModifiers;
-use cyrusc_abi::modifiers::GlobalVarModifiers;
 use cyrusc_abi::modifiers::StructModifiers;
 use cyrusc_abi::modifiers::UnionModifiers;
 use cyrusc_abi::visibility::Visibility;
@@ -1506,7 +1505,7 @@ impl Parser {
             type_specifier,
             expr,
             is_const,
-            global_var_modifiers,
+            modifiers: global_var_modifiers,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

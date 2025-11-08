@@ -7,7 +7,11 @@ use crate::{
     },
     types::SemanticType,
 };
-use cyrusc_ast::{AccessSpecifier, source_loc::SourceLoc};
+use cyrusc_abi::{
+    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+    visibility::Visibility,
+};
+use cyrusc_ast::source_loc::SourceLoc;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -18,7 +22,7 @@ pub struct StructSig {
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub is_packed: bool,
-    pub vis: AccessSpecifier,
+    pub modifiers: StructModifiers,
     pub loc: SourceLoc,
 }
 
@@ -29,7 +33,7 @@ pub struct UnionSig {
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub vis: AccessSpecifier,
+    pub modifiers: UnionModifiers,
     pub loc: SourceLoc,
 }
 
@@ -40,7 +44,7 @@ pub struct FuncSig {
     pub params: TypedFuncParams,
     pub return_type: SemanticType,
     pub is_func_decl: bool,
-    pub vis: AccessSpecifier,
+    pub modifiers: FuncModifiers,
     pub loc: SourceLoc,
 }
 
@@ -51,7 +55,7 @@ pub struct EnumSig {
     pub methods: HashMap<String, SymbolID>,
     pub variants: Vec<TypedEnumVariant>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub vis: AccessSpecifier,
+    pub modifiers: EnumModifiers,
     pub loc: SourceLoc,
 }
 
@@ -60,7 +64,7 @@ pub struct TypedefSig {
     pub name: String,
     pub ty: SemanticType,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: SourceLoc,
 }
 
@@ -70,7 +74,7 @@ pub struct InterfaceSig {
     pub symbol_id: SymbolID,
     pub name: String,
     pub methods: Vec<TypedFuncDeclStmt>,
-    pub vis: AccessSpecifier,
+    pub vis: Visibility,
     pub loc: SourceLoc,
 }
 
@@ -80,7 +84,7 @@ pub struct GlobalVarSig {
     pub name: String,
     pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
-    pub vis: AccessSpecifier,
+    pub modifiers: GlobalVarModifiers,
     pub loc: SourceLoc,
 }
 

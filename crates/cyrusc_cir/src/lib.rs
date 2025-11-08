@@ -1,6 +1,7 @@
 use crate::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy};
+use cyrusc_abi::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use cyrusc_ast::{
-    AccessSpecifier, StringPrefix,
+    StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_tast::sigs::StructSig;
@@ -206,7 +207,7 @@ pub struct CIRGlobalVarStmt {
     pub name: String,
     pub ty: CIRTy,
     pub expr: Option<CIRExpr>,
-    pub vis: AccessSpecifier,
+    pub modifiers: GlobalVarModifiers,
 }
 
 #[derive(Debug, Clone)]
@@ -224,7 +225,7 @@ pub struct CIRFuncDefStmt {
     pub params: CIRFuncParams,
     pub body: Box<CIRBlockStmt>,
     pub ret: CIRTy,
-    pub vis: AccessSpecifier,
+    pub modifiers: FuncModifiers,
 }
 
 #[derive(Debug, Clone)]
@@ -233,7 +234,7 @@ pub struct CIRFuncDeclStmt {
     pub name: String,
     pub params: CIRFuncParams,
     pub ret: CIRTy,
-    pub vis: AccessSpecifier,
+    pub modifiers: FuncModifiers,
 }
 
 #[derive(Debug, Clone)]
@@ -305,14 +306,14 @@ pub struct CIRStructStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
     pub is_packed: bool,
-    pub vis: AccessSpecifier,
+    pub modifiers: StructModifiers,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIREnumStmt {
     pub name: String,
     pub variants: Vec<CIREnumTyVariant>,
-    pub vis: AccessSpecifier,
+    pub modifiers: EnumModifiers,
 }
 
 #[derive(Debug, Clone)]
@@ -333,7 +334,7 @@ pub enum CIREnumInitVariant {
 pub struct CIRUnionStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
-    pub vis: AccessSpecifier,
+    pub modifiers: UnionModifiers,
 }
 
 pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
@@ -342,7 +343,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         name: func_def.name.clone(),
         params: func_def.params.clone(),
         ret: func_def.ret.clone(),
-        vis: func_def.vis.clone(),
+        modifiers: func_def.modifiers.clone()
     }
 }
 

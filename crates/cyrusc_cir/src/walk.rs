@@ -218,7 +218,7 @@ impl<'resolver> CIRWalk<'resolver> {
             name: global_var.name.clone(),
             ty,
             expr,
-            vis: global_var.vis.clone(),
+            modifiers: global_var.modifiers.clone(),
         })
     }
 
@@ -294,7 +294,7 @@ impl<'resolver> CIRWalk<'resolver> {
             params,
             body: Box::new(body),
             ret,
-            vis: func_def.vis.clone(),
+            modifiers: func_def.modifiers.clone(),
         })
     }
 
@@ -307,7 +307,7 @@ impl<'resolver> CIRWalk<'resolver> {
             name: func_decl.name.clone(),
             params,
             ret,
-            vis: func_decl.vis.clone(),
+            modifiers: func_decl.modifiers.clone(),
         })
     }
 
