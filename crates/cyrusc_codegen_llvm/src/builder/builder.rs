@@ -3,7 +3,10 @@ use crate::{
     builder::irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
-use cyrusc_abi::{export::ExportKind, flags::OptionalFlag, linkage::Linkage, mangling::{ABINameMangling, Cyrus_ABI}, modifiers::GlobalVarModifiers};
+use cyrusc_abi::{
+    linkage::Linkage,
+    mangling::{ABINameMangling, Cyrus_ABI},
+};
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
@@ -127,7 +130,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));
     }
 
-    fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
+    pub(crate) fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
         {
             let irreg = self.irreg.borrow();
             if let Some(local_ir_value) = irreg.get(cir_global_var.irv_id) {
@@ -139,7 +142,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let llvmmodule_name = llvmmodule.get_name().to_str().unwrap();
 
         // FIXME Name mangling would be refactored in the future.
-        let cyrus_abi = Cyrus_ABI{};
+        let cyrus_abi = Cyrus_ABI {};
         let name = cyrus_abi.global_var_name(llvmmodule_name, &cir_global_var.name, cir_global_var.modifiers.vis);
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
@@ -151,8 +154,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             let rvalue = self.load_rvalue(lvalue).as_basic_value();
             global_value.set_initializer(&rvalue);
         } else {
-            // zero init
-            global_value.set_initializer(&ty.const_zero());
+            if cir_global_var.modifiers.linkage.is_none() {
+                // zero init
+                global_value.set_initializer(&ty.const_zero());
+            }
         }
 
         apply_global_var_modifiers(&global_value, &cir_global_var.modifiers);

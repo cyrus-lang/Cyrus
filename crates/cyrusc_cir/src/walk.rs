@@ -5,9 +5,9 @@ use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
-use cyrusc_tast::sigs::{EnumSig, UnionSig};
+use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig};
 use cyrusc_tast::types::ResolvedSymbol;
-use cyrusc_tast::{ModuleID, ScopeID};
+use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
     TypedProgramTree,
     exprs::*,
@@ -203,7 +203,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
             .unwrap_or_else(|| {
                 panic!(
-                    "Global var '{}' has neither explicit type nor valid initializer type",
+                    "Global var '{}' has neither explicit type nor valid initializer type.",
                     global_var.name
                 )
             });
@@ -220,6 +220,33 @@ impl<'resolver> CIRWalk<'resolver> {
             expr,
             modifiers: global_var.modifiers.clone(),
         })
+    }
+
+    fn lower_global_var_sig(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        irv_id: IRValueID,
+        global_var_sig: &GlobalVarSig,
+    ) -> CIRGlobalVarStmt {
+        let ty = global_var_sig
+            .ty
+            .as_ref()
+            .or_else(|| global_var_sig.rhs.as_ref().and_then(|expr| expr.sema_ty.as_ref()))
+            .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+            .unwrap_or_else(|| {
+                panic!(
+                    "Global var '{}' has neither explicit type nor valid initializer type.",
+                    global_var_sig.name
+                )
+            });
+
+        CIRGlobalVarStmt {
+            irv_id,
+            name: global_var_sig.name.clone(),
+            ty,
+            expr: None,
+            modifiers: global_var_sig.modifiers.clone(),
+        }
     }
 
     fn lower_var(&self, scope_id_opt: Option<ScopeID>, var: &TypedVarStmt) -> CIRVarStmt {
@@ -311,6 +338,19 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
+    fn lower_func_sig(&self, scope_id_opt: Option<ScopeID>, irv_id: IRValueID, func_sig: &FuncSig) -> CIRFuncDeclStmt {
+        let params = self.lower_func_params(scope_id_opt, &func_sig.params);
+        let ret = self.lower_sema_ty(scope_id_opt, &func_sig.return_type);
+
+        CIRFuncDeclStmt {
+            irv_id,
+            name: func_sig.name.clone(),
+            params,
+            ret,
+            modifiers: func_sig.modifiers.clone(),
+        }
+    }
+
     fn lower_body(&self, block: &TypedBlockStmt) -> CIRBlockStmt {
         let mut stmts = self.lower_stmts(Some(block.scope_id), &block.stmts);
         let defer_stmts: Vec<TypedStmt> = block.defers.iter().map(|defer| *defer.operand.clone()).collect();
@@ -324,7 +364,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let ty = self.lower_sema_ty(scope_id_opt, &expr.sema_ty.clone().unwrap());
 
         let kind = match &expr.kind {
-            TypedExprKind::Symbol(symbol_id, ..) => CIRExprKind::Load(CIRValueRef { irv_id: *symbol_id }),
+            TypedExprKind::Symbol(symbol_id, ..) => self.lower_load_symbol(scope_id_opt, *symbol_id),
             TypedExprKind::Literal(literal_expr) => self.lower_literal(scope_id_opt, literal_expr),
             TypedExprKind::Prefix(prefix_expr) => self.lower_prefix(scope_id_opt, prefix_expr),
             TypedExprKind::Infix(infix_expr) => self.lower_infix(scope_id_opt, infix_expr),
@@ -349,6 +389,37 @@ impl<'resolver> CIRWalk<'resolver> {
         };
 
         CIRExpr { kind, ty }
+    }
+
+    pub(crate) fn lower_load_symbol(&self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .unwrap();
+
+        if let Some(resolved_func) = sym.as_func() {
+            let irv_id = generate_symbol_id();
+            let func_decl = self.lower_func_sig(scope_id_opt, irv_id, &resolved_func.func_sig);
+            CIRExprKind::Load(CIRValue {
+                irv_id,
+                kind: CIRValueKind::Func(Box::new(func_decl)),
+            })
+        } else if let Some(resolved_global_var) = sym.as_global_var() {
+            let irv_id = generate_symbol_id();
+            let global_var_stmt = self.lower_global_var_sig(scope_id_opt, irv_id, &resolved_global_var.global_var_sig);
+            CIRExprKind::Load(CIRValue {
+                irv_id,
+                kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
+            })
+        } else if let Some(resolved_variable) = sym.as_variable() {
+            CIRExprKind::Load(CIRValue {
+                irv_id: resolved_variable.symbol_id,
+                kind: CIRValueKind::LocalVariable,
+            })
+        } else {
+            unreachable!("Unexpected symbol kind when lowering load symbol.")
+        }
     }
 
     pub(crate) fn lower_struct_init(
@@ -723,8 +794,8 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIRTy::Tuple(CIRTupleTy { items })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
-            SemanticType::UnresolvedSymbol(_) => unreachable!(),
-            SemanticType::GenericParam(_) => unreachable!(),
+            SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
+            SemanticType::GenericParam(_) => unreachable!("Unexpected generic param which is not resolved."),
         }
     }
 

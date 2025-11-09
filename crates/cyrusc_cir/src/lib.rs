@@ -41,7 +41,7 @@ pub struct CIRExpr {
 
 #[derive(Debug, Clone)]
 pub enum CIRExprKind {
-    Load(CIRValueRef),
+    Load(CIRValue),
     Literal(CIRLiteral),
     Prefix(CIRPrefixExpr),
     Infix(CIRInfixExpr),
@@ -197,8 +197,16 @@ pub enum CIRLiteralKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRValueRef {
+pub struct CIRValue {
     pub irv_id: IRValueID,
+    pub kind: CIRValueKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum CIRValueKind {
+    Func(Box<CIRFuncDeclStmt>),
+    GlobalVar(Box<CIRGlobalVarStmt>),
+    LocalVariable
 }
 
 #[derive(Debug, Clone)]
@@ -343,7 +351,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         name: func_def.name.clone(),
         params: func_def.params.clone(),
         ret: func_def.ret.clone(),
-        modifiers: func_def.modifiers.clone()
+        modifiers: func_def.modifiers.clone(),
     }
 }
 

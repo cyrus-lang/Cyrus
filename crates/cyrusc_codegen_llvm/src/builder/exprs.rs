@@ -989,7 +989,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
-        // Check if it's a direct or indirect call
+        // check if it's a direct or indirect call
         if let Some(fn_value) = rvalue.as_func() {
             self.emit_direct_call(&rvalue.ty.as_fn().unwrap(), func_call, fn_value)
         } else if rvalue.as_basic_value().is_pointer_value() {
@@ -1055,21 +1055,36 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_load(&self, value_ref: &CIRValueRef) -> InternalValue<'ll> {
-        let irreg = self.irreg.borrow();
-        let internal_value = match irreg.get(value_ref.irv_id).unwrap() {
-            LocalIRValue::Func(fn_value, ty) => InternalValue::new(ty, InternalValueKind::FuncValue(fn_value)),
-            LocalIRValue::Global(global_value, ty) => {
-                InternalValue::new(ty, InternalValueKind::LValue(global_value.as_pointer_value()))
+    pub(crate) fn emit_load(&mut self, value_ref: &CIRValue) -> InternalValue<'ll> {
+        {
+            let irreg = self.irreg.borrow();
+            if let Some(value_ref) = irreg.get(value_ref.irv_id) {
+                let internal_value = match value_ref {
+                    LocalIRValue::Func(fn_value, ty) => InternalValue::new(ty, InternalValueKind::FuncValue(fn_value)),
+                    LocalIRValue::Global(global_value, ty) => {
+                        InternalValue::new(ty, InternalValueKind::LValue(global_value.as_pointer_value()))
+                    }
+                    LocalIRValue::LValue(pointer_value, ty) => {
+                        InternalValue::new(ty, InternalValueKind::LValue(pointer_value))
+                    }
+                };
+
+                return internal_value;
             }
-            LocalIRValue::LValue(pointer_value, ty) => InternalValue::new(ty, InternalValueKind::LValue(pointer_value)),
-            LocalIRValue::RValue(basic_value_enum, ty) => {
-                InternalValue::new(ty, InternalValueKind::RValue(basic_value_enum))
+        }
+
+        match &value_ref.kind {
+            CIRValueKind::Func(func_decl) => {
+                let fn_value = self.emit_func_decl(func_decl);
+                let cir_fn_ty = cir_func_decl_as_func_ty(&func_decl);
+                InternalValue::new(CIRTy::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
             }
-            _ => unreachable!(),
-        };
-        drop(irreg);
-        internal_value
+            CIRValueKind::GlobalVar(global_var) => {
+                let global_value = self.emit_global_var(global_var);
+                InternalValue::new(global_var.ty.clone(), InternalValueKind::LValue(global_value.as_pointer_value()))
+            }
+            CIRValueKind::LocalVariable => unreachable!(),
+        }
     }
 
     pub(crate) fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {
