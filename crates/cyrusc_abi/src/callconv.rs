@@ -7,6 +7,14 @@ pub enum CallConv {
     Interrupt,
     Fast,
     Cold,
+    Aapcs,
+    Stdcall,
+    Fastcall,
+    Thiscall,
+    Vectorcall,
+    SysV64,
+    Win64,
+    System,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +46,14 @@ impl TryFrom<&str> for CallConv {
             "interrupt" => Ok(CallConv::Interrupt),
             "fast" => Ok(CallConv::Fast),
             "cold" => Ok(CallConv::Cold),
+            "aapcs" => Ok(CallConv::Aapcs),
+            "stdcall" => Ok(CallConv::Stdcall),
+            "fastcall" => Ok(CallConv::Fastcall),
+            "thiscall" => Ok(CallConv::Thiscall),
+            "vectorcall" => Ok(CallConv::Vectorcall),
+            "sysv64" => Ok(CallConv::SysV64),
+            "win64" => Ok(CallConv::Win64),
+            "system" => Ok(CallConv::System),
             other => Err(ParseCallConvError(other.to_string())),
         }
     }

@@ -5,7 +5,7 @@ mod flowstate;
 mod formatter;
 mod generics;
 pub mod monomorph;
-mod naming;
+mod nameconv;
 mod normalizer;
 pub mod type_cache;
 mod type_checking;

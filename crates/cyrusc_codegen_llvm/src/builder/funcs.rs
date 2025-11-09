@@ -1,7 +1,10 @@
-use crate::builder::{
-    builder::IRBuilderCtx,
-    irreg::LocalIRValue,
-    values::{InternalValue, InternalValueKind},
+use crate::{
+    builder::{
+        builder::IRBuilderCtx,
+        irreg::LocalIRValue,
+        values::{InternalValue, InternalValueKind},
+    },
+    llvm::abi::modifiers::apply_func_modifiers,
 };
 use cyrusc_abi::{
     callconv::CallConv, export::ExportKind, flags::OptionalFlag, inline::Inlining, linkage::Linkage,
@@ -88,7 +91,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .get_function(func_name)
             .unwrap_or_else(|| llvmmodule.add_function(func_name, fn_type, None));
 
-        self.set_func_modifiers(&fn_value, &func_decl.modifiers);
+        apply_func_modifiers(self.llvmctx, &fn_value, &func_decl.modifiers);
 
         {
             let cir_func_ty = cir_func_decl_as_func_ty(func_decl);
@@ -100,103 +103,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         fn_value
-    }
-
-    pub(crate) fn set_func_modifiers(&self, func: &FunctionValue<'ll>, modifiers: &FuncModifiers) {
-        if let Some(export) = &modifiers.export {
-            let dll_storage_class = match export {
-                ExportKind::DllImport => DLLStorageClass::Import,
-                ExportKind::DllExport => DLLStorageClass::Export,
-            };
-            func.as_global_value().set_dll_storage_class(dll_storage_class);
-        }
-
-        if let Some(linkage) = &modifiers.linkage {
-            let llvm_linkage = match linkage {
-                Linkage::Extern => inkwell::module::Linkage::External,
-                Linkage::Weak => inkwell::module::Linkage::WeakAny,
-                Linkage::LinkOnce => inkwell::module::Linkage::LinkOnceAny,
-            };
-            func.set_linkage(llvm_linkage);
-        }
-
-        if let Some(inline) = &modifiers.inline {
-            let attr_name = match inline {
-                Inlining::Inline => "inlinehint",
-                Inlining::NoInline => "noinline",
-                Inlining::AlwaysInline => "alwaysinline",
-            };
-
-            let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
-            let enum_attr = self.llvmctx.create_enum_attribute(enum_kind_id, 0);
-
-            func.add_attribute(inkwell::attributes::AttributeLoc::Function, enum_attr);
-        }
-
-        if let Some(prologue) = &modifiers.prologue {
-            if *prologue == Prologue::Naked {
-                let naked_attr = self.llvmctx.create_string_attribute("naked", "");
-                func.add_attribute(AttributeLoc::Function, naked_attr);
-            }
-        }
-
-        if let Some(cc) = &modifiers.callconv {
-            let llvm_cc = match cc {
-                CallConv::C => 0,
-                CallConv::Naked => 8,
-                CallConv::Interrupt => 83,
-                CallConv::Fast => 8,
-                CallConv::Cold => 9,
-            };
-            func.set_call_conventions(llvm_cc);
-        }
-
-        for section in &modifiers.placement {
-            func.set_section(Some(section.0.as_str()));
-        }
-
-        if let Some(section) = &modifiers.section {
-            func.set_section(Some(section.0.as_str()));
-        }
-
-        for flag in &modifiers.optional_flags {
-            match flag {
-                OptionalFlag::NoReturn => {
-                    let id = Attribute::get_named_enum_kind_id("noreturn");
-                    let attr = self.llvmctx.create_enum_attribute(id, 0);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-                OptionalFlag::NoUnwind => {
-                    let id = Attribute::get_named_enum_kind_id("nounwind");
-                    let attr = self.llvmctx.create_enum_attribute(id, 0);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-                OptionalFlag::Cold => {
-                    let id = Attribute::get_named_enum_kind_id("cold");
-                    let attr = self.llvmctx.create_enum_attribute(id, 0);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-                OptionalFlag::Hot => {
-                    let id = Attribute::get_named_enum_kind_id("hot");
-                    let attr = self.llvmctx.create_enum_attribute(id, 0);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-                OptionalFlag::OptSize => {
-                    let id = Attribute::get_named_enum_kind_id("optsize");
-                    let attr = self.llvmctx.create_enum_attribute(id, 0);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-                OptionalFlag::OptNone => {
-                    let id = Attribute::get_named_enum_kind_id("optnone");
-                    let attr = self.llvmctx.create_enum_attribute(id, 0);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-                OptionalFlag::NoSanitize(kind) => {
-                    let attr = self.llvmctx.create_string_attribute("no_sanitize", kind);
-                    func.add_attribute(inkwell::attributes::AttributeLoc::Function, attr);
-                }
-            }
-        }
     }
 
     pub(crate) fn emit_func_body(&mut self, func_params: &CIRFuncParams, cir_block: &CIRBlockStmt) {
