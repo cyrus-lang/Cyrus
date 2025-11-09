@@ -3,14 +3,12 @@ use crate::{
     builder::irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
-use cyrusc_abi::{
-    linkage::Linkage,
-    mangling::{ABINameMangling, Cyrus_ABI},
-};
+use cyrusc_abi::mangling::{ABINameMangling, Cyrus_ABI};
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
 };
+use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     DLLStorageClass,
     basic_block::BasicBlock,
@@ -56,6 +54,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         for cir_stmt in &cir_program_tree.body {
             self.emit_stmt(cir_stmt);
         }
+
+        tui_compiled(cir_program_tree.file_path.clone());
     }
 
     pub(crate) fn emit_stmt(&mut self, cir_stmt: &CIRStmt) {

@@ -7,6 +7,7 @@ use crate::{
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::CIRProgramTree;
+use cyrusc_tui_utils::tui_compile_finished;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -43,20 +44,23 @@ impl CodeGenContext {
         B: CodeGenBackend<'cdg, M>,
         M: 'cdg,
     {
-        match self.opts.module_kind {
-            Some(ModuleKind::Unified) => {
-                let unified_backend = backend
-                    .as_unified()
-                    .expect("Backend does not support unified module compilation");
-                vec![unified_backend.process_unified(cir_modules)]
-            }
-            Some(ModuleKind::Separate) | None => {
+        let modules = match self.opts.module_kind {
+            Some(ModuleKind::Separate) => {
                 let separate_backend = backend
                     .as_separate()
                     .expect("Backend does not support separate module compilation");
                 separate_backend.process_separately(cir_modules)
             }
-        }
+            Some(ModuleKind::Unified) | None => {
+                let unified_backend = backend
+                    .as_unified()
+                    .expect("Backend does not support unified module compilation");
+                vec![unified_backend.process_unified(cir_modules)]
+            }
+        };
+
+        tui_compile_finished();
+        modules
     }
 
     /// Fetch the target machine info from the backend

@@ -1,12 +1,11 @@
 import std::libc::abi;
 
-pub extern var stdout: void*;
+pub extern var stdout: abi::c_file;
 pub extern var stderr: abi::c_file;
 pub extern var stdin: abi::c_file;
 
-pub extern fn printf(format: char*, ...) int; // FIXME
-pub extern fn fprintf(stream: void*, format: char*, ...) int; // FIXME
-// pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
+pub extern fn printf(format: abi::c_char*, ...) abi::c_int;
+pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
 pub extern fn malloc(size: abi::c_size_t) abi::c_void*;
 pub extern fn calloc(num: abi::c_size_t, size: abi::c_size_t) abi::c_void*;
 pub extern fn free(ptr: abi::c_void*) abi::c_void;

@@ -1611,6 +1611,13 @@ impl<'a> AnalysisContext<'a> {
             typed_func_def.modifiers.vis.is_public(),
             typed_func_def.loc.clone(),
         );
+
+        update_global_symbol!(self, typed_func_def.module_id, typed_func_def.symbol_id,
+            SymbolEntryKind::Func(resolved_func) => resolved_func, {
+                resolved_func.func_sig.params = typed_func_def.params.clone();
+                resolved_func.func_sig.return_type = typed_func_def.return_type.clone();
+            }
+        );
     }
 
     pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: SourceLoc) {
@@ -1732,6 +1739,13 @@ impl<'a> AnalysisContext<'a> {
             };
 
         self.normalize_func_params(&mut typed_func_decl.params, typed_func_decl.loc.clone());
+
+        update_global_symbol!(self, typed_func_decl.module_id, typed_func_decl.symbol_id,
+            SymbolEntryKind::Func(resolved_func) => resolved_func, {
+                resolved_func.func_sig.params = typed_func_decl.params.clone();
+                resolved_func.func_sig.return_type = typed_func_decl.return_type.clone();
+            }
+        );
     }
 
     fn analyze_interface(&mut self, typed_interface: &TypedInterfaceStmt) {

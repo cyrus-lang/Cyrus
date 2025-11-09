@@ -90,49 +90,47 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     };
 
     let mut resolver = Resolver::new(module_loader_opts, entry_file.clone());
-    let module_id = generate_module_id();
 
     // resolve the entry module
-
-    let typed_program_tree =
-        match resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, entry_file.clone()) {
-            Some(tree) => tree,
-            None => {
-                resolver.reporter.display();
-                exit(1);
-            }
-        };
-
-    if resolver.reporter.has_errors() {
-        resolver.reporter.display();
-        exit(1);
-    }
+    let module_id = generate_module_id();
+    resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, entry_file.clone());
 
     // analysis
 
     let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
     let entry_points = Arc::new(Mutex::new(Vec::new()));
-    let mut analyzer = AnalysisContext::new(
-        &resolver,
-        module_id,
-        typed_program_tree.clone(),
-        entry_points.clone(),
-        monomorph_registry.clone(),
-        true,
-    );
 
-    analyzer.analyze();
-    DiagReporter::display(&analyzer.reporter);
+    let mut has_error = false;
+    let resolved_program_trees = resolver.program_trees.lock().unwrap();
+    let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+    for program_tree_entry in &*resolved_program_trees {
+        let mut analyzer = AnalysisContext::new(
+            &resolver,
+            program_tree_entry.module_id,
+            program_tree_entry.program.clone(),
+            entry_points.clone(),
+            monomorph_registry.clone(),
+            true,
+        );
 
-    if analyzer.reporter.has_errors() {
-        exit(1);
+        analyzer.analyze();
+        DiagReporter::display(&analyzer.reporter);
+        if analyzer.reporter.has_errors() {
+            has_error = true;
+        }
+
+        analyzed_program_trees.push(analyzer.program_tree.clone());
     }
 
     AnalysisContext::check_entry_points(entry_points);
 
+    if has_error {
+        exit(1);
+    }
+
     // prepare trees for codegen
 
-    let boxed_trees: Vec<Box<TypedProgramTree>> = vec![typed_program_tree]
+    let boxed_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
         .into_iter()
         .map(|rc_refcell_tree| match Rc::try_unwrap(rc_refcell_tree) {
             Ok(refcell_tree) => Box::new(refcell_tree.into_inner()),
@@ -149,78 +147,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         program_trees: cir_program_trees,
         monomorph_registry,
     }
-}
-
-fn setup_resolver(entry_file: String) -> Resolver {
-    let stdlib_path = env::current_dir()
-        .unwrap()
-        .join("./stdlib")
-        .canonicalize()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
-
-    let input_file_dir = get_directory_of_file(entry_file.clone()).unwrap();
-    let module_loader_opts = ModuleLoaderOptions {
-        stdlib_path: Some(stdlib_path),
-        source_dirs: vec![input_file_dir],
-    };
-
-    Resolver::new(module_loader_opts, entry_file.to_string())
-}
-
-fn resolve_typed_program_tree(
-    resolver: &mut Resolver,
-    program: &ProgramTree,
-    entry_file: String,
-) -> Rc<RefCell<TypedProgramTree>> {
-    let module_id = generate_module_id();
-    let program_tree = resolver
-        .resolve_module(module_id, program, &mut Visiting::new(), true, entry_file)
-        .unwrap_or_else(|| panic!("Failed to resolve module."));
-
-    if resolver.reporter.has_errors() {
-        resolver.reporter.display();
-        exit(1);
-    }
-
-    program_tree
-}
-
-fn analyze_program_tree(
-    resolver: &Resolver,
-    monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    typed_program_tree: Rc<RefCell<TypedProgramTree>>,
-) -> Vec<Rc<RefCell<TypedProgramTree>>> {
-    let entry_points = Arc::new(Mutex::new(Vec::new()));
-
-    let mut analyzer = AnalysisContext::new(
-        resolver,
-        generate_module_id(),
-        typed_program_tree.clone(),
-        entry_points.clone(),
-        monomorph_registry,
-        true,
-    );
-
-    analyzer.analyze();
-    DiagReporter::display(&analyzer.reporter);
-    if analyzer.reporter.has_errors() {
-        exit(1);
-    }
-
-    AnalysisContext::check_entry_points(entry_points);
-    vec![analyzer.program_tree.clone()]
-}
-
-fn box_program_trees(program_trees: Vec<Rc<RefCell<TypedProgramTree>>>) -> Vec<Box<TypedProgramTree>> {
-    program_trees
-        .into_iter()
-        .map(|rc_refcell_tree| match Rc::try_unwrap(rc_refcell_tree) {
-            Ok(refcell_tree) => Box::new(refcell_tree.into_inner()),
-            Err(rc_still_shared) => Box::new(rc_still_shared.borrow().clone()),
-        })
-        .collect()
 }
 
 fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir) -> String {

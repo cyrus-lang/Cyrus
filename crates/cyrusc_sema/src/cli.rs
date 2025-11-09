@@ -40,38 +40,34 @@ pub fn main() {
 
             let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
             let module_id = generate_module_id();
-            let typed_program_tree =
-                match resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path) {
-                    Some(program_tree) => program_tree,
-                    None => panic!(),
-                };
-            if resolver.reporter.has_errors() {
-                resolver.reporter.display();
-                exit(1);
-            }
+
+            // resolve entry module
+            resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path);
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
                 let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
-                let mut analyzer = AnalysisContext::new(
-                    &resolver,
-                    module_id,
-                    typed_program_tree.clone(),
-                    entry_points.clone(),
-                    monomorph_registry,
-                    true,
-                );
-                analyzer.analyze();
-                DiagReporter::display(&analyzer.reporter);
-                if analyzer.reporter.has_errors() {
-                    return;
+
+                let resolved_program_trees = resolver.program_trees.lock().unwrap();
+                for program_tree_entry in &*resolved_program_trees {
+                    let mut analyzer = AnalysisContext::new(
+                        &resolver,
+                        module_id,
+                        program_tree_entry.program.clone(),
+                        entry_points.clone(),
+                        monomorph_registry.clone(),
+                        true,
+                    );
+                    analyzer.analyze();
+                    DiagReporter::display(&analyzer.reporter);
+                    if analyzer.reporter.has_errors() {
+                        continue;
+                    }
+
+                    dbg!(program_tree_entry.program.clone());
                 }
 
                 AnalysisContext::check_entry_points(entry_points);
-            }
-
-            if !resolver.reporter.has_errors() {
-                dbg!(typed_program_tree);
             }
         }
         Err(errors) => {
