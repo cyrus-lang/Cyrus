@@ -4,7 +4,7 @@ pub mod flags;
 pub mod inline;
 pub mod linkage;
 pub mod modifiers;
-pub mod naming;
+pub mod mangling;
 pub mod placement;
 pub mod prologue;
 pub mod visibility;
