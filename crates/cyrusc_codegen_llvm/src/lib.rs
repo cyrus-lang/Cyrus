@@ -99,6 +99,13 @@ impl CodeGenLLVM {
 
         let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
         ir_builder_ctx.emit_program_tree(cir_program_tree);
+
+        {
+            let llvmmodule = owned_module.module.borrow();
+            if let Err(err) = llvmmodule.verify() {
+                eprintln!("LLVM Module Error: {}", err)
+            }
+        }        
     }
 
     pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {

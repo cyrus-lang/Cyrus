@@ -1,8 +1,5 @@
 use cyrusc_cir::types::CIRTy;
-use inkwell::{
-    types::{ArrayType, StructType},
-    values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
-};
+use inkwell::values::{FunctionValue, GlobalValue, PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// Represents a unique symbol ID in the current IR scope.
@@ -22,9 +19,6 @@ pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>, CIRTy),
     Global(GlobalValue<'a>, CIRTy),
     LValue(PointerValue<'a>, CIRTy),
-    RValue(BasicValueEnum<'a>, CIRTy),
-    Enum(StructType<'a>, ArrayType<'a>),
-    Struct(StructType<'a>),
 }
 
 impl<'a> LocalIRValueRegistry<'a> {
@@ -74,30 +68,9 @@ impl<'a> LocalIRValue<'a> {
         }
     }
 
-    pub fn as_struct(&self) -> Option<&StructType<'a>> {
-        match self {
-            LocalIRValue::Struct(st) => Some(st),
-            _ => None,
-        }
-    }
-
-    pub fn as_enum(&self) -> Option<(&StructType<'a>, &ArrayType<'a>)> {
-        match self {
-            LocalIRValue::Enum(st, arr) => Some((st, arr)),
-            _ => None,
-        }
-    }
-
     pub fn as_lvalue(&self) -> Option<&PointerValue<'a>> {
         match self {
             LocalIRValue::LValue(ptr, _) => Some(ptr),
-            _ => None,
-        }
-    }
-
-    pub fn as_rvalue(&self) -> Option<&BasicValueEnum<'a>> {
-        match self {
-            LocalIRValue::RValue(val, _) => Some(val),
             _ => None,
         }
     }
