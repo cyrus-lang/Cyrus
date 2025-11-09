@@ -1081,7 +1081,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             CIRValueKind::GlobalVar(global_var) => {
                 let global_value = self.emit_global_var(global_var);
-                InternalValue::new(global_var.ty.clone(), InternalValueKind::LValue(global_value.as_pointer_value()))
+                InternalValue::new(
+                    global_var.ty.clone(),
+                    InternalValueKind::LValue(global_value.as_pointer_value()),
+                )
             }
             CIRValueKind::LocalVariable => unreachable!(),
         }

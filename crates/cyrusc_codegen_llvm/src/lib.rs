@@ -13,6 +13,7 @@ use cyrusc_compiler::{
     target_machine_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_fs_utils::ensure_output_dir;
 use cyrusc_scaffold_parser::{LLVM_IR_DIR_PATH, OBJECTS_FILENAME};
 use inkwell::{
     builder::Builder,
@@ -112,6 +113,8 @@ impl CodeGenLLVM {
         let llvm_ir_dir = output_path
             .map(PathBuf::from)
             .unwrap_or_else(|| Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH));
+        
+        ensure_output_dir(llvm_ir_dir.to_str().unwrap().to_string());
 
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
@@ -143,7 +146,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
                 make_module_name_from_filepath(file_path, base_path, stdlib_path)
             })
-            .unwrap_or_else(|| "module".to_string());
+            .unwrap();
 
         let path = Path::new(&self.build_dir)
             .join(OBJECTS_FILENAME)

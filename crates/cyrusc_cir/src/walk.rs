@@ -399,17 +399,19 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         if let Some(resolved_func) = sym.as_func() {
-            let irv_id = generate_symbol_id();
-            let func_decl = self.lower_func_sig(scope_id_opt, irv_id, &resolved_func.func_sig);
+            let func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
             CIRExprKind::Load(CIRValue {
-                irv_id,
+                irv_id: resolved_func.symbol_id,
                 kind: CIRValueKind::Func(Box::new(func_decl)),
             })
         } else if let Some(resolved_global_var) = sym.as_global_var() {
-            let irv_id = generate_symbol_id();
-            let global_var_stmt = self.lower_global_var_sig(scope_id_opt, irv_id, &resolved_global_var.global_var_sig);
+            let global_var_stmt = self.lower_global_var_sig(
+                scope_id_opt,
+                resolved_global_var.symbol_id,
+                &resolved_global_var.global_var_sig,
+            );
             CIRExprKind::Load(CIRValue {
-                irv_id,
+                irv_id: resolved_global_var.symbol_id,
                 kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
             })
         } else if let Some(resolved_variable) = sym.as_variable() {
@@ -794,8 +796,8 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIRTy::Tuple(CIRTupleTy { items })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
-            SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
             SemanticType::GenericParam(_) => unreachable!("Unexpected generic param which is not resolved."),
+            SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
         }
     }
 
