@@ -3,7 +3,6 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, LinkerOutputKind},
 };
-use cyrusc_ast::ProgramTree;
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
@@ -106,6 +105,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     let mut has_error = false;
     let resolved_program_trees = resolver.program_trees.lock().unwrap();
+
     let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
     for program_tree_entry in &*resolved_program_trees {
         let mut analyzer = AnalysisContext::new(
