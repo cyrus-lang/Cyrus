@@ -40,6 +40,7 @@ pub struct UnionSig {
 #[derive(Debug, Clone)]
 pub struct FuncSig {
     pub module_id: ModuleID,
+    pub symbol_id: Option<SymbolID>,
     pub name: String,
     pub params: TypedFuncParams,
     pub return_type: SemanticType,

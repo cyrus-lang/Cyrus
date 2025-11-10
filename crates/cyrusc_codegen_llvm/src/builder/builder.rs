@@ -144,6 +144,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         // FIXME Name mangling would be refactored in the future.
         let cyrus_abi = Cyrus_ABI {};
         let name = cyrus_abi.global_var_name(llvmmodule_name, &cir_global_var.name, cir_global_var.modifiers.vis);
+        if let Some(global_value) = llvmmodule.get_global(&name) {
+            return global_value;
+        }
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvmmodule.add_global(ty, None, &name);

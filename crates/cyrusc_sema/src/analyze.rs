@@ -1475,6 +1475,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_any_func_def(
         &mut self,
+        symbol_id: SymbolID,
         return_type: &mut SemanticType,
         params: &mut TypedFuncParams,
         body: &mut TypedBlockStmt,
@@ -1482,6 +1483,7 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) {
         self.current_func = Some(TypedFuncType {
+            symbol_id: Some(symbol_id),
             def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(params),
             return_type: Box::new(return_type.clone()),
@@ -1525,6 +1527,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.current_method_symbol_id = Some(*symbol_id);
             self.current_func = Some(TypedFuncType {
+                symbol_id: Some(*symbol_id),
                 def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
@@ -1565,6 +1568,7 @@ impl<'a> AnalysisContext<'a> {
         for (symbol_id, func_sig, mut func_body) in local_methods_list {
             self.current_method_symbol_id = Some(symbol_id);
             self.current_func = Some(TypedFuncType {
+                symbol_id: Some(symbol_id),
                 def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
@@ -1605,6 +1609,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_any_func_def(
+            typed_func_def.symbol_id,
             &mut typed_func_def.return_type,
             &mut typed_func_def.params,
             &mut typed_func_def.body,
