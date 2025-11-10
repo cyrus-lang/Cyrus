@@ -350,6 +350,11 @@ impl<'a> AnalysisContext<'a> {
                         self.normalize_type(scope_id_opt, sema_ty, resolved_typedef.typedef_sig.loc.clone())
                     })
                 }
+                SymbolEntryKind::ProxiedSymbol(_, symbol_id) => {
+                    let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+                    let sym = self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id).unwrap();
+                    self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)
+                },
             },
         }
     }

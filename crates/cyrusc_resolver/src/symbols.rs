@@ -1,12 +1,12 @@
 use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
 use cyrusc_abi::visibility::Visibility;
-use cyrusc_ast::{source_loc::SourceLoc};
-use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_tast::{
     ModuleID, ScopeID, SymbolID,
     stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
 };
+use rand::Rng;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // Symbol Table (Per Module)
 
@@ -33,6 +33,7 @@ pub enum SymbolEntryKind {
     Enum(ResolvedEnum),
     Union(ResolvedUnion),
     Interface(ResolvedInterface),
+    ProxiedSymbol(ModuleID, SymbolID),
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +150,7 @@ impl LocalOrGlobalSymbol {
                 SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.generic_params.clone(),
                 SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.generic_params.clone(),
                 SymbolEntryKind::GlobalVar(..) | SymbolEntryKind::Interface(..) => None,
+                SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
             },
         }
     }
@@ -396,6 +398,7 @@ impl SymbolEntry {
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.vis.clone(),
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.modifiers.vis.clone(),
             SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.modifiers.vis.clone(),
+            SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
         }
     }
 
@@ -409,6 +412,7 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.loc.clone(),
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.loc.clone(),
             SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.loc.clone(),
+            SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
         }
     }
 
@@ -422,6 +426,7 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.symbol_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.symbol_id,
             SymbolEntryKind::Union(resolved_union) => resolved_union.symbol_id,
+            SymbolEntryKind::ProxiedSymbol(_, symbol_id) => *symbol_id,
         }
     }
 
@@ -435,6 +440,7 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.module_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.module_id,
             SymbolEntryKind::Union(resolved_union) => resolved_union.module_id,
+            SymbolEntryKind::ProxiedSymbol(module_id, _) => *module_id,
         }
     }
 
@@ -483,6 +489,13 @@ impl SymbolEntry {
     pub fn as_method(&self) -> Option<&ResolvedMethod> {
         match &self.kind {
             SymbolEntryKind::Method(method) => Some(method),
+            _ => None,
+        }
+    }
+
+    pub fn as_proxied_symbol(&self) -> Option<(ModuleID, SymbolID)> {
+        match self.kind {
+            SymbolEntryKind::ProxiedSymbol(module_id, symbol_id) => Some((module_id, symbol_id)),
             _ => None,
         }
     }

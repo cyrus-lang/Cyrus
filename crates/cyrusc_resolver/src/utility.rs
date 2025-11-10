@@ -3,7 +3,7 @@ use crate::{
     symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, ResolvedEnum, ResolvedFunction, ResolvedGlobalVar,
         ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef, ResolvedUnion, ResolvedVariable,
-        SymbolEntry,
+        SymbolEntry, SymbolEntryKind,
     },
 };
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
@@ -26,19 +26,15 @@ impl Resolver {
 
     pub fn lookup_symbol(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
         let global_symbols = self.global_symbols.lock().unwrap();
-        global_symbols.get(&module_id).and_then(|table| {
-            table
-                .names
-                .get(name)
-                .and_then(|symbol_id| table.entries.get(symbol_id).cloned())
-        })
+        let symbol_id = global_symbols
+            .get(&module_id)
+            .and_then(|table| table.names.get(name).copied())?;
+        drop(global_symbols);
+        self.resolve_global_symbol_deep(symbol_id)
     }
 
     pub fn lookup_symbol_entry_with_id(&self, module_id: ModuleID, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let global_symbols = self.global_symbols.lock().unwrap();
-        global_symbols
-            .get(&module_id)
-            .and_then(|table| table.entries.get(&symbol_id).cloned())
+        self.resolve_global_symbol_deep(symbol_id)
     }
 
     pub fn lookup_symbol_id_in_modules(&self, symbol_id: SymbolID) -> Option<ModuleID> {
@@ -49,10 +45,30 @@ impl Resolver {
             .map(|(module_id, _)| *module_id)
     }
 
-    /// Resolves a global symbol from its ID, searching across all modules.
+    /// Shallow resolution: returns the symbol entry as stored in its module.
     pub fn resolve_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
-        self.lookup_symbol_entry_with_id(module_id, symbol_id)
+        let global_symbols = self.global_symbols.lock().unwrap();
+
+        let (_, table) = global_symbols
+            .iter()
+            .find(|(_, tbl)| tbl.entries.contains_key(&symbol_id))?;
+
+        table.entries.get(&symbol_id).cloned()
+    }
+
+    /// Deep resolution: recursively resolves proxied symbols until a real definition.
+    fn resolve_global_symbol_deep(&self, mut symbol_id: SymbolID) -> Option<SymbolEntry> {
+        loop {
+            let entry = self.resolve_global_symbol(symbol_id.clone())?;
+
+            match entry.kind {
+                SymbolEntryKind::ProxiedSymbol(_, target_symbol_id) => {
+                    symbol_id = target_symbol_id;
+                    continue;
+                }
+                _ => return Some(entry),
+            }
+        }
     }
 
     /// Resolves a symbol from a specific local scope. Simplified to be a single, expressive statement.
@@ -170,16 +186,7 @@ impl Resolver {
             }
         }
 
-        self.resolve_global_symbol(symbol_id)
+        self.resolve_global_symbol_deep(symbol_id)
             .map(LocalOrGlobalSymbol::GlobalSymbol)
-    }
-
-    pub fn resolve_base_symbol_id(&self, symbol: &LocalOrGlobalSymbol) -> SymbolID {
-        if let Some(td) = symbol.as_typedef() {
-            if let Some(gt) = td.typedef_sig.ty.as_generic_type() {
-                return gt.base;
-            }
-        }
-        symbol.get_symbol_id()
     }
 }

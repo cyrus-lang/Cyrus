@@ -797,13 +797,7 @@ impl<'resolver> CIRWalk<'resolver> {
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
             SemanticType::GenericParam(_) => unreachable!("Unexpected generic param which is not resolved."),
-            SemanticType::UnresolvedSymbol(symbol_id) => {
-                // FIXME
-                let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));;
-                let sym = self.resolver.resolve_local_or_global_symbol(local_scope_opt, *symbol_id);
-                dbg!(sym.clone());
-                unreachable!("Unexpected unresolved symbol: {}", symbol_id)
-            },
+            SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
         }
     }
 

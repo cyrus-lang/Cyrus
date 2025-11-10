@@ -380,13 +380,18 @@ impl Resolver {
 
             imported_symbol_ids.push(symbol_id);
 
-            let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
+            {
+                // check symbol visibility
+                let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
+                let vis = symbol_entry.get_vis();
+                self.check_import_single_vis(actual_name.clone(), vis, loc.clone());
+            }
 
             {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols
                     .get_mut(&parent_module_id)
-                    .expect("parent module should exist in global symbols");
+                    .expect("Parent module should exist in global symbols.");
 
                 if symbol_table.names.contains_key(&actual_name) {
                     self.reporter.report(Diag {
@@ -403,13 +408,17 @@ impl Resolver {
                     continue;
                 }
 
-                symbol_table.names.insert(renamed_name.clone(), symbol_id);
-
-                let vis = symbol_entry.get_vis();
-                symbol_table.entries.insert(symbol_id, symbol_entry);
+                let proxy_symbol_id = generate_symbol_id();
+                symbol_table.names.insert(renamed_name.clone(), proxy_symbol_id);
+                symbol_table.entries.insert(
+                    proxy_symbol_id,
+                    SymbolEntry {
+                        kind: SymbolEntryKind::ProxiedSymbol(parent_module_id, symbol_id),
+                        used: false,
+                    },
+                );
 
                 drop(global_symbols);
-                self.check_import_single_vis(actual_name, vis, loc.clone());
             }
         }
     }

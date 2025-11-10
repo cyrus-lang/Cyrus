@@ -50,6 +50,7 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
                 SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.name.clone(),
                 SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
+                SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
             },
         }
     }

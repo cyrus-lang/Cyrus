@@ -1559,6 +1559,26 @@ impl<'a> AnalysisContext<'a> {
             let return_type =
                 self.check_func_type_call(scope_id_opt, &mut func_type, &mut func_call.args, func_call.loc.clone());
 
+            if let Some(symbol_id) = func_type.symbol_id {
+                let local_scope_opt =
+                    scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+                    .unwrap();
+                let resolved_func = &mut sym.as_func().cloned().unwrap();
+
+                self.normalize_func_params(&mut resolved_func.func_sig.params, func_call.loc.clone());
+
+                update_global_symbol!(self, func_type.def_module_id.unwrap(), symbol_id,
+                    SymbolEntryKind::Func(resolved_func) => resolved_func, {
+                        resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
+                        resolved_func.func_sig.return_type = return_type.clone().unwrap();
+                    }
+                );
+            }
+
             func_call.return_type = return_type.clone();
             return_type
         } else {
