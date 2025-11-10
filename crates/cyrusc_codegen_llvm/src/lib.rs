@@ -106,14 +106,14 @@ impl CodeGenLLVM {
             if let Err(err) = llvmmodule.verify() {
                 eprintln!("LLVM Module Error: {}", err)
             }
-        }        
+        }
     }
 
     pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {
         let llvm_ir_dir = output_path
             .map(PathBuf::from)
             .unwrap_or_else(|| Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH));
-        
+
         ensure_output_dir(llvm_ir_dir.to_str().unwrap().to_string());
 
         for owned_module in owned_modules {
@@ -126,6 +126,16 @@ impl CodeGenLLVM {
             }
             drop(module);
         }
+    }
+
+    fn make_module_name(&self, file_path: Option<String>) -> Option<String> {
+         file_path
+            .clone()
+            .map(|file_path| {
+                let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
+                let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
+                make_module_name_from_filepath(file_path, base_path, stdlib_path)
+            })
     }
 }
 
@@ -269,8 +279,10 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 continue; // skip recompilation
             }
 
+            let module_name = self.make_module_name(Some(cir_program_tree.file_path.clone())).unwrap();
+
             let context = OwnedModule::create_context();
-            let mut owned_module = OwnedModule::create_owned_module(context, "module");
+            let mut owned_module = OwnedModule::create_owned_module(context, &module_name);
             owned_module.file_path = Some(cir_program_tree.file_path.clone());
 
             let builder = owned_module.create_builder();
