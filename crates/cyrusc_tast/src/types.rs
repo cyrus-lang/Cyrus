@@ -68,6 +68,7 @@ pub struct TypedTupleType {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncType {
+    pub symbol_id: Option<SymbolID>,
     pub def_module_id: Option<ModuleID>,
     pub params: TypedFuncTypeParams,
     pub return_type: Box<SemanticType>,

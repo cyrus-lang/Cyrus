@@ -94,6 +94,10 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     // resolve the entry module
     let module_id = generate_module_id();
     resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, entry_file.clone());
+    if resolver.reporter.has_errors() {
+        DiagReporter::display(&resolver.reporter);
+        exit(1);
+    }
 
     // analysis
 

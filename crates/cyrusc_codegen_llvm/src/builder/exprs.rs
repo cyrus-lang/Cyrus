@@ -1073,6 +1073,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
         }
 
+        // fresh declaration
+        
         match &value_ref.kind {
             CIRValueKind::Func(func_decl) => {
                 let fn_value = self.emit_func_decl(func_decl);

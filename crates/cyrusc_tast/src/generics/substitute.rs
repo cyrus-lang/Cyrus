@@ -54,6 +54,7 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
                 .collect::<Option<Vec<_>>>()?;
             let ret_ty = Box::new(substitute_type(*func.return_type, ctx.clone())?);
             Some(SemanticType::FuncType(TypedFuncType {
+                symbol_id: func.symbol_id, 
                 def_module_id: func.def_module_id,
                 params: TypedFuncTypeParams {
                     list: params,

@@ -667,6 +667,7 @@ impl Resolver {
                 )?;
 
                 Ok(SemanticType::FuncType(TypedFuncType {
+                    symbol_id: None,
                     def_module_id: None,
                     params: TypedFuncTypeParams { list: params, variadic },
                     return_type: Box::new(return_type),
@@ -1462,6 +1463,7 @@ impl Resolver {
                 methods.insert(method_name.clone(), symbol_id);
 
                 let func_sig = FuncSig {
+                    symbol_id: Some(symbol_id),
                     module_id,
                     name: method_name.clone(),
                     is_func_decl: false,
@@ -1824,6 +1826,7 @@ impl Resolver {
         let (return_type, typed_func_params, typed_variadic_param) = self.resolve_func(module_id, None, func_decl)?;
 
         let func_sig = FuncSig {
+            symbol_id: Some(symbol_id),
             module_id,
             name: func_decl.identifier.name.clone(),
             is_func_decl: true,
@@ -1872,6 +1875,7 @@ impl Resolver {
             self.resolve_func(module_id, Some(body_scope.clone()), &func_def.as_func_decl())?;
 
         let func_sig = FuncSig {
+            symbol_id: Some(symbol_id),
             module_id,
             name: func_def.identifier.name.clone(),
             is_func_decl: false,
@@ -3409,6 +3413,7 @@ impl Visiting {
 
 pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
     FuncSig {
+        symbol_id: Some(func_decl.symbol_id),
         module_id: func_decl.module_id,
         name: func_decl.name.clone(),
         params: func_decl.params.clone(),
@@ -3421,6 +3426,7 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
 
 pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
     FuncSig {
+        symbol_id: Some(func_def.symbol_id),
         module_id: func_def.module_id,
         name: func_def.name.clone(),
         params: func_def.params.clone(),
@@ -3433,6 +3439,7 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
 
 pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     TypedFuncType {
+        symbol_id: func_sig.symbol_id,
         def_module_id: Some(func_sig.module_id),
         params: typed_func_params_as_func_type_params(&func_sig.params),
         return_type: Box::new(func_sig.return_type.clone()),

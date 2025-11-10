@@ -291,6 +291,7 @@ impl<'a> AnalysisContext<'a> {
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
                 SymbolEntryKind::Method(..) => unreachable!(),
                 SymbolEntryKind::Func(resolved_func) => Some(SemanticType::FuncType(TypedFuncType {
+                    symbol_id: Some(resolved_func.symbol_id),
                     def_module_id: Some(resolved_func.module_id),
                     params: TypedFuncTypeParams {
                         list: resolved_func

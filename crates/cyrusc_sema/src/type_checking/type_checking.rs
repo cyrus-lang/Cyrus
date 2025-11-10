@@ -1,4 +1,4 @@
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol};
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
@@ -282,6 +282,7 @@ impl<'a> AnalysisContext<'a> {
         lambda.return_type = self.normalize_type(scope_id_opt, lambda.return_type.clone(), lambda.loc.clone())?;
         let params = typed_func_params_as_func_type_params(&lambda.params);
         let func_type = TypedFuncType {
+            symbol_id: None,
             def_module_id: Some(self.module_id),
             params,
             return_type: Box::new(lambda.return_type.clone()),
@@ -1597,14 +1598,8 @@ impl<'a> AnalysisContext<'a> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
 
-        method_call.operand.sema_ty = match self.analyze_typed_expr_type_non_terminal(
-            scope_id_opt,
-            &mut method_call.operand,
-            expected_type.clone(),
-        ) {
-            Some(sema_ty) => self.normalize_type(scope_id_opt, sema_ty, loc.clone()),
-            None => return None,
-        };
+        method_call.operand.sema_ty =
+            self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
 
         if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) = method_call.operand.sema_ty {
             let local_scope_opt =
