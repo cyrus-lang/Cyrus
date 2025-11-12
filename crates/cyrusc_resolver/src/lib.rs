@@ -1505,7 +1505,7 @@ impl Resolver {
         }
 
         for (&symbol_id, (local_scope_rc, method_body, method_scope_id)) in &method_bodies {
-            let mut resolved_method = match self.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap().kind {
+            let mut resolved_method = match self.lookup_symbol_entry_with_id(symbol_id).unwrap().kind {
                 SymbolEntryKind::Method(m) => m,
                 _ => unreachable!(),
             };

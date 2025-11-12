@@ -130,17 +130,19 @@ impl<'resolver> CIRWalk<'resolver> {
     fn lower_if(&self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
         let cond = self.lower_expr(scope_id_opt, &if_stmt.cond);
         let then_block = Box::new(self.lower_body(&if_stmt.then_block));
-        let else_block = if_stmt
-            .else_block
-            .clone()
-            .and_then(|else_block| Some(Box::new(self.lower_body(&else_block))));
-        // let branches: Vec<CIRIfStmt> = if_stmt
-        //     .branches
-        //     .iter()
-        //     .map(|branch| self.lower_if(scope_id_opt, branch))
-        //     .collect();
 
-        todo!();
+        let mut else_block = if_stmt.else_block.as_ref().map(|b| Box::new(self.lower_body(b)));
+
+        for branch in if_stmt.branches.iter().rev() {
+            let nested_if = self.lower_if(scope_id_opt, branch);
+            else_block = Some(Box::new(CIRBlockStmt { stmts: vec![nested_if] }));
+        }
+
+        CIRStmt::If(CIRIfStmt {
+            cond,
+            then_block,
+            else_block,
+        })
     }
 
     fn lower_switch(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
@@ -150,8 +152,7 @@ impl<'resolver> CIRWalk<'resolver> {
     fn lower_while(&self, scope_id_opt: Option<ScopeID>, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(scope_id_opt, &while_stmt.cond));
         let body = Box::new(self.lower_body(&while_stmt.body));
-
-        todo!();
+        CIRStmt::While(CIRWhileStmt { cond, body })
     }
 
     fn lower_for(&self, scope_id_opt: Option<ScopeID>, for_stmt: &TypedForStmt) -> CIRStmt {
@@ -170,21 +171,20 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let body = Box::new(self.lower_body(&for_stmt.body));
 
-        // CIRStmt::For(CIRForStmt {
-        //     initializer,
-        //     cond,
-        //     increment,
-        //     body,
-        // })
-        todo!();
+        CIRStmt::For(CIRForStmt {
+            initializer,
+            cond,
+            increment,
+            body,
+        })
     }
 
     fn lower_break(&self, _: &TypedBreakStmt) -> CIRStmt {
-        todo!();
+        CIRStmt::Break
     }
 
     fn lower_continue(&self, _: &TypedContinueStmt) -> CIRStmt {
-        todo!();
+        CIRStmt::Continue
     }
 
     fn lower_return(&self, scope_id_opt: Option<ScopeID>, ret: &TypedReturnStmt) -> CIRStmt {
@@ -753,6 +753,8 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(scope_id_opt, resolved_symbol),
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
             SemanticType::Array(array_type) => {
+                dbg!(array_type.clone());
+                
                 let ty = self.lower_sema_ty(scope_id_opt, &array_type.element_type);
                 let len = match &array_type.capacity {
                     TypedArrayCapacity::Fixed(fixed_cap) => match fixed_cap {

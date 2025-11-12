@@ -25,12 +25,17 @@ pub enum CIRStmt {
     FuncDef(CIRFuncDefStmt),
     FuncDecl(CIRFuncDeclStmt),
     Block(CIRBlockStmt),
-    Switch(CIRSwitchStmt),
-    Return(CIRReturnStmt),
     Struct(CIRStructStmt),
     Enum(CIREnumStmt),
     Union(CIRUnionStmt),
     Expr(CIRExpr),
+    If(CIRIfStmt),
+    For(CIRForStmt),
+    While(CIRWhileStmt),
+    Switch(CIRSwitchStmt),
+    Return(CIRReturnStmt),
+    Continue,
+    Break,
 }
 
 #[derive(Debug, Clone)]
@@ -206,7 +211,7 @@ pub struct CIRValue {
 pub enum CIRValueKind {
     Func(Box<CIRFuncDeclStmt>),
     GlobalVar(Box<CIRGlobalVarStmt>),
-    LocalVariable
+    LocalVariable,
 }
 
 #[derive(Debug, Clone)]
@@ -266,7 +271,6 @@ pub struct CIRBlockStmt {
 pub struct CIRIfStmt {
     pub cond: CIRExpr,
     pub then_block: Box<CIRBlockStmt>,
-    pub branches: Vec<CIRIfStmt>,
     pub else_block: Option<Box<CIRBlockStmt>>,
 }
 

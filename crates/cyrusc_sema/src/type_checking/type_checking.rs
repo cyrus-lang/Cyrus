@@ -1737,14 +1737,14 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let struct_ids_opt = {
+        let struct_id_opt = {
             if let Some(resolved_struct) = sym.as_struct() {
                 // static method call
-                Some((resolved_struct.module_id, resolved_struct.symbol_id))
+                Some(resolved_struct.symbol_id)
             } else if let Some(resolved_enum) = sym.as_enum() {
-                Some((resolved_enum.module_id, resolved_enum.symbol_id))
+                Some(resolved_enum.symbol_id)
             } else if let Some(resolved_union) = sym.as_union() {
-                Some((resolved_union.module_id, resolved_union.symbol_id))
+                Some(resolved_union.symbol_id)
             } else {
                 // instance method call
                 if let Some(resolved_var) = sym.as_variable() {
@@ -1764,7 +1764,7 @@ impl<'a> AnalysisContext<'a> {
                         .clone();
 
                     match self.extract_object_symbol_id(scope_id_opt, var_type, loc) {
-                        Some(struct_id) => Some((resolved_var.module_id, struct_id)),
+                        Some(struct_id) => Some(struct_id),
                         None => None,
                     }
                 } else if let Some(resolved_global_var) = sym.as_global_var() {
@@ -1777,7 +1777,7 @@ impl<'a> AnalysisContext<'a> {
                         .clone();
 
                     match self.extract_object_symbol_id(scope_id_opt, var_type, loc) {
-                        Some(struct_id) => Some((resolved_global_var.module_id, struct_id)),
+                        Some(struct_id) => Some(struct_id),
                         None => None,
                     }
                 } else {
@@ -1786,8 +1786,8 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let (module_id, struct_id) = match struct_ids_opt {
-            Some((module_id, struct_id)) => (module_id, struct_id),
+        let struct_id = match struct_id_opt {
+            Some(struct_id) => struct_id,
             None => {
                 let symbol_name = (self.symbol_formatter)(scope_id_opt)(object_symbol_id);
 
@@ -1802,25 +1802,17 @@ impl<'a> AnalysisContext<'a> {
         };
 
         method_call.object_symbol_id = Some(struct_id);
-        let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, struct_id).unwrap();
+        let symbol_entry = self.resolver.lookup_symbol_entry_with_id(struct_id).unwrap();
 
-        let (object_name, object_methods, object_module_id) = {
+        let (object_name, object_methods) = {
             match symbol_entry.kind {
-                SymbolEntryKind::Struct(resolved_struct) => (
-                    resolved_struct.struct_sig.name,
-                    resolved_struct.struct_sig.methods,
-                    resolved_struct.module_id,
-                ),
-                SymbolEntryKind::Enum(resolved_enum) => (
-                    resolved_enum.enum_sig.name,
-                    resolved_enum.enum_sig.methods,
-                    resolved_enum.module_id,
-                ),
-                SymbolEntryKind::Union(resolved_union) => (
-                    resolved_union.union_sig.name,
-                    resolved_union.union_sig.methods,
-                    resolved_union.module_id,
-                ),
+                SymbolEntryKind::Struct(resolved_struct) => {
+                    (resolved_struct.struct_sig.name, resolved_struct.struct_sig.methods)
+                }
+                SymbolEntryKind::Enum(resolved_enum) => (resolved_enum.enum_sig.name, resolved_enum.enum_sig.methods),
+                SymbolEntryKind::Union(resolved_union) => {
+                    (resolved_union.union_sig.name, resolved_union.union_sig.methods)
+                }
                 _ => unreachable!(),
             }
         };
@@ -1841,10 +1833,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let mut method_symbol_entry = self
-            .resolver
-            .lookup_symbol_entry_with_id(object_module_id, method_symbol_id)
-            .unwrap();
+        let mut method_symbol_entry = self.resolver.lookup_symbol_entry_with_id(method_symbol_id).unwrap();
 
         let resolved_method = match &mut method_symbol_entry.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method,

@@ -83,11 +83,16 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Union(union_stmt) => {
                 self.emit_union_ty(cir_union_as_union_ty(union_stmt));
             }
-            CIRStmt::Switch(cirswitch_stmt) => todo!(),
-            CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
             CIRStmt::Expr(expr) => {
                 self.emit_expr(expr);
             }
+            CIRStmt::Switch(switch_stmt) => todo!(),
+            CIRStmt::If(if_stmt) => todo!(),
+            CIRStmt::For(for_stmt) => todo!(),
+            CIRStmt::While(while_stmt) => todo!(),
+            CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
+            CIRStmt::Break => todo!(),
+            CIRStmt::Continue => todo!(),
         }
     }
 

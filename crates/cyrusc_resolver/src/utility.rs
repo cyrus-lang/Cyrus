@@ -33,7 +33,7 @@ impl Resolver {
         self.resolve_global_symbol_deep(symbol_id)
     }
 
-    pub fn lookup_symbol_entry_with_id(&self, module_id: ModuleID, symbol_id: SymbolID) -> Option<SymbolEntry> {
+    pub fn lookup_symbol_entry_with_id(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
         self.resolve_global_symbol_deep(symbol_id)
     }
 
