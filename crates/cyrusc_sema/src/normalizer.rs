@@ -351,10 +351,14 @@ impl<'a> AnalysisContext<'a> {
                     })
                 }
                 SymbolEntryKind::ProxiedSymbol(_, symbol_id) => {
-                    let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-                    let sym = self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id).unwrap();
+                    let local_scope_opt =
+                        scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+                    let sym = self
+                        .resolver
+                        .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+                        .unwrap();
                     self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)
-                },
+                }
             },
         }
     }
@@ -384,8 +388,7 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .or_else(|| {
-                let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id)?;
-                let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id)?;
+                let symbol_entry = self.resolver.lookup_symbol_entry_with_id(symbol_id)?;
                 Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry))
             });
 

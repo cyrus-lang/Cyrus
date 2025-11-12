@@ -1760,7 +1760,7 @@ impl<'a> AnalysisContext<'a> {
 
         let resolved_interface = self
             .resolver
-            .lookup_symbol_entry_with_id(self.module_id, typed_interface.symbol_id)
+            .lookup_symbol_entry_with_id(typed_interface.symbol_id)
             .unwrap();
 
         let interface_name = resolved_interface.as_interface().unwrap().interface_sig.name.clone();
