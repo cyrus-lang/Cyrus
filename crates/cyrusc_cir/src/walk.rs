@@ -134,7 +134,15 @@ impl<'resolver> CIRWalk<'resolver> {
         let mut else_block = if_stmt.else_block.as_ref().map(|b| Box::new(self.lower_body(b)));
 
         for branch in if_stmt.branches.iter().rev() {
-            let nested_if = self.lower_if(scope_id_opt, branch);
+            let branch_cond = self.lower_expr(scope_id_opt, &branch.cond);
+            let branch_then = Box::new(self.lower_body(&branch.then_block));
+
+            let nested_if = CIRStmt::If(CIRIfStmt {
+                cond: branch_cond,
+                then_block: branch_then,
+                else_block: else_block.take(),
+            });
+
             else_block = Some(Box::new(CIRBlockStmt { stmts: vec![nested_if] }));
         }
 
@@ -754,7 +762,7 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
             SemanticType::Array(array_type) => {
                 dbg!(array_type.clone());
-                
+
                 let ty = self.lower_sema_ty(scope_id_opt, &array_type.element_type);
                 let len = match &array_type.capacity {
                     TypedArrayCapacity::Fixed(fixed_cap) => match fixed_cap {

@@ -113,8 +113,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             return; // works only for void return type
         }
 
-        let basic_block = cur_fn.get_last_basic_block().unwrap();
-        if basic_block.get_terminator().is_some() {
+        let cur_block = self.blockreg.cur_block.unwrap();
+        if cur_block.get_terminator().is_some() {
             return;
         }
 

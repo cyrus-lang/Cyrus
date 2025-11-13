@@ -1,6 +1,9 @@
 use crate::{
     OwnedModule,
-    builder::irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
+    builder::{
+        control_flow::CFEntry,
+        irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
+    },
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
 use cyrusc_abi::mangling::{ABINameMangling, Cyrus_ABI};
@@ -32,11 +35,9 @@ pub(crate) struct IRBuilderCtx<'ll> {
 }
 
 pub(crate) struct BlockRegistry<'ll> {
-    pub(crate) flow_stack: Vec<FlowCtx>,
+    pub(crate) control_flow_stack: Vec<CFEntry<'ll>>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
 }
-
-pub(crate) struct FlowCtx {}
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub fn new(owned_module: &'ll OwnedModule, llvmbuilder: &'ll Builder<'ll>, llvmtm: &'ll TargetMachine) -> Self {
@@ -55,7 +56,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             llvmtm,
             irreg,
             cur_fn: None,
-            blockreg
+            blockreg,
         }
     }
 
@@ -96,7 +97,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.emit_expr(expr);
             }
             CIRStmt::Switch(switch_stmt) => todo!(),
-            CIRStmt::If(if_stmt) => todo!(),
+            CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => todo!(),
             CIRStmt::While(while_stmt) => todo!(),
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
@@ -193,7 +194,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 impl<'ll> Default for BlockRegistry<'ll> {
     fn default() -> Self {
         Self {
-            flow_stack: Default::default(),
+            control_flow_stack: Default::default(),
             cur_block: Default::default(),
         }
     }
