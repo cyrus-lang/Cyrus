@@ -28,8 +28,15 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) llvmtm: &'ll TargetMachine,
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
     pub(crate) cur_fn: Option<FunctionValue<'ll>>,
+    pub(crate) blockreg: BlockRegistry<'ll>,
+}
+
+pub(crate) struct BlockRegistry<'ll> {
+    pub(crate) flow_stack: Vec<FlowCtx>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
 }
+
+pub(crate) struct FlowCtx {}
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub fn new(owned_module: &'ll OwnedModule, llvmbuilder: &'ll Builder<'ll>, llvmtm: &'ll TargetMachine) -> Self {
@@ -39,6 +46,8 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let irreg = Rc::new(RefCell::new(LocalIRValueRegistry::new()));
 
+        let blockreg = BlockRegistry::default();
+
         Self {
             llvmctx: &owned_module.context,
             llvmbuilder,
@@ -46,7 +55,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             llvmtm,
             irreg,
             cur_fn: None,
-            cur_block: None,
+            blockreg
         }
     }
 
@@ -104,7 +113,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let cur_fn = self.cur_fn.unwrap();
         let basic_block = self.llvmctx.append_basic_block(cur_fn, name);
         self.llvmbuilder.position_at_end(basic_block);
-        self.cur_block = Some(basic_block);
+        self.blockreg.cur_block = Some(basic_block);
     }
 
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
@@ -178,5 +187,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(irreg);
 
         global_value
+    }
+}
+
+impl<'ll> Default for BlockRegistry<'ll> {
+    fn default() -> Self {
+        Self {
+            flow_stack: Default::default(),
+            cur_block: Default::default(),
+        }
     }
 }

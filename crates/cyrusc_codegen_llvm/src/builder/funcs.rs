@@ -46,7 +46,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
         let parent_fn = self.cur_fn.clone();
-        let parent_block = self.cur_block.clone();
+        let parent_block = self.blockreg.cur_block;
 
         let mut modifiers = FuncModifiers::default();
         modifiers.inline = Some(Inlining::Inline);
@@ -65,8 +65,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let fn_pointer = fn_value.as_global_value().as_pointer_value().into();
 
         self.cur_fn = parent_fn;
-        self.cur_block = parent_block;
-        if let Some(basic_block) = self.cur_block {
+        self.blockreg.cur_block = parent_block;
+        if let Some(basic_block) = parent_block {
             self.llvmbuilder.position_at_end(basic_block);
         }
 

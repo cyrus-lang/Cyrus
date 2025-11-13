@@ -112,7 +112,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmbuilder.build_unreachable().unwrap();
 
         self.llvmbuilder.position_at_end(success_block);
-        self.cur_block = Some(success_block);
+        self.blockreg.cur_block = Some(success_block);
 
         let ordered_indexes: Vec<IntValue<'ll>> = vec![index.as_basic_value().into_int_value()];
 
