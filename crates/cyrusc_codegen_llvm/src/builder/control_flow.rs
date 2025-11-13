@@ -1,4 +1,4 @@
-use cyrusc_cir::CIRIfStmt;
+use cyrusc_cir::{CIRForStmt, CIRIfStmt, CIRWhileStmt};
 use inkwell::{basic_block::BasicBlock, values::IntValue};
 
 use crate::builder::builder::IRBuilderCtx;
@@ -9,7 +9,7 @@ pub(crate) enum CFEntry<'ll> {
 }
 
 pub(crate) struct CFLoop<'ll> {
-    pub cond_block: BasicBlock<'ll>,
+    pub cond_block: Option<BasicBlock<'ll>>,
     pub inc_block: Option<BasicBlock<'ll>>,
     pub exit_block: BasicBlock<'ll>,
 }
@@ -43,9 +43,9 @@ impl<'ll> CFEntry<'ll> {
 
 impl<'ll> CFLoop<'ll> {
     pub(crate) fn new(
-        cond_block: BasicBlock<'ll>,
-        exit_block: BasicBlock<'ll>,
+        cond_block: Option<BasicBlock<'ll>>,
         inc_block: Option<BasicBlock<'ll>>,
+        exit_block: BasicBlock<'ll>,
     ) -> Self {
         Self {
             cond_block,
@@ -62,6 +62,73 @@ impl<'ll> CFIf<'ll> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_for(&mut self, for_stmt: &CIRForStmt) {
+        let cur_fn = self.cur_fn.unwrap();
+
+        let cond_block = for_stmt
+            .cond
+            .as_ref()
+            .and_then(|_| Some(self.llvmctx.append_basic_block(cur_fn, "for_cond")));
+        let inc_block = for_stmt
+            .increment
+            .as_ref()
+            .and_then(|_| Some(self.llvmctx.append_basic_block(cur_fn, "for_inc")));
+        let body_block = self.llvmctx.append_basic_block(cur_fn, "for_body");
+        let exit_block = self.llvmctx.append_basic_block(cur_fn, "for_exit");
+
+        self.blockreg
+            .control_flow_stack
+            .push(CFEntry::Loop(CFLoop::new(cond_block, inc_block, exit_block)));
+
+        if let Some(initializer) = &for_stmt.initializer {
+            self.emit_var(initializer);
+        }
+
+        let cur_block = self.blockreg.cur_block.unwrap();
+        self.llvmbuilder.position_at_end(cur_block);
+        if cur_block.get_terminator().is_none() {
+            let next_block = cond_block.or(Some(body_block)).unwrap();
+            self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
+        }
+
+        if let Some(cond) = &for_stmt.cond {
+            self.llvmbuilder.position_at_end(cond_block.unwrap());
+            self.blockreg.cur_block = Some(cond_block.unwrap());
+            let lvalue = self.emit_expr(&cond);
+            let rvalue = self.load_rvalue(lvalue);
+            let cond = rvalue.as_basic_value().into_int_value();
+            self.llvmbuilder
+                .build_conditional_branch(cond, body_block, exit_block)
+                .unwrap();
+        }
+
+        if let Some(increment) = &for_stmt.increment {
+            self.llvmbuilder.position_at_end(inc_block.unwrap());
+            self.blockreg.cur_block = Some(inc_block.unwrap());
+            self.emit_expr(&increment);
+            let next_block = cond_block.or(Some(body_block)).unwrap();
+            self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
+        }
+
+        self.llvmbuilder.position_at_end(body_block);
+        self.blockreg.cur_block = Some(body_block);
+        self.emit_body(&for_stmt.body);
+
+        let cur_block = self.blockreg.cur_block.unwrap();
+        if cur_block.get_terminator().is_none() {
+            let next_block = inc_block.or(cond_block).or(Some(body_block)).unwrap();
+            self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
+            self.blockreg.cur_block = Some(next_block);
+        }
+
+        self.llvmbuilder.position_at_end(exit_block);
+        self.blockreg.cur_block = Some(exit_block);
+    }
+
+    pub(crate) fn emit_while(&mut self, while_stmt: &CIRWhileStmt) {
+        todo!();
+    }
+
     pub(crate) fn emit_if(&mut self, if_stmt: &CIRIfStmt) {
         let cond: IntValue<'ll>;
         {

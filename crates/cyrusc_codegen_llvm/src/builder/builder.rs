@@ -98,7 +98,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             CIRStmt::Switch(switch_stmt) => todo!(),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
-            CIRStmt::For(for_stmt) => todo!(),
+            CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
             CIRStmt::While(while_stmt) => todo!(),
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
             CIRStmt::Break => todo!(),
@@ -127,7 +127,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    fn emit_var(&mut self, cir_var: &CIRVarStmt) {
+    pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
 
