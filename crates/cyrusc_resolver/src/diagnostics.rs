@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ResolverDiagKind {
+    #[error("Label '{label_name}' already defined in this scope.")]
+    LabelAlreadyDefined { label_name: String },
+
     #[error("Type '{type_name}' does not accept any type arguments.")]
     TypeDoesNotAcceptTypeArgs { type_name: String },
 

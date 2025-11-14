@@ -60,11 +60,20 @@ impl Parser {
                 TokenKind::Break => self.parse_break(),
                 TokenKind::Continue => self.parse_continue(),
                 TokenKind::Switch => self.parse_switch(),
+                TokenKind::Goto => self.parse_goto(),
                 TokenKind::LeftBrace => {
                     let block_statement = self.parse_block_statement()?;
                     Ok(Stmt::BlockStmt(block_statement))
                 }
-                _ => self.parse_expression_statement(),
+                _ => {
+                    if matches!(self.current_token().kind, TokenKind::Identifier { .. })
+                        && self.peek_token_is(TokenKind::Colon)
+                    {
+                        return self.parse_label_statement();
+                    }
+
+                    self.parse_expression_statement()
+                }
             }
         } else {
             match self.current_token().kind {
@@ -82,6 +91,33 @@ impl Parser {
                 }
             }
         }
+    }
+
+    pub(crate) fn parse_goto(&mut self) -> Result<Stmt, Diag> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+        self.expect_current(TokenKind::Goto)?;
+        let label = self.parse_identifier()?;
+        self.expect_peek(TokenKind::Semicolon)?;
+
+        Ok(Stmt::Goto(Goto {
+            name: label,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    pub(crate) fn parse_label_statement(&mut self) -> Result<Stmt, Diag> {
+        let name = self.parse_identifier()?;
+        let start = name.span.start;
+        let loc = name.loc.clone();
+        self.expect_peek(TokenKind::Colon)?;
+
+        Ok(Stmt::Label(Label {
+            name,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
     }
 
     pub(crate) fn parse_block_statement(&mut self) -> Result<BlockStmt, Diag> {

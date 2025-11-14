@@ -11,6 +11,7 @@ use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
 };
+use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     DLLStorageClass,
@@ -22,7 +23,7 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{FunctionValue, GlobalValue},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) llvmctx: &'ll Context,
@@ -37,6 +38,7 @@ pub(crate) struct IRBuilderCtx<'ll> {
 pub(crate) struct BlockRegistry<'ll> {
     pub(crate) control_flow_stack: Vec<CFEntry<'ll>>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
+    pub(crate) labels: HashMap<LabelID, BasicBlock<'ll>>,
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
@@ -101,12 +103,15 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
             CIRStmt::While(while_stmt) => self.emit_while(while_stmt),
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
-            CIRStmt::Break => todo!(),
-            CIRStmt::Continue => todo!(),
+            CIRStmt::Label(label_stmt) => self.emit_label(label_stmt),
+            CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
+            CIRStmt::Break => self.emit_break(),
+            CIRStmt::Continue => self.emit_continue(),
         }
     }
 
     pub(crate) fn emit_body(&mut self, cir_block: &CIRBlockStmt) {
+        self.emit_predefine_labels(cir_block);
         cir_block.stmts.iter().for_each(|cir_stmt| self.emit_stmt(cir_stmt));
     }
 
@@ -189,6 +194,7 @@ impl<'ll> Default for BlockRegistry<'ll> {
         Self {
             control_flow_stack: Default::default(),
             cur_block: Default::default(),
+            labels: Default::default(),
         }
     }
 }

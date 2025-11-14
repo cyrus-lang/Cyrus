@@ -834,6 +834,7 @@ impl Lexer {
         match ident.as_str() {
             "var" => TokenKind::Var,
             "defer" => TokenKind::Defer,
+            "goto" => TokenKind::Goto,
             "union" => TokenKind::Union,
             "interface" => TokenKind::Interface,
             "type" => TokenKind::Typedef,

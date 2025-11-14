@@ -1,5 +1,5 @@
 use crate::{
-    ModuleID, ScopeID, SymbolID,
+    LabelID, ModuleID, ScopeID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
@@ -32,6 +32,8 @@ pub enum TypedStmt {
     Expr(TypedExprStmt),
     Defer(TypedDeferStmt),
     ExportTuple(TypedExportTupleStmt),
+    Label(TypedLabelStmt),
+    Goto(TypedGotoStmt),
 }
 
 impl TypedStmt {
@@ -57,8 +59,24 @@ impl TypedStmt {
             TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
             TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
             TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
+            TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc.clone(),
+            TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedLabelStmt {
+    pub name: String,
+    pub label_id: LabelID,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedGotoStmt {
+    pub name: String,
+    pub label_id: Option<LabelID>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]

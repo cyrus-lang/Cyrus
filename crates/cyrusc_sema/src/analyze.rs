@@ -137,6 +137,8 @@ impl<'a> AnalysisContext<'a> {
                 | TypedStmt::For(_)
                 | TypedStmt::While(_)
                 | TypedStmt::Switch(_)
+                | TypedStmt::Label(_)
+                | TypedStmt::Goto(_)
                 | TypedStmt::Expr(_) => {
                     unreachable!()
                 }
@@ -196,6 +198,11 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Continue(typed_continue) => {
                 self.analyze_continue(typed_continue);
                 FlowState::Unreachable
+            }
+            TypedStmt::Label(..) => FlowState::Reachable,
+            TypedStmt::Goto(typed_goto) => {
+                self.analyze_goto(scope_id, typed_goto);
+                FlowState::Reachable
             }
             TypedStmt::For(typed_for) => self.analyze_for_loop(Some(scope_id), typed_for),
             TypedStmt::While(typed_while) => self.analyze_while_loop(Some(scope_id), typed_while),
@@ -848,6 +855,26 @@ impl<'a> AnalysisContext<'a> {
             FlowState::Reachable
         } else {
             FlowState::Unreachable
+        }
+    }
+
+    fn analyze_goto(&mut self, scope_id: ScopeID, typed_goto: &mut TypedGotoStmt) {
+        {
+            let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+            let local_scope_ref = local_scope_rc.borrow();
+
+            if let Some(label_id) = local_scope_ref.resolve_label(&typed_goto.name) {
+                typed_goto.label_id = Some(*label_id);
+            } else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UndefinedGotoLabel {
+                        label_name: typed_goto.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(typed_goto.loc.clone())),
+                    hint: None,
+                });
+            }
         }
     }
 
