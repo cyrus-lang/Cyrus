@@ -114,12 +114,13 @@ impl<'ll> IRBuilderCtx<'ll> {
         if cur_fn.get_type().get_return_type().is_some() {
             return; // works only for void return type
         }
+        
+        if let Some(cur_block) = &self.blockreg.cur_block {
+            if cur_block.get_terminator().is_some() {
+                return;
+            }
 
-        let cur_block = self.blockreg.cur_block.unwrap();
-        if cur_block.get_terminator().is_some() {
-            return;
+            self.llvmbuilder.build_return(None).unwrap();
         }
-
-        self.llvmbuilder.build_return(None).unwrap();
     }
 }
