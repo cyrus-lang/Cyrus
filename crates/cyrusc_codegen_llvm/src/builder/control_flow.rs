@@ -1,5 +1,5 @@
 use crate::{builder::builder::IRBuilderCtx, llvm::c_str::to_c_str};
-use cyrusc_cir::{CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRWhileStmt};
+use cyrusc_cir::{CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRWhileStmt};
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
@@ -38,15 +38,60 @@ impl<'ll> CFLoop<'ll> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
+    pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) -> bool {
+        let mut has_any_labeled_block = false;
         for cir_stmt in &cir_block.stmts {
             if let cyrusc_cir::CIRStmt::Label(label_stmt) = cir_stmt {
                 let label_basic_block = self.emit_new_basic_block(&format!("label.{}", label_stmt.name));
                 self.blockreg
                     .labels
                     .insert(label_stmt.label_id.clone(), label_basic_block);
+                has_any_labeled_block = true;
             }
         }
+        has_any_labeled_block
+    }
+
+    pub(crate) fn ensure_entry_block(&mut self) {
+        if self.blockreg.cur_block.is_none() {
+            let entry_block = self.emit_new_basic_block("entry");
+            self.emit_block(entry_block);
+        }
+    }
+
+    pub(crate) fn emit_stmt_with_control_flow(&mut self, stmt: &CIRStmt) {
+        match stmt {
+            CIRStmt::Label(label_stmt) => self.emit_label_stmt(label_stmt),
+            CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
+            _ => {
+                let cur_block = self.blockreg.cur_block.unwrap();
+                self.emit_stmt(stmt);
+
+                if cur_block.get_terminator().is_some() {
+                    self.blockreg.cur_block = None;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn ensure_func_exit_block(&mut self) {
+        if let Some(cur_block) = self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                let exit_block = self.emit_new_basic_block("exit");
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                self.emit_block(exit_block);
+            }
+        }
+    }
+
+    fn emit_label_stmt(&mut self, label_stmt: &CIRLabelStmt) {
+        if let Some(prev_block) = self.blockreg.cur_block {
+            if prev_block.get_terminator().is_none() {
+                let label_block = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
+                self.llvmbuilder.build_unconditional_branch(*label_block).unwrap();
+            }
+        }
+        self.emit_label(label_stmt);
     }
 
     pub(crate) fn emit_label(&mut self, label_stmt: &cyrusc_cir::CIRLabelStmt) {
