@@ -17,7 +17,7 @@ cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+inkwell = { version = "0.7.0", features = ["llvm18-1"] }
 serde = { version = "1.0.219", features = ["derive"] }
 rayon = "1.11.0"
 num_cpus = "1.17.0"

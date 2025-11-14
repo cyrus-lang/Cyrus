@@ -10,9 +10,9 @@ use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
-    AddressSpace, Either, FloatPredicate, IntPredicate,
+    AddressSpace, FloatPredicate, IntPredicate,
     module::Linkage,
-    types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum},
+    types::{AnyTypeEnum, ArrayType, BasicTypeEnum},
     values::{
         AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue, StructValue,
     },
@@ -1023,9 +1023,10 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
 
-        match call_site.try_as_basic_value() {
-            Either::Left(bv) => InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(bv)),
-            Either::Right(_) => self.emit_null(func_call.ret_ty.clone()),
+        if let Some(basic_value) = call_site.try_as_basic_value().basic() {
+            InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))
+        } else {
+            self.emit_null(func_call.ret_ty.clone())
         }
     }
 
@@ -1049,9 +1050,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             .build_indirect_call(fn_ty, fn_ptr, &args, "indirect_call")
             .unwrap();
 
-        match call_site.try_as_basic_value() {
-            Either::Left(bv) => InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(bv)),
-            Either::Right(_) => self.emit_null(func_call.ret_ty.clone()),
+        if let Some(basic_value) = call_site.try_as_basic_value().basic() {
+            InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))
+        } else {
+            self.emit_null(func_call.ret_ty.clone())
         }
     }
 
@@ -1074,7 +1076,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         // fresh declaration
-        
+
         match &value_ref.kind {
             CIRValueKind::Func(func_decl) => {
                 let fn_value = self.emit_func_decl(func_decl);

@@ -101,7 +101,9 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_func_body(&mut self, func_params: &CIRFuncParams, cir_block: &CIRBlockStmt) {
-        self.emit_block("entry");
+        let entry_block = self.emit_new_basic_block("entry");
+        self.emit_block(entry_block);
+
         self.emit_func_params(func_params);
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();

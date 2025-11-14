@@ -99,7 +99,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Switch(switch_stmt) => todo!(),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
-            CIRStmt::While(while_stmt) => todo!(),
+            CIRStmt::While(while_stmt) => self.emit_while(while_stmt),
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
             CIRStmt::Break => todo!(),
             CIRStmt::Continue => todo!(),
@@ -108,13 +108,6 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_body(&mut self, cir_block: &CIRBlockStmt) {
         cir_block.stmts.iter().for_each(|cir_stmt| self.emit_stmt(cir_stmt));
-    }
-
-    pub(crate) fn emit_block(&mut self, name: &str) {
-        let cur_fn = self.cur_fn.unwrap();
-        let basic_block = self.llvmctx.append_basic_block(cur_fn, name);
-        self.llvmbuilder.position_at_end(basic_block);
-        self.blockreg.cur_block = Some(basic_block);
     }
 
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
