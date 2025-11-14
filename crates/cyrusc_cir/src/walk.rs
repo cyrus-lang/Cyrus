@@ -60,6 +60,8 @@ impl<'resolver> CIRWalk<'resolver> {
                         });
                     continue;
                 }
+                TypedStmt::Label(label) => self.lower_label(label),
+                TypedStmt::Goto(goto) => self.lower_goto(scope_id_opt, goto),
                 TypedStmt::Expr(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
                 // lowered only when used
                 TypedStmt::Struct(..) | TypedStmt::Enum(..) | TypedStmt::Union(..) => {
@@ -73,6 +75,25 @@ impl<'resolver> CIRWalk<'resolver> {
         }
 
         lowered_stmts
+    }
+
+    fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
+        CIRStmt::Label(CIRLabelStmt {
+            name: label.name.clone(),
+            label_id: label.label_id,
+        })
+    }
+
+    fn lower_goto(&self, scope_id_opt: Option<ScopeID>, goto: &TypedGotoStmt) -> CIRStmt {
+        let local_scope_rc = self
+            .resolver
+            .get_scope_ref(self.module_id, scope_id_opt.unwrap())
+            .unwrap();
+        let local_scope_ref = local_scope_rc.borrow();
+        let label_id = *local_scope_ref.resolve_label(&goto.name).unwrap();
+        drop(local_scope_ref);
+
+        CIRStmt::Goto(CIRGotoStmt { label_id })
     }
 
     pub fn lower_export_tuple_to_vars(

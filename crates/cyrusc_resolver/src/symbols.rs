@@ -2,7 +2,7 @@ use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, Typed
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_tast::{
-    ModuleID, ScopeID, SymbolID,
+    LabelID, ModuleID, ScopeID, SymbolID,
     stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
 };
 use rand::Rng;
@@ -106,6 +106,7 @@ pub type LocalScopeRef = Rc<RefCell<LocalScope>>;
 
 #[derive(Debug, Clone)]
 pub struct LocalScope {
+    pub labels: HashMap<String, LabelID>,
     pub symbols: HashMap<String, LocalSymbol>,
     pub parent: Option<Box<LocalScope>>,
 }
@@ -323,6 +324,7 @@ impl LocalSymbol {
 impl LocalScope {
     pub fn new(parent: Option<Box<LocalScope>>) -> Self {
         Self {
+            labels: HashMap::new(),
             symbols: HashMap::new(),
             parent,
         }
@@ -334,6 +336,14 @@ impl LocalScope {
 
     pub fn resolve(&self, name: &str) -> Option<&LocalSymbol> {
         self.symbols.get(name).or_else(|| self.parent.as_ref()?.resolve(name))
+    }
+
+    pub fn resolve_label(&self, name: &str) -> Option<&LabelID> {
+        self.labels.get(name).or_else(|| self.parent.as_ref()?.resolve_label(name))
+    }
+
+    pub fn insert_label(&mut self, name: String, label_id: LabelID) {
+        self.labels.insert(name, label_id);
     }
 
     pub fn resolve_with_symbol_id(&self, symbol_id: SymbolID) -> Option<&LocalSymbol> {
@@ -514,6 +524,11 @@ impl ResolvedMethod {
 }
 
 pub fn generate_symbol_id() -> SymbolID {
+    let mut rng = rand::rng();
+    rng.random::<u32>()
+}
+
+pub fn generate_label_id() -> LabelID {
     let mut rng = rand::rng();
     rng.random::<u32>()
 }

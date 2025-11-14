@@ -4,7 +4,7 @@ use cyrusc_ast::{
     StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_tast::sigs::StructSig;
+use cyrusc_tast::{LabelID, sigs::StructSig};
 
 pub mod types;
 pub mod walk;
@@ -34,6 +34,8 @@ pub enum CIRStmt {
     While(CIRWhileStmt),
     Switch(CIRSwitchStmt),
     Return(CIRReturnStmt),
+    Label(CIRLabelStmt),
+    Goto(CIRGotoStmt),
     Continue,
     Break,
 }
@@ -303,12 +305,6 @@ pub enum CIRSwitchKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRContinueStmt;
-
-#[derive(Debug, Clone)]
-pub struct CIRBreakStmt;
-
-#[derive(Debug, Clone)]
 pub struct CIRReturnStmt {
     pub arg: Option<CIRExpr>,
 }
@@ -347,6 +343,17 @@ pub struct CIRUnionStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
     pub modifiers: UnionModifiers,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRLabelStmt {
+    pub name: String,
+    pub label_id: LabelID,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRGotoStmt {
+    pub label_id: LabelID,
 }
 
 pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {

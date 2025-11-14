@@ -446,6 +446,22 @@ pub enum Stmt {
     Typedef(Typedef),
     GlobalVar(GlobalVar),
     Defer(Defer),
+    Label(Label),
+    Goto(Goto),
+}
+
+#[derive(Debug, Clone)]
+pub struct Goto {
+    pub name: Identifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Label {
+    pub name: Identifier,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -892,6 +908,8 @@ impl Stmt {
             Stmt::Typedef(typedef) => typedef.loc.clone(),
             Stmt::GlobalVar(global_variable) => global_variable.loc.clone(),
             Stmt::Defer(defer) => defer.loc.clone(),
+            Stmt::Label(label) => label.loc.clone(),
+            Stmt::Goto(goto) => goto.loc.clone(),
             Stmt::Expr(..) => unreachable!(),
         }
     }

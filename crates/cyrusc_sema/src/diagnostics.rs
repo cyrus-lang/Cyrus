@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Goto targets a the label '{label_name}' that is not defined in the current scope.")]
+    UndefinedGotoLabel { label_name: String },
+
     #[error("Cannot destructure tuple in export without a value.")]
     DestructureTupleWithNoRhs,
 
