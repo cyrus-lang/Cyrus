@@ -1,9 +1,9 @@
+use crate::builder::builder::IRBuilderCtx;
 use inkwell::{
     AddressSpace,
     types::{ArrayType, BasicType, StructType},
     values::{ArrayValue, BasicValueEnum, IntValue, StructValue},
 };
-use crate::builder::builder::IRBuilderCtx;
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'ll>, rhs_arr: ArrayValue<'ll>) -> IntValue<'ll> {
@@ -68,14 +68,18 @@ impl<'ll> IRBuilderCtx<'ll> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
 
         drop(module);
         cmp.into_int_value()
     }
 
-    pub(crate) fn intrinsic_copy_buffer_to_struct(&self, buffer: ArrayValue<'ll>, struct_type: StructType<'ll>) -> StructValue<'ll> {
+    pub(crate) fn intrinsic_copy_buffer_to_struct(
+        &self,
+        buffer: ArrayValue<'ll>,
+        struct_type: StructType<'ll>,
+    ) -> StructValue<'ll> {
         let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
 
         let buffer_alloca = self
