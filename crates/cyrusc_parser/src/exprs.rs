@@ -23,7 +23,7 @@ impl Parser {
                 continue;
             }
 
-            if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
+            if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::ThinArrow) {
                 self.next_token();
 
                 left = self.parse_field_access(left)?;
@@ -492,7 +492,7 @@ impl Parser {
         let return_type = self.parse_type_specifier()?;
         self.next_token(); // last token of return type
 
-        let body = self.parse_block_statement()?;
+        let body = self.parse_compound_stmt()?;
 
         Ok(Expr::Lambda(Lambda {
             params,
@@ -740,7 +740,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let is_fat_arrow = {
-            if self.current_token_is(TokenKind::FatArrow) {
+            if self.current_token_is(TokenKind::ThinArrow) {
                 self.next_token();
                 true
             } else if self.current_token_is(TokenKind::Dot) {

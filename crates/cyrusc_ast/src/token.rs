@@ -40,6 +40,7 @@ pub enum TokenKind {
     RightBracket,
     Comma,
     Var,
+    ThinArrow,
     FatArrow,
     Dot,
     DoubleDot,
@@ -199,6 +200,8 @@ impl fmt::Display for TokenKind {
             Self::Or => write!(f, "||"),
             Self::Semicolon => write!(f, ";"),
             Self::Colon => write!(f, ":"),
+            Self::ThinArrow => write!(f, "->"),
+            Self::FatArrow => write!(f, "=>"),
             // Keywords
             Self::Var => write!(f, "var"),
             Self::Interface => write!(f, "interface"),

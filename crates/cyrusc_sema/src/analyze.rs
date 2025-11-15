@@ -447,7 +447,7 @@ impl<'a> AnalysisContext<'a> {
 
                     identifier
                 }
-                TypedSwitchCasePattern::Expr(..) => {
+                TypedSwitchCasePattern::Expr(..) | TypedSwitchCasePattern::Range(..) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ExpressionPatternInAEnumSwitch),
@@ -455,7 +455,7 @@ impl<'a> AnalysisContext<'a> {
                         hint: None,
                     });
                     continue;
-                }
+                },
             };
 
             let mut variant_opt = enum_sig
@@ -536,18 +536,19 @@ impl<'a> AnalysisContext<'a> {
             let body_flow_state = self.analyze_block_statement(&mut case.body);
             branch_states.push(body_flow_state);
 
+            // FIXME Disabled because switch does not having fallthrough feature anymore.
             // use the normalized state for fallthrough detection
-            if body_flow_state == FlowState::Reachable && i + 1 < typed_switch.cases.len() {
-                let next_case = &typed_switch.cases[i + 1];
-                if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase),
-                        location: Some(DiagLoc::new(next_case.loc.clone())),
-                        hint: None,
-                    });
-                }
-            }
+            // if body_flow_state == FlowState::Reachable && i + 1 < typed_switch.cases.len() {
+            //     let next_case = &typed_switch.cases[i + 1];
+            //     if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
+            //         self.reporter.report(Diag {
+            //             level: DiagLevel::Error,
+            //             kind: Box::new(AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase),
+            //             location: Some(DiagLoc::new(next_case.loc.clone())),
+            //             hint: None,
+            //         });
+            //     }
+            // }
         }
 
         if let Some(default_case) = &mut typed_switch.default_case {
@@ -692,6 +693,7 @@ impl<'a> AnalysisContext<'a> {
                     });
                     continue;
                 }
+                TypedSwitchCasePattern::Range(range) => todo!(),
             }
 
             let body_flow_state = self.analyze_block_statement(&mut case.body);

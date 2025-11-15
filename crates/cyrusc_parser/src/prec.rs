@@ -45,7 +45,7 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
 
         TokenKind::SizeOf => Precedence::Sizeof,
 
-        TokenKind::Dot | TokenKind::FatArrow => Precedence::Field,
+        TokenKind::Dot | TokenKind::ThinArrow => Precedence::Field,
 
         // Calls and indexing
         TokenKind::LeftParen => Precedence::Call,

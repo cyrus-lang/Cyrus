@@ -367,8 +367,17 @@ pub struct TypedSwitchCase {
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
     Expr(TypedExprStmt, SourceLoc),
+    Range(Range),
     Identifier(String, SourceLoc),
     EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
+}
+
+#[derive(Debug, Clone)]
+pub struct Range {
+    pub lower: TypedExprStmt,
+    pub upper: TypedExprStmt,
+    pub inclusive_upper: bool,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]

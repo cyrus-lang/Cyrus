@@ -125,7 +125,7 @@ pub enum AnalyzerDiagKind {
     InternalMethodCall { method_name: String, object_name: String },
 
     #[error("Use '->' instead of '.' when accessing a member via a pointer.")]
-    UseFatArrow,
+    UseThinArrow,
 
     #[error("Invalid usage of the concrete type.")]
     InvalidUsageOfTheSemanticType,
@@ -136,8 +136,8 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid method call (not supported for this symbol).")]
     ObjectNotSupportsMethods,
 
-    #[error("Invalid usage of the fat arrow.")]
-    InvalidFatArrow,
+    #[error("Invalid usage of the thin arrow.")]
+    InvalidThinArrow,
 
     #[error("Method '{method_name}' not defined for struct '{struct_name}'.")]
     StructMethodNotDefined { struct_name: String, method_name: String },
