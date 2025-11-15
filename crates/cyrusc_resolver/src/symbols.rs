@@ -6,7 +6,11 @@ use cyrusc_tast::{
     stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
 };
 use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
+    rc::Rc,
+};
 
 // Symbol Table (Per Module)
 
@@ -321,6 +325,32 @@ impl LocalSymbol {
     }
 }
 
+macro_rules! resolve_in_scope {
+    // Immutable lookup by a closure that returns Option<&T>
+    ($scope:expr, $lookup:expr) => {{
+        if let Some(val) = $lookup($scope) {
+            Some(val)
+        } else if let Some(parent) = &$scope.parent {
+            let parent_ref = parent.borrow();
+            resolve_in_scope!(&*parent_ref, $lookup)
+        } else {
+            None
+        }
+    }};
+
+    // Mutable lookup by a closure that returns Option<&mut T>
+    (mut $scope:expr, $lookup:expr) => {{
+        if let Some(val) = $lookup(&mut $scope) {
+            Some(val)
+        } else if let Some(parent) = &$scope.parent {
+            let mut parent_ref = parent.borrow_mut();
+            resolve_in_scope!(mut *parent_ref, $lookup)
+        } else {
+            None
+        }
+    }};
+}
+
 impl LocalScope {
     pub fn new(parent: Option<LocalScopeRef>) -> LocalScopeRef {
         Rc::new(RefCell::new(LocalScope {
@@ -352,40 +382,65 @@ impl LocalScope {
         self.labels.insert(name, label_id);
     }
 
-    pub fn resolve_with_symbol_id(&self, symbol_id: SymbolID) -> Option<&LocalSymbol> {
-        match self
-            .symbols
-            .iter()
-            .find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id)
-        {
-            Some((_, local_symbol)) => Some(local_symbol),
-            None => None,
+    pub fn with_symbol<F, R>(&self, name: &str, f: F) -> Option<R>
+    where
+        F: FnOnce(&LocalSymbol) -> R,
+    {
+        if let Some(sym) = self.symbols.get(name) {
+            return Some(f(sym));
         }
+
+        if let Some(parent) = &self.parent {
+            return parent.borrow().with_symbol(name, f);
+        }
+
+        None
     }
 
-    pub fn resolve_with_symbol_id_mut(&mut self, symbol_id: SymbolID) -> Option<&mut LocalSymbol> {
-        match self
-            .symbols
-            .iter_mut()
-            .find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id)
-        {
-            Some((_, local_symbol)) => Some(local_symbol),
-            None => None,
+    pub fn with_symbol_mut<F, R>(&mut self, name: &str, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut LocalSymbol) -> R,
+    {
+        if let Some(sym) = self.symbols.get_mut(name) {
+            return Some(f(sym));
         }
+
+        if let Some(parent) = &self.parent {
+            return parent.borrow_mut().with_symbol_mut(name, f);
+        }
+
+        None
     }
 
-    pub fn resolve_mut(&mut self, name: &str) -> Option<&mut LocalSymbol> {
-        match self.symbols.iter_mut().find(|(_name, ..)| **_name == name) {
-            Some((_, local_symbol)) => Some(local_symbol),
-            None => None,
+    pub fn with_symbol_id<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&LocalSymbol) -> R,
+    {
+        if let Some((_, sym)) = self.symbols.iter().find(|(_, s)| s.get_symbol_id() == symbol_id) {
+            return Some(f(sym));
         }
+
+        if let Some(parent) = &self.parent {
+            return parent.borrow().with_symbol_id(symbol_id, f);
+        }
+
+        None
     }
 
-    pub fn deep_clone(scope_ref: &LocalScopeRef) -> LocalScopeRef {
-        let borrowed = scope_ref.borrow();
-        let copy = borrowed.clone();
-        drop(borrowed);
-        Rc::new(RefCell::new(copy))
+    /// Mutable version by SymbolID
+    pub fn with_symbol_id_mut<F, R>(&mut self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut LocalSymbol) -> R,
+    {
+        if let Some((_, sym)) = self.symbols.iter_mut().find(|(_, s)| s.get_symbol_id() == symbol_id) {
+            return Some(f(sym));
+        }
+
+        if let Some(parent) = &self.parent {
+            return parent.borrow_mut().with_symbol_id_mut(symbol_id, f);
+        }
+
+        None
     }
 }
 

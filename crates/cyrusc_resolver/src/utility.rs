@@ -77,12 +77,7 @@ impl Resolver {
         local_scope_rc: LocalScopeRef,
         symbol_id: SymbolID,
     ) -> Option<LocalSymbol> {
-        local_scope_rc
-            .borrow()
-            .symbols
-            .values()
-            .find(|symbol| symbol.get_symbol_id() == symbol_id)
-            .cloned()
+        local_scope_rc.borrow().with_symbol_id(symbol_id, |sym| sym.clone())
     }
 
     pub fn resolve_variable_symbol(

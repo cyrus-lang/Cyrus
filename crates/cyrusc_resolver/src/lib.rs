@@ -1501,9 +1501,7 @@ impl Resolver {
                 }
             }
 
-            let method_scope = LocalScope::deep_clone(local_scope_rc);
-
-            if let Some(typed_func_body) = self.resolve_block_statement(*method_scope_id, method_scope, method_body) {
+            if let Some(typed_func_body) = self.resolve_block_statement(*method_scope_id, local_scope_rc.clone(), method_body) {
                 resolved_method.func_body = Some(Box::new(typed_func_body));
                 self.insert_symbol_entry(
                     module_id,
@@ -2196,7 +2194,7 @@ impl Resolver {
             Stmt::Foreach(..) => todo!(),
             Stmt::For(for_stmt) => {
                 let body_scope_id = generate_scope_id();
-                let body_scope = LocalScope::deep_clone(&local_scope);
+                let body_scope = LocalScope::new(Some(local_scope.clone()));
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
                 let initializer = if let Some(variable) = &for_stmt.initializer {
@@ -2230,7 +2228,7 @@ impl Resolver {
             }
             Stmt::While(while_stmt) => {
                 let body_scope_id = generate_scope_id();
-                let body_scope = LocalScope::deep_clone(&local_scope);
+                let body_scope = LocalScope::new(Some(local_scope.clone()));
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
                 let cond = self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition)?;
@@ -2249,7 +2247,7 @@ impl Resolver {
 
                 let mut cases: Vec<TypedSwitchCase> = Vec::new();
                 for case in &switch.cases {
-                    let case_scope_rc = LocalScope::deep_clone(&local_scope);
+                    let case_scope_rc = LocalScope::new(Some(local_scope.clone()));
                     let case_scope_id = generate_scope_id();
                     self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
 
@@ -2336,7 +2334,7 @@ impl Resolver {
 
                 let default_case = if let Some(default_case) = &switch.default_case {
                     let body_scope_id = generate_scope_id();
-                    let body_scope = LocalScope::deep_clone(&local_scope);
+                    let body_scope = LocalScope::new(Some(local_scope.clone()));
                     self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
                     Some(self.resolve_block_statement(body_scope_id, body_scope.clone(), &default_case)?)

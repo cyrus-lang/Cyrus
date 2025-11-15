@@ -51,18 +51,15 @@ macro_rules! update_global_symbol {
 macro_rules! update_local_symbol {
     ($self:expr, $scope_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
         let local_scope_rc = $self.resolver.get_scope_ref($self.module_id, $scope_id).unwrap();
-        let mut local_scope = local_scope_rc.borrow_mut();
-        let local_symbol = local_scope.resolve_with_symbol_id_mut($symbol_id).unwrap();
-        match &mut local_symbol.kind {
-            $pattern => {
-                let $var = $var;
-                $body
-            }
-            _ => {
-                unreachable!()
-            }
-        }
-        drop(local_scope);
+        local_scope_rc
+            .borrow_mut()
+            .with_symbol_id_mut($symbol_id, |local_symbol| match &mut local_symbol.kind {
+                $pattern => {
+                    let $var = $var;
+                    $body
+                }
+                _ => unreachable!(),
+            });
     }};
 }
 
@@ -407,8 +404,6 @@ impl<'a> AnalysisContext<'a> {
         if let Some(scope_id) = scope_id_opt {
             update_local_symbol!(self, scope_id, symbol_id,
                 LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                    dbg!(ty.clone());
-
                     resolved_variable.typed_variable.ty = Some(ty);
                     resolved_variable.typed_variable.rhs = Some(rhs.clone());
                 }
