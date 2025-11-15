@@ -139,7 +139,7 @@ impl Lexer {
                     self.read_char();
                     self.read_char();
                     return Token {
-                        kind: TokenKind::FatArrow,
+                        kind: TokenKind::ThinArrow,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
@@ -223,6 +223,17 @@ impl Lexer {
                     self.read_char(); // consume peeked equal sign
                     return Token {
                         kind: TokenKind::Equal,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                        loc,
+                    };
+                } else if self.peek_char() == '>' {
+                    self.read_char(); // consume current equal sign
+                    self.read_char(); // consume peeked equal sign
+                    return Token {
+                        kind: TokenKind::FatArrow,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,

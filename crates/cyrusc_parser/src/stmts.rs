@@ -14,8 +14,6 @@ use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
 
-const SWITCH_ENDING_TOKENS: &[TokenKind; 3] = &[TokenKind::Case, TokenKind::Default, TokenKind::RightBrace];
-
 impl Parser {
     pub(crate) fn parse_statement(&mut self, toplevel: bool) -> Result<Stmt, Diag> {
         let modifiers = self.parse_unresolved_modifiers()?;
@@ -51,8 +49,8 @@ impl Parser {
         if !toplevel {
             match self.current_token().kind {
                 TokenKind::Var | TokenKind::Const => self.parse_variable(),
-                TokenKind::Defer => self.parse_defer(),
-                TokenKind::If => self.parse_if(),
+                TokenKind::Defer => self.parse_defer_stmt(),
+                TokenKind::If => self.parse_if_stmt(),
                 TokenKind::Return => self.parse_return(),
                 TokenKind::For => self.parse_for_loop(),
                 TokenKind::While => self.parse_while_loop(),
@@ -62,7 +60,7 @@ impl Parser {
                 TokenKind::Switch => self.parse_switch(),
                 TokenKind::Goto => self.parse_goto(),
                 TokenKind::LeftBrace => {
-                    let block_statement = self.parse_block_statement()?;
+                    let block_statement = self.parse_compound_stmt()?;
                     Ok(Stmt::BlockStmt(block_statement))
                 }
                 _ => {
@@ -120,7 +118,7 @@ impl Parser {
         }))
     }
 
-    pub(crate) fn parse_block_statement(&mut self) -> Result<BlockStmt, Diag> {
+    pub(crate) fn parse_compound_stmt(&mut self) -> Result<BlockStmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -971,7 +969,7 @@ impl Parser {
 
         let body: Box<BlockStmt>;
         if self.current_token_is(TokenKind::LeftBrace) {
-            body = Box::new(self.parse_block_statement()?);
+            body = Box::new(self.parse_compound_stmt()?);
 
             if self.peek_token_is(TokenKind::Semicolon) {
                 self.next_token();
@@ -1012,7 +1010,7 @@ impl Parser {
 
         self.expect_current(TokenKind::RightParen)?;
 
-        let body = self.parse_block_statement()?;
+        let body = self.parse_compound_stmt()?;
 
         Ok(Stmt::Foreach(Foreach {
             item: item_identifier,
@@ -1034,7 +1032,7 @@ impl Parser {
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
 
-        let body = self.parse_block_statement()?;
+        let body = self.parse_compound_stmt()?;
 
         Ok(Stmt::While(While {
             condition,
@@ -1054,7 +1052,7 @@ impl Parser {
         if self.current_token_is(TokenKind::LeftBrace) {
             let body: Box<BlockStmt>;
             if self.current_token_is(TokenKind::LeftBrace) {
-                body = Box::new(self.parse_block_statement()?);
+                body = Box::new(self.parse_compound_stmt()?);
 
                 if self.peek_token_is(TokenKind::Semicolon) {
                     self.next_token();
@@ -1450,7 +1448,7 @@ impl Parser {
             }));
         }
 
-        let body = Box::new(self.parse_block_statement()?);
+        let body = Box::new(self.parse_compound_stmt()?);
         let end = self.current_token().span.end;
 
         return Ok(Stmt::FuncDef(FuncDef {
@@ -1576,44 +1574,6 @@ impl Parser {
         }))
     }
 
-    fn parse_case_body(&mut self) -> Result<BlockStmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
-
-        let mut block_statement: Vec<Stmt> = Vec::new();
-
-        if SWITCH_ENDING_TOKENS.contains(&self.current_token().kind) {
-            // detected empty block statement
-            return Ok(BlockStmt {
-                exprs: block_statement,
-                span: Span {
-                    start,
-                    end: self.current_token().span.end,
-                },
-                loc,
-            });
-        }
-
-        loop {
-            let statement = self.parse_statement(false)?;
-            block_statement.push(statement);
-
-            if SWITCH_ENDING_TOKENS.contains(&self.peek_token().kind) {
-                break;
-            } else {
-                self.next_token();
-            }
-        }
-
-        let end = self.current_token().span.end;
-
-        Ok(BlockStmt {
-            exprs: block_statement,
-            span: Span { start, end },
-            loc,
-        })
-    }
-
     fn parse_switch(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
@@ -1628,58 +1588,50 @@ impl Parser {
         let mut cases: Vec<SwitchCase> = Vec::new();
         let mut default_case: Option<BlockStmt> = None;
 
+        fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
+            let case_pattern = if this.current_token_is(TokenKind::Dot) {
+                this.next_token();
+                let identifier = this.parse_identifier()?;
+                this.next_token();
+
+                if this.current_token_is(TokenKind::LeftParen) {
+                    this.next_token();
+                    let mut items: Vec<Identifier> = Vec::new();
+                    loop {
+                        let item = this.parse_identifier()?;
+                        this.next_token();
+                        items.push(item);
+                        if this.current_token_is(TokenKind::RightParen) {
+                            break;
+                        } else {
+                            this.expect_current(TokenKind::Comma)?;
+                        }
+                    }
+                    this.expect_current(TokenKind::RightParen)?;
+                    SwitchCasePattern::EnumVariant(identifier, items)
+                } else {
+                    SwitchCasePattern::Identifier(identifier)
+                }
+            } else {
+                let expr = this.parse_expression(Precedence::Lowest)?.0;
+                this.next_token();
+                SwitchCasePattern::Expr(expr)
+            };
+            Ok(case_pattern)
+        }
+
         loop {
             if self.current_token_is(TokenKind::Case) {
                 let case_loc = self.current_token().loc.clone();
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
-                    let case_pattern = if this.current_token_is(TokenKind::Dot) {
-                        this.next_token();
-                        let identifier = this.parse_identifier()?;
-                        this.next_token();
-
-                        if this.current_token_is(TokenKind::LeftParen) {
-                            this.next_token();
-                            let mut items: Vec<Identifier> = Vec::new();
-                            loop {
-                                let item = this.parse_identifier()?;
-                                this.next_token();
-                                items.push(item);
-                                if this.current_token_is(TokenKind::RightParen) {
-                                    break;
-                                } else {
-                                    this.expect_current(TokenKind::Comma)?;
-                                }
-                            }
-                            this.expect_current(TokenKind::RightParen)?;
-                            SwitchCasePattern::EnumVariant(identifier, items)
-                        } else {
-                            SwitchCasePattern::Identifier(identifier)
-                        }
-                    } else {
-                        let expr = this.parse_expression(Precedence::Lowest)?.0;
-                        this.next_token();
-                        SwitchCasePattern::Expr(expr)
-                    };
-                    Ok(case_pattern)
-                }
-
                 let pattern = parse_pattern(self)?;
 
-                self.expect_current(TokenKind::Colon)?;
-                let case_body;
-                if SWITCH_ENDING_TOKENS.contains(&self.current_token().kind) {
-                    case_body = BlockStmt {
-                        exprs: Vec::new(),
-                        span: Span::new(case_start, self.current_token().span.end),
-                        loc: case_loc.clone(),
-                    };
-                } else {
-                    case_body = self.parse_case_body()?;
-                    self.next_token();
-                }
+                self.expect_current(TokenKind::FatArrow)?;
+
+                let case_body = self.parse_compound_stmt()?;
+                self.next_token();
 
                 cases.push(SwitchCase {
                     pattern,
@@ -1689,8 +1641,8 @@ impl Parser {
                 });
             } else if self.current_token_is(TokenKind::Default) {
                 self.next_token();
-                self.expect_current(TokenKind::Colon)?;
-                let case_body = self.parse_case_body()?;
+                self.expect_current(TokenKind::FatArrow)?;
+                let case_body = self.parse_compound_stmt()?;
                 self.next_token();
                 default_case = Some(case_body);
                 break;
@@ -1717,7 +1669,7 @@ impl Parser {
         }))
     }
 
-    fn parse_if(&mut self) -> Result<Stmt, Diag> {
+    fn parse_if_stmt(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1731,7 +1683,7 @@ impl Parser {
         self.expect_peek(TokenKind::RightParen)?;
         self.next_token(); // consume right paren
 
-        let consequent = Box::new(self.parse_block_statement()?);
+        let consequent = Box::new(self.parse_compound_stmt()?);
 
         if self.peek_token_is(TokenKind::Else) {
             self.next_token(); // consume right brace
@@ -1749,7 +1701,7 @@ impl Parser {
                 self.next_token(); // consume last token of the expression
                 self.expect_current(TokenKind::RightParen)?;
 
-                let consequent = Box::new(self.parse_block_statement()?);
+                let consequent = Box::new(self.parse_compound_stmt()?);
 
                 if self.peek_token_is(TokenKind::Else) {
                     self.next_token(); // consume else token
@@ -1770,7 +1722,7 @@ impl Parser {
                 });
             } else {
                 // parse alternate
-                alternate = Some(Box::new(self.parse_block_statement()?));
+                alternate = Some(Box::new(self.parse_compound_stmt()?));
 
                 if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                     return Err(Diag {
@@ -1804,7 +1756,7 @@ impl Parser {
         }))
     }
 
-    fn parse_defer(&mut self) -> Result<Stmt, Diag> {
+    fn parse_defer_stmt(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc;
 

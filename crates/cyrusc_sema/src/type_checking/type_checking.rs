@@ -487,7 +487,7 @@ impl<'a> AnalysisContext<'a> {
             if !is_pointer {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidFatArrow),
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
                     location: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: Some("Use '.' instead of '->'.".to_string()),
                 });
@@ -497,7 +497,7 @@ impl<'a> AnalysisContext<'a> {
             if !is_struct {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UseFatArrow),
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
                     location: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: Some("Use '->' when accessing through a pointer.".to_string()),
                 });
@@ -514,7 +514,7 @@ impl<'a> AnalysisContext<'a> {
         if operand_ty.is_pointer() && !field_access.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UseFatArrow),
+                kind: Box::new(AnalyzerDiagKind::UseThinArrow),
                 location: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: None,
             });
@@ -522,7 +522,7 @@ impl<'a> AnalysisContext<'a> {
         } else if !operand_ty.is_pointer() && field_access.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InvalidFatArrow),
+                kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
                 location: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: Some("Use '.' instead of '->'.".to_string()),
             });
@@ -1937,7 +1937,7 @@ impl<'a> AnalysisContext<'a> {
             if !is_pointer {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidFatArrow),
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
                     location: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: Some("Use '.' instead of '->'.".to_string()),
                 });
@@ -1947,7 +1947,7 @@ impl<'a> AnalysisContext<'a> {
             if !is_struct {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UseFatArrow),
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
                     location: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: Some("Use '->' when accessing through a pointer.".to_string()),
                 });
