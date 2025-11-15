@@ -106,7 +106,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         if cur_block.get_terminator().is_none() {
             self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
         }
-        self.blockreg.cur_block = None;
+        // self.blockreg.cur_block = None;
     }
 
     pub(crate) fn emit_for(&mut self, for_stmt: &CIRForStmt) {
