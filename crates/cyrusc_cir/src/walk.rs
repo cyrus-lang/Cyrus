@@ -121,12 +121,8 @@ impl<'resolver> CIRWalk<'resolver> {
         match pattern {
             TypedExportPattern::Identifier(symbol_id) => {
                 let local_scope = local_scope_rc.borrow();
-                let resolved_variable = local_scope
-                    .resolve_with_symbol_id(*symbol_id)
-                    .as_ref()
-                    .unwrap()
-                    .as_variable()
-                    .unwrap();
+                let resolved_variable =
+                    local_scope.with_symbol_id(*symbol_id, |local_symbol| local_symbol.as_variable().cloned().unwrap()).unwrap();
 
                 let var_name = resolved_variable.typed_variable.name.clone();
                 let var_ty = self.lower_sema_ty(scope_id_opt, &resolved_variable.typed_variable.ty.as_ref().unwrap());
@@ -390,6 +386,13 @@ impl<'resolver> CIRWalk<'resolver> {
     // exprs
 
     fn lower_expr(&self, scope_id_opt: Option<ScopeID>, expr: &TypedExprStmt) -> CIRExpr {
+        if cfg!(debug_assertions) {
+            if expr.sema_ty.is_none() {
+                dbg!(expr.clone());
+            }
+            debug_assert!(expr.sema_ty.is_some());
+        }
+
         let ty = self.lower_sema_ty(scope_id_opt, &expr.sema_ty.clone().unwrap());
 
         let kind = match &expr.kind {
