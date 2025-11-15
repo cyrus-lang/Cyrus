@@ -108,7 +108,7 @@ pub type LocalScopeRef = Rc<RefCell<LocalScope>>;
 pub struct LocalScope {
     pub labels: HashMap<String, LabelID>,
     pub symbols: HashMap<String, LocalSymbol>,
-    pub parent: Option<Box<LocalScope>>,
+    pub parent: Option<LocalScopeRef>,
 }
 
 #[derive(Debug, Clone)]
@@ -322,24 +322,30 @@ impl LocalSymbol {
 }
 
 impl LocalScope {
-    pub fn new(parent: Option<Box<LocalScope>>) -> Self {
-        Self {
+    pub fn new(parent: Option<LocalScopeRef>) -> LocalScopeRef {
+        Rc::new(RefCell::new(LocalScope {
             labels: HashMap::new(),
             symbols: HashMap::new(),
             parent,
-        }
+        }))
     }
 
     pub fn insert(&mut self, name: String, symbol: LocalSymbol) -> Option<LocalSymbol> {
         self.symbols.insert(name, symbol)
     }
 
-    pub fn resolve(&self, name: &str) -> Option<&LocalSymbol> {
-        self.symbols.get(name).or_else(|| self.parent.as_ref()?.resolve(name))
+    pub fn resolve(&self, name: &str) -> Option<LocalSymbol> {
+        self.symbols
+            .get(name)
+            .cloned()
+            .or_else(|| self.parent.as_ref().and_then(|p| p.borrow().resolve(name)))
     }
 
-    pub fn resolve_label(&self, name: &str) -> Option<&LabelID> {
-        self.labels.get(name).or_else(|| self.parent.as_ref()?.resolve_label(name))
+    pub fn resolve_label(&self, name: &str) -> Option<LabelID> {
+        self.labels
+            .get(name)
+            .cloned()
+            .or_else(|| self.parent.as_ref().and_then(|p| p.borrow().resolve_label(name)))
     }
 
     pub fn insert_label(&mut self, name: String, label_id: LabelID) {

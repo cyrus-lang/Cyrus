@@ -66,10 +66,6 @@ impl<'ll> IRBuilderCtx<'ll> {
             _ => {
                 let cur_block = self.blockreg.cur_block.unwrap();
                 self.emit_stmt(stmt);
-
-                if cur_block.get_terminator().is_some() {
-                    self.blockreg.cur_block = None;
-                }
             }
         }
     }

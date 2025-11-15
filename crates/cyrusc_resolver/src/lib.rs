@@ -1411,7 +1411,7 @@ impl Resolver {
 
         for func_def in methods_list {
             let method_scope_id = generate_scope_id();
-            let local_scope_rc = Rc::new(RefCell::new(LocalScope::new(None)));
+            let local_scope_rc = LocalScope::new(None);
             self.insert_scope_ref(module_id, method_scope_id, Rc::clone(&local_scope_rc));
 
             if let Some((return_type, mut typed_func_params, typed_variadic_param)) =
@@ -1836,7 +1836,7 @@ impl Resolver {
 
     fn resolve_func_def_stmt(&mut self, module_id: ModuleID, func_def: &FuncDef) -> Option<TypedStmt> {
         let scope_id = generate_scope_id();
-        let body_scope = Rc::new(RefCell::new(LocalScope::new(None)));
+        let body_scope = LocalScope::new(None);
         self.insert_scope_ref(module_id, scope_id, body_scope.clone());
 
         let symbol_id = self.lookup_symbol_id(module_id, &func_def.identifier.name)?;
@@ -1959,7 +1959,7 @@ impl Resolver {
         };
 
         let consequent_scope_id = generate_scope_id();
-        let consequent_scope = LocalScope::deep_clone(&local_scope);
+        let consequent_scope = LocalScope::new(Some(local_scope.clone()));
         self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
 
         let typed_consequent =
@@ -1971,10 +1971,10 @@ impl Resolver {
         let typed_alternate = {
             if let Some(alternate) = &if_stmt.alternate {
                 let alternate_scope_id = generate_scope_id();
-                let alternate_scope = LocalScope::deep_clone(&local_scope);
+                let alternate_scope = LocalScope::new(Some(local_scope.clone()));
                 self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
 
-                match self.resolve_block_statement(alternate_scope_id, Rc::clone(&local_scope), &*alternate) {
+                match self.resolve_block_statement(alternate_scope_id, alternate_scope.clone(), &*alternate) {
                     Some(typed_block) => Some(Box::new(typed_block)),
                     None => return None,
                 }
@@ -2372,10 +2372,11 @@ impl Resolver {
             }
             Stmt::BlockStmt(block_statement) => {
                 let scope_id = generate_scope_id();
-                let local_scope_copy = LocalScope::deep_clone(&local_scope);
-                self.insert_scope_ref(module_id, scope_id, local_scope_copy.clone());
+                let new_local_scope = LocalScope::new(Some(local_scope.clone()));
 
-                let typed_stmt = self.resolve_block_statement(scope_id, local_scope_copy, block_statement)?;
+                self.insert_scope_ref(module_id, scope_id, new_local_scope.clone());
+
+                let typed_stmt = self.resolve_block_statement(scope_id, new_local_scope, block_statement)?;
                 Some(TypedStmt::BlockStmt(typed_stmt))
             }
             Stmt::Break(break_stmt) => Some(TypedStmt::Break(TypedBreakStmt {
@@ -2456,7 +2457,7 @@ impl Resolver {
     ) -> Option<SymbolID> {
         if let Some(local_scope_rc) = &local_scope_opt {
             let local_scope = local_scope_rc.borrow();
-            if let Some(local_symbol) = local_scope.resolve(&identifier.name).cloned() {
+            if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
                 return Some(local_symbol.get_symbol_id());
             }
         }
@@ -2489,7 +2490,7 @@ impl Resolver {
         if let Some(identifier) = module_import.as_identifier() {
             if let Some(local_scope_rc) = local_scope_opt {
                 let local_scope = local_scope_rc.borrow();
-                if let Some(local_symbol) = local_scope.resolve(&identifier.name).cloned() {
+                if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
                     return Some(local_symbol.get_symbol_id());
                 }
             }
@@ -2737,8 +2738,7 @@ impl Resolver {
 
     fn resolve_lambda_expr(&mut self, module_id: ModuleID, lambda: &Lambda) -> Option<TypedExprStmt> {
         let scope_id = generate_scope_id();
-        let body_scope = LocalScope::new(None);
-        let local_scope_rc = Rc::new(RefCell::new(body_scope));
+        let local_scope_rc = LocalScope::new(None);
         self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
 
         let (list, variadic) = self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &lambda.params)?;
