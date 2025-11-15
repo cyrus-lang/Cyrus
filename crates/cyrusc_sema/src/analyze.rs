@@ -859,23 +859,22 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_goto(&mut self, scope_id: ScopeID, typed_goto: &mut TypedGotoStmt) {
-        {
-            let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
-            let local_scope_ref = local_scope_rc.borrow();
+        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+        let local_scope_ref = local_scope_rc.borrow();
 
-            if let Some(label_id) = local_scope_ref.resolve_label(&typed_goto.name) {
-                typed_goto.label_id = Some(*label_id);
-            } else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UndefinedGotoLabel {
-                        label_name: typed_goto.name.clone(),
-                    }),
-                    location: Some(DiagLoc::new(typed_goto.loc.clone())),
-                    hint: None,
-                });
-            }
+        if let Some(label_id) = local_scope_ref.resolve_label(&typed_goto.name) {
+            typed_goto.label_id = Some(label_id);
+        } else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UndefinedGotoLabel {
+                    label_name: typed_goto.name.clone(),
+                }),
+                location: Some(DiagLoc::new(typed_goto.loc.clone())),
+                hint: None,
+            });
         }
+        drop(local_scope_ref);
     }
 
     fn analyze_continue(&mut self, typed_continue: &TypedContinueStmt) -> FlowState {

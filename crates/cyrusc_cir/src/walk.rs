@@ -90,7 +90,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .get_scope_ref(self.module_id, scope_id_opt.unwrap())
             .unwrap();
         let local_scope_ref = local_scope_rc.borrow();
-        let label_id = *local_scope_ref.resolve_label(&goto.name).unwrap();
+        let label_id = local_scope_ref.resolve_label(&goto.name).unwrap();
         drop(local_scope_ref);
 
         CIRStmt::Goto(CIRGotoStmt { label_id })

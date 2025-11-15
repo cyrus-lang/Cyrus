@@ -118,8 +118,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_stmt_with_control_flow(stmt);
         }
 
+        // FIXME
         if has_any_labeled_block {
-            self.ensure_func_exit_block();
+            // self.ensure_func_exit_block();
         }
     }
 
