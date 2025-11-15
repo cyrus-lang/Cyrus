@@ -112,16 +112,9 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_body(&mut self, cir_block: &CIRBlockStmt) {
         self.ensure_entry_block();
-        let has_any_labeled_block = self.emit_predefine_labels(cir_block);
+        self.emit_predefine_labels(cir_block);
 
-        for stmt in &cir_block.stmts {
-            self.emit_stmt_with_control_flow(stmt);
-        }
-
-        // FIXME
-        if has_any_labeled_block {
-            // self.ensure_func_exit_block();
-        }
+        cir_block.stmts.iter().for_each(|stmt| self.emit_stmt(stmt));
     }
 
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
