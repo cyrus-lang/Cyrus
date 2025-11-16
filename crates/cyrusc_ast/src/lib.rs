@@ -693,17 +693,27 @@ pub struct Switch {
 
 #[derive(Debug, Clone)]
 pub struct SwitchCase {
-    pub pattern: SwitchCasePattern,
+    pub patterns: Vec<SwitchCasePattern>,
     pub body: BlockStmt,
-    pub span: Span,
     pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub enum SwitchCasePattern {
     Expr(Expr),
+    Range(Range),
     Identifier(Identifier),
     EnumVariant(Identifier, Vec<Identifier>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Range {
+    pub lower: Expr,
+    pub upper: Expr,
+    pub inclusive_upper: bool,
+    pub loc: Location,
+    pub span: Span
 }
 
 #[derive(Debug, Clone)]

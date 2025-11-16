@@ -1613,9 +1613,45 @@ impl Parser {
                     SwitchCasePattern::Identifier(identifier)
                 }
             } else {
-                let expr = this.parse_expression(Precedence::Lowest)?.0;
+                let start = this.current_token().span.start;
+                let loc = this.current_token().loc.clone();
+                let expr = this.parse_expression(Precedence::Prefix)?.0;
                 this.next_token();
-                SwitchCasePattern::Expr(expr)
+
+                if this.current_token_is(TokenKind::TripleDot) {
+                    // range (exclusive)
+                    this.next_token();
+                    let lower = expr;
+                    let upper = this.parse_expression(Precedence::Prefix)?.0;
+                    this.next_token();
+
+                    dbg!(this.current_token());
+
+                    SwitchCasePattern::Range(Range {
+                        lower,
+                        upper,
+                        inclusive_upper: false,
+                        loc,
+                        span: Span::new(start, this.current_token().span.end),
+                    })
+                } else if this.current_token_is(TokenKind::DoubleDot) && this.peek_token_is(TokenKind::Assign) {
+                    // range (inclusive)
+                    this.next_token(); 
+                    this.next_token(); 
+                    let lower = expr;
+                    let upper = this.parse_expression(Precedence::Prefix)?.0;
+                    this.next_token(); 
+
+                    SwitchCasePattern::Range(Range {
+                        lower,
+                        upper,
+                        inclusive_upper: true,
+                        loc,
+                        span: Span::new(start, this.current_token().span.end),
+                    })
+                } else {
+                    SwitchCasePattern::Expr(expr)
+                }
             };
             Ok(case_pattern)
         }
@@ -1626,7 +1662,18 @@ impl Parser {
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                let pattern = parse_pattern(self)?;
+                let mut patterns: Vec<SwitchCasePattern> = Vec::new();
+                loop {
+                    let pattern = parse_pattern(self)?;
+                    patterns.push(pattern);
+
+                    if self.current_token_is(TokenKind::Pipe) {
+                        self.next_token();
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
 
                 self.expect_current(TokenKind::FatArrow)?;
 
@@ -1634,7 +1681,7 @@ impl Parser {
                 self.next_token();
 
                 cases.push(SwitchCase {
-                    pattern,
+                    patterns,
                     body: case_body,
                     span: Span::new(case_start, self.current_token().span.end),
                     loc: case_loc,
