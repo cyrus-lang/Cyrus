@@ -357,6 +357,14 @@ pub struct TypedSwitchStmt {
     pub loc: SourceLoc,
 }
 
+impl TypedSwitchStmt {
+    pub fn includes_any_range(&self) -> bool {
+        self.cases
+            .iter()
+            .any(|case| matches!(case.pattern, TypedSwitchCasePattern::Range(_)))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
     pub pattern: TypedSwitchCasePattern,
@@ -366,14 +374,14 @@ pub struct TypedSwitchCase {
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
+    Range(TypedRange),
     Expr(TypedExprStmt, SourceLoc),
-    Range(Range),
     Identifier(String, SourceLoc),
     EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
 }
 
 #[derive(Debug, Clone)]
-pub struct Range {
+pub struct TypedRange {
     pub lower: TypedExprStmt,
     pub upper: TypedExprStmt,
     pub inclusive_upper: bool,

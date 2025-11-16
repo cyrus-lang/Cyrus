@@ -292,16 +292,33 @@ pub struct CIRWhileStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRSwitchStmt {
-    kind: CIRSwitchKind,
     value: CIRExpr,
-    cases: Vec<(CIRBlockID, Box<CIRBlockStmt>)>,
-    default: CIRBlockID,
+    cases: Vec<CIRSwitchCase>,
+    default: Option<CIRBlockStmt>,
 }
 
 #[derive(Debug, Clone)]
-pub enum CIRSwitchKind {
-    Plain, // integer, scalar
-    Enum,
+pub struct CIRSwitchCase {
+    value: CIRExpr,
+    body: CIRBlockStmt,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRSwitchOnEnumStmt {
+    value: CIRExpr,
+    cases: Vec<CIRSwitchOnEnumCase>,
+    default: Option<CIRBlockStmt>
+}
+
+#[derive(Debug, Clone)]
+pub enum CIRSwitchOnEnumCase {
+    EnumVariant {
+        variant_idx: usize,
+    },
+    EnumFieldedVariant {
+        variant_idx: usize,
+        exported_fields: Vec<(String, IRValueID)>,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -6,7 +6,7 @@ use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig};
-use cyrusc_tast::types::ResolvedSymbol;
+use cyrusc_tast::types::{PlainType, ResolvedSymbol};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
     TypedProgramTree,
@@ -121,8 +121,9 @@ impl<'resolver> CIRWalk<'resolver> {
         match pattern {
             TypedExportPattern::Identifier(symbol_id) => {
                 let local_scope = local_scope_rc.borrow();
-                let resolved_variable =
-                    local_scope.with_symbol_id(*symbol_id, |local_symbol| local_symbol.as_variable().cloned().unwrap()).unwrap();
+                let resolved_variable = local_scope
+                    .with_symbol_id(*symbol_id, |local_symbol| local_symbol.as_variable().cloned().unwrap())
+                    .unwrap();
 
                 let var_name = resolved_variable.typed_variable.name.clone();
                 let var_ty = self.lower_sema_ty(scope_id_opt, &resolved_variable.typed_variable.ty.as_ref().unwrap());
@@ -171,6 +172,163 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_switch(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
+        let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
+        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap();
+
+        if operand_ty.is_enum() {
+            self.lower_switch_on_enum(scope_id_opt, switch_stmt)
+        } else {
+            let default = switch_stmt
+                .default_case
+                .as_ref()
+                .and_then(|default_case| Some(self.lower_body(&default_case)));
+
+            if switch_stmt.includes_any_range() {
+                self.lower_switch_as_chained_if(scope_id_opt, &operand, &default, switch_stmt)
+            } else {
+                self.lower_pure_switch(scope_id_opt, &operand, &default, switch_stmt)
+            }
+        }
+    }
+
+    fn lower_switch_as_chained_if(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        operand: &CIRExpr,
+        default: &Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let mut current: Option<CIRIfStmt> = None;
+
+        // build chain bottom-up
+        for case in switch_stmt.cases.iter().rev() {
+            let cond_expr = match &case.pattern {
+                TypedSwitchCasePattern::Expr(expr, _) => {
+                    let lowered_case_expr = self.lower_expr(scope_id_opt, expr);
+
+                    CIRExpr {
+                        kind: CIRExprKind::Infix(CIRInfixExpr {
+                            op: InfixOperator::Equal,
+                            lhs: Box::new(operand.clone()),
+                            rhs: Box::new(lowered_case_expr),
+                        }),
+                        ty: CIRTy::PlainType(PlainType::Bool),
+                    }
+                }
+
+                TypedSwitchCasePattern::Range(range) => {
+                    let lower = self.lower_expr(scope_id_opt, &range.lower);
+                    let upper = self.lower_expr(scope_id_opt, &range.upper);
+
+                    let ge = CIRExpr {
+                        kind: CIRExprKind::Infix(CIRInfixExpr {
+                            op: InfixOperator::GreaterEqual,
+                            lhs: Box::new(operand.clone()),
+                            rhs: Box::new(lower),
+                        }),
+                        ty: CIRTy::PlainType(PlainType::Bool),
+                    };
+
+                    // lhs <= upper (inclusive)
+                    // lhs < upper (exclusive)
+                    let upper_op = if range.inclusive_upper {
+                        InfixOperator::LessEqual
+                    } else {
+                        InfixOperator::LessThan
+                    };
+
+                    let upper_cmp = CIRExpr {
+                        kind: CIRExprKind::Infix(CIRInfixExpr {
+                            op: upper_op,
+                            lhs: Box::new(operand.clone()),
+                            rhs: Box::new(upper),
+                        }),
+                        ty: CIRTy::PlainType(PlainType::Bool),
+                    };
+
+                    CIRExpr {
+                        kind: CIRExprKind::Infix(CIRInfixExpr {
+                            op: InfixOperator::And,
+                            lhs: Box::new(ge),
+                            rhs: Box::new(upper_cmp),
+                        }),
+                        ty: CIRTy::PlainType(PlainType::Bool),
+                    }
+                }
+
+                _ => unreachable!("Unexpected switch pattern for if-chain lowering"),
+            };
+
+            let then_block = Box::new(self.lower_body(&case.body));
+
+            let new_if = CIRIfStmt {
+                cond: cond_expr,
+                then_block,
+                else_block: match current {
+                    Some(inner) => Some(Box::new(CIRBlockStmt {
+                        stmts: vec![CIRStmt::If(inner)],
+                    })),
+                    None => None,
+                },
+            };
+
+            current = Some(new_if);
+        }
+
+        let root_if = match current {
+            Some(mut if_stmt) => {
+                if let Some(default_block) = default.clone() {
+                    if_stmt.else_block = Some(Box::new(CIRBlockStmt {
+                        stmts: vec![CIRStmt::Block(default_block)],
+                    }));
+                }
+                if_stmt
+            }
+            None => {
+                return match default {
+                    Some(block) => CIRStmt::Block(block.clone()),
+                    None => unreachable!("Switch statement has no any case."),
+                };
+            }
+        };
+
+        CIRStmt::If(root_if)
+    }
+
+    fn lower_pure_switch(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        operand: &CIRExpr,
+        default: &Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let cases: Vec<CIRSwitchCase> = switch_stmt
+            .cases
+            .iter()
+            .map(|case| {
+                let case_expr = match &case.pattern {
+                    TypedSwitchCasePattern::Expr(expr, _) => expr,
+                    TypedSwitchCasePattern::Range(..) => {
+                        unreachable!("Unexpected range when lowering pure switch.")
+                    }
+                    _ => unreachable!("Unexpected enum variant pattern when lowering pure switch."),
+                };
+
+                let value = self.lower_expr(scope_id_opt, case_expr);
+                let body = self.lower_body(&case.body);
+
+                CIRSwitchCase { value, body }
+            })
+            .collect();
+
+        CIRStmt::Switch(CIRSwitchStmt {
+            value: operand.clone(),
+            cases,
+            default: default.clone(),
+        })
+    }
+
+    fn lower_switch_on_enum(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         todo!();
     }
 
