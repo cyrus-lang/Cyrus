@@ -660,7 +660,6 @@ impl<'a> AnalysisContext<'a> {
                 if new_start > new_end {
                     return false;
                 }
-
                 for (old_start, old_end) in existing {
                     let overlaps = new_start <= old_end && old_start <= new_end;
                     if overlaps {
@@ -668,7 +667,6 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
-
             true
         }
 
@@ -718,6 +716,9 @@ impl<'a> AnalysisContext<'a> {
                         continue;
                     }
                     TypedSwitchCasePattern::Range(range) => {
+                        self.analyze_typed_expr_type(scope_id_opt, &mut range.lower, Some(SemanticType::PlainType(PlainType::Int)));
+                        self.analyze_typed_expr_type(scope_id_opt, &mut range.upper, Some(SemanticType::PlainType(PlainType::Int)));
+
                         let lower = match self.const_expr_as_raw_integer(scope_id_opt, &range.lower) {
                             Some(value) => value,
                             None => continue,

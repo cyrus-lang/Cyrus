@@ -202,62 +202,78 @@ impl<'resolver> CIRWalk<'resolver> {
 
         // build chain bottom-up
         for case in switch_stmt.cases.iter().rev() {
-            let cond_expr = match &case.pattern {
-                TypedSwitchCasePattern::Expr(expr, _) => {
-                    let lowered_case_expr = self.lower_expr(scope_id_opt, expr);
-
-                    CIRExpr {
-                        kind: CIRExprKind::Infix(CIRInfixExpr {
-                            op: InfixOperator::Equal,
-                            lhs: Box::new(operand.clone()),
-                            rhs: Box::new(lowered_case_expr),
-                        }),
-                        ty: CIRTy::PlainType(PlainType::Bool),
-                    }
-                }
-
-                TypedSwitchCasePattern::Range(range) => {
-                    let lower = self.lower_expr(scope_id_opt, &range.lower);
-                    let upper = self.lower_expr(scope_id_opt, &range.upper);
-
-                    let ge = CIRExpr {
-                        kind: CIRExprKind::Infix(CIRInfixExpr {
-                            op: InfixOperator::GreaterEqual,
-                            lhs: Box::new(operand.clone()),
-                            rhs: Box::new(lower),
-                        }),
-                        ty: CIRTy::PlainType(PlainType::Bool),
-                    };
-
-                    // lhs <= upper (inclusive)
-                    // lhs < upper (exclusive)
-                    let upper_op = if range.inclusive_upper {
-                        InfixOperator::LessEqual
-                    } else {
-                        InfixOperator::LessThan
-                    };
-
-                    let upper_cmp = CIRExpr {
-                        kind: CIRExprKind::Infix(CIRInfixExpr {
-                            op: upper_op,
-                            lhs: Box::new(operand.clone()),
-                            rhs: Box::new(upper),
-                        }),
-                        ty: CIRTy::PlainType(PlainType::Bool),
-                    };
-
-                    CIRExpr {
-                        kind: CIRExprKind::Infix(CIRInfixExpr {
-                            op: InfixOperator::And,
-                            lhs: Box::new(ge),
-                            rhs: Box::new(upper_cmp),
-                        }),
-                        ty: CIRTy::PlainType(PlainType::Bool),
-                    }
-                }
-
-                _ => unreachable!("Unexpected switch pattern for if-chain lowering"),
+            let mut cond_expr = CIRExpr {
+                kind: CIRExprKind::Literal(CIRLiteral {
+                    kind: CIRLiteralKind::Bool(false),
+                    ty: CIRTy::PlainType(PlainType::Bool),
+                }),
+                ty: CIRTy::PlainType(PlainType::Bool),
             };
+            for pattern in &case.patterns {
+                let new_cond = match &pattern {
+                    TypedSwitchCasePattern::Expr(expr, _) => {
+                        let lowered_case_expr = self.lower_expr(scope_id_opt, expr);
+
+                        CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: InfixOperator::Equal,
+                                lhs: Box::new(operand.clone()),
+                                rhs: Box::new(lowered_case_expr),
+                            }),
+                            ty: CIRTy::PlainType(PlainType::Bool),
+                        }
+                    }
+                    TypedSwitchCasePattern::Range(range) => {
+                        let lower = self.lower_expr(scope_id_opt, &range.lower);
+                        let upper = self.lower_expr(scope_id_opt, &range.upper);
+
+                        let ge = CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: InfixOperator::GreaterEqual,
+                                lhs: Box::new(operand.clone()),
+                                rhs: Box::new(lower),
+                            }),
+                            ty: CIRTy::PlainType(PlainType::Bool),
+                        };
+
+                        // lhs <= upper (inclusive)
+                        // lhs < upper (exclusive)
+                        let upper_op = if range.inclusive_upper {
+                            InfixOperator::LessEqual
+                        } else {
+                            InfixOperator::LessThan
+                        };
+
+                        let upper_cmp = CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: upper_op,
+                                lhs: Box::new(operand.clone()),
+                                rhs: Box::new(upper),
+                            }),
+                            ty: CIRTy::PlainType(PlainType::Bool),
+                        };
+
+                        CIRExpr {
+                            kind: CIRExprKind::Infix(CIRInfixExpr {
+                                op: InfixOperator::And,
+                                lhs: Box::new(ge),
+                                rhs: Box::new(upper_cmp),
+                            }),
+                            ty: CIRTy::PlainType(PlainType::Bool),
+                        }
+                    }
+                    _ => unreachable!("Unexpected switch pattern for if-chain lowering"),
+                };
+
+                cond_expr = CIRExpr {
+                    kind: CIRExprKind::Infix(CIRInfixExpr {
+                        op: InfixOperator::Or,
+                        lhs: Box::new(cond_expr),
+                        rhs: Box::new(new_cond),
+                    }),
+                    ty: CIRTy::PlainType(PlainType::Bool),
+                };
+            }
 
             let then_block = Box::new(self.lower_body(&case.body));
 
@@ -306,18 +322,24 @@ impl<'resolver> CIRWalk<'resolver> {
             .cases
             .iter()
             .map(|case| {
-                let case_expr = match &case.pattern {
-                    TypedSwitchCasePattern::Expr(expr, _) => expr,
-                    TypedSwitchCasePattern::Range(..) => {
-                        unreachable!("Unexpected range when lowering pure switch.")
-                    }
-                    _ => unreachable!("Unexpected enum variant pattern when lowering pure switch."),
-                };
+                let patterns: Vec<CIRExpr> = case
+                    .patterns
+                    .iter()
+                    .map(|pattern| {
+                        let case_expr = match &pattern {
+                            TypedSwitchCasePattern::Expr(expr, _) => expr,
+                            TypedSwitchCasePattern::Range(..) => {
+                                unreachable!("Unexpected range when lowering pure switch.")
+                            }
+                            _ => unreachable!("Unexpected enum variant pattern when lowering pure switch."),
+                        };
 
-                let value = self.lower_expr(scope_id_opt, case_expr);
+                        self.lower_expr(scope_id_opt, case_expr)
+                    })
+                    .collect();
                 let body = self.lower_body(&case.body);
 
-                CIRSwitchCase { value, body }
+                CIRSwitchCase { patterns, body }
             })
             .collect();
 
