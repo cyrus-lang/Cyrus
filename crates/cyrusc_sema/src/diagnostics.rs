@@ -4,6 +4,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Range lower bound must not exceed upper bound.")]
+    InvalidRange,
+
+    #[error("Overlapping range in switch case.")]
+    OverlappingSwitchCaseRange,
+
     #[error("Goto targets a the label '{label_name}' that is not defined in the current scope.")]
     UndefinedGotoLabel { label_name: String },
 

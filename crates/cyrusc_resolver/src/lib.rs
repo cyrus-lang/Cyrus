@@ -1501,7 +1501,9 @@ impl Resolver {
                 }
             }
 
-            if let Some(typed_func_body) = self.resolve_block_statement(*method_scope_id, local_scope_rc.clone(), method_body) {
+            if let Some(typed_func_body) =
+                self.resolve_block_statement(*method_scope_id, local_scope_rc.clone(), method_body)
+            {
                 resolved_method.func_body = Some(Box::new(typed_func_body));
                 self.insert_symbol_entry(
                     module_id,
@@ -2251,81 +2253,101 @@ impl Resolver {
                     let case_scope_id = generate_scope_id();
                     self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
 
-                    let pattern = match &case.pattern {
-                        SwitchCasePattern::Expr(expr) => {
-                            let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr)?;
-                            let loc = typed_expr.loc.clone();
-                            TypedSwitchCasePattern::Expr(typed_expr, loc)
-                        }
-                        SwitchCasePattern::Identifier(identifier) => {
-                            let symbol_id = generate_symbol_id();
-                            let mut case_scope = case_scope_rc.borrow_mut();
-                            case_scope.insert(
-                                identifier.name.clone(),
-                                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                    module_id,
-                                    symbol_id,
-                                    typed_variable: TypedVarStmt {
-                                        symbol_id,
-                                        name: identifier.name.clone(),
-                                        ty: None,
-                                        rhs: None,
-                                        is_const: false,
-                                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
-                                    },
-                                })),
-                            );
-                            drop(case_scope);
+                    let mut patterns = Vec::new();
 
-                            TypedSwitchCasePattern::Identifier(
-                                identifier.name.clone(),
-                                SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
-                            )
-                        }
-                        SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
-                            TypedSwitchCasePattern::EnumVariant(
-                                identifier.name.clone(),
-                                valued_fields
-                                    .iter()
-                                    .map(|identifier| {
-                                        let symbol_id = generate_symbol_id();
-                                        let mut case_scope = case_scope_rc.borrow_mut();
-                                        case_scope.insert(
-                                            identifier.name.clone(),
-                                            LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                                module_id,
-                                                symbol_id,
-                                                typed_variable: TypedVarStmt {
-                                                    symbol_id,
-                                                    name: identifier.name.clone(),
-                                                    ty: None,
-                                                    rhs: None,
-                                                    is_const: false,
-                                                    loc: SourceLoc::from_loc(
-                                                        identifier.loc.clone(),
-                                                        self.current_file_path(),
-                                                    ),
-                                                },
-                                            })),
-                                        );
-                                        drop(case_scope);
-                                        TypedIdentifier {
-                                            name: identifier.name.clone(),
+                    for pattern in &case.patterns {
+                        let typed_pattern = match pattern {
+                            SwitchCasePattern::Expr(expr) => {
+                                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr)?;
+                                let loc = typed_expr.loc.clone();
+                                TypedSwitchCasePattern::Expr(typed_expr, loc)
+                            }
+                            SwitchCasePattern::Identifier(identifier) => {
+                                let symbol_id = generate_symbol_id();
+                                let mut case_scope = case_scope_rc.borrow_mut();
+                                case_scope.insert(
+                                    identifier.name.clone(),
+                                    LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                                        module_id,
+                                        symbol_id,
+                                        typed_variable: TypedVarStmt {
                                             symbol_id,
+                                            name: identifier.name.clone(),
+                                            ty: None,
+                                            rhs: None,
+                                            is_const: false,
                                             loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
-                                        }
-                                    })
-                                    .collect(),
-                                SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
-                            )
-                        }
-                    };
+                                        },
+                                    })),
+                                );
+                                drop(case_scope);
+
+                                TypedSwitchCasePattern::Identifier(
+                                    identifier.name.clone(),
+                                    SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                                )
+                            }
+                            SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
+                                TypedSwitchCasePattern::EnumVariant(
+                                    identifier.name.clone(),
+                                    valued_fields
+                                        .iter()
+                                        .map(|identifier| {
+                                            let symbol_id = generate_symbol_id();
+                                            let mut case_scope = case_scope_rc.borrow_mut();
+                                            case_scope.insert(
+                                                identifier.name.clone(),
+                                                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                                                    module_id,
+                                                    symbol_id,
+                                                    typed_variable: TypedVarStmt {
+                                                        symbol_id,
+                                                        name: identifier.name.clone(),
+                                                        ty: None,
+                                                        rhs: None,
+                                                        is_const: false,
+                                                        loc: SourceLoc::from_loc(
+                                                            identifier.loc.clone(),
+                                                            self.current_file_path(),
+                                                        ),
+                                                    },
+                                                })),
+                                            );
+                                            drop(case_scope);
+                                            TypedIdentifier {
+                                                name: identifier.name.clone(),
+                                                symbol_id,
+                                                loc: SourceLoc::from_loc(
+                                                    identifier.loc.clone(),
+                                                    self.current_file_path(),
+                                                ),
+                                            }
+                                        })
+                                        .collect(),
+                                    SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                                )
+                            }
+                            SwitchCasePattern::Range(range) => {
+                                let lower = self.resolve_expr(module_id, Some(local_scope.clone()), &range.lower);
+                                let upper = self.resolve_expr(module_id, Some(local_scope.clone()), &range.upper);
+
+                                TypedSwitchCasePattern::Range(TypedRange {
+                                    lower: lower?,
+                                    upper: upper?,
+                                    inclusive_upper: range.inclusive_upper,
+                                    loc: SourceLoc::from_loc(range.loc.clone(), self.current_file_path()),
+                                })
+                            }
+                        };
+
+                        patterns.push(typed_pattern);
+                    }
 
                     let mut body = self.resolve_block_statement(scope_id, case_scope_rc.clone(), &case.body)?;
                     body.scope_id = case_scope_id;
 
                     cases.push(TypedSwitchCase {
-                        pattern,
+                        patterns,
                         body: Box::new(body),
                         loc: SourceLoc::from_loc(case.loc.clone(), self.current_file_path()),
                     });
