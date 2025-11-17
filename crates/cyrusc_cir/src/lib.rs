@@ -299,7 +299,7 @@ pub struct CIRSwitchStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRSwitchCase {
-    value: CIRExpr,
+    patterns: Vec<CIRExpr>,
     body: CIRBlockStmt,
 }
 

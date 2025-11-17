@@ -111,9 +111,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_body(&mut self, cir_block: &CIRBlockStmt) {
-        self.ensure_entry_block();
         self.emit_predefine_labels(cir_block);
-
         cir_block.stmts.iter().for_each(|stmt| self.emit_stmt(stmt));
     }
 

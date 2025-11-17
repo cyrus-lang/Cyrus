@@ -50,10 +50,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn ensure_entry_block(&mut self) {
-        if self.blockreg.cur_block.is_none() {
-            let entry_block = self.emit_new_basic_block("entry");
-            self.emit_block(entry_block);
-        }
+        let entry_block = self.emit_new_basic_block("entry");
+        self.emit_block(entry_block);
     }
 
     pub(crate) fn emit_label(&mut self, label_stmt: &cyrusc_cir::CIRLabelStmt) {
@@ -137,7 +135,14 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
         }
 
-        self.emit_block(exit_block);
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
+        if exit_in_use {
+            self.emit_block(exit_block);
+        }
+
         self.blockreg.control_flow_stack.pop();
     }
 
@@ -247,7 +252,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             exit_block
         };
 
-        let mut exit_in_use = true;
+        let mut exit_in_use = false;
 
         let cur_block = self.blockreg.cur_block.unwrap();
         self.emit_block(cur_block);
@@ -270,11 +275,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                     .unwrap();
                 self.blockreg.cur_block = None;
             } else {
-                let first_use: *const LLVMUse =
-                    unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) };
-                exit_in_use = !first_use.is_null();
-                if exit_in_use {
+                let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) };
+                let has_use = !first_use.is_null();
+                if has_use {
                     self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    exit_in_use = true;
+                    self.blockreg.cur_block = None;
+                } else {
                     self.blockreg.cur_block = None;
                 }
             }
@@ -285,9 +292,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_body(&if_stmt.then_block);
             if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
                 self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                exit_in_use = true;
             }
             self.blockreg.cur_block = None;
-            exit_in_use = true;
         }
 
         if else_block != exit_block {
@@ -295,9 +302,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_body(&if_stmt.else_block.as_ref().unwrap());
             if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
                 self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                exit_in_use = true;
             }
             self.blockreg.cur_block = None;
-            exit_in_use = true;
         }
 
         if exit_in_use {

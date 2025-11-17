@@ -112,8 +112,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         if cur_fn.get_type().get_return_type().is_some() {
             return; // works only for void return type
         }
-        
+
         if let Some(cur_block) = &self.blockreg.cur_block {
+            self.llvmbuilder.position_at_end(*cur_block);
             if cur_block.get_terminator().is_some() {
                 return;
             }

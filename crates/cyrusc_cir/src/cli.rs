@@ -24,7 +24,7 @@ pub fn main() {
     let mut parser = Parser::new(lexer.tokenize(), file_path.clone());
 
     match parser.parse() {
-        Ok(program) => {
+        Ok(program_tree) => {
             let mut current_dir = env::current_dir().unwrap();
             current_dir.push("./stdlib");
             let stdlib_path = current_dir.canonicalize().unwrap().to_str().unwrap().to_string();
@@ -44,40 +44,46 @@ pub fn main() {
 
             let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
             let module_id = generate_module_id();
-            let typed_program_tree =
-                match resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path) {
-                    Some(program_tree) => program_tree,
-                    None => panic!(),
-                };
+            resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, file_path.clone());
             if resolver.reporter.has_errors() {
-                resolver.reporter.display();
+                DiagReporter::display(&resolver.reporter);
                 exit(1);
             }
 
-            let mut program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+            // if resolver.reporter.has_errors() {
+            //     resolver.reporter.display();
+            //     exit(1);
+            // }
 
-            {
-                let entry_points = Arc::new(Mutex::new(Vec::new()));
-                let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+            let entry_points = Arc::new(Mutex::new(Vec::new()));
+
+            let mut has_error = false;
+            let resolved_program_trees = resolver.program_trees.lock().unwrap();
+
+            let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+            for program_tree_entry in &*resolved_program_trees {
                 let mut analyzer = AnalysisContext::new(
                     &resolver,
-                    module_id,
-                    typed_program_tree.clone(),
+                    program_tree_entry.module_id,
+                    program_tree_entry.program.clone(),
                     entry_points.clone(),
-                    monomorph_registry,
+                    monomorph_registry.clone(),
                     true,
                 );
+
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {
-                    return;
+                    has_error = true;
                 }
 
-                AnalysisContext::check_entry_points(entry_points);
-                program_trees.push(analyzer.program_tree.clone());
+                analyzed_program_trees.push(analyzer.program_tree.clone());
             }
 
-            let cloned_program_trees: Vec<Box<TypedProgramTree>> = program_trees
+            AnalysisContext::check_entry_points(entry_points);
+
+            let cloned_program_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
                 .into_iter()
                 .map(|rc_refcell_tree| {
                     match Rc::try_unwrap(rc_refcell_tree) {
