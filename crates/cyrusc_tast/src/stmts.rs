@@ -359,15 +359,17 @@ pub struct TypedSwitchStmt {
 
 impl TypedSwitchStmt {
     pub fn includes_any_range(&self) -> bool {
-        self.cases
-            .iter()
-            .any(|case| matches!(case.pattern, TypedSwitchCasePattern::Range(_)))
+        self.cases.iter().any(|case| {
+            case.patterns
+                .iter()
+                .any(|p| matches!(p, TypedSwitchCasePattern::Range(_)))
+        })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
-    pub pattern: TypedSwitchCasePattern,
+    pub patterns: Vec<TypedSwitchCasePattern>,
     pub body: Box<TypedBlockStmt>,
     pub loc: SourceLoc,
 }

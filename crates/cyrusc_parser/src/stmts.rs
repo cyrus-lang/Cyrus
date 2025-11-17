@@ -1625,8 +1625,6 @@ impl Parser {
                     let upper = this.parse_expression(Precedence::Prefix)?.0;
                     this.next_token();
 
-                    dbg!(this.current_token());
-
                     SwitchCasePattern::Range(Range {
                         lower,
                         upper,
@@ -1636,11 +1634,11 @@ impl Parser {
                     })
                 } else if this.current_token_is(TokenKind::DoubleDot) && this.peek_token_is(TokenKind::Assign) {
                     // range (inclusive)
-                    this.next_token(); 
-                    this.next_token(); 
+                    this.next_token();
+                    this.next_token();
                     let lower = expr;
                     let upper = this.parse_expression(Precedence::Prefix)?.0;
-                    this.next_token(); 
+                    this.next_token();
 
                     SwitchCasePattern::Range(Range {
                         lower,
