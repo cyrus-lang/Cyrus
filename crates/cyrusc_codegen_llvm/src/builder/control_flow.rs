@@ -1,16 +1,27 @@
-use crate::{builder::builder::IRBuilderCtx, llvm::c_str::to_c_str};
-use cyrusc_cir::{CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRSwitchStmt, CIRWhileStmt};
-use inkwell::llvm_sys::{
-    LLVMUse,
-    core::{
-        LLVMAppendExistingBasicBlock, LLVMBasicBlockAsValue, LLVMCreateBasicBlockInContext, LLVMGetBasicBlockParent,
-        LLVMGetFirstUse,
-    },
+use crate::{
+    builder::{builder::IRBuilderCtx, irreg::LocalIRValue},
+    llvm::c_str::to_c_str,
 };
+use cyrusc_cir::{
+    CIRBlockStmt, CIREnumTyVariant, CIRForStmt, CIRIfStmt, CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt,
+    CIRWhileStmt, types::CIRTy,
+};
+use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
+    types::StructType,
     values::{AsValueRef, IntValue},
+};
+use inkwell::{
+    llvm_sys::{
+        LLVMUse,
+        core::{
+            LLVMAppendExistingBasicBlock, LLVMBasicBlockAsValue, LLVMCreateBasicBlockInContext,
+            LLVMGetBasicBlockParent, LLVMGetFirstUse,
+        },
+    },
+    values::PointerValue,
 };
 
 pub(crate) enum CFEntry<'ll> {
@@ -79,6 +90,118 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
+    pub(crate) fn emit_switch_on_enum_export_fields(
+        &self,
+        payload_alloca: PointerValue<'ll>,
+        variant_field_types: Vec<CIRTy>,
+        payload_struct_ty: StructType<'ll>,
+        exported_fields: &Vec<TypedIdentifier>,
+    ) {
+        let mut irreg = self.irreg.borrow_mut();
+
+        for (idx, exported_field) in exported_fields.iter().enumerate() {
+            let ptr = self
+                .llvmbuilder
+                .build_struct_gep(
+                    payload_struct_ty,
+                    payload_alloca,
+                    idx.try_into().unwrap(),
+                    &format!("export_field.{}", exported_field.name),
+                )
+                .unwrap();
+
+            let field_ty = &variant_field_types[idx];
+            irreg.insert(exported_field.symbol_id, LocalIRValue::LValue(ptr, field_ty.clone()));
+        }
+
+        drop(irreg);
+    }
+
+    pub(crate) fn emit_switch_on_enum(&mut self, switch_on_enum_stmt: &CIRSwitchOnEnumStmt) {
+        let lvalue = self.emit_expr(&switch_on_enum_stmt.value);
+        let rvalue = self.load_rvalue(lvalue);
+        let enum_ty = rvalue.ty.as_enum().unwrap();
+        let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
+        let enum_struct_value = rvalue.as_basic_value().into_struct_value();
+        let enum_idx_int_value = self.extract_enum_idx(enum_struct_value);
+
+        let parent_block = self.blockreg.cur_block.unwrap();
+        let exit_block = self.emit_new_basic_block("switch_on_enum.exit");
+
+        let else_block = if let Some(block_stmt) = &switch_on_enum_stmt.default {
+            let else_block = self.emit_new_basic_block("switch_on_enum.default");
+            self.emit_block(else_block);
+            self.emit_body(block_stmt);
+
+            let cur_block = self.blockreg.cur_block.unwrap();
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+
+            else_block
+        } else {
+            exit_block
+        };
+
+        let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
+
+        for case in &switch_on_enum_stmt.cases {
+            let case_block = self.emit_new_basic_block("switch_on_enum.case");
+            self.emit_block(case_block);
+
+            for pattern in &case.patterns {
+                let pattern_int_value = self
+                    .llvmctx
+                    .i32_type()
+                    .const_int(pattern.get_variant_idx().try_into().unwrap(), false);
+
+                if let CIRSwitchOnEnumPattern::ExportFields(variant_idx, exported_fields) = pattern {
+                    let enum_payload = self.extract_enum_payload(enum_struct_value);
+                    let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, enum_struct_ty);
+                    let payload_struct_type = payload_struct_value.get_type();
+                    let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
+                    self.llvmbuilder
+                        .build_store(payload_alloca, payload_struct_value)
+                        .unwrap();
+
+                    let variant_field_types = enum_ty.variants[*variant_idx].as_fielded().unwrap();
+
+                    self.emit_switch_on_enum_export_fields(
+                        payload_alloca,
+                        variant_field_types.to_vec(),
+                        payload_struct_type,
+                        exported_fields,
+                    );
+                }
+
+                cases.push((pattern_int_value, case_block));
+            }
+
+            self.emit_block(case_block);
+            self.emit_body(&case.body);
+            let cur_block = self.blockreg.cur_block.unwrap();
+            self.llvmbuilder.position_at_end(cur_block);
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
+        // back to parent block to build switch instruction
+        self.llvmbuilder.position_at_end(parent_block);
+
+        self.llvmbuilder
+            .build_switch(enum_idx_int_value, else_block, &cases)
+            .unwrap();
+
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
+        if exit_in_use {
+            self.emit_block(exit_block);
+        }
+    }
+
     pub(crate) fn emit_switch(&mut self, switch_stmt: &CIRSwitchStmt) {
         let lvalue = self.emit_expr(&switch_stmt.value);
         let rvalue = self.load_rvalue(lvalue);
@@ -122,7 +245,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         // back to parent block to build switch instruction
-        self.llvmbuilder.position_at_end(parent_block );
+        self.llvmbuilder.position_at_end(parent_block);
 
         self.llvmbuilder
             .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &cases)

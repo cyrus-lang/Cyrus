@@ -99,6 +99,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.emit_expr(expr);
             }
             CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
+            CIRStmt::SwitchOnEnum(switch_on_enum_stmt) => self.emit_switch_on_enum(switch_on_enum_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
             CIRStmt::While(while_stmt) => self.emit_while(while_stmt),

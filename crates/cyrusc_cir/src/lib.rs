@@ -4,7 +4,7 @@ use cyrusc_ast::{
     StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_tast::{LabelID, sigs::StructSig};
+use cyrusc_tast::{LabelID, exprs::TypedIdentifier, sigs::StructSig};
 
 pub mod types;
 pub mod walk;
@@ -33,6 +33,7 @@ pub enum CIRStmt {
     For(CIRForStmt),
     While(CIRWhileStmt),
     Switch(CIRSwitchStmt),
+    SwitchOnEnum(CIRSwitchOnEnumStmt),
     Return(CIRReturnStmt),
     Label(CIRLabelStmt),
     Goto(CIRGotoStmt),
@@ -311,14 +312,24 @@ pub struct CIRSwitchOnEnumStmt {
 }
 
 #[derive(Debug, Clone)]
-pub enum CIRSwitchOnEnumCase {
-    EnumVariant {
-        variant_idx: usize,
-    },
-    EnumFieldedVariant {
-        variant_idx: usize,
-        exported_fields: Vec<(String, IRValueID)>,
-    },
+pub struct CIRSwitchOnEnumCase {
+    pub patterns: Vec<CIRSwitchOnEnumPattern>,
+    pub body: CIRBlockStmt,
+}
+
+#[derive(Debug, Clone)]
+pub enum CIRSwitchOnEnumPattern {
+    Identifier(usize),
+    ExportFields(usize, Vec<TypedIdentifier>),
+}
+
+impl CIRSwitchOnEnumPattern {
+    pub fn get_variant_idx(&self) -> usize {
+        match self {
+            CIRSwitchOnEnumPattern::Identifier(variant_idx) => *variant_idx,
+            CIRSwitchOnEnumPattern::ExportFields(variant_idx, ..) => *variant_idx,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -346,6 +357,15 @@ pub enum CIREnumTyVariant {
     Identifier,
     Valued(Box<CIRExpr>),
     Fielded(Vec<CIRTy>),
+}
+
+impl CIREnumTyVariant {
+    pub fn as_fielded(&self) -> Option<&Vec<CIRTy>> {
+        match self {
+            CIREnumTyVariant::Fielded(fields) => Some(fields),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

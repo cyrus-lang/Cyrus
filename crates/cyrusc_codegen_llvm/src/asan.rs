@@ -51,11 +51,16 @@ pub(crate) fn enable_asan_for_owned_module(
 fn add_asan_metadata_flags_to_module<'ctx>(opts: &CodeGenOptions, context: &'ctx Context, module: &Module<'ctx>) {
     for sanitizer in &opts.sanitizer {
         let name = match sanitizer {
-            CodeGenSanitizer::Address => "SanitizeAddress",
-            CodeGenSanitizer::Memory => "SanitizeMemory",
-            CodeGenSanitizer::Thread => "SanitizeThread",
-            CodeGenSanitizer::HWAddress => "SanitizeHWAddress",
+            CodeGenSanitizer::Address => "asan",
+            CodeGenSanitizer::Memory => "msan",
+            CodeGenSanitizer::Thread => "tsan",
+            CodeGenSanitizer::HWAddress => "hwasan",
         };
+
+        if module.get_flag(name).is_some() {
+            // skip if flag already exists
+            continue; 
+        }
 
         let flag_value = context.i32_type().const_int(1, false);
         let flag_metadata = context.metadata_node(&[BasicMetadataValueEnum::IntValue(flag_value)]);

@@ -406,7 +406,7 @@ impl Parser {
 
         self.expect_current(TokenKind::Union)?;
 
-        modifiers.repr = Some(self.parse_repr()?);
+        modifiers.repr = self.parse_repr()?;
 
         let identifier = self.parse_identifier()?;
         self.next_token();
@@ -505,7 +505,7 @@ impl Parser {
 
         self.next_token(); // parse enum keyword
 
-        modifiers.repr = Some(self.parse_repr()?);
+        modifiers.repr = self.parse_repr()?;
 
         let enum_name = self.parse_identifier()?;
         self.next_token(); // consume enum name
@@ -603,7 +603,7 @@ impl Parser {
 
         self.next_token(); // consume struct/bits token
 
-        modifiers.repr = Some(self.parse_repr()?);
+        modifiers.repr = self.parse_repr()?;
 
         let struct_name = self.parse_identifier()?;
         self.next_token(); // consume struct name

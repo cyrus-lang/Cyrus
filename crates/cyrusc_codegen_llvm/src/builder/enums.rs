@@ -1,6 +1,22 @@
+use inkwell::values::{ArrayValue, IntValue, StructValue};
+
 use crate::builder::{builder::IRBuilderCtx, values::InternalValue};
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn extract_enum_idx(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
+        self.llvmbuilder
+            .build_extract_value(struct_value, 0, "extract")
+            .unwrap()
+            .into_int_value()
+    }
+
+    pub(crate) fn extract_enum_payload(&self, struct_value: StructValue<'ll>) -> ArrayValue<'ll> {
+        self.llvmbuilder
+            .build_extract_value(struct_value, 1, "extract")
+            .unwrap()
+            .into_array_value()
+    }
+
     pub(crate) fn emit_compare_enum_variants(
         &mut self,
         lhs: InternalValue<'ll>,
