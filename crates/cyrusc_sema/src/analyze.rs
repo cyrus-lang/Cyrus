@@ -676,7 +676,7 @@ impl<'a> AnalysisContext<'a> {
             for pattern in &mut case.patterns {
                 match pattern {
                     TypedSwitchCasePattern::Expr(typed_expr, _) => {
-                        let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                        let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(operand_ty.clone())) {
                             Some(sema_ty) => sema_ty,
                             None => continue,
                         };
@@ -716,8 +716,8 @@ impl<'a> AnalysisContext<'a> {
                         continue;
                     }
                     TypedSwitchCasePattern::Range(range) => {
-                        self.analyze_typed_expr_type(scope_id_opt, &mut range.lower, Some(SemanticType::PlainType(PlainType::Int)));
-                        self.analyze_typed_expr_type(scope_id_opt, &mut range.upper, Some(SemanticType::PlainType(PlainType::Int)));
+                        self.analyze_typed_expr_type(scope_id_opt, &mut range.lower, Some(operand_ty.clone()));
+                        self.analyze_typed_expr_type(scope_id_opt, &mut range.upper, Some(operand_ty.clone()));
 
                         let lower = match self.const_expr_as_raw_integer(scope_id_opt, &range.lower) {
                             Some(value) => value,

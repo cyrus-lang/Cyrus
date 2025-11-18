@@ -146,7 +146,7 @@ impl SemanticType {
     }
 
     pub fn is_const(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::Const(_))
+        matches!(self, SemanticType::Const(_))
     }
 
     pub fn is_void(&self) -> bool {

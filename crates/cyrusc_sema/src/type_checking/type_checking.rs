@@ -129,9 +129,9 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_infix_expr_type(scope_id_opt, typed_infix_expr, expected_type)
             }
             TypedExprKind::Unary(typed_unary_expr) => self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr),
-            TypedExprKind::Assign(typed_assignment) => {
-                self.analyze_assign(scope_id_opt, typed_assignment);
-                typed_assignment.rhs.sema_ty.clone()
+            TypedExprKind::Assign(typed_assign) => {
+                self.analyze_assign(scope_id_opt, typed_assign);
+                typed_assign.rhs.sema_ty.clone()
             }
             TypedExprKind::Cast(typed_cast) => self.analyze_cast_expr_type(scope_id_opt, typed_cast),
             TypedExprKind::Array(typed_array) => self.analyze_array_expr_type(scope_id_opt, typed_array),
