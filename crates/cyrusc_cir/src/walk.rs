@@ -864,30 +864,31 @@ impl<'resolver> CIRWalk<'resolver> {
                 operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
                 field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
             })
-        } else if let Some(resolved_enum) = sym.as_enum() {
+        } else if let Some(mut resolved_enum) = sym.as_enum().cloned() {
             let sema_ty = field_access.operand.sema_ty.as_ref().unwrap();
 
             let variant: CIREnumInitVariant;
             let enum_ty: CIREnumTy;
             if let Some(generic_type) = sema_ty.as_generic_type() {
-                todo!();
-            } else {
-                let typed_variant = resolved_enum
-                    .enum_sig
-                    .variants
-                    .get(field_access.field_index.unwrap())
-                    .unwrap();
-
-                variant = match typed_variant {
-                    TypedEnumVariant::Identifier(..) => CIREnumInitVariant::Identifier,
-                    TypedEnumVariant::Valued(_, expr) => {
-                        CIREnumInitVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
-                    }
-                    TypedEnumVariant::Variant(..) => unreachable!(),
-                };
-
-                enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
+                resolved_enum.enum_sig =
+                    substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap();
             }
+
+            let typed_variant = resolved_enum
+                .enum_sig
+                .variants
+                .get(field_access.field_index.unwrap())
+                .unwrap();
+
+            variant = match typed_variant {
+                TypedEnumVariant::Identifier(..) => CIREnumInitVariant::Identifier,
+                TypedEnumVariant::Valued(_, expr) => {
+                    CIREnumInitVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
+                }
+                TypedEnumVariant::Variant(..) => unreachable!(),
+            };
+
+            enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
 
             CIRExprKind::EnumInit(CIREnumInitExpr {
                 tag: field_access.field_index.unwrap(),

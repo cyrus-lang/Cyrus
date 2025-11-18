@@ -258,6 +258,8 @@ impl<'a> AnalysisContext<'a> {
         match sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
                 LocalSymbolKind::Variable(resolved_variable) => {
+                    dbg!(resolved_variable.clone());
+                    
                     if let Some(sema_ty) = &resolved_variable.typed_variable.ty {
                         self.normalize_type(
                             scope_id_opt,
