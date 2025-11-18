@@ -175,14 +175,14 @@ impl<'resolver> CIRWalk<'resolver> {
         let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
         let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap();
 
-        if operand_ty.is_enum() {
-            self.lower_switch_on_enum(scope_id_opt, switch_stmt)
-        } else {
-            let default = switch_stmt
-                .default_case
-                .as_ref()
-                .and_then(|default_case| Some(self.lower_body(&default_case)));
+        let default = switch_stmt
+            .default_case
+            .as_ref()
+            .and_then(|default_case| Some(self.lower_body(&default_case)));
 
+        if operand_ty.is_enum() {
+            self.lower_switch_on_enum(scope_id_opt, &operand, &default, switch_stmt)
+        } else {
             if switch_stmt.includes_any_range() {
                 self.lower_switch_as_chained_if(scope_id_opt, &operand, &default, switch_stmt)
             } else {
@@ -350,8 +350,70 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_switch_on_enum(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
-        todo!();
+    fn lower_switch_on_enum(
+        &self,
+        scope_id_opt: Option<ScopeID>,
+        operand: &CIRExpr,
+        default: &Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap();
+
+        let enum_sig = operand_ty
+            .as_enum_symbol_id()
+            .and_then(|symbol_id| {
+                self.resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                    .unwrap()
+                    .as_enum()
+                    .cloned()
+                    .map(|resolved_enum| resolved_enum.enum_sig)
+            })
+            .unwrap();
+
+        let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();
+
+        for case in &switch_stmt.cases {
+            let mut lowered_patterns: Vec<CIRSwitchOnEnumPattern> = Vec::new();
+
+            for pattern in &case.patterns {
+                match pattern {
+                    TypedSwitchCasePattern::Identifier(identifier, _) => {
+                        let variant_idx = enum_sig
+                            .variants
+                            .iter()
+                            .position(|variant| variant.get_identifier().as_string() == *identifier)
+                            .unwrap();
+                        lowered_patterns.push(CIRSwitchOnEnumPattern::Identifier(variant_idx));
+                    }
+                    TypedSwitchCasePattern::EnumVariant(identifier, exported_fields, _) => {
+                        let variant_idx = enum_sig
+                            .variants
+                            .iter()
+                            .position(|variant| variant.get_identifier().as_string() == *identifier)
+                            .unwrap();
+                        lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(
+                            variant_idx,
+                            exported_fields.clone(),
+                        ));
+                    }
+                    _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
+                }
+            }
+
+            let body = self.lower_body(&case.body);
+            lowered_cases.push(CIRSwitchOnEnumCase {
+                patterns: lowered_patterns,
+                body,
+            });
+        }
+
+        CIRStmt::SwitchOnEnum(CIRSwitchOnEnumStmt {
+            value: operand.clone(),
+            cases: lowered_cases,
+            default: default.clone(),
+        })
     }
 
     fn lower_while(&self, scope_id_opt: Option<ScopeID>, while_stmt: &TypedWhileStmt) -> CIRStmt {

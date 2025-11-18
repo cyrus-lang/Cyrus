@@ -80,6 +80,14 @@ impl CIRTy {
         }
     }
 
+    pub fn as_enum(&self) -> Option<CIREnumTy> {
+        match self {
+            CIRTy::Enum(enum_ty) => Some(enum_ty.clone()),
+            CIRTy::Const(inner) => inner.as_enum(),
+            _ => None,
+        }
+    }
+
     pub fn is_enum(&self) -> bool {
         match self {
             CIRTy::Enum(..) => true,

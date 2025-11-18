@@ -143,90 +143,94 @@ impl Parser {
         Ok(mods)
     }
 
-    pub(crate) fn parse_repr(&mut self) -> Result<ReprAttr, Diag> {
-        self.expect_current(TokenKind::LeftParen)?;
-        self.next_token();
+    pub(crate) fn parse_repr(&mut self) -> Result<Option<ReprAttr>, Diag> {
+        if self.current_token_is(TokenKind::LeftParen) {
+            self.expect_current(TokenKind::LeftParen)?;
+            self.next_token();
 
-        let mut repr_attr = ReprAttr::new();
-        let mut has_kind = false;
-        let mut has_align = false;
-        let loc = self.current_token().loc.clone();
+            let mut repr_attr = ReprAttr::new();
+            let mut has_kind = false;
+            let mut has_align = false;
+            let loc = self.current_token().loc.clone();
 
-        while !self.current_token_is(TokenKind::RightParen) {
-            if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-                let identifier = self.parse_identifier()?;
-                let name = identifier.as_string();
+            while !self.current_token_is(TokenKind::RightParen) {
+                if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+                    let identifier = self.parse_identifier()?;
+                    let name = identifier.as_string();
 
-                if name == "align" {
-                    if has_align {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidModifier(
-                                "Duplicate align modifier in repr attribute.".to_string(),
-                            )),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                            hint: None,
-                        });
-                    }
-
-                    if !has_kind && !repr_attr.items.is_empty() {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidModifier(
-                                "Align must appear after repr kind.".to_string(),
-                            )),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                            hint: None,
-                        });
-                    }
-
-                    self.next_token(); // consume align
-                    self.expect_current(TokenKind::LeftParen)?;
-                    let align_value = self.parse_integer_literal()?;
-                    self.next_token(); // consume integer
-                    self.expect_current(TokenKind::RightParen)?;
-
-                    has_align = true;
-                    repr_attr.push(ReprAttrKind::Align(align_value.try_into().unwrap()));
-                } else {
-                    // repr kind
-                    let kind = match ReprAttr::try_kind_from_str(&name) {
-                        Ok(k) => k,
-                        Err(err) => {
+                    if name == "align" {
+                        if has_align {
                             return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(err)),
+                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                                    "Duplicate align modifier in repr attribute.".to_string(),
+                                )),
                                 level: DiagLevel::Error,
                                 location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                                 hint: None,
                             });
                         }
-                    };
 
-                    if has_kind {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidModifier(
-                                "Duplicate repr kind in repr attribute.".to_string(),
-                            )),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                            hint: None,
-                        });
+                        if !has_kind && !repr_attr.items.is_empty() {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                                    "Align must appear after repr kind.".to_string(),
+                                )),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                                hint: None,
+                            });
+                        }
+
+                        self.next_token(); // consume align
+                        self.expect_current(TokenKind::LeftParen)?;
+                        let align_value = self.parse_integer_literal()?;
+                        self.next_token(); // consume integer
+                        self.expect_current(TokenKind::RightParen)?;
+
+                        has_align = true;
+                        repr_attr.push(ReprAttrKind::Align(align_value.try_into().unwrap()));
+                    } else {
+                        // repr kind
+                        let kind = match ReprAttr::try_kind_from_str(&name) {
+                            Ok(k) => k,
+                            Err(err) => {
+                                return Err(Diag {
+                                    kind: Box::new(ParserDiagKind::InvalidModifier(err)),
+                                    level: DiagLevel::Error,
+                                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                                    hint: None,
+                                });
+                            }
+                        };
+
+                        if has_kind {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                                    "Duplicate repr kind in repr attribute.".to_string(),
+                                )),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                                hint: None,
+                            });
+                        }
+
+                        has_kind = true;
+                        repr_attr.push(ReprAttrKind::Kind(kind));
                     }
+                }
 
-                    has_kind = true;
-                    repr_attr.push(ReprAttrKind::Kind(kind));
+                if self.current_token_is(TokenKind::Comma) {
+                    self.next_token();
+                } else {
+                    break;
                 }
             }
 
-            if self.current_token_is(TokenKind::Comma) {
-                self.next_token();
-            } else {
-                break;
-            }
+            self.expect_current(TokenKind::RightParen)?;
+            Ok(Some(repr_attr))
+        } else {
+            Ok(None)
         }
-
-        self.expect_current(TokenKind::RightParen)?;
-        Ok(repr_attr)
     }
 
     pub(crate) fn parse_placement(&mut self, token: Token) -> Result<Option<String>, Diag> {

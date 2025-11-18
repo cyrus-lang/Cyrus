@@ -114,10 +114,6 @@ impl<'a> AnalysisContext<'a> {
                     .unwrap();
 
                 let sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym);
-                if sema_ty.is_none() {
-                    panic!();
-                }
-
                 typed_expr.sema_ty = sema_ty.clone();
                 sema_ty
             }
@@ -203,7 +199,8 @@ impl<'a> AnalysisContext<'a> {
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id).unwrap();
+                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
+                    .unwrap();
 
                 if !sym.is_kind_of_variable() {
                     let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
@@ -987,7 +984,7 @@ impl<'a> AnalysisContext<'a> {
                         &resolved_enum,
                         field_access,
                     );
-                };
+                }
             }
             _ => {}
         };
