@@ -98,7 +98,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Expr(expr) => {
                 self.emit_expr(expr);
             }
-            CIRStmt::Switch(switch_stmt) => todo!(),
+            CIRStmt::Switch(switch_stmt) => self.emit_switch(switch_stmt),
             CIRStmt::If(if_stmt) => self.emit_if(if_stmt),
             CIRStmt::For(for_stmt) => self.emit_for(for_stmt),
             CIRStmt::While(while_stmt) => self.emit_while(while_stmt),

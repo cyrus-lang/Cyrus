@@ -292,22 +292,22 @@ pub struct CIRWhileStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRSwitchStmt {
-    value: CIRExpr,
-    cases: Vec<CIRSwitchCase>,
-    default: Option<CIRBlockStmt>,
+    pub value: CIRExpr,
+    pub cases: Vec<CIRSwitchCase>,
+    pub default: Option<CIRBlockStmt>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRSwitchCase {
-    patterns: Vec<CIRExpr>,
-    body: CIRBlockStmt,
+    pub patterns: Vec<CIRExpr>,
+    pub body: CIRBlockStmt,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRSwitchOnEnumStmt {
-    value: CIRExpr,
-    cases: Vec<CIRSwitchOnEnumCase>,
-    default: Option<CIRBlockStmt>
+    pub value: CIRExpr,
+    pub cases: Vec<CIRSwitchOnEnumCase>,
+    pub default: Option<CIRBlockStmt>,
 }
 
 #[derive(Debug, Clone)]

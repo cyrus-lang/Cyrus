@@ -1,5 +1,5 @@
 use crate::{builder::builder::IRBuilderCtx, llvm::c_str::to_c_str};
-use cyrusc_cir::{CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRWhileStmt};
+use cyrusc_cir::{CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRSwitchStmt, CIRWhileStmt};
 use inkwell::llvm_sys::{
     LLVMUse,
     core::{
@@ -76,6 +76,64 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_block(cur_block);
         if cur_block.get_terminator().is_none() {
             self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+        }
+    }
+
+    pub(crate) fn emit_switch(&mut self, switch_stmt: &CIRSwitchStmt) {
+        let lvalue = self.emit_expr(&switch_stmt.value);
+        let rvalue = self.load_rvalue(lvalue);
+
+        let parent_block = self.blockreg.cur_block.unwrap();
+        let exit_block = self.emit_new_basic_block("switch.exit");
+
+        let else_block = if let Some(block_stmt) = &switch_stmt.default {
+            let else_block = self.emit_new_basic_block("switch.default");
+            self.emit_block(else_block);
+            self.emit_body(block_stmt);
+
+            let cur_block = self.blockreg.cur_block.unwrap();
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+
+            else_block
+        } else {
+            exit_block
+        };
+
+        let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
+
+        for case in &switch_stmt.cases {
+            let case_block = self.emit_new_basic_block("switch.case");
+            self.emit_block(case_block);
+            self.emit_body(&case.body);
+
+            let cur_block = self.blockreg.cur_block.unwrap();
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+
+            for pattern in &case.patterns {
+                let pattern_lvalue = self.emit_expr(pattern);
+                let pattern_rvalue = self.load_rvalue(pattern_lvalue);
+                let pattern_int_value = pattern_rvalue.as_basic_value().into_int_value();
+                cases.push((pattern_int_value, case_block));
+            }
+        }
+
+        // back to parent block to build switch instruction
+        self.llvmbuilder.position_at_end(parent_block );
+
+        self.llvmbuilder
+            .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &cases)
+            .unwrap();
+
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
+        if exit_in_use {
+            self.emit_block(exit_block);
         }
     }
 
