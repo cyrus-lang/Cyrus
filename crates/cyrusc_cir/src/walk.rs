@@ -180,6 +180,10 @@ impl<'resolver> CIRWalk<'resolver> {
             .as_ref()
             .and_then(|default_case| Some(self.lower_body(&default_case)));
 
+        if operand_ty.as_generic_type().is_some() {
+            return self.lower_switch_on_enum(scope_id_opt, &operand, &default, switch_stmt);
+        }
+
         if operand_ty.is_enum() {
             self.lower_switch_on_enum(scope_id_opt, &operand, &default, switch_stmt)
         } else {
@@ -370,6 +374,19 @@ impl<'resolver> CIRWalk<'resolver> {
                     .cloned()
                     .map(|resolved_enum| resolved_enum.enum_sig)
             })
+            .or(operand_ty.as_generic_type().and_then(|generic_type| {
+                Some(
+                    self.resolver
+                        .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
+                        .unwrap()
+                        .as_enum()
+                        .cloned()
+                        .map(|resolved_enum| {
+                            substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap()
+                        })
+                        .unwrap(),
+                )
+            }))
             .unwrap();
 
         let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();

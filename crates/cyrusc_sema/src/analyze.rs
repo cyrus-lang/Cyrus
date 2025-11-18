@@ -17,6 +17,7 @@ use cyrusc_tast::{
         ValueCategory,
     },
     format::format_sema_ty,
+    generics::substitute::substitute_enum_sig,
     sigs::{EnumSig, FuncSig},
     stmts::*,
     types::{PlainType, SemanticType, TypedFuncType},
@@ -624,14 +625,9 @@ impl<'a> AnalysisContext<'a> {
                 let resolved_enum = sym.as_enum().unwrap();
                 let mut enum_sig = resolved_enum.enum_sig.clone();
 
-                // FIXME Substitute before analyzing switch itself!
-                // self.substitute_enum_type_args(
-                //     &mut mapping_ctx,
-                //     scope_id_opt,
-                //     &mut enum_sig,
-                //     generic_type_opt,
-                //     typed_switch.loc.clone(),
-                // );
+                if let Some(generic_type) = generic_type_opt {
+                    enum_sig = substitute_enum_sig(&enum_sig, generic_type.mapping_ctx.clone()).unwrap();
+                }
 
                 return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);
             }
