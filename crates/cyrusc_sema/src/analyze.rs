@@ -567,7 +567,6 @@ impl<'a> AnalysisContext<'a> {
         flow_state
     }
 
-    // FIXME Switch should also work on a Generic Type
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitchStmt) -> FlowState {
         self.control_stack.push(ControlContext::Switch);
 
