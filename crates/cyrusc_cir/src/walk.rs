@@ -1,6 +1,7 @@
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_ast::LiteralKind;
+use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
@@ -173,7 +174,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_switch(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
-        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap();
+        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().get_const_inner();
 
         let default = switch_stmt
             .default_case
@@ -362,7 +363,7 @@ impl<'resolver> CIRWalk<'resolver> {
         switch_stmt: &TypedSwitchStmt,
     ) -> CIRStmt {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap();
+        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().get_const_inner();
 
         let enum_sig = operand_ty
             .as_enum_symbol_id()
@@ -540,8 +541,6 @@ impl<'resolver> CIRWalk<'resolver> {
             .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.sema_ty.as_ref()))
             .map(|ty| self.lower_sema_ty(scope_id_opt, ty))
             .unwrap_or_else(|| {
-                dbg!(var.clone());
-
                 panic!(
                     "Variable '{}' has neither explicit type nor RHS type ({}:{})",
                     var.name, var.loc.file_path, var.loc.line

@@ -420,6 +420,8 @@ impl<'a> AnalysisContext<'a> {
     ) -> FlowState {
         let mut branch_states = Vec::new();
 
+        let mut used_enum_variants: Vec<String> = Vec::new();
+
         for i in 0..typed_switch.cases.len() {
             let case = &mut typed_switch.cases[i];
 
@@ -458,6 +460,17 @@ impl<'a> AnalysisContext<'a> {
                         continue;
                     }
                 };
+
+                if used_enum_variants.contains(&identifier) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantInSwitchPatterns {
+                            variant_name: identifier.clone(),
+                        }),
+                        location: Some(DiagLoc::new(case.loc.clone())),
+                        hint: Some("Remove the duplicate to avoid redundancy.".to_string()),
+                    });
+                }
 
                 let mut variant_opt = enum_sig
                     .variants
@@ -534,6 +547,8 @@ impl<'a> AnalysisContext<'a> {
                         None => unreachable!(),
                     };
                 }
+
+                used_enum_variants.push(identifier.clone());
             }
 
             let body_flow_state = self.analyze_block_statement(&mut case.body);
@@ -587,9 +602,9 @@ impl<'a> AnalysisContext<'a> {
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        match if let Some(enum_symbol_id) = operand_ty.as_enum_symbol_id() {
+        match if let Some(enum_symbol_id) = operand_ty.get_const_inner().as_enum_symbol_id() {
             Some((enum_symbol_id, None))
-        } else if let Some(generic_type) = operand_ty.as_generic_type() {
+        } else if let Some(generic_type) = operand_ty.get_const_inner().as_generic_type() {
             match self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
@@ -1941,7 +1956,6 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(assign.loc.clone())),
                 hint: None,
             });
-            return;
         }
 
         if assign.kind == AssignmentKind::Default {
