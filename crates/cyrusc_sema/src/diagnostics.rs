@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Variant '.{variant_name}' is listed more than once in the patterns.")]
+    DuplicateEnumVariantInSwitchPatterns { variant_name: String },
+
     #[error("Range lower bound must not exceed upper bound.")]
     InvalidRange,
 
