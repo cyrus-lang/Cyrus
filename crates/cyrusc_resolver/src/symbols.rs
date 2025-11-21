@@ -6,11 +6,7 @@ use cyrusc_tast::{
     stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
 };
 use rand::Rng;
-use std::{
-    cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // Symbol Table (Per Module)
 
@@ -323,32 +319,6 @@ impl LocalSymbol {
             _ => None,
         }
     }
-}
-
-macro_rules! resolve_in_scope {
-    // Immutable lookup by a closure that returns Option<&T>
-    ($scope:expr, $lookup:expr) => {{
-        if let Some(val) = $lookup($scope) {
-            Some(val)
-        } else if let Some(parent) = &$scope.parent {
-            let parent_ref = parent.borrow();
-            resolve_in_scope!(&*parent_ref, $lookup)
-        } else {
-            None
-        }
-    }};
-
-    // Mutable lookup by a closure that returns Option<&mut T>
-    (mut $scope:expr, $lookup:expr) => {{
-        if let Some(val) = $lookup(&mut $scope) {
-            Some(val)
-        } else if let Some(parent) = &$scope.parent {
-            let mut parent_ref = parent.borrow_mut();
-            resolve_in_scope!(mut *parent_ref, $lookup)
-        } else {
-            None
-        }
-    }};
 }
 
 impl LocalScope {

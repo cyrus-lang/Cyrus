@@ -10,7 +10,7 @@ use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
-    types::StructType,
+    types::{BasicTypeEnum, StructType},
     values::{AsValueRef, IntValue},
 };
 use inkwell::{
@@ -95,11 +95,11 @@ impl<'ll> IRBuilderCtx<'ll> {
         payload_alloca: PointerValue<'ll>,
         variant_field_types: Vec<CIRTy>,
         payload_struct_ty: StructType<'ll>,
-        exported_fields: &Vec<TypedIdentifier>,
+        exported_fields: &Vec<(TypedIdentifier, CIRTy)>,
     ) {
         let mut irreg = self.irreg.borrow_mut();
 
-        for (idx, exported_field) in exported_fields.iter().enumerate() {
+        for (idx, (exported_field, _)) in exported_fields.iter().enumerate() {
             let ptr = self
                 .llvmbuilder
                 .build_struct_gep(
@@ -156,9 +156,32 @@ impl<'ll> IRBuilderCtx<'ll> {
                     .const_int(pattern.get_variant_idx().try_into().unwrap(), false);
 
                 if let CIRSwitchOnEnumPattern::ExportFields(variant_idx, exported_fields) = pattern {
+                    self.emit_block(case_block);
+
+                    // let payload_alloca = self
+                    //     .llvmbuilder
+                    //     .build_alloca(enum_payload.get_type(), "alloca")
+                    //     .unwrap();
+                    // self.llvmbuilder.build_store(payload_alloca, enum_payload).unwrap();
+
+                    // let payload_ptr = self
+                    //     .llvmbuilder
+                    //     .build_bit_cast(
+                    //         payload_alloca,
+                    //         self.llvmctx.ptr_type(AddressSpace::default()),
+                    //         "payload.ptr",
+                    //     )
+                    //     .unwrap()
+                    //     .into_pointer_value();
+
                     let enum_payload = self.extract_enum_payload(enum_struct_value);
+                    let payload_field_tys: Vec<BasicTypeEnum<'ll>> = exported_fields
+                        .iter()
+                        .map(|(_, ty)| self.emit_ty(ty.clone()).try_into().unwrap())
+                        .collect();
+                    let payload_struct_type = self.llvmctx.struct_type(&payload_field_tys, false);
                     let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, enum_struct_ty);
-                    let payload_struct_type = payload_struct_value.get_type();
+
                     let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
                     self.llvmbuilder
                         .build_store(payload_alloca, payload_struct_value)
