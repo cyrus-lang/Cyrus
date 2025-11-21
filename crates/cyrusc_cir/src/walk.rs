@@ -1,7 +1,6 @@
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_ast::LiteralKind;
-use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
@@ -411,10 +410,19 @@ impl<'resolver> CIRWalk<'resolver> {
                             .iter()
                             .position(|variant| variant.get_identifier().as_string() == *identifier)
                             .unwrap();
-                        lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(
-                            variant_idx,
-                            exported_fields.clone(),
-                        ));
+
+                        let valued_fields = enum_sig.variants[variant_idx].as_fielded_variant().unwrap();
+
+                        let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, identifier)| {
+                                let field_ty = &valued_fields.get(idx).as_ref().unwrap().field_ty;
+                                (identifier.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
+                            })
+                            .collect();
+
+                        lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(variant_idx, typed_exported_fields));
                     }
                     _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
                 }

@@ -146,6 +146,13 @@ impl TypedEnumVariant {
             TypedEnumVariant::Variant(identifier, ..) => identifier,
         }
     }
+
+    pub fn as_fielded_variant(&self) -> Option<&Vec<TypedEnumValuedField>> {
+        match self {
+            TypedEnumVariant::Variant(_, valued_fields) => Some(valued_fields),
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
