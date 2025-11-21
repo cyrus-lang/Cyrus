@@ -3,8 +3,8 @@ use crate::{
     llvm::c_str::to_c_str,
 };
 use cyrusc_cir::{
-    CIRBlockStmt, CIREnumTyVariant, CIRForStmt, CIRIfStmt, CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt,
-    CIRWhileStmt, types::CIRTy,
+    CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
+    types::CIRTy,
 };
 use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
