@@ -41,7 +41,6 @@ fn llvm_inline(inline: &Inlining) -> &'static str {
 fn llvm_prologue(prologue: &Prologue) -> Option<&'static str> {
     match prologue {
         Prologue::Naked => Some("naked"),
-        _ => None,
     }
 }
 

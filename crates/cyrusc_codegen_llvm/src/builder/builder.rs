@@ -14,7 +14,6 @@ use cyrusc_cir::{
 use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
-    DLLStorageClass,
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,

@@ -36,24 +36,10 @@ impl<'a> LocalIRValueRegistry<'a> {
     pub fn get(&self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
         self.map.get(&irv_id).cloned()
     }
-
-    /// Removes an IR value from the registry.
-    pub fn remove(&mut self, irv_id: IRValueID) -> Option<LocalIRValue<'a>> {
-        self.map.remove(&irv_id)
-    }
-
-    /// Checks whether the registry contains the given symbol ID.
-    pub fn contains(&self, irv_id: IRValueID) -> bool {
-        self.map.contains_key(&irv_id)
-    }
-
-    /// Clears all registered IR values.
-    pub fn clear(&mut self) {
-        self.map.clear();
-    }
 }
 
 impl<'a> LocalIRValue<'a> {
+    #[allow(unused)]
     pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
         match self {
             LocalIRValue::Func(func, _) => Some(func),
@@ -61,13 +47,15 @@ impl<'a> LocalIRValue<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn as_global(&self) -> Option<&GlobalValue<'a>> {
         match self {
             LocalIRValue::Global(global, _) => Some(global),
             _ => None,
         }
     }
-
+    
+    #[allow(unused)]
     pub fn as_lvalue(&self) -> Option<&PointerValue<'a>> {
         match self {
             LocalIRValue::LValue(ptr, _) => Some(ptr),
