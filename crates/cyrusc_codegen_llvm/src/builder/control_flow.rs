@@ -158,22 +158,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                 if let CIRSwitchOnEnumPattern::ExportFields(variant_idx, exported_fields) = pattern {
                     self.emit_block(case_block);
 
-                    // let payload_alloca = self
-                    //     .llvmbuilder
-                    //     .build_alloca(enum_payload.get_type(), "alloca")
-                    //     .unwrap();
-                    // self.llvmbuilder.build_store(payload_alloca, enum_payload).unwrap();
-
-                    // let payload_ptr = self
-                    //     .llvmbuilder
-                    //     .build_bit_cast(
-                    //         payload_alloca,
-                    //         self.llvmctx.ptr_type(AddressSpace::default()),
-                    //         "payload.ptr",
-                    //     )
-                    //     .unwrap()
-                    //     .into_pointer_value();
-
                     let enum_payload = self.extract_enum_payload(enum_struct_value);
                     let payload_field_tys: Vec<BasicTypeEnum<'ll>> = exported_fields
                         .iter()
@@ -195,6 +179,17 @@ impl<'ll> IRBuilderCtx<'ll> {
                         payload_struct_type,
                         exported_fields,
                     );
+                } else if let CIRSwitchOnEnumPattern::Valued(_, (identifier, expr)) = pattern {
+                    self.emit_block(case_block);
+                    
+                    let lvalue = self.emit_expr(expr);
+                    let rvalue = self.load_rvalue(lvalue);
+                    let alloca = self.llvmbuilder.build_alloca(rvalue.as_basic_value().get_type(), "alloca").unwrap();
+                    self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
+
+                    let mut irreg = self.irreg.borrow_mut();
+                    irreg.insert(identifier.symbol_id, LocalIRValue::LValue(alloca, rvalue.ty));
+                    drop(irreg);
                 }
 
                 cases.push((pattern_int_value, case_block));

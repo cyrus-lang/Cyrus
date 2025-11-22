@@ -1090,10 +1090,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     InternalValueKind::LValue(global_value.as_pointer_value()),
                 )
             }
-            CIRValueKind::LocalVariable => {
-                dbg!(value_ref.irv_id);
-                unreachable!("Couldn't fetch local variable from local ir value registry.")
-            },
+            CIRValueKind::LocalVariable => unreachable!("Couldn't fetch local variable from local ir value registry."),
         }
     }
 
