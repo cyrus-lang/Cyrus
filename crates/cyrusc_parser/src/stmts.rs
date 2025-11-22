@@ -1360,6 +1360,13 @@ impl Parser {
         let func_name = self.parse_identifier()?; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
+        let generic_params;
+        if self.current_token_is(TokenKind::LessThan) {
+            generic_params = Some(self.parse_generic_params()?);
+        } else {
+            generic_params = None;
+        }
+
         let params = self.parse_func_params()?;
 
         let return_type: Option<TypeSpecifier>;
@@ -1370,6 +1377,7 @@ impl Parser {
         } else if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Stmt::FuncDecl(FuncDecl {
                 identifier: func_name,
+                generic_params,
                 params,
                 return_type: None,
                 modifiers,
@@ -1387,6 +1395,7 @@ impl Parser {
 
             return Ok(Stmt::FuncDecl(FuncDecl {
                 identifier: func_name,
+                generic_params,
                 params,
                 return_type: None,
                 modifiers,
@@ -1405,6 +1414,7 @@ impl Parser {
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Stmt::FuncDecl(FuncDecl {
                 identifier: func_name,
+                generic_params,
                 params,
                 return_type,
                 modifiers,
@@ -1436,6 +1446,7 @@ impl Parser {
 
             return Ok(Stmt::FuncDecl(FuncDecl {
                 identifier: func_name,
+                generic_params,
                 params,
                 return_type,
                 modifiers,
@@ -1453,6 +1464,7 @@ impl Parser {
 
         return Ok(Stmt::FuncDef(FuncDef {
             identifier: func_name,
+            generic_params,
             params,
             body,
             return_type,

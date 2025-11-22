@@ -1062,8 +1062,6 @@ impl Resolver {
             .methods
             .iter()
             .filter_map(|func_decl| {
-                let resolved = self.resolve_func(module_id, local_scope_opt.clone(), func_decl)?;
-
                 if func_decl.renamed_as.is_some() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1076,12 +1074,14 @@ impl Resolver {
                     });
                 }
 
-                let (return_type, typed_func_params, typed_variadic_param) = resolved;
+                let (return_type, typed_func_params, typed_variadic_param, generic_params) =
+                    self.resolve_func(module_id, local_scope_opt.clone(), func_decl)?;
 
                 Some(TypedFuncDeclStmt {
                     module_id: self.current_module.unwrap(),
                     symbol_id: interface_symbol_id,
                     name: func_decl.identifier.name.clone(),
+                    generic_params,
                     params: TypedFuncParams {
                         list: typed_func_params,
                         variadic: typed_variadic_param,
@@ -1414,7 +1414,7 @@ impl Resolver {
             let local_scope_rc = LocalScope::new(None);
             self.insert_scope_ref(module_id, method_scope_id, Rc::clone(&local_scope_rc));
 
-            if let Some((return_type, mut typed_func_params, typed_variadic_param)) =
+            if let Some((return_type, mut typed_func_params, typed_variadic_param, generic_params)) =
                 self.resolve_func(module_id, Some(Rc::clone(&local_scope_rc)), &func_def.as_func_decl())
             {
                 let method_name = func_def.identifier.name.clone();
@@ -1440,6 +1440,7 @@ impl Resolver {
                     module_id,
                     name: method_name.clone(),
                     is_func_decl: false,
+                    generic_params,
                     params: TypedFuncParams {
                         list: typed_func_params,
                         variadic: typed_variadic_param,
@@ -1656,15 +1657,25 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         func_decl: &FuncDecl,
-    ) -> Option<(SemanticType, Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
+    ) -> Option<(
+        SemanticType,
+        Vec<TypedFuncParamKind>,
+        Option<TypedFuncVariadicParams>,
+        Option<TypedGenericParamsList>,
+    )> {
         let return_type_specifier = func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
             kind: TokenKind::Void,
             span: Span::default(),
             loc: Location::default(),
         }));
 
+        let generic_params = func_decl
+            .generic_params
+            .clone()
+            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+
         let return_type = self.resolve_type(
-            &None, // FIXME Generic Params
+            &generic_params,
             local_scope_opt.clone(),
             module_id,
             return_type_specifier,
@@ -1673,15 +1684,16 @@ impl Resolver {
         )?;
 
         let (typed_func_params, typed_variadic_param) =
-            self.resolve_func_params(module_id, local_scope_opt.clone(), &func_decl.params)?;
+            self.resolve_func_params(module_id, local_scope_opt.clone(), &generic_params, &func_decl.params)?;
 
-        Some((return_type, typed_func_params, typed_variadic_param))
+        Some((return_type, typed_func_params, typed_variadic_param, generic_params))
     }
 
     fn resolve_func_params(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
+        generic_params: &Option<TypedGenericParamsList>,
         params: &FuncParams,
     ) -> Option<(Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
         let mut typed_func_params = Vec::with_capacity(params.list.len());
@@ -1691,7 +1703,7 @@ impl Resolver {
                 FuncParamKind::FuncParam(func_param) => {
                     let param_type = match &func_param.ty {
                         Some(type_specifier) => self.resolve_type(
-                            &None, // FIXME Generic Params
+                            generic_params,
                             local_scope_opt.clone(),
                             module_id,
                             type_specifier.clone(),
@@ -1793,13 +1805,15 @@ impl Resolver {
     fn resolve_func_decl_stmt(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStmt> {
         let symbol_id = self.lookup_symbol_id(module_id, &func_decl.get_usable_name()).unwrap();
 
-        let (return_type, typed_func_params, typed_variadic_param) = self.resolve_func(module_id, None, func_decl)?;
+        let (return_type, typed_func_params, typed_variadic_param, generic_params) =
+            self.resolve_func(module_id, None, func_decl)?;
 
         let func_sig = FuncSig {
             symbol_id: Some(symbol_id),
             module_id,
             name: func_decl.identifier.name.clone(),
             is_func_decl: true,
+            generic_params: generic_params.clone(),
             params: TypedFuncParams {
                 list: typed_func_params.clone(),
                 variadic: typed_variadic_param.clone(),
@@ -1823,6 +1837,7 @@ impl Resolver {
             module_id,
             symbol_id,
             name: func_decl.identifier.name.clone(),
+            generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
                 variadic: typed_variadic_param,
@@ -1841,13 +1856,14 @@ impl Resolver {
 
         let symbol_id = self.lookup_symbol_id(module_id, &func_def.identifier.name)?;
 
-        let (return_type, typed_func_params, typed_variadic_param) =
+        let (return_type, typed_func_params, typed_variadic_param, generic_params) =
             self.resolve_func(module_id, Some(body_scope.clone()), &func_def.as_func_decl())?;
 
         let func_sig = FuncSig {
             symbol_id: Some(symbol_id),
             module_id,
             name: func_def.identifier.name.clone(),
+            generic_params: generic_params.clone(),
             is_func_decl: false,
             params: TypedFuncParams {
                 list: typed_func_params.clone(),
@@ -1874,6 +1890,7 @@ impl Resolver {
             symbol_id,
             module_id,
             name: func_def.identifier.name.clone(),
+            generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
                 variadic: typed_variadic_param,
@@ -2761,7 +2778,7 @@ impl Resolver {
         let local_scope_rc = LocalScope::new(None);
         self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
 
-        let (list, variadic) = self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &lambda.params)?;
+        let (list, variadic) = self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &None, &lambda.params)?;
 
         let body = match self.resolve_block_statement(scope_id, local_scope_rc.clone(), &lambda.body) {
             Some(typed_block) => Box::new(typed_block),
@@ -3443,6 +3460,7 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
         symbol_id: Some(func_decl.symbol_id),
         module_id: func_decl.module_id,
         name: func_decl.name.clone(),
+        generic_params: func_decl.generic_params.clone(),
         params: func_decl.params.clone(),
         return_type: func_decl.return_type.clone(),
         is_func_decl: true,
@@ -3456,6 +3474,7 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
         symbol_id: Some(func_def.symbol_id),
         module_id: func_def.module_id,
         name: func_def.name.clone(),
+        generic_params: func_def.generic_params.clone(),
         params: func_def.params.clone(),
         return_type: func_def.return_type.clone(),
         is_func_decl: false,

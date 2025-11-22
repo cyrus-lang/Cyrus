@@ -713,7 +713,7 @@ pub struct Range {
     pub upper: Expr,
     pub inclusive_upper: bool,
     pub loc: Location,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -728,6 +728,7 @@ pub struct Lambda {
 #[derive(Debug, Clone)]
 pub struct FuncDef {
     pub identifier: Identifier,
+    pub generic_params: Option<GenericParamsList>,
     pub params: FuncParams,
     pub body: Box<BlockStmt>,
     pub return_type: Option<TypeSpecifier>,
@@ -739,6 +740,7 @@ pub struct FuncDef {
 #[derive(Debug, Clone)]
 pub struct FuncDecl {
     pub identifier: Identifier,
+    pub generic_params: Option<GenericParamsList>,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
@@ -751,6 +753,7 @@ impl FuncDef {
     pub fn as_func_decl(&self) -> FuncDecl {
         FuncDecl {
             identifier: self.identifier.clone(),
+            generic_params: self.generic_params.clone(),
             params: self.params.clone(),
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
