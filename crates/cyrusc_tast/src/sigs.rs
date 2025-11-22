@@ -43,6 +43,7 @@ pub struct FuncSig {
     pub symbol_id: Option<SymbolID>,
     pub name: String,
     pub params: TypedFuncParams,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub return_type: SemanticType,
     pub is_func_decl: bool,
     pub modifiers: FuncModifiers,
