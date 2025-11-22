@@ -66,8 +66,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             )
             .unwrap();
 
-        self.blockreg.cur_block = Some(payload_block);
-        self.llvmbuilder.position_at_end(payload_block);
+        self.emit_block(payload_block);
 
         let payload1 = self.extract_enum_payload(struct_value1);
         let payload2 = self.extract_enum_payload(struct_value2);
@@ -84,8 +83,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let payload_cmp_block = self.blockreg.cur_block.unwrap();
 
-        self.blockreg.cur_block = Some(exit_block);
-        self.llvmbuilder.position_at_end(exit_block);
+        self.emit_block(exit_block);
 
         let phi = self
             .llvmbuilder

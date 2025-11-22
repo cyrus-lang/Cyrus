@@ -181,10 +181,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                     );
                 } else if let CIRSwitchOnEnumPattern::Valued(_, (identifier, expr)) = pattern {
                     self.emit_block(case_block);
-                    
+
                     let lvalue = self.emit_expr(expr);
                     let rvalue = self.load_rvalue(lvalue);
-                    let alloca = self.llvmbuilder.build_alloca(rvalue.as_basic_value().get_type(), "alloca").unwrap();
+                    let alloca = self
+                        .llvmbuilder
+                        .build_alloca(rvalue.as_basic_value().get_type(), "alloca")
+                        .unwrap();
                     self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
 
                     let mut irreg = self.irreg.borrow_mut();
@@ -439,13 +442,18 @@ impl<'ll> IRBuilderCtx<'ll> {
         let then_has_body = !if_stmt.then_block.stmts.is_empty();
         let else_has_body = if_stmt.else_block.as_ref().map_or(false, |b| !b.stmts.is_empty());
 
-        let mut then_block = if then_has_body {
+        // nothing to emit
+        if !then_has_body && !else_has_body {
+            return;
+        }
+
+        let then_block = if then_has_body {
             self.emit_new_basic_block("if.then")
         } else {
             exit_block
         };
 
-        let mut else_block = if else_has_body {
+        let else_block = if else_has_body {
             self.emit_new_basic_block("if.else")
         } else {
             exit_block
@@ -456,42 +464,42 @@ impl<'ll> IRBuilderCtx<'ll> {
         let cur_block = self.blockreg.cur_block.unwrap();
         self.emit_block(cur_block);
 
-        if cond_val.is_const() && then_block != else_block {
-            cond_val.get_zero_extended_constant().inspect(|val| {
-                if *val == 1 {
-                    self.llvmbuilder.build_unconditional_branch(then_block).unwrap();
-                    else_block = exit_block;
-                } else {
-                    self.llvmbuilder.build_unconditional_branch(else_block).unwrap();
-                    then_block = exit_block;
-                }
-            });
-            self.blockreg.cur_block = None;
+        if let Some(const_val) = cond_val.get_zero_extended_constant() {
+            // constant condition
+            if then_block == else_block {
+                // Both collapse to exit, nothing to branch
+                self.blockreg.cur_block = None;
+            } else if const_val == 1 {
+                self.llvmbuilder.build_unconditional_branch(then_block).unwrap();
+                self.blockreg.cur_block = None;
+            } else {
+                self.llvmbuilder.build_unconditional_branch(else_block).unwrap();
+                self.blockreg.cur_block = None;
+            }
         } else {
+            // non-constant condition
             if then_block != else_block {
                 self.llvmbuilder
                     .build_conditional_branch(cond_val, then_block, else_block)
                     .unwrap();
                 self.blockreg.cur_block = None;
             } else {
-                let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) };
-                let has_use = !first_use.is_null();
-                if has_use {
+                // both arms collapse to exit
+                if cur_block.get_terminator().is_none() {
                     self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-                    exit_in_use = true;
-                    self.blockreg.cur_block = None;
-                } else {
-                    self.blockreg.cur_block = None;
                 }
+                self.blockreg.cur_block = None;
             }
         }
 
         if then_block != exit_block {
             self.emit_block(then_block);
             self.emit_body(&if_stmt.then_block);
-            if self.blockreg.cur_block.unwrap().get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-                exit_in_use = true;
+            if let Some(cur_block) = self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    exit_in_use = true;
+                }
             }
             self.blockreg.cur_block = None;
         }

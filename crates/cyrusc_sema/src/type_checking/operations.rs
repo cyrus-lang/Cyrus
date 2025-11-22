@@ -9,6 +9,7 @@ use cyrusc_tast::{
     ScopeID,
     exprs::*,
     format::format_sema_ty,
+    generics::mapping_ctx::{mapping_ctx_eq, mapping_ctx_eq_refcell},
     types::{PlainType, SemanticType},
 };
 
@@ -365,12 +366,36 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.get_const_inner();
         let rhs_type = rhs_type.get_const_inner();
 
-        if lhs_type.is_enum() && rhs_type.is_enum() {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
+            let equal_mapping_ctx = mapping_ctx_eq_refcell(&generic_type1.mapping_ctx, &generic_type2.mapping_ctx);
+            let equal_base = generic_type1.base == generic_type2.base;
+            let is_enum = self
+                .resolver
+                .resolve_enum_symbol(local_scope_opt.clone(), generic_type1.base)
+                .is_some();
+
+            if !(is_enum && equal_mapping_ctx && equal_base) {
+                let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidInfix {
+                        lhs_type: lhs_type_str,
+                        rhs_type: rhs_type_str,
+                    }),
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+                return None;
+            } else {
+                return Some(SemanticType::PlainType(PlainType::Bool));
+            }
+        } else if lhs_type.is_enum() && rhs_type.is_enum() {
             let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-
-            let local_scope_opt =
-                scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
             match self.analyze_compare_enums(local_scope_opt, lhs_type.clone(), rhs_type.clone()) {
                 Some(sema_ty) => return Some(sema_ty),
