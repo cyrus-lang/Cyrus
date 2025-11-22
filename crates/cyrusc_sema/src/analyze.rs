@@ -422,10 +422,10 @@ impl<'a> AnalysisContext<'a> {
 
         let mut used_enum_variants: Vec<String> = Vec::new();
 
-        for i in 0..typed_switch.cases.len() {
+        'cases: for i in 0..typed_switch.cases.len() {
             let case = &mut typed_switch.cases[i];
 
-            for pattern in &case.patterns {
+            'patterns: for pattern in &case.patterns {
                 let identifier = match &pattern {
                     TypedSwitchCasePattern::Identifier(identifier, _) => identifier,
                     TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, loc) => {
@@ -442,7 +442,7 @@ impl<'a> AnalysisContext<'a> {
                                     location: Some(DiagLoc::new(loc.clone())),
                                     hint: None,
                                 });
-                                continue;
+                                continue 'patterns;
                             }
 
                             field_names.push(valued_field.name.clone());
@@ -457,7 +457,7 @@ impl<'a> AnalysisContext<'a> {
                             location: Some(DiagLoc::new(typed_switch.loc.clone())),
                             hint: None,
                         });
-                        continue;
+                        continue 'patterns;
                     }
                 };
 
@@ -472,7 +472,7 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
 
-                let mut variant_opt = enum_sig
+                let variant_opt = enum_sig
                     .variants
                     .iter_mut()
                     .find(|variant| variant.get_identifier().as_string() == *identifier);
@@ -487,10 +487,8 @@ impl<'a> AnalysisContext<'a> {
                         location: Some(DiagLoc::new(typed_switch.loc.clone())),
                         hint: None,
                     });
-                    continue;
-                }
-
-                if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
+                    continue 'patterns;
+                } else if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
                     if let Some(variant) = variant_opt {
                         if let TypedEnumVariant::Variant(identifier, enum_valued_fields) = variant {
                             let actual_enum_fields_len = enum_valued_fields.len();
@@ -506,7 +504,7 @@ impl<'a> AnalysisContext<'a> {
                                     location: Some(DiagLoc::new(loc.clone())),
                                     hint: None,
                                 });
-                                continue;
+                                continue 'cases;
                             }
 
                             // normalize and then update valued_field type in local scope
@@ -519,7 +517,7 @@ impl<'a> AnalysisContext<'a> {
                                     SourceLoc::from_loc(identifier.loc.clone(), enum_sig.loc.file_path.clone()),
                                 ) {
                                     Some(sema_ty) => sema_ty,
-                                    None => continue,
+                                    None => continue 'patterns,
                                 };
 
                                 // update local variable concrete type (exported symbol)
@@ -532,6 +530,34 @@ impl<'a> AnalysisContext<'a> {
                                         }
                                     );
                                 }
+                            }
+                        } else if let TypedEnumVariant::Valued(identifier, valued) = variant {
+                            if valued_fields.len() > 1 {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
+                                        variant_name: identifier.as_string(),
+                                    }),
+                                    location: Some(DiagLoc::new(typed_switch.loc.clone())),
+                                    hint: None,
+                                });
+                                return FlowState::Reachable;
+                            }
+
+                            let valued_field = valued_fields.first().unwrap();
+
+                            valued.sema_ty = match self.analyze_typed_expr_type(scope_id_opt, valued, None) {
+                                Some(sema_ty) => Some(sema_ty),
+                                None => continue 'patterns,
+                            };
+
+                            // update local variable concrete type (exported symbol)
+                            {
+                                update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
+                                    LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                                        resolved_variable.typed_variable.ty = Some(valued.sema_ty.clone().unwrap());
+                                    }
+                                );
                             }
                         }
                     }

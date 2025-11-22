@@ -272,6 +272,7 @@ impl<'a> AnalysisContext<'a> {
                         )?;
                         self.normalize_type(scope_id_opt, rhs_ty, resolved_variable.typed_variable.loc.clone())
                     } else {
+                        dbg!(resolved_variable.clone());
                         panic!("Cannot resolve variable type.")
                     }
                 }

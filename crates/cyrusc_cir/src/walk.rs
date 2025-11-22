@@ -411,18 +411,30 @@ impl<'resolver> CIRWalk<'resolver> {
                             .position(|variant| variant.get_identifier().as_string() == *identifier)
                             .unwrap();
 
-                        let valued_fields = enum_sig.variants[variant_idx].as_fielded_variant().unwrap();
+                        let variant = &enum_sig.variants[variant_idx];
 
-                        let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, identifier)| {
-                                let field_ty = &valued_fields.get(idx).as_ref().unwrap().field_ty;
-                                (identifier.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
-                            })
-                            .collect();
+                        match variant {
+                            TypedEnumVariant::Valued(_, expr) => {
+                                let exported_field = exported_fields.first().unwrap();
 
-                        lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(variant_idx, typed_exported_fields));
+                                let lowered_expr = self.lower_expr(scope_id_opt, &expr);
+                                lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(variant_idx, (exported_field.clone(), lowered_expr)));
+                            }
+                            TypedEnumVariant::Variant(_, valued_fields) => {
+                                let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(idx, identifier)| {
+                                        let field_ty = &valued_fields.get(idx).as_ref().unwrap().field_ty;
+                                        (identifier.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
+                                    })
+                                    .collect();
+
+                                lowered_patterns
+                                    .push(CIRSwitchOnEnumPattern::ExportFields(variant_idx, typed_exported_fields));
+                            }
+                            TypedEnumVariant::Identifier(_) => unreachable!(),
+                        }
                     }
                     _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
                 }

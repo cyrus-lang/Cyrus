@@ -320,6 +320,7 @@ pub struct CIRSwitchOnEnumCase {
 #[derive(Debug, Clone)]
 pub enum CIRSwitchOnEnumPattern {
     Identifier(usize),
+    Valued(usize, (TypedIdentifier, CIRExpr)),
     ExportFields(usize, Vec<(TypedIdentifier, CIRTy)>),
 }
 
@@ -328,6 +329,7 @@ impl CIRSwitchOnEnumPattern {
         match self {
             CIRSwitchOnEnumPattern::Identifier(variant_idx) => *variant_idx,
             CIRSwitchOnEnumPattern::ExportFields(variant_idx, ..) => *variant_idx,
+            CIRSwitchOnEnumPattern::Valued(variant_idx, ..) => *variant_idx,
         }
     }
 }
