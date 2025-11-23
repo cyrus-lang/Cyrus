@@ -207,6 +207,7 @@ pub struct PrefixExpr {
 pub struct FuncCall {
     pub operand: Box<Expr>,
     pub args: Vec<Expr>,
+    pub type_args: Option<TypeArgs>,
     pub span: Span,
     pub loc: Location,
 }

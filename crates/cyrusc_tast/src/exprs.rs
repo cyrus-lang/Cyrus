@@ -1,7 +1,5 @@
 use crate::{
-    SymbolID,
-    stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedUStructType},
+    SymbolID, generics::monomorph::MonomorphKey, stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs}, types::{SemanticType, TypedUStructType}
 };
 use cyrusc_ast::{
     AssignmentKind, LiteralKind,
@@ -274,7 +272,9 @@ pub struct TypedStructFieldInit {
 pub struct TypedFuncCall {
     pub operand: Box<TypedExprStmt>,
     pub args: Vec<TypedExprStmt>,
+    pub type_args: Option<TypedTypeArgs>,
     pub return_type: Option<SemanticType>,
+    pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic func
     pub loc: SourceLoc,
 }
 

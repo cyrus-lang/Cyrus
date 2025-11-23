@@ -414,8 +414,21 @@ impl Parser {
                 });
             }
         } else if self.peek_token_is(TokenKind::LeftParen) {
-            return self.parse_func_call(expr);
+            return self.parse_func_call(expr, type_args_opt);
         } else {
+            // type args for invalid expression
+            if type_args_opt.is_some() {
+                return Err(Diag {
+                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        self.current_token().loc.clone(),
+                        self.file_name.clone(),
+                    ))),
+                    hint: Some("Type args are given to a wrong expression.".to_string()),
+                });
+            }
+
             Ok(expr)
         }
     }
@@ -792,7 +805,7 @@ impl Parser {
         }
     }
 
-    fn parse_func_call(&mut self, operand: Expr) -> Result<Expr, Diag> {
+    fn parse_func_call(&mut self, operand: Expr, type_args: Option<TypeArgs>) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -811,6 +824,7 @@ impl Parser {
         Ok(Expr::FuncCall(FuncCall {
             operand: Box::new(operand),
             args,
+            type_args,
             span: Span::new(start, self.current_token().span.end),
             loc: loc,
         }))

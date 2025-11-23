@@ -1,7 +1,6 @@
 use crate::{
     diagnostics::AnalyzerDiagKind,
     flowstate::{ControlContext, FlowState},
-    monomorph::MonomorphRegistry,
     type_cache::TypeResolverCaches,
 };
 use cyrusc_ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
@@ -17,7 +16,7 @@ use cyrusc_tast::{
         ValueCategory,
     },
     format::format_sema_ty,
-    generics::substitute::substitute_enum_sig,
+    generics::{monomorph::MonomorphRegistry, substitute::substitute_enum_sig},
     sigs::{EnumSig, FuncSig},
     stmts::*,
     types::{PlainType, SemanticType, TypedFuncType},
@@ -1569,12 +1568,25 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, return_type: &SemanticType) {
+        let state = self.analyze_block_statement(body);
+        if !return_type.is_void() && state != FlowState::Returns {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MissingReturn),
+                location: Some(DiagLoc::new(body.loc.clone())),
+                hint: Some("Not all control paths return a value.".to_string()),
+            });
+        }
+    }
+
     fn analyze_any_func_def(
         &mut self,
         symbol_id: SymbolID,
         return_type: &mut SemanticType,
         params: &mut TypedFuncParams,
         body: &mut TypedBlockStmt,
+        is_generic_func: bool,
         is_public: bool,
         loc: SourceLoc,
     ) {
@@ -1586,21 +1598,15 @@ impl<'a> AnalysisContext<'a> {
             is_public,
             loc: loc.clone(),
         });
-        let state = self.analyze_block_statement(body);
-
-        if !return_type.is_void() && state != FlowState::Returns {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::MissingReturn),
-                location: Some(DiagLoc::new(loc.clone())),
-                hint: Some("Not all control paths return a value.".to_string()),
-            });
-        }
 
         *return_type = match self.normalize_type(None, return_type.clone(), loc.clone()) {
             Some(sema_ty) => sema_ty,
             None => return,
         };
+
+        if !is_generic_func {
+            self.analyze_func_body(body, &return_type);
+        }
 
         self.normalize_func_params(params, loc);
     }
@@ -1704,11 +1710,14 @@ impl<'a> AnalysisContext<'a> {
             self.mark_symbol_used_once(self.module_id, typed_func_def.symbol_id);
         }
 
+        let is_generic_func = typed_func_def.generic_params.is_some();
+
         self.analyze_any_func_def(
             typed_func_def.symbol_id,
             &mut typed_func_def.return_type,
             &mut typed_func_def.params,
             &mut typed_func_def.body,
+            is_generic_func,
             typed_func_def.modifiers.vis.is_public(),
             typed_func_def.loc.clone(),
         );

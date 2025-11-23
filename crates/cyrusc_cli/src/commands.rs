@@ -12,11 +12,13 @@ use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
+use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use std::io;
 use std::io::Write;
 use std::process::Command;
 use std::process::exit;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
     let bundle = build_compilation_bundle(&mut opts, file_path);
@@ -237,7 +239,9 @@ pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: Str
         source_dirs: options.source_dirs.clone(),
     };
 
-    let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
+    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+
+    let mut resolver = Resolver::new(module_loader_opts, monomorph_registry, file_path.clone());
     let module_id = generate_module_id();
     match resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path.clone()) {
         Some(..) => {}

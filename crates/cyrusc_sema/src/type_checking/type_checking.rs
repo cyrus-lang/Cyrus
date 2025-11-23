@@ -15,7 +15,9 @@ use cyrusc_tast::{
     format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
         generic_type::GenericType,
-        substitute::{substitute_struct_sig, substitute_union_sig},
+        mapping_ctx::GenericMappingCtx,
+        monomorph::MonomorphKey,
+        substitute::{substitute_func_sig, substitute_struct_sig, substitute_union_sig},
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
@@ -1295,10 +1297,31 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn get_func_param_type(&mut self, scope_id_opt: Option<ScopeID>, param: &mut TypedFuncParamKind) -> SemanticType {
+        match param {
+            TypedFuncParamKind::FuncParam(p) => {
+                let normalized = self.normalize_type(scope_id_opt, p.ty.clone(), p.loc.clone()).unwrap();
+                p.ty = normalized.clone();
+                normalized
+            }
+            TypedFuncParamKind::SelfModifier(s) => {
+                let normalized = self
+                    .normalize_type(scope_id_opt, s.ty.clone().unwrap(), s.loc.clone())
+                    .unwrap();
+                s.ty = Some(match s.kind {
+                    SelfModifierKind::Copied => normalized.clone(),
+                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(normalized.clone())),
+                });
+                s.ty.clone().unwrap()
+            }
+        }
+    }
+
     fn check_func_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_sig: &mut FuncSig,
+        generic_type_opt: &Option<GenericType>,
         args: &mut Vec<TypedExprStmt>,
         loc: SourceLoc,
         instance_method_call: bool,
@@ -1382,28 +1405,17 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let param_type = match param {
-                TypedFuncParamKind::FuncParam(p) => {
-                    let normalized = self.normalize_type(scope_id_opt, p.ty.clone(), p.loc.clone()).unwrap();
-                    p.ty = normalized.clone();
-                    normalized
-                }
-                TypedFuncParamKind::SelfModifier(s) => {
-                    let normalized = self
-                        .normalize_type(scope_id_opt, s.ty.clone().unwrap(), s.loc.clone())
-                        .unwrap();
-                    s.ty = Some(match s.kind {
-                        SelfModifierKind::Copied => normalized.clone(),
-                        SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(normalized.clone())),
-                    });
-                    s.ty.clone().unwrap()
-                }
-            };
-
+            let mut param_type = self.get_func_param_type(scope_id_opt, param);
             let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
+
+            if let Some(sema_ty) =
+                self.infer_generic_param(generic_type_opt, param_type.clone(), Some(arg_type.clone()))
+            {
+                param_type = sema_ty;
+            }
 
             if !self.check_type_mismatch(scope_id_opt, arg_type.clone(), param_type.clone(), arg.loc.clone()) {
                 self.reporter.report(Diag {
@@ -1542,7 +1554,11 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let operand_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
-        if let Some(mut func_type) = operand_ty.as_func_type().cloned() {
+        #[allow(unused_assignments)]
+        let mut generic_type_opt: Option<GenericType> = None;
+        let mut func_sig: FuncSig;
+
+        if let Some(mut func_type) = operand_ty.get_const_inner().as_func_type().cloned() {
             if !func_type.is_public && func_type.def_module_id != Some(self.module_id) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1555,33 +1571,46 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
 
-            self.normalize_func_type_params(&mut func_type.params, func_call.loc.clone());
-
-            let return_type =
-                self.check_func_type_call(scope_id_opt, &mut func_type, &mut func_call.args, func_call.loc.clone());
-
             if let Some(symbol_id) = func_type.symbol_id {
                 let local_scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
                     .unwrap();
-                let resolved_func = &mut sym.as_func().cloned().unwrap();
 
-                self.normalize_func_params(&mut resolved_func.func_sig.params, func_call.loc.clone());
+                func_sig = sym.as_func().unwrap().func_sig.clone();
 
-                update_global_symbol!(self, func_type.def_module_id.unwrap(), symbol_id,
-                    SymbolEntryKind::Func(resolved_func) => resolved_func, {
-                        resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
-                        resolved_func.func_sig.return_type = return_type.clone().unwrap();
+                let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
+                    local_scope_opt.clone(),
+                    symbol_id,
+                    &func_call.type_args,
+                    operand_ty.is_const(),
+                    func_call.loc.clone(),
+                ) {
+                    Ok(opt) => opt?,
+                    Err(diag) => {
+                        self.reporter.report(diag);
+                        return None;
                     }
-                );
-            }
+                };
 
-            func_call.return_type = return_type.clone();
-            return_type
+                generic_type_opt = inner_generic_type_opt;
+            } else {
+                // normalize if is lambda call
+                self.normalize_func_type_params(&mut func_type.params, func_call.loc.clone());
+
+                let return_type = self.check_func_type_call(
+                    scope_id_opt,
+                    &mut func_type,
+                    &mut func_call.args,
+                    func_call.loc.clone(),
+                )?;
+
+                func_call.return_type = Some(return_type.clone());
+                return Some(return_type);
+            }
         } else {
             let symbol_name = format_sema_ty(operand_ty, &(self.symbol_formatter)(scope_id_opt));
 
@@ -1593,6 +1622,72 @@ impl<'a> AnalysisContext<'a> {
             });
             return None;
         }
+
+        self.normalize_func_params(&mut func_sig.params, func_call.loc.clone());
+
+        let return_type = self.check_func_call(
+            scope_id_opt,
+            &mut func_sig,
+            &generic_type_opt,
+            &mut func_call.args,
+            func_call.loc.clone(),
+            false,
+        )?;
+
+        // validate generic type instantiation
+        if let Some(generic_type) = generic_type_opt {
+            func_sig = substitute_func_sig(&func_sig, generic_type.mapping_ctx.clone()).unwrap();
+
+            if let Err(diag) = generic_type.finalize(
+                func_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                self.reporter.report(diag);
+                return None;
+            }
+
+            if !func_sig.is_func_decl {
+                // only specialize function definition which necessarily includes the body block
+                func_call.monomorph_key = self.register_specialized_generic_func(&func_sig, &generic_type);
+            }
+        }
+
+        update_global_symbol!(self, func_sig.module_id, func_sig.symbol_id.unwrap(),
+            SymbolEntryKind::Func(resolved_func) => resolved_func, {
+                resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
+                resolved_func.func_sig.return_type = return_type.clone();
+            }
+        );
+        func_call.return_type = Some(return_type.clone());
+        Some(return_type)
+    }
+
+    fn register_specialized_generic_func(
+        &mut self,
+        func_sig: &FuncSig,
+        generic_type: &GenericType,
+    ) -> Option<MonomorphKey> {
+        let (template_body, mapping_ctx, base_symbol) = {
+            let ctx = self.monomorph_registry.lock().unwrap();
+
+            let body = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
+
+            let mapping = generic_type.mapping_ctx.borrow().clone();
+            let base = func_sig.symbol_id.unwrap();
+
+            (body, mapping, base)
+        };
+
+        let mut analyzed_body = template_body.clone();
+        self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
+
+        let monomorph_key = {
+            let mut ctx = self.monomorph_registry.lock().unwrap();
+            let (key, _) = ctx.register_func(base_symbol, mapping_ctx);
+            key
+        };
+
+        Some(monomorph_key)
     }
 
     fn extract_object_symbol_id<'b>(
@@ -1867,6 +1962,7 @@ impl<'a> AnalysisContext<'a> {
         self.check_func_call(
             scope_id_opt,
             &mut resolved_method.func_sig,
+            &None, // FIXME
             &mut method_call.args,
             method_call.loc.clone(),
             is_instance_method_call,
