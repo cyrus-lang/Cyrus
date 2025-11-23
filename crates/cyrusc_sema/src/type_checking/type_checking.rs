@@ -80,7 +80,9 @@ impl<'a> AnalysisContext<'a> {
                             element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
                                 PlainType::Char,
                             )))),
-                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len().try_into().unwrap())),
+                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                                value.len().try_into().unwrap(),
+                            )),
                             loc: typed_literal.loc.clone(),
                         }),
                     }
@@ -379,6 +381,15 @@ impl<'a> AnalysisContext<'a> {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
+
+        if operand_type.is_const() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
+                location: Some(DiagLoc::new(array_index.loc.clone())),
+                hint: None,
+            });
+        }
 
         let is_operand_array = operand_type.is_array();
 

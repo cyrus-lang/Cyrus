@@ -1067,8 +1067,6 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(scope_id_opt, resolved_symbol),
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
             SemanticType::Array(array_type) => {
-                dbg!(array_type.clone());
-
                 let ty = self.lower_sema_ty(scope_id_opt, &array_type.element_type);
                 let len = match &array_type.capacity {
                     TypedArrayCapacity::Fixed(fixed_cap) => match fixed_cap {
