@@ -133,21 +133,37 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
 }
 
 pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
-    //     prepare_compilation(&mut options, file_path);
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // let output_path = output_path.unwrap_or_else(|| {
-    //     display_single_custom_diag!("Output must be specified to generate executable.".to_string());
-    // });
+    let output_path = output_path.unwrap_or_else(|| {
+        display_single_custom_diag!("Output directory must be specified to generate executable.".to_string());
+    });
 
-    // let context = CodeGenContext::new(
-    //     final_build_dir,
-    //     opts,
-    //     OutputKind::Executable(output_path),
-    //     resolver_rc,
-    //     file_path,
-    // );
-    // context.compile_modules(program_trees, monomorph_registry);
+    let context = Rc::new(create_compiler_context(
+        opts.clone(),
+        Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
+
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        bundle.build_dir,
+    )));
+
+    if opts.display_target_machine {
+        println!("{}", context.target_machine_info(llvm_backend));
+    }
+
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let object_files: Vec<ObjectFileInfo> = owned_modules
+        .iter()
+        .map(|owned_module| llvm_backend.save_object_file(owned_module))
+        .collect();
+
+    if let Err(err) = context.trigger_linker(object_files, output_path) {
+        display_single_custom_diag!(err);
+    }
 }
 
 pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
