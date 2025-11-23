@@ -3,7 +3,13 @@ use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use std::{env, process::exit, vec};
+use cyrusc_tast::generics::monomorph::MonomorphRegistry;
+use std::{
+    env,
+    process::exit,
+    sync::{Arc, Mutex},
+    vec,
+};
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
@@ -31,7 +37,9 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
-            let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
+            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+
+            let mut resolver = Resolver::new(module_loader_opts, monomorph_registry, file_path.clone());
             let module_id = generate_module_id();
             let typed_program_tree = resolver
                 .resolve_module(module_id, &program, &mut Visiting::new(), true, file_path.clone())

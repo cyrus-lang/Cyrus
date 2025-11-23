@@ -4,7 +4,6 @@ mod diagnostics;
 mod flowstate;
 mod formatter;
 mod generics;
-pub mod monomorph;
 mod nameconv;
 mod normalizer;
 pub mod type_cache;

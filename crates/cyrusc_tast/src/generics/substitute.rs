@@ -1,7 +1,10 @@
 use crate::{
     generics::mapping_ctx::GenericMappingCtx,
-    sigs::{EnumSig, StructSig, UnionSig},
-    stmts::{TypedEnumValuedField, TypedEnumVariant, TypedFuncTypeParams},
+    sigs::{EnumSig, FuncSig, StructSig, UnionSig},
+    stmts::{
+        TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams,
+        TypedFuncVariadicParams,
+    },
     types::{
         SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType, TypedUnnamedStructTypeField,
     },
@@ -54,7 +57,7 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
                 .collect::<Option<Vec<_>>>()?;
             let ret_ty = Box::new(substitute_type(*func.return_type, ctx.clone())?);
             Some(SemanticType::FuncType(TypedFuncType {
-                symbol_id: func.symbol_id, 
+                symbol_id: func.symbol_id,
                 def_module_id: func.def_module_id,
                 params: TypedFuncTypeParams {
                     list: params,
@@ -86,6 +89,60 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
         }
         other => Some(other),
     }
+}
+
+fn substitute_func_params(
+    func_params: &TypedFuncParams,
+    ctx: Rc<RefCell<GenericMappingCtx>>,
+) -> Option<TypedFuncParams> {
+    let list: Vec<TypedFuncParamKind> = func_params
+        .list
+        .iter()
+        .map(|func_param_kind| match func_param_kind.clone() {
+            TypedFuncParamKind::FuncParam(mut func_param) => {
+                if let Some(sema_ty) = substitute_type(func_param.ty.clone(), ctx.clone()) {
+                    func_param.ty = sema_ty;
+                }
+                TypedFuncParamKind::FuncParam(func_param)
+            }
+            TypedFuncParamKind::SelfModifier(mut self_modifier) => {
+                self_modifier.ty = self_modifier
+                    .ty
+                    .and_then(|sema_ty| substitute_type(sema_ty, ctx.clone()));
+                TypedFuncParamKind::SelfModifier(self_modifier)
+            }
+        })
+        .collect();
+
+    let variadic = func_params.variadic.clone().and_then(|variadic| match &variadic {
+        unsubstituted_variadic_param @ TypedFuncVariadicParams::Typed(identifier, sema_ty) => {
+            if let Some(sema_ty) =  substitute_type(sema_ty.clone(), ctx.clone()) {
+                Some(TypedFuncVariadicParams::Typed(identifier.to_string(), sema_ty))
+            } else {
+                Some(unsubstituted_variadic_param.clone())
+            }
+        }
+        c_style_variadic @ TypedFuncVariadicParams::UntypedCStyle => Some(c_style_variadic.clone()),
+    });
+
+    Some(TypedFuncParams { list, variadic })
+}
+
+pub fn substitute_func_sig(sig: &FuncSig, ctx: Rc<RefCell<GenericMappingCtx>>) -> Option<FuncSig> {
+    let params = substitute_func_params(&sig.params, ctx.clone())?;
+    let return_type = substitute_type(sig.return_type.clone(), ctx)?;
+
+    Some(FuncSig {
+        name: sig.name.clone(),
+        module_id: sig.module_id,
+        symbol_id: sig.symbol_id,
+        params,
+        return_type,
+        is_func_decl: sig.is_func_decl,
+        generic_params: sig.generic_params.clone(),
+        modifiers: sig.modifiers.clone(),
+        loc: sig.loc.clone(),
+    })
 }
 
 pub fn substitute_struct_sig(sig: &StructSig, ctx: Rc<RefCell<GenericMappingCtx>>) -> Option<StructSig> {

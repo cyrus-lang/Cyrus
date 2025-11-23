@@ -145,12 +145,13 @@ impl LocalOrGlobalSymbol {
                 LocalSymbolKind::Interface(..) => None,
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                SymbolEntryKind::Method(_) | SymbolEntryKind::Func(_) => None,
+                SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.generic_params.clone(),
                 SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.generic_params.clone(),
                 SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.generic_params.clone(),
                 SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.generic_params.clone(),
                 SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.generic_params.clone(),
                 SymbolEntryKind::GlobalVar(..) | SymbolEntryKind::Interface(..) => None,
+                SymbolEntryKind::Method(_) => None,
                 SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
             },
         }

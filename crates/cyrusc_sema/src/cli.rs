@@ -4,7 +4,8 @@ use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use cyrusc_sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
+use cyrusc_sema::{analyze::AnalysisContext};
+use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use std::{
     env,
     process::exit,
@@ -38,7 +39,9 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
-            let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
+            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+
+            let mut resolver = Resolver::new(module_loader_opts, monomorph_registry.clone(), file_path.clone());
             let module_id = generate_module_id();
 
             // resolve entry module
@@ -46,7 +49,6 @@ pub fn main() {
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
-                let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
                 let resolved_program_trees = resolver.program_trees.lock().unwrap();
                 for program_tree_entry in &*resolved_program_trees {

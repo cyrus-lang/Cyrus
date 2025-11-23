@@ -14,6 +14,7 @@ use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
 use cyrusc_tast::exprs::*;
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::mapping_ctx::GenericMappingCtx;
+use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::types::*;
 use cyrusc_tast::*;
@@ -42,6 +43,7 @@ pub struct Resolver {
     pub reporter: DiagReporter,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     already_imported_modules: HashSet<ImportKey>,
     current_module: Option<ModuleID>,
 }
@@ -82,7 +84,7 @@ macro_rules! is_unscoped_expr {
 }
 
 impl Resolver {
-    pub fn new(opts: ModuleLoaderOptions, master_module_file_path: String) -> Self {
+    pub fn new(opts: ModuleLoaderOptions, monomorph_registry: Arc<Mutex<MonomorphRegistry>>, master_module_file_path: String) -> Self {
         let file_paths = Arc::new(Mutex::new(HashMap::new()));
 
         Self {
@@ -91,6 +93,7 @@ impl Resolver {
             module_aliases: Arc::new(Mutex::new(HashMap::new())),
             file_paths: file_paths.clone(),
             program_trees: Arc::new(Mutex::new(Vec::new())),
+            monomorph_registry,
             already_imported_modules: HashSet::new(),
             reporter: DiagReporter::new(),
             module_loader: ModuleLoader::new(opts),
@@ -1886,6 +1889,10 @@ impl Resolver {
 
         let typed_func_body = self.resolve_block_statement(scope_id, body_scope, &func_def.body)?;
 
+        with_monomorph_registry!(self, ctx, {
+            ctx.register_template(symbol_id, typed_func_body.clone());
+        });
+
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
             symbol_id,
             module_id,
@@ -2778,7 +2785,8 @@ impl Resolver {
         let local_scope_rc = LocalScope::new(None);
         self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
 
-        let (list, variadic) = self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &None, &lambda.params)?;
+        let (list, variadic) =
+            self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &None, &lambda.params)?;
 
         let body = match self.resolve_block_statement(scope_id, local_scope_rc.clone(), &lambda.body) {
             Some(typed_block) => Box::new(typed_block),
@@ -2946,17 +2954,30 @@ impl Resolver {
 
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &func_call.operand)?;
 
-        let type_args: Vec<TypedExprStmt> = func_call
+        let typed_args: Vec<TypedExprStmt> = func_call
             .args
             .iter()
             .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
             .collect();
 
+        let type_args = func_call.type_args.clone().and_then(|type_args| {
+            self.resolve_type_args(
+                &None,
+                module_id,
+                local_scope_opt,
+                &type_args,
+                func_call.loc.clone(),
+                func_call.span.end,
+            )
+        });
+
         Some(TypedExprStmt {
             kind: TypedExprKind::FuncCall(TypedFuncCall {
                 operand: Box::new(operand),
-                args: type_args,
+                args: typed_args,
+                type_args,
                 return_type: None,
+                monomorph_key: None,
                 loc: SourceLoc::from_loc(func_call.loc.clone(), self.current_file_path()),
             }),
             vcat: ValueCategory::RValue,

@@ -450,6 +450,7 @@ dependencies = [
  "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
+ "rand",
  "thiserror",
  "thiserror-impl",
 ]

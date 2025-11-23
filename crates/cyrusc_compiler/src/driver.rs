@@ -14,8 +14,8 @@ use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_scaffold_parser::{
     OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH, parse_project_toml,
 };
-use cyrusc_sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
-use cyrusc_tast::TypedProgramTree;
+use cyrusc_sema::analyze::AnalysisContext;
+use cyrusc_tast::{TypedProgramTree, generics::monomorph::MonomorphRegistry};
 use cyrusc_tui_utils::tui_error;
 use std::{
     cell::RefCell,
@@ -88,7 +88,10 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         source_dirs: vec![input_file_dir],
     };
 
-    let mut resolver = Resolver::new(module_loader_opts, entry_file.clone());
+    // init monomorph registry
+    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+
+    let mut resolver = Resolver::new(module_loader_opts, monomorph_registry.clone(), entry_file.clone());
 
     // resolve the entry module
     let module_id = generate_module_id();
@@ -100,7 +103,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     // analysis
 
-    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
     let entry_points = Arc::new(Mutex::new(Vec::new()));
 
     let mut has_error = false;

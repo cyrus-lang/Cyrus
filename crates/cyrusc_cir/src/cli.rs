@@ -5,8 +5,8 @@ use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use cyrusc_sema::{analyze::AnalysisContext, monomorph::MonomorphRegistry};
-use cyrusc_tast::TypedProgramTree;
+use cyrusc_sema::analyze::AnalysisContext;
+use cyrusc_tast::{TypedProgramTree, generics::monomorph::MonomorphRegistry};
 use std::{
     cell::RefCell,
     env,
@@ -42,7 +42,9 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
-            let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
+            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+
+            let mut resolver = Resolver::new(module_loader_opts, monomorph_registry.clone(), file_path.clone());
             let module_id = generate_module_id();
             resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, file_path.clone());
             if resolver.reporter.has_errors() {
@@ -55,7 +57,6 @@ pub fn main() {
             //     exit(1);
             // }
 
-            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
             let entry_points = Arc::new(Mutex::new(Vec::new()));
 
             let mut has_error = false;
