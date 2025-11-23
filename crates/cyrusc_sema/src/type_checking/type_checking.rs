@@ -7,7 +7,7 @@ use cyrusc_resolver::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind,
     },
-    typed_func_params_as_func_type_params,
+    typed_func_params_as_func_type_params, typed_func_type_from_func_sig,
 };
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
@@ -21,12 +21,13 @@ use cyrusc_tast::{
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
-        TypedEnumVariant, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedStructField,
+        TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
+        TypedStructField,
     },
     types::*,
     *,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, thread::Scope};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_literal_type(
@@ -1678,6 +1679,10 @@ impl<'a> AnalysisContext<'a> {
             (body, mapping, base)
         };
 
+        self.substitute_func_params_in_body_scope(template_body.scope_id, &func_sig.params);
+
+        self.current_func = Some(typed_func_type_from_func_sig(func_sig));
+
         let mut analyzed_body = template_body.clone();
         self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
 
@@ -1688,6 +1693,42 @@ impl<'a> AnalysisContext<'a> {
         };
 
         Some(monomorph_key)
+    }
+
+    fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
+        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, body_scope_id).unwrap();
+        {
+            let mut local_scope = local_scope_rc.borrow_mut();
+
+            for param_kind in &params.list {
+                match param_kind {
+                    TypedFuncParamKind::FuncParam(typed_func_param) => {
+                        local_scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
+                            let resolved_var = local_symbol.as_variable_mut().unwrap();
+                            resolved_var.typed_variable.ty = Some(typed_func_param.ty.clone());
+                        });
+                    }
+                    TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                        local_scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
+                            let resolved_var = local_symbol.as_variable_mut().unwrap();
+                            resolved_var.typed_variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
+                        });
+                    }
+                }
+            }
+
+            if let Some(variadic) = &params.variadic {
+                match variadic {
+                    TypedFuncVariadicParams::Typed(identifier, sema_ty) => {
+                        local_scope.with_symbol_id_mut(identifier.symbol_id, |local_symbol| {
+                            let resolved_var = local_symbol.as_variable_mut().unwrap();
+                            resolved_var.typed_variable.ty = Some(sema_ty.clone());
+                        });
+                    }
+                    TypedFuncVariadicParams::UntypedCStyle => {}
+                }
+            }
+        }
     }
 
     fn extract_object_symbol_id<'b>(

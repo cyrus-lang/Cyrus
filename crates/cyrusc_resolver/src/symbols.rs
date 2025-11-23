@@ -320,6 +320,13 @@ impl LocalSymbol {
             _ => None,
         }
     }
+
+    pub fn as_variable_mut(&mut self) -> Option<&mut ResolvedVariable> {
+        match &mut self.kind {
+            LocalSymbolKind::Variable(resolved_variable) => Some(resolved_variable),
+            _ => None,
+        }
+    }
 }
 
 impl LocalScope {

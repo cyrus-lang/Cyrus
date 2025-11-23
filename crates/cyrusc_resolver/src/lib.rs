@@ -84,7 +84,11 @@ macro_rules! is_unscoped_expr {
 }
 
 impl Resolver {
-    pub fn new(opts: ModuleLoaderOptions, monomorph_registry: Arc<Mutex<MonomorphRegistry>>, master_module_file_path: String) -> Self {
+    pub fn new(
+        opts: ModuleLoaderOptions,
+        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+        master_module_file_path: String,
+    ) -> Self {
         let file_paths = Arc::new(Mutex::new(HashMap::new()));
 
         Self {
@@ -1778,9 +1782,10 @@ impl Resolver {
                     identifier.span.end,
                 )?;
 
+                let symbol_id = generate_symbol_id();
+
                 if let Some(local_scope_rc) = &local_scope_opt {
                     let mut local_scope = local_scope_rc.borrow_mut();
-                    let symbol_id = generate_symbol_id();
                     local_scope.insert(
                         identifier.name.clone(),
                         LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
@@ -1798,7 +1803,14 @@ impl Resolver {
                     );
                 }
 
-                Some(TypedFuncVariadicParams::Typed(identifier.name.clone(), variadic_type))
+                Some(TypedFuncVariadicParams::Typed(
+                    TypedIdentifier {
+                        name: identifier.as_string(),
+                        symbol_id,
+                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                    },
+                    variadic_type,
+                ))
             }
         });
 
