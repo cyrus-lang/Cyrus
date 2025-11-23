@@ -258,22 +258,30 @@ impl<'a> AnalysisContext<'a> {
         match sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
                 LocalSymbolKind::Variable(resolved_variable) => {
+                    let var_type;
                     if let Some(sema_ty) = &resolved_variable.typed_variable.ty {
-                        self.normalize_type(
+                        var_type = self.normalize_type(
                             scope_id_opt,
                             sema_ty.clone(),
                             resolved_variable.typed_variable.loc.clone(),
-                        )
+                        )?;
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
                         let rhs_ty = self.analyze_typed_expr_type_non_terminal(
                             scope_id_opt,
                             &mut rhs.clone(),
                             resolved_variable.typed_variable.ty.clone(),
                         )?;
-                        self.normalize_type(scope_id_opt, rhs_ty, resolved_variable.typed_variable.loc.clone())
+                        var_type =
+                            self.normalize_type(scope_id_opt, rhs_ty, resolved_variable.typed_variable.loc.clone())?;
                     } else {
                         dbg!(resolved_variable.clone());
                         panic!("Cannot resolve variable type.")
+                    }
+
+                    if resolved_variable.typed_variable.is_const {
+                        Some(SemanticType::Const(Box::new(var_type.get_const_inner().clone())))
+                    } else {
+                        Some(var_type)
                     }
                 }
                 LocalSymbolKind::Struct(s) => {

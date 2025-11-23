@@ -101,14 +101,14 @@ impl SemanticType {
     }
 
     pub fn as_generic_type(&self) -> Option<&GenericType> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::GenericType(generic_type) => Some(generic_type),
             _ => None,
         }
     }
 
     pub fn as_generic_param(&self) -> Option<&TypedIdentifier> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::GenericParam(typed_identifier) => Some(typed_identifier),
             _ => None,
         }
@@ -158,7 +158,7 @@ impl SemanticType {
     }
 
     pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
-        match &self {
+        match &self.get_const_inner() {
             SemanticType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
             _ => None,
         }
@@ -172,14 +172,14 @@ impl SemanticType {
     }
 
     pub fn as_func_type(&self) -> Option<&TypedFuncType> {
-        match &self {
+        match &self.get_const_inner() {
             SemanticType::FuncType(func_type) => Some(func_type),
             _ => None,
         }
     }
 
     pub fn is_resolved_symbol(&self) -> bool {
-        match self {
+        match self.get_const_inner() {
             SemanticType::ResolvedSymbol(..) => true,
             _ => false,
         }
@@ -205,7 +205,7 @@ impl SemanticType {
     }
 
     pub fn as_basic_type(&self) -> Option<&PlainType> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::PlainType(ty) => Some(ty),
             _ => None,
         }
@@ -226,14 +226,14 @@ impl SemanticType {
     }
 
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::Array(ty) => Some(ty),
             _ => None,
         }
     }
 
     pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
                 _ => None,
@@ -243,7 +243,7 @@ impl SemanticType {
     }
 
     pub fn as_union_symbol_id(&self) -> Option<SymbolID> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Union(symbol_id) => Some(*symbol_id),
                 _ => None,
@@ -253,7 +253,7 @@ impl SemanticType {
     }
 
     pub fn as_enum_symbol_id(&self) -> Option<SymbolID> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
                 _ => None,
@@ -263,16 +263,15 @@ impl SemanticType {
     }
 
     pub fn as_unnamed_struct(&self) -> Option<TypedUStructType> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
             _ => None,
         }
     }
 
     pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUStructType> {
-        match self {
+        match self.get_const_inner() {
             SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
-            SemanticType::Const(inner_concrete_type) => inner_concrete_type.as_unnamed_struct(),
             _ => None,
         }
     }

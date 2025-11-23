@@ -1,0 +1,13 @@
+// @stdout: Cyrus Programming Language
+
+import std::libc{printf};
+
+fn main() {
+    var names = char*[3]{"Greatest", "Programming", "Language"};
+
+    names[0] = "Cyrus";
+
+    printf("%s ", names[0]);
+    printf("%s ", names[1]);
+    printf("%s\n", names[2]);
+}
