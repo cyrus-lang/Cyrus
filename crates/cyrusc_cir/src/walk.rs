@@ -418,7 +418,10 @@ impl<'resolver> CIRWalk<'resolver> {
                                 let exported_field = exported_fields.first().unwrap();
 
                                 let lowered_expr = self.lower_expr(scope_id_opt, &expr);
-                                lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(variant_idx, (exported_field.clone(), lowered_expr)));
+                                lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(
+                                    variant_idx,
+                                    (exported_field.clone(), lowered_expr),
+                                ));
                             }
                             TypedEnumVariant::Variant(_, valued_fields) => {
                                 let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields

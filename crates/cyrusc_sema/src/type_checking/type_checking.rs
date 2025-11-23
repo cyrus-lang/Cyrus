@@ -27,7 +27,7 @@ use cyrusc_tast::{
     types::*,
     *,
 };
-use std::{collections::HashMap, thread::Scope};
+use std::collections::HashMap;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_literal_type(

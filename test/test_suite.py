@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 import re
-import os
 import subprocess
 import shlex
 import shutil
@@ -96,12 +95,15 @@ from pathlib import Path
 def main():
     try:
         if len(sys.argv) < 5 or sys.argv[1] not in ("-d", "--directory"):
-            raise Exception("Usage: main.py -d <test_dir> [--compiler <compiler_path>] [--flags '<extra_flags>'] --output <output_dir>")
+            raise Exception(
+                "Usage: main.py -d <test_dir> [--compiler <compiler_path>] "
+                "[--flags '<extra_flags>'] --output <output_dir>"
+            )
 
         directory = sys.argv[2]
         output_dir = None
         compiler_path = "cyrus"
-        compiler_flags = ""   # new: default no extra flags
+        compiler_flags = "" 
 
         i = 3
         while i < len(sys.argv):
@@ -133,26 +135,26 @@ def main():
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Print compiler version once up-front
         print_compiler_version(compiler_path)
 
         passed_tests = []
         failed_tests = []
 
-        for test_file in tests_path.glob("*.cyrus"):
+        for test_file in tests_path.rglob("*.cyrus"):
             if test_file.is_file():
+                relative_name = test_file.relative_to(tests_path)
                 try:
                     with open(test_file, "r") as file:
                         content = file.read()
                         metadata = extract_test_metadata(content, test_file.name)
-                        # pass flags into build_and_run
                         build_and_run(test_file, metadata, compiler_path, compiler_flags, output_path)
-                    passed_tests.append(test_file.name)
+                    passed_tests.append(str(relative_name))
                 except Exception as e:
-                    failed_tests.append((test_file.name, str(e)))
+                    failed_tests.append((str(relative_name), str(e)))
 
         print("\n=== Test Summary ===")
-        print(f"Total: {len(passed_tests) + len(failed_tests)}")
+        total = len(passed_tests) + len(failed_tests)
+        print(f"Total: {total}")
         print(f"Passed: {len(passed_tests)}")
         print(f"Failed: {len(failed_tests)}")
 
@@ -174,6 +176,7 @@ def main():
     except Exception as err:
         print(f"\nFatal error: {err}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
