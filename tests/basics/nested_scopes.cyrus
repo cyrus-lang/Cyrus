@@ -1,0 +1,18 @@
+// @stdout: ABCD
+
+import std::libc{printf};
+
+fn main() {
+    const a = 'A';
+    printf("%c", a);
+    {
+        const b = 'B';
+        printf("%c", b);
+        {
+            const c = 'C';
+            printf("%c", c);
+        }
+    }
+    const d = 'D';
+    printf("%c\n", d);
+}

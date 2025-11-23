@@ -3,12 +3,12 @@
 import std::libc{printf};
 
 fn main() {
-    var smile: char* = "😇";
+    const smile: char* = "😇";
     printf("%s", smile);
 
-    var rocket: char* = " \u{1F680}";
+    const rocket: char* = " \u{1F680}";
     printf("%s", rocket);
     
-    var greek_alpha: char* = " \u03B1";
+    const greek_alpha: char* = " \u03B1";
     printf("%s", greek_alpha);
 }

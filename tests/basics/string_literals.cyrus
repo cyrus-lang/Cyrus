@@ -1,8 +1,8 @@
 import std::libc{printf};
 
 fn main() {
-    var poem: char* = "Line one\nLine two\nLine three";
-    var backslash: char = '\\';
+    const poem: char* = "Line one\nLine two\nLine three";
+    const backslash: char = '\\';
     
     // FIXME
     // var quote: char* = "She said: \"Cyrus is great!\""; 
