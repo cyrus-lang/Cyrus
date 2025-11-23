@@ -1077,7 +1077,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     },
                     TypedArrayCapacity::Dynamic => todo!(),
                 };
-                CIRTy::Array(CIRArrayTy { ty: Box::new(ty), len })
+                CIRTy::Array(CIRArrayTy { ty: Box::new(ty), len: len.try_into().unwrap() })
             }
             SemanticType::Const(sema_ty) => CIRTy::Const(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
             SemanticType::Pointer(sema_ty) => CIRTy::Pointer(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),

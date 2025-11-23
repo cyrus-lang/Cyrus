@@ -424,11 +424,11 @@ pub enum TypedArrayCapacity {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedArrayFixedCapacityValue {
     Expr(Box<TypedExprStmt>),
-    Value(usize),
+    Value(u64),
 }
 
 impl TypedArrayFixedCapacityValue {
-    pub fn as_value(&self) -> Option<usize> {
+    pub fn as_value(&self) -> Option<u64> {
         match self {
             TypedArrayFixedCapacityValue::Expr(..) => None,
             TypedArrayFixedCapacityValue::Value(value) => Some(*value),

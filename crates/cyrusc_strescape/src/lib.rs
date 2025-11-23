@@ -19,8 +19,7 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                 Some('\\') => result.push('\\'),
                 Some('"') => result.push('"'),
                 Some('\'') => result.push('\''),
-
-                // Hex escape: \xNN
+                // hex escape: \xNN
                 Some('x') => {
                     let h1 = chars.next();
                     let h2 = chars.next();
@@ -35,8 +34,7 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                         return Err(UnescapeError::IncompleteHexEscape);
                     }
                 }
-
-                // Octal escape: \NNN
+                // octal escape: \NNN
                 Some(d @ '0'..='7') => {
                     let mut oct = String::new();
                     oct.push(d);
@@ -133,13 +131,11 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                         return Err(UnescapeError::InvalidUnicodeEscape(hex));
                     }
                 }
-
-                // Unrecognized escape sequence
                 Some(other) => {
+                    // unrecognized escape sequence
                     result.push('\\');
                     result.push(other);
                 }
-
                 None => return Err(UnescapeError::TrailingBackslash),
             }
         } else {
@@ -151,7 +147,7 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
 }
 
 pub fn escape_string(s: &str) -> String {
-    let mut result = String::with_capacity(s.len()); // Pre-allocate for efficiency
+    let mut result = String::with_capacity(s.len()); 
     for c in s.chars() {
         match c {
             '\n' => result.push_str("\\n"),

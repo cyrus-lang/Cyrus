@@ -80,7 +80,7 @@ impl<'a> AnalysisContext<'a> {
                             element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
                                 PlainType::Char,
                             )))),
-                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
+                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len().try_into().unwrap())),
                             loc: typed_literal.loc.clone(),
                         }),
                     }
@@ -2170,7 +2170,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedArrayFixedCapacityValue::Expr(typed_expr) => {
                     self.const_expr_as_raw_integer(scope_id_opt, typed_expr)?
                 }
-                TypedArrayFixedCapacityValue::Value(value) => *value as i64,
+                TypedArrayFixedCapacityValue::Value(value) => *value as i128,
             },
             TypedArrayCapacity::Dynamic => todo!(),
         };

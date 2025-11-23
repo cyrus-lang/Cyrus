@@ -1,5 +1,8 @@
 use crate::{
-    SymbolID, generics::monomorph::MonomorphKey, stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs}, types::{SemanticType, TypedUStructType}
+    SymbolID,
+    generics::monomorph::MonomorphKey,
+    stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
+    types::{SemanticType, TypedUStructType},
 };
 use cyrusc_ast::{
     AssignmentKind, LiteralKind,
@@ -83,7 +86,7 @@ pub struct TypedLiteralExpr {
 impl TypedLiteralExpr {
     pub fn format_kind(&self) -> String {
         match &self.kind {
-            LiteralKind::Integer(..) => "integer",
+            LiteralKind::Integer { .. } => "integer",
             LiteralKind::Float(..) => "float",
             LiteralKind::String(..) => "string",
             LiteralKind::Bool(..) => "bool",

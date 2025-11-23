@@ -25,4 +25,4 @@ test:
 	cargo test -j24 --all $(ARGS)
 
 testsuite:
-	python3 ./test/test_suite.py -d test --output ./tmp/tests --compiler ./target/debug/cyrus --flags "--stdlib=./stdlib --quiet"
+	python3 ./tests/test_suite.py -d tests --output ./tmp/tests --compiler ./target/debug/cyrus --flags "--stdlib=./stdlib --quiet"

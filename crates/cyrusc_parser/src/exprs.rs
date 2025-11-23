@@ -433,7 +433,7 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_integer_literal(&self) -> Result<usize, Diag> {
+    pub(crate) fn parse_integer_literal(&self) -> Result<i128, Diag> {
         match match self.current_token().kind {
             TokenKind::Literal(literal) => match &literal.kind {
                 LiteralKind::Integer(value, _) => Some(*value),
@@ -798,7 +798,7 @@ impl Parser {
 
             Ok(Expr::TupleAccess(TupleAccess {
                 operand: Box::new(operand),
-                index,
+                index: index.try_into().unwrap(),
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }))

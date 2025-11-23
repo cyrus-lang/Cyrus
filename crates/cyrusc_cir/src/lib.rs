@@ -195,7 +195,7 @@ pub struct CIRLiteral {
 
 #[derive(Debug, Clone)]
 pub enum CIRLiteralKind {
-    Integer(i64, bool),
+    Integer(i128, bool),
     Float(f64),
     Bool(bool),
     Char(char),
