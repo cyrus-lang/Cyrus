@@ -1,0 +1,11 @@
+// @stdout: 20
+
+import std::libc{printf};
+
+fn main() {
+    var x = 10;
+    var ptr = &x;
+
+    *ptr = 20;
+    printf("%d\n", *ptr);
+}

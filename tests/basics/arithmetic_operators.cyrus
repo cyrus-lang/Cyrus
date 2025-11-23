@@ -1,0 +1,16 @@
+// @stdout: sum=7, sub=-3, mul=10, div=0, rem=2
+
+import std::libc{printf};
+
+fn main() {
+    const a = 2;
+    const b = 5;
+
+    const sum = a + b;
+    const sub = a - b;
+    const mul = a * b;
+    const div = a / b;
+    const rem = a % b;
+
+    printf("sum=%d, sub=%d, mul=%d, div=%d, rem=%d\n", sum, sub, mul, div, rem);
+}
