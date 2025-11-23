@@ -12,11 +12,16 @@ use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     module::Linkage,
-    types::{AnyTypeEnum, ArrayType, BasicTypeEnum},
+    types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum},
     values::{
         AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue, StructValue,
     },
 };
+
+pub enum DerefMode {
+    Load,  // for RValue
+    Store, // for LHS assignment
+}
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_expr(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
@@ -39,7 +44,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 )
             }
             CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
-            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr),
+            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
             CIRExprKind::Array(array_expr) => self.emit_array(array_expr),
             CIRExprKind::ArrayIndex(array_index_expr) => self.emit_array_index(array_index_expr),
             CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
@@ -101,15 +106,22 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_assign(&mut self, assign: &CIRAssignExpr) -> InternalValue<'ll> {
-        let lhs = self.emit_expr(&assign.lhs);
+        let lhs_lvalue = match &assign.lhs.kind {
+            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Store),
+            _ => self.emit_expr(&assign.lhs),
+        };
+
         let rhs_lvalue = self.emit_expr(&assign.rhs);
-        let rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
+        let rhs_value = self.load_rvalue(rhs_lvalue);
 
         self.llvmbuilder
-            .build_store(lhs.as_basic_value().into_pointer_value(), rhs_lvalue.as_basic_value())
+            .build_store(
+                lhs_lvalue.as_basic_value().into_pointer_value(),
+                rhs_value.as_basic_value(),
+            )
             .unwrap();
 
-        rhs_rvalue
+        rhs_value
     }
 
     pub(crate) fn emit_cast(&self, target_type: AnyTypeEnum<'ll>, value: InternalValue<'ll>) -> AnyValueEnum<'ll> {
@@ -241,29 +253,30 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(array.ty.clone(), InternalValueKind::RValue(array_value.into()))
     }
 
-    fn emit_deref(&mut self, deref: &CIRDerefExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&deref.operand);
-
+    pub(crate) fn emit_addr_of(&mut self, addr_of: &CIRAddrOfExpr) -> InternalValue<'ll> {
+        let operand = self.emit_expr(&addr_of.operand);
         InternalValue::new(
-            lvalue.ty.clone(),
-            InternalValueKind::LValue(lvalue.as_basic_value().into_pointer_value()),
+            CIRTy::Pointer(Box::new(operand.ty.clone())),
+            InternalValueKind::RValue(operand.as_basic_value()),
         )
     }
 
-    pub(crate) fn emit_addr_of(&mut self, addr_of_expr: &CIRAddrOfExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&addr_of_expr.operand);
+    pub(crate) fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
+        let lvalue = self.emit_expr(&deref.operand);
+        let rvalue = self.load_rvalue(lvalue);
+        let ptr = rvalue.as_basic_value().into_pointer_value();
 
-        if let Some(fn_value) = lvalue.as_func() {
-            let fn_ptr = self.emit_fn_as_ptr(*fn_value);
-            InternalValue::new(
-                CIRTy::Pointer(Box::new(lvalue.ty.clone())),
-                InternalValueKind::RValue(fn_ptr.into()),
-            )
-        } else {
-            InternalValue::new(
-                CIRTy::Pointer(Box::new(lvalue.ty.clone())),
-                InternalValueKind::RValue(lvalue.as_basic_value()),
-            )
+        match mode {
+            DerefMode::Load => {
+                let inner_ty = rvalue.ty.get_pointer_inner().expect("Cannot deref non-pointer");
+                let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(inner_ty.clone()).try_into().unwrap();
+                let loaded_value = self.llvmbuilder.build_load(llvm_ty, ptr, "deref").unwrap();
+                InternalValue::new(inner_ty.clone(), InternalValueKind::RValue(loaded_value.into()))
+            }
+            DerefMode::Store => {
+                let inner_ty = rvalue.ty.get_pointer_inner().expect("Cannot deref non-pointer");
+                InternalValue::new(inner_ty.clone(), InternalValueKind::LValue(ptr))
+            }
         }
     }
 
