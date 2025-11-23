@@ -1,0 +1,17 @@
+// @stdout: lt=1, gt=0, eq=0, neq=1, le=1, ge=0
+
+import std::libc{printf};
+
+fn main() {
+    const a = 2;
+    const b = 5;
+
+    const lt  = a < b;
+    const gt  = a > b;
+    const eq  = a == b;
+    const neq = a != b;
+    const le  = a <= b;
+    const ge  = a >= b;
+
+    printf("lt=%d, gt=%d, eq=%d, neq=%d, le=%d, ge=%d\n", lt, gt, eq, neq, le, ge);
+}

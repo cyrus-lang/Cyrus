@@ -1,0 +1,14 @@
+// @stdout: and=1, or=1, not=1
+
+import std::libc{printf};
+
+fn main() {
+    const a = 2;
+    const b = 5;
+
+    const and_op = (b > 0);
+    const or_op  = (a > b) || (b > 0);
+    const not_op = !(a > b);
+
+    printf("and=%d, or=%d, not=%d\n", and_op, or_op, not_op);
+}
