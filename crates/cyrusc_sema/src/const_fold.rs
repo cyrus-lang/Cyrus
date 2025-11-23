@@ -7,7 +7,7 @@ use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef};
 use cyrusc_tast::{ScopeID, SymbolID, exprs::{TypedExprKind, TypedExprStmt, TypedLiteralExpr}};
 
 impl<'a> AnalysisContext<'a> {
-    fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i64> {
+    fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i128> {
         match &typed_literal.kind {
             LiteralKind::Integer(value, ..) => Some(*value),
             _ => None,
@@ -53,7 +53,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &TypedExprStmt,
-    ) -> Option<i64> {  
+    ) -> Option<i128> {  
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let integer_result = match &typed_expr.kind {

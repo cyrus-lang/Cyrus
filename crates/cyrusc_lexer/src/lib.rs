@@ -594,32 +594,80 @@ impl Lexer {
         let mut number = String::new();
         let mut is_float = false;
 
-        // hexadecimal literals
-        let token_kind = if self.ch == '0' && (self.peek_char().to_ascii_lowercase() == 'x') {
-            number.push('0');
-            self.read_char(); // consume '0'
-            number.push(self.ch);
-            self.read_char(); // consume 'x' or 'X'
+        let base = if self.ch == '0' {
+            match self.peek_char().to_ascii_lowercase() {
+                'x' => {
+                    self.read_char(); // consume '0'
+                    self.read_char(); // consume 'x' or 'X'
+                    while self.ch.is_ascii_hexdigit() || self.ch == '_' {
+                        if self.ch != '_' {
+                            number.push(self.ch);
+                        }
+                        self.read_char();
+                    }
+                    16
+                }
+                'b' => {
+                    self.read_char(); // consume '0'
+                    self.read_char(); // consume 'b' or 'B'
+                    while self.ch == '0' || self.ch == '1' || self.ch == '_' {
+                        if self.ch != '_' {
+                            number.push(self.ch);
+                        }
+                        self.read_char();
+                    }
+                    2
+                }
+                _ => 10,
+            }
+        } else {
+            10
+        };
 
-            while self.ch.is_ascii_hexdigit() || self.ch == '_' {
+        if base == 10 {
+            while self.ch.is_ascii_digit() || self.ch == '_' {
                 if self.ch != '_' {
                     number.push(self.ch);
                 }
                 self.read_char();
             }
 
-            let suffix = self.read_literal_suffix();
+            if self.ch == '.' && self.peek_char().is_ascii_digit() {
+                is_float = true;
+                number.push(self.ch);
+                self.read_char();
+                while self.ch.is_ascii_digit() || self.ch == '_' {
+                    if self.ch != '_' {
+                        number.push(self.ch);
+                    }
+                    self.read_char();
+                }
+            }
 
-            match i64::from_str_radix(&number[2..], 16) {
-                Ok(value) => TokenKind::Literal(Literal {
-                    kind: LiteralKind::Integer(value, suffix),
-                    loc: Location::new(self.line, self.column),
-                    span: Span::new(start, self.column),
-                }),
+            if self.ch == 'e' || self.ch == 'E' {
+                is_float = true;
+                number.push(self.ch);
+                self.read_char();
+                if self.ch == '+' || self.ch == '-' {
+                    number.push(self.ch);
+                    self.read_char();
+                }
+                while self.ch.is_ascii_digit() {
+                    number.push(self.ch);
+                    self.read_char();
+                }
+            }
+        }
+
+        let suffix = self.read_literal_suffix();
+
+        let token_kind = if is_float {
+            match number.parse::<f64>() {
+                Ok(value) => LiteralKind::Float(value, suffix),
                 Err(_) => {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
+                        kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
                         location: Some(DiagLoc::new(SourceLoc {
                             line: self.line,
                             column: self.column,
@@ -630,74 +678,10 @@ impl Lexer {
                 }
             }
         } else {
-            // Match leading digits (optional)
-            while self.ch.is_ascii_digit() || self.ch == '_' {
-                if self.ch != '_' {
-                    number.push(self.ch);
-                }
-                self.read_char();
-            }
-
-            // Decimal point and fractional part
-            if self.ch == '.' && self.peek_char().is_ascii_digit() {
-                is_float = true;
-                number.push(self.ch);
-                self.read_char();
-
-                while self.ch.is_ascii_digit() || self.ch == '_' {
-                    if self.ch != '_' {
-                        number.push(self.ch);
-                    }
-                    self.read_char();
-                }
-            }
-
-            // Exponent part (e.g., e+10, E-5)
-            if self.ch == 'e' || self.ch == 'E' {
-                is_float = true;
-                number.push(self.ch);
-                self.read_char();
-
-                if self.ch == '+' || self.ch == '-' {
-                    number.push(self.ch);
-                    self.read_char();
-                }
-
-                while self.ch.is_ascii_digit() {
-                    number.push(self.ch);
-                    self.read_char();
-                }
-            }
-
-            let suffix = self.read_literal_suffix();
-
-            if is_float {
-                match number.parse::<f64>() {
-                    Ok(value) => TokenKind::Literal(Literal {
-                        kind: LiteralKind::Float(value, suffix),
-                        loc: Location::new(self.line, self.column),
-                        span: Span::new(start, self.column),
-                    }),
-                    Err(_) => {
-                        display_single_diag!(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
-                            location: Some(DiagLoc::new(SourceLoc {
-                                line: self.line,
-                                column: self.column,
-                                file_path: self.file_name.clone()
-                            })),
-                            hint: None,
-                        });
-                    }
-                }
-            } else {
-                match number.parse::<i64>() {
-                    Ok(value) => TokenKind::Literal(Literal {
-                        kind: LiteralKind::Integer(value, suffix),
-                        loc: Location::new(self.line, self.column),
-                        span: Span::new(start, self.column),
-                    }),
+            let is_unsigned = matches!(suffix, Some(ref s) if s.is_unsigned_type_token());
+            let value: i128 = if is_unsigned || base != 10 {
+                match u128::from_str_radix(&number, base) {
+                    Ok(v) => v as i128,
                     Err(_) => {
                         display_single_diag!(Diag {
                             level: DiagLevel::Error,
@@ -711,12 +695,34 @@ impl Lexer {
                         });
                     }
                 }
-            }
+            } else {
+                match i128::from_str_radix(&number, base) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        display_single_diag!(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
+                            location: Some(DiagLoc::new(SourceLoc {
+                                line: self.line,
+                                column: self.column,
+                                file_path: self.file_name.clone()
+                            })),
+                            hint: None,
+                        });
+                    }
+                }
+            };
+
+            LiteralKind::Integer(value, suffix)
         };
 
         Token {
-            kind: token_kind,
-            span: Span { start, end: self.pos },
+            kind: TokenKind::Literal(Literal {
+                kind: token_kind,
+                span: Span::new(start, self.column),
+                loc: Location::new(self.line, self.column),
+            }),
+            span: Span::new(start, self.column),
             loc: Location::new(self.line, self.column),
         }
     }

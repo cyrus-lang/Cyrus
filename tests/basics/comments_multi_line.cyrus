@@ -1,0 +1,12 @@
+// @stdout: Hello, Cyrus!
+
+import std::libc{printf};
+
+fn main() {
+    /*
+    Outer comment start
+    /* Nested comment inside */
+    Outer comment end
+    */
+    printf("Hello, Cyrus!");
+}

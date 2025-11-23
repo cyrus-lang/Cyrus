@@ -3196,7 +3196,7 @@ impl Resolver {
                             let len = string_value.len() + 1;
                             Some(SemanticType::Array(TypedArrayType {
                                 element_type: Box::new(SemanticType::PlainType(PlainType::Char)),
-                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len)),
+                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len.try_into().unwrap())),
                                 loc: SourceLoc::from_loc(literal.loc.clone(), self.current_file_path()),
                             }))
                         }

@@ -1,0 +1,29 @@
+// @stdout: 1234 1122871810 3735928559 42 255 42 127 9223372036854775807
+
+import std::libc { printf };
+
+fn main() {
+    var decimal = 1234;
+    printf("%d ", decimal);
+
+    var hex_val = 0x42EDAA02uint32; 
+    printf("%u ", hex_val);
+
+    var hex_underscores = 0xDE_AD_BE_EFuint32;
+    printf("%u ", hex_underscores);
+
+    var binary_val = 42;
+    printf("%d ", binary_val);
+
+    var u8_val = 0xFFuint8; 
+    printf("%d ", u8_val);
+
+    var decimal_binary = 0b101010;
+    printf("%d ", decimal_binary);
+
+    var i7_val = 127int8;
+    printf("%d ", i7_val);
+
+    var i64_max = 9223372036854775807int64;
+    printf("%lld\n", i64_max);
+}

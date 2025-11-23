@@ -279,6 +279,20 @@ impl fmt::Display for TokenKind {
     }
 }
 
+impl TokenKind {
+    pub fn is_unsigned_type_token(&self) -> bool {
+        match self {
+            TokenKind::UInt
+            | TokenKind::UInt8
+            | TokenKind::UInt16
+            | TokenKind::UInt32
+            | TokenKind::UInt64
+            | TokenKind::UInt128 => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Span {
     pub start: usize,

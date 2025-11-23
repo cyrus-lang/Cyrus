@@ -11,7 +11,7 @@ def get_compiler_version(compiler_path: str, timeout: float = 3.0) -> str | None
     Returns the version string or None if the compiler is not found or fails.
     """
     exe = compiler_path
-    # Resolve via PATH if not absolute
+    
     if not Path(exe).exists():
         which = shutil.which(exe)
         if which:
@@ -41,13 +41,11 @@ def print_compiler_version(compiler_path: str):
 def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir):
     output_binary = Path(output_dir) / file_path.stem
 
-    # Build command with optional extra flags
     build_cmd = [
         compiler_path, "build", str(file_path), "-o", str(output_binary),
     ]
     
     if compiler_flags:
-        # split flags string into list
         build_cmd += shlex.split(compiler_flags)
 
     build_result = subprocess.run(build_cmd, capture_output=True, text=True)

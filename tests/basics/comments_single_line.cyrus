@@ -1,0 +1,9 @@
+// @stdout: Hello, Cyrus!
+
+import std::libc{printf};
+
+// This is a single-line comment.
+fn main() {
+    // This is a single-line comment.
+    printf("Hello, Cyrus!");
+}
