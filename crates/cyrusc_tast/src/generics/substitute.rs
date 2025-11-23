@@ -116,8 +116,8 @@ fn substitute_func_params(
 
     let variadic = func_params.variadic.clone().and_then(|variadic| match &variadic {
         unsubstituted_variadic_param @ TypedFuncVariadicParams::Typed(identifier, sema_ty) => {
-            if let Some(sema_ty) =  substitute_type(sema_ty.clone(), ctx.clone()) {
-                Some(TypedFuncVariadicParams::Typed(identifier.to_string(), sema_ty))
+            if let Some(sema_ty) = substitute_type(sema_ty.clone(), ctx.clone()) {
+                Some(TypedFuncVariadicParams::Typed(identifier.clone(), sema_ty))
             } else {
                 Some(unsubstituted_variadic_param.clone())
             }

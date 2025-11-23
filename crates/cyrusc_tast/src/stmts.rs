@@ -304,7 +304,7 @@ pub struct TypedFuncParams {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,
-    Typed(String, SemanticType),
+    Typed(TypedIdentifier, SemanticType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -402,7 +402,7 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, format_symbol: &(dyn Fn(Symbo
             TypedFuncVariadicParams::UntypedCStyle => params.push_str(", ..."),
             TypedFuncVariadicParams::Typed(identifier, sema_ty) => params.push_str(&format!(
                 ", {}: ...{}",
-                identifier,
+                identifier.name,
                 format_sema_ty(sema_ty.clone(), format_symbol)
             )),
         }

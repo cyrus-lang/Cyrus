@@ -1552,11 +1552,11 @@ impl<'a> AnalysisContext<'a> {
         if let Some(variadic_param) = variadic {
             match variadic_param {
                 TypedFuncVariadicParams::Typed(identifier, _) => {
-                    if param_names.contains(identifier) {
+                    if param_names.contains(&identifier.name) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
-                                param_name: identifier.clone(),
+                                param_name: identifier.name.clone(),
                             }),
                             location: Some(location.clone()),
                             hint: Some("Consider to rename the parameter to a different name.".to_string()),
