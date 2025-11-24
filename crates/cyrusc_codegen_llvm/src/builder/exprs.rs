@@ -1044,10 +1044,11 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_indirect_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
-        let operand = self.emit_expr(&func_call.operand);
+        let lvalue = self.emit_expr(&func_call.operand);
+        let rvalue = self.load_rvalue(lvalue);
 
-        let fn_ty = self.emit_func_ty(operand.ty.as_fn().unwrap());
-        let fn_ptr = operand.as_basic_value().into_pointer_value();
+        let fn_ty = self.emit_func_ty(rvalue.ty.as_fn().unwrap());
+        let fn_ptr = rvalue.as_basic_value().into_pointer_value();
 
         let args: Vec<BasicMetadataValueEnum<'ll>> = func_call
             .args

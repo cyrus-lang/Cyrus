@@ -1,0 +1,14 @@
+// @stdout: 15
+
+import std::libc{printf};
+
+type FnType = fn(int, int) int;
+
+fn mul(a: int, b: int) int {
+    return a * b;
+}
+
+fn main() {
+    const fp: FnType = mul;
+    printf("%d\n", fp(3, 5));
+}
