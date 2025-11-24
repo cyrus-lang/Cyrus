@@ -1,0 +1,18 @@
+// @stdout: 12 10
+
+import std::libc{printf};
+
+fn add(x: int, y: int) int {
+    return x + y;
+}
+
+fn main() {
+    const x1 = 5;
+    const y1 = 7;
+
+    const x2 = 4;
+    const y2 = 6;
+
+    printf("%d ", add(x1, y1));
+    printf("%d\n", add(x2, y2));
+}

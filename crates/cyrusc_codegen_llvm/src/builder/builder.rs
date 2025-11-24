@@ -36,6 +36,7 @@ pub(crate) struct IRBuilderCtx<'ll> {
 
 pub(crate) struct BlockRegistry<'ll> {
     pub(crate) control_flow_stack: Vec<CFEntry<'ll>>,
+    pub(crate) first_block: Option<BasicBlock<'ll>>,
     pub(crate) cur_block: Option<BasicBlock<'ll>>,
     pub(crate) labels: HashMap<LabelID, BasicBlock<'ll>>,
 }
@@ -200,6 +201,7 @@ impl<'ll> Default for BlockRegistry<'ll> {
         Self {
             control_flow_stack: Default::default(),
             cur_block: Default::default(),
+            first_block: Default::default(),
             labels: Default::default(),
         }
     }
