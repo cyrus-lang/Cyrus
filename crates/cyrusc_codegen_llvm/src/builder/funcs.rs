@@ -105,6 +105,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_func_params(func_params);
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();
+
+        self.blockreg.first_block = None;
     }
 
     pub(crate) fn ensure_void_fn_terminated(&self) {

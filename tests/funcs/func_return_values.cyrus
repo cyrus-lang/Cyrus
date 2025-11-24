@@ -1,0 +1,19 @@
+// @stdout: 12.5 X Cyrus!
+
+import std::libc{printf};
+
+fn get_number() float64 {
+    return 12.5;
+}
+
+fn get_char() char {
+    return 'X';
+}
+
+fn get_const_str() char* {
+    return "Cyrus!";
+}
+
+fn main() {
+    printf("%g %c %s", get_number(), get_char(), get_const_str());
+}

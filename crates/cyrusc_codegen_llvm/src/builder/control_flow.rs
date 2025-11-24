@@ -10,7 +10,13 @@ use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
-    llvm_sys::core::{LLVMConstIntGetZExtValue, LLVMIsAConstant},
+    llvm_sys::{
+        core::{
+            LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock, LLVMGetFirstInstruction,
+            LLVMIsAConstantInt,
+        },
+        prelude::{LLVMBasicBlockRef, LLVMValueRef},
+    },
     types::{BasicTypeEnum, StructType},
     values::{AsValueRef, IntValue},
 };
@@ -24,7 +30,6 @@ use inkwell::{
     },
     values::PointerValue,
 };
-use std::ptr::null_mut;
 
 pub(crate) enum CFEntry<'ll> {
     Loop(CFLoop<'ll>),
@@ -64,6 +69,8 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn ensure_entry_block(&mut self) {
         let entry_block = self.new_basic_block("entry");
+        self.blockreg.first_block = Some(entry_block);
+
         self.emit_block(entry_block);
     }
 
@@ -430,18 +437,16 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
         self.blockreg.cur_block = None;
     }
-
+   
     pub(crate) fn emit_if(&mut self, if_stmt: &CIRIfStmt) {
         let exit_block = self.new_basic_block("if.exit");
         let mut then_block = exit_block;
         let mut else_block = exit_block;
 
-        // if then_block body is not empty
         if !if_stmt.then_block.stmts.is_empty() {
             then_block = self.new_basic_block("if.then");
         }
 
-        // if else_block body is not empty
         if if_stmt.else_block.as_ref().map_or(false, |b| !b.stmts.is_empty()) {
             else_block = self.new_basic_block("if.else");
         }
@@ -452,36 +457,45 @@ impl<'ll> IRBuilderCtx<'ll> {
             rvalue.as_basic_value().into_int_value()
         };
 
+        let mut llvm_cur_block = self
+            .blockreg
+            .cur_block
+            .as_ref()
+            .map(|basic_block| basic_block.as_mut_ptr());
+
+        if unsafe { llvm_get_current_block_if_in_use(&mut llvm_cur_block).is_none() } {
+            return;
+        }
+
+        #[allow(unused_assignments)]
         let mut exit_in_use = true;
 
-        // FIXME
-        // let llvm_cur_block = self
-        //     .blockreg
-        //     .cur_block
-        //     .as_ref()
-        //     .map(|basic_block| basic_block.as_mut_ptr());
-        // if unsafe { llvm_get_current_block_if_in_use(&mut llvm_cur_block).is_none() } {
-        //     return;
-        // }
-
-        if unsafe { LLVMIsAConstant(cond_val.as_value_ref()) != null_mut() } && then_block != else_block {
-            if unsafe { LLVMConstIntGetZExtValue(cond_val.as_value_ref()) != 0 } {
-                self.emit_block(then_block);
-                else_block = exit_block;
-            } else {
-                self.emit_block(else_block);
-                then_block = exit_block;
-            }
-        } else {
-            if then_block != else_block {
-                self.llvmbuilder
-                    .build_conditional_branch(cond_val, then_block, else_block)
-                    .unwrap();
+        unsafe {
+            if LLVMIsAConstantInt(cond_val.as_value_ref()) != std::ptr::null_mut() && then_block != else_block {
+                if LLVMConstIntGetZExtValue(cond_val.as_value_ref()) != 0 {
+                    self.llvm_emit_br(then_block.as_mut_ptr());
+                    else_block = exit_block;
+                } else {
+                    self.llvm_emit_br(else_block.as_mut_ptr());
+                    then_block = exit_block;
+                }
                 self.blockreg.cur_block = None;
             } else {
-                exit_in_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) != null_mut() };
-                if exit_in_use {
-                    self.emit_block(exit_block);
+                if then_block != else_block {
+                    self.llvm_emit_cond_br(
+                        cond_val.as_value_ref(),
+                        then_block.as_mut_ptr(),
+                        else_block.as_mut_ptr(),
+                    );
+                    self.blockreg.cur_block = None;
+                } else {
+                    exit_in_use =
+                        LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) != std::ptr::null_mut();
+
+                    if exit_in_use {
+                        self.llvm_emit_br(exit_block.as_mut_ptr());
+                        self.blockreg.cur_block = None;
+                    }
                 }
             }
         }
@@ -489,9 +503,10 @@ impl<'ll> IRBuilderCtx<'ll> {
         if then_block != exit_block {
             self.emit_block(then_block);
             self.emit_body(&if_stmt.then_block);
+
             if let Some(cur_block) = self.blockreg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                    self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
             self.blockreg.cur_block = None;
@@ -499,19 +514,69 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         if else_block != exit_block {
             self.emit_block(else_block);
-            self.emit_body(&if_stmt.else_block.as_ref().unwrap());
+            self.emit_body(if_stmt.else_block.as_ref().unwrap());
 
             if let Some(cur_block) = self.blockreg.cur_block {
                 if cur_block.get_terminator().is_none() {
-                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
-                    exit_in_use = true;
+                    self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
-                self.blockreg.cur_block = None;
             }
+            self.blockreg.cur_block = None;
         }
+
+        let exit_in_use =
+            unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr())) != std::ptr::null_mut() };
 
         if exit_in_use {
             self.emit_block(exit_block);
+        }
+    }
+
+    pub unsafe fn llvm_emit_check_block_branch(&mut self) -> bool {
+        let cur = match self.blockreg.cur_block {
+            Some(bb) => bb,
+            None => return false,
+        };
+
+        // if it's the function's first block, never delete it.
+        if let Some(first) = self.blockreg.first_block {
+            if cur.as_mut_ptr() == first.as_mut_ptr() {
+                return true;
+            }
+        }
+
+        let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(cur.as_mut_ptr())) };
+        if first_use.is_null() {
+            unsafe { LLVMDeleteBasicBlock(cur.as_mut_ptr()) };
+            self.blockreg.cur_block = None;
+            return false;
+        }
+        true
+    }
+
+    pub fn llvm_emit_br(&mut self, next_block: LLVMBasicBlockRef) {
+        unsafe {
+            if !self.llvm_emit_check_block_branch() {
+                return;
+            }
+
+            self.blockreg.cur_block = None;
+            LLVMBuildBr(self.llvmbuilder.as_mut_ptr(), next_block);
+        }
+    }
+
+    pub fn llvm_emit_cond_br(
+        &mut self,
+        cond: LLVMValueRef,
+        then_block: LLVMBasicBlockRef,
+        else_block: LLVMBasicBlockRef,
+    ) {
+        unsafe {
+            if !self.llvm_emit_check_block_branch() {
+                return;
+            }
+            self.blockreg.cur_block = None;
+            LLVMBuildCondBr(self.llvmbuilder.as_mut_ptr(), cond, then_block, else_block);
         }
     }
 
@@ -535,23 +600,23 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 }
 
-// pub unsafe fn llvm_get_current_block_if_in_use(
-//     current_block: &mut Option<LLVMBasicBlockRef>,
-// ) -> Option<LLVMBasicBlockRef> {
-//     if let Some(block) = *current_block {
-//         // if block is unused, delete it
-//         if unsafe { llvm_basic_block_is_unused(block) } {
-//             unsafe { LLVMDeleteBasicBlock(block) };
-//             *current_block = None;
-//             return None;
-//         } else {
-//             return Some(block);
-//         }
-//     }
-//     None
-// }
+pub unsafe fn llvm_get_current_block_if_in_use(
+    current_block: &mut Option<LLVMBasicBlockRef>,
+) -> Option<LLVMBasicBlockRef> {
+    if let Some(block) = *current_block {
+        if unsafe { llvm_basic_block_is_unused(block) } {
+            unsafe { LLVMDeleteBasicBlock(block) };
+            *current_block = None;
+            return None;
+        }
+        return Some(block);
+    }
+    None
+}
 
-// unsafe fn llvm_basic_block_is_unused(block: LLVMBasicBlockRef) -> bool {
-//     let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(block)) };
-//     first_use.is_null()
-// }
+unsafe fn llvm_basic_block_is_unused(block: LLVMBasicBlockRef) -> bool {
+    let first_instr = unsafe { LLVMGetFirstInstruction(block) };
+    let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(block)) };
+
+    first_instr.is_null() && first_use.is_null()
+}
