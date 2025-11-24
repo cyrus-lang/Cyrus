@@ -6,6 +6,7 @@ fn main() {
     const a = 2;
     const b = 5;
 
+    // const and_op = (a < b) && (b > 0);
     const and_op = (b > 0);
     const or_op  = (a > b) || (b > 0);
     const not_op = !(a > b);

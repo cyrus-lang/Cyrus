@@ -1,0 +1,25 @@
+// @stdout: black
+
+import std::libc{printf};
+
+enum Color {
+    Red, 
+    Purple,
+    Black
+}
+
+fn main() {
+    const color = Color.Black;
+
+    switch (color) {
+        case .Red => {
+            printf("red\n");
+        }
+        case .Purple => {
+            printf("purple\n");
+        }
+        case .Black => {
+            printf("black\n");
+        }
+    }
+}

@@ -1,0 +1,25 @@
+// @stdout: green!
+
+import std::libc{printf};
+
+enum Color {
+    Red, 
+    Green = "green!",
+    Custom(uint, uint, uint)
+}
+
+fn main() {
+    const color = Color.Green;
+
+    switch (color) {
+        case .Red => {
+            printf("red\n");
+        }
+        case .Green(value) => {
+            printf("%s\n", value);
+        }
+        case .Custom(a, b, c) => {
+            printf("custom(%d, %d, %d)\n", a, b, c);
+        }
+    }
+}
