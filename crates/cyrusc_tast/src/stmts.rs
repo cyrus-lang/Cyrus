@@ -381,7 +381,7 @@ impl TypedSwitchStmt {
                 TypedSwitchCasePattern::Expr(expr, _) => {
                     let sema_ty = expr.sema_ty.as_ref().unwrap();
                     sema_ty.is_char() || sema_ty.is_integer()
-                },
+                }
                 _ => false,
             })
         })

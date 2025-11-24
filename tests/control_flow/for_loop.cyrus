@@ -1,0 +1,9 @@
+// @stdout: 3 4 5
+
+import std::libc{printf};
+
+fn main() {
+    for (var i = 3; i <= 5; i++) {
+        printf("%d \n", i);
+    }
+}
