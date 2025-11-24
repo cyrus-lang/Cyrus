@@ -117,7 +117,6 @@ impl SemanticType {
     pub fn is_integer(&self) -> bool {
         match self.get_const_inner() {
             SemanticType::PlainType(basic) => basic.is_integer(),
-            SemanticType::Const(inner) => matches!(&**inner, SemanticType::PlainType(b) if b.is_integer()),
             _ => false,
         }
     }
@@ -125,7 +124,6 @@ impl SemanticType {
     pub fn is_float(&self) -> bool {
         match self.get_const_inner() {
             SemanticType::PlainType(basic) => basic.is_float(),
-            SemanticType::Const(inner) => matches!(&**inner, SemanticType::PlainType(b) if b.is_float()),
             _ => false,
         }
     }
@@ -198,7 +196,7 @@ impl SemanticType {
     }
 
     pub fn is_char(&self) -> bool {
-        match self {
+        match self.get_const_inner() {
             SemanticType::PlainType(PlainType::Char) => true,
             _ => false,
         }

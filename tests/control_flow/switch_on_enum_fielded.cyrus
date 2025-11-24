@@ -1,0 +1,21 @@
+// @stdout: text_value(Cyrus!)
+
+import std::libc{printf};
+
+enum Value {
+    Int(int64),
+    Text(char*)
+}
+
+fn main() {
+    const value1 = Value.Text("Cyrus!");
+
+    switch (value1) {
+        case .Int(int_value) => {
+            printf("int_value(%d)\n", int_value);
+        }
+        case .Text(text_value) => {
+            printf("text_value(%s)\n", text_value);
+        }
+    }
+}

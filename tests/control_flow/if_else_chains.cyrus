@@ -1,0 +1,17 @@
+// @stdout: big
+
+import std::libc{printf};
+
+fn main() {
+    const x = 42;
+
+    if (x < 10) {
+        printf("tiny\n");
+    } else if (x < 20) {
+        printf("small\n");
+    } else if (x < 40) {
+        printf("medium\n");
+    } else {
+        printf("big\n");
+    }
+}

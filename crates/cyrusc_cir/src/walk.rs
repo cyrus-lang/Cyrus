@@ -187,7 +187,7 @@ impl<'resolver> CIRWalk<'resolver> {
         if operand_ty.is_enum() {
             self.lower_switch_on_enum(scope_id_opt, &operand, &default, switch_stmt)
         } else {
-            if switch_stmt.includes_any_range() {
+            if switch_stmt.includes_any_range() || !switch_stmt.includes_only_integer() {
                 self.lower_switch_as_chained_if(scope_id_opt, &operand, &default, switch_stmt)
             } else {
                 self.lower_pure_switch(scope_id_opt, &operand, &default, switch_stmt)

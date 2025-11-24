@@ -150,7 +150,7 @@ impl TypedEnumVariant {
     pub fn as_fielded_variant(&self) -> Option<&Vec<TypedEnumValuedField>> {
         match self {
             TypedEnumVariant::Variant(_, valued_fields) => Some(valued_fields),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -372,6 +372,18 @@ impl TypedSwitchStmt {
             case.patterns
                 .iter()
                 .any(|p| matches!(p, TypedSwitchCasePattern::Range(_)))
+        })
+    }
+
+    pub fn includes_only_integer(&self) -> bool {
+        self.cases.iter().any(|case| {
+            case.patterns.iter().any(|p| match p {
+                TypedSwitchCasePattern::Expr(expr, _) => {
+                    let sema_ty = expr.sema_ty.as_ref().unwrap();
+                    sema_ty.is_char() || sema_ty.is_integer()
+                },
+                _ => false,
+            })
         })
     }
 }

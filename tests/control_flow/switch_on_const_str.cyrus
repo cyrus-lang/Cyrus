@@ -1,0 +1,16 @@
+// @stdout: Cyrus The Great
+
+import std::libc{printf};
+
+fn main() {
+    const text = "Cyrus!";
+
+    switch (text) {
+        case "Cyrus!" => {
+            printf("Cyrus The Great\n");
+        }
+        default => {
+            printf("unknown\n");
+        }
+    }
+}
