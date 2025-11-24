@@ -207,7 +207,7 @@ impl<'a> AnalysisContext<'a> {
                     .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
                     .unwrap();
 
-                if !sym.is_kind_of_variable() {
+                if !sym.is_kind_of_variable() && !sym.as_func().is_some() {
                     let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
 
                     self.reporter.report(Diag {
