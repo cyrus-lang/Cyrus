@@ -1,0 +1,12 @@
+// @stdout: 0 1 2 3
+
+import std::libc{printf};
+
+fn main() {
+    var i = 0;
+
+    while (i < 4) {
+        printf("%d ", i);
+        i = i + 1;
+    }
+}

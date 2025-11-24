@@ -382,16 +382,8 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if operand_type.is_const() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
-                location: Some(DiagLoc::new(array_index.loc.clone())),
-                hint: None,
-            });
-        }
-
-        let is_operand_array = operand_type.is_array();
+        let is_operand_const = operand_type.is_const();
+        let is_operand_array = operand_type.get_const_inner().is_array();
 
         if !(operand_type.is_pointer() || is_operand_array) {
             self.reporter.report(Diag {
@@ -429,12 +421,13 @@ impl<'a> AnalysisContext<'a> {
 
         let sema_ty = array_index.operand.sema_ty.clone().unwrap();
 
+        let element_type: SemanticType;
         if is_operand_array {
             let array_type = sema_ty.as_array_type().unwrap();
-            Some(*array_type.element_type.clone())
+            element_type = *array_type.element_type.clone();
         } else {
             // array index on pointer operand
-            let element_type = sema_ty.get_pointer_inner().unwrap();
+            element_type = sema_ty.get_pointer_inner().unwrap();
 
             if element_type.is_void() {
                 self.reporter.report(Diag {
@@ -445,8 +438,12 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
+        }
 
-            Some(element_type.clone())
+        if operand_type.is_const() {
+            Some(SemanticType::Const(Box::new(element_type)))
+        } else {
+            Some(element_type)
         }
     }
 

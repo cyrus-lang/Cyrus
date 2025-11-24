@@ -112,9 +112,15 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_body(&mut self, cir_block: &CIRBlockStmt) {
         self.emit_predefine_labels(cir_block);
-        cir_block.stmts.iter().for_each(|stmt| self.emit_stmt(stmt));
-    }
 
+        for stmt in &cir_block.stmts {
+            if self.blockreg.cur_block.is_none() {
+                break;
+            }
+            self.emit_stmt(stmt);
+        }
+    }
+    
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
         if let Some(expr) = &return_stmt.arg {
             let lvalue = self.emit_expr(&expr);

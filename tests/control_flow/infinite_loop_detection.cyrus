@@ -1,0 +1,16 @@
+// @stdout: done
+
+import std::libc{printf};
+
+fn main() {
+    var x = 0;
+
+    for {
+        if (x == 3) {
+            break;
+        }
+        x = x + 1;
+    }
+
+    printf("done");
+}
