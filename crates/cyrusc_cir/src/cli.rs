@@ -1,4 +1,4 @@
-use cyrusc_cir::walk::walk_program_trees_in_parallel;
+use cyrusc_cir::{monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
@@ -98,7 +98,11 @@ pub fn main() {
                 })
                 .collect();
 
-            let cir_program_trees = walk_program_trees_in_parallel(None, cloned_program_trees, &resolver);
+            let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
+
+            let cir_program_trees =
+                walk_program_trees_in_parallel(None, cloned_program_trees, &resolver, cir_monomorph_registry);
+
             dbg!(cir_program_trees);
         }
         Err(errors) => {

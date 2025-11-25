@@ -24,7 +24,7 @@ impl GenericTemplateRegistry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MonomorphKey(u32);
+pub struct MonomorphKey(pub u32);
 
 impl MonomorphKey {
     pub fn new_instance_key() -> Self {

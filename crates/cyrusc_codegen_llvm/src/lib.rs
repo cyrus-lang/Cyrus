@@ -3,7 +3,7 @@ use crate::{
     builder::builder::IRBuilderCtx,
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
-use cyrusc_cir::CIRProgramTree;
+use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::{CodeGenContext, need_to_be_recompiled},
@@ -26,7 +26,7 @@ use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 mod asan;
@@ -38,10 +38,16 @@ pub struct CodeGenLLVM {
     opts: CodeGenOptions,
     build_dir: String,
     llvmtm: TargetMachine,
+    monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 }
 
 impl CodeGenLLVM {
-    pub fn new(ctx: Rc<CodeGenContext>, opts: CodeGenOptions, build_dir: String) -> Self {
+    pub fn new(
+        ctx: Rc<CodeGenContext>,
+        opts: CodeGenOptions,
+        build_dir: String,
+        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    ) -> Self {
         let llvmtm = create_target_machine(
             opts.cpu.clone(),
             opts.target_triple.clone(),
@@ -55,6 +61,7 @@ impl CodeGenLLVM {
             opts,
             build_dir,
             llvmtm,
+            monomorph_registry,
         }
     }
 
@@ -84,6 +91,7 @@ impl CodeGenLLVM {
         owned_module: &'ctx OwnedModule,
         builder: Rc<Builder<'ctx>>,
         cir_program_tree: &'ctx CIRProgramTree,
+        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     ) {
         {
             let llvmmodule = owned_module.module.borrow();
@@ -98,7 +106,7 @@ impl CodeGenLLVM {
             );
         }
 
-        let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm);
+        let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm, monomorph_registry);
         ir_builder_ctx.emit_program_tree(cir_program_tree);
 
         {
@@ -129,13 +137,11 @@ impl CodeGenLLVM {
     }
 
     fn make_module_name(&self, file_path: Option<String>) -> Option<String> {
-         file_path
-            .clone()
-            .map(|file_path| {
-                let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
-                let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
-                make_module_name_from_filepath(file_path, base_path, stdlib_path)
-            })
+        file_path.clone().map(|file_path| {
+            let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
+            let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
+            make_module_name_from_filepath(file_path, base_path, stdlib_path)
+        })
     }
 }
 
@@ -287,7 +293,12 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
             let builder = owned_module.create_builder();
 
-            self.process_module_with_local_context(&owned_module, builder, cir_program_tree);
+            self.process_module_with_local_context(
+                &owned_module,
+                builder,
+                cir_program_tree,
+                self.monomorph_registry.clone(),
+            );
 
             modules.push(owned_module);
         }
@@ -304,7 +315,12 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
         for cir_program_tree in cir_modules {
             owned_module.file_path = Some(cir_program_tree.file_path.clone());
             let builder = owned_module.create_builder();
-            self.process_module_with_local_context(&owned_module, builder.clone(), cir_program_tree);
+            self.process_module_with_local_context(
+                &owned_module,
+                builder.clone(),
+                cir_program_tree,
+                self.monomorph_registry.clone(),
+            );
         }
 
         owned_module

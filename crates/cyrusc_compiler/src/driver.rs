@@ -4,7 +4,7 @@ use crate::{
     options::{BuildDir, CodeGenOptions, LinkerOutputKind},
 };
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::{CIRProgramTree, walk::walk_program_trees_in_parallel};
+use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
@@ -31,7 +31,7 @@ pub struct CodeGenContextBundle {
     pub entry_file: String,
     pub build_dir: String,
     pub program_trees: Vec<Box<CIRProgramTree>>,
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    pub monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 }
 
 pub fn create_compiler_context(
@@ -144,14 +144,17 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         })
         .collect();
 
-    let cir_program_trees = walk_program_trees_in_parallel(opts.jobs, boxed_trees, &resolver);
+    let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
+
+    let cir_program_trees =
+        walk_program_trees_in_parallel(opts.jobs, boxed_trees, &resolver, cir_monomorph_registry.clone());
 
     CodeGenContextBundle {
         options: opts.clone(),
         entry_file,
         build_dir,
         program_trees: cir_program_trees,
-        monomorph_registry,
+        monomorph_registry: cir_monomorph_registry,
     }
 }
 

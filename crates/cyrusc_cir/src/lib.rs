@@ -4,8 +4,14 @@ use cyrusc_ast::{
     StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_tast::{LabelID, exprs::TypedIdentifier, sigs::StructSig};
+use cyrusc_tast::{
+    LabelID,
+    exprs::TypedIdentifier,
+    generics::monomorph::MonomorphKey,
+    sigs::{FuncSig, StructSig},
+};
 
+pub mod monomorph;
 pub mod types;
 pub mod walk;
 
@@ -70,6 +76,7 @@ pub enum CIRExprKind {
     UnionFieldAccess(CIRUnionFieldAccessExpr),
     Lambda(CIRLambda),
     FuncCall(CIRFuncCall),
+    MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall),
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +90,13 @@ pub struct CIRLambda {
 #[derive(Debug, Clone)]
 pub struct CIRFuncCall {
     pub operand: Box<CIRExpr>,
+    pub args: Vec<CIRExpr>,
+    pub ret_ty: CIRTy,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRMonomorphFuncInstanceCall {
+    pub monomorph_key: MonomorphKey,
     pub args: Vec<CIRExpr>,
     pub ret_ty: CIRTy,
 }

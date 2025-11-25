@@ -1,3 +1,4 @@
+use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_ast::LiteralKind;
@@ -14,33 +15,50 @@ use cyrusc_tast::{
     stmts::*,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
+use std::sync::{Arc, Mutex};
 
-struct CIRWalk<'resolver> {
+pub(crate) struct CIRWalk<'resolver> {
     program: Box<TypedProgramTree>,
-    resolver: &'resolver Resolver,
-    module_id: ModuleID,
+    pub(crate) module_id: ModuleID,
+    pub(crate) resolver: &'resolver Resolver,
+    pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 }
 
 impl<'resolver> CIRWalk<'resolver> {
-    pub fn new(program: Box<TypedProgramTree>, resolver: &'resolver Resolver, module_id: ModuleID) -> Self {
+    pub fn new(
+        program: Box<TypedProgramTree>,
+        resolver: &'resolver Resolver,
+        module_id: ModuleID,
+        cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    ) -> Self {
         Self {
             program,
             resolver,
             module_id,
+            cir_monomorph_registry,
         }
     }
 
-    pub fn run_pass(&self, file_path: String) -> CIRProgramTree {
-        let stmts = self.lower_stmts(None, &self.program.body);
-        CIRProgramTree { body: stmts, file_path }
+    pub fn run_pass(&mut self, file_path: String) -> CIRProgramTree {
+        let stmts = std::mem::take(&mut self.program.body);
+        let lowered_stmts = self.lower_stmts(None, &stmts);
+        CIRProgramTree {
+            body: lowered_stmts,
+            file_path,
+        }
     }
 
-    fn lower_stmts(&self, scope_id_opt: Option<ScopeID>, stmts: &Vec<TypedStmt>) -> Vec<CIRStmt> {
+    fn lower_stmts(&mut self, scope_id_opt: Option<ScopeID>, stmts: &Vec<TypedStmt>) -> Vec<CIRStmt> {
         let mut lowered_stmts: Vec<CIRStmt> = Vec::new();
 
         for stmt in stmts {
             let lowered_stmt = match stmt {
-                TypedStmt::FuncDef(func_def_stmt) => self.lower_func_def(scope_id_opt, func_def_stmt),
+                TypedStmt::FuncDef(func_def_stmt) => {
+                    if func_def_stmt.generic_params.is_some() {
+                        continue; // skip lowering at this point
+                    }
+                    self.lower_func_def(scope_id_opt, func_def_stmt)
+                }
                 TypedStmt::FuncDecl(func_decl_stmt) => self.lower_func_decl(scope_id_opt, func_decl_stmt),
                 TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
                 TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
@@ -97,7 +115,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     pub fn lower_export_tuple_to_vars(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         export_tuple: &TypedExportTupleStmt,
     ) -> Vec<CIRVarStmt> {
@@ -112,7 +130,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_export_pattern_recursive(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         local_scope_rc: &LocalScopeRef,
         pattern: &TypedExportPattern,
@@ -145,7 +163,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_if(&self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
+    fn lower_if(&mut self, scope_id_opt: Option<ScopeID>, if_stmt: &TypedIfStmt) -> CIRStmt {
         let cond = self.lower_expr(scope_id_opt, &if_stmt.cond);
         let then_block = Box::new(self.lower_body(&if_stmt.then_block));
 
@@ -171,7 +189,7 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_switch(&self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
+    fn lower_switch(&mut self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
         let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().get_const_inner();
 
@@ -196,7 +214,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_switch_as_chained_if(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         operand: &CIRExpr,
         default: &Option<CIRBlockStmt>,
@@ -316,7 +334,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_pure_switch(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         operand: &CIRExpr,
         default: &Option<CIRBlockStmt>,
@@ -355,7 +373,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_switch_on_enum(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         operand: &CIRExpr,
         default: &Option<CIRBlockStmt>,
@@ -457,13 +475,13 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_while(&self, scope_id_opt: Option<ScopeID>, while_stmt: &TypedWhileStmt) -> CIRStmt {
+    fn lower_while(&mut self, scope_id_opt: Option<ScopeID>, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(scope_id_opt, &while_stmt.cond));
         let body = Box::new(self.lower_body(&while_stmt.body));
         CIRStmt::While(CIRWhileStmt { cond, body })
     }
 
-    fn lower_for(&self, scope_id_opt: Option<ScopeID>, for_stmt: &TypedForStmt) -> CIRStmt {
+    fn lower_for(&mut self, scope_id_opt: Option<ScopeID>, for_stmt: &TypedForStmt) -> CIRStmt {
         let initializer = for_stmt
             .initializer
             .clone()
@@ -495,7 +513,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::Continue
     }
 
-    fn lower_return(&self, scope_id_opt: Option<ScopeID>, ret: &TypedReturnStmt) -> CIRStmt {
+    fn lower_return(&mut self, scope_id_opt: Option<ScopeID>, ret: &TypedReturnStmt) -> CIRStmt {
         let arg = ret
             .arg
             .clone()
@@ -503,7 +521,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::Return(CIRReturnStmt { arg })
     }
 
-    fn lower_global_var(&self, scope_id_opt: Option<ScopeID>, global_var: &TypedGlobalVarStmt) -> CIRStmt {
+    fn lower_global_var(&mut self, scope_id_opt: Option<ScopeID>, global_var: &TypedGlobalVarStmt) -> CIRStmt {
         let ty = global_var
             .ty
             .as_ref()
@@ -531,7 +549,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_global_var_sig(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         irv_id: IRValueID,
         global_var_sig: &GlobalVarSig,
@@ -557,7 +575,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_var(&self, scope_id_opt: Option<ScopeID>, var: &TypedVarStmt) -> CIRVarStmt {
+    fn lower_var(&mut self, scope_id_opt: Option<ScopeID>, var: &TypedVarStmt) -> CIRVarStmt {
         let ty = var
             .ty
             .as_ref()
@@ -584,7 +602,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_func_type_params(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         func_type_params: &TypedFuncTypeParams,
     ) -> Vec<CIRTy> {
@@ -595,7 +613,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .collect()
     }
 
-    fn lower_func_params(&self, scope_id_opt: Option<ScopeID>, func_params: &TypedFuncParams) -> CIRFuncParams {
+    fn lower_func_params(&mut self, scope_id_opt: Option<ScopeID>, func_params: &TypedFuncParams) -> CIRFuncParams {
         CIRFuncParams {
             list: func_params
                 .list
@@ -615,7 +633,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_func_def(&self, scope_id_opt: Option<ScopeID>, func_def: &TypedFuncDefStmt) -> CIRStmt {
+    fn lower_func_def(&mut self, scope_id_opt: Option<ScopeID>, func_def: &TypedFuncDefStmt) -> CIRStmt {
         let params = self.lower_func_params(scope_id_opt, &func_def.params);
 
         let body = self.lower_body(&func_def.body);
@@ -631,7 +649,7 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_func_decl(&self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRStmt {
+    fn lower_func_decl(&mut self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRStmt {
         let params = self.lower_func_params(scope_id_opt, &func_decl.params);
         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
 
@@ -644,7 +662,12 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_func_sig(&self, scope_id_opt: Option<ScopeID>, irv_id: IRValueID, func_sig: &FuncSig) -> CIRFuncDeclStmt {
+    pub(crate) fn lower_func_sig(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        irv_id: IRValueID,
+        func_sig: &FuncSig,
+    ) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(scope_id_opt, &func_sig.params);
         let ret = self.lower_sema_ty(scope_id_opt, &func_sig.return_type);
 
@@ -657,7 +680,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_body(&self, block: &TypedBlockStmt) -> CIRBlockStmt {
+    pub(crate) fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
         let mut stmts = self.lower_stmts(Some(block.scope_id), &block.stmts);
         let defer_stmts: Vec<TypedStmt> = block.defers.iter().map(|defer| *defer.operand.clone()).collect();
         stmts.extend(self.lower_stmts(Some(block.scope_id), &defer_stmts));
@@ -666,7 +689,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     // exprs
 
-    fn lower_expr(&self, scope_id_opt: Option<ScopeID>, expr: &TypedExprStmt) -> CIRExpr {
+    fn lower_expr(&mut self, scope_id_opt: Option<ScopeID>, expr: &TypedExprStmt) -> CIRExpr {
         if cfg!(debug_assertions) {
             if expr.sema_ty.is_none() {
                 dbg!(expr.clone());
@@ -704,7 +727,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExpr { kind, ty }
     }
 
-    pub(crate) fn lower_load_symbol(&self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
+    pub(crate) fn lower_load_symbol(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let sym = self
             .resolver
@@ -738,7 +761,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     pub(crate) fn lower_struct_init(
-        &self,
+        &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init_expr: &TypedStructInitExpr,
     ) -> CIRExprKind {
@@ -777,7 +800,11 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_tuple_access(&self, scope_id_opt: Option<ScopeID>, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
+    fn lower_tuple_access(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        tuple_access: &TypedTupleAccessExpr,
+    ) -> CIRExprKind {
         let operand = Box::new(self.lower_expr(scope_id_opt, &tuple_access.operand));
         CIRExprKind::TupleAccess(CIRTupleAccessExpr {
             operand,
@@ -785,7 +812,7 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_tuple(&self, scope_id_opt: Option<ScopeID>, tuple: &TypedTupleExpr) -> CIRExprKind {
+    fn lower_tuple(&mut self, scope_id_opt: Option<ScopeID>, tuple: &TypedTupleExpr) -> CIRExprKind {
         let elms: Vec<CIRExpr> = tuple
             .expr_list
             .iter()
@@ -794,7 +821,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExprKind::Tuple(CIRTupleExpr { elms })
     }
 
-    fn lower_lambda(&self, scope_id_opt: Option<ScopeID>, lambda: &TypedLambdaExpr) -> CIRExprKind {
+    fn lower_lambda(&mut self, scope_id_opt: Option<ScopeID>, lambda: &TypedLambdaExpr) -> CIRExprKind {
         let params = self.lower_func_params(scope_id_opt, &lambda.params);
         let body = Box::new(self.lower_body(&lambda.body));
         let ret = self.lower_sema_ty(scope_id_opt, &lambda.return_type);
@@ -807,7 +834,7 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_method_call(&self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
+    fn lower_method_call(&mut self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let sym = self
             .resolver
@@ -868,7 +895,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_field_access(&self, scope_id_opt: Option<ScopeID>, field_access: &TypedFieldAccess) -> CIRExprKind {
+    fn lower_field_access(&mut self, scope_id_opt: Option<ScopeID>, field_access: &TypedFieldAccess) -> CIRExprKind {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let sym = self
             .resolver
@@ -922,7 +949,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_func_call(&self, scope_id_opt: Option<ScopeID>, func_call: &TypedFuncCall) -> CIRExprKind {
+    fn lower_func_call(&mut self, scope_id_opt: Option<ScopeID>, func_call: &TypedFuncCall) -> CIRExprKind {
         let args: Vec<CIRExpr> = func_call
             .args
             .iter()
@@ -931,14 +958,21 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let ret_ty = self.lower_sema_ty(scope_id_opt, &func_call.return_type.clone().unwrap());
 
-        CIRExprKind::FuncCall(CIRFuncCall {
-            operand: Box::new(self.lower_expr(scope_id_opt, &func_call.operand)),
-            args,
-            ret_ty,
-        })
+        if let Some(monomorph_key) = &func_call.monomorph_key {
+            self.insert_monomorph_func_instance(scope_id_opt, monomorph_key);
+
+            CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
+                monomorph_key: monomorph_key.clone(),
+                args,
+                ret_ty,
+            })
+        } else {
+            let operand = Box::new(self.lower_expr(scope_id_opt, &func_call.operand));
+            CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+        }
     }
 
-    fn lower_ustruct_value(&self, scope_id_opt: Option<ScopeID>, ustruct_value: &TypedUStructValue) -> CIRExprKind {
+    fn lower_ustruct_value(&mut self, scope_id_opt: Option<ScopeID>, ustruct_value: &TypedUStructValue) -> CIRExprKind {
         let fields: Vec<CIRExpr> = ustruct_value
             .fields
             .iter()
@@ -962,14 +996,14 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
     }
 
-    fn lower_array_index(&self, scope_id_opt: Option<ScopeID>, array_index: &TypedArrayIndexExpr) -> CIRExprKind {
+    fn lower_array_index(&mut self, scope_id_opt: Option<ScopeID>, array_index: &TypedArrayIndexExpr) -> CIRExprKind {
         CIRExprKind::ArrayIndex(CIRArrayIndexExpr {
             operand: Box::new(self.lower_expr(scope_id_opt, &array_index.operand)),
             index: Box::new(self.lower_expr(scope_id_opt, &array_index.index)),
         })
     }
 
-    fn lower_array(&self, scope_id_opt: Option<ScopeID>, array: &TypedArrayExpr) -> CIRExprKind {
+    fn lower_array(&mut self, scope_id_opt: Option<ScopeID>, array: &TypedArrayExpr) -> CIRExprKind {
         let elms: Vec<CIRExpr> = array
             .elements
             .iter()
@@ -982,19 +1016,19 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_deref(&self, scope_id_opt: Option<ScopeID>, deref: &TypedDerefExpr) -> CIRExprKind {
+    fn lower_deref(&mut self, scope_id_opt: Option<ScopeID>, deref: &TypedDerefExpr) -> CIRExprKind {
         CIRExprKind::Deref(CIRDerefExpr {
             operand: Box::new(self.lower_expr(scope_id_opt, &deref.operand)),
         })
     }
 
-    fn lower_addr_of(&self, scope_id_opt: Option<ScopeID>, addr_of: &TypedAddrOfExpr) -> CIRExprKind {
+    fn lower_addr_of(&mut self, scope_id_opt: Option<ScopeID>, addr_of: &TypedAddrOfExpr) -> CIRExprKind {
         CIRExprKind::AddrOf(CIRAddrOfExpr {
             operand: Box::new(self.lower_expr(scope_id_opt, &addr_of.operand)),
         })
     }
 
-    fn lower_size_of(&self, scope_id_opt: Option<ScopeID>, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
+    fn lower_size_of(&mut self, scope_id_opt: Option<ScopeID>, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
         let sema_ty = match &sizeof.operand.kind {
             TypedExprKind::SemanticType(sema_ty) => sema_ty.clone(),
             _ => sizeof.operand.sema_ty.clone().unwrap(),
@@ -1004,28 +1038,28 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExprKind::SizeOf(CIRSizeOfExpr { ty })
     }
 
-    fn lower_cast(&self, scope_id_opt: Option<ScopeID>, cast: &TypedCastExpr) -> CIRExprKind {
+    fn lower_cast(&mut self, scope_id_opt: Option<ScopeID>, cast: &TypedCastExpr) -> CIRExprKind {
         CIRExprKind::Cast(CIRCastExpr {
             operand: Box::new(self.lower_expr(scope_id_opt, &cast.operand)),
             ty: Box::new(self.lower_sema_ty(scope_id_opt, &cast.target_type)),
         })
     }
 
-    fn lower_assign(&self, scope_id_opt: Option<ScopeID>, assign: &TypedAssignExpr) -> CIRExprKind {
+    fn lower_assign(&mut self, scope_id_opt: Option<ScopeID>, assign: &TypedAssignExpr) -> CIRExprKind {
         CIRExprKind::Assign(CIRAssignExpr {
             lhs: Box::new(self.lower_expr(scope_id_opt, &assign.lhs)),
             rhs: Box::new(self.lower_expr(scope_id_opt, &assign.rhs)),
         })
     }
 
-    fn lower_unary(&self, scope_id_opt: Option<ScopeID>, unary: &TypedUnaryExpr) -> CIRExprKind {
+    fn lower_unary(&mut self, scope_id_opt: Option<ScopeID>, unary: &TypedUnaryExpr) -> CIRExprKind {
         CIRExprKind::Unary(CIRUnaryExpr {
             op: unary.op.clone(),
             operand: Box::new(self.lower_expr(scope_id_opt, &unary.operand)),
         })
     }
 
-    fn lower_infix(&self, scope_id_opt: Option<ScopeID>, infix: &TypedInfixExpr) -> CIRExprKind {
+    fn lower_infix(&mut self, scope_id_opt: Option<ScopeID>, infix: &TypedInfixExpr) -> CIRExprKind {
         CIRExprKind::Infix(CIRInfixExpr {
             op: infix.op.clone(),
             lhs: Box::new(self.lower_expr(scope_id_opt, &infix.lhs)),
@@ -1033,14 +1067,14 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_prefix(&self, scope_id_opt: Option<ScopeID>, prefix: &TypedPrefixExpr) -> CIRExprKind {
+    fn lower_prefix(&mut self, scope_id_opt: Option<ScopeID>, prefix: &TypedPrefixExpr) -> CIRExprKind {
         CIRExprKind::Prefix(CIRPrefixExpr {
             op: prefix.op.clone(),
             operand: Box::new(self.lower_expr(scope_id_opt, &prefix.operand)),
         })
     }
 
-    fn lower_literal(&self, scope_id_opt: Option<ScopeID>, lit: &TypedLiteralExpr) -> CIRExprKind {
+    fn lower_literal(&mut self, scope_id_opt: Option<ScopeID>, lit: &TypedLiteralExpr) -> CIRExprKind {
         let kind = match &lit.kind {
             LiteralKind::Integer(value, ..) => {
                 let is_signed = lit.ty.clone().unwrap().as_basic_type().unwrap().is_signed();
@@ -1062,7 +1096,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     // types
 
-    fn lower_sema_ty(&self, scope_id_opt: Option<ScopeID>, sema_ty: &SemanticType) -> CIRTy {
+    fn lower_sema_ty(&mut self, scope_id_opt: Option<ScopeID>, sema_ty: &SemanticType) -> CIRTy {
         match sema_ty {
             SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(scope_id_opt, resolved_symbol),
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
@@ -1075,7 +1109,10 @@ impl<'resolver> CIRWalk<'resolver> {
                     },
                     TypedArrayCapacity::Dynamic => todo!(),
                 };
-                CIRTy::Array(CIRArrayTy { ty: Box::new(ty), len: len.try_into().unwrap() })
+                CIRTy::Array(CIRArrayTy {
+                    ty: Box::new(ty),
+                    len: len.try_into().unwrap(),
+                })
             }
             SemanticType::Const(sema_ty) => CIRTy::Const(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
             SemanticType::Pointer(sema_ty) => CIRTy::Pointer(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
@@ -1115,7 +1152,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_generic_type(&self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
+    fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let sym = self
             .resolver
@@ -1146,7 +1183,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_struct_sig_as_struct_ty(&self, scope_id_opt: Option<ScopeID>, struct_sig: &StructSig) -> CIRStructTy {
+    fn lower_struct_sig_as_struct_ty(&mut self, scope_id_opt: Option<ScopeID>, struct_sig: &StructSig) -> CIRStructTy {
         let fields: Vec<CIRTy> = struct_sig
             .fields
             .iter()
@@ -1159,7 +1196,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_enum_ty_variant(&self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumTyVariant {
+    fn lower_enum_ty_variant(&mut self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumTyVariant {
         match variant {
             TypedEnumVariant::Identifier(..) => CIREnumTyVariant::Identifier,
             TypedEnumVariant::Valued(_, expr) => {
@@ -1175,7 +1212,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_enum_sig_as_enum_ty(&self, scope_id_opt: Option<ScopeID>, enum_sig: &EnumSig) -> CIREnumTy {
+    fn lower_enum_sig_as_enum_ty(&mut self, scope_id_opt: Option<ScopeID>, enum_sig: &EnumSig) -> CIREnumTy {
         let variants: Vec<CIREnumTyVariant> = enum_sig
             .variants
             .iter()
@@ -1185,7 +1222,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIREnumTy { variants }
     }
 
-    fn lower_union_sig_as_union_ty(&self, scope_id_opt: Option<ScopeID>, union_sig: &UnionSig) -> CIRUnionTy {
+    fn lower_union_sig_as_union_ty(&mut self, scope_id_opt: Option<ScopeID>, union_sig: &UnionSig) -> CIRUnionTy {
         let fields: Vec<CIRTy> = union_sig
             .fields
             .iter()
@@ -1195,7 +1232,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRUnionTy { fields }
     }
 
-    fn lower_resolved_symbol(&self, scope_id_opt: Option<ScopeID>, resolved_symbol: &ResolvedSymbol) -> CIRTy {
+    fn lower_resolved_symbol(&mut self, scope_id_opt: Option<ScopeID>, resolved_symbol: &ResolvedSymbol) -> CIRTy {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let sym = self
             .resolver
@@ -1225,6 +1262,7 @@ pub fn walk_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
     resolver: &Resolver,
+    cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 ) -> Vec<Box<CIRProgramTree>> {
     use rayon::prelude::*;
 
@@ -1239,7 +1277,12 @@ pub fn walk_program_trees_in_parallel(
         program_trees
             .into_par_iter()
             .map(|program_tree| {
-                let cir_walk = CIRWalk::new(program_tree.clone(), resolver, program_tree.module_id);
+                let mut cir_walk = CIRWalk::new(
+                    program_tree.clone(),
+                    resolver,
+                    program_tree.module_id,
+                    cir_monomorph_registry.clone(),
+                );
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
                 Box::new(cir_program_tree)
             })

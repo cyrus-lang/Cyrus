@@ -15,9 +15,8 @@ use cyrusc_tast::{
     format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
         generic_type::GenericType,
-        mapping_ctx::GenericMappingCtx,
         monomorph::MonomorphKey,
-        substitute::{substitute_func_sig, substitute_struct_sig, substitute_union_sig},
+        substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
@@ -1634,7 +1633,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.normalize_func_params(&mut func_sig.params, func_call.loc.clone());
 
-        let return_type = self.check_func_call(
+        self.check_func_call(
             scope_id_opt,
             &mut func_sig,
             &generic_type_opt,
@@ -1659,16 +1658,21 @@ impl<'a> AnalysisContext<'a> {
                 // only specialize function definition which necessarily includes the body block
                 func_call.monomorph_key = self.register_specialized_generic_func(&func_sig, &generic_type);
             }
+
+            // substitutes the func type inside of the func_call operand
+            func_call.operand.sema_ty = substitute_type(func_call.operand.sema_ty.clone().unwrap(), generic_type.mapping_ctx);
         }
 
         update_global_symbol!(self, func_sig.module_id, func_sig.symbol_id.unwrap(),
             SymbolEntryKind::Func(resolved_func) => resolved_func, {
                 resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
-                resolved_func.func_sig.return_type = return_type.clone();
+                resolved_func.func_sig.return_type = func_sig.return_type.clone();
             }
         );
-        func_call.return_type = Some(return_type.clone());
-        Some(return_type)
+
+        func_call.return_type = Some(func_sig.return_type.clone());
+
+        Some(func_sig.return_type)
     }
 
     fn register_specialized_generic_func(

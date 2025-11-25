@@ -33,6 +33,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         context.clone(),
         opts.clone(),
         bundle.build_dir,
+        bundle.monomorph_registry.clone(),
     )));
 
     if opts.display_target_machine {
@@ -84,6 +85,7 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
         context.clone(),
         opts.clone(),
         bundle.build_dir,
+        bundle.monomorph_registry.clone(),
     )));
 
     if opts.display_target_machine {
@@ -149,6 +151,7 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
         context.clone(),
         opts.clone(),
         bundle.build_dir,
+        bundle.monomorph_registry.clone(),
     )));
 
     if opts.display_target_machine {
