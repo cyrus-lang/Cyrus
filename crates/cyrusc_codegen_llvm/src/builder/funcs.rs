@@ -43,21 +43,31 @@ impl<'ll> IRBuilderCtx<'ll> {
             // insert func to current module
             let fn_ty = self.emit_func_ty(monomorph_func_entry.func_ty.clone());
             {
-                let llvmmodule = self.llvmmodule.borrow_mut();
-                // FIXME ABI Name mangling isn't implemented yet!
-                let func_name = format!("monomorph.instance@{}", monomorph_func_entry.irv_id);
+                let fn_value = {
+                    let llvmmodule = self.llvmmodule.borrow_mut();
+                    let mut irreg = self.irreg.borrow_mut();
 
-                let fn_value = match llvmmodule.get_function(&func_name) {
-                    Some(f) => f,
-                    None => llvmmodule.add_function(&func_name, fn_ty, None),
+                    // FIXME ABI Name mangling isn't implemented yet!
+                    let func_name = format!("monomorph.instance@{}", monomorph_func_entry.irv_id);
+
+                    let fn_value = match llvmmodule.get_function(&func_name) {
+                        Some(f) => f,
+                        None => llvmmodule.add_function(&func_name, fn_ty, None),
+                    };
+
+                    irreg.insert(
+                        monomorph_func_entry.irv_id,
+                        LocalIRValue::Func(fn_value, CIRTy::FuncType(monomorph_func_entry.func_ty.clone())),
+                    );
+
+                    fn_value
                 };
-
-                drop(llvmmodule);
 
                 let parent_cur_fn = self.cur_fn.clone();
                 let parent_blockreg = self.blockreg.clone();
 
                 self.cur_fn = Some(fn_value);
+
                 self.emit_func_body(&monomorph_func_entry.func_params, &monomorph_func_entry.func_body);
 
                 {
