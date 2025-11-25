@@ -1698,6 +1698,11 @@ impl<'a> AnalysisContext<'a> {
         let mut analyzed_body = template_body.clone();
         self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
 
+        {
+            let mut ctx = self.monomorph_registry.lock().unwrap();
+            ctx.register_template(func_sig.symbol_id.unwrap(), analyzed_body);
+        }
+
         let monomorph_key = {
             let mut ctx = self.monomorph_registry.lock().unwrap();
             let (key, _) = ctx.register_func(base_symbol, mapping_ctx);
