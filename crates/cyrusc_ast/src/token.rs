@@ -251,7 +251,7 @@ impl fmt::Display for TokenKind {
             Self::As => write!(f, "as"),
             Self::Extern => write!(f, "extern"),
             Self::Inline => write!(f, "inline"),
-            Self::Public => write!(f, "public"),
+            Self::Public => write!(f, "pub"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
             Self::AlignOf => write!(f, "alignof"),

@@ -9,9 +9,8 @@ use crate::{
 use cyrusc_abi::mangling::{ABINameMangling, Cyrus_ABI};
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-    cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
+    cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, monomorph::CIRMonomorphRegistry,
 };
-use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     basic_block::BasicBlock,
@@ -22,7 +21,12 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{FunctionValue, GlobalValue},
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) llvmctx: &'ll Context,
@@ -32,8 +36,10 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
     pub(crate) cur_fn: Option<FunctionValue<'ll>>,
     pub(crate) blockreg: BlockRegistry<'ll>,
+    pub(crate) monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct BlockRegistry<'ll> {
     pub(crate) control_flow_stack: Vec<CFEntry<'ll>>,
     pub(crate) first_block: Option<BasicBlock<'ll>>,
@@ -42,7 +48,12 @@ pub(crate) struct BlockRegistry<'ll> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub fn new(owned_module: &'ll OwnedModule, llvmbuilder: &'ll Builder<'ll>, llvmtm: &'ll TargetMachine) -> Self {
+    pub fn new(
+        owned_module: &'ll OwnedModule,
+        llvmbuilder: &'ll Builder<'ll>,
+        llvmtm: &'ll TargetMachine,
+        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    ) -> Self {
         let llvmmodule = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
         };
@@ -59,6 +70,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             irreg,
             cur_fn: None,
             blockreg,
+            monomorph_registry,
         }
     }
 
@@ -121,7 +133,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_stmt(stmt);
         }
     }
-    
+
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
         if let Some(expr) = &return_stmt.arg {
             let lvalue = self.emit_expr(&expr);

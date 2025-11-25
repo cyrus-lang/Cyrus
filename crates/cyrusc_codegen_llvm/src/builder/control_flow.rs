@@ -31,10 +31,12 @@ use inkwell::{
     values::PointerValue,
 };
 
+#[derive(Debug, Clone)]
 pub(crate) enum CFEntry<'ll> {
     Loop(CFLoop<'ll>),
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct CFLoop<'ll> {
     pub cond_block: Option<BasicBlock<'ll>>,
     pub inc_block: Option<BasicBlock<'ll>>,
@@ -437,7 +439,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
         self.blockreg.cur_block = None;
     }
-   
+
     pub(crate) fn emit_if(&mut self, if_stmt: &CIRIfStmt) {
         let exit_block = self.new_basic_block("if.exit");
         let mut then_block = exit_block;

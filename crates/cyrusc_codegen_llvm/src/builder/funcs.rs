@@ -6,15 +6,69 @@ use crate::{
     },
     llvm::abi::modifiers::apply_func_modifiers,
 };
-use cyrusc_abi::{inline::Inlining, modifiers::FuncModifiers};
-use cyrusc_cir::{CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty, types::CIRTy};
-use cyrusc_tast::types::PlainType;
+use cyrusc_abi::{inline::Inlining, linkage::Linkage, modifiers::FuncModifiers};
+use cyrusc_cir::{
+    CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
+    monomorph::CIRMonomorphEntry,
+    types::{CIRFuncTy, CIRTy},
+};
+use cyrusc_tast::{generics::monomorph::MonomorphKey, types::PlainType};
 use inkwell::{
     types::BasicTypeEnum,
     values::{FunctionValue, PointerValue},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_monomorph_func_instance(
+        &mut self,
+        monomorph_key: &MonomorphKey,
+    ) -> (FunctionValue<'ll>, CIRFuncTy) {
+        {
+            let monomorph_registry = self.monomorph_registry.lock().unwrap();
+            let monomorph_entry = monomorph_registry.get(monomorph_key).cloned().unwrap();
+            let monomorph_func_entry = match monomorph_entry {
+                CIRMonomorphEntry::Func(entry) => entry,
+            };
+
+            let irreg = self.irreg.borrow();
+            if let Some(local_ir_value) = irreg.get(monomorph_func_entry.irv_id) {
+                // already exists in current module
+                let fn_value = local_ir_value.as_func().cloned().unwrap();
+                return (fn_value, monomorph_func_entry.func_ty.clone());
+            }
+
+            drop(monomorph_registry);
+            drop(irreg);
+
+            // insert func to current module
+            let fn_ty = self.emit_func_ty(monomorph_func_entry.func_ty.clone());
+            {
+                let llvmmodule = self.llvmmodule.borrow_mut();
+                // FIXME ABI Name mangling isn't implemented yet!
+                let func_name = format!("monomorph.instance@{}", monomorph_func_entry.irv_id);
+                let fn_value = llvmmodule.add_function(&func_name, fn_ty, None);
+                drop(llvmmodule);
+
+                let parent_cur_fn = self.cur_fn.clone();
+                let parent_blockreg = self.blockreg.clone();
+
+                self.cur_fn = Some(fn_value);
+                self.emit_func_body(&monomorph_func_entry.func_params, &monomorph_func_entry.func_body);
+
+                {
+                    // back to parent state because we emitted a new function in the middle of an another function
+                    self.cur_fn = parent_cur_fn;
+                    self.blockreg = parent_blockreg;
+                    if let Some(cur_block) = self.blockreg.cur_block {
+                        self.emit_block(cur_block);
+                    }
+                }
+
+                return (fn_value, monomorph_func_entry.func_ty.clone());
+            }
+        }
+    }
+
     pub(crate) fn emit_fn_as_ptr(&self, fn_value: FunctionValue<'ll>) -> PointerValue<'ll> {
         fn_value.as_global_value().as_pointer_value()
     }

@@ -12,7 +12,7 @@ use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     module::Linkage,
-    types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum},
+    types::{AnyTypeEnum, ArrayType, BasicTypeEnum},
     values::{
         AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue, StructValue,
     },
@@ -59,6 +59,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.emit_union_field_access(union_field_access_expr)
             }
             CIRExprKind::FuncCall(func_call) => self.emit_func_call(func_call),
+            CIRExprKind::MonomorphFuncInstanceCall(monomorph_func_instance_call) => {
+                self.emit_monomorph_func_instance_call(monomorph_func_instance_call)
+            }
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
         }
     }
@@ -998,13 +1001,32 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
+    pub(crate) fn emit_monomorph_func_instance_call(
+        &mut self,
+        monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
+    ) -> InternalValue<'ll> {
+        let (fn_value, cir_func_ty) = self.emit_monomorph_func_instance(&monomorph_func_instance_call.monomorph_key);
+
+        self.emit_direct_call(
+            &cir_func_ty,
+            &monomorph_func_instance_call.args,
+            &monomorph_func_instance_call.ret_ty,
+            &fn_value,
+        )
+    }
+
     pub(crate) fn emit_func_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
         // check if it's a direct or indirect call
         if let Some(fn_value) = rvalue.as_func() {
-            self.emit_direct_call(&rvalue.ty.as_fn().unwrap(), func_call, fn_value)
+            self.emit_direct_call(
+                &rvalue.ty.as_fn().unwrap(),
+                &func_call.args,
+                &func_call.ret_ty,
+                fn_value,
+            )
         } else if rvalue.as_basic_value().is_pointer_value() {
             self.emit_indirect_call(func_call)
         } else {
@@ -1015,11 +1037,11 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_direct_call(
         &mut self,
         fn_ty: &CIRFuncTy,
-        func_call: &CIRFuncCall,
+        args: &Vec<CIRExpr>,
+        ret_ty: &CIRTy,
         fn_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
-        let args: Vec<BasicMetadataValueEnum<'ll>> = func_call
-            .args
+        let args: Vec<BasicMetadataValueEnum<'ll>> = args
             .iter()
             .enumerate()
             .map(|(idx, expr)| {
@@ -1037,9 +1059,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
 
         if let Some(basic_value) = call_site.try_as_basic_value().basic() {
-            InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))
+            InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(basic_value))
         } else {
-            self.emit_null(func_call.ret_ty.clone())
+            self.emit_null(ret_ty.clone())
         }
     }
 
