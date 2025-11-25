@@ -6,7 +6,7 @@ use crate::{
     },
     llvm::abi::modifiers::apply_func_modifiers,
 };
-use cyrusc_abi::{inline::Inlining, linkage::Linkage, modifiers::FuncModifiers};
+use cyrusc_abi::{inline::Inlining, modifiers::FuncModifiers};
 use cyrusc_cir::{
     CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
     monomorph::CIRMonomorphEntry,

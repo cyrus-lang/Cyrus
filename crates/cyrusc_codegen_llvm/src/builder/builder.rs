@@ -11,6 +11,7 @@ use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, monomorph::CIRMonomorphRegistry,
 };
+use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     basic_block::BasicBlock,
