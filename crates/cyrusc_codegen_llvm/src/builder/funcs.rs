@@ -46,7 +46,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let llvmmodule = self.llvmmodule.borrow_mut();
                 // FIXME ABI Name mangling isn't implemented yet!
                 let func_name = format!("monomorph.instance@{}", monomorph_func_entry.irv_id);
-                let fn_value = llvmmodule.add_function(&func_name, fn_ty, None);
+
+                let fn_value = match llvmmodule.get_function(&func_name) {
+                    Some(f) => f,
+                    None => llvmmodule.add_function(&func_name, fn_ty, None),
+                };
+
                 drop(llvmmodule);
 
                 let parent_cur_fn = self.cur_fn.clone();

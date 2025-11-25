@@ -1,12 +1,31 @@
-use crate::{SymbolID, generics::mapping_ctx::GenericMappingCtx, stmts::TypedBlockStmt};
+use crate::{
+    SymbolID,
+    generics::mapping_ctx::{GenericMappingCtx, mapping_ctx_eq_refcell},
+    stmts::TypedBlockStmt,
+};
 use rand::Rng;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub type MonomorphID = u32;
 
 #[derive(Debug, Clone)]
 pub struct GenericTemplateRegistry {
-    map: HashMap<SymbolID, TypedBlockStmt>,
+    map: HashMap<SymbolID, GenericTemplateEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericTemplateEntry {
+    pub body: TypedBlockStmt,
+}
+
+#[derive(Debug, Clone)]
+pub enum SpecializedInstance {
+    Func(SpecializedFuncEntry),
+}
+
+#[derive(Debug, Clone)]
+pub struct SpecializedFuncEntry {
+    pub body: TypedBlockStmt,
 }
 
 impl GenericTemplateRegistry {
@@ -15,10 +34,10 @@ impl GenericTemplateRegistry {
     }
 
     pub fn register_template(&mut self, base: SymbolID, body: TypedBlockStmt) {
-        self.map.insert(base, body);
+        self.map.insert(base, GenericTemplateEntry { body });
     }
 
-    pub fn get_template(&self, base: SymbolID) -> Option<&TypedBlockStmt> {
+    pub fn get_template(&self, base: SymbolID) -> Option<&GenericTemplateEntry> {
         self.map.get(&base)
     }
 }
@@ -60,6 +79,7 @@ pub struct MonomorphRegistry {
     next_id: MonomorphID,
     map: HashMap<MonomorphKey, MonomorphEntry>,
     pub templates: GenericTemplateRegistry,
+    pub specialized_func_instances: HashMap<MonomorphKey, SpecializedFuncEntry>,
 }
 
 impl MonomorphRegistry {
@@ -68,6 +88,7 @@ impl MonomorphRegistry {
             next_id: 1,
             map: HashMap::new(),
             templates: GenericTemplateRegistry::new(),
+            specialized_func_instances: HashMap::new(),
         }
     }
 
@@ -75,12 +96,32 @@ impl MonomorphRegistry {
         self.templates.register_template(base, body);
     }
 
-    pub fn get_template(&self, base: SymbolID) -> Option<&TypedBlockStmt> {
+    pub fn register_specialized_func_instance(&mut self, monomorph_key: MonomorphKey, instance: SpecializedFuncEntry) {
+        self.specialized_func_instances.insert(monomorph_key, instance);
+    }
+
+    pub fn get_specialized_func_instance(&mut self, monomorph_key: MonomorphKey) -> Option<&SpecializedFuncEntry> {
+        self.specialized_func_instances.get(&monomorph_key)
+    }
+
+    pub fn get_template(&self, base: SymbolID) -> Option<&GenericTemplateEntry> {
         self.templates.get_template(base)
     }
 
     pub fn get(&self, key: &MonomorphKey) -> Option<&MonomorphEntry> {
         self.map.get(key)
+    }
+
+    pub fn get_func_entry_by_mapping_ctx(&self, mapping_ctx: Rc<RefCell<GenericMappingCtx>>) -> Option<&MonomorphKey> {
+        self.map
+            .iter()
+            .find(|(_, monomorph_entry)| match monomorph_entry {
+                MonomorphEntry::Func(monomorph_func_entry) => mapping_ctx_eq_refcell(
+                    &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+                    &mapping_ctx,
+                ),
+            })
+            .map(|(monomorph_key, _)| monomorph_key)
     }
 
     pub fn register_func(

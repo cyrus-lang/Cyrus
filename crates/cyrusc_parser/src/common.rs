@@ -16,7 +16,7 @@ impl Parser {
                 loc: self.current_token().loc.clone(),
             }),
             _ => {
-                return Err(Diag {
+                Err(Diag {
                     kind: Box::new(ParserDiagKind::ExpectedIdentifier),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
@@ -24,7 +24,7 @@ impl Parser {
                         self.file_name.clone(),
                     ))),
                     hint: None,
-                });
+                })
             }
         }
     }
@@ -358,7 +358,7 @@ impl Parser {
     fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, Diag> {
         let current = self.current_token().clone();
 
-        let parsed_kind = match current.kind {
+        match current.kind {
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
             TokenKind::LeftParen => self.parse_tuple(),
             TokenKind::Function => self.parse_func_type(),
@@ -395,9 +395,7 @@ impl Parser {
                 ))),
                 hint: None,
             }),
-        };
-
-        parsed_kind
+        }
     }
 
     fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, Diag> {

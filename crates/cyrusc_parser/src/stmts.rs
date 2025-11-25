@@ -560,31 +560,31 @@ impl Parser {
 
         let mut methods: Vec<FuncDef> = Vec::new();
 
-        loop {
-            match self.current_token().kind {
-                // FIXME
-                // TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                //     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
-                //     if let Stmt::FuncDef(method) = self.parse_func(Some(vis))? {
-                //         self.next_token(); // consume right brace
-                //         methods.push(method);
-                //     } else {
-                //         unreachable!();
-                //     }
-                // }
-                // TokenKind::Function => {
-                //     if let Stmt::FuncDef(method) = self.parse_func(None)? {
-                //         self.next_token(); // consume right brace
-                //         methods.push(method);
-                //     } else {
-                //         unreachable!();
-                //     }
-                // }
-                _ => {
-                    break;
-                }
-            }
-        }
+        // loop {
+        //     match self.current_token().kind {
+        //         // FIXME
+        //         // TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+        //         //     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+        //         //     if let Stmt::FuncDef(method) = self.parse_func(Some(vis))? {
+        //         //         self.next_token(); // consume right brace
+        //         //         methods.push(method);
+        //         //     } else {
+        //         //         unreachable!();
+        //         //     }
+        //         // }
+        //         // TokenKind::Function => {
+        //         //     if let Stmt::FuncDef(method) = self.parse_func(None)? {
+        //         //         self.next_token(); // consume right brace
+        //         //         methods.push(method);
+        //         //     } else {
+        //         //         unreachable!();
+        //         //     }
+        //         // }
+        //         _ => {
+        //             break;
+        //         }
+        //     }
+        // }
 
         Ok(Stmt::Enum(Enum {
             identifier: enum_name,
@@ -1360,12 +1360,11 @@ impl Parser {
         let func_name = self.parse_identifier()?; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
-        let generic_params;
-        if self.current_token_is(TokenKind::LessThan) {
-            generic_params = Some(self.parse_generic_params()?);
+        let generic_params =  if self.current_token_is(TokenKind::LessThan) {
+            Some(self.parse_generic_params()?)
         } else {
-            generic_params = None;
-        }
+            None
+        };
 
         let params = self.parse_func_params()?;
 
