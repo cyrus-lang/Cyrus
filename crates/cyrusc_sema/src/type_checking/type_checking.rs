@@ -4,8 +4,8 @@ use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::Source
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::{
     symbols::{
-        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
-        SymbolEntryKind,
+        LocalOrGlobalSymbol, LocalScope, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
+        SymbolEntryKind, generate_scope_id,
     },
     typed_func_params_as_func_type_params, typed_func_type_from_func_sig,
 };
@@ -15,7 +15,7 @@ use cyrusc_tast::{
     format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
         generic_type::GenericType,
-        monomorph::MonomorphKey,
+        monomorph::{MonomorphKey, SpecializedFuncEntry},
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
     sigs::{FuncSig, UnionSig},
@@ -1642,6 +1642,13 @@ impl<'a> AnalysisContext<'a> {
             false,
         )?;
 
+        update_global_symbol!(self, func_sig.module_id, func_sig.symbol_id.unwrap(),
+            SymbolEntryKind::Func(resolved_func) => resolved_func, {
+                resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
+                resolved_func.func_sig.return_type = func_sig.return_type.clone();
+            }
+        );
+
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
             func_sig = substitute_func_sig(&func_sig, generic_type.mapping_ctx.clone()).unwrap();
@@ -1660,15 +1667,9 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // substitutes the func type inside of the func_call operand
-            func_call.operand.sema_ty = substitute_type(func_call.operand.sema_ty.clone().unwrap(), generic_type.mapping_ctx);
+            func_call.operand.sema_ty =
+                substitute_type(func_call.operand.sema_ty.clone().unwrap(), generic_type.mapping_ctx);
         }
-
-        update_global_symbol!(self, func_sig.module_id, func_sig.symbol_id.unwrap(),
-            SymbolEntryKind::Func(resolved_func) => resolved_func, {
-                resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
-                resolved_func.func_sig.return_type = func_sig.return_type.clone();
-            }
-        );
 
         func_call.return_type = Some(func_sig.return_type.clone());
 
@@ -1680,33 +1681,50 @@ impl<'a> AnalysisContext<'a> {
         func_sig: &FuncSig,
         generic_type: &GenericType,
     ) -> Option<MonomorphKey> {
-        let (template_body, mapping_ctx, base_symbol) = {
+        let (mut template_body, mapping_ctx, base_symbol) = {
             let ctx = self.monomorph_registry.lock().unwrap();
 
-            let body = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
+            if let Some(monomorph_key) = ctx.get_func_entry_by_mapping_ctx(generic_type.mapping_ctx.clone()) {
+                // already registered
+                return Some(monomorph_key.clone());
+            }
+
+            let generic_template_entry = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
 
             let mapping = generic_type.mapping_ctx.borrow().clone();
             let base = func_sig.symbol_id.unwrap();
 
-            (body, mapping, base)
+            (generic_template_entry.body, mapping, base)
         };
 
-        self.substitute_func_params_in_body_scope(template_body.scope_id, &func_sig.params);
+        let template_body_scope = self
+            .resolver
+            .get_scope_ref(self.module_id, template_body.scope_id)
+            .unwrap();
+
+        // make new scope for specialized func body
+        let new_body_scope_id = generate_scope_id();
+        {
+            template_body.scope_id = new_body_scope_id;
+            let template_body_scope = template_body_scope.borrow();
+            let new_body_scope = template_body_scope.deep_clone();
+            self.resolver
+                .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
+            new_body_scope
+        };
 
         self.current_func = Some(typed_func_type_from_func_sig(func_sig));
+        self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
 
         let mut analyzed_body = template_body.clone();
-        self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
 
-        {
-            let mut ctx = self.monomorph_registry.lock().unwrap();
-            ctx.register_template(func_sig.symbol_id.unwrap(), analyzed_body);
-        }
+        self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
 
         let monomorph_key = {
             let mut ctx = self.monomorph_registry.lock().unwrap();
-            let (key, _) = ctx.register_func(base_symbol, mapping_ctx);
-            key
+            let (monomorph_key, _) = ctx.register_func(base_symbol, mapping_ctx);
+            ctx.register_specialized_func_instance(monomorph_key.clone(), SpecializedFuncEntry { body: analyzed_body });
+            monomorph_key
         };
 
         Some(monomorph_key)

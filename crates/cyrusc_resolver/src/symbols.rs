@@ -338,6 +338,10 @@ impl LocalScope {
         }))
     }
 
+    pub fn deep_clone(&self) -> LocalScopeRef {
+        Rc::new(RefCell::new(self.clone()))
+    }
+
     pub fn insert(&mut self, name: String, symbol: LocalSymbol) -> Option<LocalSymbol> {
         self.symbols.insert(name, symbol)
     }

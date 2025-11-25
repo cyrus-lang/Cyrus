@@ -57,29 +57,29 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                     return "false".to_string();
                 }
             }
-            LiteralKind::Char(value) => return value.to_string(),
-            LiteralKind::Null => return "null".to_string(),
+            LiteralKind::Char(value) => value.to_string(),
+            LiteralKind::Null => "null".to_string(),
         },
         TypedExprKind::Prefix(typed_prefix_expr) => {
             let mut fmt = String::new();
             fmt.push_str(&typed_prefix_expr.op.to_string());
             fmt.push_str(&format_typed_expr(&typed_prefix_expr.operand, format_symbol));
-            return fmt;
+            fmt
         }
         TypedExprKind::Infix(typed_infix_expr) => {
             let mut fmt = String::new();
             fmt.push_str(&format_typed_expr(&typed_infix_expr.lhs, format_symbol));
             fmt.push_str(&typed_infix_expr.op.to_string());
             fmt.push_str(&format_typed_expr(&typed_infix_expr.rhs, format_symbol));
-            return fmt;
+            fmt
         }
         TypedExprKind::Unary(typed_unary_expr) => {
             let operand_fmt = &format_typed_expr(&typed_unary_expr.operand, format_symbol);
             match typed_unary_expr.op {
-                UnaryOperator::PreIncrement => return format!("++{}", operand_fmt),
-                UnaryOperator::PreDecrement => return format!("--{}", operand_fmt),
-                UnaryOperator::PostIncrement => return format!("{}++", operand_fmt),
-                UnaryOperator::PostDecrement => return format!("{}--", operand_fmt),
+                UnaryOperator::PreIncrement => format!("++{}", operand_fmt),
+                UnaryOperator::PreDecrement => format!("--{}", operand_fmt),
+                UnaryOperator::PostIncrement =>  format!("{}++", operand_fmt),
+                UnaryOperator::PostDecrement =>  format!("{}--", operand_fmt),
             }
         }
         TypedExprKind::Assign(typed_assign) => {
@@ -121,15 +121,15 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
         TypedExprKind::ArrayIndex(typed_array_index) => {
             let operand_fmt = &format_typed_expr(&typed_array_index.operand, format_symbol);
             let index_fmt = &format_typed_expr(&typed_array_index.index, format_symbol);
-            return format!("{}[{}]", operand_fmt, index_fmt);
+            format!("{}[{}]", operand_fmt, index_fmt)
         }
         TypedExprKind::AddrOf(typed_address_of) => {
             let operand_fmt = &format_typed_expr(&typed_address_of.operand, format_symbol);
-            return format!("&{}", operand_fmt);
+            format!("&{}", operand_fmt)
         }
         TypedExprKind::Deref(typed_dereference) => {
             let operand_fmt = &format_typed_expr(&typed_dereference.operand, format_symbol);
-            return format!("*{}", operand_fmt);
+            format!("*{}", operand_fmt)
         }
         TypedExprKind::StructInit(typed_struct_init) => {
             let mut fmt = String::new();
@@ -148,7 +148,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                     .join(", "),
             );
             fmt.push_str(" }}");
-            return fmt;
+            fmt
         }
         TypedExprKind::FuncCall(typed_func_call) => {
             format!(
@@ -222,7 +222,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
         }
         TypedExprKind::SizeOf(typed_size_of_expr) => {
             let operand_fmt = &format_typed_expr(&typed_size_of_expr.operand, format_symbol);
-            return format!("sizeof({})", operand_fmt);
+            format!("sizeof({})", operand_fmt)
         }
         TypedExprKind::SemanticType(sema_ty) => format_sema_ty(sema_ty.clone(), format_symbol),
         TypedExprKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),

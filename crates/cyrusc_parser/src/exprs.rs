@@ -382,7 +382,7 @@ impl Parser {
 
                 if self.peek_token_is(TokenKind::LeftBrace) {
                     self.next_token();
-                    return Ok(self.parse_array(type_specifier)?);
+                    return self.parse_array(type_specifier);
                 }
 
                 Expr::TypeSpecifier(type_specifier)
@@ -401,7 +401,7 @@ impl Parser {
                 self.next_token(); // consume struct name
 
                 let struct_init = self.parse_struct_init(module_import, type_args_opt)?;
-                return Ok(Expr::StructInit(struct_init));
+                Ok(Expr::StructInit(struct_init))
             } else {
                 return Err(Diag {
                     kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
@@ -443,7 +443,7 @@ impl Parser {
         } {
             Some(value) => Ok(value.try_into().unwrap()),
             None => {
-                return Err(Diag {
+                Err(Diag {
                     kind: Box::new(ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind)),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
@@ -451,7 +451,7 @@ impl Parser {
                         self.file_name.clone(),
                     ))),
                     hint: None,
-                });
+                })
             }
         }
     }
@@ -782,7 +782,7 @@ impl Parser {
             if self.peek_token_is(TokenKind::LeftParen) {
                 self.next_token(); // consume identifier
 
-                return self.parse_method_call(operand, identifier, is_fat_arrow, type_args_opt, start, loc);
+                self.parse_method_call(operand, identifier, is_fat_arrow, type_args_opt, start, loc)
             } else {
                 Ok(Expr::FieldAccess(FieldAccess {
                     is_fat_arrow,

@@ -42,7 +42,7 @@ impl CIRMonomorphRegistry {
 
 impl<'resolver> CIRWalk<'resolver> {
     pub fn insert_monomorph_func_instance(&mut self, scope_id_opt: Option<SymbolID>, monomorph_key: &MonomorphKey) {
-        let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
+        let mut monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
         let monomorph_entry = monomorph_registry.get(monomorph_key).unwrap();
         let monomorph_func_entry = match monomorph_entry {
             MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
@@ -67,10 +67,10 @@ impl<'resolver> CIRWalk<'resolver> {
         let cir_func_params = cir_func_decl.params.clone();
         let cir_func_ty = cir_func_decl_as_func_ty(&cir_func_decl);
 
-        let func_body = monomorph_registry
-            .get_template(monomorph_func_entry.base_symbol)
+        let specialized_func_entry = monomorph_registry
+            .get_specialized_func_instance(monomorph_key.clone())
             .unwrap();
-        let cir_func_body = self.lower_body(func_body);
+        let cir_func_body = self.lower_body(&specialized_func_entry.body);
 
         drop(monomorph_registry);
 

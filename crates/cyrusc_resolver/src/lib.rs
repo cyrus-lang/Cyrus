@@ -3196,7 +3196,9 @@ impl Resolver {
                             let len = string_value.len() + 1;
                             Some(SemanticType::Array(TypedArrayType {
                                 element_type: Box::new(SemanticType::PlainType(PlainType::Char)),
-                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len.try_into().unwrap())),
+                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                                    len.try_into().unwrap(),
+                                )),
                                 loc: SourceLoc::from_loc(literal.loc.clone(), self.current_file_path()),
                             }))
                         }
@@ -3433,7 +3435,7 @@ impl Resolver {
         drop(file_paths);
     }
 
-    fn insert_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID, scope_ref: LocalScopeRef) {
+    pub fn insert_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID, scope_ref: LocalScopeRef) {
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.scopes.insert(scope_id, scope_ref);
