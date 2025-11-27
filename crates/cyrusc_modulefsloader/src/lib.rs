@@ -1,3 +1,4 @@
+use crate::diagnostics::ModuleFSLoaderDiagKind;
 use cyrusc_ast::{
     Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string,
 };
@@ -11,8 +12,6 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
-
-use crate::diagnostics::ModuleFSLoaderDiagKind;
 
 mod diagnostics;
 
@@ -147,13 +146,13 @@ impl ModuleLoader {
                     let file_exists = if Path::new(&file_path).exists() {
                         Some(PathBuf::from(&file_path))
                     } else {
-                        find_file_from_sources(file_path.clone(), sources.clone())
+                        find_file_from_sources(&file_path, &sources)
                     };
 
                     let dir_exists = if Path::new(&dir_path).exists() {
                         Some(PathBuf::from(&dir_path))
                     } else {
-                        find_file_from_sources(dir_path.clone(), sources.clone())
+                        find_file_from_sources(&dir_path, &sources)
                     };
 
                     match (file_exists, dir_exists) {
