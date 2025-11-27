@@ -1,12 +1,11 @@
+use crate::diagnostics::LexicalDiagKind;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::*;
 use cyrusc_ast::{Literal, LiteralKind, StringPrefix};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
-use cyrusc_strescape::escape_string;
+use cyrusc_strescape::unescape_string;
 use diagnostics::lexer_invalid_char_error;
 use std::{fmt::Debug, process::exit};
-
-use crate::diagnostics::LexicalDiagKind;
 
 mod diagnostics;
 mod format;
@@ -50,6 +49,7 @@ impl Lexer {
         tokens
     }
 
+    #[inline]
     fn peek_char(&self) -> char {
         self.input[self.next_pos..].chars().next().unwrap_or('\0')
     }
@@ -513,18 +513,12 @@ impl Lexer {
     }
 
     fn read_string(&mut self, prefix: Option<StringPrefix>) -> Token {
-        let start: usize = self.pos + 1;
+        let start = self.pos + 1;
 
-        let mut final_string = String::new();
+        let mut raw = String::new();
 
         loop {
             self.read_char();
-
-            if self.ch == '"' {
-                break;
-            }
-
-            final_string.push(self.ch);
 
             if self.is_eof() {
                 display_single_diag!(Diag {
@@ -538,18 +532,45 @@ impl Lexer {
                     hint: None,
                 });
             }
+
+            match self.ch {
+                '\\' => {
+                    raw.push('\\');
+                    self.read_char();
+                    raw.push(self.ch);
+                }
+                '"' => {
+                    break;
+                }
+                _ => raw.push(self.ch),
+            }
         }
 
-        if self.ch == '"' {
-            self.read_char();
-        }
+        // consume closing "
+        self.read_char();
+
+        let unescaped = match unescape_string(&raw) {
+            Ok(s) => s,
+            Err(err) => {
+                display_single_diag!(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
+                    location: Some(DiagLoc::new(SourceLoc {
+                        line: self.line,
+                        column: self.column,
+                        file_path: self.file_name.clone()
+                    })),
+                    hint: Some(err.to_string()),
+                });
+            }
+        };
 
         let end = self.pos;
         let span = Span { start: start - 1, end };
 
         Token {
             kind: TokenKind::Literal(Literal {
-                kind: LiteralKind::String(escape_string(&final_string), prefix),
+                kind: LiteralKind::String(unescaped, prefix),
                 span: span.clone(),
                 loc: Location::new(self.line, self.column),
             }),
@@ -731,6 +752,7 @@ impl Lexer {
         ch.is_ascii_digit()
     }
 
+    #[inline]
     fn is_eof(&mut self) -> bool {
         self.pos == self.input.len() || self.ch == '\0'
     }
