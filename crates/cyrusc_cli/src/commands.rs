@@ -56,7 +56,13 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         display_single_custom_diag!(err);
     }
 
-    match Command::new(&temp_exe.path).args(program_args).output() {
+    match Command::new(&temp_exe.path)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .args(program_args)
+        .output()
+    {
         Ok(output) => {
             io::stdout().write_all(&output.stdout).unwrap();
             io::stderr().write_all(&output.stderr).unwrap();
