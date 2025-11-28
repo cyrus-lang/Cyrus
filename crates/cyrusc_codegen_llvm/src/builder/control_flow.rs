@@ -151,6 +151,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             else_block
         } else {
+            if switch_on_enum_stmt.cases.len() == enum_ty.variants.len() {
+                self.emit_block(exit_block);
+                self.llvmbuilder.build_unreachable().unwrap();
+            }
+
             exit_block
         };
 
