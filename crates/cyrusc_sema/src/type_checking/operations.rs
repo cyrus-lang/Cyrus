@@ -241,6 +241,18 @@ impl<'a> AnalysisContext<'a> {
                 let valid_concrete_type = match &operand_type {
                     SemanticType::PlainType(basic_concrete_type) => {
                         if basic_concrete_type.is_integer() || basic_concrete_type.is_float() {
+                            if !basic_concrete_type.is_signed() {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::UnaryOperatorMinusOnUnsignedInteger),
+                                    location: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                                    hint: Some(
+                                        "Use a signed type if you need to represent negative values.".to_string(),
+                                    ),
+                                });
+                                return None;
+                            }
+
                             Some(basic_concrete_type)
                         } else {
                             None
