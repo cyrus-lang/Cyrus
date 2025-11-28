@@ -9,7 +9,7 @@ use cyrusc_tast::{
     ScopeID,
     exprs::*,
     format::format_sema_ty,
-    generics::mapping_ctx::{mapping_ctx_eq, mapping_ctx_eq_refcell},
+    generics::mapping_ctx::mapping_ctx_eq_refcell,
     types::{PlainType, SemanticType},
 };
 
@@ -21,12 +21,12 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
 
         let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.rhs, Some(lhs_type.clone())) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
 
@@ -78,7 +78,7 @@ impl<'a> AnalysisContext<'a> {
         let operand_inner_type = address_of.operand.sema_ty.clone();
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut address_of.operand, operand_inner_type)
         {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
 
@@ -178,7 +178,7 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
 
@@ -287,7 +287,7 @@ impl<'a> AnalysisContext<'a> {
         let operand_inner_type = unary_expr.operand.sema_ty.clone();
         let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut unary_expr.operand, operand_inner_type)
         {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
 
@@ -344,8 +344,8 @@ impl<'a> AnalysisContext<'a> {
         lhs_type: SemanticType,
         rhs_type: SemanticType,
     ) -> Option<SemanticType> {
-        let enum_symbol_id1 = lhs_type.as_enum_symbol_id().unwrap();
-        let enum_symbol_id2 = rhs_type.as_enum_symbol_id().unwrap();
+        let enum_symbol_id1 = lhs_type.get_const_inner().as_enum_symbol_id().unwrap();
+        let enum_symbol_id2 = rhs_type.get_const_inner().as_enum_symbol_id().unwrap();
 
         let local_or_global_symbol1 = self
             .resolver
