@@ -446,7 +446,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                     .iter()
                                     .enumerate()
                                     .map(|(idx, identifier)| {
-                                        let field_ty = &valued_fields.get(idx).as_ref().unwrap().field_ty;
+                                        let field_ty = &valued_fields.get(idx).as_ref().unwrap().ty;
                                         (identifier.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
                                     })
                                     .collect();
@@ -1205,7 +1205,7 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedEnumVariant::Variant(_, fields) => {
                 let fields: Vec<CIRTy> = fields
                     .iter()
-                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.field_ty))
+                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
                     .collect();
                 CIREnumTyVariant::Fielded(fields)
             }

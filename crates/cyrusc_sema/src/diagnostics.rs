@@ -4,6 +4,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Field cannot be type 'void'.")]
+    VoidFieldType,
+
+    #[error("A function parameter cannot have type 'void'.")]
+    VoidParameterType,
+    
     #[error("Unary operator minus is not permitted on unsigned types.")]
     UnaryOperatorMinusOnUnsignedInteger,
 

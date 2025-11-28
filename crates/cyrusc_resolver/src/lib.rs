@@ -1266,7 +1266,7 @@ impl Resolver {
                         };
 
                         fields.push(TypedEnumValuedField {
-                            field_ty,
+                            ty: field_ty,
                             loc: SourceLoc::from_loc(valued_field.loc.clone(), self.current_file_path()),
                         });
                     }

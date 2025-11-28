@@ -1,36 +1,64 @@
-use crate::builder::{builder::IRBuilderCtx, values::{InternalValue, InternalValueKind}};
+use crate::builder::{
+    builder::IRBuilderCtx,
+    values::{InternalValue, InternalValueKind},
+};
 use cyrusc_cir::types::CIRTy;
-use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicTypeEnum}, values::{BasicMetadataValueEnum, IntValue, PointerValue}};
+use inkwell::{
+    AddressSpace,
+    types::{BasicMetadataTypeEnum, BasicTypeEnum},
+    values::{BasicMetadataValueEnum, IntValue, PointerValue},
+};
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_inbounds_check(
+    pub(crate) fn emit_inbounds_checked_array_index(
         &mut self,
         ptr: PointerValue<'ll>,
         pointee_ty: CIRTy,
         index: InternalValue<'ll>,
         array_length: u32,
     ) -> InternalValue<'ll> {
-        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let cur_fn = self.cur_fn.unwrap();
-
-        let failure_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.failure");
-        let success_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.success");
-
         let pointee_basic_ty: BasicTypeEnum<'ll> = self.emit_ty(pointee_ty.clone()).try_into().unwrap();
 
         let target_data = self.llvmtm.get_target_data();
         let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
-        let array_length_int_value = ptr_sized_int_type.const_int(array_length.into(), false);
+        let mut array_length_int_value = ptr_sized_int_type.const_int(array_length.into(), false);
+
+        let mut index_int_value = index.as_basic_value().into_int_value();
+
+        // implicit cast index and length type
+        if index_int_value.get_type().get_bit_width() > array_length_int_value.get_type().get_bit_width() {
+            array_length_int_value = self
+                .llvmbuilder
+                .build_int_cast(array_length_int_value, index_int_value.get_type(), "cast")
+                .unwrap();
+        } else {
+            index_int_value = self
+                .llvmbuilder
+                .build_int_cast(index_int_value, array_length_int_value.get_type(), "cast")
+                .unwrap();
+        }
 
         let compare_result = self
             .llvmbuilder
             .build_int_compare(
                 inkwell::IntPredicate::ULT,
-                index.as_basic_value().into_int_value(),
+                index_int_value,
                 array_length_int_value,
                 "cmp",
             )
             .unwrap();
+
+        if let Some(const_val) = compare_result.get_zero_extended_constant() {
+            if const_val == 1 {
+                // already true
+                return self.emit_array_index_on_pointer(ptr, index, pointee_ty.clone());
+            }
+        }
+
+        let cur_fn = self.cur_fn.unwrap();
+
+        let failure_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.failure");
+        let success_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.success");
 
         self.llvmbuilder
             .build_conditional_branch(compare_result, success_block, failure_block)
@@ -46,6 +74,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let module = self.llvmmodule.borrow_mut();
 
         // call fprintf to display panic message
+
+        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
 
         let void_type = self.llvmctx.void_type();
         let i32_type = self.llvmctx.i32_type();

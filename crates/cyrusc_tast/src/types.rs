@@ -143,6 +143,10 @@ impl SemanticType {
         matches!(self.get_const_inner(), SemanticType::Array(..))
     }
 
+    pub fn is_func_type(&self) -> bool {
+        matches!(self.get_const_inner(), SemanticType::FuncType(..))
+    }
+
     pub fn is_const(&self) -> bool {
         matches!(self, SemanticType::Const(_))
     }

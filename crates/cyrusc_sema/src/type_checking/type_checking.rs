@@ -4,7 +4,7 @@ use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::Source
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::{
     symbols::{
-        LocalOrGlobalSymbol, LocalScope, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
+        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind, generate_scope_id,
     },
     typed_func_params_as_func_type_params, typed_func_type_from_func_sig,
@@ -761,14 +761,14 @@ impl<'a> AnalysisContext<'a> {
         method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
         for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields.iter_mut()) {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.field_ty.clone()));
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.ty.clone()));
 
             if let Some(sema_ty) = self.infer_generic_param(
                 &generic_type_opt,
-                enum_valued_field.field_ty.clone(),
+                enum_valued_field.ty.clone(),
                 typed_expr.sema_ty.clone(),
             ) {
-                enum_valued_field.field_ty = sema_ty;
+                enum_valued_field.ty = sema_ty;
             }
         }
 
