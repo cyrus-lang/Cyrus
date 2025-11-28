@@ -91,7 +91,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let index_rvalue = self.load_rvalue(index_lvalue);
 
         if let Some(arr_ty) = lvalue.ty.as_arr_ty() {
-            self.emit_inbounds_check(
+            self.emit_inbounds_checked_array_index(
                 lvalue.as_basic_value().into_pointer_value(),
                 *arr_ty.ty.clone(),
                 index_rvalue,

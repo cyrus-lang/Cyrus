@@ -510,9 +510,9 @@ impl<'a> AnalysisContext<'a> {
 
                             for (enum_valued_field_idx, enum_valued_field) in enum_valued_fields.iter_mut().enumerate()
                             {
-                                enum_valued_field.field_ty = match self.normalize_type(
+                                enum_valued_field.ty = match self.normalize_type(
                                     scope_id_opt,
-                                    enum_valued_field.field_ty.clone(),
+                                    enum_valued_field.ty.clone(),
                                     SourceLoc::from_loc(identifier.loc.clone(), enum_sig.loc.file_path.clone()),
                                 ) {
                                     Some(sema_ty) => sema_ty,
@@ -525,7 +525,7 @@ impl<'a> AnalysisContext<'a> {
 
                                     update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
                                         LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                                            resolved_variable.typed_variable.ty = Some(enum_valued_field.field_ty.clone());
+                                            resolved_variable.typed_variable.ty = Some(enum_valued_field.ty.clone());
                                         }
                                     );
                                 }
@@ -1057,23 +1057,8 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().sema_ty.unwrap()),
         };
 
-        if matches!(typed_global_var.ty, Some(SemanticType::PlainType(PlainType::Void))) {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::VoidVariableType),
-                location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-                hint: None,
-            });
-        }
-
-        if matches!(typed_global_var.ty, Some(SemanticType::FuncType(..))) && typed_global_var.expr.is_none() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
-                location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-                hint: None,
-            });
-            return;
+        if let Some(sema_ty) = &typed_global_var.ty {
+            self.validate_variable_type(sema_ty, typed_global_var.expr.is_some(), typed_global_var.loc.clone());
         }
 
         if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
@@ -1343,6 +1328,8 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
+            self.validate_field_type(&field.ty, field.loc.clone());
+
             field_names.push(field.name.clone());
         }
 
@@ -1423,6 +1410,8 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
+            self.validate_field_type(&field.ty, field.loc.clone());
+
             field_names.push(field.name.clone());
         }
 
@@ -1468,14 +1457,13 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedEnumVariant::Variant(identifier, typed_enum_valued_fields) => {
                     for field in typed_enum_valued_fields {
-                        field.field_ty =
-                            match self.normalize_type(scope_id_opt, field.field_ty.clone(), field.loc.clone()) {
-                                Some(sema_ty) => sema_ty,
-                                None => continue,
-                            };
+                        field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                            Some(sema_ty) => sema_ty,
+                            None => continue,
+                        };
 
                         if field
-                            .field_ty
+                            .ty
                             .as_enum_symbol_id()
                             .map(|symbol_id| symbol_id == typed_enum.symbol_id)
                             == Some(true)
@@ -1490,6 +1478,8 @@ impl<'a> AnalysisContext<'a> {
                             });
                             continue;
                         }
+
+                        self.validate_field_type(&field.ty, field.loc.clone());
                     }
                     identifier
                 }
@@ -1739,17 +1729,9 @@ impl<'a> AnalysisContext<'a> {
                         .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
                         .unwrap();
 
-                    if matches!(normalized_type, SemanticType::PlainType(PlainType::Void)) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::VoidVariableType),
-                            location: Some(DiagLoc::new(typed_func_param.loc.clone())),
-                            hint: None,
-                        });
-                        continue;
-                    }
-
                     typed_func_param.ty = normalized_type.clone();
+
+                    self.validate_param_type(&typed_func_param.ty, typed_func_param.loc.clone());
                 }
                 TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
                     let normalized_type = self
@@ -1768,27 +1750,25 @@ impl<'a> AnalysisContext<'a> {
                             typed_self_modifier.ty = Some(SemanticType::Pointer(Box::new(normalized_type)));
                         }
                     }
+
+                    self.validate_param_type(
+                        &typed_self_modifier.ty.as_ref().unwrap(),
+                        typed_self_modifier.loc.clone(),
+                    );
                 }
             }
         }
 
         if let Some(variadic_params) = &mut params.variadic {
             if let TypedFuncVariadicParams::Typed(identifier, sema_ty) = variadic_params {
-                let normalized_concrete_type = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
+                let sema_ty = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
                     Some(sema_ty) => sema_ty,
                     None => return,
                 };
 
-                if matches!(normalized_concrete_type, SemanticType::PlainType(PlainType::Void)) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::VoidVariableType),
-                        location: Some(DiagLoc::new(loc.clone())),
-                        hint: None,
-                    });
-                }
+                self.validate_param_type(&sema_ty, identifier.loc.clone());
 
-                *variadic_params = TypedFuncVariadicParams::Typed(identifier.clone(), normalized_concrete_type);
+                *variadic_params = TypedFuncVariadicParams::Typed(identifier.clone(), sema_ty);
             }
         }
     }
@@ -1796,40 +1776,24 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: SourceLoc) {
         // analyze static arguments
         for param in params.list.iter_mut() {
-            let normalized_type = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
+            let sema_ty = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
+            *param = sema_ty.clone();
 
-            if matches!(normalized_type, SemanticType::PlainType(PlainType::Void)) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::VoidVariableType),
-                    location: Some(DiagLoc::new(loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
-
-            *param = normalized_type.clone();
+            self.validate_param_type(&sema_ty, loc.clone());
         }
 
         if let Some(variadic_params) = &mut params.variadic {
             match *variadic_params.clone() {
                 TypedFuncTypeVariadicParams::UntypedCStyle => {}
                 TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    let normalized_concrete_type = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
+                    let sema_ty = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
                         Some(sema_ty) => sema_ty,
                         None => return,
                     };
 
-                    if matches!(normalized_concrete_type, SemanticType::PlainType(PlainType::Void)) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::VoidVariableType),
-                            location: Some(DiagLoc::new(loc.clone())),
-                            hint: None,
-                        });
-                    }
+                    self.validate_param_type(&sema_ty, loc.clone());
 
-                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(normalized_concrete_type));
+                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty));
                 }
             }
         }
@@ -1917,34 +1881,8 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if matches!(typed_variable.ty, Some(SemanticType::PlainType(PlainType::Void))) {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::VoidVariableType),
-                location: Some(DiagLoc::new(typed_variable.loc.clone())),
-                hint: None,
-            });
-        }
-
-        if matches!(typed_variable.ty, Some(SemanticType::FuncType(..))) && typed_variable.rhs.is_none() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
-                location: Some(DiagLoc::new(typed_variable.loc.clone())),
-                hint: None,
-            });
-            return;
-        }
-
-        if typed_variable.ty.is_some()
-            && (typed_variable.ty.clone().unwrap().is_const() && typed_variable.rhs.is_none())
-        {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
-                location: Some(DiagLoc::new(typed_variable.loc.clone())),
-                hint: None,
-            });
+        if let Some(sema_ty) = &typed_variable.ty {
+            self.validate_variable_type(sema_ty, typed_variable.rhs.is_some(), typed_variable.loc.clone());
         }
 
         local_scope_opt.inspect(|local_scope| {
@@ -2001,6 +1939,63 @@ impl<'a> AnalysisContext<'a> {
             }
         } else {
             unreachable!()
+        }
+    }
+
+    pub(crate) fn validate_variable_type(&mut self, sema_ty: &SemanticType, is_init: bool, loc: SourceLoc) {
+        let sema_ty = sema_ty.get_const_inner();
+
+        if sema_ty.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VoidVariableType),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+        }
+
+        if sema_ty.is_const() && !is_init {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: Some("Declare the variable with an initializer or remove the 'const' qualifier.".to_string()),
+            });
+        }
+
+        if sema_ty.is_func_type() && !is_init {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
+                location: Some(DiagLoc::new(loc)),
+                hint: Some("Assign a function or lambda expression to this variable at declaration.".to_string()),
+            });
+        }
+    }
+
+    pub(crate) fn validate_field_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {
+        let sema_ty = sema_ty.get_const_inner();
+
+        if sema_ty.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VoidFieldType),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
+        }
+    }
+
+    pub(crate) fn validate_param_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {
+        let sema_ty = sema_ty.get_const_inner();
+
+        if sema_ty.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VoidParameterType),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
         }
     }
 }

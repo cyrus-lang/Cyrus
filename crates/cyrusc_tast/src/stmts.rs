@@ -157,7 +157,7 @@ impl TypedEnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
-    pub field_ty: SemanticType,
+    pub ty: SemanticType,
     pub loc: SourceLoc,
 }
 

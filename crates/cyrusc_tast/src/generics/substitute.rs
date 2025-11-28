@@ -207,11 +207,11 @@ pub fn substitute_enum_sig(sig: &EnumSig, ctx: Rc<RefCell<GenericMappingCtx>>) -
             TypedEnumVariant::Variant(ident, fields) => {
                 let new_fields = fields
                     .iter()
-                    .map(|f| {
-                        let substituted = substitute_type(f.field_ty.clone(), ctx.clone())?;
+                    .map(|field| {
+                        let substituted = substitute_type(field.ty.clone(), ctx.clone())?;
                         Some(TypedEnumValuedField {
-                            field_ty: substituted,
-                            loc: f.loc.clone(),
+                            ty: substituted,
+                            loc: field.loc.clone(),
                         })
                     })
                     .collect::<Option<Vec<_>>>()?;
