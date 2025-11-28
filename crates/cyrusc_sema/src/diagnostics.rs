@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Redundant 'const' qualifier on an already-const type.")]
+    RedundantConstQualifier,
+    
     #[error("Field cannot be type 'void'.")]
     VoidFieldType,
 

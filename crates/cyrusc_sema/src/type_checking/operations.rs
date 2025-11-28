@@ -60,7 +60,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_address_of_expr_type(
+    pub(crate) fn analyze_addr_of_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         address_of: &mut TypedAddrOfExpr,
@@ -85,7 +85,7 @@ impl<'a> AnalysisContext<'a> {
         Some(SemanticType::Pointer(Box::new(operand_type)))
     }
 
-    pub(crate) fn analyze_dereference_expr_type(
+    pub(crate) fn analyze_deref_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         dereference: &mut TypedDerefExpr,
@@ -93,7 +93,7 @@ impl<'a> AnalysisContext<'a> {
         let operand_inner_type = dereference.operand.sema_ty.clone();
         let operand_type =
             match self.analyze_typed_expr_type(scope_id_opt, &mut dereference.operand, operand_inner_type) {
-                Some(sema_ty) => sema_ty,
+                Some(sema_ty) => sema_ty.get_const_inner().clone(),
                 None => return None,
             };
 
