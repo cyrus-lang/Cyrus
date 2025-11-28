@@ -139,10 +139,10 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_array_index_expr_type(scope_id_opt, typed_array_index)
             }
             TypedExprKind::AddrOf(typed_address_of) => {
-                self.analyze_address_of_expr_type(scope_id_opt, typed_address_of)
+                self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of)
             }
             TypedExprKind::Deref(typed_dereference) => {
-                self.analyze_dereference_expr_type(scope_id_opt, typed_dereference)
+                self.analyze_deref_expr_type(scope_id_opt, typed_dereference)
             }
             TypedExprKind::StructInit(struct_init) => {
                 self.analyze_struct_init(scope_id_opt, struct_init, expected_type)

@@ -1963,6 +1963,15 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        if sema_ty.count_const_layers() >= 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+        }
+
         if sema_ty.is_func_type() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1980,7 +1989,16 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidFieldType),
-                location: Some(DiagLoc::new(loc)),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+        }
+
+        if sema_ty.count_const_layers() >= 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                location: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
         }
@@ -1993,7 +2011,16 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidParameterType),
-                location: Some(DiagLoc::new(loc)),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+        }
+
+        if sema_ty.count_const_layers() >= 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                location: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
         }

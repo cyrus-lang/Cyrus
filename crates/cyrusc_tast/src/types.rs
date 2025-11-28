@@ -114,6 +114,13 @@ impl SemanticType {
         }
     }
 
+    pub fn count_const_layers(&self) -> usize {
+        match self {
+            SemanticType::Const(inner) => 1 + inner.count_const_layers(),
+            _ => 0,
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
         match self.get_const_inner() {
             SemanticType::PlainType(basic) => basic.is_integer(),
