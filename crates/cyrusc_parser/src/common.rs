@@ -15,21 +15,19 @@ impl Parser {
                 span: self.current_token().span.clone(),
                 loc: self.current_token().loc.clone(),
             }),
-            _ => {
-                Err(Diag {
-                    kind: Box::new(ParserDiagKind::ExpectedIdentifier),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                })
-            }
+            _ => Err(Diag {
+                kind: Box::new(ParserDiagKind::ExpectedIdentifier),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            }),
         }
     }
 
-    pub(crate) fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
+    pub(crate) fn is_type_token(&mut self, token_kind: TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(&token_kind) {
             true
         } else if let TokenKind::Identifier { .. } = token_kind {
@@ -146,19 +144,23 @@ impl Parser {
     }
 
     pub(crate) fn is_type_arg_start(&mut self, last_parsed_expression: Expr) -> bool {
-        if !self.current_expr_is_path_like(last_parsed_expression) {
+        if !self.peek_token_is(TokenKind::LessThan) {
             return false;
         }
 
-        if !self.peek_token_is(TokenKind::LessThan) {
+        if !self.current_expr_is_path_like(last_parsed_expression) {
             return false;
         }
 
         let mut i = 1;
         let mut depth = 0;
 
-        while let Some(tok) = self.peek_n_token(i) {
-            match tok.kind {
+        while let Some(token) = self.peek_n_token(i) {
+            if self.token_disqualifies_type_arg(&token.kind) {
+                return false;
+            }
+
+            match token.kind {
                 TokenKind::LessThan => {
                     depth += 1;
                 }
@@ -177,6 +179,108 @@ impl Parser {
         }
 
         false
+    }
+
+    fn token_disqualifies_type_arg(&self, kind: &TokenKind) -> bool {
+        match kind {
+            // allowed tokens
+            TokenKind::Identifier { .. } => false,
+
+            TokenKind::UIntPtr
+            | TokenKind::IntPtr
+            | TokenKind::SizeT
+            | TokenKind::Int
+            | TokenKind::Int8
+            | TokenKind::Int16
+            | TokenKind::Int32
+            | TokenKind::Int64
+            | TokenKind::Int128
+            | TokenKind::UInt
+            | TokenKind::UInt8
+            | TokenKind::UInt16
+            | TokenKind::UInt32
+            | TokenKind::UInt64
+            | TokenKind::UInt128
+            | TokenKind::Float16
+            | TokenKind::Float32
+            | TokenKind::Float64
+            | TokenKind::Float128
+            | TokenKind::Char
+            | TokenKind::Void
+            | TokenKind::Bool => false,
+
+            TokenKind::DoubleColon => false,
+
+            TokenKind::LessThan | TokenKind::GreaterThan | TokenKind::Comma => false,
+
+            TokenKind::Const | TokenKind::Public | TokenKind::Extern => false,
+
+            TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::LeftBracket | TokenKind::RightBracket => false,
+
+            // any other token disqualifies type arg
+            TokenKind::Literal(_) => true,
+
+            TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::Increment
+            | TokenKind::Decrement
+            | TokenKind::Equal
+            | TokenKind::NotEqual
+            | TokenKind::Bang
+            | TokenKind::LessEqual
+            | TokenKind::GreaterEqual
+            | TokenKind::And
+            | TokenKind::Or
+            | TokenKind::Assign
+            | TokenKind::Pipe
+            | TokenKind::Caret
+            | TokenKind::AmpTilde
+            | TokenKind::Tilde
+            | TokenKind::ShiftLeft
+            | TokenKind::ShiftRight => true,
+
+            TokenKind::LeftParen | TokenKind::RightParen => true,
+
+            TokenKind::If
+            | TokenKind::Else
+            | TokenKind::For
+            | TokenKind::While
+            | TokenKind::Foreach
+            | TokenKind::Switch
+            | TokenKind::Case
+            | TokenKind::Default
+            | TokenKind::Return
+            | TokenKind::Break
+            | TokenKind::Continue
+            | TokenKind::Goto
+            | TokenKind::Defer => true,
+
+            TokenKind::ThinArrow
+            | TokenKind::FatArrow
+            | TokenKind::DoubleQuote
+            | TokenKind::SingleQuote
+            | TokenKind::Dot
+            | TokenKind::DoubleDot
+            | TokenKind::TripleDot => true,
+
+            TokenKind::Struct | TokenKind::Union | TokenKind::Enum | TokenKind::Interface | TokenKind::Bits => true,
+
+            TokenKind::True | TokenKind::False | TokenKind::Null => true,
+
+            TokenKind::Macro | TokenKind::In | TokenKind::As => true,
+
+            TokenKind::LeftBrace | TokenKind::RightBrace => true,
+
+            TokenKind::Semicolon => true,
+
+            TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf | TokenKind::AlignOf | TokenKind::OffsetOf => {
+                true
+            }
+
+            _ => true,
+        }
     }
 
     pub(crate) fn parse_single_array_index(&mut self) -> Result<Expr, Diag> {

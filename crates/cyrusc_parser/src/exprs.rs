@@ -442,17 +442,15 @@ impl Parser {
             _ => None,
         } {
             Some(value) => Ok(value.try_into().unwrap()),
-            None => {
-                Err(Diag {
-                    kind: Box::new(ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                })
-            }
+            None => Err(Diag {
+                kind: Box::new(ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind)),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            }),
         }
     }
 
@@ -534,7 +532,7 @@ impl Parser {
         self.next_token(); // consume left paren
 
         let expr = if let Some(token) = self.peek_n_token(1) {
-            if self.matches_type_token(self.current_token().kind) && self.matches_type_token(token.kind) {
+            if self.is_type_token(self.current_token().kind) && self.is_type_token(token.kind) {
                 let type_specifier = self.parse_type_specifier()?;
                 Expr::TypeSpecifier(type_specifier)
             } else {
