@@ -1,0 +1,28 @@
+// @stdout: color: black
+
+import std::libc{printf};
+
+enum Color {
+    Red, 
+    Purple,
+    Black
+}
+
+fn format_color(color: Color) const char* {
+    switch (color) {
+        case .Red => {
+            return "red\n";
+        }
+        case .Purple => {
+            return "purple\n";
+        }
+        case .Black => {
+            return "black\n";
+        }
+    }
+}
+
+fn main() {
+    const color = Color.Black;
+    printf("color: %s", format_color(color));
+}

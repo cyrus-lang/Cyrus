@@ -2,8 +2,6 @@ import std::libc{printf};
 
 fn main() {
     const poem: char* = "Line one\nLine two\nLine three";
-    const backslash: char = '\\';
-    
-    // FIXME
-    // var quote: char* = "She said: \"Cyrus is great!\""; 
+    const backslash: char = '\';
+    const quote: char* = "She said: \"Cyrus is great!\""; 
 }

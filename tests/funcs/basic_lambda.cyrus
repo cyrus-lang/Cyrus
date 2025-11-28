@@ -1,0 +1,11 @@
+// @stdout: sum: 8
+
+import std::libc{printf};
+
+fn main() {
+    const lambda = fn(x: int, y: int) int {
+        return x + y;
+    };
+
+    printf("sum: %d\n", lambda(3, 5));
+}
