@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Unary operator minus is not permitted on unsigned types.")]
+    UnaryOperatorMinusOnUnsignedInteger,
+
     #[error("Variant '.{variant_name}' has only one field, but multiple were provided.")]
     ValuedEnumVariantCanOnlyExportOneField { variant_name: String },
 

@@ -441,7 +441,6 @@ impl Lexer {
 
     fn read_char_literal(&mut self) -> Token {
         let start: usize = self.pos + 1;
-
         let mut final_char: Option<char> = None;
 
         loop {
@@ -451,7 +450,20 @@ impl Lexer {
                 break;
             }
 
-            // only single unit char is supported
+            if final_char.is_some() {
+                display_single_diag!(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
+                    location: Some(DiagLoc::new(SourceLoc {
+                        line: self.line,
+                        column: self.column,
+                        file_path: self.file_name.clone()
+                    })),
+                    hint: Some("Character literals may contain exactly one character.".to_string()),
+                });
+            }
+
+            // multi-byte UTF-8 is not allowed in single quotes
             if self.ch.len_utf8() != 1 {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
