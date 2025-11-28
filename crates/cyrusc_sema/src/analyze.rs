@@ -576,18 +576,12 @@ impl<'a> AnalysisContext<'a> {
             branch_states.push(FlowState::Reachable);
         }
 
-        // default case
-        if let Some(default_case) = &mut typed_switch.default_case {
-            let body_flow_state = self.analyze_block_statement(default_case);
-            branch_states.push(body_flow_state);
-        } else {
-            branch_states.push(FlowState::Reachable);
-        }
-
         self.control_stack.pop();
 
         // final merge
         let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+            FlowState::Returns
+        } else if used_enum_variants.len() == enum_sig.variants.len() {
             FlowState::Returns
         } else {
             FlowState::Reachable
