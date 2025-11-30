@@ -773,9 +773,11 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.ty.clone()));
 
             if let Some(sema_ty) = self.infer_generic_param(
+                scope_id_opt,
                 &generic_type_opt,
                 enum_valued_field.ty.clone(),
                 typed_expr.sema_ty.clone(),
+                typed_expr.loc.clone(),
             ) {
                 enum_valued_field.ty = sema_ty;
             }
@@ -1177,9 +1179,13 @@ impl<'a> AnalysisContext<'a> {
         field_init.value.sema_ty =
             self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field_ty.clone()));
 
-        if let Some(sema_ty) =
-            self.infer_generic_param(generic_type_opt, field.ty.clone(), field_init.value.sema_ty.clone())
-        {
+        if let Some(sema_ty) = self.infer_generic_param(
+            scope_id_opt,
+            generic_type_opt,
+            field.ty.clone(),
+            field_init.value.sema_ty.clone(),
+            field_init.value.loc.clone(),
+        ) {
             field_init.value.sema_ty = Some(sema_ty);
         }
 
@@ -1273,8 +1279,13 @@ impl<'a> AnalysisContext<'a> {
             let field_value_ty =
                 self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field.ty.clone()));
 
-            if let Some(sema_ty) = self.infer_generic_param(generic_type_opt, field.ty.clone(), field_value_ty.clone())
-            {
+            if let Some(sema_ty) = self.infer_generic_param(
+                scope_id_opt,
+                generic_type_opt,
+                field.ty.clone(),
+                field_value_ty.clone(),
+                field_init.loc.clone(),
+            ) {
                 field_init.value.sema_ty = Some(sema_ty);
             }
 
@@ -1444,9 +1455,13 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            if let Some(sema_ty) =
-                self.infer_generic_param(generic_type_opt, param_type.clone(), Some(arg_type.clone()))
-            {
+            if let Some(sema_ty) = self.infer_generic_param(
+                scope_id_opt,
+                generic_type_opt,
+                param_type.clone(),
+                Some(arg_type.clone()),
+                arg.loc.clone(),
+            ) {
                 param_type = sema_ty;
             }
 

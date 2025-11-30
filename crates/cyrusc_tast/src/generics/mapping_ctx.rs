@@ -68,6 +68,12 @@ impl GenericMappingCtx {
         }
     }
 
+    pub fn get_local_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
+        self.named
+            .iter()
+            .find_map(|(k, v)| (k.symbol_id == symbol_id).then(|| v.clone()))
+    }
+
     pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
         if let Some(ty) = self
             .named

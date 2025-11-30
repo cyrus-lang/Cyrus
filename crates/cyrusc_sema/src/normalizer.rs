@@ -1,10 +1,14 @@
+use std::rc::Rc;
+
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
-use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
+use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
     ScopeID, SymbolID,
-    stmts::{TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
+    stmts::{
+        TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArgs,
+    },
     types::{
         ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
         TypedTupleType,
@@ -69,7 +73,12 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 if let Some(resolved_typedef) = sym.as_typedef() {
-                    self.resolve_typedef_inner_type(resolved_typedef)
+                    self.resolve_generic_typedef(
+                        local_scope_opt,
+                        resolved_typedef,
+                        &generic_type.type_args,
+                        resolved_typedef.typedef_sig.loc.clone(),
+                    )
                 } else {
                     let generic_params = sym.get_generic_params().unwrap();
                     if let Err(diag) = generic_type.init(generic_params) {
@@ -375,6 +384,38 @@ impl<'a> AnalysisContext<'a> {
                     self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)
                 }
             },
+        }
+    }
+
+    fn resolve_generic_typedef(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        resolved_typedef: &ResolvedTypedef,
+        type_args: &TypedTypeArgs,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        let generic_type = resolved_typedef.typedef_sig.ty.as_generic_type().unwrap();
+        let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
+
+        match self
+            .init_generic_type_with_symbol_id(
+                local_scope_opt.clone(),
+                generic_type.base,
+                &Some(type_args.clone()),
+                parent_mapping_ctx,
+                false,
+                loc,
+            )
+            .transpose()
+            .unwrap()
+        {
+            Ok((_, new_generic_type_opt)) => {
+                new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
+            }
+            Err(diag) => {
+                self.reporter.report(diag);
+                None
+            }
         }
     }
 
