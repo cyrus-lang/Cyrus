@@ -97,7 +97,7 @@ impl GenericType {
             }
         }
         drop(mapping_ctx);
-
+        
         if self.includes_unresolved_generic_param(template) {
             let ty = self.format(format_symbol);
 

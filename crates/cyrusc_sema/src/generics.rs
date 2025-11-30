@@ -1,9 +1,10 @@
-use crate::analyze::AnalysisContext;
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_diagcentral::Diag;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::LocalScopeRef;
 use cyrusc_tast::{
-    SymbolID,
+    ScopeID, SymbolID,
+    format::format_sema_ty,
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx},
     stmts::*,
     types::SemanticType,
@@ -51,26 +52,60 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn infer_generic_param(
-        &self,
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
         generic_type_opt: &Option<GenericType>,
         target_ty: SemanticType,
         expr_ty: Option<SemanticType>,
+        loc: SourceLoc,
     ) -> Option<SemanticType> {
         generic_type_opt.clone().and_then(|generic_type| {
             let generic_param = target_ty.as_generic_param()?;
             let expr_ty = expr_ty?;
 
-            // TODO Prevent overwriting parent.
+            let mapping_ctx_rc = &generic_type.mapping_ctx;
+            let mut mapping_ctx = mapping_ctx_rc.borrow_mut();
 
-            let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
-            if let Some(previously_inferred_ty) = mapping_ctx.get_with_symbol_id(generic_param.symbol_id) {
-                drop(mapping_ctx);
-                Some(previously_inferred_ty)
-            } else {
-                mapping_ctx.insert_named(generic_param.clone(), expr_ty.clone());
-                drop(mapping_ctx);
-                Some(expr_ty)
+            // if the parent already inferred this generic param, return its value and do not overwrite locally.
+            if mapping_ctx.parent.is_some() {
+                if let Some(parent_sema_ty) = mapping_ctx
+                    .parent
+                    .as_ref()
+                    .unwrap()
+                    .get_with_symbol_id(generic_param.symbol_id)
+                {
+                    // check type mismatch with sema_ty and expr_ty
+                    if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_sema_ty.clone(), loc.clone()) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                                lhs_type: format_sema_ty(
+                                    parent_sema_ty.clone(),
+                                    &(self.symbol_formatter)(scope_id_opt),
+                                ),
+                                rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                            }),
+                            location: Some(DiagLoc::new(loc)),
+                            hint: None,
+                        });
+                        drop(mapping_ctx);
+                        return None;
+                    }
+
+                    drop(mapping_ctx);
+                    return Some(parent_sema_ty);
+                }
             }
+
+            if let Some(existing) = mapping_ctx.get_local_with_symbol_id(generic_param.symbol_id) {
+                drop(mapping_ctx);
+                return Some(existing);
+            }
+
+            mapping_ctx.insert_named(generic_param.clone(), expr_ty.clone());
+            drop(mapping_ctx);
+
+            Some(expr_ty)
         })
     }
 }
