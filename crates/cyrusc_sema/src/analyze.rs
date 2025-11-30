@@ -1855,16 +1855,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
-        if let Some(rhs) = &mut typed_variable.rhs {
-            let inferred_ty = self.analyze_typed_expr_type(scope_id_opt, rhs, typed_variable.ty.clone());
-
-            if typed_variable.ty.is_none() {
-                if let Some(sema_ty) = inferred_ty {
-                    typed_variable.ty = Some(sema_ty);
-                }
-            }
-        }
-
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         if let Some(sema_ty) = &typed_variable.ty {
@@ -1872,6 +1862,16 @@ impl<'a> AnalysisContext<'a> {
 
             if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
                 typed_variable.ty = Some(SemanticType::Const(Box::new(typed_variable.ty.clone().unwrap())));
+            }
+        }
+
+        if let Some(rhs) = &mut typed_variable.rhs {
+            let inferred_ty = self.analyze_typed_expr_type(scope_id_opt, rhs, typed_variable.ty.clone());
+
+            if typed_variable.ty.is_none() {
+                if let Some(sema_ty) = inferred_ty {
+                    typed_variable.ty = Some(sema_ty);
+                }
             }
         }
 
