@@ -54,7 +54,7 @@ impl TypedStmt {
             TypedStmt::Struct(typed_struct) => typed_struct.loc.clone(),
             TypedStmt::Enum(typed_enum) => typed_enum.loc.clone(),
             TypedStmt::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStmt::Expr(typed_expression) => typed_expression.loc.clone(),
+            TypedStmt::Expr(typed_expr) => typed_expr.loc.clone(),
             TypedStmt::While(while_stmt) => while_stmt.loc.clone(),
             TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
             TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
@@ -227,6 +227,7 @@ pub struct TypedTypedefStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: SemanticType,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
     pub loc: SourceLoc,
 }
@@ -454,7 +455,7 @@ impl TypedGenericParamsList {
 #[derive(Debug, Clone)]
 pub struct TypedBound {
     pub symbol: Identifier,
-    pub type_args: Vec<TypedTypeArg>,
+    pub type_args: TypedTypeArgs,
 }
 
 #[derive(Debug, Clone, Eq)]

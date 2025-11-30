@@ -17,6 +17,9 @@ impl PartialEq for GenericMappingCtx {
 }
 
 pub fn mapping_ctx_eq(a: &GenericMappingCtx, b: &GenericMappingCtx) -> bool {
+    let a = a.normalized();
+    let b = b.normalized();
+
     if a.named.len() != b.named.len() || a.linked_gps != b.linked_gps {
         return false;
     }
@@ -42,6 +45,29 @@ pub fn mapping_ctx_eq_refcell(a: &Rc<RefCell<GenericMappingCtx>>, b: &Rc<RefCell
 }
 
 impl GenericMappingCtx {
+    pub fn normalized(&self) -> GenericMappingCtx {
+        let mut named = HashMap::new();
+        let mut linked_gps = HashMap::new();
+
+        let mut cur = Some(self);
+        while let Some(ctx) = cur {
+            // child overrides parent
+            for (k, v) in &ctx.named {
+                named.entry(k.clone()).or_insert(v.clone());
+            }
+            for (k, v) in &ctx.linked_gps {
+                linked_gps.entry(*k).or_insert(*v);
+            }
+            cur = ctx.parent.as_deref();
+        }
+
+        GenericMappingCtx {
+            named,
+            linked_gps,
+            parent: None,
+        }
+    }
+
     pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
         if let Some(ty) = self
             .named
@@ -52,7 +78,7 @@ impl GenericMappingCtx {
         }
 
         if let Some(&mapped_id) = self.linked_gps.get(&symbol_id) {
-            // Try to resolve the mapped ID recursively
+            // try to resolve the mapped ID recursively
             if let Some(ty) = self.get_with_symbol_id(mapped_id) {
                 return Some(ty);
             }
