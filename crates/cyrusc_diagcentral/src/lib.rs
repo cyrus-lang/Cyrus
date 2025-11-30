@@ -1,6 +1,5 @@
-use std::fmt::{self, Debug, Display};
-
 use cyrusc_ast::source_loc::SourceLoc;
+use std::fmt::{self, Debug, Display};
 
 pub mod reporter;
 mod tests;

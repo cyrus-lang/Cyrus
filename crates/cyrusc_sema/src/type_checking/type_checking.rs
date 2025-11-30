@@ -26,7 +26,11 @@ use cyrusc_tast::{
     types::*,
     *,
 };
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    ops::{Deref, Range, RangeInclusive},
+    rc::Rc,
+};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_literal_type(
@@ -138,16 +142,14 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::ArrayIndex(typed_array_index) => {
                 self.analyze_array_index_expr_type(scope_id_opt, typed_array_index)
             }
-            TypedExprKind::AddrOf(typed_address_of) => {
-                self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of)
-            }
-            TypedExprKind::Deref(typed_dereference) => {
-                self.analyze_deref_expr_type(scope_id_opt, typed_dereference)
-            }
+            TypedExprKind::AddrOf(typed_address_of) => self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of),
+            TypedExprKind::Deref(typed_dereference) => self.analyze_deref_expr_type(scope_id_opt, typed_dereference),
             TypedExprKind::StructInit(struct_init) => {
                 self.analyze_struct_init(scope_id_opt, struct_init, expected_type)
             }
-            TypedExprKind::FuncCall(typed_func_call) => self.analyze_func_call_expr_type(scope_id_opt, typed_func_call),
+            TypedExprKind::FuncCall(typed_func_call) => {
+                self.analyze_func_call_expr_type(scope_id_opt, typed_func_call, expected_type)
+            }
             TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
@@ -709,7 +711,7 @@ impl<'a> AnalysisContext<'a> {
         enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
-        expected_typed: Option<SemanticType>,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let mut valued_fields = match enum_variant {
             TypedEnumVariant::Variant(_, valued_fields) => {
@@ -744,10 +746,17 @@ impl<'a> AnalysisContext<'a> {
 
         let is_const = false;
 
+        let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
+            sema_ty
+                .as_generic_type()
+                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
+        });
+
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
             &method_call.type_args,
+            expected_mapping_ctx,
             is_const,
             method_call.loc.clone(),
         ) {
@@ -810,6 +819,7 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
@@ -850,10 +860,17 @@ impl<'a> AnalysisContext<'a> {
 
         let is_const = false;
 
+        let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
+            sema_ty
+                .as_generic_type()
+                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
+        });
+
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
             &field_access.type_args,
+            expected_mapping_ctx,
             is_const,
             field_access.loc.clone(),
         ) {
@@ -993,6 +1010,7 @@ impl<'a> AnalysisContext<'a> {
                         local_scope_opt,
                         &resolved_enum,
                         field_access,
+                        expected_type,
                     );
                 }
             }
@@ -1069,10 +1087,17 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
+        let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
+            sema_ty
+                .as_generic_type()
+                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
+        });
+
         let (base_symbol_id, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
             struct_init.symbol_id,
             &struct_init.type_args,
+            expected_mapping_ctx,
             struct_init.is_const,
             struct_init.loc.clone(),
         ) {
@@ -1559,6 +1584,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let operand_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
@@ -1590,10 +1616,17 @@ impl<'a> AnalysisContext<'a> {
 
                 func_sig = sym.as_func().unwrap().func_sig.clone();
 
+                let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
+                    sema_ty
+                        .as_generic_type()
+                        .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
+                });
+
                 let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
                     local_scope_opt.clone(),
                     symbol_id,
                     &func_call.type_args,
+                    expected_mapping_ctx,
                     operand_ty.is_const(),
                     func_call.loc.clone(),
                 ) {
@@ -1663,7 +1696,8 @@ impl<'a> AnalysisContext<'a> {
 
             if !func_sig.is_func_decl {
                 // only specialize function definition which necessarily includes the body block
-                func_call.monomorph_key = self.register_specialized_generic_func(&func_sig, &generic_type);
+                func_call.monomorph_key =
+                    self.register_specialized_generic_func(&func_sig, &generic_type, &func_call.loc);
             }
 
             // substitutes the func type inside of the func_call operand
@@ -1680,7 +1714,10 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         func_sig: &FuncSig,
         generic_type: &GenericType,
+        func_call_loc: &SourceLoc,
     ) -> Option<MonomorphKey> {
+        let current_diag_len = self.reporter.diags.len();
+
         let (mut template_body, mapping_ctx, base_symbol) = {
             let ctx = self.monomorph_registry.lock().unwrap();
 
@@ -1720,6 +1757,20 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
 
+        {
+            let diag_len = self.reporter.diags.len();
+            if diag_len > current_diag_len {
+                self.apply_error_originated_from_on_diag_range(current_diag_len..=diag_len, |diag| {
+                    diag.hint = Some(format!(
+                        "Error originates from this function call at {}:{}:{}.",
+                        func_call_loc.file_path.clone(),
+                        func_call_loc.line,
+                        func_call_loc.column
+                    ));
+                });
+            }
+        }
+
         let monomorph_key = {
             let mut ctx = self.monomorph_registry.lock().unwrap();
             let (monomorph_key, _) = ctx.register_func(base_symbol, mapping_ctx);
@@ -1728,6 +1779,28 @@ impl<'a> AnalysisContext<'a> {
         };
 
         Some(monomorph_key)
+    }
+
+    fn apply_error_originated_from_on_diag_range<F>(&mut self, range: RangeInclusive<usize>, mut f: F)
+    where
+        F: FnMut(&mut Diag),
+    {
+        let len = self.reporter.diags.len();
+        let start = *range.start();
+        let end_inclusive = *range.end();
+
+        if start > end_inclusive {
+            return;
+        }
+        if start >= len {
+            return;
+        }
+
+        let end = (end_inclusive + 1).min(len);
+
+        for diag in &mut self.reporter.diags[start..end] {
+            f(diag);
+        }
     }
 
     fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
@@ -1793,7 +1866,15 @@ impl<'a> AnalysisContext<'a> {
         method_call.operand.sema_ty =
             self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
 
-        if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) = method_call.operand.sema_ty {
+        let method_call_operand_ty = method_call
+            .operand
+            .sema_ty
+            .as_ref()
+            .map(|sema_ty| sema_ty.get_const_inner())
+            .cloned()
+            .unwrap();
+
+        if let SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)) = method_call_operand_ty {
             let local_scope_opt =
                 scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
@@ -1834,10 +1915,8 @@ impl<'a> AnalysisContext<'a> {
                         *instance_symbol_id,
                     );
 
-                    if let Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(..))) =
-                        method_call.operand.sema_ty
-                    {
-                        method_call.operand.sema_ty.clone().unwrap()
+                    if let SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(..)) = method_call_operand_ty {
+                        method_call_operand_ty
                     } else {
                         let resolved_var_type = self
                             .analyze_var_or_global_var_type(

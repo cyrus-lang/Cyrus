@@ -53,7 +53,13 @@ impl GenericType {
                     })?;
 
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
-                    mapping_ctx.insert_named(generic_param.param_name.clone(), ty.clone());
+
+                    if let Some(target_generic_param) = ty.as_generic_param() {
+                        mapping_ctx.insert_linked(target_generic_param.symbol_id, generic_param.param_name.symbol_id);
+                    } else {
+                        mapping_ctx.insert_named(generic_param.param_name.clone(), ty.clone());
+                    }
+
                     drop(mapping_ctx);
                 }
                 TypedTypeArg::Named { key, ty, loc } => {

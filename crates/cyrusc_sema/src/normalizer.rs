@@ -68,13 +68,17 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
 
-                let generic_params = sym.get_generic_params().unwrap();
-                if let Err(diag) = generic_type.init(generic_params) {
-                    self.reporter.report(diag);
-                    return None;
-                }
+                if let Some(resolved_typedef) = sym.as_typedef() {
+                    self.resolve_typedef_inner_type(resolved_typedef)
+                } else {
+                    let generic_params = sym.get_generic_params().unwrap();
+                    if let Err(diag) = generic_type.init(generic_params) {
+                        self.reporter.report(diag);
+                        return None;
+                    }
 
-                Some(SemanticType::GenericType(generic_type))
+                    Some(SemanticType::GenericType(generic_type))
+                }
             }
             SemanticType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
@@ -95,6 +99,7 @@ impl<'a> AnalysisContext<'a> {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_typedef(),
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_typedef(),
                 };
+
                 let resolved_typedef = match resolved_typedef_opt {
                     Some(resolved_typedef) => resolved_typedef,
                     None => {
@@ -103,8 +108,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
 
-                let inner = resolved_typedef.typedef_sig.ty.clone();
-                self.normalize_type(scope_id_opt, inner, loc)
+                self.resolve_typedef_inner_type(resolved_typedef)
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Variable(symbol_id)) => {
                 let local_symbol = self
@@ -292,9 +296,11 @@ impl<'a> AnalysisContext<'a> {
                 LocalSymbolKind::Interface(i) => {
                     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
                 }
-                LocalSymbolKind::Typedef(resolved_typedef) => self
-                    .resolve_typedef_inner_type(&resolved_typedef)
-                    .and_then(|t| self.normalize_type(scope_id_opt, t, resolved_typedef.typedef_sig.loc.clone())),
+                LocalSymbolKind::Typedef(resolved_typedef) => {
+                    self.resolve_typedef_inner_type(&resolved_typedef).and_then(|sema_ty| {
+                        self.normalize_type(scope_id_opt, sema_ty, resolved_typedef.typedef_sig.loc.clone())
+                    })
+                }
             },
 
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
@@ -388,7 +394,7 @@ impl<'a> AnalysisContext<'a> {
 
         if !self.ty_caches.push(symbol_id) {
             let symbol = (self.symbol_formatter)(scope_id_opt)(symbol_id);
-            self.report_cyclic_type_def(symbol, loc);
+            self.report_cyclic_typedef(symbol, loc);
             return None;
         }
 
@@ -422,7 +428,7 @@ impl<'a> AnalysisContext<'a> {
         concrete_type_opt
     }
 
-    fn report_cyclic_type_def(&mut self, symbol: String, loc: SourceLoc) {
+    fn report_cyclic_typedef(&mut self, symbol: String, loc: SourceLoc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol }),

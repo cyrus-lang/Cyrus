@@ -847,10 +847,16 @@ impl Resolver {
             );
         }
 
+        let generic_params = typedef
+            .generic_params
+            .clone()
+            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+
         Some(TypedStmt::Typedef(TypedTypedefStmt {
             symbol_id,
             name: typedef.identifier.name.clone(),
             ty: sema_ty,
+            generic_params,
             vis: typedef.vis.clone(),
             loc: typedef_sig.loc,
         }))
