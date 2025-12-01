@@ -93,9 +93,19 @@ impl ResolvedSymbol {
 }
 
 impl SemanticType {
+    // Returns symbol ID only if the type is a concrete resolved symbol.
     pub fn get_symbol_id(&self) -> Option<SymbolID> {
         match self.get_const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            _ => None,
+        }
+    }
+
+    // Returns symbol ID for both resolved symbols and generic types.
+    pub fn get_pure_symbol_id(&self) -> Option<SymbolID> {
+        match self.get_const_inner() {
+            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            SemanticType::GenericType(generic_type) => Some(generic_type.base),
             _ => None,
         }
     }

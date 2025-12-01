@@ -74,6 +74,18 @@ impl GenericMappingCtx {
             .find_map(|(k, v)| (k.symbol_id == symbol_id).then(|| v.clone()))
     }
 
+    pub fn get_with_name(&self, name: &str) -> Option<SemanticType> {
+        if let Some((_, ty)) = self.named.iter().find(|(id, _)| id.name == name) {
+            return Some(ty.clone());
+        }
+
+        if let Some(parent) = &self.parent {
+            return parent.get_with_name(name);
+        }
+
+        None
+    }
+
     pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
         if let Some(ty) = self
             .named

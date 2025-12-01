@@ -20,8 +20,8 @@ use cyrusc_tast::{
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
-        TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
-        TypedStructField,
+        TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
+        TypedFuncVariadicParams, TypedStructField,
     },
     types::*,
     *,
@@ -704,16 +704,12 @@ impl<'a> AnalysisContext<'a> {
         Some(typed_struct_field.ty.clone())
     }
 
-    fn analyze_enum_variant(
+    fn analyze_enum_fielded_variant<'b>(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
-        enum_variant: TypedEnumVariant,
-        method_call: &mut TypedMethodCall,
-        resolved_enum: &ResolvedEnum,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        let mut valued_fields = match enum_variant {
+        mut enum_variant: &'b TypedEnumVariant,
+        method_call: &TypedMethodCall,
+    ) -> Option<Vec<TypedEnumValuedField>> {
+        match &mut enum_variant {
             TypedEnumVariant::Variant(_, valued_fields) => {
                 if valued_fields.len() != method_call.args.len() {
                     self.reporter.report(Diag {
@@ -729,7 +725,7 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
 
-                valued_fields
+                Some(valued_fields.clone())
             }
             _ => {
                 self.reporter.report(Diag {
@@ -742,7 +738,18 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
-        };
+        }
+    }
+    fn analyze_enum_variant(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        enum_variant: TypedEnumVariant,
+        method_call: &mut TypedMethodCall,
+        resolved_enum: &ResolvedEnum,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let mut valued_fields = self.analyze_enum_fielded_variant(&enum_variant, method_call)?;
 
         let is_const = false;
 
@@ -757,6 +764,7 @@ impl<'a> AnalysisContext<'a> {
             resolved_enum.symbol_id,
             &method_call.type_args,
             expected_mapping_ctx,
+            resolved_enum.enum_sig.generic_params.as_ref(),
             is_const,
             method_call.loc.clone(),
         ) {
@@ -873,6 +881,7 @@ impl<'a> AnalysisContext<'a> {
             resolved_enum.symbol_id,
             &field_access.type_args,
             expected_mapping_ctx,
+            resolved_enum.enum_sig.generic_params.as_ref(),
             is_const,
             field_access.loc.clone(),
         ) {
@@ -1100,6 +1109,7 @@ impl<'a> AnalysisContext<'a> {
             struct_init.symbol_id,
             &struct_init.type_args,
             expected_mapping_ctx,
+            None,
             struct_init.is_const,
             struct_init.loc.clone(),
         ) {
@@ -1642,6 +1652,7 @@ impl<'a> AnalysisContext<'a> {
                     symbol_id,
                     &func_call.type_args,
                     expected_mapping_ctx,
+                    func_sig.generic_params.as_ref(),
                     operand_ty.is_const(),
                     func_call.loc.clone(),
                 ) {
@@ -1869,17 +1880,61 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn maybe_enum_variant_constructor_from_method_call(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        operand_ty: SemanticType,
+        method_call: &mut TypedMethodCall,
+        expected_type: Option<SemanticType>,
+    ) -> (bool, Option<SemanticType>) {
+        let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
+            return (false, None);
+        };
+
+        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), symbol_id) else {
+            return (false, None);
+        };
+
+        let attempted = true;
+
+        method_call.object_symbol_id = Some(resolved_enum.symbol_id);
+
+        let enum_variant_opt = resolved_enum
+            .enum_sig
+            .variants
+            .iter()
+            .find(|v| v.get_identifier().as_string() == method_call.method_name);
+
+        match enum_variant_opt {
+            Some(enum_variant) => {
+                let sema = self.analyze_enum_variant(
+                    scope_id_opt,
+                    local_scope_opt,
+                    enum_variant.clone(),
+                    method_call,
+                    &resolved_enum,
+                    expected_type,
+                );
+                (attempted, sema)
+            }
+            None => (attempted, None),
+        }
+    }
+
     fn analyze_method_call_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &mut TypedMethodCall,
-        expected_type: Option<SemanticType>,
+        mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
 
         method_call.operand.sema_ty =
             self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
+
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let method_call_operand_ty = method_call
             .operand
@@ -1889,32 +1944,22 @@ impl<'a> AnalysisContext<'a> {
             .cloned()
             .unwrap();
 
-        if let SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)) = method_call_operand_ty {
-            let local_scope_opt =
-                scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        if let Some(sema_ty) =
+            self.merge_generic_operand_as_expected_type(method_call_operand_ty.clone(), expected_type.clone())
+        {
+            expected_type = Some(sema_ty);
+        }
 
-            let resolved_enum = self
-                .resolver
-                .resolve_enum_symbol(local_scope_opt.clone(), enum_symbol_id)
-                .unwrap();
-
-            let enum_variant_opt = resolved_enum
-                .enum_sig
-                .variants
-                .iter()
-                .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
-
-            method_call.object_symbol_id = Some(resolved_enum.symbol_id);
-
-            if let Some(enum_variant) = enum_variant_opt {
-                return self.analyze_enum_variant(
-                    scope_id_opt,
-                    local_scope_opt,
-                    enum_variant.clone(),
-                    method_call,
-                    &resolved_enum,
-                    expected_type,
-                );
+        {
+            let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_method_call(
+                scope_id_opt,
+                local_scope_opt.clone(),
+                method_call_operand_ty.clone(),
+                method_call,
+                expected_type.clone(),
+            );
+            if detected_as_enum_variant {
+                return sema_ty;
             }
         }
 

@@ -20,6 +20,7 @@ pub struct GenericType {
     pub base: SymbolID,
     pub type_args: TypedTypeArgs,
     pub mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
+    pub altered_generic_params: Option<TypedGenericParamsList>,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
@@ -36,6 +37,7 @@ impl GenericType {
             base,
             type_args,
             mapping_ctx,
+            altered_generic_params: None,
             is_const,
             loc,
         }
@@ -137,7 +139,7 @@ impl GenericType {
             .map(|type_arg| match type_arg {
                 TypedTypeArg::Positional { ty, .. } => format_sema_ty(ty.clone(), &format_symbol),
                 TypedTypeArg::Named { key, ty, .. } => {
-                    format!("{}: {}", key, format_sema_ty(ty.clone(), &format_symbol))
+                    format!("{} = {}", key, format_sema_ty(ty.clone(), &format_symbol))
                 }
             })
             .collect::<Vec<String>>()
