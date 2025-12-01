@@ -1861,7 +1861,9 @@ impl<'a> AnalysisContext<'a> {
             typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
 
             if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
-                typed_variable.ty = Some(SemanticType::Const(Box::new(typed_variable.ty.clone().unwrap())));
+                if let Some(sema_ty) = typed_variable.ty.clone() {
+                    typed_variable.ty = Some(SemanticType::Const(Box::new(sema_ty)));
+                }
             }
         }
 
