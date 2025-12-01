@@ -181,7 +181,7 @@ impl Parser {
         false
     }
 
-    fn token_disqualifies_type_arg(&self, kind: &TokenKind) -> bool {
+    fn token_disqualifies_type_arg(&mut self, kind: &TokenKind) -> bool {
         match kind {
             // allowed tokens
             TokenKind::Identifier { .. } => false,
@@ -217,6 +217,9 @@ impl Parser {
 
             TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::LeftBracket | TokenKind::RightBracket => false,
 
+            // assign used in named-type-args that why it doesn't disqualify
+            TokenKind::Assign => false,
+
             // any other token disqualifies type arg
             TokenKind::Literal(_) => true,
 
@@ -233,7 +236,6 @@ impl Parser {
             | TokenKind::GreaterEqual
             | TokenKind::And
             | TokenKind::Or
-            | TokenKind::Assign
             | TokenKind::Pipe
             | TokenKind::Caret
             | TokenKind::AmpTilde
@@ -279,7 +281,7 @@ impl Parser {
                 true
             }
 
-            _ => true,
+            other => !self.is_type_token(other.clone()),
         }
     }
 

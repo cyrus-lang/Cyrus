@@ -153,6 +153,7 @@ mod tests {
             base: 2,
             type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+            altered_generic_params: None,
             is_const: false,
             loc: SourceLoc::default(),
         };
@@ -247,6 +248,7 @@ mod tests {
             base: 3,
             type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+            altered_generic_params: None,
             is_const: false,
             loc: SourceLoc::default(),
         };
@@ -339,6 +341,7 @@ mod tests {
             base: 10,
             type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+            altered_generic_params: None,
             is_const: false,
             loc: SourceLoc::default(),
         };
@@ -420,6 +423,7 @@ mod tests {
             base: 11,
             type_args,
             mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+            altered_generic_params: None,
             is_const: false,
             loc: SourceLoc::default(),
         };
@@ -463,6 +467,7 @@ mod tests {
             mapping_ctx: ctx1,
             is_const: true,
             loc: Default::default(),
+            altered_generic_params: None,
         };
 
         let gt2 = GenericType {
@@ -475,6 +480,7 @@ mod tests {
             mapping_ctx: ctx2,
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
 
         // type_args and is_const ignored, so equality depends only on base + mapping_ctx
@@ -492,6 +498,7 @@ mod tests {
             type_args: vec![],
             mapping_ctx: ctx1,
             is_const: false,
+            altered_generic_params: None,
             loc: Default::default(),
         };
         let gt2 = GenericType {
@@ -500,6 +507,7 @@ mod tests {
             mapping_ctx: ctx2,
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
 
         assert!(mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
@@ -534,6 +542,7 @@ mod tests {
             mapping_ctx: Rc::new(RefCell::new(ctx1)),
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
         let gt2 = GenericType {
             base: 50,
@@ -541,6 +550,7 @@ mod tests {
             mapping_ctx: Rc::new(RefCell::new(ctx2)),
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
 
         assert!(!mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
@@ -586,6 +596,7 @@ mod tests {
             mapping_ctx: Rc::new(RefCell::new(child1)),
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
         let gt2 = GenericType {
             base: 5,
@@ -593,6 +604,7 @@ mod tests {
             mapping_ctx: Rc::new(RefCell::new(child2)),
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
 
         assert!(mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));
@@ -648,6 +660,7 @@ mod tests {
             mapping_ctx: Rc::new(RefCell::new(child1)),
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
         let gt2 = GenericType {
             base: 5,
@@ -655,6 +668,7 @@ mod tests {
             mapping_ctx: Rc::new(RefCell::new(child2)),
             is_const: false,
             loc: Default::default(),
+            altered_generic_params: None,
         };
 
         assert!(!mapping_ctx_eq(&gt1.mapping_ctx.borrow(), &gt2.mapping_ctx.borrow()));

@@ -422,12 +422,12 @@ pub struct TypedContinueStmt {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedGenericParamsList {
     pub list: Vec<TypedGenericParam>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedGenericParam {
     pub param_name: TypedIdentifier,
     pub bounds: Option<Vec<TypedBound>>,
@@ -452,7 +452,7 @@ impl TypedGenericParamsList {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedBound {
     pub symbol: Identifier,
     pub type_args: TypedTypeArgs,
@@ -470,6 +470,15 @@ pub enum TypedTypeArg {
         ty: SemanticType,
         loc: SourceLoc,
     },
+}
+
+impl TypedTypeArg {
+    pub fn as_named(&self) -> Option<(&String, &SemanticType)> {
+        match self {
+            TypedTypeArg::Named { key, ty, .. } => Some((key, ty)),
+            _ => None,
+        }
+    }
 }
 
 pub type TypedTypeArgs = Vec<TypedTypeArg>;

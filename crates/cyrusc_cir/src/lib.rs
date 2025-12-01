@@ -4,12 +4,7 @@ use cyrusc_ast::{
     StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_tast::{
-    LabelID,
-    exprs::TypedIdentifier,
-    generics::monomorph::MonomorphKey,
-    sigs::{FuncSig, StructSig},
-};
+use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey, sigs::StructSig};
 
 pub mod monomorph;
 pub mod types;

@@ -18,6 +18,8 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         type_args: &Option<TypedTypeArgs>,
         parent_mapping_ctx: Option<Rc<GenericMappingCtx>>,
+        // gets it from symbol entry if not specified
+        generic_params: Option<&TypedGenericParamsList>,
         is_const: bool,
         loc: SourceLoc,
     ) -> Result<Option<(SymbolID, Option<GenericType>)>, Diag> {
@@ -28,7 +30,8 @@ impl<'a> AnalysisContext<'a> {
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .unwrap();
 
-        let generic_params = match sym.get_generic_params() {
+        let symbol_generic_params = sym.get_generic_params();
+        let generic_params = match generic_params.or(symbol_generic_params.as_ref()) {
             Some(generic_params) => generic_params,
             None => {
                 if type_args.is_empty() {
@@ -41,13 +44,14 @@ impl<'a> AnalysisContext<'a> {
 
         let mapping_ctx = Rc::new(RefCell::new(
             parent_mapping_ctx
-                .and_then(|parent| Some(GenericMappingCtx::new_child(parent)))
+                .as_ref()
+                .map(|parent| GenericMappingCtx::new_child(parent.clone()))
                 .unwrap_or(GenericMappingCtx::new_root()),
         ));
 
         let mut generic_type = GenericType::new_unresolved(sym.get_symbol_id(), type_args, mapping_ctx, is_const, loc);
 
-        generic_type.init(generic_params)?;
+        generic_type.init(generic_params.clone())?;
         Ok(Some((sym.get_symbol_id(), Some(generic_type))))
     }
 
@@ -59,53 +63,96 @@ impl<'a> AnalysisContext<'a> {
         expr_ty: Option<SemanticType>,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        generic_type_opt.clone().and_then(|generic_type| {
-            let generic_param = target_ty.as_generic_param()?;
-            let expr_ty = expr_ty?;
+        let Some(generic_type) = generic_type_opt.clone() else {
+            return None;
+        };
 
-            let mapping_ctx_rc = &generic_type.mapping_ctx;
-            let mut mapping_ctx = mapping_ctx_rc.borrow_mut();
+        let generic_param = target_ty.as_generic_param()?;
+        let expr_ty = expr_ty?;
 
-            // if the parent already inferred this generic param, return its value and do not overwrite locally.
-            if mapping_ctx.parent.is_some() {
-                if let Some(parent_sema_ty) = mapping_ctx
-                    .parent
-                    .as_ref()
-                    .unwrap()
-                    .get_with_symbol_id(generic_param.symbol_id)
-                {
-                    // check type mismatch with sema_ty and expr_ty
-                    if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_sema_ty.clone(), loc.clone()) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                                lhs_type: format_sema_ty(
-                                    parent_sema_ty.clone(),
-                                    &(self.symbol_formatter)(scope_id_opt),
-                                ),
-                                rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
-                            }),
-                            location: Some(DiagLoc::new(loc)),
-                            hint: None,
-                        });
-                        drop(mapping_ctx);
-                        return None;
-                    }
+        let mapping_ctx_rc = &generic_type.mapping_ctx;
+        let mut ctx = mapping_ctx_rc.borrow_mut();
 
-                    drop(mapping_ctx);
-                    return Some(parent_sema_ty);
+        let parent_ctx_opt = ctx.parent.as_ref();
+
+        if let Some(parent_ctx) = parent_ctx_opt {
+            if let Some(parent_val) = parent_ctx.get_with_symbol_id(generic_param.symbol_id) {
+                // parent already has the type, we must obey it
+                if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                            lhs_type: format_sema_ty(parent_val.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                            rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                        }),
+                        location: Some(DiagLoc::new(loc)),
+                        hint: None,
+                    });
+                    return None;
+                }
+
+                return Some(parent_val);
+            }
+        }
+
+        if let Some(local_val) = ctx.get_local_with_symbol_id(generic_param.symbol_id) {
+            return Some(local_val);
+        }
+
+        ctx.insert_named(generic_param.clone(), expr_ty.clone());
+        Some(expr_ty)
+    }
+
+    pub(crate) fn merge_generic_operand_as_expected_type(
+        &self,
+        operand_ty: SemanticType,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        if let Some(generic_type) = operand_ty.as_generic_type() {
+            if let Some(expected_sema_ty) = &expected_type {
+                if let Some(expected_generic_type) = expected_sema_ty.as_generic_type() {
+                    let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
+                    mapping_ctx.parent = Some(Rc::new(expected_generic_type.mapping_ctx.borrow().clone()));
                 }
             }
 
-            if let Some(existing) = mapping_ctx.get_local_with_symbol_id(generic_param.symbol_id) {
-                drop(mapping_ctx);
-                return Some(existing);
-            }
-
-            mapping_ctx.insert_named(generic_param.clone(), expr_ty.clone());
-            drop(mapping_ctx);
-
-            Some(expr_ty)
-        })
+            Some(SemanticType::GenericType(generic_type.clone()))
+        } else {
+            None
+        }
     }
 }
+
+// fn type_args_override_parent(
+//     parent_ctx: &GenericMappingCtx,
+//     generic_params: &TypedGenericParamsList,
+//     type_args: &TypedTypeArgs,
+// ) -> bool {
+//     for (idx, arg) in type_args.iter().enumerate() {
+//         match arg {
+//             TypedTypeArg::Named { key, ty: arg_ty, .. } => {
+//                 if let Some(generic_param) = generic_params.list.iter().find(|p| p.param_name.name == *key) {
+//                     if let Some(parent_sema_ty) = parent_ctx.get_with_name(&generic_param.param_name.name) {
+//                         dbg!(parent_sema_ty);
+//                         todo!();
+
+//                         if parent_sema_ty != *arg_ty {
+//                             return true;
+//                         }
+//                     }
+//                 }
+//             }
+//             TypedTypeArg::Positional { ty: arg_ty, .. } => {
+//                 if let Some(param) = generic_params.list.get(idx) {
+//                     if let Some(parent_sema_ty) = parent_ctx.get_with_symbol_id(param.param_name.symbol_id) {
+//                         if parent_sema_ty != *arg_ty {
+//                             return true;
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     false
+// }

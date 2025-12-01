@@ -598,6 +598,7 @@ impl Resolver {
                         base: symbol_id,
                         type_args,
                         mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+                        altered_generic_params: None,
                         is_const,
                         loc: SourceLoc::from_loc(generic_inst.loc.clone(), self.current_file_path()),
                     }))

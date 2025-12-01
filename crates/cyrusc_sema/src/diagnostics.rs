@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Generic type argument overrides a type parameter already defined by the parent context.")]
+    GenericTypeArgOverridesParent,
+
     #[error("Redundant 'const' qualifier on an already-const type.")]
     RedundantConstQualifier,
     

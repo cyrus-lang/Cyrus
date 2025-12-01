@@ -394,8 +394,10 @@ impl<'a> AnalysisContext<'a> {
         type_args: &TypedTypeArgs,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let generic_type = resolved_typedef.typedef_sig.ty.as_generic_type().unwrap();
+        let mut generic_type = resolved_typedef.typedef_sig.ty.as_generic_type().cloned().unwrap();
         let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
+
+        let typedef_generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
 
         match self
             .init_generic_type_with_symbol_id(
@@ -403,6 +405,7 @@ impl<'a> AnalysisContext<'a> {
                 generic_type.base,
                 &Some(type_args.clone()),
                 parent_mapping_ctx,
+                Some(&typedef_generic_params),
                 false,
                 loc,
             )
@@ -410,6 +413,9 @@ impl<'a> AnalysisContext<'a> {
             .unwrap()
         {
             Ok((_, new_generic_type_opt)) => {
+                // new generic params gotta be used!
+                generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+
                 new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
             }
             Err(diag) => {
