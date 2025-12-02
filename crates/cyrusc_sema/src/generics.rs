@@ -67,22 +67,62 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let generic_param = target_ty.as_generic_param()?;
+        let generic_param = target_ty.as_generic_param()?.clone();
         let expr_ty = expr_ty?;
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;
+
+        let cloned_ctx = mapping_ctx_rc.borrow().clone();
+
+        // check ancestor linked_gps chain for this generic param
+        let mut mapped_parent_id_opt: Option<SymbolID> = None;
+        let mut cur_opt: Option<&GenericMappingCtx> = Some(&cloned_ctx);
+
+        while let Some(cur) = cur_opt {
+            if let Some(&mapped_parent_id) = cur.linked_gps.get(&generic_param.symbol_id) {
+                mapped_parent_id_opt = Some(mapped_parent_id);
+                break;
+            }
+            cur_opt = cur.parent.as_deref();
+        }
+
         let mut ctx = mapping_ctx_rc.borrow_mut();
 
-        let parent_ctx_opt = ctx.parent.as_ref();
+        // if a local value exists, use it immediately
+        if let Some(local_val) = ctx.get_local_with_symbol_id(generic_param.symbol_id) {
+            return Some(local_val);
+        }
 
-        if let Some(parent_ctx) = parent_ctx_opt {
-            if let Some(parent_val) = parent_ctx.get_with_symbol_id(generic_param.symbol_id) {
-                // parent already has the type, we must obey it
-                if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
+        // if any ancestor directly has a concrete value for this symbol id, obey it
+        if let Some(parent_val) = ctx
+            .parent
+            .as_ref()
+            .and_then(|p| p.get_with_symbol_id(generic_param.symbol_id))
+        {
+            if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: format_sema_ty(parent_val.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                    }),
+                    location: Some(DiagLoc::new(loc)),
+                    hint: None,
+                });
+                return None;
+            }
+
+            ctx.insert_named(generic_param.clone(), parent_val.clone());
+            return Some(parent_val);
+        }
+
+        if let Some(mapped_parent_id) = mapped_parent_id_opt {
+            if let Some(resolved_ty) = ctx.get_with_symbol_id(mapped_parent_id) {
+                if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), resolved_ty.clone(), loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty(parent_val.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                            lhs_type: format_sema_ty(resolved_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
                             rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
                         }),
                         location: Some(DiagLoc::new(loc)),
@@ -91,12 +131,11 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
 
-                return Some(parent_val);
-            }
-        }
+                ctx.insert_named(generic_param.clone(), resolved_ty.clone());
+                ctx.insert_linked(generic_param.symbol_id, mapped_parent_id);
 
-        if let Some(local_val) = ctx.get_local_with_symbol_id(generic_param.symbol_id) {
-            return Some(local_val);
+                return Some(resolved_ty);
+            }
         }
 
         ctx.insert_named(generic_param.clone(), expr_ty.clone());
@@ -122,37 +161,3 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 }
-
-// fn type_args_override_parent(
-//     parent_ctx: &GenericMappingCtx,
-//     generic_params: &TypedGenericParamsList,
-//     type_args: &TypedTypeArgs,
-// ) -> bool {
-//     for (idx, arg) in type_args.iter().enumerate() {
-//         match arg {
-//             TypedTypeArg::Named { key, ty: arg_ty, .. } => {
-//                 if let Some(generic_param) = generic_params.list.iter().find(|p| p.param_name.name == *key) {
-//                     if let Some(parent_sema_ty) = parent_ctx.get_with_name(&generic_param.param_name.name) {
-//                         dbg!(parent_sema_ty);
-//                         todo!();
-
-//                         if parent_sema_ty != *arg_ty {
-//                             return true;
-//                         }
-//                     }
-//                 }
-//             }
-//             TypedTypeArg::Positional { ty: arg_ty, .. } => {
-//                 if let Some(param) = generic_params.list.get(idx) {
-//                     if let Some(parent_sema_ty) = parent_ctx.get_with_symbol_id(param.param_name.symbol_id) {
-//                         if parent_sema_ty != *arg_ty {
-//                             return true;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     false
-// }

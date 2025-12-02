@@ -1,9 +1,11 @@
 use crate::exprs::{TypedExprStmt, TypedIdentifier};
 use crate::generics::generic_type::GenericType;
-use crate::stmts::TypedFuncTypeParams;
+use crate::generics::mapping_ctx::GenericMappingCtx;
+use crate::stmts::{TypedFuncTypeParams, TypedGenericParamsList};
 use crate::{ModuleID, SourceLoc, SymbolID};
 use cyrusc_ast::token::TokenKind;
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SemanticType {
@@ -292,6 +294,25 @@ impl SemanticType {
         match self.get_const_inner() {
             SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
             _ => None,
+        }
+    }
+
+    pub fn extract_generic_for_use(
+        &self,
+        operand_ty: &SemanticType,
+        fallback_generic_params: Option<&TypedGenericParamsList>,
+    ) -> Option<(TypedGenericParamsList, Rc<GenericMappingCtx>)> {
+        if let Some(generic_type) = operand_ty.as_generic_type() {
+            let generic_params = generic_type
+                .altered_generic_params
+                .clone()
+                .or(fallback_generic_params.cloned())?;
+
+            let mapping_ctx = Rc::new(generic_type.mapping_ctx.borrow().clone());
+
+            Some((generic_params, mapping_ctx))
+        } else {
+            None
         }
     }
 }

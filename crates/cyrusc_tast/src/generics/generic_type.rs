@@ -1,5 +1,6 @@
 use crate::{
     SymbolID,
+    exprs::TypedIdentifier,
     format::format_sema_ty,
     generics::{
         diagnostics::GenericTypesDiagKind,
@@ -65,11 +66,13 @@ impl GenericType {
                     drop(mapping_ctx);
                 }
                 TypedTypeArg::Named { key, ty, loc } => {
-                    let generic_param = template.get_named(key).ok_or(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(GenericTypesDiagKind::UndefinedGenericParam { name: key.clone() }),
-                        location: Some(DiagLoc::new(loc.clone())),
-                        hint: None,
+                    let generic_param = template.get_named(key).ok_or({
+                        Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(GenericTypesDiagKind::UndefinedGenericParam { name: key.clone() }),
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: None,
+                        }
                     })?;
 
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
@@ -86,47 +89,51 @@ impl GenericType {
         template: TypedGenericParamsList,
         format_symbol: impl Fn(SymbolID) -> String,
     ) -> Result<&Self, Diag> {
-        // infer default generic params if not specified explicitly
-
-        let mut mapping_ctx = self.mapping_ctx.borrow_mut();
-        for generic_param in &template.list {
-            if mapping_ctx
-                .get_with_symbol_id(generic_param.param_name.symbol_id)
-                .is_none()
-                && generic_param.default.is_some()
-            {
-                mapping_ctx.insert_named(generic_param.param_name.clone(), generic_param.default.clone().unwrap());
+        // fill defaults
+        {
+            let mut mapping_ctx = self.mapping_ctx.borrow_mut();
+            for gp in &template.list {
+                if mapping_ctx.get_with_symbol_id(gp.param_name.symbol_id).is_none() {
+                    if let Some(default) = &gp.default {
+                        mapping_ctx.insert_named(gp.param_name.clone(), default.clone());
+                    }
+                }
             }
         }
-        drop(mapping_ctx);
-        
-        if self.includes_unresolved_generic_param(template) {
-            let ty = self.format(format_symbol);
+
+        // detect + collect unresolved generic params
+        let missing = self.collect_unresolved_generic_params(&template);
+
+        // FIXME Does not sync well with linked_gps.
+        if !missing.is_empty() {
+            let ty = self.format(&format_symbol);
+
+            let missing_fmt = missing
+                .iter()
+                .map(|identifier| format!("'{}'", identifier.name))
+                .collect::<Vec<_>>()
+                .join(", ");
 
             return Err(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(GenericTypesDiagKind::RequiresExplicitTypeArgs { ty }),
                 location: Some(DiagLoc::new(self.loc.clone())),
-                hint: None,
+                hint: Some(format!("Missing generic parameters: {}", missing_fmt)),
             });
         }
 
         Ok(self)
     }
 
-    fn includes_unresolved_generic_param(&self, template: TypedGenericParamsList) -> bool {
-        {
-            let mapping_ctx = self.mapping_ctx.borrow();
-            for generic_param in &template.list {
-                if mapping_ctx
-                    .get_with_symbol_id(generic_param.param_name.symbol_id)
-                    .is_none()
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+    fn collect_unresolved_generic_params(&self, template: &TypedGenericParamsList) -> Vec<TypedIdentifier> {
+        let mapping_ctx = self.mapping_ctx.borrow();
+
+        template
+            .list
+            .iter()
+            .filter(|gp| mapping_ctx.get_with_symbol_id(gp.param_name.symbol_id).is_none())
+            .map(|gp| gp.param_name.clone())
+            .collect()
     }
 
     pub fn format(&self, format_symbol: impl Fn(SymbolID) -> String) -> String {

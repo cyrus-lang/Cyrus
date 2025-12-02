@@ -15,13 +15,14 @@ use cyrusc_tast::{
     format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
         generic_type::GenericType,
+        mapping_ctx::GenericMappingCtx,
         monomorph::{MonomorphKey, SpecializedFuncEntry},
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedStructField,
+        TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField,
     },
     types::*,
     *,
@@ -179,14 +180,17 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let normalized_type = self.normalize_type(scope_id_opt, sema_ty.clone()?, typed_expr.loc.clone());
-        typed_expr.sema_ty = normalized_type.clone();
+        typed_expr.sema_ty = Some(normalized_type.clone()?);
 
         if cfg!(debug_assertions) {
             if let Some(concrete_type_clone) = typed_expr.sema_ty.clone() {
                 let is_unresolved_symbol = matches!(concrete_type_clone, SemanticType::UnresolvedSymbol(..));
                 assert!(is_unresolved_symbol == false);
             }
-            assert!(typed_expr.sema_ty != None);
+
+            if typed_expr.sema_ty.is_none() {
+                panic!("typed_expr.sema_ty is empty!");
+            }
         }
 
         normalized_type
@@ -740,31 +744,27 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
+
     fn analyze_enum_variant(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
         enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
+        generic_params: Option<&TypedGenericParamsList>,
         resolved_enum: &ResolvedEnum,
-        expected_type: Option<SemanticType>,
+        mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
         let mut valued_fields = self.analyze_enum_fielded_variant(&enum_variant, method_call)?;
 
         let is_const = false;
 
-        let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
-            sema_ty
-                .as_generic_type()
-                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
-        });
-
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
             &method_call.type_args,
-            expected_mapping_ctx,
-            resolved_enum.enum_sig.generic_params.as_ref(),
+            mapping_ctx,
+            generic_params,
             is_const,
             method_call.loc.clone(),
         ) {
@@ -793,10 +793,14 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(generic_type) = generic_type_opt {
             // validate generic type instantiation
-            let final_generic_type = match generic_type.finalize(
-                resolved_enum.enum_sig.generic_params.clone().unwrap(),
-                (self.symbol_formatter)(scope_id_opt),
-            ) {
+
+            let generic_params = generic_params
+                .or(resolved_enum.enum_sig.generic_params.as_ref())
+                .cloned()
+                .unwrap();
+
+            let final_generic_type = match generic_type.finalize(generic_params, (self.symbol_formatter)(scope_id_opt))
+            {
                 Ok(generic_type) => generic_type,
                 Err(diag) => {
                     self.reporter.report(diag);
@@ -1886,7 +1890,6 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         method_call: &mut TypedMethodCall,
-        expected_type: Option<SemanticType>,
     ) -> (bool, Option<SemanticType>) {
         let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
             return (false, None);
@@ -1906,19 +1909,26 @@ impl<'a> AnalysisContext<'a> {
             .iter()
             .find(|v| v.get_identifier().as_string() == method_call.method_name);
 
-        match enum_variant_opt {
-            Some(enum_variant) => {
-                let sema = self.analyze_enum_variant(
-                    scope_id_opt,
-                    local_scope_opt,
-                    enum_variant.clone(),
-                    method_call,
-                    &resolved_enum,
-                    expected_type,
-                );
-                (attempted, sema)
+        {
+            let (generic_params, mapping_ctx) = operand_ty
+                .extract_generic_for_use(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref())
+                .unwrap();
+
+            match enum_variant_opt {
+                Some(enum_variant) => {
+                    let sema = self.analyze_enum_variant(
+                        scope_id_opt,
+                        local_scope_opt,
+                        enum_variant.clone(),
+                        method_call,
+                        Some(&generic_params),
+                        &resolved_enum,
+                        Some(mapping_ctx),
+                    );
+                    (attempted, sema)
+                }
+                None => (attempted, None),
             }
-            None => (attempted, None),
         }
     }
 
@@ -1926,7 +1936,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &mut TypedMethodCall,
-        mut expected_type: Option<SemanticType>,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
@@ -1936,18 +1946,17 @@ impl<'a> AnalysisContext<'a> {
 
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let method_call_operand_ty = method_call
+        let mut method_call_operand_ty = method_call
             .operand
             .sema_ty
             .as_ref()
             .map(|sema_ty| sema_ty.get_const_inner())
-            .cloned()
-            .unwrap();
+            .cloned()?;
 
         if let Some(sema_ty) =
             self.merge_generic_operand_as_expected_type(method_call_operand_ty.clone(), expected_type.clone())
         {
-            expected_type = Some(sema_ty);
+            method_call_operand_ty = sema_ty;
         }
 
         {
@@ -1956,7 +1965,6 @@ impl<'a> AnalysisContext<'a> {
                 local_scope_opt.clone(),
                 method_call_operand_ty.clone(),
                 method_call,
-                expected_type.clone(),
             );
             if detected_as_enum_variant {
                 return sema_ty;

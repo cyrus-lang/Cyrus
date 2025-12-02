@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
@@ -14,6 +12,7 @@ use cyrusc_tast::{
         TypedTupleType,
     },
 };
+use std::rc::Rc;
 
 impl<'a> AnalysisContext<'a> {
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
@@ -80,7 +79,14 @@ impl<'a> AnalysisContext<'a> {
                         resolved_typedef.typedef_sig.loc.clone(),
                     )
                 } else {
-                    let generic_params = sym.get_generic_params().unwrap();
+                    // let generic_params = generic_type
+                    //     .altered_generic_params
+                    //     .clone()
+                    //     .or(sym.get_generic_params())
+                    //     .unwrap();
+
+                    let generic_params = (sym.get_generic_params()).unwrap();
+
                     if let Err(diag) = generic_type.init(generic_params) {
                         self.reporter.report(diag);
                         return None;
@@ -305,11 +311,7 @@ impl<'a> AnalysisContext<'a> {
                 LocalSymbolKind::Interface(i) => {
                     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
                 }
-                LocalSymbolKind::Typedef(resolved_typedef) => {
-                    self.resolve_typedef_inner_type(&resolved_typedef).and_then(|sema_ty| {
-                        self.normalize_type(scope_id_opt, sema_ty, resolved_typedef.typedef_sig.loc.clone())
-                    })
-                }
+                LocalSymbolKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
             },
 
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
@@ -369,11 +371,7 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Interface(resolved_interface) => Some(SemanticType::ResolvedSymbol(
                     ResolvedSymbol::Interface(resolved_interface.symbol_id),
                 )),
-                SymbolEntryKind::Typedef(resolved_typedef) => {
-                    self.resolve_typedef_inner_type(&resolved_typedef).and_then(|sema_ty| {
-                        self.normalize_type(scope_id_opt, sema_ty, resolved_typedef.typedef_sig.loc.clone())
-                    })
-                }
+                SymbolEntryKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
                 SymbolEntryKind::ProxiedSymbol(_, symbol_id) => {
                     let local_scope_opt =
                         scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
@@ -426,7 +424,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn resolve_typedef_inner_type(&mut self, resolved_typedef: &ResolvedTypedef) -> Option<SemanticType> {
-        Some(resolved_typedef.typedef_sig.ty.clone())
+        let inner_ty = resolved_typedef.typedef_sig.ty.clone();
+
+        if let Some(mut generic_type) = inner_ty.as_generic_type().cloned() {
+            generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+            Some(SemanticType::GenericType(generic_type))
+        } else {
+            Some(inner_ty)
+        }
     }
 
     pub(crate) fn resolve_symbol_type(

@@ -1158,6 +1158,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
             .unwrap();
+
         let generic_params = sym.get_generic_params().unwrap();
         match generic_type.init(generic_params) {
             Ok(val) => val,

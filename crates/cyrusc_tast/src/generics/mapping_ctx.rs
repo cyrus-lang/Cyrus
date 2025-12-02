@@ -1,5 +1,10 @@
 use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
-use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    rc::Rc,
+};
 
 pub type ChildGenericParamSymbolID = SymbolID;
 
