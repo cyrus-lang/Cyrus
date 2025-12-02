@@ -447,6 +447,10 @@ impl TypedGenericParamsList {
         self.list.iter().find(|p| &p.param_name.name == name)
     }
 
+    pub fn get_symbol_id(&self, name: &String) -> Option<SymbolID> {
+        self.get_named(name).map(|p| p.param_name.symbol_id)
+    }
+
     pub fn get_positional(&self, idx: usize) -> Option<&TypedGenericParam> {
         self.list.get(idx)
     }
