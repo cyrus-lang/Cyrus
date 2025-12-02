@@ -1912,7 +1912,8 @@ impl<'a> AnalysisContext<'a> {
         {
             let (generic_params, mapping_ctx) = operand_ty
                 .extract_generic_for_use(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref())
-                .unwrap();
+                .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
+                .unwrap_or((None, None));
 
             match enum_variant_opt {
                 Some(enum_variant) => {
@@ -1921,9 +1922,9 @@ impl<'a> AnalysisContext<'a> {
                         local_scope_opt,
                         enum_variant.clone(),
                         method_call,
-                        Some(&generic_params),
+                        generic_params.as_ref(),
                         &resolved_enum,
-                        Some(mapping_ctx),
+                        mapping_ctx,
                     );
                     (attempted, sema)
                 }
