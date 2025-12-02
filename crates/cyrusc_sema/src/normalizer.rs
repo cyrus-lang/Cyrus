@@ -79,13 +79,7 @@ impl<'a> AnalysisContext<'a> {
                         resolved_typedef.typedef_sig.loc.clone(),
                     )
                 } else {
-                    // let generic_params = generic_type
-                    //     .altered_generic_params
-                    //     .clone()
-                    //     .or(sym.get_generic_params())
-                    //     .unwrap();
-
-                    let generic_params = (sym.get_generic_params()).unwrap();
+                    let generic_params = sym.get_generic_params().unwrap();
 
                     if let Err(diag) = generic_type.init(generic_params) {
                         self.reporter.report(diag);

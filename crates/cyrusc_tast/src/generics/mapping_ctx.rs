@@ -110,6 +110,9 @@ impl GenericMappingCtx {
     }
 
     pub fn insert_linked(&mut self, child: TypedIdentifier, parent: TypedIdentifier) {
+        if self.named.contains_key(&child) || self.linked_gps.contains_key(&child) {
+            return;
+        }
         self.linked_gps.insert(child, parent);
     }
 

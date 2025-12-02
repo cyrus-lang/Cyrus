@@ -69,7 +69,8 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     let typed_identifier = template
-                        .get_named(key).map(|generic_param| generic_param.param_name.clone())
+                        .get_named(key)
+                        .map(|generic_param| generic_param.param_name.clone())
                         .or(mapping_ctx.get_linked_by_name(&key))
                         .ok_or({
                             Diag {
