@@ -1,17 +1,12 @@
 use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
 pub type ChildGenericParamSymbolID = SymbolID;
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericMappingCtx {
     pub named: HashMap<TypedIdentifier, SemanticType>,
-    pub linked_gps: HashMap<ChildGenericParamSymbolID, SymbolID>,
+    pub linked_gps: HashMap<TypedIdentifier, TypedIdentifier>,
     pub parent: Option<Rc<GenericMappingCtx>>,
 }
 
@@ -61,7 +56,7 @@ impl GenericMappingCtx {
                 named.entry(k.clone()).or_insert(v.clone());
             }
             for (k, v) in &ctx.linked_gps {
-                linked_gps.entry(*k).or_insert(*v);
+                linked_gps.entry(k.clone()).or_insert(v.clone());
             }
             cur = ctx.parent.as_deref();
         }
@@ -91,37 +86,31 @@ impl GenericMappingCtx {
         None
     }
 
-    pub fn get_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
-        if let Some(ty) = self
-            .named
-            .iter()
-            .find_map(|(key, val)| (key.symbol_id == symbol_id).then(|| val.clone()))
-        {
-            return Some(ty);
-        }
-
-        if let Some(&mapped_id) = self.linked_gps.get(&symbol_id) {
-            // try to resolve the mapped ID recursively
-            if let Some(ty) = self.get_with_symbol_id(mapped_id) {
-                return Some(ty);
-            }
-        }
-
-        if let Some(parent) = &self.parent {
-            return parent.get_with_symbol_id(symbol_id);
-        }
-
-        None
-    }
-
     pub fn insert_named(&mut self, id: TypedIdentifier, ty: SemanticType) {
         if !self.named.contains_key(&id) {
             self.named.insert(id, ty);
         }
     }
 
-    pub fn insert_linked(&mut self, child_id: SymbolID, parent_id: SymbolID) {
-        self.linked_gps.insert(child_id, parent_id);
+    pub fn get_linked_by_name(&self, child_name: &str) -> Option<TypedIdentifier> {
+        if let Some(parent) = self
+            .linked_gps
+            .iter()
+            .find(|(child, _)| child.name == child_name)
+            .map(|(_, parent)| parent.clone())
+        {
+            return Some(parent);
+        }
+
+        if let Some(parent_ctx) = &self.parent {
+            return parent_ctx.get_linked_by_name(child_name);
+        }
+
+        None
+    }
+
+    pub fn insert_linked(&mut self, child: TypedIdentifier, parent: TypedIdentifier) {
+        self.linked_gps.insert(child, parent);
     }
 
     pub fn new_root() -> Self {
@@ -149,10 +138,8 @@ impl GenericMappingCtx {
             parts.push(format!("{} = {}", param_name, type_str));
         }
 
-        for (child_id, parent_id) in &self.linked_gps {
-            let child_name = format_symbol(*child_id);
-            let parent_name = format_symbol(*parent_id);
-            parts.push(format!("{} = {}", child_name, parent_name));
+        for (child, parent) in &self.linked_gps {
+            parts.push(format!("{} = {}", child.name, parent.name));
         }
 
         parts.join(", ")
@@ -161,6 +148,7 @@ impl GenericMappingCtx {
 
 impl Hash for GenericMappingCtx {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // sort named entries by symbol_id for deterministic order
         let mut named_entries: Vec<_> = self.named.iter().collect();
         named_entries.sort_by_key(|(k, _)| k.symbol_id);
         for (k, v) in named_entries {
@@ -168,13 +156,15 @@ impl Hash for GenericMappingCtx {
             v.hash(state);
         }
 
+        // sort linked_gps entries by child symbol_id
         let mut linked_entries: Vec<_> = self.linked_gps.iter().collect();
-        linked_entries.sort_by_key(|(k, _)| *k);
+        linked_entries.sort_by_key(|(k, _)| k.symbol_id); // sort by child symbol_id
         for (k, v) in linked_entries {
             k.hash(state);
             v.hash(state);
         }
 
+        // hash parent recursively
         if let Some(parent) = &self.parent {
             parent.hash(state);
         } else {

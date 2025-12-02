@@ -71,20 +71,10 @@ impl<'a> AnalysisContext<'a> {
         let expr_ty = expr_ty?;
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;
-
         let cloned_ctx = mapping_ctx_rc.borrow().clone();
 
-        // check ancestor linked_gps chain for this generic param
-        let mut mapped_parent_id_opt: Option<SymbolID> = None;
-        let mut cur_opt: Option<&GenericMappingCtx> = Some(&cloned_ctx);
-
-        while let Some(cur) = cur_opt {
-            if let Some(&mapped_parent_id) = cur.linked_gps.get(&generic_param.symbol_id) {
-                mapped_parent_id_opt = Some(mapped_parent_id);
-                break;
-            }
-            cur_opt = cur.parent.as_deref();
-        }
+        // resolve linked parent by name
+        let linked_parent_opt = cloned_ctx.get_linked_by_name(&generic_param.name);
 
         let mut ctx = mapping_ctx_rc.borrow_mut();
 
@@ -94,19 +84,15 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // if any ancestor directly has a concrete value for this symbol id, obey it
-        if let Some(parent_val) = ctx
-            .parent
-            .as_ref()
-            .and_then(|p| p.get_with_symbol_id(generic_param.symbol_id))
-        {
+        if let Some(parent_val) = ctx.parent.as_ref().and_then(|p| p.get_with_name(&generic_param.name)) {
             if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
                         lhs_type: format_sema_ty(parent_val.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                        rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                        rhs_type: format_sema_ty(expr_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
                     }),
-                    location: Some(DiagLoc::new(loc)),
+                    location: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -116,14 +102,15 @@ impl<'a> AnalysisContext<'a> {
             return Some(parent_val);
         }
 
-        if let Some(mapped_parent_id) = mapped_parent_id_opt {
-            if let Some(resolved_ty) = ctx.get_with_symbol_id(mapped_parent_id) {
+        // if a linked parent by name exists, resolve its type
+        if let Some(parent_identifier) = linked_parent_opt {
+            if let Some(resolved_ty) = ctx.get_with_name(&parent_identifier.name) {
                 if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), resolved_ty.clone(), loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
                             lhs_type: format_sema_ty(resolved_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                            rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                            rhs_type: format_sema_ty(expr_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
                         }),
                         location: Some(DiagLoc::new(loc)),
                         hint: None,
@@ -132,12 +119,13 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 ctx.insert_named(generic_param.clone(), resolved_ty.clone());
-                ctx.insert_linked(generic_param.symbol_id, mapped_parent_id);
+                ctx.insert_linked(generic_param.clone(), parent_identifier);
 
                 return Some(resolved_ty);
             }
         }
 
+        // otherwise, just insert the expression type as the generic param value
         ctx.insert_named(generic_param.clone(), expr_ty.clone());
         Some(expr_ty)
     }

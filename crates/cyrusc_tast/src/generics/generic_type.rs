@@ -58,7 +58,7 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     if let Some(target_generic_param) = ty.as_generic_param() {
-                        mapping_ctx.insert_linked(target_generic_param.symbol_id, generic_param.param_name.symbol_id);
+                        mapping_ctx.insert_linked(target_generic_param.clone(), generic_param.param_name.clone());
                     } else {
                         mapping_ctx.insert_named(generic_param.param_name.clone(), ty.clone());
                     }
@@ -66,17 +66,21 @@ impl GenericType {
                     drop(mapping_ctx);
                 }
                 TypedTypeArg::Named { key, ty, loc } => {
-                    let generic_param = template.get_named(key).ok_or({
-                        Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(GenericTypesDiagKind::UndefinedGenericParam { name: key.clone() }),
-                            location: Some(DiagLoc::new(loc.clone())),
-                            hint: None,
-                        }
-                    })?;
-
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
-                    mapping_ctx.insert_named(generic_param.param_name.clone(), ty.clone());
+
+                    let typed_identifier = template
+                        .get_named(key).map(|generic_param| generic_param.param_name.clone())
+                        .or(mapping_ctx.get_linked_by_name(&key))
+                        .ok_or({
+                            Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(GenericTypesDiagKind::UndefinedGenericParam { name: key.clone() }),
+                                location: Some(DiagLoc::new(loc.clone())),
+                                hint: None,
+                            }
+                        })?;
+
+                    mapping_ctx.insert_named(typed_identifier, ty.clone());
                     drop(mapping_ctx);
                 }
             }
@@ -93,7 +97,7 @@ impl GenericType {
         {
             let mut mapping_ctx = self.mapping_ctx.borrow_mut();
             for gp in &template.list {
-                if mapping_ctx.get_with_symbol_id(gp.param_name.symbol_id).is_none() {
+                if mapping_ctx.get_with_name(&gp.param_name.name).is_none() {
                     if let Some(default) = &gp.default {
                         mapping_ctx.insert_named(gp.param_name.clone(), default.clone());
                     }
@@ -131,7 +135,7 @@ impl GenericType {
         template
             .list
             .iter()
-            .filter(|gp| mapping_ctx.get_with_symbol_id(gp.param_name.symbol_id).is_none())
+            .filter(|gp| mapping_ctx.get_with_name(&gp.param_name.name).is_none())
             .map(|gp| gp.param_name.clone())
             .collect()
     }

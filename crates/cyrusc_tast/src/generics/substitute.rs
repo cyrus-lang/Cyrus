@@ -23,7 +23,7 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
     let ctx_ref = ctx.borrow();
 
     match sema_ty {
-        SemanticType::GenericParam(param) => ctx_ref.get_with_symbol_id(param.symbol_id),
+        SemanticType::GenericParam(param) => ctx_ref.get_with_name(&param.name),
         SemanticType::Pointer(inner) => {
             sub(*inner, &|t| substitute_type(t, ctx.clone())).map(|t| SemanticType::Pointer(Box::new(t)))
         }
