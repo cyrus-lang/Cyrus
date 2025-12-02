@@ -113,6 +113,9 @@ impl GenericMappingCtx {
         if self.named.contains_key(&child) || self.linked_gps.contains_key(&child) {
             return;
         }
+        if child.name == parent.name {
+            return;
+        }
         self.linked_gps.insert(child, parent);
     }
 
