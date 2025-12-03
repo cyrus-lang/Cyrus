@@ -109,7 +109,6 @@ impl GenericType {
         // detect + collect unresolved generic params
         let missing = self.collect_unresolved_generic_params(&template);
 
-        // FIXME Does not sync well with linked_gps.
         if !missing.is_empty() {
             let ty = self.format(&format_symbol);
 
