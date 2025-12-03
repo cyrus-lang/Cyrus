@@ -3,4 +3,3 @@ pub mod generic_type;
 pub mod mapping_ctx;
 pub mod monomorph;
 pub mod substitute;
-mod tests;

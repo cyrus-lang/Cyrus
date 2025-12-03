@@ -5,7 +5,7 @@ use crate::{
     types::{SemanticType, TypedUStructType},
 };
 use cyrusc_ast::{
-    AssignmentKind, LiteralKind,
+    AssignmentKind, Identifier, LiteralKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     source_loc::SourceLoc,
 };

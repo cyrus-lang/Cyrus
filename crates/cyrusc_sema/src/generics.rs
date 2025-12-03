@@ -5,7 +5,10 @@ use cyrusc_resolver::symbols::LocalScopeRef;
 use cyrusc_tast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
-    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx},
+    generics::{
+        generic_type::GenericType,
+        mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
+    },
     stmts::*,
     types::SemanticType,
 };
@@ -67,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let generic_param = target_ty.as_generic_param().clone().unwrap();
+        let generic_param = GenericMappingEntry::from(target_ty.as_generic_param().cloned().unwrap());
         let expr_ty = expr_ty.unwrap();
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;
@@ -116,8 +119,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // if a linked parent by name exists, resolve its type
-        if let Some(parent_identifier) = linked_parent_opt {
-            if let Some(resolved_ty) = ctx.get_with_name(&parent_identifier.name) {
+        if let Some(parent_entry) = linked_parent_opt {
+            if let Some(resolved_ty) = ctx.get_with_name(&parent_entry.name) {
                 if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), resolved_ty.clone(), loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -132,7 +135,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 ctx.insert_named(generic_param.clone(), resolved_ty.clone());
-                ctx.insert_linked(generic_param.clone(), parent_identifier);
+                ctx.insert_linked(generic_param.clone(), parent_entry);
 
                 return Some(resolved_ty);
             }
