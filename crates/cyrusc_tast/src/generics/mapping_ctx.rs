@@ -24,9 +24,9 @@ pub fn mapping_ctx_eq(a: &GenericMappingCtx, b: &GenericMappingCtx) -> bool {
         return false;
     }
 
-    for (k, v) in &a.named {
-        match b.named.get(k) {
-            Some(v2) if v == v2 => {}
+    for (k, v1) in &a.named {
+        match b.get_with_name(&k.name) {
+            Some(v2) if *v1 == v2 => {}
             _ => return false,
         }
     }
@@ -41,6 +41,7 @@ pub fn mapping_ctx_eq(a: &GenericMappingCtx, b: &GenericMappingCtx) -> bool {
 pub fn mapping_ctx_eq_refcell(a: &Rc<RefCell<GenericMappingCtx>>, b: &Rc<RefCell<GenericMappingCtx>>) -> bool {
     let a_ref = a.borrow();
     let b_ref = b.borrow();
+
     mapping_ctx_eq(&a_ref, &b_ref)
 }
 
