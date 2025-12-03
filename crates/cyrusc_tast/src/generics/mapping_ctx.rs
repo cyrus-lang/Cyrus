@@ -1,13 +1,20 @@
 use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
-use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
+use cyrusc_ast::source_loc::SourceLoc;
+use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 pub type ChildGenericParamSymbolID = SymbolID;
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericMappingCtx {
-    pub named: HashMap<TypedIdentifier, SemanticType>,
-    pub linked_gps: HashMap<TypedIdentifier, TypedIdentifier>,
+    pub named: HashMap<GenericMappingEntry, SemanticType>,
+    pub linked_gps: HashMap<GenericMappingEntry, GenericMappingEntry>,
     pub parent: Option<Rc<GenericMappingCtx>>,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct GenericMappingEntry {
+    pub name: String,
+    loc: SourceLoc,
 }
 
 impl PartialEq for GenericMappingCtx {
@@ -69,12 +76,6 @@ impl GenericMappingCtx {
         }
     }
 
-    pub fn get_local_with_symbol_id(&self, symbol_id: SymbolID) -> Option<SemanticType> {
-        self.named
-            .iter()
-            .find_map(|(k, v)| (k.symbol_id == symbol_id).then(|| v.clone()))
-    }
-
     pub fn get_with_name(&self, name: &str) -> Option<SemanticType> {
         if let Some((_, ty)) = self.named.iter().find(|(id, _)| id.name == name) {
             return Some(ty.clone());
@@ -87,13 +88,13 @@ impl GenericMappingCtx {
         None
     }
 
-    pub fn insert_named(&mut self, id: TypedIdentifier, ty: SemanticType) {
-        if !self.named.contains_key(&id) {
-            self.named.insert(id, ty);
+    pub fn insert_named(&mut self, entry: GenericMappingEntry, ty: SemanticType) {
+        if !self.named.contains_key(&entry) {
+            self.named.insert(entry, ty);
         }
     }
 
-    pub fn get_linked_by_name(&self, child_name: &str) -> Option<TypedIdentifier> {
+    pub fn get_linked_by_name(&self, child_name: &str) -> Option<GenericMappingEntry> {
         if let Some(parent) = self
             .linked_gps
             .iter()
@@ -110,7 +111,7 @@ impl GenericMappingCtx {
         None
     }
 
-    pub fn insert_linked(&mut self, child: TypedIdentifier, parent: TypedIdentifier) {
+    pub fn insert_linked(&mut self, child: GenericMappingEntry, parent: GenericMappingEntry) {
         if self.named.contains_key(&child) || self.linked_gps.contains_key(&child) {
             return;
         }
@@ -139,10 +140,9 @@ impl GenericMappingCtx {
     pub fn format(&self, format_symbol: &impl Fn(SymbolID) -> String) -> String {
         let mut parts = Vec::new();
 
-        for (param_id, sema_ty) in &self.named {
-            let param_name = format_symbol(param_id.symbol_id);
+        for (entry, sema_ty) in &self.named {
             let type_str = format_sema_ty(sema_ty.clone(), format_symbol);
-            parts.push(format!("{} = {}", param_name, type_str));
+            parts.push(format!("{} = {}", entry, type_str));
         }
 
         for (child, parent) in &self.linked_gps {
@@ -155,17 +155,13 @@ impl GenericMappingCtx {
 
 impl Hash for GenericMappingCtx {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // sort named entries by symbol_id for deterministic order
-        let mut named_entries: Vec<_> = self.named.iter().collect();
-        named_entries.sort_by_key(|(k, _)| k.symbol_id);
+        let named_entries: Vec<_> = self.named.iter().collect();
         for (k, v) in named_entries {
             k.hash(state);
             v.hash(state);
         }
 
-        // sort linked_gps entries by child symbol_id
-        let mut linked_entries: Vec<_> = self.linked_gps.iter().collect();
-        linked_entries.sort_by_key(|(k, _)| k.symbol_id); // sort by child symbol_id
+        let linked_entries: Vec<_> = self.linked_gps.iter().collect();
         for (k, v) in linked_entries {
             k.hash(state);
             v.hash(state);
@@ -181,3 +177,30 @@ impl Hash for GenericMappingCtx {
 }
 
 impl Eq for GenericMappingCtx {}
+
+impl PartialEq for GenericMappingEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Hash for GenericMappingEntry {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl Display for GenericMappingEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+impl From<TypedIdentifier> for GenericMappingEntry {
+    fn from(value: TypedIdentifier) -> Self {
+        Self {
+            name: value.name.clone(),
+            loc: value.loc.clone(),
+        }
+    }
+}

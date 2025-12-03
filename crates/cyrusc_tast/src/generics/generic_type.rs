@@ -4,7 +4,7 @@ use crate::{
     format::format_sema_ty,
     generics::{
         diagnostics::GenericTypesDiagKind,
-        mapping_ctx::{GenericMappingCtx, mapping_ctx_eq_refcell},
+        mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
     },
     stmts::{TypedGenericParamsList, TypedTypeArg, TypedTypeArgs},
 };
@@ -58,9 +58,13 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     if let Some(target_generic_param) = ty.as_generic_param() {
-                        mapping_ctx.insert_linked(target_generic_param.clone(), generic_param.param_name.clone());
+                        mapping_ctx.insert_linked(
+                            GenericMappingEntry::from(target_generic_param.clone()),
+                            GenericMappingEntry::from(generic_param.param_name.clone()),
+                        );
                     } else {
-                        mapping_ctx.insert_named(generic_param.param_name.clone(), ty.clone());
+                        mapping_ctx
+                            .insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), ty.clone());
                     }
 
                     drop(mapping_ctx);
@@ -70,7 +74,7 @@ impl GenericType {
 
                     let typed_identifier = template
                         .get_named(key)
-                        .map(|generic_param| generic_param.param_name.clone())
+                        .map(|generic_param| GenericMappingEntry::from(generic_param.param_name.clone()))
                         .or(mapping_ctx.get_linked_by_name(&key))
                         .ok_or({
                             Diag {
@@ -81,7 +85,7 @@ impl GenericType {
                             }
                         })?;
 
-                    mapping_ctx.insert_named(typed_identifier, ty.clone());
+                    mapping_ctx.insert_named(GenericMappingEntry::from(typed_identifier), ty.clone());
                     drop(mapping_ctx);
                 }
             }
@@ -97,10 +101,13 @@ impl GenericType {
         // fill defaults
         {
             let mut mapping_ctx = self.mapping_ctx.borrow_mut();
-            for gp in &template.list {
-                if mapping_ctx.get_with_name(&gp.param_name.name).is_none() {
-                    if let Some(default) = &gp.default {
-                        mapping_ctx.insert_named(gp.param_name.clone(), default.clone());
+            for generic_param in &template.list {
+                if mapping_ctx.get_with_name(&generic_param.param_name.name).is_none() {
+                    if let Some(default) = &generic_param.default {
+                        mapping_ctx.insert_named(
+                            GenericMappingEntry::from(generic_param.param_name.clone()),
+                            default.clone(),
+                        );
                     }
                 }
             }
