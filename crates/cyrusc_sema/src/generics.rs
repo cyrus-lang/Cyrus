@@ -67,8 +67,8 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let generic_param = target_ty.as_generic_param()?.clone();
-        let expr_ty = expr_ty?;
+        let generic_param = target_ty.as_generic_param().clone().unwrap();
+        let expr_ty = expr_ty.unwrap();
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;
         let cloned_ctx = mapping_ctx_rc.borrow().clone();
@@ -79,8 +79,21 @@ impl<'a> AnalysisContext<'a> {
         let mut ctx = mapping_ctx_rc.borrow_mut();
 
         // if a local value exists, use it immediately
-        if let Some(local_val) = ctx.get_local_with_symbol_id(generic_param.symbol_id) {
-            return Some(local_val);
+        if let Some(local_sema_ty) = ctx.get_with_name(&generic_param.name) {
+            if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), local_sema_ty.clone(), loc.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: format_sema_ty(local_sema_ty, &(self.symbol_formatter)(scope_id_opt)),
+                        rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                    }),
+                    location: Some(DiagLoc::new(loc)),
+                    hint: None,
+                });
+                return None;
+            }
+
+            return Some(local_sema_ty);
         }
 
         // if any ancestor directly has a concrete value for this symbol id, obey it
