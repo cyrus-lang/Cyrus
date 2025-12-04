@@ -14,7 +14,6 @@ pub struct GenericMappingCtx {
 #[derive(Debug, Clone, Eq)]
 pub struct GenericMappingEntry {
     pub name: String,
-    loc: SourceLoc,
 }
 
 impl PartialEq for GenericMappingCtx {
@@ -200,7 +199,6 @@ impl From<TypedIdentifier> for GenericMappingEntry {
     fn from(value: TypedIdentifier) -> Self {
         Self {
             name: value.name.clone(),
-            loc: value.loc.clone(),
         }
     }
 }

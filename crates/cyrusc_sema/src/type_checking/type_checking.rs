@@ -1,4 +1,6 @@
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol};
+use crate::{
+    analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, formatter::format_missing_fields, update_global_symbol,
+};
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
@@ -751,8 +753,8 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
-        generic_params: Option<&TypedGenericParamsList>,
         resolved_enum: &ResolvedEnum,
+        generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
         let mut valued_fields = self.analyze_enum_fielded_variant(&enum_variant, method_call)?;
@@ -833,7 +835,8 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
-        expected_type: Option<SemanticType>,
+        generic_params: Option<&TypedGenericParamsList>,
+        mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
         field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
@@ -874,18 +877,12 @@ impl<'a> AnalysisContext<'a> {
 
         let is_const = false;
 
-        let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
-            sema_ty
-                .as_generic_type()
-                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
-        });
-
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
             &field_access.type_args,
-            expected_mapping_ctx,
-            resolved_enum.enum_sig.generic_params.as_ref(),
+            mapping_ctx,
+            generic_params,
             is_const,
             field_access.loc.clone(),
         ) {
@@ -1017,20 +1014,32 @@ impl<'a> AnalysisContext<'a> {
 
         // check for enum variant
 
-        match &field_access.operand.kind {
-            TypedExprKind::Symbol(symbol_id, _) => {
-                if let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), *symbol_id) {
-                    return self.analyze_enum_variant_no_field(
-                        scope_id_opt,
-                        local_scope_opt,
-                        &resolved_enum,
-                        field_access,
-                        expected_type,
-                    );
-                }
+        self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut field_access.operand, expected_type.clone());
+
+        let mut field_access_operand_ty = field_access
+            .operand
+            .sema_ty
+            .as_ref()
+            .map(|sema_ty| sema_ty.get_const_inner())
+            .cloned()?;
+
+        if let Some(sema_ty) =
+            self.merge_generic_operand_as_expected_type(field_access_operand_ty.clone(), expected_type.clone())
+        {
+            field_access_operand_ty = sema_ty;
+        }
+
+        {
+            let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_field_access(
+                scope_id_opt,
+                local_scope_opt.clone(),
+                field_access_operand_ty.clone(),
+                field_access,
+            );
+            if detected_as_enum_variant {
+                return sema_ty;
             }
-            _ => {}
-        };
+        }
 
         // REVIEW
         // if field_access.type_args.is_some() {
@@ -1316,12 +1325,13 @@ impl<'a> AnalysisContext<'a> {
 
         if !missing_fields.is_empty() {
             let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+            let missing_field_names = format_missing_fields(&missing_fields);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::StructMissingFields {
                     struct_name,
-                    missing_field_names: missing_fields,
+                    missing_field_names,
                 }),
                 location: Some(DiagLoc::new(struct_init.loc.clone())),
                 hint: None,
@@ -1884,6 +1894,43 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn maybe_enum_variant_constructor_from_field_access(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        operand_ty: SemanticType,
+        field_access: &mut TypedFieldAccess,
+    ) -> (bool, Option<SemanticType>) {
+        let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
+            return (false, None);
+        };
+
+        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), symbol_id) else {
+            return (false, None);
+        };
+
+        let attempted = true;
+
+        field_access.object_symbol_id = Some(resolved_enum.symbol_id);
+
+        {
+            let (generic_params, mapping_ctx) = operand_ty
+                .extract_generic_for_use(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref())
+                .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
+                .unwrap_or((None, None));
+
+            let sema = self.analyze_enum_variant_no_field(
+                scope_id_opt,
+                local_scope_opt,
+                &resolved_enum,
+                field_access,
+                generic_params.as_ref(),
+                mapping_ctx,
+            );
+            (attempted, sema)
+        }
+    }
+
     fn maybe_enum_variant_constructor_from_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1922,8 +1969,8 @@ impl<'a> AnalysisContext<'a> {
                         local_scope_opt,
                         enum_variant.clone(),
                         method_call,
-                        generic_params.as_ref(),
                         &resolved_enum,
+                        generic_params.as_ref(),
                         mapping_ctx,
                     );
                     (attempted, sema)
