@@ -1111,22 +1111,27 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let sym = self
+        let mut sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), struct_init.symbol_id)
             .unwrap();
 
         let mut sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym.clone())?;
-        sema_ty = self.merge_generic_operand_as_expected_type(sema_ty, expected_type)?;
+
+        if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type) {
+            sema_ty = new_sema_ty;
+        }
 
         let (generic_params, mapping_ctx) = sema_ty
             .extract_generic_for_use(sym.get_generic_params().as_ref())
             .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
             .unwrap_or((None, None));
 
+        let pure_symbol_id = sema_ty.get_pure_symbol_id().unwrap();
+
         let generic_type_opt = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
-            sema_ty.get_pure_symbol_id().unwrap(),
+            pure_symbol_id,
             &struct_init.type_args,
             mapping_ctx,
             generic_params.as_ref(),
@@ -1140,17 +1145,20 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let pure_symbol_id = sema_ty.get_pure_symbol_id().unwrap();
         {
             struct_init.symbol_id = pure_symbol_id;
-            let pure_sym = self
-                .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), pure_symbol_id)
-                .unwrap();
 
-            if let Some(resolved_union) = pure_sym.as_union() {
+            // optimized
+            if pure_symbol_id != sym.get_symbol_id() {
+                sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), pure_symbol_id)
+                    .unwrap();
+            }
+
+            if let Some(resolved_union) = sym.as_union() {
                 return self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
-            } else if let Some(resolved_struct) = pure_sym.as_struct() {
+            } else if let Some(resolved_struct) = sym.as_struct() {
                 return self.analyze_struct_init_expr_type(
                     scope_id_opt,
                     struct_init,
