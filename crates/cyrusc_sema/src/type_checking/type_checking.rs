@@ -1111,48 +1111,63 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
-            sema_ty
-                .as_generic_type()
-                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
-        });
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), struct_init.symbol_id)
+            .unwrap();
 
-        let (base_symbol_id, generic_type_opt) = match self.init_generic_type_with_symbol_id(
+        let mut sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym.clone())?;
+        sema_ty = self.merge_generic_operand_as_expected_type(sema_ty, expected_type)?;
+
+        let (generic_params, mapping_ctx) = sema_ty
+            .extract_generic_for_use(sym.get_generic_params().as_ref())
+            .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
+            .unwrap_or((None, None));
+
+        let generic_type_opt = match self.init_generic_type_with_symbol_id(
             local_scope_opt.clone(),
-            struct_init.symbol_id,
+            sema_ty.get_pure_symbol_id().unwrap(),
             &struct_init.type_args,
-            expected_mapping_ctx,
-            None,
+            mapping_ctx,
+            generic_params.as_ref(),
             struct_init.is_const,
             struct_init.loc.clone(),
         ) {
-            Ok(opt) => opt?,
+            Ok(opt) => opt?.1,
             Err(diag) => {
                 self.reporter.report(diag);
                 return None;
             }
         };
 
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), base_symbol_id)
-            .unwrap();
+        let pure_symbol_id = sema_ty.get_pure_symbol_id().unwrap();
+        {
+            struct_init.symbol_id = pure_symbol_id;
+            let pure_sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), pure_symbol_id)
+                .unwrap();
 
-        if let Some(resolved_union) = sym.as_union() {
-            self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt)
-        } else if let Some(resolved_struct) = sym.as_struct() {
-            self.analyze_struct_init_expr_type(scope_id_opt, struct_init, resolved_struct, &generic_type_opt)
-        } else {
-            let symbol_name = (self.symbol_formatter)(scope_id_opt)(base_symbol_id);
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
-                location: Some(DiagLoc::new(struct_init.loc.clone())),
-                hint: None,
-            });
-            return None;
+            if let Some(resolved_union) = pure_sym.as_union() {
+                return self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
+            } else if let Some(resolved_struct) = pure_sym.as_struct() {
+                return self.analyze_struct_init_expr_type(
+                    scope_id_opt,
+                    struct_init,
+                    resolved_struct,
+                    &generic_type_opt,
+                );
+            }
         }
+
+        let symbol_name = (self.symbol_formatter)(scope_id_opt)(pure_symbol_id);
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
+            location: Some(DiagLoc::new(struct_init.loc.clone())),
+            hint: None,
+        });
+        None
     }
 
     fn analyze_union_init_expr_type(
@@ -1655,11 +1670,7 @@ impl<'a> AnalysisContext<'a> {
 
                 func_sig = sym.as_func().unwrap().func_sig.clone();
 
-                let expected_mapping_ctx = expected_type.and_then(|sema_ty| {
-                    sema_ty
-                        .as_generic_type()
-                        .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
-                });
+                let expected_mapping_ctx = self.export_expected_generic_mapping_ctx(expected_type);
 
                 let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
                     local_scope_opt.clone(),
@@ -1915,7 +1926,7 @@ impl<'a> AnalysisContext<'a> {
 
         {
             let (generic_params, mapping_ctx) = operand_ty
-                .extract_generic_for_use(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref())
+                .extract_generic_for_use(resolved_enum.enum_sig.generic_params.as_ref())
                 .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
                 .unwrap_or((None, None));
 
@@ -1958,7 +1969,7 @@ impl<'a> AnalysisContext<'a> {
 
         {
             let (generic_params, mapping_ctx) = operand_ty
-                .extract_generic_for_use(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref())
+                .extract_generic_for_use(resolved_enum.enum_sig.generic_params.as_ref())
                 .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
                 .unwrap_or((None, None));
 

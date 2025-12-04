@@ -299,10 +299,9 @@ impl SemanticType {
 
     pub fn extract_generic_for_use(
         &self,
-        operand_ty: &SemanticType,
         fallback_generic_params: Option<&TypedGenericParamsList>,
     ) -> Option<(TypedGenericParamsList, Rc<GenericMappingCtx>)> {
-        if let Some(generic_type) = operand_ty.as_generic_type() {
+        if let Some(generic_type) = self.as_generic_type() {
             let generic_params = generic_type
                 .altered_generic_params
                 .clone()

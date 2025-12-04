@@ -164,4 +164,15 @@ impl<'a> AnalysisContext<'a> {
             None
         }
     }
+
+    pub(crate) fn export_expected_generic_mapping_ctx(
+        &self,
+        expected_type: Option<SemanticType>,
+    ) -> Option<Rc<GenericMappingCtx>> {
+        expected_type.and_then(|sema_ty| {
+            sema_ty
+                .as_generic_type()
+                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
+        })
+    }
 }
