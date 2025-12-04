@@ -9,13 +9,13 @@ pub enum AnalyzerDiagKind {
 
     #[error("Redundant 'const' qualifier on an already-const type.")]
     RedundantConstQualifier,
-    
+
     #[error("Field cannot be type 'void'.")]
     VoidFieldType,
 
     #[error("A function parameter cannot have type 'void'.")]
     VoidParameterType,
-    
+
     #[error("Unary operator minus is not permitted on unsigned types.")]
     UnaryOperatorMinusOnUnsignedInteger,
 
@@ -230,10 +230,10 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot assign to immutable lvalue.")]
     CannotAssignToConstLValue,
 
-    #[error("Missing required fields {missing_field_names:?} in struct '{struct_name}'.")]
+    #[error("Missing required fields {missing_field_names} in struct '{struct_name}'.")]
     StructMissingFields {
         struct_name: String,
-        missing_field_names: Vec<String>,
+        missing_field_names: String,
     },
 
     #[error("'{struct_name}' has no field named '{field_name}'.")]

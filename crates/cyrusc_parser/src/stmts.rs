@@ -679,30 +679,33 @@ impl Parser {
                         hint: None,
                     });
                 }
-                // FIXME
-                /* TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let vis = self.parse_vis(self.current_token());
 
                     if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-                        let field = self.parse_struct_field(Some(vis))?;
+                        let field = self.parse_struct_field(vis)?;
                         fields.push(field);
                     } else {
-                        if let Stmt::FuncDef(method) = self.parse_func(Some(vis))? {
-                            self.next_token(); // consume right brace
-                            methods.push(method);
-                        } else {
-                            unreachable!();
-                        }
+                        // FIXME
+                        todo!();
+                        // if let Stmt::FuncDef(method) = self.parse_func(vis)? {
+                        //     self.next_token(); // consume right brace
+                        //     methods.push(method);
+                        // } else {
+                        //     unreachable!();
+                        // }
                     }
                 }
                 TokenKind::Function => {
-                    if let Stmt::FuncDef(method) = self.parse_func(None)? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        unreachable!();
-                    }
-                } */
+                    // FIXME
+                    todo!();
+                    // if let Stmt::FuncDef(method) = self.parse_func(None)? {
+                    //     self.next_token(); // consume right brace
+                    //     methods.push(method);
+                    // } else {
+                    //     unreachable!();
+                    // }
+                }
                 TokenKind::Identifier { .. } => {
                     let field = self.parse_struct_field(None)?;
                     fields.push(field);
@@ -1360,7 +1363,7 @@ impl Parser {
         let func_name = self.parse_identifier()?; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
-        let generic_params =  if self.current_token_is(TokenKind::LessThan) {
+        let generic_params = if self.current_token_is(TokenKind::LessThan) {
             Some(self.parse_generic_params()?)
         } else {
             None

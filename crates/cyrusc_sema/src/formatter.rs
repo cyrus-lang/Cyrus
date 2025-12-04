@@ -55,3 +55,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 }
+
+pub fn format_missing_fields(list: &Vec<String>) -> String {
+    list.iter()
+        .map(|str| format!("'{str}'"))
+        .collect::<Vec<String>>()
+        .join(", ")
+}

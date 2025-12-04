@@ -40,9 +40,9 @@ pub enum ResolverDiagKind {
     ModuleImportNotFound { module_name: String },
 
     #[error(
-        "An import cycle was found, indicating a circular dependency between modules.\nCycle Path: {module_names:?}\nConsider resolving the cycle by refactoring the modules."
+        "An import cycle was found, indicating a circular dependency between modules.\nCycle Path: {module_names}\nConsider resolving the cycle by refactoring the modules."
     )]
-    ImportCycle { module_names: Vec<String> },
+    ImportCycle { module_names: String },
 
     #[error("Cannot import module '{module_name}' twice.")]
     ImportTwice { module_name: String },
