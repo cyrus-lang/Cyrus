@@ -3,7 +3,7 @@ use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_abi::mangling::ABINameMangling;
 use cyrusc_ast::{LiteralKind, SelfModifierKind};
-use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
+use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
 use cyrusc_resolver::{Resolver, typed_func_decl_from_func_sig};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
@@ -140,26 +140,37 @@ impl<'resolver> CIRWalk<'resolver> {
                 .unwrap();
             let resolved_method = sym.as_method().unwrap();
 
-            let mangled_name =
-                self.mangling
-                    .method_name(&"", object_name, &resolved_method.func_sig.name);
+            let lowered_method = self.lower_method(scope_id_opt, resolved_method, object_name);
 
-            let func_def = TypedFuncDefStmt {
-                module_id: resolved_method.module_id,
-                symbol_id: resolved_method.symbol_id,
-                name: mangled_name,
-                params: resolved_method.func_sig.params.clone(),
-                generic_params: resolved_method.func_sig.generic_params.clone(),
-                body: resolved_method.func_body.clone().unwrap(),
-                return_type: resolved_method.func_sig.return_type.clone(),
-                modifiers: resolved_method.func_sig.modifiers.clone(),
-                loc: resolved_method.func_sig.loc.clone(),
-            };
-
-            stmts.push(self.lower_func_def(scope_id_opt, &func_def));
+            stmts.push(lowered_method);
         }
-
+        
         stmts
+    }
+
+    fn lower_method(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        resolved_method: &ResolvedMethod,
+        object_name: &String,
+    ) -> CIRStmt {
+        let mangled_name = self
+            .mangling
+            .method_name(&"", object_name, &resolved_method.func_sig.name);
+
+        let func_def = TypedFuncDefStmt {
+            module_id: resolved_method.module_id,
+            symbol_id: resolved_method.symbol_id,
+            name: mangled_name,
+            params: resolved_method.func_sig.params.clone(),
+            generic_params: resolved_method.func_sig.generic_params.clone(),
+            body: resolved_method.func_body.clone().unwrap(),
+            return_type: resolved_method.func_sig.return_type.clone(),
+            modifiers: resolved_method.func_sig.modifiers.clone(),
+            loc: resolved_method.func_sig.loc.clone(),
+        };
+
+        self.lower_func_def(scope_id_opt, &func_def)
     }
 
     fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
@@ -695,7 +706,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         ty: self.lower_sema_ty(scope_id_opt, &typed_func_param.ty),
                     },
                     TypedFuncParamKind::SelfModifier(typed_self_modifier) => CIRFuncParam {
-                        irv_id: typed_self_modifier.symbol_id.unwrap(),
+                        irv_id: typed_self_modifier.self_symbol_id.unwrap(),
                         ty: self.lower_sema_ty(scope_id_opt, &typed_self_modifier.ty.as_ref().unwrap()),
                     },
                 })
@@ -972,7 +983,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
             if resolved_method.is_instance_method() {
                 let first_param = resolved_method.func_sig.params.list.first().unwrap();
-                args.push(self.lower_method_self_as_argument(scope_id_opt, &method_call.operand, first_param));
+                args.insert(0, self.lower_method_self_as_argument(scope_id_opt, &method_call.operand, first_param));
             }
 
             let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());

@@ -152,7 +152,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                             .unwrap(),
                     )
                 } else {
-                    panic!("Invalid cast to int");
+                    val.into()
                 }
             }
 
@@ -814,7 +814,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue = self.emit_expr(&field_access.operand);
 
         let ptr = lvalue.as_basic_value().into_pointer_value();
-        let pointee_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+
+        let pointee_ty: BasicTypeEnum<'ll>;
+        if let Some(inner_cir_ty) = field_access.operand.ty.get_pointer_inner() {
+            pointee_ty = self.emit_ty(inner_cir_ty.clone()).try_into().unwrap();
+        } else {
+            pointee_ty = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+        }
+
         let field_value: BasicValueEnum<'ll> = self
             .llvmbuilder
             .build_struct_gep(
