@@ -16,6 +16,7 @@ use cyrusc_tast::{
     stmts::*,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CIRWalk<'resolver> {
@@ -88,11 +89,29 @@ impl<'resolver> CIRWalk<'resolver> {
                 TypedStmt::Goto(goto) => self.lower_goto(scope_id_opt, goto),
                 TypedStmt::Expr(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
                 // lowered only when used
-                TypedStmt::Struct(resolved_struct) => {
-                    dbg!(resolved_struct.clone());
-                    todo!();
+                TypedStmt::Struct(struct_stmt) => {
+                    if struct_stmt.generic_params.is_none() {
+                        // non generic
+                        let stmts =
+                            self.lower_non_generic_methods(scope_id_opt, &struct_stmt.name, &struct_stmt.methods);
+                        lowered_stmts.extend(stmts);
+                    }
+                    continue;
                 }
-                TypedStmt::Struct(..) | TypedStmt::Enum(..) | TypedStmt::Union(..) => {
+                TypedStmt::Enum(enum_stmt) => {
+                    if enum_stmt.generic_params.is_none() {
+                        // non generic
+                        let stmts = self.lower_non_generic_methods(scope_id_opt, &enum_stmt.name, &enum_stmt.methods);
+                        lowered_stmts.extend(stmts);
+                    }
+                    continue;
+                }
+                TypedStmt::Union(union_stmt) => {
+                    if union_stmt.generic_params.is_none() {
+                        // non generic
+                        let stmts = self.lower_non_generic_methods(scope_id_opt, &union_stmt.name, &union_stmt.methods);
+                        lowered_stmts.extend(stmts);
+                    }
                     continue;
                 }
                 // skipped
@@ -103,6 +122,44 @@ impl<'resolver> CIRWalk<'resolver> {
         }
 
         lowered_stmts
+    }
+
+    fn lower_non_generic_methods(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        object_name: &String,
+        methods: &HashMap<String, SymbolID>,
+    ) -> Vec<CIRStmt> {
+        let mut stmts: Vec<CIRStmt> = Vec::new();
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        for module_id in methods.values() {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), *module_id)
+                .unwrap();
+            let resolved_method = sym.as_method().unwrap();
+
+            let mangled_name =
+                self.mangling
+                    .method_name(&"", object_name, &resolved_method.func_sig.name);
+
+            let func_def = TypedFuncDefStmt {
+                module_id: resolved_method.module_id,
+                symbol_id: resolved_method.symbol_id,
+                name: mangled_name,
+                params: resolved_method.func_sig.params.clone(),
+                generic_params: resolved_method.func_sig.generic_params.clone(),
+                body: resolved_method.func_body.clone().unwrap(),
+                return_type: resolved_method.func_sig.return_type.clone(),
+                modifiers: resolved_method.func_sig.modifiers.clone(),
+                loc: resolved_method.func_sig.loc.clone(),
+            };
+
+            stmts.push(self.lower_func_def(scope_id_opt, &func_def));
+        }
+
+        stmts
     }
 
     fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
