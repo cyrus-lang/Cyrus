@@ -81,7 +81,7 @@ build_dir = \"./build\"
         .map_err(|_| format!("Failed to create '{}/src/main.cyrus' file.", project_name))?;
 
     main_file
-        .write("import std::io;\n\nfn main() {\n\tio::printfn(\"Hello World\n\");\n}".as_bytes())
+        .write("import std::io;\n\nfn main() {\n\tio::printfn(\"Hello World\");\n}".as_bytes())
         .map_err(|err| err.to_string())?;
 
     Ok(())

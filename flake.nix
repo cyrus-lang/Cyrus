@@ -91,13 +91,15 @@
         };
       };
 
+      defaultPackage.${system} = self.packages.${system}.linux;
+
       ## -----------------------------
       ## Dev shells
       ## -----------------------------
       devShells.${system} = {
         linux = pkgs.mkShell {
           name = "cyrus-dev-linux";
-          
+
           buildInputs = with pkgs; [
             rustup
             gcc
