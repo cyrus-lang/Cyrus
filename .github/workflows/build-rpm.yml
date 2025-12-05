@@ -28,7 +28,7 @@ jobs:
 
       - name: Extract version from Cargo.toml
         run: |
-          CYRUS_VERSION=$(cd ./crates/cli && sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' Cargo.toml | head -n1)
+          CYRUS_VERSION=$(cd ./crates/cyrusc_cli && sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' Cargo.toml | head -n1)
           echo "CYRUS_VERSION=$CYRUS_VERSION" >> $GITHUB_ENV
 
       - name: Set up RPM build environment
