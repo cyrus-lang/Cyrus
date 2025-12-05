@@ -144,7 +144,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
             stmts.push(lowered_method);
         }
-        
+
         stmts
     }
 
@@ -983,7 +983,15 @@ impl<'resolver> CIRWalk<'resolver> {
 
             if resolved_method.is_instance_method() {
                 let first_param = resolved_method.func_sig.params.list.first().unwrap();
-                args.insert(0, self.lower_method_self_as_argument(scope_id_opt, &method_call.operand, first_param));
+                args.insert(
+                    0,
+                    self.lower_method_self_as_argument(
+                        scope_id_opt,
+                        &method_call.operand,
+                        method_call.is_fat_arrow,
+                        first_param,
+                    ),
+                );
             }
 
             let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
@@ -1007,6 +1015,7 @@ impl<'resolver> CIRWalk<'resolver> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         operand: &TypedExprStmt,
+        is_fat_arrow: bool,
         first_param: &TypedFuncParamKind,
     ) -> CIRExpr {
         let expr = self.lower_expr(scope_id_opt, operand);
@@ -1015,12 +1024,17 @@ impl<'resolver> CIRWalk<'resolver> {
         match self_modifier.kind {
             SelfModifierKind::Copied => expr,
             SelfModifierKind::Referenced => {
-                let expr_ty = expr.ty.clone();
-                CIRExpr {
-                    kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
-                        operand: Box::new(expr),
-                    }),
-                    ty: CIRTy::Pointer(Box::new(expr_ty)),
+                // only take address if not a fat arrow
+                if is_fat_arrow {
+                    expr
+                } else {
+                    let expr_ty = expr.ty.clone();
+                    CIRExpr {
+                        kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+                            operand: Box::new(expr),
+                        }),
+                        ty: CIRTy::Pointer(Box::new(expr_ty)),
+                    }
                 }
             }
         }

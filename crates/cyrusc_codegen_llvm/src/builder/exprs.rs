@@ -828,7 +828,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 pointee_ty,
                 ptr,
                 field_access.field_idx.try_into().unwrap(),
-                "struct_gep",
+                "gep",
             )
             .unwrap()
             .into();
