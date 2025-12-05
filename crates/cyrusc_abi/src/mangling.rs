@@ -4,6 +4,9 @@ pub trait ABINameMangling: Send + Sync {
     /// Function names
     fn func_name(&self, module_name: &str, func_name: &str, exported: bool) -> String;
 
+    /// Method names
+    fn method_name(&self, module_name: &str, object_name: &str, method_name: &str) -> String;
+
     /// Global variable names
     fn global_var_name(&self, module_name: &str, var_name: &str) -> String;
 
@@ -32,6 +35,13 @@ impl Cyrus_ABI {
     fn type_name(module_name: &str, type_name: &str) -> String {
         format!("{module_name}_{type_name}")
     }
+
+    fn sanitize(name: &str) -> String {
+        let name = name.trim_start_matches('_');
+        name.chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+            .collect()
+    }
 }
 
 impl ABINameMangling for Cyrus_ABI {
@@ -42,13 +52,22 @@ impl ABINameMangling for Cyrus_ABI {
             if exported {
                 func_name.to_string()
             } else {
-                format!("{module_name}.{func_name}")
+                format!("{}.{}", Self::sanitize(module_name), Self::sanitize(func_name))
             }
         }
     }
 
-    fn global_var_name(&self, _: &str, var_name: &str) -> String {
-        var_name.to_string()
+    fn method_name(&self, module_name: &str, object_name: &str, method_name: &str) -> String {
+        format!(
+            "{}_{}_{}",
+            Self::sanitize(module_name),
+            Self::sanitize(object_name),
+            Self::sanitize(method_name)
+        )
+    }
+
+    fn global_var_name(&self, module_name: &str, var_name: &str) -> String {
+        format!("{}_{}", Self::sanitize(module_name), Self::sanitize(var_name))
     }
 
     fn struct_name(&self, module_name: &str, struct_name: &str) -> String {
@@ -64,7 +83,12 @@ impl ABINameMangling for Cyrus_ABI {
     }
 
     fn enum_variant_name(&self, module_name: &str, enum_name: &str, variant_name: &str) -> String {
-        format!("{module_name}_{enum_name}_{variant_name}")
+        format!(
+            "{}_{}_{}",
+            Self::sanitize(module_name),
+            Self::sanitize(enum_name),
+            Self::sanitize(variant_name)
+        )
     }
 }
 
@@ -76,8 +100,8 @@ impl C_ABI {
         Self {}
     }
 
-    /// Replace non-alphanumeric characters with underscores.
     fn sanitize(name: &str) -> String {
+        let name = name.trim_start_matches('_');
         name.chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
             .collect()
@@ -87,6 +111,10 @@ impl C_ABI {
 impl ABINameMangling for C_ABI {
     fn func_name(&self, _module_name: &str, func_name: &str, _exported: bool) -> String {
         Self::sanitize(func_name)
+    }
+
+    fn method_name(&self, _module_name: &str, object_name: &str, method_name: &str) -> String {
+        format!("{}_{}", Self::sanitize(object_name), Self::sanitize(method_name))
     }
 
     fn global_var_name(&self, _module_name: &str, var_name: &str) -> String {
