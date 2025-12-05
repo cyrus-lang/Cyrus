@@ -267,7 +267,7 @@ impl ABI {
 }
 
 fn get_current_dir_as_base_path() -> String {
-    let current_dir: PathBuf = env::current_dir().expect("Failed to get current directory.");
+    let current_dir: PathBuf = env::current_dir().unwrap_or_default();
     current_dir.to_string_lossy().into_owned()
 }
 
