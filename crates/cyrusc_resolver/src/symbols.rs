@@ -134,6 +134,32 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
+    pub fn get_method_symbol_id_by_name(&self, name: &str) -> Option<SymbolID> {
+        let method_map = match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Variable(_) => None,
+                LocalSymbolKind::Typedef(_) => None,
+                LocalSymbolKind::Interface(_) => None,
+                LocalSymbolKind::Struct(resolved_struct) => Some(resolved_struct.struct_sig.methods.clone()),
+                LocalSymbolKind::Enum(resolved_enum) => Some(resolved_enum.enum_sig.methods.clone()),
+                LocalSymbolKind::Union(resolved_union) => Some(resolved_union.union_sig.methods.clone()),
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Method(_) => None,
+                SymbolEntryKind::Func(_) => None,
+                SymbolEntryKind::Typedef(_) => None,
+                SymbolEntryKind::GlobalVar(_) => None,
+                SymbolEntryKind::Interface(_) => None,
+                SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct.struct_sig.methods.clone()),
+                SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum.enum_sig.methods.clone()),
+                SymbolEntryKind::Union(resolved_union) => Some(resolved_union.union_sig.methods.clone()),
+                SymbolEntryKind::ProxiedSymbol(_, _) => unreachable!(),
+            },
+        };
+
+        method_map.and_then(|map| map.get(name).cloned())
+    }
+
     pub fn get_generic_params(&self) -> Option<TypedGenericParamsList> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {

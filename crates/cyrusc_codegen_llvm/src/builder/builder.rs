@@ -6,7 +6,6 @@ use crate::{
     },
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
-use cyrusc_abi::mangling::{ABINameMangling, Cyrus_ABI};
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, monomorph::CIRMonomorphRegistry,
@@ -172,17 +171,13 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         let llvmmodule = self.llvmmodule.borrow();
-        let llvmmodule_name = llvmmodule.get_name().to_str().unwrap();
 
-        // FIXME Name mangling would be refactored in the future.
-        let cyrus_abi = Cyrus_ABI {};
-        let name = cyrus_abi.global_var_name(llvmmodule_name, &cir_global_var.name, cir_global_var.modifiers.vis);
-        if let Some(global_value) = llvmmodule.get_global(&name) {
+        if let Some(global_value) = llvmmodule.get_global(&cir_global_var.name) {
             return global_value;
         }
 
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
-        let global_value = llvmmodule.add_global(ty, None, &name);
+        let global_value = llvmmodule.add_global(ty, None, &cir_global_var.name);
         drop(llvmmodule);
 
         if let Some(expr) = &cir_global_var.expr {

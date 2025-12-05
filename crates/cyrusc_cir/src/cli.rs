@@ -1,3 +1,4 @@
+use cyrusc_abi::mangling::Cyrus_ABI;
 use cyrusc_cir::{monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
@@ -31,6 +32,7 @@ pub fn main() {
 
             let input_file_dir = get_directory_of_file(file_path.clone()).unwrap();
             let module_loader_opts = ModuleLoaderOptions {
+                base_path: current_dir.to_str().unwrap().to_string(),
                 stdlib_path: Some(stdlib_path.clone()),
                 source_dirs: vec![input_file_dir],
             };
@@ -52,14 +54,8 @@ pub fn main() {
                 exit(1);
             }
 
-            // if resolver.reporter.has_errors() {
-            //     resolver.reporter.display();
-            //     exit(1);
-            // }
-
             let entry_points = Arc::new(Mutex::new(Vec::new()));
 
-            let mut has_error = false;
             let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
@@ -75,14 +71,13 @@ pub fn main() {
 
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
-                if analyzer.reporter.has_errors() {
-                    has_error = true;
-                }
 
                 analyzed_program_trees.push(analyzer.program_tree.clone());
             }
 
             AnalysisContext::check_entry_points(entry_points);
+
+            let mangling = Cyrus_ABI::new();
 
             let cloned_program_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
                 .into_iter()
@@ -100,8 +95,13 @@ pub fn main() {
 
             let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
 
-            let cir_program_trees =
-                walk_program_trees_in_parallel(None, cloned_program_trees, &resolver, cir_monomorph_registry);
+            let cir_program_trees = walk_program_trees_in_parallel(
+                None,
+                cloned_program_trees,
+                &resolver,
+                cir_monomorph_registry,
+                &mangling,
+            );
 
             dbg!(cir_program_trees);
         }

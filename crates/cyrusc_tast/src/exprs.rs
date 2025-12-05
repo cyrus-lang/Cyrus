@@ -297,6 +297,7 @@ pub struct TypedFieldAccess {
 pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
     pub object_symbol_id: Option<SymbolID>,
+    pub method_symbol_id: Option<SymbolID>,
     pub method_name: String,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,

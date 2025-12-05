@@ -1,8 +1,10 @@
+use std::{env, path::PathBuf};
+
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::options::{
-    BuildDir, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind,
-    RelocModeOptions,
+    BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions,
+    ModuleKind, RelocModeOptions,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::PROJECT_FILE_PATH;
@@ -136,6 +138,15 @@ struct CompilerOptions {
     )]
     code_model: CodeModel,
 
+    #[clap(long, value_enum, default_value_t = ABI::Cyrus,
+    help =
+    "Select the ABI name mangling scheme for code generation. \
+Choices determine how function, global variable, and type names \
+are represented in the generated output. For example, 'C' produces \
+C-compatible names, while 'Cyrus' uses the compiler's default mangling."
+    )]
+    abi: ABI,
+
     #[clap(long, value_enum, help = "Set endianness (default uses target machine endianness).")]
     pub endianness: Option<Endianness>,
 
@@ -206,6 +217,12 @@ pub enum CodeModel {
     Large,
 }
 
+#[derive(Deserialize, Debug, Clone, ValueEnum)]
+pub enum ABI {
+    Cyrus,
+    C,
+}
+
 impl CodeModel {
     pub fn as_compiler_code_model(&self) -> CodeModelOptions {
         match self {
@@ -240,9 +257,24 @@ impl Sanitizer {
     }
 }
 
+impl ABI {
+    pub fn to_compiler_abi(&self) -> CodeGenABI {
+        match self {
+            ABI::Cyrus => CodeGenABI::Cyrus,
+            ABI::C => CodeGenABI::C,
+        }
+    }
+}
+
+fn get_current_dir_as_base_path() -> String {
+    let current_dir: PathBuf = env::current_dir().expect("Failed to get current directory.");
+    current_dir.to_string_lossy().into_owned()
+}
+
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            abi: Some(self.abi.to_compiler_abi()),
             endianness: self.endianness.and_then(|endianness| match endianness {
                 Endianness::Little => Some(CodeGenEndianness::Little),
                 Endianness::Big => Some(CodeGenEndianness::Big),
@@ -257,7 +289,7 @@ impl CompilerOptions {
             linker_options: CodeGenLinkerOptions::default(),
             linker: self.linker.clone().or(Some("cc".to_string())),
             disable_modulefs_cache: self.disable_modulefs_cache,
-            base_path: self.base_path.clone(),
+            base_path: Some(self.base_path.clone().or(Some(get_current_dir_as_base_path())).unwrap()),
             opt_level: match self.optimize {
                 OptimizeLevel::None => None,
                 OptimizeLevel::O1 => Some(1),

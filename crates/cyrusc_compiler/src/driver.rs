@@ -1,8 +1,9 @@
 use crate::{
     context::CodeGenContext,
     linker::Linker,
-    options::{BuildDir, CodeGenOptions, LinkerOutputKind},
+    options::{BuildDir, CodeGenABI, CodeGenOptions, LinkerOutputKind},
 };
+use cyrusc_abi::mangling::{ABINameMangling, C_ABI, Cyrus_ABI};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
@@ -84,6 +85,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     // configure resolver
     let module_loader_opts = ModuleLoaderOptions {
+        base_path: opts.base_path.clone().unwrap(),
         stdlib_path: opts.stdlib_path.clone(),
         source_dirs: vec![input_file_dir],
     };
@@ -134,6 +136,10 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         exit(1);
     }
 
+    // abi name mangling
+
+    let mangling = get_name_mangling(opts.abi.clone());
+
     // prepare trees for codegen
 
     let boxed_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
@@ -146,8 +152,13 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
 
-    let cir_program_trees =
-        walk_program_trees_in_parallel(opts.jobs, boxed_trees, &resolver, cir_monomorph_registry.clone());
+    let cir_program_trees = walk_program_trees_in_parallel(
+        opts.jobs,
+        boxed_trees,
+        &resolver,
+        cir_monomorph_registry.clone(),
+        &*mangling,
+    );
 
     CodeGenContextBundle {
         options: opts.clone(),
@@ -155,6 +166,13 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         build_dir,
         program_trees: cir_program_trees,
         monomorph_registry: cir_monomorph_registry,
+    }
+}
+
+fn get_name_mangling(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangling> {
+    match abi.unwrap_or_default() {
+        CodeGenABI::Cyrus => Box::new(Cyrus_ABI::new()),
+        CodeGenABI::C => Box::new(C_ABI::new()),
     }
 }
 

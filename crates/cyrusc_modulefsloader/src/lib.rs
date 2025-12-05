@@ -23,6 +23,7 @@ pub enum ModuleAlias {
 
 #[derive(Debug)]
 pub struct ModuleLoaderOptions {
+    pub base_path: String,
     pub stdlib_path: Option<String>,
     pub source_dirs: Vec<String>,
 }

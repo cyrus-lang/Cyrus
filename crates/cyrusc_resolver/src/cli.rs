@@ -26,6 +26,7 @@ pub fn main() {
 
             let input_file_dir = get_directory_of_file(file_path.clone()).unwrap();
             let module_loader_opts = ModuleLoaderOptions {
+                base_path: current_dir.to_str().unwrap().to_string(),
                 stdlib_path: Some(stdlib_path.clone()),
                 source_dirs: vec![input_file_dir],
             };

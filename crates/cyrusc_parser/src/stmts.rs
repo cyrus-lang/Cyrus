@@ -679,47 +679,47 @@ impl Parser {
                         hint: None,
                     });
                 }
-                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                    let vis = self.parse_vis(self.current_token());
-
-                    if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-                        let field = self.parse_struct_field(vis)?;
-                        fields.push(field);
-                    } else {
-                        // FIXME
-                        todo!();
-                        // if let Stmt::FuncDef(method) = self.parse_func(vis)? {
-                        //     self.next_token(); // consume right brace
-                        //     methods.push(method);
-                        // } else {
-                        //     unreachable!();
-                        // }
-                    }
-                }
                 TokenKind::Function => {
-                    // FIXME
-                    todo!();
-                    // if let Stmt::FuncDef(method) = self.parse_func(None)? {
-                    //     self.next_token(); // consume right brace
-                    //     methods.push(method);
-                    // } else {
-                    //     unreachable!();
-                    // }
+                    if let Stmt::FuncDef(method) = self.parse_func(FuncModifiers::default())? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
                 }
                 TokenKind::Identifier { .. } => {
                     let field = self.parse_struct_field(None)?;
                     fields.push(field);
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc,
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    let modifiers = self.parse_unresolved_modifiers()?;
+                    let loc = self.current_token().loc.clone();
+
+                    if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+                        let field_modifiers =
+                            modifiers.into_field_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+
+                        let field = self.parse_struct_field(Some(field_modifiers.vis))?;
+                        fields.push(field);
+                    } else {
+                        let func_modifiers =
+                            modifiers.into_method_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+
+                        if let Stmt::FuncDef(method) = self.parse_func(func_modifiers)? {
+                            self.next_token(); // consume right brace
+                            methods.push(method);
+                        } else {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                    self.current_token().loc,
+                                    self.file_name.clone(),
+                                ))),
+                                hint: None,
+                            });
+                        }
+                    }
                 }
             }
         }
