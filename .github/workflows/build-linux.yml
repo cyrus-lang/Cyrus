@@ -30,6 +30,8 @@ jobs:
           override: true
 
       - name: Build
+        env:
+          LLVM_CONFIG: llvm-config-18
         run: cargo build --verbose --release
 
       - name: Run tests
