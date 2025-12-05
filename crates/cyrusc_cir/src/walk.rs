@@ -1,9 +1,10 @@
 use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
-use cyrusc_ast::LiteralKind;
-use cyrusc_resolver::Resolver;
+use cyrusc_abi::mangling::ABINameMangling;
+use cyrusc_ast::{LiteralKind, SelfModifierKind};
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_symbol_id};
+use cyrusc_resolver::{Resolver, typed_func_decl_from_func_sig};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig};
@@ -19,6 +20,7 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) struct CIRWalk<'resolver> {
     program: Box<TypedProgramTree>,
+    mangling: &'resolver dyn ABINameMangling,
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'resolver Resolver,
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
@@ -30,12 +32,14 @@ impl<'resolver> CIRWalk<'resolver> {
         resolver: &'resolver Resolver,
         module_id: ModuleID,
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        mangling: &'resolver dyn ABINameMangling,
     ) -> Self {
         Self {
             program,
             resolver,
             module_id,
             cir_monomorph_registry,
+            mangling,
         }
     }
 
@@ -59,7 +63,9 @@ impl<'resolver> CIRWalk<'resolver> {
                     }
                     self.lower_func_def(scope_id_opt, func_def_stmt)
                 }
-                TypedStmt::FuncDecl(func_decl_stmt) => self.lower_func_decl(scope_id_opt, func_decl_stmt),
+                TypedStmt::FuncDecl(func_decl_stmt) => {
+                    CIRStmt::FuncDecl(self.lower_func_decl(scope_id_opt, func_decl_stmt))
+                }
                 TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
                 TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
                 TypedStmt::GlobalVar(global_var_stmt) => self.lower_global_var(scope_id_opt, global_var_stmt),
@@ -82,6 +88,10 @@ impl<'resolver> CIRWalk<'resolver> {
                 TypedStmt::Goto(goto) => self.lower_goto(scope_id_opt, goto),
                 TypedStmt::Expr(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
                 // lowered only when used
+                TypedStmt::Struct(resolved_struct) => {
+                    dbg!(resolved_struct.clone());
+                    todo!();
+                }
                 TypedStmt::Struct(..) | TypedStmt::Enum(..) | TypedStmt::Union(..) => {
                     continue;
                 }
@@ -539,9 +549,13 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .and_then(|expr| Some(self.lower_expr(scope_id_opt, &expr)));
 
+        let mangled_name = self
+            .mangling
+            .global_var_name(&self.program.module_name, &global_var.name);
+
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
             irv_id: global_var.symbol_id,
-            name: global_var.name.clone(),
+            name: mangled_name,
             ty,
             expr,
             modifiers: global_var.modifiers.clone(),
@@ -639,9 +653,13 @@ impl<'resolver> CIRWalk<'resolver> {
         let body = self.lower_body(&func_def.body);
         let ret = self.lower_sema_ty(scope_id_opt, &func_def.return_type);
 
+        let mangled_name = self
+            .mangling
+            .func_name(&self.program.module_name, &func_def.name, false);
+
         CIRStmt::FuncDef(CIRFuncDefStmt {
             irv_id: func_def.symbol_id,
-            name: func_def.name.clone(),
+            name: mangled_name,
             params,
             body: Box::new(body),
             ret,
@@ -649,17 +667,20 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_func_decl(&mut self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRStmt {
+    fn lower_func_decl(&mut self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(scope_id_opt, &func_decl.params);
         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
 
-        CIRStmt::FuncDecl(CIRFuncDeclStmt {
+        let func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name);
+        let mangled_name = self.mangling.func_name(&self.program.module_name, &func_name, true);
+
+        CIRFuncDeclStmt {
             irv_id: func_decl.symbol_id,
-            name: func_decl.name.clone(),
+            name: mangled_name,
             params,
             ret,
             modifiers: func_decl.modifiers.clone(),
-        })
+        }
     }
 
     pub(crate) fn lower_func_sig(
@@ -838,7 +859,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, method_call.object_symbol_id.unwrap())
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.object_symbol_id.unwrap())
             .unwrap();
 
         if let Some(resolved_enum) = sym.as_enum() {
@@ -879,19 +900,61 @@ impl<'resolver> CIRWalk<'resolver> {
                 enum_ty,
             })
         } else {
-            let args: Vec<CIRExpr> = method_call
+            let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt, method_symbol_id)
+                .unwrap();
+            let resolved_method = sym.as_method().unwrap();
+
+            let mut args: Vec<CIRExpr> = method_call
                 .args
                 .iter()
                 .map(|arg| self.lower_expr(scope_id_opt, arg))
                 .collect();
 
+            if resolved_method.is_instance_method() {
+                let first_param = resolved_method.func_sig.params.list.first().unwrap();
+                args.push(self.lower_method_self_as_argument(scope_id_opt, &method_call.operand, first_param));
+            }
+
             let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
 
-            CIRExprKind::FuncCall(CIRFuncCall {
-                operand: Box::new(self.lower_expr(scope_id_opt, &method_call.operand)),
-                args,
-                ret_ty,
-            })
+            let func_decl = typed_func_decl_from_func_sig(&resolved_method.func_sig);
+            let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
+
+            let operand = Box::new(CIRExpr {
+                kind: CIRExprKind::Load(CIRValue {
+                    irv_id: method_call.method_symbol_id.unwrap(),
+                    kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+                }),
+                ty: ret_ty.clone(),
+            });
+
+            CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+        }
+    }
+
+    fn lower_method_self_as_argument(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        operand: &TypedExprStmt,
+        first_param: &TypedFuncParamKind,
+    ) -> CIRExpr {
+        let expr = self.lower_expr(scope_id_opt, operand);
+        let self_modifier = first_param.as_self_modifier().unwrap();
+
+        match self_modifier.kind {
+            SelfModifierKind::Copied => expr,
+            SelfModifierKind::Referenced => {
+                let expr_ty = expr.ty.clone();
+                CIRExpr {
+                    kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+                        operand: Box::new(expr),
+                    }),
+                    ty: CIRTy::Pointer(Box::new(expr_ty)),
+                }
+            }
         }
     }
 
@@ -1280,6 +1343,7 @@ pub fn walk_program_trees_in_parallel(
     program_trees: Vec<Box<TypedProgramTree>>,
     resolver: &Resolver,
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    mangling: &dyn ABINameMangling,
 ) -> Vec<Box<CIRProgramTree>> {
     use rayon::prelude::*;
 
@@ -1299,6 +1363,7 @@ pub fn walk_program_trees_in_parallel(
                     resolver,
                     program_tree.module_id,
                     cir_monomorph_registry.clone(),
+                    mangling,
                 );
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
                 Box::new(cir_program_tree)

@@ -260,6 +260,7 @@ pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: Str
     options.source_dirs.push(entry_module_dir_path);
 
     let module_loader_opts = ModuleLoaderOptions {
+        base_path: options.base_path.clone().unwrap(),
         stdlib_path: options.stdlib.clone(),
         source_dirs: options.source_dirs.clone(),
     };

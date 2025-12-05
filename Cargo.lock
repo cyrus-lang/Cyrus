@@ -305,6 +305,7 @@ dependencies = [
 name = "cyrusc_compiler"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
  "cyrusc_cir",

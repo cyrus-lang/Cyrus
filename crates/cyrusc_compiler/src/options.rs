@@ -32,6 +32,13 @@ pub struct CodeGenOptions {
     pub disable_modulefs_cache: bool,
     pub disable_warnings: bool,
     pub endianness: Option<CodeGenEndianness>,
+    pub abi: Option<CodeGenABI>,
+}
+
+#[derive(Debug, Clone)]
+pub enum CodeGenABI {
+    Cyrus,
+    C,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +98,7 @@ impl Default for CodeGenOptions {
             linker_flags: Vec::new(),
             sanitizer: Vec::new(),
             endianness: None,
+            abi: None,
         }
     }
 }
@@ -98,6 +106,7 @@ impl Default for CodeGenOptions {
 impl CodeGenOptions {
     pub fn merge_preferring(&self, overrides: &Self) -> Self {
         Self {
+            abi: overrides.abi.clone().or(self.abi.clone()),
             endianness: overrides.endianness.clone().or(self.endianness.clone()),
             module_kind: overrides.module_kind.clone().or(self.module_kind.clone()),
             jobs: overrides.jobs.or(self.jobs.clone()),
@@ -305,4 +314,10 @@ fn merge_vec_prepend_unique(overrides: &[String], base: &[String]) -> Vec<String
         }
     }
     out
+}
+
+impl Default for CodeGenABI {
+    fn default() -> Self {
+        Self::Cyrus
+    }
 }

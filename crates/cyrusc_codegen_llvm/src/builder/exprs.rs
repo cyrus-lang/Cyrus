@@ -179,7 +179,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                             .unwrap(),
                     )
                 } else {
-                    panic!("Invalid cast to pointer");
+                    val.into()
                 }
             }
 

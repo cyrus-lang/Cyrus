@@ -1,20 +1,154 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
-use cyrusc_resolver::symbols::LocalScopeRef;
+use cyrusc_resolver::{
+    symbols::{LocalScopeRef, generate_scope_id},
+    typed_func_type_from_func_sig,
+};
 use cyrusc_tast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
     generics::{
         generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
+        monomorph::{MonomorphKey, SpecializedFuncEntry},
     },
+    sigs::FuncSig,
     stmts::*,
     types::SemanticType,
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn register_specialized_generic_func(
+        &mut self,
+        func_sig: &FuncSig,
+        generic_type: &GenericType,
+        func_call_loc: &SourceLoc,
+    ) -> Option<MonomorphKey> {
+        let current_diag_len = self.reporter.diags.len();
+
+        let (mut template_body, mapping_ctx, base_symbol) = {
+            let ctx = self.monomorph_registry.lock().unwrap();
+
+            if let Some(monomorph_key) = ctx.get_func_entry_by_mapping_ctx(generic_type.mapping_ctx.clone()) {
+                // already registered
+                return Some(monomorph_key.clone());
+            }
+
+            let generic_template_entry = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
+
+            let mapping = generic_type.mapping_ctx.borrow().clone();
+            let base = func_sig.symbol_id.unwrap();
+
+            (generic_template_entry.body, mapping, base)
+        };
+
+        let template_body_scope = self
+            .resolver
+            .get_scope_ref(self.module_id, template_body.scope_id)
+            .unwrap();
+
+        // make new scope for specialized func body
+        let new_body_scope_id = generate_scope_id();
+        {
+            template_body.scope_id = new_body_scope_id;
+            let template_body_scope = template_body_scope.borrow();
+            let new_body_scope = template_body_scope.deep_clone();
+            self.resolver
+                .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
+            new_body_scope
+        };
+
+        self.current_func = Some(typed_func_type_from_func_sig(func_sig));
+        self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
+
+        let mut analyzed_body = template_body.clone();
+
+        self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
+
+        {
+            let diag_len = self.reporter.diags.len();
+            if diag_len > current_diag_len {
+                self.apply_error_originated_from_on_diag_range(current_diag_len..=diag_len, |diag| {
+                    diag.hint = Some(format!(
+                        "Error originates from this function call at {}:{}:{}.",
+                        func_call_loc.file_path.clone(),
+                        func_call_loc.line,
+                        func_call_loc.column
+                    ));
+                });
+            }
+        }
+
+        let monomorph_key = {
+            let mut ctx = self.monomorph_registry.lock().unwrap();
+            let (monomorph_key, _) = ctx.register_func(base_symbol, mapping_ctx);
+            ctx.register_specialized_func_instance(monomorph_key.clone(), SpecializedFuncEntry { body: analyzed_body });
+            monomorph_key
+        };
+
+        Some(monomorph_key)
+    }
+
+    fn apply_error_originated_from_on_diag_range<F>(&mut self, range: RangeInclusive<usize>, mut f: F)
+    where
+        F: FnMut(&mut Diag),
+    {
+        let len = self.reporter.diags.len();
+        let start = *range.start();
+        let end_inclusive = *range.end();
+
+        if start > end_inclusive {
+            return;
+        }
+        if start >= len {
+            return;
+        }
+
+        let end = (end_inclusive + 1).min(len);
+
+        for diag in &mut self.reporter.diags[start..end] {
+            f(diag);
+        }
+    }
+
+    fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
+        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, body_scope_id).unwrap();
+        {
+            let mut local_scope = local_scope_rc.borrow_mut();
+
+            for param_kind in &params.list {
+                match param_kind {
+                    TypedFuncParamKind::FuncParam(typed_func_param) => {
+                        local_scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
+                            let resolved_var = local_symbol.as_variable_mut().unwrap();
+                            resolved_var.typed_variable.ty = Some(typed_func_param.ty.clone());
+                        });
+                    }
+                    TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                        local_scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
+                            let resolved_var = local_symbol.as_variable_mut().unwrap();
+                            resolved_var.typed_variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
+                        });
+                    }
+                }
+            }
+
+            if let Some(variadic) = &params.variadic {
+                match variadic {
+                    TypedFuncVariadicParams::Typed(identifier, sema_ty) => {
+                        local_scope.with_symbol_id_mut(identifier.symbol_id, |local_symbol| {
+                            let resolved_var = local_symbol.as_variable_mut().unwrap();
+                            resolved_var.typed_variable.ty = Some(sema_ty.clone());
+                        });
+                    }
+                    TypedFuncVariadicParams::UntypedCStyle => {}
+                }
+            }
+        }
+    }
+
     pub(crate) fn init_generic_type_with_symbol_id(
         &self,
         local_scope_opt: Option<LocalScopeRef>,

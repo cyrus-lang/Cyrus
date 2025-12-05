@@ -37,6 +37,11 @@ pub(crate) struct TypedefModifiers {
     pub(crate) vis: Visibility,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct FieldModifiers {
+    pub vis: Visibility,
+}
+
 impl Parser {
     pub(crate) fn parse_unresolved_modifiers(&mut self) -> Result<UnresolvedModifiers, Diag> {
         let mut mods = UnresolvedModifiers {
@@ -609,5 +614,58 @@ impl UnresolvedModifiers {
         }
 
         Ok(TypedefModifiers { vis })
+    }
+
+    pub(crate) fn into_method_modifiers(self, loc: SourceLoc) -> Result<FuncModifiers, Diag> {
+        let vis = self.visibility.unwrap_or_default();
+
+        if self.export.is_some() || self.linkage.is_some() || !self.placement.is_empty() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Methods cannot use export, linkage, or section placement.".into(),
+                )),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
+        }
+
+        let linkage = vis.is_public().then_some(Linkage::Extern);
+
+        Ok(FuncModifiers {
+            vis,
+            inline: self.inline,
+            prologue: self.prologue,
+            callconv: self.callconv,
+            optional_flags: self.optional_flags,
+            linkage,
+            export: None,
+            section: None,
+            placement: Vec::new(),
+        })
+    }
+
+    pub(crate) fn into_field_modifiers(self, loc: SourceLoc) -> Result<FieldModifiers, Diag> {
+        let vis = self.visibility.unwrap_or_default();
+
+        if self.linkage.is_some()
+            || self.inline.is_some()
+            || self.export.is_some()
+            || self.callconv.is_some()
+            || self.prologue.is_some()
+            || !self.optional_flags.is_empty()
+            || !self.placement.is_empty()
+        {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Only visibility modifier allowed for fields.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
+        }
+
+        Ok(FieldModifiers { vis })
     }
 }

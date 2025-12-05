@@ -4,6 +4,7 @@ use crate::{
     diagnostics::ResolverDiagKind,
     sigs::{FuncSig, TypedefSig},
 };
+use cyrusc_abi::modulename::make_module_name_from_filepath;
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::format::module_segments_as_string;
 use cyrusc_ast::source_loc::SourceLoc;
@@ -21,7 +22,7 @@ use cyrusc_tast::*;
 use rand::Rng;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -162,7 +163,13 @@ impl Resolver {
 
         // Collect exact definitions and details of the symbols (second pass).
         let typed_body = self.resolve_definitions(module_id, &ast);
+
+        let base_path = Path::new(&self.module_loader.opts.base_path);
+        let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
+        let module_name = make_module_name_from_filepath(module_file_path.clone(), Some(base_path), stdlib_path.as_deref());
+
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
+            module_name,
             body: typed_body,
             file_path: module_file_path.clone(),
             module_id,
@@ -2901,6 +2908,7 @@ impl Resolver {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
                 object_symbol_id: None,
+                method_symbol_id: None,
                 method_name: method_call.method_name.name.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
                 type_args,
@@ -3508,6 +3516,20 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
         is_func_decl: true,
         modifiers: func_decl.modifiers.clone(),
         loc: func_decl.loc.clone(),
+    }
+}
+
+pub fn typed_func_decl_from_func_sig(sig: &FuncSig) -> TypedFuncDeclStmt {
+    TypedFuncDeclStmt {
+        symbol_id: sig.symbol_id.unwrap(),
+        module_id: sig.module_id,
+        name: sig.name.clone(),
+        generic_params: sig.generic_params.clone(),
+        params: sig.params.clone(),
+        return_type: sig.return_type.clone(),
+        modifiers: sig.modifiers.clone(),
+        loc: sig.loc.clone(),
+        renamed_as: None,
     }
 }
 

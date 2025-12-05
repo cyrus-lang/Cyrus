@@ -47,8 +47,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let llvmmodule = self.llvmmodule.borrow_mut();
                     let mut irreg = self.irreg.borrow_mut();
 
-                    // FIXME ABI Name mangling isn't implemented yet!
-                    let func_name = format!("monomorph.instance@{}", monomorph_func_entry.irv_id);
+                    let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
 
                     let fn_value = match llvmmodule.get_function(&func_name) {
                         Some(f) => f,
@@ -193,4 +192,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.llvmbuilder.build_return(None).unwrap();
         }
     }
+}
+
+fn monomorph_func_name(irv_id: u32) -> String {
+    format!("monomorph.instance@{}", irv_id)
 }
