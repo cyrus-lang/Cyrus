@@ -1600,13 +1600,13 @@ impl<'a> AnalysisContext<'a> {
 
         // forward method declaration resolving
         for symbol_id in methods.values() {
-            let (mut func_sig, func_body) = {
+            let (mut func_sig, func_body_opt) = {
                 let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&module_id).unwrap();
                 let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
 
                 match &mut symbol_entry.kind {
-                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take().unwrap()),
+                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take()),
                     _ => unreachable!(),
                 }
             };
@@ -1640,7 +1640,9 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
+            if let Some(func_body) = func_body_opt {
+                local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
+            }
 
             let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
             let symbol_table = global_symbols.get_mut(&module_id).unwrap();
