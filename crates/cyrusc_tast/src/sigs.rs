@@ -86,6 +86,7 @@ pub struct GlobalVarSig {
     pub name: String,
     pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
+    pub analyzed: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: SourceLoc,
 }

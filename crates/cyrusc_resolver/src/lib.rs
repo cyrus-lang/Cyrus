@@ -1379,6 +1379,7 @@ impl Resolver {
                 name: global_var.identifier.name.clone(),
                 ty: sema_ty.clone(),
                 rhs: typed_expr.clone(),
+                analyzed: true,
                 modifiers: global_var.modifiers.clone(),
                 loc: SourceLoc::from_loc(global_var.loc.clone(), self.current_file_path()),
             },
@@ -1531,6 +1532,7 @@ impl Resolver {
                             },
                             rhs: None,
                             is_const: false,
+                            analyzed: true,
                             loc: resolved_method.func_sig.loc.clone(),
                         },
                     }));
@@ -1788,6 +1790,7 @@ impl Resolver {
                                     ty: Some(param_type.clone()),
                                     rhs: None,
                                     is_const: false,
+                                    analyzed: true,
                                     loc: SourceLoc::from_loc(func_param.loc.clone(), self.current_file_path()),
                                 },
                             })),
@@ -1840,6 +1843,7 @@ impl Resolver {
                                 ty: Some(variadic_type.clone()),
                                 rhs: None,
                                 is_const: false,
+                                analyzed: true,
                                 loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
                             },
                         })),
@@ -2009,6 +2013,7 @@ impl Resolver {
             ty: var_type.clone(),
             rhs: typed_rhs.clone(),
             is_const: variable.is_const,
+            analyzed: typed_rhs.is_some(),
             loc: SourceLoc::from_loc(variable.loc.clone(), self.current_file_path()),
         };
 
@@ -2169,6 +2174,7 @@ impl Resolver {
                 ty: None,
                 rhs: None,
                 is_const: false,
+                analyzed: typed_rhs.is_some(),
                 loc: SourceLoc::from_loc(identifier.loc.clone(), this.current_file_path()),
             };
 
@@ -2355,6 +2361,7 @@ impl Resolver {
                                             ty: None,
                                             rhs: None,
                                             is_const: false,
+                                            analyzed: true,
                                             loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
                                         },
                                     })),
@@ -2385,6 +2392,7 @@ impl Resolver {
                                                         ty: None,
                                                         rhs: None,
                                                         is_const: false,
+                                                        analyzed: true,
                                                         loc: SourceLoc::from_loc(
                                                             identifier.loc.clone(),
                                                             self.current_file_path(),

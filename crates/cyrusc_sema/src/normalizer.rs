@@ -1,9 +1,9 @@
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
-    ScopeID, SymbolID,
+    ModuleID, ScopeID, SymbolID,
     stmts::{
         TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArgs,
     },
@@ -279,13 +279,32 @@ impl<'a> AnalysisContext<'a> {
                             resolved_variable.typed_variable.loc.clone(),
                         )?;
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
-                        let rhs_ty = self.analyze_typed_expr_type_non_terminal(
-                            scope_id_opt,
-                            &mut rhs.clone(),
-                            resolved_variable.typed_variable.ty.clone(),
-                        )?;
-                        var_type =
-                            self.normalize_type(scope_id_opt, rhs_ty, resolved_variable.typed_variable.loc.clone())?;
+                        // prevent of duplicate rhs analyzing
+                        if resolved_variable.typed_variable.analyzed {
+                            if let Some(sema_ty) = resolved_variable.typed_variable.ty.clone().or(resolved_variable
+                                .typed_variable
+                                .rhs
+                                .unwrap()
+                                .sema_ty)
+                            {
+                                var_type = sema_ty;
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id);
+
+                            let rhs_ty = self.analyze_typed_expr_type_non_terminal(
+                                scope_id_opt,
+                                &mut rhs.clone(),
+                                resolved_variable.typed_variable.ty.clone(),
+                            )?;
+                            var_type = self.normalize_type(
+                                scope_id_opt,
+                                rhs_ty,
+                                resolved_variable.typed_variable.loc.clone(),
+                            )?;
+                        }
                     } else {
                         dbg!(resolved_variable.clone());
                         panic!("Cannot resolve variable type.")
@@ -346,11 +365,18 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(ty) = &resolved_global_var.global_var_sig.ty {
                         self.normalize_type(scope_id_opt, ty.clone(), resolved_global_var.global_var_sig.loc.clone())
                     } else {
-                        self.analyze_typed_expr_type(
-                            scope_id_opt,
-                            &mut resolved_global_var.global_var_sig.rhs.unwrap(),
-                            None,
-                        )
+                        // prevent of duplicate rhs analyzing
+                        if resolved_global_var.global_var_sig.analyzed {
+                            resolved_global_var.global_var_sig.rhs.unwrap().sema_ty
+                        } else {
+                            self.mark_global_var_analyzed(resolved_global_var.module_id, resolved_global_var.symbol_id);
+
+                            self.analyze_typed_expr_type(
+                                scope_id_opt,
+                                &mut resolved_global_var.global_var_sig.rhs.unwrap(),
+                                None,
+                            )
+                        }
                     }
                 }
                 SymbolEntryKind::Struct(s) => {
@@ -377,6 +403,22 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
         }
+    }
+
+    fn mark_global_var_analyzed(&self, module_id: ModuleID, symbol_id: SymbolID) {
+        update_global_symbol!(self, module_id, symbol_id,
+            SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
+                resolved_var.global_var_sig.analyzed = true;
+            }
+        );
+    }
+
+    fn mark_local_var_analyzed(&self, scope_id: ScopeID, symbol_id: SymbolID) {
+        update_local_symbol!(self, scope_id, symbol_id,
+            LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                resolved_variable.typed_variable.analyzed = true;
+            }
+        );
     }
 
     fn resolve_generic_typedef(
