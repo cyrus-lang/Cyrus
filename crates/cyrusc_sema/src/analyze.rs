@@ -418,7 +418,6 @@ impl<'a> AnalysisContext<'a> {
         enum_sig: &mut EnumSig,
     ) -> FlowState {
         let mut branch_states = Vec::new();
-
         let mut used_enum_variants: Vec<String> = Vec::new();
 
         'cases: for i in 0..typed_switch.cases.len() {

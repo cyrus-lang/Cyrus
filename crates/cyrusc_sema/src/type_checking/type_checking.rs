@@ -791,6 +791,32 @@ impl<'a> AnalysisContext<'a> {
             ) {
                 enum_valued_field.ty = sema_ty;
             }
+
+            if generic_type_opt.is_none() {
+                if !self.check_type_mismatch(
+                    scope_id_opt,
+                    typed_expr.sema_ty.clone().unwrap(),
+                    enum_valued_field.ty.clone(),
+                    typed_expr.loc.clone(),
+                ) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                            lhs_type: format_sema_ty(
+                                enum_valued_field.ty.clone(),
+                                &(self.symbol_formatter)(scope_id_opt),
+                            ),
+                            rhs_type: format_sema_ty(
+                                typed_expr.sema_ty.clone().unwrap(),
+                                &(self.symbol_formatter)(scope_id_opt),
+                            ),
+                        }),
+                        location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
         }
 
         if let Some(generic_type) = generic_type_opt {
