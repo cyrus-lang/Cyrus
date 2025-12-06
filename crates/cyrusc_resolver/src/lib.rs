@@ -1436,7 +1436,7 @@ impl Resolver {
         generic_object: bool,
     ) -> Option<HashMap<String, SymbolID>> {
         let mut methods: HashMap<String, SymbolID> = HashMap::new();
-        let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStmt>, ScopeID)> = HashMap::new();
+        let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStmt>, ScopeID, bool)> = HashMap::new();
 
         for func_def in methods_list {
             let method_scope_id = generate_scope_id();
@@ -1494,25 +1494,19 @@ impl Resolver {
                     SymbolEntry::new(SymbolEntryKind::Method(resolved_method)),
                 );
 
-                if is_generic {
-                    // generic method body is being analyzed when called
-                    if let Some(typed_block_stmt) =
-                        self.resolve_block_statement(method_scope_id, local_scope_rc, &func_def.body)
-                    {
-                        with_monomorph_registry!(self, ctx, {
-                            ctx.register_template(symbol_id, typed_block_stmt);
-                        });
-                    }
-                } else {
-                    method_bodies.insert(
-                        symbol_id,
-                        (Rc::clone(&local_scope_rc), func_def.body.clone(), method_scope_id),
-                    );
-                }
+                method_bodies.insert(
+                    symbol_id,
+                    (
+                        Rc::clone(&local_scope_rc),
+                        func_def.body.clone(),
+                        method_scope_id,
+                        is_generic,
+                    ),
+                );
             }
         }
 
-        for (&symbol_id, (local_scope_rc, method_body, method_scope_id)) in &method_bodies {
+        for (&symbol_id, (local_scope_rc, method_body, method_scope_id, is_generic)) in &method_bodies {
             let mut resolved_method = match self.lookup_symbol_entry_with_id(symbol_id).unwrap().kind {
                 SymbolEntryKind::Method(m) => m,
                 _ => unreachable!(),
@@ -1548,7 +1542,15 @@ impl Resolver {
             if let Some(typed_func_body) =
                 self.resolve_block_statement(*method_scope_id, local_scope_rc.clone(), method_body)
             {
-                resolved_method.func_body = Some(Box::new(typed_func_body));
+                if *is_generic {
+                    // generic method body is being analyzed when called
+                    with_monomorph_registry!(self, ctx, {
+                        ctx.register_template(symbol_id, typed_func_body);
+                    });
+                } else {
+                    resolved_method.func_body = Some(Box::new(typed_func_body));
+                }
+
                 self.insert_symbol_entry(
                     module_id,
                     symbol_id,

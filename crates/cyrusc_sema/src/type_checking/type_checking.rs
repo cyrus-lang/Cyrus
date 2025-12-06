@@ -1041,17 +1041,6 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // ANCHOR
-        // if field_access.type_args.is_some() {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-        //         location: Some(DiagLoc::new(field_access.loc.clone())),
-        //         hint: None,
-        //     });
-        //     return None;
-        // }
-
         // multiplex field access
 
         let sema_ty = self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
@@ -1061,7 +1050,7 @@ impl<'a> AnalysisContext<'a> {
 
         let generic_type_opt = operand_ty.as_generic_type();
 
-        match self.resolve_member_access_kind(
+        let (sema_ty, is_generic) = match self.resolve_member_access_kind(
             scope_id_opt,
             local_scope_opt.clone(),
             &mut field_access.operand,
@@ -1069,11 +1058,14 @@ impl<'a> AnalysisContext<'a> {
             field_access.loc.clone(),
         ) {
             Some(member_access_kind) => match member_access_kind {
-                MemberAccessKind::UnnamedStruct(unnamed_struct_type) => self.analyze_unnamed_struct_field_access_type(
-                    scope_id_opt,
-                    &unnamed_struct_type,
-                    field_access,
-                    expected_type.clone(),
+                MemberAccessKind::UnnamedStruct(unnamed_struct_type) => (
+                    self.analyze_unnamed_struct_field_access_type(
+                        scope_id_opt,
+                        &unnamed_struct_type,
+                        field_access,
+                        expected_type.clone(),
+                    ),
+                    false,
                 ),
                 MemberAccessKind::NamedStruct(resolved_struct) => {
                     let mut struct_sig = resolved_struct.struct_sig.clone();
@@ -1081,13 +1073,16 @@ impl<'a> AnalysisContext<'a> {
                         struct_sig = substitute_struct_sig(&struct_sig, generic_type.mapping_ctx.clone())?;
                     }
 
-                    self.analyze_struct_field_access_type(
-                        scope_id_opt,
-                        field_access,
-                        struct_sig.name.clone(),
-                        struct_sig.fields.clone(),
-                        struct_sig.methods.clone(),
-                        resolved_struct.symbol_id,
+                    (
+                        self.analyze_struct_field_access_type(
+                            scope_id_opt,
+                            field_access,
+                            struct_sig.name.clone(),
+                            struct_sig.fields.clone(),
+                            struct_sig.methods.clone(),
+                            resolved_struct.symbol_id,
+                        ),
+                        struct_sig.generic_params.is_some(),
                     )
                 }
                 MemberAccessKind::Union(resolved_union) => {
@@ -1096,11 +1091,26 @@ impl<'a> AnalysisContext<'a> {
                         union_sig = substitute_union_sig(&union_sig, generic_type.mapping_ctx.clone())?;
                     }
 
-                    self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type)
+                    (
+                        self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type),
+                        union_sig.generic_params.is_some(),
+                    )
                 }
             },
             None => not_supports_fields!(self, field_access.loc.clone()),
+        };
+
+        if !is_generic && field_access.type_args.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            return None;
         }
+
+        sema_ty
     }
 
     fn analyze_struct_init(
@@ -2140,14 +2150,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            if !resolved_method.func_sig.is_func_decl {
-                // only specialize function definition which necessarily includes the body block
-                method_call.monomorph_key = self.register_specialized_generic_func(
-                    &resolved_method.func_sig,
-                    &generic_type,
-                    &resolved_method.func_sig.loc,
-                );
-            }
+            method_call.monomorph_key = self.register_specialized_generic_func(
+                &resolved_method.func_sig,
+                &generic_type,
+                &resolved_method.func_sig.loc,
+            );
 
             // substitutes the func type inside of the func_call operand
             method_call.operand.sema_ty =
