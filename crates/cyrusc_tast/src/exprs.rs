@@ -301,6 +301,7 @@ pub struct TypedMethodCall {
     pub method_name: String,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
+    pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic method
     pub return_type: Option<SemanticType>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,

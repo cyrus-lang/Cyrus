@@ -999,15 +999,25 @@ impl<'resolver> CIRWalk<'resolver> {
             let func_decl = typed_func_decl_from_func_sig(&resolved_method.func_sig);
             let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
 
-            let operand = Box::new(CIRExpr {
-                kind: CIRExprKind::Load(CIRValue {
-                    irv_id: method_call.method_symbol_id.unwrap(),
-                    kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-                }),
-                ty: ret_ty.clone(),
-            });
+            if let Some(monomorph_key) = &method_call.monomorph_key {
+                self.insert_monomorph_func_instance(scope_id_opt, monomorph_key);
 
-            CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+                CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
+                    monomorph_key: monomorph_key.clone(),
+                    args,
+                    ret_ty,
+                })
+            } else {
+                let operand = Box::new(CIRExpr {
+                    kind: CIRExprKind::Load(CIRValue {
+                        irv_id: method_call.method_symbol_id.unwrap(),
+                        kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+                    }),
+                    ty: ret_ty.clone(),
+                });
+
+                CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+            }
         }
     }
 

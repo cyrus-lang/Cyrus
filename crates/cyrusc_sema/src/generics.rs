@@ -36,6 +36,8 @@ impl<'a> AnalysisContext<'a> {
                 return Some(monomorph_key.clone());
             }
 
+            dbg!(func_sig.symbol_id); // FIXME
+            
             let generic_template_entry = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
 
             let mapping = generic_type.mapping_ctx.borrow().clone();

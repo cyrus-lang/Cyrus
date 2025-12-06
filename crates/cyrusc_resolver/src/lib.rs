@@ -166,7 +166,8 @@ impl Resolver {
 
         let base_path = Path::new(&self.module_loader.opts.base_path);
         let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
-        let module_name = make_module_name_from_filepath(module_file_path.clone(), Some(base_path), stdlib_path.as_deref());
+        let module_name =
+            make_module_name_from_filepath(module_file_path.clone(), Some(base_path), stdlib_path.as_deref());
 
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
             module_name,
@@ -1195,7 +1196,12 @@ impl Resolver {
 
         self.check_duplicate_method_names(&union_decl.identifier.name, union_decl.methods.clone());
 
-        let methods = match self.resolve_methods(module_id, &union_decl.methods, union_symbol_id) {
+        let methods = match self.resolve_methods(
+            module_id,
+            &union_decl.methods,
+            union_symbol_id,
+            generic_params.is_some(),
+        ) {
             Some(methods) => methods,
             None => return None,
         };
@@ -1304,10 +1310,11 @@ impl Resolver {
 
         self.check_duplicate_method_names(&enum_decl.identifier.name, enum_decl.methods.clone());
 
-        let methods = match self.resolve_methods(module_id, &enum_decl.methods, enum_symbol_id) {
-            Some(methods) => methods,
-            None => return None,
-        };
+        let methods =
+            match self.resolve_methods(module_id, &enum_decl.methods, enum_symbol_id, generic_params.is_some()) {
+                Some(methods) => methods,
+                None => return None,
+            };
 
         let resolved_enum = ResolvedEnum {
             module_id,
@@ -1426,6 +1433,7 @@ impl Resolver {
         module_id: ModuleID,
         methods_list: &[FuncDef],
         struct_symbol_id: SymbolID,
+        generic_object: bool,
     ) -> Option<HashMap<String, SymbolID>> {
         let mut methods: HashMap<String, SymbolID> = HashMap::new();
         let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStmt>, ScopeID)> = HashMap::new();
@@ -1471,6 +1479,8 @@ impl Resolver {
                     loc: SourceLoc::from_loc(func_def.loc.clone(), self.current_file_path()),
                 };
 
+                let is_generic = func_sig.generic_params.is_some() || generic_object;
+
                 let resolved_method = ResolvedMethod {
                     module_id,
                     symbol_id,
@@ -1483,10 +1493,22 @@ impl Resolver {
                     symbol_id,
                     SymbolEntry::new(SymbolEntryKind::Method(resolved_method)),
                 );
-                method_bodies.insert(
-                    symbol_id,
-                    (Rc::clone(&local_scope_rc), func_def.body.clone(), method_scope_id),
-                );
+
+                if is_generic {
+                    // generic method body is being analyzed when called
+                    if let Some(typed_block_stmt) =
+                        self.resolve_block_statement(method_scope_id, local_scope_rc, &func_def.body)
+                    {
+                        with_monomorph_registry!(self, ctx, {
+                            ctx.register_template(symbol_id, typed_block_stmt);
+                        });
+                    }
+                } else {
+                    method_bodies.insert(
+                        symbol_id,
+                        (Rc::clone(&local_scope_rc), func_def.body.clone(), method_scope_id),
+                    );
+                }
             }
         }
 
@@ -1627,7 +1649,12 @@ impl Resolver {
 
         self.check_duplicate_method_names(&struct_decl.identifier.name, struct_decl.methods.clone());
 
-        let methods = self.resolve_methods(module_id, &struct_decl.methods, struct_symbol_id)?;
+        let methods = self.resolve_methods(
+            module_id,
+            &struct_decl.methods,
+            struct_symbol_id,
+            generic_params.is_some(),
+        )?;
         let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &struct_decl.impls);
 
         let resolved_struct = ResolvedStruct {
@@ -2912,6 +2939,7 @@ impl Resolver {
                 method_name: method_call.method_name.name.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
                 type_args,
+                monomorph_key: None,
                 return_type: None,
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
                 args,
