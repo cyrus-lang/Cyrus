@@ -36,8 +36,6 @@ impl<'a> AnalysisContext<'a> {
                 return Some(monomorph_key.clone());
             }
 
-            dbg!(func_sig.symbol_id); // FIXME
-            
             let generic_template_entry = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
 
             let mapping = generic_type.mapping_ctx.borrow().clone();
@@ -206,7 +204,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let generic_param = GenericMappingEntry::from(target_ty.as_generic_param().cloned().unwrap());
+        let generic_param = GenericMappingEntry::from(target_ty.as_generic_param().cloned()?);
         let expr_ty = expr_ty.unwrap();
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;

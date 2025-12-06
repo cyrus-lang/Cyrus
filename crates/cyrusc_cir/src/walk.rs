@@ -6,7 +6,9 @@ use cyrusc_ast::{LiteralKind, SelfModifierKind};
 use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
 use cyrusc_resolver::{Resolver, typed_func_decl_from_func_sig};
 use cyrusc_tast::generics::generic_type::GenericType;
-use cyrusc_tast::generics::substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig};
+use cyrusc_tast::generics::substitute::{
+    substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
+};
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig};
 use cyrusc_tast::types::{PlainType, ResolvedSymbol};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
@@ -971,31 +973,46 @@ impl<'resolver> CIRWalk<'resolver> {
             let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt, method_symbol_id)
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
                 .unwrap();
-            let resolved_method = sym.as_method().unwrap();
 
-            let mut args: Vec<CIRExpr> = method_call
-                .args
-                .iter()
-                .map(|arg| self.lower_expr(scope_id_opt, arg))
-                .collect();
+            let resolved_method = sym.as_method().unwrap().clone();
+
+            let mut args: Vec<CIRExpr> = Vec::new();
 
             if resolved_method.is_instance_method() {
                 let first_param = resolved_method.func_sig.params.list.first().unwrap();
-                args.insert(
-                    0,
-                    self.lower_method_self_as_argument(
-                        scope_id_opt,
-                        &method_call.operand,
-                        method_call.is_fat_arrow,
-                        first_param,
-                    ),
+                let self_modifier = first_param.as_self_modifier().unwrap();
+
+                let operand_expr = self.lower_self_modifier(
+                    scope_id_opt,
+                    &method_call.operand,
+                    method_call.is_fat_arrow,
+                    self_modifier,
                 );
+
+                args.insert(0, operand_expr);
             }
+
+            args.extend(
+                method_call
+                    .args
+                    .iter()
+                    .map(|arg| self.lower_expr(scope_id_opt, arg))
+                    .collect::<Vec<CIRExpr>>(),
+            );
 
             let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
 
+            // let operand_ty = method_call.operand.sema_ty.clone().unwrap();
+            // if let Some(generic_type) = operand_ty.as_generic_type() {
+            //     resolved_method.func_sig = substitute_func_sig(&resolved_method.func_sig, generic_type.mapping_ctx.clone()).unwrap();
+            //     dbg!(resolved_method.func_sig.clone());
+            // }
+
+            // ANCHOR
+            // FIXME Fails due to unresolved generic param!
+            
             let func_decl = typed_func_decl_from_func_sig(&resolved_method.func_sig);
             let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
 
@@ -1021,15 +1038,14 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_method_self_as_argument(
+    fn lower_self_modifier(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         operand: &TypedExprStmt,
         is_fat_arrow: bool,
-        first_param: &TypedFuncParamKind,
+        self_modifier: &TypedSelfModifier,
     ) -> CIRExpr {
-        let expr = self.lower_expr(scope_id_opt, operand);
-        let self_modifier = first_param.as_self_modifier().unwrap();
+        let expr = self.lower_expr(scope_id_opt, &operand);
 
         match self_modifier.kind {
             SelfModifierKind::Copied => expr,
@@ -1318,8 +1334,10 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIRTy::Tuple(CIRTupleTy { items })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
-            SemanticType::GenericParam(_) => unreachable!("Unexpected generic param which is not resolved."),
             SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
+            SemanticType::GenericParam(generic_param) => {
+                unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
+            }
         }
     }
 
