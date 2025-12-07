@@ -112,14 +112,20 @@ impl MonomorphRegistry {
         self.map.get(key)
     }
 
-    pub fn get_func_entry_by_mapping_ctx(&self, mapping_ctx: Rc<RefCell<GenericMappingCtx>>) -> Option<&MonomorphKey> {
+    pub fn get_func_entry_by_mapping_ctx(
+        &self,
+        func_symbol_id: SymbolID,
+        mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
+    ) -> Option<&MonomorphKey> {
         self.map
             .iter()
             .find(|(_, monomorph_entry)| match monomorph_entry {
-                MonomorphEntry::Func(monomorph_func_entry) => mapping_ctx_eq_refcell(
-                    &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
-                    &mapping_ctx,
-                ),
+                MonomorphEntry::Func(monomorph_func_entry) => {
+                    mapping_ctx_eq_refcell(
+                        &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+                        &mapping_ctx,
+                    ) && monomorph_entry.id() == func_symbol_id
+                }
             })
             .map(|(monomorph_key, _)| monomorph_key)
     }

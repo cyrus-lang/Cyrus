@@ -451,39 +451,43 @@ impl Parser {
                         hint: None,
                     });
                 }
-                // FIXME
-                // TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                //     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
-
-                //     let method = match self.parse_func(Some(vis))? {
-                //         Stmt::FuncDef(func_def) => func_def,
-                //         _ => unreachable!(),
-                //     };
-                //     self.next_token(); // consume right brace
-                //     methods.push(method);
-                // }
-                // TokenKind::Function => {
-                //     if let Stmt::FuncDef(method) = self.parse_func(None)? {
-                //         self.next_token(); // consume right brace
-                //         methods.push(method);
-                //     } else {
-                //         unreachable!();
-                //     }
-                // }
+                TokenKind::Function => {
+                    if let Stmt::FuncDef(method) = self.parse_func(FuncModifiers::default())? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
                 TokenKind::Identifier { .. } => {
                     let field = self.parse_union_field()?;
                     fields.push(field);
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc,
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    let modifiers = self.parse_unresolved_modifiers()?;
+                    let loc = self.current_token().loc.clone();
+
+                    if self.current_token_is(TokenKind::Function) {
+                        let func_modifiers =
+                            modifiers.into_method_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+
+                        if let Stmt::FuncDef(method) = self.parse_func(func_modifiers)? {
+                            self.next_token(); // consume right brace
+                            methods.push(method);
+                        } else {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                    self.current_token().loc,
+                                    self.file_name.clone(),
+                                ))),
+                                hint: None,
+                            });
+                        }
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -560,31 +564,44 @@ impl Parser {
 
         let mut methods: Vec<FuncDef> = Vec::new();
 
-        // loop {
-        //     match self.current_token().kind {
-        //         // FIXME
-        //         // TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-        //         //     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
-        //         //     if let Stmt::FuncDef(method) = self.parse_func(Some(vis))? {
-        //         //         self.next_token(); // consume right brace
-        //         //         methods.push(method);
-        //         //     } else {
-        //         //         unreachable!();
-        //         //     }
-        //         // }
-        //         // TokenKind::Function => {
-        //         //     if let Stmt::FuncDef(method) = self.parse_func(None)? {
-        //         //         self.next_token(); // consume right brace
-        //         //         methods.push(method);
-        //         //     } else {
-        //         //         unreachable!();
-        //         //     }
-        //         // }
-        //         _ => {
-        //             break;
-        //         }
-        //     }
-        // }
+        loop {
+            match self.current_token().kind {
+                TokenKind::Function => {
+                    if let Stmt::FuncDef(method) = self.parse_func(FuncModifiers::default())? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                _ => {
+                    let modifiers = self.parse_unresolved_modifiers()?;
+                    let loc = self.current_token().loc.clone();
+
+                    if self.current_token_is(TokenKind::Function) {
+                        let func_modifiers =
+                            modifiers.into_method_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+
+                        if let Stmt::FuncDef(method) = self.parse_func(func_modifiers)? {
+                            self.next_token(); // consume right brace
+                            methods.push(method);
+                        } else {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                    self.current_token().loc,
+                                    self.file_name.clone(),
+                                ))),
+                                hint: None,
+                            });
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
 
         Ok(Stmt::Enum(Enum {
             identifier: enum_name,

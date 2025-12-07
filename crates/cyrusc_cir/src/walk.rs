@@ -1084,19 +1084,14 @@ impl<'resolver> CIRWalk<'resolver> {
     fn lower_field_access(&mut self, scope_id_opt: Option<ScopeID>, field_access: &TypedFieldAccess) -> CIRExprKind {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        if field_access
-            .operand
-            .sema_ty
-            .as_ref()
-            .unwrap()
-            .as_unnamed_struct()
-            .is_some()
-        {
-            return CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
-                operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
-                field_idx: field_access.field_index.unwrap(),
-                field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
-            });
+        if let Some(sema_ty) = &field_access.operand.sema_ty {
+            if sema_ty.as_unnamed_struct().is_some() {
+                return CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
+                    operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
+                    field_idx: field_access.field_index.unwrap(),
+                    field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
+                });
+            }
         }
 
         let sym = self
