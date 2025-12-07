@@ -24,7 +24,7 @@ use cyrusc_tast::{
     sigs::{FuncSig, UnionSig},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField,
+        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField,
     },
     types::*,
     *,
@@ -1792,7 +1792,7 @@ impl<'a> AnalysisContext<'a> {
             if !func_sig.is_func_decl {
                 // only specialize function definition which necessarily includes the body block
                 func_call.monomorph_key =
-                    self.register_specialized_generic_func(&func_sig, &generic_type, &func_call.loc);
+                    self.register_specialized_generic_func(&func_sig, &generic_type, None, &func_call.loc);
             }
 
             // substitutes the func type inside of the func_call operand
@@ -2179,6 +2179,7 @@ impl<'a> AnalysisContext<'a> {
             method_call.monomorph_key = self.register_specialized_generic_func(
                 &resolved_method.func_sig,
                 &generic_type,
+                Some(method_call_operand_ty),
                 &resolved_method.func_sig.loc,
             );
 
@@ -2189,6 +2190,32 @@ impl<'a> AnalysisContext<'a> {
 
         method_call.return_type = Some(resolved_method.func_sig.return_type.clone());
         Some(resolved_method.func_sig.return_type.clone())
+    }
+
+    pub(crate) fn analyze_generic_self_modifier(
+        &self,
+        scope_id: ScopeID,
+        params: &TypedFuncParams,
+        sema_ty: SemanticType,
+    ) {
+        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+
+        if let Some(first_param) = params.list.first() {
+            if let Some(self_modifier) = first_param.as_self_modifier() {
+                let mut local_scope_ref = local_scope_rc.borrow_mut();
+
+                let new_self_modifier_ty = match self_modifier.kind {
+                    SelfModifierKind::Copied => sema_ty,
+                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
+                };
+
+                local_scope_ref.with_symbol_id_mut(self_modifier.self_symbol_id.unwrap(), |local_symbol| {
+                    let resolved_var = local_symbol.as_variable_mut().unwrap();
+                    resolved_var.typed_variable.ty = Some(new_self_modifier_ty);
+                });
+                drop(local_scope_ref);
+            }
+        }
     }
 
     fn validate_method_call(

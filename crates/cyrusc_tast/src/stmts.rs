@@ -334,6 +334,13 @@ impl TypedFuncParamKind {
             TypedFuncParamKind::FuncParam(_) => None,
         }
     }
+
+    pub fn as_self_modifier_mut(&mut self) -> Option<&mut TypedSelfModifier> {
+        match self {
+            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
+            TypedFuncParamKind::FuncParam(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
