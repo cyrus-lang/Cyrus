@@ -1,4 +1,4 @@
-use crate::{object_file_info::ObjectFileInfo, target_machine_info::TargetMachineInfo};
+use crate::{object_file_info::ObjectFileInfo, tm_info::TargetMachineInfo};
 use cyrusc_cir::CIRProgramTree;
 use std::any::Any;
 

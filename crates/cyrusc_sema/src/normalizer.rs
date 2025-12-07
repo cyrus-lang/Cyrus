@@ -306,7 +306,6 @@ impl<'a> AnalysisContext<'a> {
                             )?;
                         }
                     } else {
-                        dbg!(resolved_variable.clone());
                         panic!("Cannot resolve variable type.")
                     }
 
