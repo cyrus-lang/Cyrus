@@ -3,7 +3,7 @@ use crate::{
     linker::Linker,
     object_file_info::{ObjectFileInfo, get_objects_file_names},
     options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
-    target_machine_info::TargetMachineInfo,
+    tm_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::CIRProgramTree;

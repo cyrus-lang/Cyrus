@@ -10,7 +10,7 @@ use cyrusc_compiler::{
     context::{CodeGenContext, need_to_be_recompiled},
     object_file_info::ObjectFileInfo,
     options::{CodeGenEndianness, CodeGenOptions},
-    target_machine_info::TargetMachineInfo,
+    tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_fs_utils::ensure_output_dir;
