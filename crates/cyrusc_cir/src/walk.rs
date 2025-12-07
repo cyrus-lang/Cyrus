@@ -18,7 +18,9 @@ use cyrusc_tast::{
     stmts::*,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CIRWalk<'resolver> {
@@ -976,14 +978,21 @@ impl<'resolver> CIRWalk<'resolver> {
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
                 .unwrap();
 
-            let resolved_method = sym.as_method().unwrap().clone();
+            let mut resolved_method = sym.as_method().unwrap().clone();
+
+            let operand_ty = method_call.operand.sema_ty.clone().unwrap();
+            let is_generic = operand_ty.as_generic_type().is_some();
+
+            let first_param = resolved_method.func_sig.params.list.first().unwrap().clone();
+            let self_modifier = first_param.as_self_modifier().unwrap();
+
+            if is_generic {
+                self.lower_generic_object_self_modifier(&operand_ty, &mut resolved_method.func_sig.params);
+            }
 
             let mut args: Vec<CIRExpr> = Vec::new();
 
             if resolved_method.is_instance_method() {
-                let first_param = resolved_method.func_sig.params.list.first().unwrap();
-                let self_modifier = first_param.as_self_modifier().unwrap();
-
                 let operand_expr = self.lower_self_modifier(
                     scope_id_opt,
                     &method_call.operand,
@@ -1004,20 +1013,8 @@ impl<'resolver> CIRWalk<'resolver> {
 
             let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
 
-            // let operand_ty = method_call.operand.sema_ty.clone().unwrap();
-            // if let Some(generic_type) = operand_ty.as_generic_type() {
-            //     resolved_method.func_sig = substitute_func_sig(&resolved_method.func_sig, generic_type.mapping_ctx.clone()).unwrap();
-            //     dbg!(resolved_method.func_sig.clone());
-            // }
-
-            // ANCHOR
-            // FIXME Fails due to unresolved generic param!
-            
-            let func_decl = typed_func_decl_from_func_sig(&resolved_method.func_sig);
-            let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
-
             if let Some(monomorph_key) = &method_call.monomorph_key {
-                self.insert_monomorph_func_instance(scope_id_opt, monomorph_key);
+                self.insert_monomorph_func_instance(scope_id_opt, monomorph_key, &resolved_method.func_sig);
 
                 CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
                     monomorph_key: monomorph_key.clone(),
@@ -1025,6 +1022,9 @@ impl<'resolver> CIRWalk<'resolver> {
                     ret_ty,
                 })
             } else {
+                let func_decl = typed_func_decl_from_func_sig(&resolved_method.func_sig);
+                let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
+
                 let operand = Box::new(CIRExpr {
                     kind: CIRExprKind::Load(CIRValue {
                         irv_id: method_call.method_symbol_id.unwrap(),
@@ -1034,6 +1034,21 @@ impl<'resolver> CIRWalk<'resolver> {
                 });
 
                 CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+            }
+        }
+    }
+
+    fn lower_generic_object_self_modifier(&self, operand_ty: &SemanticType, params: &mut TypedFuncParams) {
+        if let Some(param) = params.list.first_mut() {
+            if let Some(self_modifier) = param.as_self_modifier_mut() {
+                match self_modifier.kind {
+                    SelfModifierKind::Copied => {
+                        self_modifier.ty = Some(operand_ty.clone());
+                    }
+                    SelfModifierKind::Referenced => {
+                        self_modifier.ty = Some(SemanticType::Pointer(Box::new(operand_ty.clone())));
+                    }
+                }
             }
         }
     }
@@ -1146,7 +1161,29 @@ impl<'resolver> CIRWalk<'resolver> {
         let ret_ty = self.lower_sema_ty(scope_id_opt, &func_call.return_type.clone().unwrap());
 
         if let Some(monomorph_key) = &func_call.monomorph_key {
-            self.insert_monomorph_func_instance(scope_id_opt, monomorph_key);
+            let monomorph_func_entry = self.get_monomorph_func_entry(monomorph_key).unwrap();
+
+            let local_scope_opt =
+                scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt, monomorph_func_entry.base_symbol)
+                .unwrap();
+
+            let mut func_sig = sym
+                .as_func()
+                .map(|resolved_func| resolved_func.func_sig.clone())
+                .or(sym.as_method().map(|resolved_method| resolved_method.func_sig.clone()))
+                .expect("Monomorphizaton not supported for the symbol.");
+
+            func_sig = substitute_func_sig(
+                &func_sig,
+                Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+            )
+            .unwrap();
+
+            self.insert_monomorph_func_instance(scope_id_opt, monomorph_key, &func_sig);
 
             CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
                 monomorph_key: monomorph_key.clone(),

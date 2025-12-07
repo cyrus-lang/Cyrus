@@ -20,12 +20,22 @@ use cyrusc_tast::{
 use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn get_specialized_func_scope_id(&self, monomorph_key: MonomorphKey) -> Option<ScopeID> {
+        let ctx = self.monomorph_registry.lock().unwrap();
+        let specialized_func_entry = ctx.get_specialized_func_instance(monomorph_key)?;
+        let scope_id = specialized_func_entry.body.scope_id;
+        drop(ctx);
+        Some(scope_id)
+    }
+
     pub(crate) fn register_specialized_generic_func(
         &mut self,
         func_sig: &FuncSig,
         generic_type: &GenericType,
+        // only used for methods (optional)
+        self_modifier_ty: Option<SemanticType>,
         func_call_loc: &SourceLoc,
-    ) -> Option<MonomorphKey> {
+    ) -> Option<(MonomorphKey)> {
         let current_diag_len = self.reporter.diags.len();
 
         let (mut template_body, mapping_ctx, base_symbol) = {
@@ -57,11 +67,14 @@ impl<'a> AnalysisContext<'a> {
             let new_body_scope = template_body_scope.deep_clone();
             self.resolver
                 .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
-            new_body_scope
         };
 
         self.current_func = Some(typed_func_type_from_func_sig(func_sig));
         self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
+
+        if let Some(sema_ty) = self_modifier_ty {
+            self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_ty);
+        }
 
         let mut analyzed_body = template_body.clone();
 

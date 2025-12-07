@@ -100,7 +100,7 @@ impl MonomorphRegistry {
         self.specialized_func_instances.insert(monomorph_key, instance);
     }
 
-    pub fn get_specialized_func_instance(&mut self, monomorph_key: MonomorphKey) -> Option<&SpecializedFuncEntry> {
+    pub fn get_specialized_func_instance(&self, monomorph_key: MonomorphKey) -> Option<&SpecializedFuncEntry> {
         self.specialized_func_instances.get(&monomorph_key)
     }
 

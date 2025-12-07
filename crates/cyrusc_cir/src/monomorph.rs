@@ -1,12 +1,10 @@
 use crate::{CIRBlockStmt, CIRFuncParams, IRValueID, cir_func_decl_as_func_ty, types::CIRFuncTy, walk::CIRWalk};
 use cyrusc_tast::{
     SymbolID,
-    generics::{
-        monomorph::{MonomorphEntry, MonomorphKey},
-        substitute::substitute_func_sig,
-    },
+    generics::monomorph::{MonomorphEntry, MonomorphFuncEntry, MonomorphKey},
+    sigs::FuncSig,
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct CIRMonomorphRegistry {
@@ -41,27 +39,26 @@ impl CIRMonomorphRegistry {
 }
 
 impl<'resolver> CIRWalk<'resolver> {
-    pub fn insert_monomorph_func_instance(&mut self, scope_id_opt: Option<SymbolID>, monomorph_key: &MonomorphKey) {
-        let mut monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
+    pub fn get_monomorph_func_entry(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry> {
+        let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
         let monomorph_entry = monomorph_registry.get(monomorph_key).unwrap();
-        let monomorph_func_entry = match monomorph_entry {
+        let monomorph_func_entry = match monomorph_entry.clone() {
             MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
         };
+        drop(monomorph_registry);
+        Some(monomorph_func_entry)
+    }
+
+    pub fn insert_monomorph_func_instance(
+        &mut self,
+        scope_id_opt: Option<SymbolID>,
+        monomorph_key: &MonomorphKey,
+        func_sig: &FuncSig,
+    ) {
+        let monomorph_func_entry = self.get_monomorph_func_entry(monomorph_key).unwrap();
+        let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
 
         let irv_id = monomorph_func_entry.id;
-
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-
-        let resolved_func = self
-            .resolver
-            .resolve_func_symbol(local_scope_opt, monomorph_func_entry.base_symbol)
-            .unwrap();
-
-        let func_sig = substitute_func_sig(
-            &resolved_func.func_sig,
-            Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
-        )
-        .unwrap();
 
         let cir_func_decl = self.lower_func_sig(scope_id_opt, monomorph_func_entry.id, &func_sig);
         let cir_func_params = cir_func_decl.params.clone();
@@ -70,6 +67,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let specialized_func_entry = monomorph_registry
             .get_specialized_func_instance(monomorph_key.clone())
             .unwrap();
+        
         let cir_func_body = self.lower_body(&specialized_func_entry.body);
 
         drop(monomorph_registry);
