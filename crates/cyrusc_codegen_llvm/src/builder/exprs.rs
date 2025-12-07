@@ -824,12 +824,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let field_value: BasicValueEnum<'ll> = self
             .llvmbuilder
-            .build_struct_gep(
-                pointee_ty,
-                ptr,
-                field_access.field_idx.try_into().unwrap(),
-                "gep",
-            )
+            .build_struct_gep(pointee_ty, ptr, field_access.field_idx.try_into().unwrap(), "gep")
             .unwrap()
             .into();
 
@@ -1133,7 +1128,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                     InternalValueKind::LValue(global_value.as_pointer_value()),
                 )
             }
-            CIRValueKind::LocalVariable => unreachable!("Couldn't fetch local variable from local ir value registry."),
+            CIRValueKind::LocalVariable => {
+                unreachable!("Couldn't fetch local variable from local ir value registry.")
+            }
         }
     }
 

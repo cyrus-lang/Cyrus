@@ -20,14 +20,6 @@ use cyrusc_tast::{
 use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn get_specialized_func_scope_id(&self, monomorph_key: MonomorphKey) -> Option<ScopeID> {
-        let ctx = self.monomorph_registry.lock().unwrap();
-        let specialized_func_entry = ctx.get_specialized_func_instance(monomorph_key)?;
-        let scope_id = specialized_func_entry.body.scope_id;
-        drop(ctx);
-        Some(scope_id)
-    }
-
     pub(crate) fn register_specialized_generic_func(
         &mut self,
         func_sig: &FuncSig,
@@ -35,13 +27,15 @@ impl<'a> AnalysisContext<'a> {
         // only used for methods (optional)
         self_modifier_ty: Option<SemanticType>,
         func_call_loc: &SourceLoc,
-    ) -> Option<(MonomorphKey)> {
+    ) -> Option<MonomorphKey> {
         let current_diag_len = self.reporter.diags.len();
 
         let (mut template_body, mapping_ctx, base_symbol) = {
             let ctx = self.monomorph_registry.lock().unwrap();
 
-            if let Some(monomorph_key) = ctx.get_func_entry_by_mapping_ctx(generic_type.mapping_ctx.clone()) {
+            if let Some(monomorph_key) =
+                ctx.get_func_entry_by_mapping_ctx(func_sig.symbol_id.unwrap(), generic_type.mapping_ctx.clone())
+            {
                 // already registered
                 return Some(monomorph_key.clone());
             }
