@@ -1859,38 +1859,34 @@ impl<'a> AnalysisContext<'a> {
             return (false, None);
         };
 
-        let attempted = true;
-
-        method_call.object_symbol_id = Some(resolved_enum.symbol_id);
-
         let enum_variant_opt = resolved_enum
             .enum_sig
             .variants
             .iter()
             .find(|v| v.get_identifier().as_string() == method_call.method_name);
 
-        {
-            let (generic_params, mapping_ctx) = operand_ty
-                .extract_generic_for_use(resolved_enum.enum_sig.generic_params.as_ref())
-                .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
-                .unwrap_or((None, None));
+        let Some(enum_variant) = enum_variant_opt else {
+            return (false, None);
+        };
 
-            match enum_variant_opt {
-                Some(enum_variant) => {
-                    let sema = self.analyze_enum_variant(
-                        scope_id_opt,
-                        local_scope_opt,
-                        enum_variant.clone(),
-                        method_call,
-                        &resolved_enum,
-                        generic_params.as_ref(),
-                        mapping_ctx,
-                    );
-                    (attempted, sema)
-                }
-                None => (attempted, None),
-            }
-        }
+        method_call.object_symbol_id = Some(resolved_enum.symbol_id);
+
+        let (generic_params, mapping_ctx) = operand_ty
+            .extract_generic_for_use(resolved_enum.enum_sig.generic_params.as_ref())
+            .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
+            .unwrap_or((None, None));
+
+        let sema = self.analyze_enum_variant(
+            scope_id_opt,
+            local_scope_opt,
+            enum_variant.clone(),
+            method_call,
+            &resolved_enum,
+            generic_params.as_ref(),
+            mapping_ctx,
+        );
+
+        (true, sema)
     }
 
     fn analyze_method_call_expr_type(
@@ -1925,6 +1921,7 @@ impl<'a> AnalysisContext<'a> {
                 method_call_operand_ty.clone(),
                 method_call,
             );
+            
             if detected_as_enum_variant {
                 return sema_ty;
             }
