@@ -38,16 +38,24 @@
             llvm_18.lib
             llvm_18.dev
             libxml2
+            ncurses
+            zlib
+            pkg-config
             stdenv.cc
           ];
 
           buildPhase = ''
             export CXX=clang++
             export CC=clang
+
             export GLIBC_INCLUDE_PATH="${pkgs.glibc.dev}/include:${pkgs.stdenv.cc.cc}/include"
             export CPATH="${pkgs.glibc.dev}/include:${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}:${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}/x86_64-unknown-linux-gnu" 
+
             export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
             export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
+
+            export PKG_CONFIG_PATH="${pkgs.zlib.dev}/lib/pkgconfig:${pkgs.ncurses.dev}/lib/pkgconfig:${pkgs.libxml2.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+            
             cargo build --release
           '';
 
@@ -91,7 +99,7 @@
         };
       };
 
-      defaultPackage.${system} = self.packages.${system}.linux;
+      defaultDevShell.${system} = self.devShells.${system}.linux;
 
       ## -----------------------------
       ## Dev shells
@@ -112,17 +120,29 @@
             isl
             llvm_18.lib
             llvm_18.dev
-            libxml2
             lldb_18
+
+            libxml2
+            libxml2.dev
+
+            zlib
+            zlib.dev
+            ncurses
+            ncurses.dev
+
+            pkg-config
             stdenv.cc
           ];
           shellHook = ''
             export CXX=clang++
             export CC=clang
+
             export CPATH="${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}:${pkgs.stdenv.cc.cc}/include/c++/${pkgs.stdenv.cc.cc.version}/x86_64-unknown-linux-gnu" 
             export GLIBC_INCLUDE_PATH="${pkgs.stdenv.cc.cc}/include"
+
             export LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
             export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
+
             alias cyrus="cargo run -j24 --"
           '';
         };
@@ -143,20 +163,16 @@
             lldb_18
           ];
           shellHook = ''    
-            # Ensure nightly toolchain is installed
             rustup install nightly 2>/dev/null || true
             rustup default nightly
 
             export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
             export CXX_x86_64_pc_windows_gnu=x86_64-w64-mingw32-g++
 
-            # Add Windows target
             rustup target add x86_64-pc-windows-gnu --toolchain nightly 2>/dev/null || true
 
-            # Export library/include paths for cross-compile
             export LIBRARY_PATH="${pkgs.pkgsCross.mingwW64.libffi}/lib:${pkgs.pkgsCross.mingwW64.zlib}/lib:${pkgs.pkgsCross.mingwW64.libxml2}/lib:${pkgs.pkgsCross.mingwW64.ncurses}/lib:$LIBRARY_PATH"
             export C_INCLUDE_PATH="${pkgs.pkgsCross.mingwW64.libffi}/include:${pkgs.pkgsCross.mingwW64.zlib}/include:${pkgs.pkgsCross.mingwW64.libxml2}/include:${pkgs.pkgsCross.mingwW64.ncurses}/include:$C_INCLUDE_PATH"
-            export PKG_CONFIG_PATH="${pkgs.pkgsCross.mingwW64.libffi}/lib/pkgconfig:${pkgs.pkgsCross.mingwW64.zlib}/lib/pkgconfig:${pkgs.pkgsCross.mingwW64.libxml2}/lib/pkgconfig:${pkgs.pkgsCross.mingwW64.ncurses}/lib/pkgconfig:$PKG_CONFIG_PATH"
     
             alias build-cyrus-win="RUSTFLAGS="-C link-args=" cargo zigbuild --target x86_64-pc-windows-gnu -j24 --release"
           '';

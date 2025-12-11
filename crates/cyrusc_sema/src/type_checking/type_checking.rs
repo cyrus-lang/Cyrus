@@ -592,18 +592,6 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExprStmt {
-                kind: TypedExprKind::Deref(TypedDerefExpr {
-                    operand: field_access.operand.clone(),
-                    loc: field_access.loc.clone(),
-                }),
-                sema_ty: None,
-                vcat: ValueCategory::LValue,
-                loc: field_access.loc.clone(),
-            });
-        }
-
         field_access.field_index = Some(union_field_idx);
         field_access.field_ty = Some(union_field_type);
         field_access.object_symbol_id = Some(union_sig.symbol_id);
