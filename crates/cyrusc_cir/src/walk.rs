@@ -947,7 +947,6 @@ impl<'resolver> CIRWalk<'resolver> {
         let is_generic = operand_ty.as_generic_type().is_some();
 
         let first_param = resolved_method.func_sig.params.list.first().unwrap().clone();
-        let self_modifier = first_param.as_self_modifier().unwrap();
 
         if is_generic {
             self.lower_generic_object_self_modifier(&operand_ty, &mut resolved_method.func_sig.params);
@@ -956,6 +955,8 @@ impl<'resolver> CIRWalk<'resolver> {
         let mut args: Vec<CIRExpr> = Vec::new();
 
         if resolved_method.is_instance_method() {
+            let self_modifier = first_param.as_self_modifier().unwrap();
+
             let operand_expr = self.lower_self_modifier(
                 scope_id_opt,
                 &method_call.operand,
