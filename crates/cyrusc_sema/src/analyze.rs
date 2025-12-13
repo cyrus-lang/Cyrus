@@ -149,36 +149,49 @@ impl<'a> AnalysisContext<'a> {
         self.program_tree.borrow_mut().body = body;
     }
 
-    pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {
-        let mut state = FlowState::Reachable;
-        for typed_stmt in &mut block_stmt.stmts {
-            let stmt_state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
+    pub(crate) fn analyze_block_stmt(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {
+        let mut flow_state = FlowState::Reachable;
+        let mut terminated = false;
+
+        let stmts = std::mem::take(&mut block_stmt.stmts);
+        let mut final_stmts = Vec::with_capacity(block_stmt.stmts.len());
+
+        for mut stmt in stmts {
+            let stmt_state = self.analyze_stmt(block_stmt.scope_id, &mut stmt);
+
+            if terminated {
+                self.report_unreachable_block_diag(&stmt);
+                continue;
+            }
 
             match stmt_state {
                 FlowState::Reachable => {
-                    state = self.merge_flow_state(state, FlowState::Reachable);
+                    final_stmts.push(stmt);
                 }
                 FlowState::Unreachable => {
-                    self.report_unreachable_block_diag(typed_stmt);
-                    state = FlowState::Unreachable;
-                    break;
+                    final_stmts.push(stmt);
+                    flow_state = FlowState::Unreachable;
+                    terminated = true;
                 }
                 FlowState::Returns => {
-                    state = FlowState::Returns;
-                    break;
+                    final_stmts.push(stmt);
+                    flow_state = FlowState::Returns;
+                    terminated = true;
                 }
             }
         }
 
+        block_stmt.stmts = final_stmts;
+
         for defer in &mut block_stmt.defers {
-            self.analyze_statement(block_stmt.scope_id, &mut defer.operand);
+            self.analyze_stmt(block_stmt.scope_id, &mut defer.operand);
         }
 
         self.analyze_local_unused_symbols(block_stmt.scope_id);
-        state
+        flow_state
     }
 
-    pub(crate) fn analyze_statement(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStmt) -> FlowState {
+    pub(crate) fn analyze_stmt(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStmt) -> FlowState {
         match typed_stmt {
             TypedStmt::ExportTuple(export_tuple_values) => {
                 self.analyze_export_tuple_values(Some(scope_id), export_tuple_values);
@@ -188,7 +201,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_variable(Some(scope_id), typed_variable);
                 FlowState::Reachable
             }
-            TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_statement(typed_block_statement),
+            TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
             TypedStmt::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
             TypedStmt::Return(typed_return) => self.analyze_return(scope_id, typed_return),
             TypedStmt::Break(typed_break) => {
@@ -567,12 +580,12 @@ impl<'a> AnalysisContext<'a> {
                 used_enum_variants.push(identifier.clone());
             }
 
-            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            let body_flow_state = self.analyze_block_stmt(&mut case.body);
             branch_states.push(body_flow_state);
         }
 
         if let Some(default_case) = &mut typed_switch.default_case {
-            let body_flow_state = self.analyze_block_statement(default_case);
+            let body_flow_state = self.analyze_block_stmt(default_case);
             branch_states.push(body_flow_state);
         } else {
             branch_states.push(FlowState::Reachable);
@@ -764,12 +777,12 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            let body_flow_state = self.analyze_block_stmt(&mut case.body);
             branch_states.push(body_flow_state);
         }
 
         if let Some(default_case) = &mut typed_switch.default_case {
-            let body_flow_state = self.analyze_block_statement(default_case);
+            let body_flow_state = self.analyze_block_stmt(default_case);
             branch_states.push(body_flow_state);
         } else {
             branch_states.push(FlowState::Reachable);
@@ -779,13 +792,13 @@ impl<'a> AnalysisContext<'a> {
 
         // normalize each case body
         for case in &mut typed_switch.cases {
-            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            let body_flow_state = self.analyze_block_stmt(&mut case.body);
             branch_states.push(body_flow_state);
         }
 
         // default case
         if let Some(default_case) = &mut typed_switch.default_case {
-            let body_flow_state = self.analyze_block_statement(default_case);
+            let body_flow_state = self.analyze_block_stmt(default_case);
             branch_states.push(body_flow_state);
         } else {
             branch_states.push(FlowState::Reachable);
@@ -809,13 +822,13 @@ impl<'a> AnalysisContext<'a> {
         typed_if: &mut TypedIfStmt,
         expected_type: Option<SemanticType>,
     ) -> FlowState {
-        let consequent_state = self.analyze_block_statement(&mut typed_if.then_block);
+        let consequent_state = self.analyze_block_stmt(&mut typed_if.then_block);
 
         self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.cond, expected_type.clone());
 
         let alternate_state = {
             if let Some(block_stmt) = &mut typed_if.else_block {
-                self.analyze_block_statement(&mut *block_stmt)
+                self.analyze_block_stmt(&mut *block_stmt)
             } else {
                 FlowState::Reachable
             }
@@ -838,7 +851,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.control_stack.push(ControlContext::While);
-        self.analyze_block_statement(&mut typed_while.body);
+        self.analyze_block_stmt(&mut typed_while.body);
         self.control_stack.pop();
 
         FlowState::Reachable
@@ -862,7 +875,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.control_stack.push(ControlContext::Loop);
-        self.analyze_block_statement(&mut typed_for.body);
+        self.analyze_block_stmt(&mut typed_for.body);
         self.control_stack.pop();
 
         FlowState::Reachable
@@ -1559,7 +1572,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, return_type: &SemanticType) {
-        let state = self.analyze_block_statement(body);
+        let state = self.analyze_block_stmt(body);
         if !return_type.is_void() && state != FlowState::Returns {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1669,7 +1682,7 @@ impl<'a> AnalysisContext<'a> {
                 is_public: func_sig.modifiers.vis.is_public(),
                 loc: func_sig.loc.clone(),
             });
-            let state = self.analyze_block_statement(&mut func_body);
+            let state = self.analyze_block_stmt(&mut func_body);
 
             if !func_sig.return_type.is_void() && state != FlowState::Returns {
                 self.reporter.report(Diag {

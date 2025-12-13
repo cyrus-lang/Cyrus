@@ -2,7 +2,7 @@ mod const_fold;
 pub mod analyze;
 mod diagnostics;
 mod flowstate;
-mod formatter;
+mod format;
 mod generics;
 mod nameconv;
 mod normalizer;

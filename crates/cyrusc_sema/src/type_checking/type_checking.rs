@@ -1,5 +1,5 @@
 use crate::{
-    analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, formatter::format_missing_fields, update_global_symbol,
+    analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields, update_global_symbol,
 };
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
@@ -304,7 +304,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         self.current_func = Some(func_type.clone());
-        self.analyze_block_statement(&mut lambda.body);
+        self.analyze_block_stmt(&mut lambda.body);
 
         self.current_func = current_func_clone;
         Some(SemanticType::FuncType(func_type))
