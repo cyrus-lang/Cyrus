@@ -283,50 +283,45 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         match sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
-                LocalSymbolKind::Variable(resolved_variable) => {
-                    let var_type;
-                    if let Some(sema_ty) = &resolved_variable.typed_variable.ty {
-                        var_type = self.normalize_type(
-                            scope_id_opt,
-                            sema_ty.clone(),
-                            resolved_variable.typed_variable.loc.clone(),
-                        )?;
-                    } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
-                        // prevent of duplicate rhs analyzing
-                        if resolved_variable.typed_variable.analyzed {
-                            if let Some(sema_ty) = resolved_variable.typed_variable.ty.clone().or(resolved_variable
-                                .typed_variable
-                                .rhs
-                                .unwrap()
-                                .sema_ty)
-                            {
-                                var_type = sema_ty;
-                            } else {
-                                return None;
-                            }
+                LocalSymbolKind::Variable(mut resolved_variable) => {
+                    let var = &mut resolved_variable.typed_variable;
+
+                    if let Some(sema_ty) = &var.ty {
+                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone())?;
+
+                        return Some(if var.is_const {
+                            SemanticType::Const(Box::new(sema_ty))
                         } else {
-                            self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id);
+                            sema_ty
+                        });
+                    }
 
-                            let rhs_ty = self.analyze_typed_expr_type_non_terminal(
-                                scope_id_opt,
-                                &mut rhs.clone(),
-                                resolved_variable.typed_variable.ty.clone(),
-                            )?;
-                            var_type = self.normalize_type(
-                                scope_id_opt,
-                                rhs_ty,
-                                resolved_variable.typed_variable.loc.clone(),
-                            )?;
+                    let rhs = var
+                        .rhs
+                        .as_mut()
+                        .expect("Cannot resolve variable type: no type and no rhs.");
+
+                    if var.analyzed {
+                        if let Some(sema_ty) = &var.ty {
+                            return Some(if var.is_const {
+                                SemanticType::Const(Box::new(sema_ty.clone()))
+                            } else {
+                                sema_ty.clone()
+                            });
                         }
-                    } else {
-                        panic!("Cannot resolve variable type.")
                     }
 
-                    if resolved_variable.typed_variable.is_const {
-                        Some(SemanticType::Const(Box::new(var_type.get_const_inner().clone())))
+                    let mut sema_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, rhs, None)?;
+
+                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
+
+                    self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id, sema_ty.clone());
+
+                    Some(if var.is_const {
+                        SemanticType::Const(Box::new(sema_ty))
                     } else {
-                        Some(var_type)
-                    }
+                        sema_ty
+                    })
                 }
                 LocalSymbolKind::Struct(s) => {
                     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
@@ -373,23 +368,38 @@ impl<'a> AnalysisContext<'a> {
                     return_type: Box::new(resolved_func.func_sig.return_type.clone()),
                     loc: resolved_func.func_sig.loc.clone(),
                 })),
-                SymbolEntryKind::GlobalVar(resolved_global_var) => {
-                    if let Some(ty) = &resolved_global_var.global_var_sig.ty {
-                        self.normalize_type(scope_id_opt, ty.clone(), resolved_global_var.global_var_sig.loc.clone())
-                    } else {
-                        // prevent of duplicate rhs analyzing
-                        if resolved_global_var.global_var_sig.analyzed {
-                            resolved_global_var.global_var_sig.rhs.unwrap().sema_ty
-                        } else {
-                            self.mark_global_var_analyzed(resolved_global_var.module_id, resolved_global_var.symbol_id);
+                SymbolEntryKind::GlobalVar(mut resolved_global_var) => {
+                    let var = &mut resolved_global_var.global_var_sig;
 
-                            self.analyze_typed_expr_type(
-                                scope_id_opt,
-                                &mut resolved_global_var.global_var_sig.rhs.unwrap(),
-                                None,
-                            )
-                        }
+                    if let Some(sema_ty) = &var.ty {
+                        return self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone());
                     }
+
+                    let rhs = var
+                        .rhs
+                        .as_mut()
+                        .expect("Cannot resolve global variable type: no type and no rhs.");
+
+                    if var.analyzed {
+                        let sema_ty = var
+                            .ty
+                            .clone()
+                            .expect("Global variable marked analyzed but has no type.");
+
+                        return Some(sema_ty);
+                    }
+
+                    let mut sema_ty = self.analyze_typed_expr_type(scope_id_opt, rhs, None)?;
+
+                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
+
+                    self.mark_global_var_analyzed(
+                        resolved_global_var.module_id,
+                        resolved_global_var.symbol_id,
+                        sema_ty.clone(),
+                    );
+
+                    Some(sema_ty)
                 }
                 SymbolEntryKind::Struct(s) => {
                     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
@@ -417,18 +427,20 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn mark_global_var_analyzed(&self, module_id: ModuleID, symbol_id: SymbolID) {
+    fn mark_global_var_analyzed(&self, module_id: ModuleID, symbol_id: SymbolID, sema_ty: SemanticType) {
         update_global_symbol!(self, module_id, symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.analyzed = true;
+                resolved_var.global_var_sig.ty = Some(sema_ty);
             }
         );
     }
 
-    fn mark_local_var_analyzed(&self, scope_id: ScopeID, symbol_id: SymbolID) {
+    fn mark_local_var_analyzed(&self, scope_id: ScopeID, symbol_id: SymbolID, sema_ty: SemanticType) {
         update_local_symbol!(self, scope_id, symbol_id,
             LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
                 resolved_variable.typed_variable.analyzed = true;
+                resolved_variable.typed_variable.ty = Some(sema_ty);
             }
         );
     }

@@ -619,7 +619,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let operand_ty = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return FlowState::Reachable,
         };
 
@@ -871,7 +871,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(typed_expr) = &mut typed_for.increment {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.sema_ty.clone());
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr, None);
         }
 
         self.control_stack.push(ControlContext::Loop);
