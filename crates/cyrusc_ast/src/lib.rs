@@ -307,6 +307,7 @@ pub enum TypeSpecifier {
     FuncType(Box<FuncType>),
     Tuple(TupleType),
     GenericInst(GenericInst),
+    SelfType(SelfType),
 }
 
 impl TypeSpecifier {
@@ -338,8 +339,15 @@ impl TypeSpecifier {
             TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
             TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
             TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),
+            TypeSpecifier::SelfType(self_type) => (self_type.loc.clone(), self_type.span.end),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SelfType {
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

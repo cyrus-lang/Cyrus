@@ -791,6 +791,9 @@ impl Resolver {
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: identifier.name.clone(),
                 }),
+            TypeSpecifier::SelfType(self_type) => Ok(SemanticType::SelfType(TypedSelfType {
+                loc: SourceLoc::from_loc(self_type.loc.clone(), self.current_file_path()),
+            })),
         };
 
         match result {

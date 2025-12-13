@@ -185,6 +185,19 @@ impl TypedExprKind {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TypedSelfType {
+    pub loc: SourceLoc,
+}
+
+impl std::hash::Hash for TypedSelfType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // fixed discriminant 
+        // all Self types collide intentionally
+        0xDEAD_BEEF_u64.hash(state);
+    }
+}
+
 #[derive(Debug, Clone, Eq)]
 pub struct TypedIdentifier {
     pub name: String,

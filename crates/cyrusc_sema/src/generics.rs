@@ -212,7 +212,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let generic_param = GenericMappingEntry::from(target_ty.as_generic_param().cloned()?);
-        let expr_ty = expr_ty.unwrap();
+        let expr_ty = expr_ty?;
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;
         let cloned_ctx = mapping_ctx_rc.borrow().clone();

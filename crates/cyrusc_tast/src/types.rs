@@ -1,4 +1,4 @@
-use crate::exprs::{TypedExprStmt, TypedIdentifier};
+use crate::exprs::{TypedExprStmt, TypedIdentifier, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::generics::mapping_ctx::GenericMappingCtx;
 use crate::stmts::{TypedFuncTypeParams, TypedGenericParamsList};
@@ -20,6 +20,7 @@ pub enum SemanticType {
     Tuple(TypedTupleType),
     GenericType(GenericType),
     GenericParam(TypedIdentifier),
+    SelfType(TypedSelfType)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
