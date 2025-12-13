@@ -78,8 +78,8 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             match typed_unary_expr.op {
                 UnaryOperator::PreIncrement => format!("++{}", operand_fmt),
                 UnaryOperator::PreDecrement => format!("--{}", operand_fmt),
-                UnaryOperator::PostIncrement =>  format!("{}++", operand_fmt),
-                UnaryOperator::PostDecrement =>  format!("{}--", operand_fmt),
+                UnaryOperator::PostIncrement => format!("{}++", operand_fmt),
+                UnaryOperator::PostDecrement => format!("{}--", operand_fmt),
             }
         }
         TypedExprKind::Assign(typed_assign) => {
@@ -354,6 +354,7 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
             )
         }
         SemanticType::GenericType(generic_type) => generic_type.format(format_symbol),
+        SemanticType::SelfType(_) => "Self".to_string(),
     }
 }
 

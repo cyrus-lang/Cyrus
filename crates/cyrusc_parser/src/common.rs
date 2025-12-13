@@ -474,22 +474,29 @@ impl Parser {
                 let inner_type = self.parse_base_type_token()?;
                 Ok(TypeSpecifier::Const(Box::new(inner_type)))
             }
-            TokenKind::Identifier { .. } => {
+            TokenKind::Identifier { ref name } => {
                 if self.peek_token_is(TokenKind::DoubleColon) {
                     let module_import = self.parse_module_import()?;
                     Ok(TypeSpecifier::ModuleImport(module_import))
                 } else {
-                    Ok(TypeSpecifier::Identifier(Identifier {
-                        name: {
-                            if let TokenKind::Identifier { name } = current.kind {
-                                name
-                            } else {
-                                unreachable!()
-                            }
-                        },
-                        span: current.span,
-                        loc: self.current_token().loc.clone(),
-                    }))
+                    if name == "Self" {
+                        Ok(TypeSpecifier::SelfType(SelfType {
+                            span: current.span,
+                            loc: self.current_token().loc.clone(),
+                        }))
+                    } else {
+                        Ok(TypeSpecifier::Identifier(Identifier {
+                            name: {
+                                if let TokenKind::Identifier { name } = current.kind {
+                                    name
+                                } else {
+                                    unreachable!()
+                                }
+                            },
+                            span: current.span,
+                            loc: self.current_token().loc.clone(),
+                        }))
+                    }
                 }
             }
             _ => Err(Diag {

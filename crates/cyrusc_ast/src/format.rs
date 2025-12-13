@@ -171,8 +171,11 @@ impl fmt::Display for TypeSpecifier {
                     })
                     .collect::<Vec<String>>()
                     .join(", ");
-                
+
                 write!(f, "{}<{}>", generic_inst.base, type_args)
+            }
+            TypeSpecifier::SelfType(_) => {
+                write!(f, "Self")
             }
         }
     }

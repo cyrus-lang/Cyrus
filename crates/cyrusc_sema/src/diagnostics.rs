@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Self type can only be used inside an object context.")]
+    SelfTypeOutsideOfAnObject,
+
     #[error("Generic type argument overrides a type parameter already defined by the parent context.")]
     GenericTypeArgOverridesParent,
 

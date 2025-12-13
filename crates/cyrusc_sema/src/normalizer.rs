@@ -223,6 +223,19 @@ impl<'a> AnalysisContext<'a> {
                     loc: tuple_type.loc,
                 }))
             }
+            SemanticType::SelfType(self_type) => {
+                if let Some(sema_ty) = &self.current_self {
+                    Some(sema_ty.clone())
+                } else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
+                        location: Some(DiagLoc::new(self_type.loc.clone())),
+                        hint: None,
+                    });
+                    None
+                }
+            }
         }
     }
 

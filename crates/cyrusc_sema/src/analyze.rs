@@ -70,6 +70,7 @@ pub struct AnalysisContext<'a> {
     pub module_id: ModuleID,
     pub ty_caches: TypeResolverCaches,
     pub(crate) current_func: Option<TypedFuncType>,
+    pub(crate) current_self: Option<SemanticType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
@@ -97,6 +98,7 @@ impl<'a> AnalysisContext<'a> {
             symbol_formatter,
             control_stack: Vec::new(),
             current_func: None,
+            current_self: None,
             current_method_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
@@ -140,9 +142,10 @@ impl<'a> AnalysisContext<'a> {
                     unreachable!()
                 }
             }
+
+            self.current_self = None;
         }
 
-        // self.analyze_unused_symbols(); // FIXME
         self.program_tree.borrow_mut().body = body;
     }
 
@@ -1280,6 +1283,10 @@ impl<'a> AnalysisContext<'a> {
                 );
             }
         }
+
+        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
+            typed_struct.symbol_id,
+        )));
 
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
 

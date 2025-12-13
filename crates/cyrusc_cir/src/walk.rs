@@ -1386,6 +1386,7 @@ impl<'resolver> CIRWalk<'resolver> {
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
             SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
+            SemanticType::SelfType(_) => unreachable!("Unexpected self type which is not resolved."),
             SemanticType::GenericParam(generic_param) => {
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
