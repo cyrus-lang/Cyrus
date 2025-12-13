@@ -2382,7 +2382,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let operand =
             match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
-                Some(sema_ty) => sema_ty,
+                Some(sema_ty) => sema_ty.get_const_inner().clone(),
                 None => return None,
             };
 
