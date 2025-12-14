@@ -101,7 +101,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
             self.llvmbuilder.build_store(ptr, basic_value).unwrap();
             irreg.insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
-        
+
             drop(irreg);
         });
     }

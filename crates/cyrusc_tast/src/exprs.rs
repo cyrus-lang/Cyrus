@@ -108,6 +108,13 @@ impl TypedExprStmt {
 }
 
 impl TypedExprKind {
+    pub fn as_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            TypedExprKind::Symbol(symbol_id, _) => Some(*symbol_id),
+            _ => None,
+        }
+    }
+    
     pub fn is_comptime_valid(&self) -> bool {
         match self {
             TypedExprKind::Literal(_) => true,
@@ -316,6 +323,7 @@ pub struct TypedMethodCall {
     pub type_args: Option<TypedTypeArgs>,
     pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic method
     pub return_type: Option<SemanticType>,
+    pub is_instance_method_operand: bool,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
 }

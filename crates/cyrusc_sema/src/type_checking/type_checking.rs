@@ -1423,11 +1423,7 @@ impl<'a> AnalysisContext<'a> {
                 let normalized = self
                     .normalize_type(scope_id_opt, s.ty.clone().unwrap(), s.loc.clone())
                     .unwrap();
-                s.ty = Some(match s.kind {
-                    SelfModifierKind::Copied => normalized.clone(),
-                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(normalized.clone())),
-                });
-                s.ty.clone().unwrap()
+                normalized
             }
         }
     }
@@ -1521,6 +1517,7 @@ impl<'a> AnalysisContext<'a> {
             .enumerate()
         {
             let mut param_type = self.get_func_param_type(scope_id_opt, param);
+
             let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
@@ -1895,11 +1892,20 @@ impl<'a> AnalysisContext<'a> {
         method_call: &mut TypedMethodCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let loc = method_call.loc.clone();
 
-        self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
+        if let Some(symbol_id) = method_call.operand.kind.as_symbol_id() {
+            self.resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                .inspect(|sym| {
+                    if sym.as_variable().is_some() || sym.as_global_var().is_some() {
+                        method_call.is_instance_method_operand = true;
+                    }
+                });
+        }
 
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
 
         let mut method_call_operand_ty = method_call
             .operand
@@ -1921,7 +1927,7 @@ impl<'a> AnalysisContext<'a> {
                 method_call_operand_ty.clone(),
                 method_call,
             );
-            
+
             if detected_as_enum_variant {
                 return sema_ty;
             }
@@ -2066,10 +2072,7 @@ impl<'a> AnalysisContext<'a> {
         object_id: SymbolID,
         method_call_operand_ty: SemanticType,
     ) -> Option<SemanticType> {
-        let method_name = method_call.method_name.clone();
-
         method_call.object_symbol_id = Some(object_id);
-
         let symbol_entry = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
         let (object_name, object_methods) = {
@@ -2085,12 +2088,13 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
+        let method_name = method_call.method_name.clone();
         let method_symbol_id = match object_methods.get(&method_name) {
             Some(symbol_id) => *symbol_id,
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::StructMethodNotDefined {
+                    kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
                         struct_name: object_name.clone(),
                         method_name: method_name.clone(),
                     }),
@@ -2121,7 +2125,24 @@ impl<'a> AnalysisContext<'a> {
         method_call.method_symbol_id = Some(resolved_method.symbol_id);
 
         let first_param_opt = resolved_method.func_sig.params.list.first();
-        let is_instance_method_call = resolved_method.is_instance_method();
+
+        let is_instance_method = resolved_method.is_instance_method();
+
+        // invalid if static method called on instance
+        let invalid_call = !is_instance_method && method_call.is_instance_method_operand;
+
+        if invalid_call {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance { method_name }),
+                location: Some(DiagLoc::new(method_call.loc.clone())),
+                hint: Some(format!(
+                    "Call it on a value of type '{}', or declare it as a static function if no instance is required.",
+                    format_sema_ty(method_call_operand_ty, &(self.symbol_formatter)(scope_id_opt))
+                )),
+            });
+            return None;
+        }
 
         if !self.validate_method_call(
             scope_id_opt,
@@ -2140,13 +2161,15 @@ impl<'a> AnalysisContext<'a> {
 
         let generic_type_opt = method_call_operand_ty.as_generic_type().cloned();
 
+        let instance_method_call = resolved_method.is_instance_method() && method_call.is_instance_method_operand;
+
         self.check_func_call(
             scope_id_opt,
             &mut resolved_method.func_sig,
             &generic_type_opt,
             &mut method_call.args,
             method_call.loc.clone(),
-            is_instance_method_call,
+            instance_method_call,
         );
 
         // validate generic type instantiation
