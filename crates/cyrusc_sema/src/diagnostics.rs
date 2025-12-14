@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Cannot call instance method '{method_name}'.")]
+    StaticMethodCallOnInstance { method_name: String },
+
     #[error("Self type can only be used inside an object context.")]
     SelfTypeOutsideOfAnObject,
 
@@ -169,8 +172,8 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid usage of the thin arrow.")]
     InvalidThinArrow,
 
-    #[error("Method '{method_name}' not defined for struct '{struct_name}'.")]
-    StructMethodNotDefined { struct_name: String, method_name: String },
+    #[error("Method '{method_name}' not defined for '{struct_name}'.")]
+    ObjectMethodNotDefined { struct_name: String, method_name: String },
 
     #[error("Rhs of the shift must be unsigned integer.")]
     RhsOfShiftMustBeUnsignedInteger,
