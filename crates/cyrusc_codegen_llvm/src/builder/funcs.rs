@@ -96,18 +96,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .unwrap();
 
             let mut irreg = self.irreg.borrow_mut();
-            if basic_value.is_pointer_value() {
-                irreg.insert(
-                    param.irv_id,
-                    LocalIRValue::LValue(basic_value.into_pointer_value(), param.ty.clone()),
-                );
-            } else {
-                let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
-                let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
-                self.llvmbuilder.build_store(ptr, basic_value).unwrap();
 
-                irreg.insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
-            }
+            let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+            let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
+            self.llvmbuilder.build_store(ptr, basic_value).unwrap();
+            irreg.insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+        
             drop(irreg);
         });
     }

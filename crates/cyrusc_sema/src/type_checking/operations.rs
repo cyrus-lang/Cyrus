@@ -88,43 +88,50 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_deref_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        dereference: &mut TypedDerefExpr,
+        deref: &mut TypedDerefExpr,
     ) -> Option<SemanticType> {
-        let operand_inner_type = dereference.operand.sema_ty.clone();
-        let operand_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut dereference.operand, operand_inner_type) {
-                Some(sema_ty) => sema_ty.get_const_inner().clone(),
-                None => return None,
-            };
+        let operand_inner_type = deref.operand.sema_ty.clone();
+        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut deref.operand, operand_inner_type) {
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            None => return None,
+        };
 
-        dereference.operand.sema_ty = Some(operand_type.clone());
+        deref.operand.sema_ty = Some(operand_type.clone());
 
-        if !dereference.operand.is_lvalue() || operand_type.as_func_type().is_some() {
+        if !deref.operand.is_lvalue() || operand_type.as_func_type().is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                location: Some(DiagLoc::new(dereference.loc.clone())),
+                location: Some(DiagLoc::new(deref.loc.clone())),
                 hint: None,
             });
             return None;
         }
 
-        let pointer_inner_type = match operand_type {
+        let inner_ty = match operand_type {
             SemanticType::Pointer(sema_ty) => *sema_ty,
-            _ => unreachable!(),
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
+                    location: Some(DiagLoc::new(deref.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
         };
 
-        if pointer_inner_type.is_void() {
+        if inner_ty.is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefVoidPointerValue),
-                location: Some(DiagLoc::new(dereference.loc.clone())),
+                location: Some(DiagLoc::new(deref.loc.clone())),
                 hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
             });
             return None;
         }
 
-        Some(pointer_inner_type)
+        Some(inner_ty)
     }
 
     pub(crate) fn analyze_sizeof_expr_type(

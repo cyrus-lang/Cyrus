@@ -990,7 +990,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             struct_value = struct_type.get_undef();
 
             values.iter().enumerate().for_each(|(index, rvalue)| {
-                struct_value = self.llvmbuilder
+                struct_value = self
+                    .llvmbuilder
                     .build_insert_value(struct_value, *rvalue, index.try_into().unwrap(), "insert")
                     .unwrap()
                     .into_struct_value();
