@@ -32,6 +32,8 @@ jobs:
       - name: Build
         env:
           LLVM_CONFIG: llvm-config-18
+          CC: clang
+          CXX: clang++
         run: cargo build --verbose --release
 
       - name: Run tests
