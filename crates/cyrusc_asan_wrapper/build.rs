@@ -45,7 +45,7 @@ fn main() {
         .warnings(true)
         .flag_if_supported("-std=c++17")
         .flag_if_supported("-fPIC")
-        .flag_if_supported("-O0")
+        .flag_if_supported("-O2")
         .flags(cxxflags.split_whitespace());
 
     if let Ok(cpath) = std::env::var("CPATH") {

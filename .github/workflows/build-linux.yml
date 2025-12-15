@@ -52,7 +52,7 @@ jobs:
 
       - name: Zip release files
         run: |
-          zip -r cyrus-linux.zip ./cyrus
+          zip -r -9 cyrus-linux.zip ./cyrus
 
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
