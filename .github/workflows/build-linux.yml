@@ -29,13 +29,6 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Debug llvm-config
-        run: |
-          which llvm-config || true
-          which llvm-config-18 || true
-          ls -l /usr/bin/llvm-config* || true
-          ls -l /usr/lib/llvm-18/bin/llvm-config || true
-
       - name: Build
         env:
           LLVM_CONFIG: /usr/bin/llvm-config-18
