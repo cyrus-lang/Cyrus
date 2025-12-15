@@ -4,7 +4,7 @@ use crate::*;
 use cyrusc_abi::mangling::ABINameMangling;
 use cyrusc_ast::{LiteralKind, SelfModifierKind};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, generate_symbol_id};
-use cyrusc_resolver::{Resolver, typed_func_decl_from_func_sig};
+use cyrusc_resolver::{Resolver, set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
@@ -973,6 +973,16 @@ impl<'resolver> CIRWalk<'resolver> {
             );
 
             args.insert(0, operand_expr);
+        } 
+
+        if !method_call.is_instance_method_operand && resolved_method.is_instance_method() {
+            // explicit instance method
+            // inferring self type from first argument type
+            if let Some(expr) = method_call.args.first().cloned() {
+                let sema_ty = expr.sema_ty.clone().unwrap();
+                set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &sema_ty);
+                self.current_self_ty = Some(self.lower_sema_ty(scope_id_opt, &sema_ty));
+            }
         }
 
         args.extend(

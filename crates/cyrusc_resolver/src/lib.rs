@@ -3548,6 +3548,18 @@ impl Visiting {
     }
 }
 
+// REVIEW Move these helpers tools to TypedAST crate
+
+pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &SemanticType) {
+    let first_param = func_sig.params.list.first_mut();
+
+    if let Some(func_param_kind) = first_param {
+        if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
+            self_modifier.ty = Some(sema_ty.clone());
+        }
+    }
+}
+
 pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
     FuncSig {
         symbol_id: Some(func_decl.symbol_id),

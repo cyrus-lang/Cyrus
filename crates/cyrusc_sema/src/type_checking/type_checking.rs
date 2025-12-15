@@ -5,11 +5,10 @@ use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::{
-    symbols::{
+    set_self_modifier_type_in_func_sig, symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind, generate_scope_id,
-    },
-    typed_func_params_as_func_type_params, typed_func_type_from_func_sig,
+    }, typed_func_params_as_func_type_params, typed_func_type_from_func_sig
 };
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
@@ -2074,6 +2073,11 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_regular_object_method(scope_id_opt, method_call, object_id, method_call_operand_ty)
     }
 
+    fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
+        self.current_self = Some(sema_ty.clone());
+        method_call.self_ty = Some(sema_ty.clone());
+    }
+
     fn analyze_regular_object_method(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -2081,9 +2085,7 @@ impl<'a> AnalysisContext<'a> {
         object_id: SymbolID,
         method_call_operand_ty: SemanticType,
     ) -> Option<SemanticType> {
-        // SelfType
-        self.current_self = Some(method_call_operand_ty.clone());
-        method_call.self_ty = Some(method_call_operand_ty.clone());
+        self.set_method_call_self_type(method_call, &method_call_operand_ty);
 
         method_call.object_symbol_id = Some(object_id);
         let symbol_entry = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
@@ -2172,9 +2174,22 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let generic_type_opt = method_call_operand_ty.as_generic_type().cloned();
+        let mut generic_type_opt = method_call_operand_ty.as_generic_type().cloned();
 
         let instance_method_call = resolved_method.is_instance_method() && method_call.is_instance_method_operand;
+
+        if !method_call.is_instance_method_operand && resolved_method.is_instance_method() {
+            // explicit instance method
+            // inferring self type from first argument type
+            if let Some(mut expr) = method_call.args.first().cloned() {
+                if let Some(sema_ty) = self.analyze_typed_expr_type(scope_id_opt, &mut expr, None) {
+                    generic_type_opt = sema_ty.as_generic_type().cloned();
+
+                    self.set_method_call_self_type(method_call, &sema_ty);
+                    set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &sema_ty);
+                }
+            }
+        }
 
         method_call.return_type = Some(self.check_func_call(
             scope_id_opt,
