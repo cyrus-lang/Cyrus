@@ -54,7 +54,7 @@ jobs:
           cp ~/rpmbuild/RPMS/**/*.rpm release-files/
           cp ~/rpmbuild/SPECS/cyrus.spec release-files/
           cd release-files
-          zip -r cyrus-rpm.zip .
+          zip -r -9 cyrus-rpm.zip .
           cd ..
 
       - name: Upload as artifact
