@@ -42,6 +42,7 @@
             zlib
             pkg-config
             stdenv.cc
+            upx
           ];
 
           buildPhase = ''
@@ -132,6 +133,8 @@
 
             pkg-config
             stdenv.cc
+
+            upx
           ];
           shellHook = ''
             export CXX=clang++

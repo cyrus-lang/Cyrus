@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y software-properties-common llvm-18 llvm-18-dev clang-18 zlib1g zlib1g-dev libpolly-18-dev
+          sudo apt install -y software-properties-common llvm-18 llvm-18-dev clang-18 zlib1g zlib1g-dev libpolly-18-dev upx
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -34,7 +34,9 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-18
           CC: clang
           CXX: clang++
-        run: cargo build --verbose --release
+        run: |
+          chmod +x ./scripts/release.sh
+          ./scripts/release.sh
 
       - name: Run tests
         env:

@@ -1,5 +1,4 @@
 use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
-use cyrusc_ast::source_loc::SourceLoc;
 use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 pub type ChildGenericParamSymbolID = SymbolID;
