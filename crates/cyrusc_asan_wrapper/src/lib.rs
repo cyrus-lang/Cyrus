@@ -16,7 +16,7 @@ pub struct SanitizerOptions {
     pub asan_use_after_return: bool,
 }
 
-#[link(name = "cyrusc_asan_wrapper")]
+#[link(name = "cyrusc_asan_wrapper", kind = "dylib")]
 unsafe extern "C" {
     fn run_sanitizer_passes(
         module_ref: LLVMModuleRef,

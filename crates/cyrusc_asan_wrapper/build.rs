@@ -42,10 +42,13 @@ fn main() {
         .cpp(true)
         .compiler(cxx)
         .file(cpp_file)
-        .warnings(true)
+        .warnings(false)
         .flag_if_supported("-std=c++17")
         .flag_if_supported("-fPIC")
         .flag_if_supported("-O2")
+        .flag_if_supported("-fsanitize=address")
+        .flag_if_supported("-shared")
+        .flag_if_supported("-shared-libasan")
         .flags(cxxflags.split_whitespace());
 
     if let Ok(cpath) = std::env::var("CPATH") {
