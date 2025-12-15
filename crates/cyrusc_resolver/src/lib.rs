@@ -2954,6 +2954,7 @@ impl Resolver {
                 type_args,
                 monomorph_key: None,
                 return_type: None,
+                self_ty: None,
                 is_instance_method_operand: false,
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
                 args,

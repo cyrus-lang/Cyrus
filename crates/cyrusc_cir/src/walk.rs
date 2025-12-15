@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex};
 pub(crate) struct CIRWalk<'resolver> {
     program: Box<TypedProgramTree>,
     mangling: &'resolver dyn ABINameMangling,
+    current_self_ty: Option<CIRTy>,
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'resolver Resolver,
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
@@ -45,6 +46,7 @@ impl<'resolver> CIRWalk<'resolver> {
             module_id,
             cir_monomorph_registry,
             mangling,
+            current_self_ty: None,
         }
     }
 
@@ -934,6 +936,11 @@ impl<'resolver> CIRWalk<'resolver> {
         sym: &LocalOrGlobalSymbol,
         method_call: &TypedMethodCall,
     ) -> CIRExprKind {
+        self.current_self_ty = method_call
+            .self_ty
+            .clone()
+            .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty));
+
         let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
         let sym = self
             .resolver
@@ -978,10 +985,11 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
 
+        let cir_expr_kind;
         if let Some(monomorph_key) = &method_call.monomorph_key {
             self.insert_monomorph_func_instance(scope_id_opt, monomorph_key, &resolved_method.func_sig);
 
-            CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
+            cir_expr_kind = CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
                 monomorph_key: monomorph_key.clone(),
                 args,
                 ret_ty,
@@ -998,8 +1006,11 @@ impl<'resolver> CIRWalk<'resolver> {
                 ty: ret_ty.clone(),
             });
 
-            CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+            cir_expr_kind = CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
         }
+
+        self.current_self_ty = None;
+        cir_expr_kind
     }
 
     fn lower_method_call(&mut self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
@@ -1387,7 +1398,13 @@ impl<'resolver> CIRWalk<'resolver> {
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
             SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
-            SemanticType::SelfType(_) => unreachable!("Unexpected self type which is not resolved."),
+            SemanticType::SelfType(_) => {
+                if let Some(cir_ty) = &self.current_self_ty {
+                    cir_ty.clone()
+                } else {
+                    unreachable!("Unexpected self type which is not resolved.")
+                }
+            }
             SemanticType::GenericParam(generic_param) => {
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
