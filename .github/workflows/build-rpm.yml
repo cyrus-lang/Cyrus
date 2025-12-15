@@ -21,7 +21,7 @@ jobs:
         run: |
           zypper --non-interactive refresh
           zypper --non-interactive install rpm-build rpmdevtools make gcc rust cargo rsync \
-              libffi-devel libxml2-devel llvm18 libLLVM18 llvm18-devel clang18 clang18-devel zip
+              libffi-devel libxml2-devel llvm18 libLLVM18 llvm18-devel clang18 clang18-devel zip upx
 
       - name: Checkout source
         uses: actions/checkout@v4
