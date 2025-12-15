@@ -21,10 +21,21 @@ fn main() {
     let cxxflags = String::from_utf8(cxxflags.stdout).expect("llvm-config --cxxflags returned invalid UTF-8.");
 
     let ldflags = Command::new(&llvm_config)
-        .args(&["--ldflags", "--system-libs", "--libs", "core", "passes"])
+        .args(["--ldflags", "--system-libs", "--libs", "core", "passes"])
         .output()
-        .expect("Failed to run llvm-config --ldflags --system-libs --libs core passes.");
-    let ldflags = String::from_utf8(ldflags.stdout).expect("llvm-config --ldflags returned invalid UTF-8.");
+        .expect("Failed to run llvm-config for ldflags");
+
+    let ldflags = String::from_utf8(ldflags.stdout).unwrap();
+
+    for token in ldflags.split_whitespace() {
+        if token.starts_with("-L") {
+            println!("cargo:rustc-link-search=native={}", &token[2..]);
+        } else if token.starts_with("-l") {
+            println!("cargo:rustc-link-lib={}", &token[2..]);
+        } else {
+            println!("cargo:rustc-link-arg={}", token);
+        }
+    }
 
     let mut build = cc::Build::new();
     build
