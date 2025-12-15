@@ -114,7 +114,7 @@ impl TypedExprKind {
             _ => None,
         }
     }
-    
+
     pub fn is_comptime_valid(&self) -> bool {
         match self {
             TypedExprKind::Literal(_) => true,
@@ -199,7 +199,7 @@ pub struct TypedSelfType {
 
 impl std::hash::Hash for TypedSelfType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // fixed discriminant 
+        // fixed discriminant
         // all Self types collide intentionally
         0xDEAD_BEEF_u64.hash(state);
     }
@@ -323,6 +323,7 @@ pub struct TypedMethodCall {
     pub type_args: Option<TypedTypeArgs>,
     pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic method
     pub return_type: Option<SemanticType>,
+    pub self_ty: Option<SemanticType>,
     pub is_instance_method_operand: bool,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,

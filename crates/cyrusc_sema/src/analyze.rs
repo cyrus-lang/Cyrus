@@ -896,10 +896,21 @@ impl<'a> AnalysisContext<'a> {
             });
         } else if let Some(typed_expr) = &mut typed_return.arg {
             if let Some(sema_ty) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
-                let expected = format_sema_ty(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
-                let got = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(Some(scope_id)));
+                let expected = format_sema_ty(
+                    return_type.get_const_inner().clone(),
+                    &(self.symbol_formatter)(Some(scope_id)),
+                );
+                let got = format_sema_ty(
+                    sema_ty.get_const_inner().clone(),
+                    &(self.symbol_formatter)(Some(scope_id)),
+                );
 
-                if !self.check_type_mismatch(Some(scope_id), sema_ty, return_type, typed_return.loc.clone()) {
+                if !self.check_type_mismatch(
+                    Some(scope_id),
+                    sema_ty.get_const_inner().clone(),
+                    return_type.get_const_inner().clone(),
+                    typed_return.loc.clone(),
+                ) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got }),
@@ -1297,9 +1308,10 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
-            typed_struct.symbol_id,
-        )));
+        // FIXME
+        // self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
+        //     typed_struct.symbol_id,
+        // )));
 
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
 
@@ -1346,7 +1358,9 @@ impl<'a> AnalysisContext<'a> {
             field_names.push(field.name.clone());
         }
 
-        self.analyze_methods(self.module_id, &typed_struct.methods);
+        if typed_struct.generic_params.is_none() {
+            self.analyze_methods(self.module_id, &typed_struct.methods);
+        }
 
         self.analyze_object_impls_interface(
             scope_id_opt,
@@ -1382,7 +1396,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
-        self.analyze_methods(self.module_id, &typed_union.methods);
 
         let mut field_names: Vec<String> = Vec::new();
 
@@ -1428,6 +1441,10 @@ impl<'a> AnalysisContext<'a> {
             field_names.push(field.name.clone());
         }
 
+        if typed_union.generic_params.is_none() {
+            self.analyze_methods(self.module_id, &typed_union.methods);
+        }
+
         update_union_symbol_entry(self, &typed_union);
     }
 
@@ -1454,7 +1471,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
-        self.analyze_methods(self.module_id, &typed_enum.methods);
 
         let mut variant_names: Vec<String> = Vec::new();
 
@@ -1515,6 +1531,10 @@ impl<'a> AnalysisContext<'a> {
             }
 
             variant_names.push(variant_identifier.name.clone());
+        }
+
+        if typed_enum.generic_params.is_none() {
+            self.analyze_methods(self.module_id, &typed_enum.methods);
         }
 
         update_enum_symbol_entry(self, &typed_enum);

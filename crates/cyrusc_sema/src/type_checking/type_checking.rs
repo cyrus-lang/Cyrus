@@ -1412,18 +1412,24 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn get_func_param_type(&mut self, scope_id_opt: Option<ScopeID>, param: &mut TypedFuncParamKind) -> SemanticType {
+    fn get_func_param_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        param: &mut TypedFuncParamKind,
+    ) -> Option<SemanticType> {
         match param {
-            TypedFuncParamKind::FuncParam(p) => {
-                let normalized = self.normalize_type(scope_id_opt, p.ty.clone(), p.loc.clone()).unwrap();
-                p.ty = normalized.clone();
-                normalized
+            TypedFuncParamKind::FuncParam(param) => {
+                let normalized = self.normalize_type(scope_id_opt, param.ty.clone(), param.loc.clone())?;
+                param.ty = normalized.clone();
+                Some(normalized)
             }
-            TypedFuncParamKind::SelfModifier(s) => {
-                let normalized = self
-                    .normalize_type(scope_id_opt, s.ty.clone().unwrap(), s.loc.clone())
-                    .unwrap();
-                normalized
+            TypedFuncParamKind::SelfModifier(self_modifier) => {
+                let normalized = self.normalize_type(
+                    scope_id_opt,
+                    self_modifier.ty.clone().unwrap(),
+                    self_modifier.loc.clone(),
+                )?;
+                Some(normalized)
             }
         }
     }
@@ -1516,7 +1522,10 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let mut param_type = self.get_func_param_type(scope_id_opt, param);
+            let mut param_type = match self.get_func_param_type(scope_id_opt, param) {
+                Some(sema_ty) => sema_ty,
+                None => continue,
+            };
 
             let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
@@ -1551,10 +1560,10 @@ impl<'a> AnalysisContext<'a> {
         self.check_duplicate_param_names(
             &func_sig.params.list,
             func_sig.params.variadic.as_ref(),
-            DiagLoc::new(loc),
+            DiagLoc::new(loc.clone()),
         );
 
-        Some(func_sig.return_type.clone())
+        self.normalize_type(scope_id_opt, func_sig.return_type.clone(), loc)
     }
 
     fn check_func_type_call(
@@ -2072,6 +2081,10 @@ impl<'a> AnalysisContext<'a> {
         object_id: SymbolID,
         method_call_operand_ty: SemanticType,
     ) -> Option<SemanticType> {
+        // SelfType
+        self.current_self = Some(method_call_operand_ty.clone());
+        method_call.self_ty = Some(method_call_operand_ty.clone());
+
         method_call.object_symbol_id = Some(object_id);
         let symbol_entry = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
@@ -2163,14 +2176,14 @@ impl<'a> AnalysisContext<'a> {
 
         let instance_method_call = resolved_method.is_instance_method() && method_call.is_instance_method_operand;
 
-        self.check_func_call(
+        method_call.return_type = Some(self.check_func_call(
             scope_id_opt,
             &mut resolved_method.func_sig,
             &generic_type_opt,
             &mut method_call.args,
             method_call.loc.clone(),
             instance_method_call,
-        );
+        )?);
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
@@ -2196,8 +2209,7 @@ impl<'a> AnalysisContext<'a> {
                 substitute_type(method_call.operand.sema_ty.clone().unwrap(), generic_type.mapping_ctx);
         }
 
-        method_call.return_type = Some(resolved_method.func_sig.return_type.clone());
-        Some(resolved_method.func_sig.return_type.clone())
+        method_call.return_type.clone()
     }
 
     pub(crate) fn analyze_generic_self_modifier(
