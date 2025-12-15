@@ -1308,10 +1308,9 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // FIXME
-        // self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
-        //     typed_struct.symbol_id,
-        // )));
+        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
+            typed_struct.symbol_id,
+        )));
 
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
 
@@ -1395,6 +1394,10 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+            typed_union.symbol_id,
+        )));
+
         self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
 
         let mut field_names: Vec<String> = Vec::new();
@@ -1469,6 +1472,10 @@ impl<'a> AnalysisContext<'a> {
                 );
             }
         }
+
+        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+            typed_enum.symbol_id,
+        )));
 
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
 
