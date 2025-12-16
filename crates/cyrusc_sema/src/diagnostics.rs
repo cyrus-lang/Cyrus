@@ -10,16 +10,13 @@ pub enum AnalyzerDiagKind {
     #[error("Self type can only be used inside an object context.")]
     SelfTypeOutsideOfAnObject,
 
-    #[error("Generic type argument overrides a type parameter already defined by the parent context.")]
-    GenericTypeArgOverridesParent,
-
     #[error("Redundant 'const' qualifier on an already-const type.")]
     RedundantConstQualifier,
 
-    #[error("Field cannot be type 'void'.")]
+    #[error("Field cannot have type 'void'.")]
     VoidFieldType,
 
-    #[error("A function parameter cannot have type 'void'.")]
+    #[error("Function parameter cannot have type 'void'.")]
     VoidParameterType,
 
     #[error("Unary operator minus is not permitted on unsigned types.")]
@@ -43,11 +40,8 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot destructure tuple in export without a value.")]
     DestructureTupleWithNoRhs,
 
-    #[error("{0}")]
-    UnescapeError(UnescapeError),
-
-    #[error("Cannot infer all generic parameters for type '{type_name}'.")]
-    ExplicitTypeArgsRequired { type_name: String },
+    #[error("Generic type '{type_name}' requires type arguments.")]
+    MissingTypeArgs { type_name: String },
 
     #[error("Type arguments supplied to a non-generic type.")]
     UnexpectedTypeArgs,
@@ -104,15 +98,6 @@ pub enum AnalyzerDiagKind {
         provided: u32,
     },
 
-    #[error("Array capacity cannot be a negative integer.")]
-    NegativeArrayCapacity,
-
-    #[error("Value is not a compile-time constant.")]
-    ValueIsNotACompTimeConst,
-
-    #[error("Falling through into a case with fields may cause undefined behavior.")]
-    SwitchFallthroughIntoValuedFieldCase,
-
     #[error("Enum variant '{variant_name}' does not accept fields.")]
     EnumVariantDoesNotAcceptFields { variant_name: String },
 
@@ -138,12 +123,6 @@ pub enum AnalyzerDiagKind {
         "Switch statement must contain at least one case or consider removing it or replacing it with an if statement."
     )]
     EmptyCaseSwitchStatement,
-
-    #[error("Literal of type {literal_type} is not assignable to expected type '{expected_type}'.")]
-    TypeMismatchLiteral {
-        literal_type: String,
-        expected_type: String,
-    },
 
     #[error("Case pattern with type '{pattern_type}' is not compatible with switch operand of type '{operand_type}'.")]
     TypeMismatchInCasePattern { operand_type: String, pattern_type: String },
@@ -278,13 +257,6 @@ pub enum AnalyzerDiagKind {
     #[error("Duplicate declaration of enum variant '{variant_name}' in enum '{enum_name}'.")]
     DuplicateEnumVariantName { enum_name: String, variant_name: String },
 
-    #[error("Duplicate field name '{field_name}' in variant '{variant_name}' of enum '{enum_name}'.")]
-    DuplicateEnumFieldName {
-        enum_name: String,
-        field_name: String,
-        variant_name: String,
-    },
-
     #[error("Duplicate declaration of field '{field_name}' in '{object_name}'.")]
     DuplicateFieldName { object_name: String, field_name: String },
 
@@ -318,9 +290,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Symbol '{symbol_name}' is not a struct.")]
     NonStructSymbol { symbol_name: String },
-
-    #[error("Symbol '{symbol_name}' is not a union.")]
-    NonUnionSymbol { symbol_name: String },
 
     #[error("Symbol '{symbol_name}' is not a type.")]
     NonTypeSymbol { symbol_name: String },
@@ -360,6 +329,9 @@ pub enum AnalyzerDiagKind {
         interface_name: String,
         method_name: String,
     },
+
+    #[error("{0}")]
+    UnescapeError(UnescapeError),
 }
 
 impl DiagKind for AnalyzerDiagKind {}

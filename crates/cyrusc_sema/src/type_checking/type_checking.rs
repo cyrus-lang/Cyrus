@@ -37,6 +37,38 @@ use std::{
 };
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn analyze_explicit_sema_ty(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sema_ty: &SemanticType,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        if let Some(symbol_id) = sema_ty.get_symbol_id() {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt, symbol_id)?;
+
+            let is_generic_object = sym.get_generic_params().is_some();
+            let is_generic_type = sema_ty.as_generic_type().is_some();
+
+            if is_generic_object && !is_generic_type {
+                let type_name = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MissingTypeArgs { type_name }),
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        Some(sema_ty.clone())
+    }
+
     pub(crate) fn analyze_literal(
         &mut self,
         typed_literal: &mut TypedLiteralExpr,
@@ -143,9 +175,7 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExprKind::Cast(typed_cast) => self.analyze_cast(scope_id_opt, typed_cast),
             TypedExprKind::Array(typed_array) => self.analyze_array(scope_id_opt, typed_array),
-            TypedExprKind::ArrayIndex(typed_array_index) => {
-                self.analyze_array_index(scope_id_opt, typed_array_index)
-            }
+            TypedExprKind::ArrayIndex(typed_array_index) => self.analyze_array_index(scope_id_opt, typed_array_index),
             TypedExprKind::AddrOf(typed_address_of) => self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of),
             TypedExprKind::Deref(typed_dereference) => self.analyze_deref_expr_type(scope_id_opt, typed_dereference),
             TypedExprKind::StructInit(struct_init) => {
@@ -442,7 +472,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if operand_type.is_const() {
+        if is_operand_const {
             Some(SemanticType::Const(Box::new(element_type)))
         } else {
             Some(element_type)
@@ -763,7 +793,11 @@ impl<'a> AnalysisContext<'a> {
         method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
         for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields.iter_mut()) {
-            self.analyze_expr(scope_id_opt, typed_expr, Some(enum_valued_field.ty.clone()));
+            let field_expected_type = self
+                .try_infer_generic_param_as_expected_type(enum_valued_field.ty.clone(), &generic_type_opt)
+                .unwrap_or(enum_valued_field.ty.clone());
+
+            self.analyze_expr(scope_id_opt, typed_expr, Some(field_expected_type));
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
@@ -1176,14 +1210,9 @@ impl<'a> AnalysisContext<'a> {
             }
 
             if let Some(resolved_union) = sym.as_union() {
-                return self.analyze_union_init_expr(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
+                return self.analyze_regular_union_init(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
             } else if let Some(resolved_struct) = sym.as_struct() {
-                return self.analyze_struct_init_expr(
-                    scope_id_opt,
-                    struct_init,
-                    resolved_struct,
-                    &generic_type_opt,
-                );
+                return self.analyze_regular_struct_init(scope_id_opt, struct_init, resolved_struct, &generic_type_opt);
             }
         }
 
@@ -1197,14 +1226,13 @@ impl<'a> AnalysisContext<'a> {
         None
     }
 
-    fn analyze_union_init_expr(
+    fn analyze_regular_union_init(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInitExpr,
         resolved_union: &ResolvedUnion,
         generic_type_opt: &Option<GenericType>,
     ) -> Option<SemanticType> {
-        // Union must have exactly one field initialized
         if struct_init.fields.len() != 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1215,10 +1243,8 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // Extract the single field initializer
         let field_init = &mut struct_init.fields[0];
 
-        // Ensure the field exists in the union definition
         let field = match resolved_union
             .union_sig
             .fields
@@ -1240,8 +1266,11 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let field_ty = field.ty.clone();
-        field_init.value.sema_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_ty.clone()));
+        let field_expected_type = self
+            .try_infer_generic_param_as_expected_type(field.ty.clone(), &generic_type_opt)
+            .unwrap_or(field.ty.clone());
+
+        field_init.value.sema_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type));
 
         if let Some(sema_ty) = self.infer_generic_param(
             scope_id_opt,
@@ -1280,7 +1309,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_struct_init_expr(
+    fn analyze_regular_struct_init(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInitExpr,
@@ -2417,11 +2446,7 @@ impl<'a> AnalysisContext<'a> {
         ))
     }
 
-    fn analyze_cast(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        cast: &mut TypedCastExpr,
-    ) -> Option<SemanticType> {
+    fn analyze_cast(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCastExpr) -> Option<SemanticType> {
         let operand = match self.analyze_expr(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,

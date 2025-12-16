@@ -1078,7 +1078,12 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if let Some(sema_ty) = &typed_global_var.ty {
-            self.validate_variable_type(sema_ty, typed_global_var.expr.is_some(), typed_global_var.loc.clone());
+            self.validate_variable_type(
+                None,
+                sema_ty,
+                typed_global_var.expr.is_some(),
+                typed_global_var.loc.clone(),
+            );
         }
 
         if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
@@ -1926,7 +1931,12 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(sema_ty) = &typed_variable.ty {
-            self.validate_variable_type(sema_ty, typed_variable.rhs.is_some(), typed_variable.loc.clone());
+            self.validate_variable_type(
+                scope_id_opt,
+                sema_ty,
+                typed_variable.rhs.is_some(),
+                typed_variable.loc.clone(),
+            );
         }
 
         local_scope_opt.inspect(|local_scope| {
@@ -1986,7 +1996,13 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn validate_variable_type(&mut self, sema_ty: &SemanticType, is_init: bool, loc: SourceLoc) {
+    pub(crate) fn validate_variable_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sema_ty: &SemanticType,
+        is_init: bool,
+        loc: SourceLoc,
+    ) {
         let sema_ty = sema_ty.get_const_inner();
 
         if sema_ty.is_void() {
@@ -2020,7 +2036,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
-                location: Some(DiagLoc::new(loc)),
+                location: Some(DiagLoc::new(loc.clone())),
                 hint: Some("Assign a function or lambda expression to this variable at declaration.".to_string()),
             });
         }
