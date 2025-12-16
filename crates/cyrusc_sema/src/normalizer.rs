@@ -57,7 +57,7 @@ impl<'a> AnalysisContext<'a> {
             _ => {}
         };
 
-        match ty {
+        let sema_ty_opt = match ty {
             ty @ SemanticType::GenericParam(..) => Some(ty),
             SemanticType::GenericType(mut generic_type) => {
                 let sym = match self
@@ -93,7 +93,7 @@ impl<'a> AnalysisContext<'a> {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 
                 let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
-                self.normalize_type(scope_id_opt, resolved, loc)
+                self.normalize_type(scope_id_opt, resolved, loc.clone())
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
                 let sym = match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
@@ -139,7 +139,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                self.report_non_type_symbol(symbol_id, loc);
+                self.report_non_type_symbol(symbol_id, loc.clone());
                 None
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::GlobalVar(symbol_id)) => {
@@ -151,7 +151,7 @@ impl<'a> AnalysisContext<'a> {
                         return self.normalize_type(scope_id_opt, t.clone(), loc);
                     }
                 }
-                self.report_non_type_symbol(symbol_id, loc);
+                self.report_non_type_symbol(symbol_id, loc.clone());
                 None
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Func(..))
@@ -163,14 +163,14 @@ impl<'a> AnalysisContext<'a> {
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Union(_))
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(_)) => Some(ty),
             SemanticType::Pointer(inner) => {
-                let inner = self.normalize_type(scope_id_opt, *inner, loc)?;
+                let inner = self.normalize_type(scope_id_opt, *inner, loc.clone())?;
                 Some(SemanticType::Pointer(Box::new(inner)))
             }
             SemanticType::Const(inner) => {
-                let inner = self.normalize_type(scope_id_opt, *inner, loc)?;
+                let inner = self.normalize_type(scope_id_opt, *inner, loc.clone())?;
                 Some(SemanticType::Const(Box::new(inner)))
             }
-            SemanticType::Array(arr) => match self.normalize_array_capacity(scope_id_opt, arr, loc) {
+            SemanticType::Array(arr) => match self.normalize_array_capacity(scope_id_opt, arr, loc.clone()) {
                 Some(arr_type) => Some(SemanticType::Array(arr_type)),
                 None => None,
             },
@@ -200,7 +200,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 // Normalize return type
-                match self.normalize_type(scope_id_opt, *func_type.return_type, loc) {
+                match self.normalize_type(scope_id_opt, *func_type.return_type, loc.clone()) {
                     Some(new_ret) => func_type.return_type = Box::new(new_ret),
                     None => return None,
                 }
@@ -236,6 +236,12 @@ impl<'a> AnalysisContext<'a> {
                     None
                 }
             }
+        };
+
+        if let Some(sema_ty) = sema_ty_opt {
+            self.analyze_explicit_sema_ty(scope_id_opt, &sema_ty, loc)
+        } else {
+            None
         }
     }
 
