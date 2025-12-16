@@ -49,7 +49,7 @@ impl<'a> AnalysisContext<'a> {
         prefix_expr: &mut TypedPrefixExpr,
     ) -> Option<TypedExprStmt> {
         let operand_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
+            match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
                 Some(sema_ty) => sema_ty,
                 None => return None,
             };

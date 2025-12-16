@@ -17,13 +17,28 @@ use cyrusc_tast::{
     stmts::*,
     types::SemanticType,
 };
-use std::{
-    cell::RefCell,
-    ops::RangeInclusive,
-    rc::{Rc, Weak},
-};
+use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn try_infer_generic_param_as_expected_type(
+        &self,
+        sema_ty: SemanticType,
+        generic_type_opt: &Option<GenericType>,
+    ) -> Option<SemanticType> {
+        let Some(generic_type) = generic_type_opt.clone() else {
+            return None;
+        }; 
+
+        let Some(generic_param) = sema_ty.as_generic_param() else {
+            return None;
+        };
+
+
+        let ctx = generic_type.mapping_ctx.borrow();
+
+        ctx.get_with_name(&generic_param.name)
+    }
+
     pub(crate) fn register_specialized_generic_func(
         &mut self,
         func_sig: &FuncSig,

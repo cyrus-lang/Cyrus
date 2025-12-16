@@ -160,7 +160,7 @@ impl<'a> AnalysisContext<'a> {
             let stmt_state = self.analyze_stmt(block_stmt.scope_id, &mut stmt);
 
             if terminated {
-                self.report_unreachable_block_diag(&stmt);
+                self.report_unreachable_block(&stmt);
                 continue;
             }
 
@@ -229,7 +229,7 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             TypedStmt::Expr(typed_expr) => {
-                self.analyze_typed_expr_type(Some(scope_id), typed_expr, typed_expr.sema_ty.clone());
+                self.analyze_expr(Some(scope_id), typed_expr, typed_expr.sema_ty.clone());
                 FlowState::Reachable
             }
             TypedStmt::Interface(typed_interface) => {
@@ -279,7 +279,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let expr_sema_ty = match self.analyze_typed_expr_type(
+        let expr_sema_ty = match self.analyze_expr(
             scope_id_opt,
             &mut export_tuple.rhs.as_mut().unwrap(),
             explicit_sema_ty.clone(),
@@ -560,7 +560,7 @@ impl<'a> AnalysisContext<'a> {
 
                             let valued_field = valued_fields.first().unwrap();
 
-                            valued.sema_ty = match self.analyze_typed_expr_type(scope_id_opt, valued, None) {
+                            valued.sema_ty = match self.analyze_expr(scope_id_opt, valued, None) {
                                 Some(sema_ty) => Some(sema_ty),
                                 None => continue 'patterns,
                             };
@@ -618,7 +618,7 @@ impl<'a> AnalysisContext<'a> {
             return FlowState::Reachable;
         }
 
-        let operand_ty = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
+        let operand_ty = match self.analyze_expr(scope_id_opt, &mut typed_switch.operand, None) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return FlowState::Reachable,
         };
@@ -697,7 +697,7 @@ impl<'a> AnalysisContext<'a> {
                 match pattern {
                     TypedSwitchCasePattern::Expr(typed_expr, _) => {
                         let pattern_concrete_type =
-                            match self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(operand_ty.clone())) {
+                            match self.analyze_expr(scope_id_opt, typed_expr, Some(operand_ty.clone())) {
                                 Some(sema_ty) => sema_ty,
                                 None => continue,
                             };
@@ -737,8 +737,8 @@ impl<'a> AnalysisContext<'a> {
                         continue;
                     }
                     TypedSwitchCasePattern::Range(range) => {
-                        self.analyze_typed_expr_type(scope_id_opt, &mut range.lower, Some(operand_ty.clone()));
-                        self.analyze_typed_expr_type(scope_id_opt, &mut range.upper, Some(operand_ty.clone()));
+                        self.analyze_expr(scope_id_opt, &mut range.lower, Some(operand_ty.clone()));
+                        self.analyze_expr(scope_id_opt, &mut range.upper, Some(operand_ty.clone()));
 
                         let lower = match self.const_expr_as_raw_integer(scope_id_opt, &range.lower) {
                             Some(value) => value,
@@ -824,7 +824,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> FlowState {
         let consequent_state = self.analyze_block_stmt(&mut typed_if.then_block);
 
-        self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.cond, expected_type.clone());
+        self.analyze_expr(Some(scope_id), &mut typed_if.cond, expected_type.clone());
 
         let alternate_state = {
             if let Some(block_stmt) = &mut typed_if.else_block {
@@ -842,7 +842,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_while_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_while: &mut TypedWhileStmt) -> FlowState {
-        if let Some(sema_ty) = self.analyze_typed_expr_type(
+        if let Some(sema_ty) = self.analyze_expr(
             scope_id_opt,
             &mut typed_while.cond,
             Some(SemanticType::PlainType(PlainType::Bool)),
@@ -864,14 +864,14 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(typed_expr) = &mut typed_for.cond {
             if let Some(sema_ty) =
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(SemanticType::PlainType(PlainType::Bool)))
+                self.analyze_expr(scope_id_opt, typed_expr, Some(SemanticType::PlainType(PlainType::Bool)))
             {
                 self.check_expr_type_must_be_condition(sema_ty, typed_for.loc.clone());
             }
         }
 
         if let Some(typed_expr) = &mut typed_for.increment {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, None);
+            self.analyze_expr(scope_id_opt, typed_expr, None);
         }
 
         self.control_stack.push(ControlContext::Loop);
@@ -895,7 +895,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.arg {
-            if let Some(sema_ty) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
+            if let Some(sema_ty) = self.analyze_expr(Some(scope_id), typed_expr, Some(return_type.clone())) {
                 let expected = format_sema_ty(
                     return_type.get_const_inner().clone(),
                     &(self.symbol_formatter)(Some(scope_id)),
@@ -986,7 +986,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn report_unreachable_block_diag(&mut self, typed_stmt: &TypedStmt) {
+    fn report_unreachable_block(&mut self, typed_stmt: &TypedStmt) {
         if !self.disable_warnings {
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
@@ -1025,7 +1025,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_global_var_for_const_folding(&self, sema_ty: SemanticType) -> bool {
+    fn is_const_foldable_integer(&self, sema_ty: SemanticType) -> bool {
         match sema_ty.get_const_inner().as_basic_type() {
             Some(basic_concrete_type) => basic_concrete_type.is_integer(),
             None => false,
@@ -1034,12 +1034,12 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
-            let sema_ty = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
+            let sema_ty = match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
                 Some(sema_ty) => sema_ty,
                 None => return,
             };
 
-            if self.check_global_var_for_const_folding(sema_ty) {
+            if self.is_const_foldable_integer(sema_ty) {
                 if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
                     let integer_concrete_type = Some(SemanticType::PlainType(PlainType::Int));
 
@@ -1064,7 +1064,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            expr.sema_ty = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
+            expr.sema_ty = match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
                 Some(sema_ty) => Some(sema_ty),
                 None => return,
             };
@@ -1485,7 +1485,7 @@ impl<'a> AnalysisContext<'a> {
             let variant_identifier = match variant {
                 TypedEnumVariant::Identifier(identifier) => identifier,
                 TypedEnumVariant::Valued(identifier, typed_expr) => {
-                    typed_expr.sema_ty = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                    typed_expr.sema_ty = match self.analyze_expr(scope_id_opt, typed_expr, None) {
                         Some(sema_ty) => Some(sema_ty),
                         None => continue,
                     };
@@ -1916,7 +1916,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(rhs) = &mut typed_variable.rhs {
-            let inferred_ty = self.analyze_typed_expr_type(scope_id_opt, rhs, typed_variable.ty.clone());
+            let inferred_ty = self.analyze_expr(scope_id_opt, rhs, typed_variable.ty.clone());
 
             if typed_variable.ty.is_none() {
                 if let Some(sema_ty) = inferred_ty {
@@ -1944,12 +1944,12 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_assign(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignExpr) {
-        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.lhs, None) {
+        let lhs_type = match self.analyze_expr(scope_id_opt, &mut assign.lhs, None) {
             Some(sema_ty) => sema_ty,
             None => return,
         };
 
-        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
+        let rhs_type = match self.analyze_expr(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
             Some(sema_ty) => sema_ty,
             None => return,
         }
