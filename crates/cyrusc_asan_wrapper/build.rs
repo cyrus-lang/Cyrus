@@ -10,8 +10,6 @@ fn main() {
     let cpp_file = "src/asan_wrapper.cpp";
     println!("cargo:rerun-if-changed={}", cpp_file);
 
-    println!("cargo:rustc-link-lib=dylib=asan");
-
     let cxx = env::var("CXX").unwrap_or_else(|_| "clang++".to_string());
 
     let llvm_config = env::var("LLVM_CONFIG").unwrap_or_else(|_| "llvm-config".to_string());
