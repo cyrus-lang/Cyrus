@@ -1,5 +1,11 @@
 use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
-use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Display,
+    hash::Hash,
+    rc::{Rc, Weak},
+};
 
 pub type ChildGenericParamSymbolID = SymbolID;
 
@@ -7,7 +13,7 @@ pub type ChildGenericParamSymbolID = SymbolID;
 pub struct GenericMappingCtx {
     pub named: HashMap<GenericMappingEntry, SemanticType>,
     pub linked_gps: HashMap<GenericMappingEntry, GenericMappingEntry>,
-    pub parent: Option<Rc<GenericMappingCtx>>,
+    pub parent: Option<Weak<GenericMappingCtx>>,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -17,7 +23,7 @@ pub struct GenericMappingEntry {
 
 impl PartialEq for GenericMappingCtx {
     fn eq(&self, other: &Self) -> bool {
-        self.named == other.named && self.linked_gps == other.linked_gps && self.parent == other.parent
+        mapping_ctx_eq(self, other)
     }
 }
 
@@ -36,8 +42,11 @@ pub fn mapping_ctx_eq(a: &GenericMappingCtx, b: &GenericMappingCtx) -> bool {
         }
     }
 
-    match (&a.parent, &b.parent) {
-        (Some(pa), Some(pb)) => mapping_ctx_eq(pa, pb),
+    match (
+        a.parent.as_ref().and_then(|p| p.upgrade()),
+        b.parent.as_ref().and_then(|p| p.upgrade()),
+    ) {
+        (Some(pa), Some(pb)) => mapping_ctx_eq(&pa, &pb),
         (None, None) => true,
         _ => false,
     }
@@ -55,16 +64,19 @@ impl GenericMappingCtx {
         let mut named = HashMap::new();
         let mut linked_gps = HashMap::new();
 
-        let mut cur = Some(self);
-        while let Some(ctx) = cur {
-            // child overrides parent
+        let mut cur: Option<Rc<GenericMappingCtx>> = Some(Rc::new(self.clone()));
+
+        while let Some(ctx_rc) = cur {
+            let ctx = &*ctx_rc;
+
             for (k, v) in &ctx.named {
                 named.entry(k.clone()).or_insert(v.clone());
             }
             for (k, v) in &ctx.linked_gps {
                 linked_gps.entry(k.clone()).or_insert(v.clone());
             }
-            cur = ctx.parent.as_deref();
+
+            cur = ctx.parent.as_ref().and_then(|p| p.upgrade());
         }
 
         GenericMappingCtx {
@@ -80,7 +92,7 @@ impl GenericMappingCtx {
         }
 
         if let Some(parent) = &self.parent {
-            return parent.get_with_name(name);
+            return parent.upgrade().unwrap().get_with_name(name);
         }
 
         None
@@ -103,7 +115,7 @@ impl GenericMappingCtx {
         }
 
         if let Some(parent_ctx) = &self.parent {
-            return parent_ctx.get_linked_by_name(child_name);
+            return parent_ctx.upgrade().unwrap().get_linked_by_name(child_name);
         }
 
         None
@@ -127,7 +139,7 @@ impl GenericMappingCtx {
         }
     }
 
-    pub fn new_child(parent: Rc<GenericMappingCtx>) -> Self {
+    pub fn new_child(parent: Weak<GenericMappingCtx>) -> Self {
         Self {
             named: HashMap::new(),
             linked_gps: HashMap::new(),
@@ -167,7 +179,7 @@ impl Hash for GenericMappingCtx {
 
         // hash parent recursively
         if let Some(parent) = &self.parent {
-            parent.hash(state);
+            parent.upgrade().unwrap().hash(state);
         } else {
             None::<()>.hash(state);
         }

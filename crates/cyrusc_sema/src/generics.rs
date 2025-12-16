@@ -17,7 +17,11 @@ use cyrusc_tast::{
     stmts::*,
     types::SemanticType,
 };
-use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
+use std::{
+    cell::RefCell,
+    ops::RangeInclusive,
+    rc::{Rc, Weak},
+};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn register_specialized_generic_func(
@@ -189,7 +193,7 @@ impl<'a> AnalysisContext<'a> {
         let mapping_ctx = Rc::new(RefCell::new(
             parent_mapping_ctx
                 .as_ref()
-                .map(|parent| GenericMappingCtx::new_child(parent.clone()))
+                .map(|parent| GenericMappingCtx::new_child(Rc::downgrade(&parent)))
                 .unwrap_or(GenericMappingCtx::new_root()),
         ));
 
@@ -241,7 +245,11 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // if any ancestor directly has a concrete value for this symbol id, obey it
-        if let Some(parent_val) = ctx.parent.as_ref().and_then(|p| p.get_with_name(&generic_param.name)) {
+        if let Some(parent_val) = ctx
+            .parent
+            .as_ref()
+            .and_then(|mapping_ctx| mapping_ctx.upgrade().unwrap().get_with_name(&generic_param.name))
+        {
             if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -296,7 +304,9 @@ impl<'a> AnalysisContext<'a> {
             if let Some(expected_sema_ty) = &expected_type {
                 if let Some(expected_generic_type) = expected_sema_ty.as_generic_type() {
                     let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
-                    mapping_ctx.parent = Some(Rc::new(expected_generic_type.mapping_ctx.borrow().clone()));
+                    mapping_ctx.parent = Some(Rc::downgrade(&Rc::new(
+                        expected_generic_type.mapping_ctx.borrow().clone(),
+                    )));
                 }
             }
 
