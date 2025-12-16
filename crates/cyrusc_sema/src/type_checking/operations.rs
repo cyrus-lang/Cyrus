@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
                 if let SemanticType::UnresolvedSymbol(symbol_id) = sema_ty {
                     *symbol_id
                 } else {
-                    self.normalize_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone())?;
+                    self.normalize_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone(), false)?;
                     return Some(SemanticType::PlainType(PlainType::SizeT));
                 }
             }
@@ -172,6 +172,7 @@ impl<'a> AnalysisContext<'a> {
                 scope_id_opt,
                 SemanticType::UnresolvedSymbol(symbol_id),
                 sizeof_expr.loc.clone(),
+                false
             )?;
         }
 
