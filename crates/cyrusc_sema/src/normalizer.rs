@@ -130,7 +130,7 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(t) = &resolved_variable.typed_variable.ty {
                         return self.normalize_type(scope_id_opt, t.clone(), loc);
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
-                        let rhs_ty = self.analyze_typed_expr_type_non_terminal(
+                        let rhs_ty = self.analyze_expr_non_terminal(
                             scope_id_opt,
                             &mut rhs.clone(),
                             resolved_variable.typed_variable.ty.clone(),
@@ -311,7 +311,7 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
 
-                    let mut sema_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, rhs, None)?;
+                    let mut sema_ty = self.analyze_expr_non_terminal(scope_id_opt, rhs, None)?;
 
                     sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
 
@@ -389,7 +389,7 @@ impl<'a> AnalysisContext<'a> {
                         return Some(sema_ty);
                     }
 
-                    let mut sema_ty = self.analyze_typed_expr_type(scope_id_opt, rhs, None)?;
+                    let mut sema_ty = self.analyze_expr(scope_id_opt, rhs, None)?;
 
                     sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
 

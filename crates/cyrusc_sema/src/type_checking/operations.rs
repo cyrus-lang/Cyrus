@@ -20,12 +20,12 @@ impl<'a> AnalysisContext<'a> {
         infix_expr: &mut TypedInfixExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
+        let lhs_type = match self.analyze_expr(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
 
-        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.rhs, Some(lhs_type.clone())) {
+        let rhs_type = match self.analyze_expr(scope_id_opt, &mut infix_expr.rhs, Some(lhs_type.clone())) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let operand_inner_type = address_of.operand.sema_ty.clone();
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut address_of.operand, operand_inner_type)
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut address_of.operand, operand_inner_type)
         {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
@@ -91,7 +91,7 @@ impl<'a> AnalysisContext<'a> {
         deref: &mut TypedDerefExpr,
     ) -> Option<SemanticType> {
         let operand_inner_type = deref.operand.sema_ty.clone();
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut deref.operand, operand_inner_type) {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut deref.operand, operand_inner_type) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
@@ -151,7 +151,7 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExprKind::Symbol(symbol_id, ..) => *symbol_id,
             _ => {
-                self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.operand, expected_type);
+                self.analyze_expr(scope_id_opt, &mut sizeof_expr.operand, expected_type);
                 return Some(SemanticType::PlainType(PlainType::SizeT));
             }
         };
@@ -165,7 +165,7 @@ impl<'a> AnalysisContext<'a> {
 
         if sym.as_global_var().is_some() || sym.as_variable().is_some() {
             // consider as expr
-            self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.operand, expected_type);
+            self.analyze_expr(scope_id_opt, &mut sizeof_expr.operand, expected_type);
         } else {
             // consider as type
             self.normalize_type(
@@ -184,7 +184,7 @@ impl<'a> AnalysisContext<'a> {
         prefix_expr: &mut TypedPrefixExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type) {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
@@ -292,7 +292,7 @@ impl<'a> AnalysisContext<'a> {
         unary_expr: &mut TypedUnaryExpr,
     ) -> Option<SemanticType> {
         let operand_inner_type = unary_expr.operand.sema_ty.clone();
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut unary_expr.operand, operand_inner_type)
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut unary_expr.operand, operand_inner_type)
         {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,

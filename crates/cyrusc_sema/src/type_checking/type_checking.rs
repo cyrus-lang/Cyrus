@@ -5,10 +5,12 @@ use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::{
-    set_self_modifier_type_in_func_sig, symbols::{
+    set_self_modifier_type_in_func_sig,
+    symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind, generate_scope_id,
-    }, typed_func_params_as_func_type_params, typed_func_type_from_func_sig
+    },
+    typed_func_params_as_func_type_params, typed_func_type_from_func_sig,
 };
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
@@ -35,7 +37,7 @@ use std::{
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_literal_type(
+    pub(crate) fn analyze_literal(
         &mut self,
         typed_literal: &mut TypedLiteralExpr,
         expected_type: Option<SemanticType>,
@@ -105,7 +107,7 @@ impl<'a> AnalysisContext<'a> {
         ty_opt
     }
 
-    pub(crate) fn analyze_typed_expr_type_non_terminal(
+    pub(crate) fn analyze_expr_non_terminal(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
@@ -127,7 +129,7 @@ impl<'a> AnalysisContext<'a> {
                 typed_expr.sema_ty = sema_ty.clone();
                 sema_ty
             }
-            TypedExprKind::Literal(typed_literal) => self.analyze_literal_type(typed_literal, expected_type),
+            TypedExprKind::Literal(typed_literal) => self.analyze_literal(typed_literal, expected_type),
             TypedExprKind::Prefix(typed_prefix_expr) => {
                 self.analyze_prefix_expr_type(scope_id_opt, typed_prefix_expr, expected_type)
             }
@@ -139,10 +141,10 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_assign(scope_id_opt, typed_assign);
                 typed_assign.rhs.sema_ty.clone()
             }
-            TypedExprKind::Cast(typed_cast) => self.analyze_cast_expr_type(scope_id_opt, typed_cast),
-            TypedExprKind::Array(typed_array) => self.analyze_array_expr_type(scope_id_opt, typed_array),
+            TypedExprKind::Cast(typed_cast) => self.analyze_cast(scope_id_opt, typed_cast),
+            TypedExprKind::Array(typed_array) => self.analyze_array(scope_id_opt, typed_array),
             TypedExprKind::ArrayIndex(typed_array_index) => {
-                self.analyze_array_index_expr_type(scope_id_opt, typed_array_index)
+                self.analyze_array_index(scope_id_opt, typed_array_index)
             }
             TypedExprKind::AddrOf(typed_address_of) => self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of),
             TypedExprKind::Deref(typed_dereference) => self.analyze_deref_expr_type(scope_id_opt, typed_dereference),
@@ -150,21 +152,21 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_struct_init(scope_id_opt, struct_init, expected_type)
             }
             TypedExprKind::FuncCall(typed_func_call) => {
-                self.analyze_func_call_expr_type(scope_id_opt, typed_func_call, expected_type)
+                self.analyze_func_call(scope_id_opt, typed_func_call, expected_type)
             }
             TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
-                self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
+                self.analyze_unnamed_struct_value(scope_id_opt, typed_unnamed_struct_value)
             }
             TypedExprKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
             }
             TypedExprKind::MethodCall(method_call) => {
-                self.analyze_method_call_expr_type(scope_id_opt, method_call, expected_type)
+                self.analyze_method_call(scope_id_opt, method_call, expected_type)
             }
             TypedExprKind::SizeOf(typed_size_of_expression) => {
                 self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
             }
-            TypedExprKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
+            TypedExprKind::Lambda(typed_lambda) => self.analyze_lambda(scope_id_opt, typed_lambda),
             TypedExprKind::Tuple(tuple_value) => self.analyze_tuple_value(scope_id_opt, tuple_value, expected_type),
             TypedExprKind::TupleAccess(tuple_member_access) => {
                 self.analyze_tuple_member_access(scope_id_opt, tuple_member_access, expected_type)
@@ -197,7 +199,7 @@ impl<'a> AnalysisContext<'a> {
         normalized_type
     }
 
-    pub(crate) fn analyze_typed_expr_type(
+    pub(crate) fn analyze_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
@@ -228,7 +230,7 @@ impl<'a> AnalysisContext<'a> {
             _ => {}
         };
 
-        self.analyze_typed_expr_type_non_terminal(scope_id_opt, typed_expr, expected_type)
+        self.analyze_expr_non_terminal(scope_id_opt, typed_expr, expected_type)
     }
 
     pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_ty: SemanticType, loc: SourceLoc) {
@@ -248,8 +250,7 @@ impl<'a> AnalysisContext<'a> {
         tuple_member_access: &mut TypedTupleAccessExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_type =
-            self.analyze_typed_expr_type(scope_id_opt, &mut tuple_member_access.operand, expected_type)?;
+        let operand_type = self.analyze_expr(scope_id_opt, &mut tuple_member_access.operand, expected_type)?;
 
         if !operand_type.get_const_inner().as_tuple_type().is_some() {
             self.reporter.report(Diag {
@@ -283,11 +284,7 @@ impl<'a> AnalysisContext<'a> {
         Some(element_type.clone())
     }
 
-    fn analyze_lambda_expr(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        lambda: &mut TypedLambdaExpr,
-    ) -> Option<SemanticType> {
+    fn analyze_lambda(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
         let current_func_clone = self.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc.clone());
@@ -328,7 +325,7 @@ impl<'a> AnalysisContext<'a> {
                 expected_type = tuple_type.type_list.get(idx).cloned();
             }
 
-            match self.analyze_typed_expr_type(scope_id_opt, expr, expected_type) {
+            match self.analyze_expr(scope_id_opt, expr, expected_type) {
                 Some(sema_ty) => type_list.push(sema_ty),
                 None => continue,
             }
@@ -340,7 +337,7 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn analyze_unnamed_struct_value_expr_type(
+    fn analyze_unnamed_struct_value(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_value: &mut TypedUStructValue,
@@ -348,11 +345,11 @@ impl<'a> AnalysisContext<'a> {
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
         for field in &mut unnamed_struct_value.fields {
-            let field_value_type =
-                match self.analyze_typed_expr_type(scope_id_opt, &mut field.field_value, field.field_ty.clone()) {
-                    Some(sema_ty) => sema_ty,
-                    None => continue,
-                };
+            let field_value_type = match self.analyze_expr(scope_id_opt, &mut field.field_value, field.field_ty.clone())
+            {
+                Some(sema_ty) => sema_ty,
+                None => continue,
+            };
 
             fields.push(TypedUnnamedStructTypeField {
                 field_name: field.field_name.clone(),
@@ -378,12 +375,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_array_index_expr_type(
+    fn analyze_array_index(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         array_index: &mut TypedArrayIndexExpr,
     ) -> Option<SemanticType> {
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.operand, None) {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut array_index.operand, None) {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
@@ -402,11 +399,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let index_inner_type = array_index.index.sema_ty.clone();
-        let index_concrete_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.index, index_inner_type) {
-                Some(sema_ty) => sema_ty,
-                None => return None,
-            };
+        let index_concrete_type = match self.analyze_expr(scope_id_opt, &mut array_index.index, index_inner_type) {
+            Some(sema_ty) => sema_ty,
+            None => return None,
+        };
 
         if !index_concrete_type
             .get_const_inner()
@@ -546,14 +542,14 @@ impl<'a> AnalysisContext<'a> {
         result
     }
 
-    fn analyze_union_field_access_type(
+    fn analyze_union_field_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         union_sig: &UnionSig,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut field_access.operand, expected_type) {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
@@ -598,14 +594,14 @@ impl<'a> AnalysisContext<'a> {
         Some(union_field.ty.clone())
     }
 
-    fn analyze_unnamed_struct_field_access_type(
+    fn analyze_unnamed_struct_field_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_type: &TypedUStructType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut field_access.operand, expected_type) {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
@@ -647,7 +643,7 @@ impl<'a> AnalysisContext<'a> {
         Some(field_ty.clone())
     }
 
-    fn analyze_struct_field_access_type(
+    fn analyze_struct_field_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         field_access: &mut TypedFieldAccess,
@@ -767,7 +763,7 @@ impl<'a> AnalysisContext<'a> {
         method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
         for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields.iter_mut()) {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.ty.clone()));
+            self.analyze_expr(scope_id_opt, typed_expr, Some(enum_valued_field.ty.clone()));
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
@@ -960,7 +956,7 @@ impl<'a> AnalysisContext<'a> {
 
                 resolved_var_type.clone()
             }
-            _ => match self.analyze_typed_expr_type(scope_id_opt, operand, expected_type.clone()) {
+            _ => match self.analyze_expr(scope_id_opt, operand, expected_type.clone()) {
                 Some(sema_ty) => sema_ty,
                 None => return None,
             },
@@ -1027,7 +1023,7 @@ impl<'a> AnalysisContext<'a> {
 
         // check for enum variant
 
-        self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut field_access.operand, expected_type.clone());
+        self.analyze_expr_non_terminal(scope_id_opt, &mut field_access.operand, expected_type.clone());
 
         let mut field_access_operand_ty = field_access
             .operand
@@ -1056,7 +1052,7 @@ impl<'a> AnalysisContext<'a> {
 
         // multiplex field access
 
-        let sema_ty = self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
+        let sema_ty = self.analyze_expr(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
 
         field_access.operand.sema_ty = Some(sema_ty.get_const_inner().clone());
         let operand_ty = sema_ty.get_const_inner();
@@ -1072,7 +1068,7 @@ impl<'a> AnalysisContext<'a> {
         ) {
             Some(member_access_kind) => match member_access_kind {
                 MemberAccessKind::UnnamedStruct(unnamed_struct_type) => (
-                    self.analyze_unnamed_struct_field_access_type(
+                    self.analyze_unnamed_struct_field_access(
                         scope_id_opt,
                         &unnamed_struct_type,
                         field_access,
@@ -1087,7 +1083,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     (
-                        self.analyze_struct_field_access_type(
+                        self.analyze_struct_field_access(
                             scope_id_opt,
                             field_access,
                             struct_sig.name.clone(),
@@ -1105,7 +1101,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     (
-                        self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type),
+                        self.analyze_union_field_access(scope_id_opt, &union_sig, field_access, expected_type),
                         union_sig.generic_params.is_some(),
                     )
                 }
@@ -1180,9 +1176,9 @@ impl<'a> AnalysisContext<'a> {
             }
 
             if let Some(resolved_union) = sym.as_union() {
-                return self.analyze_union_init_expr_type(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
+                return self.analyze_union_init_expr(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
             } else if let Some(resolved_struct) = sym.as_struct() {
-                return self.analyze_struct_init_expr_type(
+                return self.analyze_struct_init_expr(
                     scope_id_opt,
                     struct_init,
                     resolved_struct,
@@ -1201,7 +1197,7 @@ impl<'a> AnalysisContext<'a> {
         None
     }
 
-    fn analyze_union_init_expr_type(
+    fn analyze_union_init_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInitExpr,
@@ -1245,8 +1241,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let field_ty = field.ty.clone();
-        field_init.value.sema_ty =
-            self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field_ty.clone()));
+        field_init.value.sema_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_ty.clone()));
 
         if let Some(sema_ty) = self.infer_generic_param(
             scope_id_opt,
@@ -1285,7 +1280,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_struct_init_expr_type(
+    fn analyze_struct_init_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInitExpr,
@@ -1345,8 +1340,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            let field_value_ty =
-                self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, Some(field.ty.clone()));
+            let field_expected_type = self
+                .try_infer_generic_param_as_expected_type(field.ty.clone(), &generic_type_opt)
+                .unwrap_or(field.ty.clone());
+
+            let field_value_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type));
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
@@ -1474,8 +1472,7 @@ impl<'a> AnalysisContext<'a> {
                 match var_param.clone() {
                     TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
                         for (idx, arg) in variadic_args.iter_mut().enumerate() {
-                            if let Some(arg_type) = self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
-                            {
+                            if let Some(arg_type) = self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone()) {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
                                     arg_type.clone(),
@@ -1504,7 +1501,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncVariadicParams::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone());
+                            self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone());
                         }
                     }
                 }
@@ -1526,7 +1523,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
+            let arg_type = match self.analyze_expr(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
@@ -1600,8 +1597,7 @@ impl<'a> AnalysisContext<'a> {
                 match *var_param.clone() {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
                         for (idx, arg) in variadic_args.iter_mut().enumerate() {
-                            if let Some(arg_type) = self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone())
-                            {
+                            if let Some(arg_type) = self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone()) {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
                                     arg_type.clone(),
@@ -1630,7 +1626,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncTypeVariadicParams::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.sema_ty.clone());
+                            self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone());
                         }
                     }
                 }
@@ -1649,7 +1645,7 @@ impl<'a> AnalysisContext<'a> {
         {
             let param_type = self.normalize_type(scope_id_opt, param.clone(), loc.clone()).unwrap();
 
-            let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
+            let arg_type = match self.analyze_expr(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
@@ -1671,13 +1667,13 @@ impl<'a> AnalysisContext<'a> {
         Some(*func_type.return_type.clone())
     }
 
-    fn analyze_func_call_expr_type(
+    fn analyze_func_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
+        let operand_ty = self.analyze_expr_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
         #[allow(unused_assignments)]
         let mut generic_type_opt: Option<GenericType> = None;
@@ -1894,7 +1890,7 @@ impl<'a> AnalysisContext<'a> {
         (true, sema)
     }
 
-    fn analyze_method_call_expr_type(
+    fn analyze_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &mut TypedMethodCall,
@@ -1913,7 +1909,7 @@ impl<'a> AnalysisContext<'a> {
                 });
         }
 
-        self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
+        self.analyze_expr_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
 
         let mut method_call_operand_ty = method_call
             .operand
@@ -1952,11 +1948,7 @@ impl<'a> AnalysisContext<'a> {
                         method_call.loc.clone(),
                     )
                 })
-                .or(self.analyze_typed_expr_type_non_terminal(
-                    scope_id_opt,
-                    &mut method_call.operand,
-                    expected_type.clone(),
-                ))
+                .or(self.analyze_expr_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone()))
                 .map(|sema_ty| sema_ty.get_const_inner().clone())?;
 
             match operand_ty {
@@ -2022,7 +2014,7 @@ impl<'a> AnalysisContext<'a> {
                         .ty
                         .clone()
                         .unwrap_or({
-                            self.analyze_typed_expr_type(
+                            self.analyze_expr(
                                 scope_id_opt,
                                 &mut resolved_var.typed_variable.rhs.clone().unwrap(),
                                 expected_type.clone(),
@@ -2070,7 +2062,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        self.analyze_regular_object_method(scope_id_opt, method_call, object_id, method_call_operand_ty)
+        self.analyze_regular_method_call(scope_id_opt, method_call, object_id, method_call_operand_ty)
     }
 
     fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
@@ -2078,7 +2070,7 @@ impl<'a> AnalysisContext<'a> {
         method_call.self_ty = Some(sema_ty.clone());
     }
 
-    fn analyze_regular_object_method(
+    fn analyze_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &mut TypedMethodCall,
@@ -2182,7 +2174,7 @@ impl<'a> AnalysisContext<'a> {
             // explicit instance method
             // inferring self type from first argument type
             if let Some(mut expr) = method_call.args.first().cloned() {
-                if let Some(sema_ty) = self.analyze_typed_expr_type(scope_id_opt, &mut expr, None) {
+                if let Some(sema_ty) = self.analyze_expr(scope_id_opt, &mut expr, None) {
                     generic_type_opt = sema_ty.as_generic_type().cloned();
 
                     self.set_method_call_self_type(method_call, &sema_ty);
@@ -2346,7 +2338,7 @@ impl<'a> AnalysisContext<'a> {
         result
     }
 
-    fn analyze_array_expr_type(
+    fn analyze_array(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_array: &mut TypedArrayExpr,
@@ -2358,7 +2350,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
         for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
-            let argument_type = match self.analyze_typed_expr_type(
+            let argument_type = match self.analyze_expr(
                 scope_id_opt,
                 argument,
                 Some(*typed_array.array_type.as_array_type().unwrap().element_type.clone()),
@@ -2425,16 +2417,15 @@ impl<'a> AnalysisContext<'a> {
         ))
     }
 
-    fn analyze_cast_expr_type(
+    fn analyze_cast(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         cast: &mut TypedCastExpr,
     ) -> Option<SemanticType> {
-        let operand =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
-                Some(sema_ty) => sema_ty.get_const_inner().clone(),
-                None => return None,
-            };
+        let operand = match self.analyze_expr(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
+            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            None => return None,
+        };
 
         if !(self.check_type_mismatch(
             scope_id_opt,
@@ -2478,7 +2469,7 @@ impl<'a> AnalysisContext<'a> {
                     Some(sema_ty) => self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone()),
                     None => {
                         let rhs = typed_variable.rhs.clone().unwrap();
-                        self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone(), None)
+                        self.analyze_expr(scope_id_opt, &mut rhs.clone(), None)
                     }
                 }
             }
