@@ -22,6 +22,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         ty: SemanticType,
         loc: SourceLoc,
+        no_generics_check: bool,
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
@@ -93,8 +94,8 @@ impl<'a> AnalysisContext<'a> {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 
                 let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
-                self.normalize_type(scope_id_opt, resolved, loc.clone())
-            }
+                self.normalize_type(scope_id_opt, resolved, loc.clone(), false)
+            },
             SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
                 let sym = match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
                     Some(sym) => sym,
@@ -128,14 +129,14 @@ impl<'a> AnalysisContext<'a> {
 
                 if let Some(resolved_variable) = resolved_variable_opt {
                     if let Some(t) = &resolved_variable.typed_variable.ty {
-                        return self.normalize_type(scope_id_opt, t.clone(), loc);
+                        return self.normalize_type(scope_id_opt, t.clone(), loc, false);
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
                         let rhs_ty = self.analyze_expr_non_terminal(
                             scope_id_opt,
                             &mut rhs.clone(),
                             resolved_variable.typed_variable.ty.clone(),
                         )?;
-                        return self.normalize_type(scope_id_opt, rhs_ty, loc);
+                        return self.normalize_type(scope_id_opt, rhs_ty, loc, false);
                     }
                 }
 
@@ -148,7 +149,7 @@ impl<'a> AnalysisContext<'a> {
 
                 if let Some(resolved_global_var) = resolved_global_var_opt {
                     if let Some(t) = &resolved_global_var.global_var_sig.ty {
-                        return self.normalize_type(scope_id_opt, t.clone(), loc);
+                        return self.normalize_type(scope_id_opt, t.clone(), loc, false);
                     }
                 }
                 self.report_non_type_symbol(symbol_id, loc.clone());
@@ -163,11 +164,11 @@ impl<'a> AnalysisContext<'a> {
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Union(_))
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(_)) => Some(ty),
             SemanticType::Pointer(inner) => {
-                let inner = self.normalize_type(scope_id_opt, *inner, loc.clone())?;
+                let inner = self.normalize_type(scope_id_opt, *inner, loc.clone(), false)?;
                 Some(SemanticType::Pointer(Box::new(inner)))
             }
             SemanticType::Const(inner) => {
-                let inner = self.normalize_type(scope_id_opt, *inner, loc.clone())?;
+                let inner = self.normalize_type(scope_id_opt, *inner, loc.clone(), false)?;
                 Some(SemanticType::Const(Box::new(inner)))
             }
             SemanticType::Array(arr) => match self.normalize_array_capacity(scope_id_opt, arr, loc.clone()) {
@@ -177,7 +178,7 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::FuncType(mut func_type) => {
                 let mut new_params = Vec::with_capacity(func_type.params.list.len());
                 for param in func_type.params.list {
-                    match self.normalize_type(scope_id_opt, param, loc.clone()) {
+                    match self.normalize_type(scope_id_opt, param, loc.clone(), false) {
                         Some(normalized) => new_params.push(normalized),
                         None => return None, // fail whole function type
                     }
@@ -188,7 +189,7 @@ impl<'a> AnalysisContext<'a> {
                     match *variadic {
                         TypedFuncTypeVariadicParams::UntypedCStyle => {}
                         TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                            match self.normalize_type(scope_id_opt, sema_ty, loc.clone()) {
+                            match self.normalize_type(scope_id_opt, sema_ty, loc.clone(), false) {
                                 Some(normalized) => {
                                     func_type.params.variadic =
                                         Some(Box::new(TypedFuncTypeVariadicParams::Typed(normalized)))
@@ -200,7 +201,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 // Normalize return type
-                match self.normalize_type(scope_id_opt, *func_type.return_type, loc.clone()) {
+                match self.normalize_type(scope_id_opt, *func_type.return_type, loc.clone(), false) {
                     Some(new_ret) => func_type.return_type = Box::new(new_ret),
                     None => return None,
                 }
@@ -212,7 +213,7 @@ impl<'a> AnalysisContext<'a> {
                 let mut type_list: Vec<SemanticType> = Vec::new();
 
                 for sema_ty in &tuple_type.type_list {
-                    match self.normalize_type(scope_id_opt, sema_ty.clone(), tuple_type.loc.clone()) {
+                    match self.normalize_type(scope_id_opt, sema_ty.clone(), tuple_type.loc.clone(), false) {
                         Some(normalized) => type_list.push(normalized),
                         None => continue,
                     }
@@ -239,7 +240,11 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if let Some(sema_ty) = sema_ty_opt {
-            self.analyze_explicit_sema_ty(scope_id_opt, &sema_ty, loc)
+            if no_generics_check {
+                Some(sema_ty)
+            } else {
+                self.analyze_explicit_sema_ty(scope_id_opt, &sema_ty, loc)
+            }
         } else {
             None
         }
@@ -278,7 +283,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone())?);
+        arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone(), false)?);
         Some(arr)
     }
 
@@ -293,7 +298,7 @@ impl<'a> AnalysisContext<'a> {
                     let var = &mut resolved_variable.typed_variable;
 
                     if let Some(sema_ty) = &var.ty {
-                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone())?;
+                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone(), false)?;
 
                         return Some(if var.is_const {
                             SemanticType::Const(Box::new(sema_ty))
@@ -319,7 +324,7 @@ impl<'a> AnalysisContext<'a> {
 
                     let mut sema_ty = self.analyze_expr_non_terminal(scope_id_opt, rhs, None)?;
 
-                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
+                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone(), false)?;
 
                     self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id, sema_ty.clone());
 
@@ -378,7 +383,7 @@ impl<'a> AnalysisContext<'a> {
                     let var = &mut resolved_global_var.global_var_sig;
 
                     if let Some(sema_ty) = &var.ty {
-                        return self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone());
+                        return self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone(), false);
                     }
 
                     let rhs = var
@@ -397,7 +402,7 @@ impl<'a> AnalysisContext<'a> {
 
                     let mut sema_ty = self.analyze_expr(scope_id_opt, rhs, None)?;
 
-                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
+                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone(), false)?;
 
                     self.mark_global_var_analyzed(
                         resolved_global_var.module_id,
@@ -531,7 +536,7 @@ impl<'a> AnalysisContext<'a> {
             concrete_type_opt = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global);
 
             if let Some(ty) = concrete_type_opt.clone() {
-                concrete_type_opt = self.normalize_type(scope_id_opt, ty, loc.clone());
+                concrete_type_opt = self.normalize_type(scope_id_opt, ty, loc.clone(), true);
             }
         } else {
             self.report_non_type_symbol(symbol_id, loc);

@@ -8,9 +8,9 @@ use cyrusc_resolver::{
     set_self_modifier_type_in_func_sig,
     symbols::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
-        SymbolEntryKind, generate_scope_id,
+        SymbolEntryKind,
     },
-    typed_func_params_as_func_type_params, typed_func_type_from_func_sig,
+    typed_func_params_as_func_type_params,
 };
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
@@ -19,22 +19,17 @@ use cyrusc_tast::{
     generics::{
         generic_type::GenericType,
         mapping_ctx::GenericMappingCtx,
-        monomorph::{MonomorphKey, SpecializedFuncEntry},
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
     sigs::{FuncSig, UnionSig},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField,
+        TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField,
     },
     types::*,
     *,
 };
-use std::{
-    collections::HashMap,
-    ops::{Deref, Range, RangeInclusive},
-    rc::Rc,
-};
+use std::{collections::HashMap, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_explicit_sema_ty(
@@ -212,7 +207,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let normalized_type = self.normalize_type(scope_id_opt, sema_ty.clone()?, typed_expr.loc.clone());
+        let normalized_type = self.normalize_type(scope_id_opt, sema_ty.clone()?, typed_expr.loc.clone(), true);
         typed_expr.sema_ty = Some(normalized_type.clone()?);
 
         if cfg!(debug_assertions) {
@@ -318,7 +313,8 @@ impl<'a> AnalysisContext<'a> {
         let current_func_clone = self.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc.clone());
-        lambda.return_type = self.normalize_type(scope_id_opt, lambda.return_type.clone(), lambda.loc.clone())?;
+        lambda.return_type =
+            self.normalize_type(scope_id_opt, lambda.return_type.clone(), lambda.loc.clone(), false)?;
         let params = typed_func_params_as_func_type_params(&lambda.params);
         let func_type = TypedFuncType {
             symbol_id: None,
@@ -606,9 +602,8 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let union_field = &union_sig.fields[union_field_idx];
-        let union_field_type = match self.normalize_type(scope_id_opt, union_field.ty.clone(), field_access.loc.clone())
-        {
+        let field = &union_sig.fields[union_field_idx];
+        let field_ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field_access.loc.clone(), false) {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
@@ -618,10 +613,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         field_access.field_index = Some(union_field_idx);
-        field_access.field_ty = Some(union_field_type);
+        field_access.field_ty = Some(field_ty.clone());
         field_access.object_symbol_id = Some(union_sig.symbol_id);
 
-        Some(union_field.ty.clone())
+        Some(field_ty)
     }
 
     fn analyze_unnamed_struct_field_access(
@@ -662,7 +657,8 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let field = &unnamed_struct_type.fields[field_idx];
-        let field_ty = match self.normalize_type(scope_id_opt, *field.field_ty.clone(), field_access.loc.clone()) {
+        let field_ty = match self.normalize_type(scope_id_opt, *field.field_ty.clone(), field_access.loc.clone(), false)
+        {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
@@ -703,7 +699,12 @@ impl<'a> AnalysisContext<'a> {
 
         let mut typed_struct_field = struct_fields.get(field_index).unwrap().clone();
         typed_struct_field.ty = self
-            .normalize_type(scope_id_opt, typed_struct_field.ty.clone(), field_access.loc.clone())
+            .normalize_type(
+                scope_id_opt,
+                typed_struct_field.ty.clone(),
+                field_access.loc.clone(),
+                false,
+            )
             .unwrap();
 
         if !self.validate_field_access(
@@ -1445,7 +1446,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         match param {
             TypedFuncParamKind::FuncParam(param) => {
-                let normalized = self.normalize_type(scope_id_opt, param.ty.clone(), param.loc.clone())?;
+                let normalized = self.normalize_type(scope_id_opt, param.ty.clone(), param.loc.clone(), false)?;
                 param.ty = normalized.clone();
                 Some(normalized)
             }
@@ -1454,6 +1455,7 @@ impl<'a> AnalysisContext<'a> {
                     scope_id_opt,
                     self_modifier.ty.clone().unwrap(),
                     self_modifier.loc.clone(),
+                    false,
                 )?;
                 Some(normalized)
             }
@@ -1588,7 +1590,7 @@ impl<'a> AnalysisContext<'a> {
             DiagLoc::new(loc.clone()),
         );
 
-        self.normalize_type(scope_id_opt, func_sig.return_type.clone(), loc)
+        self.normalize_type(scope_id_opt, func_sig.return_type.clone(), loc, false)
     }
 
     fn check_func_type_call(
@@ -1672,7 +1674,9 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let param_type = self.normalize_type(scope_id_opt, param.clone(), loc.clone()).unwrap();
+            let param_type = self
+                .normalize_type(scope_id_opt, param.clone(), loc.clone(), false)
+                .unwrap();
 
             let arg_type = match self.analyze_expr(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
@@ -1828,7 +1832,7 @@ impl<'a> AnalysisContext<'a> {
         var_type: SemanticType,
         loc: SourceLoc,
     ) -> Option<u32> {
-        let normalized = self.normalize_type(scope_id_opt, var_type, loc.clone())?;
+        let normalized = self.normalize_type(scope_id_opt, var_type, loc.clone(), false)?;
 
         match normalized {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
@@ -2372,11 +2376,15 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_array: &mut TypedArrayExpr,
     ) -> Option<SemanticType> {
-        typed_array.array_type =
-            match self.normalize_type(scope_id_opt, typed_array.array_type.clone(), typed_array.loc.clone()) {
-                Some(sema_ty) => sema_ty,
-                None => return None,
-            };
+        typed_array.array_type = match self.normalize_type(
+            scope_id_opt,
+            typed_array.array_type.clone(),
+            typed_array.loc.clone(),
+            false,
+        ) {
+            Some(sema_ty) => sema_ty,
+            None => return None,
+        };
 
         for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
             let argument_type = match self.analyze_expr(
@@ -2392,6 +2400,7 @@ impl<'a> AnalysisContext<'a> {
                 scope_id_opt,
                 *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
                 argument.loc.clone(),
+                false,
             ) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
@@ -2491,7 +2500,7 @@ impl<'a> AnalysisContext<'a> {
                 let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
 
                 match &typed_variable.ty {
-                    Some(sema_ty) => self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone()),
+                    Some(sema_ty) => self.normalize_type(scope_id_opt, sema_ty.clone(), loc.clone(), false),
                     None => {
                         let rhs = typed_variable.rhs.clone().unwrap();
                         self.analyze_expr(scope_id_opt, &mut rhs.clone(), None)
@@ -2509,7 +2518,7 @@ impl<'a> AnalysisContext<'a> {
 
         if sema_ty.is_some() {
             let normalized_type = self
-                .normalize_type(scope_id_opt, sema_ty.unwrap(), loc.clone())
+                .normalize_type(scope_id_opt, sema_ty.unwrap(), loc.clone(), false)
                 .unwrap();
 
             Some(normalized_type)
