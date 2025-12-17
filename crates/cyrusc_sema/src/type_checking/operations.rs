@@ -455,6 +455,10 @@ impl<'a> AnalysisContext<'a> {
                     Some(PlainType::Bool)
                 } else if let (SemanticType::Pointer(_), SemanticType::PlainType(PlainType::Null)) = (&lhs, &rhs) {
                     Some(PlainType::Bool)
+                } else if let (SemanticType::PlainType(PlainType::Bool), SemanticType::PlainType(PlainType::Bool)) =
+                    (&lhs, &rhs)
+                {
+                    Some(PlainType::Bool)
                 } else {
                     None
                 }

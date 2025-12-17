@@ -138,12 +138,22 @@ impl<'ll> IRBuilderCtx<'ll> {
             AnyTypeEnum::IntType(int_type) => {
                 let val = basic_value;
                 if val.is_int_value() {
-                    // int -> int
-                    AnyValueEnum::IntValue(
-                        self.llvmbuilder
-                            .build_int_cast(val.into_int_value(), int_type, "cast")
-                            .unwrap(),
-                    )
+                    let bit_width = val.into_int_value().get_type().get_bit_width();
+
+                    if bit_width == 1 {
+                        AnyValueEnum::IntValue(
+                            self.llvmbuilder
+                                .build_int_z_extend(val.into_int_value(), int_type, "bool_zext")
+                                .unwrap(),
+                        )
+                    } else {
+                        // int -> int
+                        AnyValueEnum::IntValue(
+                            self.llvmbuilder
+                                .build_int_cast(val.into_int_value(), int_type, "cast")
+                                .unwrap(),
+                        )
+                    }
                 } else if val.is_pointer_value() {
                     // ptr -> int
                     AnyValueEnum::IntValue(
@@ -183,7 +193,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                             .unwrap(),
                     )
                 } else {
-                    unreachable!();
+                    AnyValueEnum::FloatValue(
+                        self.llvmbuilder
+                            .build_float_cast(basic_value.into_float_value(), float_type, "cast")
+                            .unwrap(),
+                    )
                 }
             }
             AnyTypeEnum::PointerType(ptr_type) => {
