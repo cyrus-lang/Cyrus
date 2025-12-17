@@ -56,7 +56,11 @@ impl<'ll> IRBuilderCtx<'ll> {
             PlainType::Float64 => llvmctx.f64_type().as_any_type_enum(),
             PlainType::Float128 => llvmctx.f128_type().as_any_type_enum(),
             PlainType::Char => llvmctx.i8_type().as_any_type_enum(),
-            PlainType::Bool => llvmctx.bool_type().as_any_type_enum(),
+            PlainType::Bool => {
+                // Booleans are stored as i8 in memory for stable layout and ABI compatibility.
+                // i1 is reserved for logical operations only.
+                llvmctx.i8_type().as_any_type_enum()
+            }
             PlainType::Void => llvmctx.void_type().as_any_type_enum(),
             PlainType::Null => llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
         }

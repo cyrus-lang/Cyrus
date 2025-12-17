@@ -144,9 +144,11 @@ impl<'a> AnalysisContext<'a> {
             {
                 true
             }
-            
+
             // Any integer <-> float
-            (SemanticType::PlainType(v), SemanticType::PlainType(t)) if (v.is_integer() && t.is_float()) || (v.is_float() && t.is_integer()) => {
+            (SemanticType::PlainType(v), SemanticType::PlainType(t))
+                if (v.is_integer() && t.is_float()) || (v.is_float() && t.is_integer()) =>
+            {
                 true
             }
 
