@@ -20,7 +20,7 @@ pub enum SemanticType {
     Tuple(TypedTupleType),
     GenericType(GenericType),
     GenericParam(TypedIdentifier),
-    SelfType(TypedSelfType)
+    SelfType(TypedSelfType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -4,7 +4,7 @@ use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use cyrusc_sema::{analyze::AnalysisContext};
+use cyrusc_sema::analyze::AnalysisContext;
 use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use std::{
     env,

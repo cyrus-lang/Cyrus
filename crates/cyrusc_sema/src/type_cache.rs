@@ -1,6 +1,6 @@
+use cyrusc_tast::{SymbolID, types::SemanticType};
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
-use cyrusc_tast::{SymbolID, types::SemanticType};
 
 #[derive(Default)]
 pub struct TypeResolverCaches {

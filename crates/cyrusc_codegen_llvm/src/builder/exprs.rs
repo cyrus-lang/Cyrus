@@ -155,13 +155,37 @@ impl<'ll> IRBuilderCtx<'ll> {
                     val.into()
                 }
             }
+            AnyTypeEnum::FloatType(float_type) => {
+                if basic_value.is_int_value() {
+                    let is_signed = value
+                        .ty
+                        .as_plain()
+                        .and_then(|plain_type| Some(plain_type.is_signed()))
+                        .unwrap_or(false);
 
-            AnyTypeEnum::FloatType(float_type) => AnyValueEnum::FloatValue(
-                self.llvmbuilder
-                    .build_float_cast(basic_value.into_float_value(), float_type, "cast")
-                    .unwrap(),
-            ),
-
+                    if is_signed {
+                        AnyValueEnum::FloatValue(
+                            self.llvmbuilder
+                                .build_signed_int_to_float(basic_value.into_int_value(), float_type, "cast")
+                                .unwrap(),
+                        )
+                    } else {
+                        AnyValueEnum::FloatValue(
+                            self.llvmbuilder
+                                .build_unsigned_int_to_float(basic_value.into_int_value(), float_type, "cast")
+                                .unwrap(),
+                        )
+                    }
+                } else if basic_value.is_float_value() {
+                    AnyValueEnum::FloatValue(
+                        self.llvmbuilder
+                            .build_float_cast(basic_value.into_float_value(), float_type, "cast")
+                            .unwrap(),
+                    )
+                } else {
+                    unreachable!();
+                }
+            }
             AnyTypeEnum::PointerType(ptr_type) => {
                 let val = basic_value;
                 if val.is_pointer_value() {
@@ -182,7 +206,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     val.into()
                 }
             }
-
             _ => value.as_basic_value().into(),
         }
     }

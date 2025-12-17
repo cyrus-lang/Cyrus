@@ -51,7 +51,6 @@ fn print_diag(label: &str, msg: &str, color: Option<Colors>) {
     }
 }
 
-
 pub fn tui_compiled(file_name: String) {
     print_status("Compiled", Some(&file_name), Some(Colors::GreenFg));
 }

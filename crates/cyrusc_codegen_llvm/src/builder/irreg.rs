@@ -54,7 +54,7 @@ impl<'a> LocalIRValue<'a> {
             _ => None,
         }
     }
-    
+
     #[allow(unused)]
     pub fn as_lvalue(&self) -> Option<&PointerValue<'a>> {
         match self {

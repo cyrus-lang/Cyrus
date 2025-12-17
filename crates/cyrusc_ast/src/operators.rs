@@ -25,7 +25,7 @@ pub enum InfixOperator {
 pub enum PrefixOperator {
     Bang,
     Minus,
-    BitwiseNot
+    BitwiseNot,
 }
 
 #[derive(Debug, Clone, PartialEq)]

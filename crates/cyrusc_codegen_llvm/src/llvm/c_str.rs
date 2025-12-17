@@ -1,4 +1,7 @@
-use std::{borrow::Cow, ffi::{CStr, CString}};
+use std::{
+    borrow::Cow,
+    ffi::{CStr, CString},
+};
 
 pub(crate) fn to_c_str(mut s: &str) -> Cow<'_, CStr> {
     if s.is_empty() {

@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
         local_symbol.used = true;
         drop(local_scope);
     }
-    
+
     // pub(crate) fn mark_func_used(
     //     &mut self,
     //     local_scope_opt: Option<LocalScopeRef>,
