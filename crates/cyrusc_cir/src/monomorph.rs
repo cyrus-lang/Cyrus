@@ -67,7 +67,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let specialized_func_entry = monomorph_registry
             .get_specialized_func_instance(monomorph_key.clone())
             .unwrap();
-        
+
         let cir_func_body = self.lower_body(&specialized_func_entry.body);
 
         drop(monomorph_registry);

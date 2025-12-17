@@ -1,13 +1,13 @@
-mod const_fold;
 pub mod analyze;
+mod const_fold;
 mod diagnostics;
+mod entrypoints;
 mod flowstate;
 mod format;
 mod generics;
+mod lowerings;
 mod nameconv;
 mod normalizer;
 pub mod type_cache;
 mod type_checking;
 mod used_marker;
-mod entrypoints;
-mod lowerings;

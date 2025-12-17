@@ -48,11 +48,10 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
         prefix_expr: &mut TypedPrefixExpr,
     ) -> Option<TypedExprStmt> {
-        let operand_type =
-            match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
-                Some(sema_ty) => sema_ty,
-                None => return None,
-            };
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
+            Some(sema_ty) => sema_ty,
+            None => return None,
+        };
 
         let null_literal_expr = TypedExprStmt {
             kind: TypedExprKind::Literal(TypedLiteralExpr {

@@ -973,7 +973,7 @@ impl<'resolver> CIRWalk<'resolver> {
             );
 
             args.insert(0, operand_expr);
-        } 
+        }
 
         if !method_call.is_instance_method_operand && resolved_method.is_instance_method() {
             // explicit instance method

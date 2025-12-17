@@ -27,12 +27,11 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let Some(generic_type) = generic_type_opt.clone() else {
             return None;
-        }; 
+        };
 
         let Some(generic_param) = sema_ty.as_generic_param() else {
             return None;
         };
-
 
         let ctx = generic_type.mapping_ctx.borrow();
 

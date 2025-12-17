@@ -14,9 +14,9 @@ use std::rc::Rc;
 mod common;
 mod diagnostics;
 mod exprs;
+mod modifiers;
 mod prec;
 mod stmts;
-mod modifiers;
 
 /// Parses the program from the given file path.
 ///

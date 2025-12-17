@@ -1,10 +1,10 @@
 pub mod builder;
-mod exprs;
-mod funcs;
-mod types;
-mod values;
-mod irreg;
 mod control_flow;
 mod enums;
-mod runtime;
+mod exprs;
+mod funcs;
 mod intrinsics;
+mod irreg;
+mod runtime;
+mod types;
+mod values;

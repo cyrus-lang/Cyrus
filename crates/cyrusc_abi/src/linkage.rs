@@ -6,5 +6,7 @@ pub enum Linkage {
 }
 
 impl Linkage {
-    pub fn is_exclusive(&self) -> bool { true }
+    pub fn is_exclusive(&self) -> bool {
+        true
+    }
 }

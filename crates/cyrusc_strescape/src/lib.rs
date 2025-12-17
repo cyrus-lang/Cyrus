@@ -147,7 +147,7 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
 }
 
 pub fn escape_string(s: &str) -> String {
-    let mut result = String::with_capacity(s.len()); 
+    let mut result = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
             '\n' => result.push_str("\\n"),

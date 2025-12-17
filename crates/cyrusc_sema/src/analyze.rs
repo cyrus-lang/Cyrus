@@ -1856,11 +1856,15 @@ impl<'a> AnalysisContext<'a> {
             DiagLoc::new(typed_func_decl.loc.clone()),
         );
 
-        typed_func_decl.return_type =
-            match self.normalize_type(None, typed_func_decl.return_type.clone(), typed_func_decl.loc.clone(), false) {
-                Some(sema_ty) => sema_ty,
-                None => return,
-            };
+        typed_func_decl.return_type = match self.normalize_type(
+            None,
+            typed_func_decl.return_type.clone(),
+            typed_func_decl.loc.clone(),
+            false,
+        ) {
+            Some(sema_ty) => sema_ty,
+            None => return,
+        };
 
         self.normalize_func_params(&mut typed_func_decl.params, typed_func_decl.loc.clone());
 
@@ -1903,11 +1907,11 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedefStmt) {
-        typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone(), true)
-        {
-            Some(sema_ty) => sema_ty,
-            None => return,
-        };
+        typed_typedef.ty =
+            match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone(), true) {
+                Some(sema_ty) => sema_ty,
+                None => return,
+            };
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {

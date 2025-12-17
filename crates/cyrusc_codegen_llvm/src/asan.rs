@@ -59,7 +59,7 @@ fn add_asan_metadata_flags_to_module<'ctx>(opts: &CodeGenOptions, context: &'ctx
 
         if module.get_flag(name).is_some() {
             // skip if flag already exists
-            continue; 
+            continue;
         }
 
         let flag_value = context.i32_type().const_int(1, false);

@@ -95,7 +95,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
                 self.normalize_type(scope_id_opt, resolved, loc.clone(), false)
-            },
+            }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
                 let sym = match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
                     Some(sym) => sym,

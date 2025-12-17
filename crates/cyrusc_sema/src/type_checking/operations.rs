@@ -76,8 +76,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let operand_inner_type = address_of.operand.sema_ty.clone();
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut address_of.operand, operand_inner_type)
-        {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut address_of.operand, operand_inner_type) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
@@ -172,7 +171,7 @@ impl<'a> AnalysisContext<'a> {
                 scope_id_opt,
                 SemanticType::UnresolvedSymbol(symbol_id),
                 sizeof_expr.loc.clone(),
-                false
+                false,
             )?;
         }
 
@@ -293,8 +292,7 @@ impl<'a> AnalysisContext<'a> {
         unary_expr: &mut TypedUnaryExpr,
     ) -> Option<SemanticType> {
         let operand_inner_type = unary_expr.operand.sema_ty.clone();
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut unary_expr.operand, operand_inner_type)
-        {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut unary_expr.operand, operand_inner_type) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };
