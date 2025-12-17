@@ -3,6 +3,7 @@ use crate::{
     builder::{
         control_flow::CFEntry,
         irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
+        values::{InternalValue, InternalValueKind},
     },
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
@@ -151,11 +152,13 @@ impl<'ll> IRBuilderCtx<'ll> {
         if let Some(expr) = &cir_var.expr {
             let lvalue = self.emit_expr(expr);
             let rvalue = self.load_rvalue(lvalue);
-            self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+            self.emit_store(ptr, rvalue, cir_var.ty.clone());
         } else {
             // zero init
-            let value = ty.const_zero();
-            self.llvmbuilder.build_store(ptr, value).unwrap();
+            let zero_internal_value =
+                InternalValue::new(cir_var.ty.clone(), InternalValueKind::RValue(ty.const_zero()));
+                
+            self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
         }
 
         let mut irreg = self.irreg.borrow_mut();

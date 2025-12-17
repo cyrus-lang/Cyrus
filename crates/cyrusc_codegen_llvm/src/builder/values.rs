@@ -40,6 +40,32 @@ impl<'a> InternalValue<'a> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRTy) {
+        let target_ty: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty).try_into().unwrap();
+
+        if let BasicTypeEnum::IntType(int_ty) = target_ty {
+            let rvalue_int_value = rvalue.as_basic_value().into_int_value();
+            let rvalue_bit_width = rvalue_int_value.get_type().get_bit_width();
+            let target_bit_width = int_ty.get_bit_width();
+
+            if rvalue_bit_width != target_bit_width {
+                let signed = rvalue.ty.as_plain().map_or(false, |plain| plain.is_signed());
+                let widened = if signed {
+                    self.llvmbuilder
+                        .build_int_s_extend(rvalue_int_value, int_ty, "widen_store")
+                        .unwrap()
+                } else {
+                    self.llvmbuilder
+                        .build_int_z_extend(rvalue_int_value, int_ty, "widen_store")
+                        .unwrap()
+                };
+                rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
+            }
+        }
+
+        self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+    }
+
     pub(crate) fn widen_int_pair(
         &self,
         lhs: InternalValue<'ll>,
