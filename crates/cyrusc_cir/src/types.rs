@@ -49,6 +49,20 @@ pub struct CIREnumTy {
 }
 
 impl CIRTy {
+    pub fn is_bool(&self) -> bool {
+        match self {
+            CIRTy::PlainType(PlainType::Bool) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        match self.get_const_inner() {
+            CIRTy::PlainType(plain_type) => plain_type.is_integer(),
+            _ => false,
+        }
+    }
+
     pub fn as_tuple(&self) -> Option<CIRTupleTy> {
         match self {
             CIRTy::Tuple(tuple) => Some(tuple.clone()),
@@ -108,6 +122,13 @@ impl CIRTy {
         match self {
             CIRTy::Pointer(inner) => Some(&inner),
             _ => None,
+        }
+    }
+
+    pub fn get_const_inner(&self) -> &CIRTy {
+        match self {
+            CIRTy::Const(inner) => inner.get_const_inner(),
+            other => other,
         }
     }
 }

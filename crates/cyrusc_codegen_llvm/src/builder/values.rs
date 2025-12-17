@@ -1,8 +1,8 @@
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_cir::types::CIRTy;
+use cyrusc_cir::{CIRExpr, types::CIRTy};
 use inkwell::{
     types::BasicTypeEnum,
-    values::{BasicValueEnum, FunctionValue, PointerValue},
+    values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,79 @@ impl<'a> InternalValue<'a> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub fn load_rvalue(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
+    pub(crate) fn widen_int_pair(
+        &self,
+        lhs: InternalValue<'ll>,
+        rhs: InternalValue<'ll>,
+    ) -> (InternalValue<'ll>, InternalValue<'ll>) {
+        let lhs_iv = lhs.as_basic_value().into_int_value();
+        let rhs_iv = rhs.as_basic_value().into_int_value();
+
+        let lhs_bw = lhs_iv.get_type().get_bit_width();
+        let rhs_bw = rhs_iv.get_type().get_bit_width();
+
+        // skip if same width
+        if lhs_bw == rhs_bw {
+            return (lhs, rhs);
+        }
+
+        // target width
+        let target_bw = lhs_bw.max(rhs_bw);
+        let target_ty = self.llvmctx.custom_width_int_type(target_bw);
+
+        let widen = |v: InternalValue<'ll>, iv: IntValue<'ll>| {
+            let signed = v.ty.as_plain().unwrap().is_signed();
+            let widened = if signed {
+                self.llvmbuilder.build_int_s_extend(iv, target_ty, "sext").unwrap()
+            } else {
+                self.llvmbuilder.build_int_z_extend(iv, target_ty, "zext").unwrap()
+            };
+
+            InternalValue::new(v.ty.clone(), InternalValueKind::RValue(widened.into()))
+        };
+
+        let lhs_w = if lhs_bw < target_bw { widen(lhs, lhs_iv) } else { lhs };
+        let rhs_w = if rhs_bw < target_bw { widen(rhs, rhs_iv) } else { rhs };
+
+        (lhs_w, rhs_w)
+    }
+
+    pub(crate) fn internal_value_as_bool_i1(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
+        assert!(internal_value.ty.is_bool());
+
+        let basic_value = internal_value.as_basic_value();
+        let int_value = basic_value.into_int_value();
+        let i1_int_value = self.int_value_as_bool_i1(int_value);
+
+        InternalValue::new(
+            internal_value.ty.clone(),
+            InternalValueKind::RValue(i1_int_value.into()),
+        )
+    }
+
+    fn int_value_as_bool_i1(&self, int_value: IntValue<'ll>) -> IntValue<'ll> {
+        let bit_width = int_value.get_type().get_bit_width();
+        if bit_width == 1 {
+            int_value
+        } else {
+            self.llvmbuilder
+                .build_int_truncate(int_value, self.llvmctx.bool_type(), "bool_trunc")
+                .unwrap()
+        }
+    }
+
+    pub(crate) fn emit_cond(&mut self, cir_expr: &CIRExpr) -> IntValue<'ll> {
+        let lvalue = self.emit_expr(cir_expr);
+        let rvalue = self.load_rvalue(lvalue);
+
+        assert!(rvalue.ty.is_bool());
+
+        let basic_value = rvalue.as_basic_value();
+        let int_value = basic_value.into_int_value();
+        self.int_value_as_bool_i1(int_value)
+    }
+
+    pub(crate) fn load_rvalue(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
         match internal_value.kind {
             InternalValueKind::LValue(pointer_value) => {
                 let ty: BasicTypeEnum<'ll> = self.emit_ty(internal_value.ty.clone()).try_into().unwrap();

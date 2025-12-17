@@ -324,13 +324,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         if let (Some(cond_expr), Some(cond_bb)) = (&for_stmt.cond, cond_block) {
             self.emit_block(cond_bb);
-            let lvalue = self.emit_expr(cond_expr);
-            let rvalue = self.load_rvalue(lvalue);
-            let cond_val = rvalue.as_basic_value().into_int_value();
+            let cond = self.emit_cond(cond_expr);
 
             if cond_bb.get_terminator().is_none() {
                 self.llvmbuilder
-                    .build_conditional_branch(cond_val, body_block, exit_block)
+                    .build_conditional_branch(cond, body_block, exit_block)
                     .unwrap();
             }
         }
@@ -387,14 +385,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmbuilder.position_at_end(cond_block);
         self.blockreg.cur_block = Some(cond_block);
 
-        let lvalue = self.emit_expr(&while_stmt.cond);
-        let rvalue = self.load_rvalue(lvalue);
-        let cond_val = rvalue.as_basic_value().into_int_value();
+        let cond = self.emit_cond(&while_stmt.cond);
 
         let cond_block_now = self.blockreg.cur_block.unwrap();
         if cond_block_now.get_terminator().is_none() {
             self.llvmbuilder
-                .build_conditional_branch(cond_val, body_block, exit_block)
+                .build_conditional_branch(cond, body_block, exit_block)
                 .unwrap();
         }
 
@@ -462,11 +458,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             else_block = self.new_basic_block("if.else");
         }
 
-        let cond_val: IntValue<'ll> = {
-            let lvalue = self.emit_expr(&if_stmt.cond);
-            let rvalue = self.load_rvalue(lvalue);
-            rvalue.as_basic_value().into_int_value()
-        };
+        let cond = self.emit_cond(&if_stmt.cond);
 
         let mut llvm_cur_block = self
             .blockreg
@@ -482,8 +474,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let mut exit_in_use = true;
 
         unsafe {
-            if LLVMIsAConstantInt(cond_val.as_value_ref()) != std::ptr::null_mut() && then_block != else_block {
-                if LLVMConstIntGetZExtValue(cond_val.as_value_ref()) != 0 {
+            if LLVMIsAConstantInt(cond.as_value_ref()) != std::ptr::null_mut() && then_block != else_block {
+                if LLVMConstIntGetZExtValue(cond.as_value_ref()) != 0 {
                     self.llvm_emit_br(then_block.as_mut_ptr());
                     else_block = exit_block;
                 } else {
@@ -494,7 +486,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             } else {
                 if then_block != else_block {
                     self.llvm_emit_cond_br(
-                        cond_val.as_value_ref(),
+                        cond.as_value_ref(),
                         then_block.as_mut_ptr(),
                         else_block.as_mut_ptr(),
                     );
