@@ -379,8 +379,12 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_expr(&infix_expr.lhs);
         let rhs_lvalue = self.emit_expr(&infix_expr.rhs);
-        let lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
-        let rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
+        let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
+        let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
+        
+        if lhs_rvalue.ty.is_integer() && rhs_rvalue.ty.is_integer() {
+            (lhs_rvalue, rhs_rvalue) = self.widen_int_pair(lhs_rvalue, rhs_rvalue);
+        }
 
         let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
@@ -797,10 +801,13 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_prefix_expr(&mut self, prefix_expr: &CIRPrefixExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&prefix_expr.operand);
-        let rvalue = self.load_rvalue(lvalue);
+        let mut rvalue = self.load_rvalue(lvalue);
 
         match prefix_expr.op {
-            PrefixOperator::Bang => self.build_logical_not(rvalue),
+            PrefixOperator::Bang => {
+                rvalue = self.internal_value_as_bool_i1(rvalue);
+                self.build_logical_not(rvalue)
+            }
             PrefixOperator::Minus => self.build_negate(rvalue),
             PrefixOperator::BitwiseNot => self.build_bitwise_not(rvalue),
         }
