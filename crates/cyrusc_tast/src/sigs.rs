@@ -110,3 +110,15 @@ impl PartialEq for FuncSig {
         self.name == other.name && self_params == other_params && self.return_type == other.return_type
     }
 }
+
+impl FuncSig {
+    pub fn is_instance_method(&self) -> bool {
+        match self.params.list.first() {
+            Some(typed_func_param_kind) => match typed_func_param_kind {
+                TypedFuncParamKind::FuncParam(..) => false,
+                TypedFuncParamKind::SelfModifier(..) => true,
+            },
+            None => false,
+        }
+    }
+}

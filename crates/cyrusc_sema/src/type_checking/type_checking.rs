@@ -29,7 +29,10 @@ use cyrusc_tast::{
     types::*,
     *,
 };
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    rc::{Rc, Weak},
+};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_explicit_sema_ty(
@@ -2017,7 +2020,7 @@ impl<'a> AnalysisContext<'a> {
 
         let sym = match self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), object_symbol_id)
         {
             Some(sym) => sym,
             None => {
@@ -2095,7 +2098,13 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        self.analyze_regular_method_call(scope_id_opt, method_call, object_id, method_call_operand_ty)
+        self.analyze_regular_method_call(
+            scope_id_opt,
+            local_scope_opt,
+            method_call,
+            object_id,
+            method_call_operand_ty,
+        )
     }
 
     fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
@@ -2106,6 +2115,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
         method_call: &mut TypedMethodCall,
         object_id: SymbolID,
         method_call_operand_ty: SemanticType,
@@ -2166,7 +2176,7 @@ impl<'a> AnalysisContext<'a> {
 
         let first_param_opt = resolved_method.func_sig.params.list.first();
 
-        let is_instance_method = resolved_method.is_instance_method();
+        let is_instance_method = resolved_method.func_sig.is_instance_method();
 
         // invalid if static method called on instance
         let invalid_call = !is_instance_method && method_call.is_instance_method_operand;
@@ -2199,11 +2209,35 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
+        let instance_method_call = is_instance_method && method_call.is_instance_method_operand;
         let mut generic_type_opt = method_call_operand_ty.as_generic_type().cloned();
 
-        let instance_method_call = resolved_method.is_instance_method() && method_call.is_instance_method_operand;
+        // init method generic mapping ctx
+        let (_, mut method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            local_scope_opt.clone(),
+            resolved_method.symbol_id,
+            &method_call.type_args,
+            None,
+            resolved_method.func_sig.generic_params.as_ref(),
+            false,
+            method_call.loc.clone(),
+        ) {
+            Ok(opt) => opt?,
+            Err(diag) => {
+                self.reporter.report(diag);
+                return None;
+            }
+        };
 
-        if !method_call.is_instance_method_operand && resolved_method.is_instance_method() {
+        let method_mapping_ctx = {
+            if let Some(method_generic_type) = &mut method_generic_type_opt {
+                Some(method_generic_type.mapping_ctx.borrow().clone())
+            } else {
+                None
+            }
+        };
+
+        if !method_call.is_instance_method_operand && is_instance_method {
             // explicit instance method
             // inferring self type from first argument type
             if let Some(mut expr) = method_call.args.first().cloned() {
@@ -2227,6 +2261,14 @@ impl<'a> AnalysisContext<'a> {
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
+            {
+                let mut ctx = generic_type.mapping_ctx.borrow_mut();
+                if let Some(method_ctx) = method_mapping_ctx {
+                    let weak = Rc::downgrade(&Rc::new(method_ctx));
+                    ctx.parent = Some(weak);
+                }
+            }
+
             resolved_method.func_sig =
                 substitute_func_sig(&resolved_method.func_sig, generic_type.mapping_ctx.clone()).unwrap();
 
