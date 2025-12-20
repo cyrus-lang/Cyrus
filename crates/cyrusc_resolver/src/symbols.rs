@@ -3,7 +3,7 @@ use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_tast::{
     LabelID, ModuleID, ScopeID, SymbolID,
-    stmts::{TypedBlockStmt, TypedFuncParamKind, TypedGenericParamsList, TypedVarStmt},
+    stmts::{TypedBlockStmt, TypedGenericParamsList, TypedVarStmt},
 };
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -576,18 +576,6 @@ impl SymbolEntry {
         match self.kind {
             SymbolEntryKind::ProxiedSymbol(module_id, symbol_id) => Some((module_id, symbol_id)),
             _ => None,
-        }
-    }
-}
-
-impl ResolvedMethod {
-    pub fn is_instance_method(&self) -> bool {
-        match self.func_sig.params.list.first() {
-            Some(typed_func_param_kind) => match typed_func_param_kind {
-                TypedFuncParamKind::FuncParam(..) => false,
-                TypedFuncParamKind::SelfModifier(..) => true,
-            },
-            None => false,
         }
     }
 }

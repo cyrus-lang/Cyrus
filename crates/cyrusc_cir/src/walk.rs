@@ -6,6 +6,7 @@ use cyrusc_ast::{LiteralKind, SelfModifierKind};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, generate_symbol_id};
 use cyrusc_resolver::{Resolver, set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig};
 use cyrusc_tast::generics::generic_type::GenericType;
+use cyrusc_tast::generics::monomorph::MonomorphEntry;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
@@ -929,6 +930,36 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
+    fn get_monomorphized_func_sig(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        monomorph_key: &MonomorphKey,
+    ) -> Option<FuncSig> {
+        {
+            let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
+            let entry = monomorph_registry.get(monomorph_key).unwrap();
+            match entry {
+                MonomorphEntry::Func(monomorph_func_entry) => {
+                    let sym = self
+                        .resolver
+                        .resolve_local_or_global_symbol(local_scope_opt.clone(), monomorph_func_entry.base_symbol)
+                        .unwrap();
+
+                    let func_sig = sym
+                        .as_func()
+                        .map(|resolved_func| resolved_func.func_sig.clone())
+                        .or(sym.as_method().map(|resolved_method| resolved_method.func_sig.clone()))
+                        .unwrap();
+
+                    return substitute_func_sig(
+                        &func_sig,
+                        Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+                    );
+                }
+            }
+        }
+    }
+
     fn lower_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -941,27 +972,31 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty));
 
-        let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
-            .unwrap();
+        let mut func_sig: FuncSig;
+        if let Some(monomorph_key) = &method_call.monomorph_key {
+            func_sig = self.get_monomorphized_func_sig(local_scope_opt.clone(), monomorph_key).unwrap();
+        } else {
+            let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
 
-        let mut resolved_method = sym.as_method().unwrap().clone();
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
+                .unwrap();
+
+            func_sig = sym.as_method().unwrap().clone().func_sig;
+        }
 
         let operand_ty = method_call.operand.sema_ty.clone().unwrap();
-
         let is_generic = operand_ty.as_generic_type().is_some();
-
-        let first_param_opt = resolved_method.func_sig.params.list.first().cloned();
+        let first_param_opt = func_sig.params.list.first().cloned();
 
         if is_generic {
-            self.lower_generic_object_self_modifier(&operand_ty, &mut resolved_method.func_sig.params);
+            self.lower_generic_object_self_modifier(&operand_ty, &mut func_sig.params);
         }
 
         let mut args: Vec<CIRExpr> = Vec::new();
 
-        if resolved_method.is_instance_method() && method_call.is_instance_method_operand {
+        if func_sig.is_instance_method() && method_call.is_instance_method_operand {
             let first_param = first_param_opt.unwrap();
             let self_modifier = first_param.as_self_modifier().unwrap();
 
@@ -975,12 +1010,12 @@ impl<'resolver> CIRWalk<'resolver> {
             args.insert(0, operand_expr);
         }
 
-        if !method_call.is_instance_method_operand && resolved_method.is_instance_method() {
+        if !method_call.is_instance_method_operand && func_sig.is_instance_method() {
             // explicit instance method
             // inferring self type from first argument type
             if let Some(expr) = method_call.args.first().cloned() {
                 let sema_ty = expr.sema_ty.clone().unwrap();
-                set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &sema_ty);
+                set_self_modifier_type_in_func_sig(&mut func_sig, &sema_ty);
                 self.current_self_ty = Some(self.lower_sema_ty(scope_id_opt, &sema_ty));
             }
         }
@@ -997,7 +1032,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let cir_expr_kind;
         if let Some(monomorph_key) = &method_call.monomorph_key {
-            self.insert_monomorph_func_instance(scope_id_opt, monomorph_key, &resolved_method.func_sig);
+            self.insert_monomorph_func_instance(scope_id_opt, monomorph_key, &func_sig);
 
             cir_expr_kind = CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
                 monomorph_key: monomorph_key.clone(),
@@ -1005,7 +1040,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 ret_ty,
             })
         } else {
-            let func_decl = typed_func_decl_from_func_sig(&resolved_method.func_sig);
+            let func_decl = typed_func_decl_from_func_sig(&func_sig);
             let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
 
             let operand = Box::new(CIRExpr {
