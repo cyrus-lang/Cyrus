@@ -16,7 +16,7 @@ use cyrusc_tast::{
         ValueCategory,
     },
     format::format_sema_ty,
-    generics::{monomorph::MonomorphRegistry, substitute::substitute_enum_sig},
+    generics::{mapping_ctx::GenericMappingCtx, monomorph::MonomorphRegistry, substitute::substitute_enum_sig},
     sigs::{EnumSig, FuncSig},
     stmts::*,
     types::{PlainType, SemanticType, TypedFuncType},
@@ -71,11 +71,13 @@ pub struct AnalysisContext<'a> {
     pub ty_caches: TypeResolverCaches,
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_self: Option<SemanticType>,
+    pub(crate) current_obj_operand_ty: Option<SemanticType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
     pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    pub(crate) mapping_ctx_arena: Vec<Rc<GenericMappingCtx>>,
     control_stack: Vec<ControlContext>,
 }
 
@@ -99,11 +101,13 @@ impl<'a> AnalysisContext<'a> {
             control_stack: Vec::new(),
             current_func: None,
             current_self: None,
+            current_obj_operand_ty: None,
             current_method_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
             disable_warnings,
             monomorph_registry,
+            mapping_ctx_arena: Vec::new(),
         }
     }
 

@@ -31,6 +31,7 @@ pub(crate) struct CIRWalk<'resolver> {
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'resolver Resolver,
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    pub(crate) current_obj_operand_ty: Option<SemanticType>,
 }
 
 impl<'resolver> CIRWalk<'resolver> {
@@ -48,6 +49,7 @@ impl<'resolver> CIRWalk<'resolver> {
             cir_monomorph_registry,
             mangling,
             current_self_ty: None,
+            current_obj_operand_ty: None,
         }
     }
 
@@ -967,6 +969,7 @@ impl<'resolver> CIRWalk<'resolver> {
         sym: &LocalOrGlobalSymbol,
         method_call: &TypedMethodCall,
     ) -> CIRExprKind {
+        self.current_obj_operand_ty = Some(method_call.operand.sema_ty.clone().unwrap());
         self.current_self_ty = method_call
             .self_ty
             .clone()
@@ -974,7 +977,9 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let mut func_sig: FuncSig;
         if let Some(monomorph_key) = &method_call.monomorph_key {
-            func_sig = self.get_monomorphized_func_sig(local_scope_opt.clone(), monomorph_key).unwrap();
+            func_sig = self
+                .get_monomorphized_func_sig(local_scope_opt.clone(), monomorph_key)
+                .unwrap();
         } else {
             let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
 
@@ -1451,6 +1456,18 @@ impl<'resolver> CIRWalk<'resolver> {
                 }
             }
             SemanticType::GenericParam(generic_param) => {
+                if let Some(sema_ty) = self.current_obj_operand_ty.clone() {
+                    if let Some(generic_type) = sema_ty.as_generic_type() {
+                        {
+                            let mapping_ctx = generic_type.mapping_ctx.borrow();
+                            return mapping_ctx
+                                .get_with_name(&generic_param.name)
+                                .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty))
+                                .unwrap();
+                        }
+                    }
+                }
+
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
         }
