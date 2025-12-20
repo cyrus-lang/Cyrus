@@ -1287,6 +1287,24 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_generics_params(&mut self, generic_params: &TypedGenericParamsList) {
+        let mut collected_names: Vec<String> = Vec::new();
+        for generic_param in &generic_params.list {
+            if collected_names.contains(&generic_param.param_name.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateGenericParam {
+                        param_name: generic_param.param_name.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(generic_param.param_name.loc.clone())),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+            }
+
+            collected_names.push(generic_param.param_name.name.clone());
+        }
+    }
+
     pub(crate) fn analyze_struct(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1307,6 +1325,10 @@ impl<'a> AnalysisContext<'a> {
                     }
                 );
             }
+        }
+
+        if let Some(generic_params) = &typed_struct.generic_params {
+            self.analyze_generics_params(generic_params);
         }
 
         self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
@@ -1395,6 +1417,10 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        if let Some(generic_params) = &typed_union.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
+
         self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
             typed_union.symbol_id,
         )));
@@ -1472,6 +1498,10 @@ impl<'a> AnalysisContext<'a> {
                     }
                 );
             }
+        }
+
+        if let Some(generic_params) = &typed_enum.generic_params {
+            self.analyze_generics_params(generic_params);
         }
 
         self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
@@ -1611,37 +1641,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_any_func_def(
-        &mut self,
-        symbol_id: SymbolID,
-        return_type: &mut SemanticType,
-        params: &mut TypedFuncParams,
-        body: &mut TypedBlockStmt,
-        is_generic_func: bool,
-        is_public: bool,
-        loc: SourceLoc,
-    ) {
-        self.current_func = Some(TypedFuncType {
-            symbol_id: Some(symbol_id),
-            def_module_id: Some(self.module_id),
-            params: typed_func_params_as_func_type_params(params),
-            return_type: Box::new(return_type.clone()),
-            is_public,
-            loc: loc.clone(),
-        });
-
-        *return_type = match self.normalize_type(None, return_type.clone(), loc.clone(), false) {
-            Some(sema_ty) => sema_ty,
-            None => return,
-        };
-
-        if !is_generic_func {
-            self.analyze_func_body(body, &return_type);
-        }
-
-        self.normalize_func_params(params, loc);
-    }
-
     fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
         let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
 
@@ -1740,24 +1739,44 @@ impl<'a> AnalysisContext<'a> {
             entry_points.push(typed_func_def.loc.clone());
         }
 
-        if typed_func_def.modifiers.vis.is_public() {
-            self.mark_symbol_used_once(self.module_id, typed_func_def.symbol_id);
-        }
-
+        let is_public = typed_func_def.modifiers.vis.is_public();
         let is_generic_func = typed_func_def.generic_params.is_some();
 
-        self.analyze_any_func_def(
-            typed_func_def.symbol_id,
-            &mut typed_func_def.return_type,
-            &mut typed_func_def.params,
-            &mut typed_func_def.body,
-            is_generic_func,
-            typed_func_def.modifiers.vis.is_public(),
-            typed_func_def.loc.clone(),
-        );
+        if let Some(generic_params) = &typed_func_def.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
 
-        update_global_symbol!(self, typed_func_def.module_id, typed_func_def.symbol_id,
-            SymbolEntryKind::Func(resolved_func) => resolved_func, {
+        self.current_func = Some(TypedFuncType {
+            symbol_id: Some(typed_func_def.symbol_id),
+            def_module_id: Some(self.module_id),
+            params: typed_func_params_as_func_type_params(&typed_func_def.params),
+            return_type: Box::new(typed_func_def.return_type.clone()),
+            is_public,
+            loc: typed_func_def.loc.clone(),
+        });
+
+        self.normalize_func_params(&mut typed_func_def.params, typed_func_def.loc.clone());
+
+        typed_func_def.return_type = match self.normalize_type(
+            None,
+            typed_func_def.return_type.clone(),
+            typed_func_def.loc.clone(),
+            false,
+        ) {
+            Some(sema_ty) => sema_ty,
+            None => return,
+        };
+
+        if !is_generic_func {
+            self.analyze_func_body(&mut typed_func_def.body, &typed_func_def.return_type);
+        }
+
+        update_global_symbol!(
+            self,
+            typed_func_def.module_id,
+            typed_func_def.symbol_id,
+            SymbolEntryKind::Func(resolved_func) => resolved_func,
+            {
                 resolved_func.func_sig.params = typed_func_def.params.clone();
                 resolved_func.func_sig.return_type = typed_func_def.return_type.clone();
             }
@@ -1845,6 +1864,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDeclStmt) {
+        if let Some(generic_params) = &typed_func_decl.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
+
         self.check_duplicate_param_names(
             &typed_func_decl.params.list,
             typed_func_decl.params.variadic.as_ref(),
