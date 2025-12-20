@@ -29,10 +29,7 @@ use cyrusc_tast::{
     types::*,
     *,
 };
-use std::{
-    collections::HashMap,
-    rc::{Rc, Weak},
-};
+use std::{collections::HashMap, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_explicit_sema_ty(
@@ -1835,13 +1832,8 @@ impl<'a> AnalysisContext<'a> {
         var_type: SemanticType,
         loc: SourceLoc,
     ) -> Option<u32> {
-        let normalized = self.normalize_type(scope_id_opt, var_type, loc.clone(), false)?;
-
-        match normalized {
-            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-            SemanticType::Pointer(sema_ty) => self.extract_object_symbol_id(scope_id_opt, *sema_ty, loc),
-            _ => None,
-        }
+        self.normalize_type(scope_id_opt, var_type, loc.clone(), false)?
+            .get_pure_symbol_id()
     }
 
     fn maybe_enum_variant_constructor_from_field_access(
@@ -2109,7 +2101,13 @@ impl<'a> AnalysisContext<'a> {
 
     fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
         self.current_self = Some(sema_ty.clone());
+        self.current_obj_operand_ty = Some(sema_ty.clone());
         method_call.self_ty = Some(sema_ty.clone());
+    }
+
+    fn clear_method_call_self_type(&mut self) {
+        self.current_self = None;
+        self.current_obj_operand_ty = None;
     }
 
     fn analyze_regular_method_call(
@@ -2151,6 +2149,7 @@ impl<'a> AnalysisContext<'a> {
                     location: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: None,
                 });
+                self.clear_method_call_self_type();
                 return None;
             }
         };
@@ -2169,6 +2168,7 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(method_call.loc.clone())),
                 hint: None,
             });
+            self.clear_method_call_self_type();
             return None;
         }
 
@@ -2191,6 +2191,7 @@ impl<'a> AnalysisContext<'a> {
                     format_sema_ty(method_call_operand_ty, &(self.symbol_formatter)(scope_id_opt))
                 )),
             });
+            self.clear_method_call_self_type();
             return None;
         }
 
@@ -2206,6 +2207,7 @@ impl<'a> AnalysisContext<'a> {
             &resolved_method,
             method_call.loc.clone(),
         ) {
+            self.clear_method_call_self_type();
             return None;
         }
 
@@ -2225,6 +2227,7 @@ impl<'a> AnalysisContext<'a> {
             Ok(opt) => opt?,
             Err(diag) => {
                 self.reporter.report(diag);
+                self.clear_method_call_self_type();
                 return None;
             }
         };
@@ -2264,8 +2267,10 @@ impl<'a> AnalysisContext<'a> {
             {
                 let mut ctx = generic_type.mapping_ctx.borrow_mut();
                 if let Some(method_ctx) = method_mapping_ctx {
-                    let weak = Rc::downgrade(&Rc::new(method_ctx));
-                    ctx.parent = Some(weak);
+                    let method_ctx = Rc::new(method_ctx);
+                    self.mapping_ctx_arena.push(method_ctx.clone());
+
+                    ctx.parent = Some(Rc::downgrade(&method_ctx));
                 }
             }
 
@@ -2275,6 +2280,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(generic_params) = resolved_method.func_sig.generic_params.clone() {
                 if let Err(diag) = generic_type.finalize(generic_params, (self.symbol_formatter)(scope_id_opt)) {
                     self.reporter.report(diag);
+                    self.clear_method_call_self_type();
                     return None;
                 }
             }

@@ -381,7 +381,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let rhs_lvalue = self.emit_expr(&infix_expr.rhs);
         let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
         let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
-        
+
         if lhs_rvalue.ty.is_integer() && rhs_rvalue.ty.is_integer() {
             (lhs_rvalue, rhs_rvalue) = self.widen_int_pair(lhs_rvalue, rhs_rvalue);
         }
@@ -856,8 +856,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&field_access.operand);
-
-        let ptr = lvalue.as_basic_value().into_pointer_value();
+        let rvalue = self.load_rvalue(lvalue);
 
         let pointee_ty: BasicTypeEnum<'ll>;
         if let Some(inner_cir_ty) = field_access.operand.ty.get_pointer_inner() {
@@ -866,16 +865,32 @@ impl<'ll> IRBuilderCtx<'ll> {
             pointee_ty = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
         }
 
-        let field_value: BasicValueEnum<'ll> = self
-            .llvmbuilder
-            .build_struct_gep(pointee_ty, ptr, field_access.field_idx.try_into().unwrap(), "gep")
-            .unwrap()
-            .into();
+        let field_value: BasicValueEnum<'ll>;
+        if rvalue.as_basic_value().is_pointer_value() {
+            let ptr = rvalue.as_basic_value().into_pointer_value();
+            field_value = self
+                .llvmbuilder
+                .build_struct_gep(pointee_ty, ptr, field_access.field_idx.try_into().unwrap(), "gep")
+                .unwrap()
+                .into();
+        } else {
+            let struct_value = rvalue.as_basic_value().into_struct_value();
 
-        InternalValue::new(
-            field_access.field_ty.clone(),
-            InternalValueKind::LValue(field_value.into_pointer_value()),
-        )
+            field_value = self
+                .llvmbuilder
+                .build_extract_value(struct_value, field_access.field_idx.try_into().unwrap(), "gep")
+                .unwrap()
+                .into();
+        }
+
+        if field_value.is_pointer_value() {
+            InternalValue::new(
+                field_access.field_ty.clone(),
+                InternalValueKind::LValue(field_value.into_pointer_value()),
+            )
+        } else {
+            InternalValue::new(field_access.field_ty.clone(), InternalValueKind::RValue(field_value))
+        }
     }
 
     pub(crate) fn emit_tuple_access(&mut self, tuple_access: &CIRTupleAccessExpr) -> InternalValue<'ll> {

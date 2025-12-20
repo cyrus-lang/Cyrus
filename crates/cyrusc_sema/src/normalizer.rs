@@ -4,6 +4,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
     ModuleID, ScopeID, SymbolID,
+    generics::substitute::substitute_type,
     stmts::{
         TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArgs,
     },
@@ -59,7 +60,19 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let sema_ty_opt = match ty {
-            ty @ SemanticType::GenericParam(..) => Some(ty),
+            SemanticType::GenericParam(generic_param) => {
+                if let Some(sema_ty) = &self.current_obj_operand_ty {
+                    if let Some(generic_type) = sema_ty.as_generic_type() {
+                        {
+                            let mapping_ctx = generic_type.mapping_ctx.borrow();
+                            if let Some(sema_ty) = mapping_ctx.get_with_name(&generic_param.name) {
+                                return Some(sema_ty);
+                            }
+                        }
+                    }
+                }
+                Some(SemanticType::GenericParam(generic_param))
+            }
             SemanticType::GenericType(mut generic_type) => {
                 let sym = match self
                     .resolver
