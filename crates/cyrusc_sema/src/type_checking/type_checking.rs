@@ -450,7 +450,7 @@ impl<'a> AnalysisContext<'a> {
             element_type = *array_type.element_type.clone();
         } else {
             // array index on pointer operand
-            element_type = sema_ty.get_pointer_inner().unwrap();
+            element_type = sema_ty.get_pointer_inner().clone();
 
             if element_type.is_void() {
                 self.reporter.report(Diag {
@@ -693,6 +693,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let mut typed_struct_field = struct_fields.get(field_index).unwrap().clone();
+
         typed_struct_field.ty = self
             .normalize_type(
                 scope_id_opt,
@@ -1084,12 +1085,13 @@ impl<'a> AnalysisContext<'a> {
 
         let sema_ty = self.analyze_expr(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
 
-        field_access.operand.sema_ty = Some(sema_ty.get_const_inner().clone());
-        let operand_ty = sema_ty.get_const_inner();
+        // for thin-arrow field access, unwrap const and pointer layers
+        // to obtain the underlying pointee type used as the operand.
+        let operand_ty = sema_ty.get_const_inner().get_pointer_inner();
 
         let generic_type_opt = operand_ty.as_generic_type();
 
-        let (sema_ty, is_generic) = match self.resolve_member_access_kind(
+        let (_, is_generic) = match self.resolve_member_access_kind(
             scope_id_opt,
             local_scope_opt.clone(),
             &mut field_access.operand,
@@ -1149,7 +1151,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        sema_ty
+        Some(sema_ty)
     }
 
     fn analyze_struct_init(

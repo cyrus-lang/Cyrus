@@ -1174,7 +1174,15 @@ impl<'resolver> CIRWalk<'resolver> {
                     operand: field_access.operand.clone(),
                     loc: SourceLoc::default(),
                 }),
-                sema_ty: Some(field_access.operand.sema_ty.clone().unwrap().get_pointer_inner().unwrap()),
+                sema_ty: Some(
+                    field_access
+                        .operand
+                        .sema_ty
+                        .clone()
+                        .unwrap()
+                        .get_pointer_inner()
+                        .clone(),
+                ),
                 vcat: ValueCategory::RValue,
                 loc: SourceLoc::default(),
             })

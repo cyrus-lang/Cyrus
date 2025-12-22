@@ -18,22 +18,6 @@ pub enum InternalValueKind<'a> {
     FuncValue(FunctionValue<'a>),
 }
 
-impl<'a> InternalValueKind<'a> {
-    pub fn is_lvalue(&self) -> bool {
-        match self {
-            InternalValueKind::LValue(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_rvalue(&self) -> bool {
-        match self {
-            InternalValueKind::RValue(_) => true,
-            _ => false,
-        }
-    }
-}
-
 impl<'a> InternalValue<'a> {
     pub fn new(ty: CIRTy, kind: InternalValueKind<'a>) -> Self {
         InternalValue { ty, kind }
