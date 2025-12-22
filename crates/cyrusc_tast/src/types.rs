@@ -298,6 +298,13 @@ impl SemanticType {
         }
     }
 
+    pub fn as_self_type(&self) -> Option<&TypedSelfType> {
+        match self.get_const_inner() {
+            SemanticType::SelfType(self_type) => Some(self_type),
+            _ => None,
+        }
+    }
+
     pub fn extract_generic_for_use(
         &self,
         fallback_generic_params: Option<&TypedGenericParamsList>,

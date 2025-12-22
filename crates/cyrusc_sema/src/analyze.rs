@@ -8,7 +8,6 @@ use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use cyrusc_resolver::{
     Resolver,
     symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
-    typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use cyrusc_tast::{
     exprs::{
@@ -17,7 +16,7 @@ use cyrusc_tast::{
     },
     format::format_sema_ty,
     generics::{mapping_ctx::GenericMappingCtx, monomorph::MonomorphRegistry, substitute::substitute_enum_sig},
-    sigs::{EnumSig, FuncSig},
+    sigs::{EnumSig, FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
     stmts::*,
     types::{PlainType, SemanticType, TypedFuncType},
     *,
@@ -1255,24 +1254,6 @@ impl<'a> AnalysisContext<'a> {
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *object_method_symbol_id)
                     .unwrap();
                 let object_method = sym.as_method().unwrap();
-
-                { // NOTE
-                    // we may need to change SelfModifier to something like a standalone SemanticType
-                    // because currently we can't have `Self` type in interface which already became a paint in the ass.
-                    //
-                    // interface Person {
-                    //     fn display(&self) Self;
-                    // }
-                    //
-                    // struct Student : Person {
-                    //     name: char*;
-                    //     age: uint;
-                    //
-                    //     fn display(&self) Student { ... }
-                    // }
-                    //
-                    // Expected: Method signature must be considered valid here.
-                }
 
                 // method signature mismatch
                 if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {

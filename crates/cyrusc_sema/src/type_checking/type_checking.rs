@@ -4,13 +4,8 @@ use crate::{
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
-use cyrusc_resolver::{
-    set_self_modifier_type_in_func_sig,
-    symbols::{
-        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
-        SymbolEntryKind,
-    },
-    typed_func_params_as_func_type_params,
+use cyrusc_resolver::symbols::{
+    LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion, SymbolEntryKind,
 };
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
@@ -21,7 +16,7 @@ use cyrusc_tast::{
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
-    sigs::{FuncSig, UnionSig},
+    sigs::{FuncSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
         TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField,
