@@ -196,7 +196,12 @@ impl<'a> AnalysisContext<'a> {
                 if type_args.is_empty() {
                     return Ok(Some((sym.get_symbol_id(), None)));
                 } else {
-                    panic!("Does not accept type args.");
+                    return Err(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                        location: Some(DiagLoc::new(loc)),
+                        hint: None,
+                    });
                 }
             }
         };

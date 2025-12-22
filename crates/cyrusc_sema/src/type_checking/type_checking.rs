@@ -19,7 +19,7 @@ use cyrusc_tast::{
     sigs::{FuncSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField,
+        TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField, TypedTypeArgs,
     },
     types::*,
     *,
@@ -1054,7 +1054,7 @@ impl<'a> AnalysisContext<'a> {
 
         // check for enum variant
 
-        self.analyze_expr_non_terminal(scope_id_opt, &mut field_access.operand, expected_type.clone());
+        self.analyze_expr_non_terminal(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
 
         let mut field_access_operand_ty = field_access
             .operand
@@ -1062,6 +1062,23 @@ impl<'a> AnalysisContext<'a> {
             .as_ref()
             .map(|sema_ty| sema_ty.get_const_inner())
             .cloned()?;
+
+        {
+            if let Some(symbol_id) = field_access_operand_ty.get_symbol_id() {
+                if let Some(sym) = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                {
+                    if self.check_unexpected_type_args(
+                        &sym.get_generic_params(),
+                        &field_access.type_args,
+                        field_access.loc.clone(),
+                    ) {
+                        return None;
+                    };
+                }
+            }
+        }
 
         if let Some(sema_ty) =
             self.merge_generic_operand_as_expected_type(field_access_operand_ty.clone(), expected_type.clone())
@@ -1154,6 +1171,24 @@ impl<'a> AnalysisContext<'a> {
         return_sema_ty
     }
 
+    fn check_unexpected_type_args(
+        &mut self,
+        generic_params: &Option<TypedGenericParamsList>,
+        type_args: &Option<TypedTypeArgs>,
+        loc: SourceLoc,
+    ) -> bool {
+        if generic_params.is_none() && type_args.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
+            return true;
+        }
+        false
+    }
+
     fn analyze_struct_init(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1166,6 +1201,12 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), struct_init.symbol_id)
             .unwrap();
+
+        self.check_unexpected_type_args(
+            &sym.get_generic_params(),
+            &struct_init.type_args,
+            struct_init.loc.clone(),
+        );
 
         let mut sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym.clone())?;
 
@@ -1924,16 +1965,6 @@ impl<'a> AnalysisContext<'a> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
         let loc = method_call.loc.clone();
 
-        if let Some(symbol_id) = method_call.operand.kind.as_symbol_id() {
-            self.resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
-                .inspect(|sym| {
-                    if sym.as_variable().is_some() || sym.as_global_var().is_some() {
-                        method_call.is_instance_method_operand = true;
-                    }
-                });
-        }
-
         self.analyze_expr_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
 
         let mut method_call_operand_ty = method_call
@@ -1942,6 +1973,25 @@ impl<'a> AnalysisContext<'a> {
             .as_ref()
             .map(|sema_ty| sema_ty.get_const_inner())
             .cloned()?;
+
+        if let Some(symbol_id) = method_call_operand_ty.get_symbol_id() {
+            if let Some(sym) = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+            {
+                if self.check_unexpected_type_args(
+                    &sym.get_generic_params(),
+                    &method_call.type_args,
+                    method_call.loc.clone(),
+                ) {
+                    return None;
+                };
+
+                if sym.as_variable().is_some() || sym.as_global_var().is_some() {
+                    method_call.is_instance_method_operand = true;
+                }
+            }
+        }
 
         if let Some(sema_ty) =
             self.merge_generic_operand_as_expected_type(method_call_operand_ty.clone(), expected_type.clone())
