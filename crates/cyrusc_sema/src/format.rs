@@ -13,7 +13,6 @@ impl<'a> AnalysisContext<'a> {
         module_id: ModuleID,
     ) -> Box<dyn Fn(Option<ScopeID>) -> SymbolFormatterFn<'a> + 'a> {
         Box::new(move |scope_id_opt: Option<ScopeID>| {
-            let resolver = resolver;
             Box::new(move |symbol_id: SymbolID| -> String {
                 Self::format_symbol_name(resolver, module_id, scope_id_opt, symbol_id)
             }) as Box<dyn Fn(SymbolID) -> String + 'a>

@@ -17,6 +17,42 @@ use cyrusc_tast::{
 use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn initial_generic_params_and_mapping_ctx(
+        &mut self,
+        sema_ty: &SemanticType,
+        generic_params: Option<&TypedGenericParamsList>,
+        expected_type: Option<SemanticType>,
+    ) -> (Option<TypedGenericParamsList>, Option<Rc<GenericMappingCtx>>) {
+        // extract use-site generics (may or may not exist)
+        let (generic_params, mut mapping_ctx) = sema_ty
+            .extract_generic_for_use(generic_params)
+            .map(|(params, ctx)| (Some(params), Some(ctx)))
+            .unwrap_or((None, None));
+
+        // merge expected-type generics if present
+        if let Some(expected_ty) = expected_type {
+            if let Some(expected_generic_ty) = expected_ty.as_generic_type() {
+                let parent = Rc::new(expected_generic_ty.mapping_ctx.borrow().clone());
+                self.mapping_ctx_arena.push(parent.clone());
+
+                mapping_ctx = Some(match mapping_ctx {
+                    Some(old_ctx) => Rc::new(GenericMappingCtx {
+                        parent: Some(Rc::downgrade(&parent)),
+                        named: old_ctx.named.clone(),
+                        linked_gps: old_ctx.linked_gps.clone(),
+                    }),
+                    None => Rc::new(GenericMappingCtx {
+                        parent: Some(Rc::downgrade(&parent)),
+                        named: Default::default(),
+                        linked_gps: Default::default(),
+                    }),
+                });
+            }
+        }
+
+        (generic_params, mapping_ctx)
+    }
+
     pub(crate) fn try_infer_generic_param_as_expected_type(
         &self,
         sema_ty: SemanticType,
@@ -173,6 +209,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn init_generic_type_with_symbol_id(
         &self,
+        scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
         type_args: &Option<TypedTypeArgs>,
@@ -215,7 +252,7 @@ impl<'a> AnalysisContext<'a> {
 
         let mut generic_type = GenericType::new_unresolved(sym.get_symbol_id(), type_args, mapping_ctx, is_const, loc);
 
-        generic_type.init(generic_params.clone())?;
+        generic_type.init(generic_params.clone(), &(self.symbol_formatter)(scope_id_opt))?;
         Ok(Some((sym.get_symbol_id(), Some(generic_type))))
     }
 
