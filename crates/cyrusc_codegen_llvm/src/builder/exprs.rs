@@ -855,41 +855,34 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&field_access.operand);
-        let rvalue = self.load_rvalue(lvalue);
+        let operand = self.emit_expr(&field_access.operand);
 
-        let pointee_ty: BasicTypeEnum<'ll>;
-        if let Some(inner_cir_ty) = field_access.operand.ty.get_pointer_inner() {
-            pointee_ty = self.emit_ty(inner_cir_ty.clone()).try_into().unwrap();
+        let struct_ty: BasicTypeEnum<'ll> = if let Some(inner) = field_access.operand.ty.get_pointer_inner() {
+            self.emit_ty(inner.clone()).try_into().unwrap()
         } else {
-            pointee_ty = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
-        }
+            self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap()
+        };
 
-        let field_value: BasicValueEnum<'ll>;
-        if rvalue.as_basic_value().is_pointer_value() {
-            let ptr = rvalue.as_basic_value().into_pointer_value();
-            field_value = self
-                .llvmbuilder
-                .build_struct_gep(pointee_ty, ptr, field_access.field_idx.try_into().unwrap(), "gep")
-                .unwrap()
-                .into();
-        } else {
-            let struct_value = rvalue.as_basic_value().into_struct_value();
+        match operand.kind {
+            InternalValueKind::LValue(addr) => {
+                let field_addr = self
+                    .llvmbuilder
+                    .build_struct_gep(struct_ty, addr, field_access.field_idx as u32, "field_gep")
+                    .unwrap();
 
-            field_value = self
-                .llvmbuilder
-                .build_extract_value(struct_value, field_access.field_idx.try_into().unwrap(), "gep")
-                .unwrap()
-                .into();
-        }
+                InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(field_addr))
+            }
+            InternalValueKind::RValue(val) => {
+                let struct_val = val.into_struct_value();
 
-        if field_value.is_pointer_value() {
-            InternalValue::new(
-                field_access.field_ty.clone(),
-                InternalValueKind::LValue(field_value.into_pointer_value()),
-            )
-        } else {
-            InternalValue::new(field_access.field_ty.clone(), InternalValueKind::RValue(field_value))
+                let field_val = self
+                    .llvmbuilder
+                    .build_extract_value(struct_val, field_access.field_idx as u32, "field_extract")
+                    .unwrap();
+
+                InternalValue::new(field_access.field_ty.clone(), InternalValueKind::RValue(field_val))
+            }
+            _ => unreachable!(),
         }
     }
 

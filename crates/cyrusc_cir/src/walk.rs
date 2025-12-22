@@ -2,15 +2,18 @@ use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_abi::mangling::ABINameMangling;
+use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::{LiteralKind, SelfModifierKind};
+use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, generate_symbol_id};
-use cyrusc_resolver::{Resolver};
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::monomorph::MonomorphEntry;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
-use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig};
+use cyrusc_tast::sigs::{
+    EnumSig, FuncSig, GlobalVarSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig,
+};
 use cyrusc_tast::types::{PlainType, ResolvedSymbol};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
@@ -812,7 +815,7 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::UStructValue(ustruct_value) => self.lower_ustruct_value(scope_id_opt, ustruct_value),
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
-            TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access),
+            TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access.clone()),
             TypedExprKind::StructInit(struct_init_expr) => self.lower_struct_init(scope_id_opt, struct_init_expr),
             TypedExprKind::SizeOf(size_of_expr) => self.lower_size_of(scope_id_opt, size_of_expr),
             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(scope_id_opt, lambda_expr),
@@ -1162,8 +1165,20 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_field_access(&mut self, scope_id_opt: Option<ScopeID>, field_access: &TypedFieldAccess) -> CIRExprKind {
+    fn lower_field_access(&mut self, scope_id_opt: Option<ScopeID>, mut field_access: TypedFieldAccess) -> CIRExprKind {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        if field_access.is_fat_arrow {
+            field_access.operand = Box::new(TypedExprStmt {
+                kind: TypedExprKind::Deref(TypedDerefExpr {
+                    operand: field_access.operand.clone(),
+                    loc: SourceLoc::default(),
+                }),
+                sema_ty: Some(field_access.operand.sema_ty.clone().unwrap().get_pointer_inner().unwrap()),
+                vcat: ValueCategory::RValue,
+                loc: SourceLoc::default(),
+            })
+        }
 
         if let Some(sema_ty) = &field_access.operand.sema_ty {
             if sema_ty.as_unnamed_struct().is_some() {
