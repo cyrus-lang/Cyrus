@@ -1091,7 +1091,7 @@ impl<'a> AnalysisContext<'a> {
 
         let generic_type_opt = operand_ty.as_generic_type();
 
-        let (_, is_generic) = match self.resolve_member_access_kind(
+        let (return_sema_ty, is_generic) = match self.resolve_member_access_kind(
             scope_id_opt,
             local_scope_opt.clone(),
             &mut field_access.operand,
@@ -1151,7 +1151,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(sema_ty)
+        return_sema_ty
     }
 
     fn analyze_struct_init(
