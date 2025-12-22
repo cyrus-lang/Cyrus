@@ -123,12 +123,12 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             let index_fmt = &format_typed_expr(&typed_array_index.index, format_symbol);
             format!("{}[{}]", operand_fmt, index_fmt)
         }
-        TypedExprKind::AddrOf(typed_address_of) => {
-            let operand_fmt = &format_typed_expr(&typed_address_of.operand, format_symbol);
+        TypedExprKind::AddrOf(typed_addr_of) => {
+            let operand_fmt = &format_typed_expr(&typed_addr_of.operand, format_symbol);
             format!("&{}", operand_fmt)
         }
-        TypedExprKind::Deref(typed_dereference) => {
-            let operand_fmt = &format_typed_expr(&typed_dereference.operand, format_symbol);
+        TypedExprKind::Deref(typed_deref) => {
+            let operand_fmt = &format_typed_expr(&typed_deref.operand, format_symbol);
             format!("*{}", operand_fmt)
         }
         TypedExprKind::StructInit(typed_struct_init) => {

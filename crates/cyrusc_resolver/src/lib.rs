@@ -47,6 +47,7 @@ pub struct Resolver {
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     already_imported_modules: HashSet<ImportKey>,
     current_module: Option<ModuleID>,
+    current_object: Option<SymbolID>,
 }
 
 pub struct ProgramTreeEntry {
@@ -103,6 +104,7 @@ impl Resolver {
             reporter: DiagReporter::new(),
             module_loader: ModuleLoader::new(opts),
             current_module: None,
+            current_object: None,
             master_module_file_path,
         }
     }
@@ -1164,11 +1166,12 @@ impl Resolver {
         union_decl: &Union,
         is_local: Option<ScopeID>,
     ) -> Option<TypedStmt> {
-        let union_symbol_id = if local_scope_opt.is_some() {
-            generate_symbol_id()
-        } else {
-            self.lookup_symbol_id(module_id, &union_decl.identifier.name).unwrap()
-        };
+        let union_symbol_id = local_scope_opt
+            .as_ref()
+            .map(|_| generate_symbol_id())
+            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &union_decl.identifier.name).unwrap());
+
+        self.current_object = Some(union_symbol_id);
 
         let mut typed_union_fields: Vec<TypedUnionField> = Vec::new();
 
@@ -1258,11 +1261,13 @@ impl Resolver {
         enum_decl: &Enum,
         is_local: Option<ScopeID>,
     ) -> Option<TypedStmt> {
-        let enum_symbol_id = if local_scope_opt.is_some() {
-            generate_symbol_id()
-        } else {
-            self.lookup_symbol_id(module_id, &enum_decl.identifier.name).unwrap()
-        };
+        let enum_symbol_id = local_scope_opt
+            .as_ref()
+            .map(|_| generate_symbol_id())
+            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &enum_decl.identifier.name).unwrap());
+
+        self.current_object = Some(enum_symbol_id);
+
         let mut variants: Vec<TypedEnumVariant> = Vec::new();
 
         let generic_params = enum_decl
@@ -1451,7 +1456,7 @@ impl Resolver {
                 self.resolve_func(module_id, Some(Rc::clone(&local_scope_rc)), &func_def.as_func_decl())
             {
                 let method_name = func_def.identifier.name.clone();
-                let method_resolve_name = make_method_resolve_name(struct_symbol_id, method_name.clone());
+                let method_resolve_name = get_method_symbol_name(struct_symbol_id, method_name.clone());
 
                 typed_func_params = typed_func_params
                     .into_iter()
@@ -1545,7 +1550,7 @@ impl Resolver {
             }
 
             if let Some(typed_func_body) =
-                self.resolve_block_statement(*method_scope_id, local_scope_rc.clone(), method_body)
+                self.resolve_block_stmt(*method_scope_id, local_scope_rc.clone(), method_body)
             {
                 if *is_generic {
                     // generic method body is being analyzed when called
@@ -1627,6 +1632,8 @@ impl Resolver {
             .as_ref()
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap());
+
+        self.current_object = Some(struct_symbol_id);
 
         let generic_params = struct_decl
             .generic_params
@@ -1949,7 +1956,7 @@ impl Resolver {
             })),
         );
 
-        let typed_func_body = self.resolve_block_statement(scope_id, body_scope, &func_def.body)?;
+        let typed_func_body = self.resolve_block_stmt(scope_id, body_scope, &func_def.body)?;
 
         with_monomorph_registry!(self, ctx, {
             ctx.register_template(symbol_id, typed_func_body.clone());
@@ -2049,11 +2056,11 @@ impl Resolver {
         let consequent_scope = LocalScope::new(Some(local_scope.clone()));
         self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
 
-        let typed_consequent =
-            match self.resolve_block_statement(consequent_scope_id, consequent_scope, &if_stmt.consequent) {
-                Some(typed_block) => Box::new(typed_block),
-                None => return None,
-            };
+        let typed_consequent = match self.resolve_block_stmt(consequent_scope_id, consequent_scope, &if_stmt.consequent)
+        {
+            Some(typed_block) => Box::new(typed_block),
+            None => return None,
+        };
 
         let typed_alternate = {
             if let Some(alternate) = &if_stmt.alternate {
@@ -2061,7 +2068,7 @@ impl Resolver {
                 let alternate_scope = LocalScope::new(Some(local_scope.clone()));
                 self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
 
-                match self.resolve_block_statement(alternate_scope_id, alternate_scope.clone(), &*alternate) {
+                match self.resolve_block_stmt(alternate_scope_id, alternate_scope.clone(), &*alternate) {
                     Some(typed_block) => Some(Box::new(typed_block)),
                     None => return None,
                 }
@@ -2090,7 +2097,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_block_statement(
+    fn resolve_block_stmt(
         &mut self,
         scope_id: ScopeID,
         local_scope: LocalScopeRef,
@@ -2254,7 +2261,7 @@ impl Resolver {
         local_scope: LocalScopeRef,
         stmt: &Stmt,
     ) -> Option<TypedStmt> {
-        match stmt {
+        let typed_stmt = match stmt {
             Stmt::ExportTuple(export_tuple) => {
                 self.resolve_export_tuple(module_id, scope_id, local_scope, export_tuple)
             }
@@ -2306,7 +2313,7 @@ impl Resolver {
                 };
 
                 let for_typed_body =
-                    Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body)?);
+                    Box::new(self.resolve_block_stmt(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body)?);
 
                 Some(TypedStmt::For(TypedForStmt {
                     initializer,
@@ -2324,7 +2331,7 @@ impl Resolver {
                 let cond = self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition)?;
 
                 let while_typed_body =
-                    Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body)?);
+                    Box::new(self.resolve_block_stmt(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body)?);
 
                 Some(TypedStmt::While(TypedWhileStmt {
                     cond,
@@ -2433,7 +2440,7 @@ impl Resolver {
                         patterns.push(typed_pattern);
                     }
 
-                    let mut body = self.resolve_block_statement(scope_id, case_scope_rc.clone(), &case.body)?;
+                    let mut body = self.resolve_block_stmt(scope_id, case_scope_rc.clone(), &case.body)?;
                     body.scope_id = case_scope_id;
 
                     cases.push(TypedSwitchCase {
@@ -2449,7 +2456,7 @@ impl Resolver {
                     let body_scope = LocalScope::new(Some(local_scope.clone()));
                     self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
-                    Some(self.resolve_block_statement(body_scope_id, body_scope.clone(), &default_case)?)
+                    Some(self.resolve_block_stmt(body_scope_id, body_scope.clone(), &default_case)?)
                 } else {
                     None
                 };
@@ -2486,7 +2493,7 @@ impl Resolver {
 
                 self.insert_scope_ref(module_id, scope_id, new_local_scope.clone());
 
-                let typed_stmt = self.resolve_block_statement(scope_id, new_local_scope, block_statement)?;
+                let typed_stmt = self.resolve_block_stmt(scope_id, new_local_scope, block_statement)?;
                 Some(TypedStmt::BlockStmt(typed_stmt))
             }
             Stmt::Break(break_stmt) => Some(TypedStmt::Break(TypedBreakStmt {
@@ -2513,8 +2520,10 @@ impl Resolver {
             }
             Stmt::Label(label) => self.resolve_label(local_scope, label),
             Stmt::Goto(goto) => self.resolve_goto(goto),
-            Stmt::Defer(_) => unreachable!("Handled directly in resolve_block_statement"),
-        }
+            Stmt::Defer(_) => unreachable!(),
+        };
+
+        typed_stmt
     }
 
     fn resolve_goto(&self, goto: &Goto) -> Option<TypedStmt> {
@@ -2589,41 +2598,6 @@ impl Resolver {
         });
 
         None
-    }
-
-    fn resolve_local_module_import(
-        &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
-        module_id: ModuleID,
-        module_import: &ModuleImport,
-    ) -> Option<SymbolID> {
-        if let Some(identifier) = module_import.as_identifier() {
-            if let Some(local_scope_rc) = local_scope_opt {
-                let local_scope = local_scope_rc.borrow();
-                if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
-                    return Some(local_symbol.get_symbol_id());
-                }
-            }
-
-            if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
-                return Some(symbol_id);
-            }
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                    name: identifier.name.clone(),
-                }),
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    identifier.loc.clone(),
-                    self.current_file_path(),
-                ))),
-                hint: None,
-            });
-            return None;
-        }
-
-        self.resolve_module_import(module_id, module_import.clone())
     }
 
     fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
@@ -2854,7 +2828,7 @@ impl Resolver {
         let (list, variadic) =
             self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &None, &lambda.params)?;
 
-        let body = match self.resolve_block_statement(scope_id, local_scope_rc.clone(), &lambda.body) {
+        let body = match self.resolve_block_stmt(scope_id, local_scope_rc.clone(), &lambda.body) {
             Some(typed_block) => Box::new(typed_block),
             None => return None,
         };
@@ -3493,6 +3467,46 @@ impl Resolver {
         drop(file_paths);
     }
 
+    fn resolve_local_module_import(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_id: ModuleID,
+        module_import: &ModuleImport,
+    ) -> Option<SymbolID> {
+        if let Some(identifier) = module_import.as_identifier() {
+            if identifier.as_string() == "Self" {
+                return Some(self.current_object.unwrap());
+            }
+
+            if let Some(local_scope_rc) = local_scope_opt {
+                let local_scope = local_scope_rc.borrow();
+                if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
+                    return Some(local_symbol.get_symbol_id());
+                }
+            }
+
+            if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
+                return Some(symbol_id);
+            }
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(ResolverDiagKind::SymbolNotFound {
+                    name: identifier.name.clone(),
+                }),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    identifier.loc.clone(),
+                    self.current_file_path(),
+                ))),
+                hint: None,
+            });
+            return None;
+        }
+
+        self.resolve_module_import(module_id, module_import.clone())
+            .map(|symbol_id| symbol_id)
+    }
+
     pub fn insert_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID, scope_ref: LocalScopeRef) {
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
@@ -3550,136 +3564,8 @@ impl Visiting {
 
 // REVIEW Move these helpers tools to TypedAST crate
 
-pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &SemanticType) {
-    let first_param = func_sig.params.list.first_mut();
-
-    if let Some(func_param_kind) = first_param {
-        if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
-            self_modifier.ty = Some(sema_ty.clone());
-        }
-    }
-}
-
-pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
-    FuncSig {
-        symbol_id: Some(func_decl.symbol_id),
-        module_id: func_decl.module_id,
-        name: func_decl.name.clone(),
-        generic_params: func_decl.generic_params.clone(),
-        params: func_decl.params.clone(),
-        return_type: func_decl.return_type.clone(),
-        is_func_decl: true,
-        modifiers: func_decl.modifiers.clone(),
-        loc: func_decl.loc.clone(),
-    }
-}
-
-pub fn typed_func_decl_from_func_sig(sig: &FuncSig) -> TypedFuncDeclStmt {
-    TypedFuncDeclStmt {
-        symbol_id: sig.symbol_id.unwrap(),
-        module_id: sig.module_id,
-        name: sig.name.clone(),
-        generic_params: sig.generic_params.clone(),
-        params: sig.params.clone(),
-        return_type: sig.return_type.clone(),
-        modifiers: sig.modifiers.clone(),
-        loc: sig.loc.clone(),
-        renamed_as: None,
-    }
-}
-
-pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
-    FuncSig {
-        symbol_id: Some(func_def.symbol_id),
-        module_id: func_def.module_id,
-        name: func_def.name.clone(),
-        generic_params: func_def.generic_params.clone(),
-        params: func_def.params.clone(),
-        return_type: func_def.return_type.clone(),
-        is_func_decl: false,
-        modifiers: func_def.modifiers.clone(),
-        loc: func_def.loc.clone(),
-    }
-}
-
-pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
-    TypedFuncType {
-        symbol_id: func_sig.symbol_id,
-        def_module_id: Some(func_sig.module_id),
-        params: typed_func_params_as_func_type_params(&func_sig.params),
-        return_type: Box::new(func_sig.return_type.clone()),
-        is_public: func_sig.modifiers.vis.is_public(),
-        loc: func_sig.loc.clone(),
-    }
-}
-
-pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
-    StructSig {
-        name: typed_struct.name.clone(),
-        fields: typed_struct.fields.clone(),
-        impls: typed_struct.impls.clone(),
-        methods: typed_struct.methods.clone(),
-        generic_params: typed_struct.generic_params.clone(),
-        is_packed: typed_struct.is_packed,
-        modifiers: typed_struct.modifiers.clone(),
-        loc: typed_struct.loc.clone(),
-    }
-}
-
-pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
-    EnumSig {
-        symbol_id: typed_enum.symbol_id,
-        name: typed_enum.name.clone(),
-        methods: typed_enum.methods.clone(),
-        variants: typed_enum.variants.clone(),
-        generic_params: typed_enum.generic_params.clone(),
-        modifiers: typed_enum.modifiers.clone(),
-        loc: typed_enum.loc.clone(),
-    }
-}
-
-pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
-    UnionSig {
-        symbol_id: typed_union.symbol_id,
-        name: typed_union.name.clone(),
-        fields: typed_union.fields.clone(),
-        methods: typed_union.methods.clone(),
-        generic_params: typed_union.generic_params.clone(),
-        modifiers: typed_union.modifiers.clone(),
-        loc: typed_union.loc.clone(),
-    }
-}
-
-fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
+fn get_method_symbol_name(struct_symbol_id: SymbolID, method_name: String) -> String {
     format!("{}{}", struct_symbol_id, method_name)
-}
-
-pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedFuncTypeParams {
-    TypedFuncTypeParams {
-        list: params
-            .list
-            .iter()
-            .map(|param| match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    let ty = SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
-                    match typed_self_modifier.kind {
-                        SelfModifierKind::Copied => ty,
-                        SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(ty)),
-                    }
-                }
-            })
-            .collect(),
-        variadic: match &params.variadic {
-            Some(variadic) => match variadic {
-                TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-                TypedFuncVariadicParams::Typed(_, sema_ty) => {
-                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty.clone())))
-                }
-            },
-            None => None,
-        },
-    }
 }
 
 unsafe impl Send for Resolver {}

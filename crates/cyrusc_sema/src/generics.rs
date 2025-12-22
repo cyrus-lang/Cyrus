@@ -1,10 +1,7 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
-use cyrusc_resolver::{
-    symbols::{LocalScopeRef, generate_scope_id},
-    typed_func_type_from_func_sig,
-};
+use cyrusc_resolver::symbols::{LocalScopeRef, generate_scope_id};
 use cyrusc_tast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
@@ -13,7 +10,7 @@ use cyrusc_tast::{
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
         monomorph::{MonomorphKey, SpecializedFuncEntry},
     },
-    sigs::FuncSig,
+    sigs::{FuncSig, typed_func_type_from_func_sig},
     stmts::*,
     types::SemanticType,
 };
