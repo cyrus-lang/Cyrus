@@ -35,6 +35,7 @@ pub(crate) struct CIRWalk<'resolver> {
     pub(crate) resolver: &'resolver Resolver,
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
+    pub(crate) symbol_formatter: Box<dyn Fn(SymbolID) -> String + 'resolver>,
 }
 
 impl<'resolver> CIRWalk<'resolver> {
@@ -53,6 +54,7 @@ impl<'resolver> CIRWalk<'resolver> {
             mangling,
             current_self_ty: None,
             current_obj_operand_ty: None,
+            symbol_formatter: build_panic_symbol_formatter()
         }
     }
 
@@ -1504,7 +1506,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         let generic_params = sym.get_generic_params().unwrap();
-        match generic_type.init(generic_params) {
+        match generic_type.init(generic_params, &self.symbol_formatter) {
             Ok(val) => val,
             Err(e) => {
                 eprintln!("Failed to init generic type: {:?}.", e.kind.to_string())
@@ -1635,4 +1637,10 @@ pub fn walk_program_trees_in_parallel(
             })
             .collect()
     })
+}
+
+pub(crate) fn build_panic_symbol_formatter<'a>() -> Box<dyn Fn(SymbolID) -> String + 'a> {
+    Box::new(move |symbol_id: SymbolID| -> String {
+        panic!("Panic symbol formatter called for symbol id {}", symbol_id)
+    }) as Box<dyn Fn(SymbolID) -> String + 'a>
 }

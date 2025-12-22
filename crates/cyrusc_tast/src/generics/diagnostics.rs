@@ -11,6 +11,12 @@ pub enum GenericTypesDiagKind {
 
     #[error("Generic type '{ty}' requires explicit type arguments.")]
     RequiresExplicitTypeArgs { ty: String },
+
+    #[error("Cannot override generic param '{generic_param}'. It's already inferred as '{already_inferred_as}'.")]
+    CannotOverrideParentInferredGenericParam {
+        generic_param: String,
+        already_inferred_as: String,
+    },
 }
 
 impl DiagKind for GenericTypesDiagKind {}

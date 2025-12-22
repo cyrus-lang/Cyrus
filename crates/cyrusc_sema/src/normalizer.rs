@@ -86,6 +86,7 @@ impl<'a> AnalysisContext<'a> {
 
                 if let Some(resolved_typedef) = sym.as_typedef() {
                     self.resolve_generic_typedef(
+                        scope_id_opt,
                         local_scope_opt,
                         resolved_typedef,
                         &generic_type.type_args,
@@ -94,7 +95,7 @@ impl<'a> AnalysisContext<'a> {
                 } else {
                     let generic_params = sym.get_generic_params().unwrap();
 
-                    if let Err(diag) = generic_type.init(generic_params) {
+                    if let Err(diag) = generic_type.init(generic_params, &(self.symbol_formatter)(scope_id_opt)) {
                         self.reporter.report(diag);
                         return None;
                     }
@@ -470,6 +471,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn resolve_generic_typedef(
         &mut self,
+        scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
         resolved_typedef: &ResolvedTypedef,
         type_args: &TypedTypeArgs,
@@ -482,6 +484,7 @@ impl<'a> AnalysisContext<'a> {
 
         match self
             .init_generic_type_with_symbol_id(
+                scope_id_opt,
                 local_scope_opt.clone(),
                 generic_type.base,
                 &Some(type_args.clone()),

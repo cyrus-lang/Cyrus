@@ -772,6 +772,7 @@ impl<'a> AnalysisContext<'a> {
         let is_const = false;
 
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            scope_id_opt,
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
             &method_call.type_args,
@@ -918,6 +919,7 @@ impl<'a> AnalysisContext<'a> {
         let is_const = false;
 
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            scope_id_opt,
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
             &field_access.type_args,
@@ -1092,6 +1094,7 @@ impl<'a> AnalysisContext<'a> {
                 local_scope_opt.clone(),
                 field_access_operand_ty.clone(),
                 field_access,
+                expected_type.clone(),
             );
             if detected_as_enum_variant {
                 return sema_ty;
@@ -1210,18 +1213,17 @@ impl<'a> AnalysisContext<'a> {
 
         let mut sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym.clone())?;
 
-        if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type) {
+        if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type.clone()) {
             sema_ty = new_sema_ty;
         }
 
-        let (generic_params, mapping_ctx) = sema_ty
-            .extract_generic_for_use(sym.get_generic_params().as_ref())
-            .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
-            .unwrap_or((None, None));
+        let (generic_params, mapping_ctx) =
+            self.initial_generic_params_and_mapping_ctx(&sema_ty, sym.get_generic_params().as_ref(), expected_type);
 
         let pure_symbol_id = sema_ty.get_pure_symbol_id().unwrap();
 
         let generic_type_opt = match self.init_generic_type_with_symbol_id(
+            scope_id_opt,
             local_scope_opt.clone(),
             pure_symbol_id,
             &struct_init.type_args,
@@ -1777,6 +1779,7 @@ impl<'a> AnalysisContext<'a> {
                 let expected_mapping_ctx = self.export_expected_generic_mapping_ctx(expected_type);
 
                 let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
+                    scope_id_opt,
                     local_scope_opt.clone(),
                     symbol_id,
                     &func_call.type_args,
@@ -1880,6 +1883,7 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         field_access: &mut TypedFieldAccess,
+        expected_type: Option<SemanticType>,
     ) -> (bool, Option<SemanticType>) {
         let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
             return (false, None);
@@ -1894,10 +1898,11 @@ impl<'a> AnalysisContext<'a> {
         field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
         {
-            let (generic_params, mapping_ctx) = operand_ty
-                .extract_generic_for_use(resolved_enum.enum_sig.generic_params.as_ref())
-                .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
-                .unwrap_or((None, None));
+            let (generic_params, mapping_ctx) = self.initial_generic_params_and_mapping_ctx(
+                &operand_ty,
+                resolved_enum.enum_sig.generic_params.as_ref(),
+                expected_type,
+            );
 
             let sema = self.analyze_enum_variant_no_field(
                 scope_id_opt,
@@ -1917,6 +1922,7 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         method_call: &mut TypedMethodCall,
+        expected_type: Option<SemanticType>
     ) -> (bool, Option<SemanticType>) {
         let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
             return (false, None);
@@ -1938,10 +1944,8 @@ impl<'a> AnalysisContext<'a> {
 
         method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
-        let (generic_params, mapping_ctx) = operand_ty
-            .extract_generic_for_use(resolved_enum.enum_sig.generic_params.as_ref())
-            .map(|(generic_params_list, mapping_ctx)| (Some(generic_params_list), Some(mapping_ctx)))
-            .unwrap_or((None, None));
+        let (generic_params, mapping_ctx) =
+            self.initial_generic_params_and_mapping_ctx(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref(), expected_type);
 
         let sema = self.analyze_enum_variant(
             scope_id_opt,
@@ -2005,6 +2009,7 @@ impl<'a> AnalysisContext<'a> {
                 local_scope_opt.clone(),
                 method_call_operand_ty.clone(),
                 method_call,
+                expected_type.clone()
             );
 
             if detected_as_enum_variant {
@@ -2263,6 +2268,7 @@ impl<'a> AnalysisContext<'a> {
 
         // init method generic mapping ctx
         let (_, mut method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
+            scope_id_opt,
             local_scope_opt.clone(),
             resolved_method.symbol_id,
             &method_call.type_args,

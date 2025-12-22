@@ -44,7 +44,37 @@ impl GenericType {
         }
     }
 
-    pub fn init(&mut self, template: TypedGenericParamsList) -> Result<(), Diag> {
+    fn check_for_overriding_parent_generic_param(
+        &self,
+        child_mapping_ctx: &GenericMappingCtx,
+        generic_param_name: String,
+        format_symbol: &impl Fn(SymbolID) -> String,
+        loc: SourceLoc,
+    ) -> Result<(), Diag> {
+        if let Some(parent_weak) = &child_mapping_ctx.parent {
+            if let Some(parent_rc) = parent_weak.upgrade() {
+                if let Some(sema_ty) = parent_rc.get_with_name(&generic_param_name) {
+                    return Err(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
+                            generic_param: generic_param_name.clone(),
+                            already_inferred_as: format_sema_ty(sema_ty, &format_symbol),
+                        }),
+                        location: Some(DiagLoc::new(loc)),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn init(
+        &mut self,
+        template: TypedGenericParamsList,
+        format_symbol: &impl Fn(SymbolID) -> String,
+    ) -> Result<(), Diag> {
         for type_arg in &self.type_args {
             match type_arg {
                 TypedTypeArg::Positional { idx, ty, loc } => {
@@ -56,6 +86,13 @@ impl GenericType {
                     })?;
 
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
+
+                    self.check_for_overriding_parent_generic_param(
+                        &mapping_ctx,
+                        generic_param.param_name.name.clone(),
+                        format_symbol,
+                        loc.clone(),
+                    )?;
 
                     if let Some(target_generic_param) = ty.as_generic_param() {
                         mapping_ctx.insert_linked(
@@ -71,6 +108,13 @@ impl GenericType {
                 }
                 TypedTypeArg::Named { key, ty, loc } => {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
+
+                    self.check_for_overriding_parent_generic_param(
+                        &mapping_ctx,
+                        key.clone(),
+                        format_symbol,
+                        loc.clone(),
+                    )?;
 
                     let typed_identifier = template
                         .get_named(key)
