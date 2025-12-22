@@ -211,7 +211,7 @@ impl SemanticType {
         if lvalue {
             match self {
                 SemanticType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
-                SemanticType::Pointer(sema_ty) => sema_ty.get_pointer_inner().unwrap_or(*sema_ty.clone()),
+                SemanticType::Pointer(sema_ty) => sema_ty.get_pointer_inner().clone(),
                 _ => self.clone(),
             }
         } else {
@@ -240,10 +240,10 @@ impl SemanticType {
         }
     }
 
-    pub fn get_pointer_inner(&self) -> Option<SemanticType> {
+    pub fn get_pointer_inner(&self) -> &SemanticType {
         match self {
-            SemanticType::Pointer(sema_ty) => Some(*sema_ty.clone()),
-            _ => None,
+            SemanticType::Pointer(sema_ty) => sema_ty,
+            ty @ _ => ty,
         }
     }
 
