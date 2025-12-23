@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     for (var i = 1; i <= 6; i++) {
         if (i == 2) {
             continue;

@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const a: int32 = 42;
     const b: int64 = a;
 

@@ -97,7 +97,7 @@ impl<'a> AnalysisContext<'a> {
 
         deref.operand.sema_ty = Some(operand_type.clone());
 
-        if !deref.operand.is_lvalue() || operand_type.as_func_type().is_some() {
+        if (!deref.operand.is_lvalue() || operand_type.as_func_type().is_some()) && !operand_type.is_pointer() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),

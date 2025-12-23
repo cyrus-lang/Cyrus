@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     var names = char*[3]{"Greatest", "Programming", "Language"};
 
     names[0] = "Cyrus";

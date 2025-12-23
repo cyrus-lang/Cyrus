@@ -14,6 +14,6 @@ fn get_const_str() char* {
     return "Cyrus!";
 }
 
-fn main() {
+pub fn main() {
     printf("%g %c %s", get_number(), get_char(), get_const_str());
 }

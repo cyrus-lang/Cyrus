@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const lambda = fn(x: int, y: int) int {
         return x + y;
     };

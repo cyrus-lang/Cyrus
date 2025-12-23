@@ -1,6 +1,6 @@
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const poem: char* = "Line one\nLine two\nLine three";
     const backslash: char = '\';
     const quote: char* = "She said: \"Cyrus is great!\""; 

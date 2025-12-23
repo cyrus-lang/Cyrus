@@ -8,7 +8,7 @@ enum Color {
     Black
 }
 
-fn main() {
+pub fn main() {
     const color = Color.Black;
 
     switch (color) {

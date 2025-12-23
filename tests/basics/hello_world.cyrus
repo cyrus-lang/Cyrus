@@ -2,6 +2,6 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     printf("Hello, Cyrus!\n");
 }
