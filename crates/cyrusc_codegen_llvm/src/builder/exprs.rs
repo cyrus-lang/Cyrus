@@ -304,11 +304,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&deref.operand);
         let rvalue = self.load_rvalue(lvalue.clone());
-
         let ptr = rvalue.as_basic_value().into_pointer_value();
-
-        dbg!(lvalue.clone());
-        dbg!(rvalue.clone());
 
         match mode {
             DerefMode::Load => {
@@ -454,7 +450,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 )
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
-                self.build_null_coalescing_pointers(lhs, rhs)
+                self.build_null_coalescing_pointers(lhs, rhs, lhs_rvalue.ty.clone())
             }
             _ => unreachable!(),
         }
@@ -464,6 +460,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         &self,
         lhs: PointerValue<'ll>,
         rhs: PointerValue<'ll>,
+        ty: CIRTy
     ) -> InternalValue<'ll> {
         // cond: lhs == null
         let is_null = self
@@ -478,7 +475,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .into_pointer_value();
 
         InternalValue::new(
-            CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+            CIRTy::Pointer(Box::new(ty)),
             InternalValueKind::RValue(selected.into()),
         )
     }
