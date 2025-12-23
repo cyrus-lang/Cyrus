@@ -303,18 +303,23 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&deref.operand);
-        let rvalue = self.load_rvalue(lvalue);
+        let rvalue = self.load_rvalue(lvalue.clone());
+
         let ptr = rvalue.as_basic_value().into_pointer_value();
+
+        dbg!(lvalue.clone());
+        dbg!(rvalue.clone());
 
         match mode {
             DerefMode::Load => {
-                let inner_ty = rvalue.ty.get_pointer_inner().expect("Cannot deref non-pointer");
+                let inner_ty = rvalue.ty.get_pointer_inner().unwrap();
+
                 let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(inner_ty.clone()).try_into().unwrap();
                 let loaded_value = self.llvmbuilder.build_load(llvm_ty, ptr, "deref").unwrap();
                 InternalValue::new(inner_ty.clone(), InternalValueKind::RValue(loaded_value.into()))
             }
             DerefMode::Store => {
-                let inner_ty = rvalue.ty.get_pointer_inner().expect("Cannot deref non-pointer");
+                let inner_ty = rvalue.ty.get_pointer_inner().unwrap();
                 InternalValue::new(inner_ty.clone(), InternalValueKind::LValue(ptr))
             }
         }

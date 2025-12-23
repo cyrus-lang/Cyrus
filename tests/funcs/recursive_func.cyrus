@@ -12,6 +12,6 @@ fn fibonacci(n: int) int {
     }
 }
 
-fn main() {
+pub fn main() {
     printf("%d\n", fibonacci(10));
 }

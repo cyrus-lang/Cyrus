@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const arr = int[3]{1, 2, 3};
     const len = sizeof(arr) / sizeof(arr[0]);
     

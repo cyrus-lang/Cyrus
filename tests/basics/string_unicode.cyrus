@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const smile: char* = "😇";
     printf("%s", smile);
 

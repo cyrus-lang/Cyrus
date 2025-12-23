@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     for (var i = 3; i <= 5; i++) {
         printf("%d ", i);
     }

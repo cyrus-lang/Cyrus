@@ -167,7 +167,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Array(typed_array) => self.analyze_array(scope_id_opt, typed_array),
             TypedExprKind::ArrayIndex(typed_array_index) => self.analyze_array_index(scope_id_opt, typed_array_index),
             TypedExprKind::AddrOf(typed_address_of) => self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of),
-            TypedExprKind::Deref(typed_dereference) => self.analyze_deref_expr_type(scope_id_opt, typed_dereference),
+            TypedExprKind::Deref(typed_deref) => self.analyze_deref_expr_type(scope_id_opt, typed_deref),
             TypedExprKind::StructInit(struct_init) => {
                 self.analyze_struct_init(scope_id_opt, struct_init, expected_type)
             }

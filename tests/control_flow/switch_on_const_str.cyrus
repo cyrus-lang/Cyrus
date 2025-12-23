@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const text = "Cyrus!";
 
     switch (text) {

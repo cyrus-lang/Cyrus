@@ -2,7 +2,7 @@
 
 import std::libc{printf};
 
-fn main() {
+pub fn main() {
     const x = 42;
 
     if (x < 10) {

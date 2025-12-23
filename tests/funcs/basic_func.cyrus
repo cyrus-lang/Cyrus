@@ -6,7 +6,7 @@ fn add(x: int, y: int) int {
     return x + y;
 }
 
-fn main() {
+pub fn main() {
     const x1 = 5;
     const y1 = 7;
 

@@ -8,7 +8,7 @@ enum Color {
     Custom(uint, uint, uint)
 }
 
-fn main() {
+pub fn main() {
     const color = Color.Green;
 
     switch (color) {

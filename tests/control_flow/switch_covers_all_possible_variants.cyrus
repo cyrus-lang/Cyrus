@@ -22,7 +22,7 @@ fn format_color(color: Color) const char* {
     }
 }
 
-fn main() {
+pub fn main() {
     const color = Color.Black;
     printf("color: %s", format_color(color));
 }

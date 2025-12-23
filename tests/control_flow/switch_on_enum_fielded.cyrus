@@ -7,7 +7,7 @@ enum Value {
     Text(char*)
 }
 
-fn main() {
+pub fn main() {
     const value1 = Value.Text("Cyrus!");
 
     switch (value1) {
