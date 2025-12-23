@@ -92,7 +92,7 @@ impl GenericMappingCtx {
         }
 
         if let Some(parent) = &self.parent {
-            return parent.upgrade().unwrap().get_with_name(name);
+            return parent.upgrade()?.get_with_name(name);
         }
 
         None
@@ -115,7 +115,7 @@ impl GenericMappingCtx {
         }
 
         if let Some(parent_ctx) = &self.parent {
-            return parent_ctx.upgrade().unwrap().get_linked_by_name(child_name);
+            return parent_ctx.upgrade()?.get_linked_by_name(child_name);
         }
 
         None
@@ -179,7 +179,7 @@ impl Hash for GenericMappingCtx {
 
         // hash parent recursively
         if let Some(parent) = &self.parent {
-            parent.upgrade().unwrap().hash(state);
+            parent.upgrade().inspect(|ctx| ctx.hash(state));
         } else {
             None::<()>.hash(state);
         }
