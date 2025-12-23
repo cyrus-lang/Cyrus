@@ -163,6 +163,9 @@ pub enum AnalyzerDiagKind {
     #[error("Cyclic type definition found for type '{symbol}'.")]
     CyclicTypeDefinition { symbol: String },
 
+    #[error("The program entry point is a linkage-visible symbol and cannot be private.")]
+    PrivateEntryPoint,
+
     #[error("No entry point found (missing 'main' function).")]
     MissingEntryPoint,
 
