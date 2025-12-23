@@ -1718,11 +1718,26 @@ impl<'a> AnalysisContext<'a> {
         self.current_method_symbol_id = None;
     }
 
-    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
+    fn analyze_entry_func(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
+        let is_public = typed_func_def.modifiers.vis.is_public();
+
         if typed_func_def.name == "main" {
             let mut entry_points = self.entry_points.lock().unwrap();
             entry_points.push(typed_func_def.loc.clone());
+
+            if !is_public {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::PrivateEntryPoint),
+                    location: Some(DiagLoc::new(typed_func_def.loc.clone())),
+                    hint: Some("Declare it as 'pub' so the runtime and linker can reliably discover it.".to_string()),
+                });
+            }
         }
+    }
+
+    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
+        self.analyze_entry_func(typed_func_def);
 
         let is_public = typed_func_def.modifiers.vis.is_public();
         let is_generic_func = typed_func_def.generic_params.is_some();
