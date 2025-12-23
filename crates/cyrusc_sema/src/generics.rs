@@ -298,11 +298,11 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // if any ancestor directly has a concrete value for this symbol id, obey it
-        if let Some(parent_val) = ctx
-            .parent
-            .as_ref()
-            .and_then(|mapping_ctx| mapping_ctx.upgrade().unwrap().get_with_name(&generic_param.name))
-        {
+        if let Some(parent_val) = ctx.parent.as_ref().and_then(|mapping_ctx| {
+            mapping_ctx
+                .upgrade()
+                .and_then(|ctx| ctx.get_with_name(&generic_param.name))
+        }) {
             if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
