@@ -1922,7 +1922,7 @@ impl<'a> AnalysisContext<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         method_call: &mut TypedMethodCall,
-        expected_type: Option<SemanticType>
+        expected_type: Option<SemanticType>,
     ) -> (bool, Option<SemanticType>) {
         let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
             return (false, None);
@@ -1944,8 +1944,11 @@ impl<'a> AnalysisContext<'a> {
 
         method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
-        let (generic_params, mapping_ctx) =
-            self.initial_generic_params_and_mapping_ctx(&operand_ty, resolved_enum.enum_sig.generic_params.as_ref(), expected_type);
+        let (generic_params, mapping_ctx) = self.initial_generic_params_and_mapping_ctx(
+            &operand_ty,
+            resolved_enum.enum_sig.generic_params.as_ref(),
+            expected_type,
+        );
 
         let sema = self.analyze_enum_variant(
             scope_id_opt,
@@ -1978,7 +1981,10 @@ impl<'a> AnalysisContext<'a> {
             .map(|sema_ty| sema_ty.get_const_inner())
             .cloned()?;
 
-        if let Some(symbol_id) = method_call_operand_ty.get_symbol_id() {
+        // this only used to determine that, it's instance/static method call.
+        let unresolved_symbol_id = method_call.operand.kind.as_symbol_id();
+
+        if let Some(symbol_id) = unresolved_symbol_id {
             if let Some(sym) = self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
@@ -2009,7 +2015,7 @@ impl<'a> AnalysisContext<'a> {
                 local_scope_opt.clone(),
                 method_call_operand_ty.clone(),
                 method_call,
-                expected_type.clone()
+                expected_type.clone(),
             );
 
             if detected_as_enum_variant {
@@ -2228,10 +2234,10 @@ impl<'a> AnalysisContext<'a> {
 
         let first_param_opt = resolved_method.func_sig.params.list.first();
 
-        let is_instance_method = resolved_method.func_sig.is_instance_method();
+        let is_instance_method_sig = resolved_method.func_sig.is_instance_method();
 
         // invalid if static method called on instance
-        let invalid_call = !is_instance_method && method_call.is_instance_method_operand;
+        let invalid_call = !is_instance_method_sig && method_call.is_instance_method_operand;
 
         if invalid_call {
             self.reporter.report(Diag {
@@ -2263,7 +2269,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let instance_method_call = is_instance_method && method_call.is_instance_method_operand;
+        let instance_method_call = is_instance_method_sig && method_call.is_instance_method_operand;
         let mut generic_type_opt = method_call_operand_ty.as_generic_type().cloned();
 
         // init method generic mapping ctx
@@ -2293,7 +2299,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        if !method_call.is_instance_method_operand && is_instance_method {
+        if !method_call.is_instance_method_operand && is_instance_method_sig {
             // explicit instance method
             // inferring self type from first argument type
             if let Some(mut expr) = method_call.args.first().cloned() {
