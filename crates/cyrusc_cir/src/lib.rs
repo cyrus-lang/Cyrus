@@ -125,6 +125,7 @@ pub struct CIREnumInitExpr {
 #[derive(Debug, Clone)]
 pub struct CIRUnionInitExpr {
     pub expr: Box<CIRExpr>,
+    pub ty: CIRTy,
 }
 
 #[derive(Debug, Clone)]
