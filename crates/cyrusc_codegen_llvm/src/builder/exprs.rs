@@ -848,7 +848,17 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
-        self.emit_expr(&field_access.operand)
+        let union_lvalue = self.emit_expr(&field_access.operand);
+
+        let union_ptr = union_lvalue.as_basic_value().into_pointer_value();
+        let union_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+
+        let field_ptr = self
+            .llvmbuilder
+            .build_struct_gep(union_ty.clone(), union_ptr, 0, "union.field")
+            .unwrap();
+
+        InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(field_ptr))
     }
 
     pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
@@ -997,8 +1007,16 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&union_init_expr.expr);
-        self.load_rvalue(lvalue)
+        let union_ty: BasicTypeEnum<'ll> = self.emit_ty(union_init_expr.ty.clone()).try_into().unwrap();
+        let union_ptr = self.llvmbuilder.build_alloca(union_ty, "union.init").unwrap();
+
+        let init_lvalue = self.emit_expr(&union_init_expr.expr);
+        let init_rvalue = self.load_rvalue(init_lvalue);
+        self.llvmbuilder
+            .build_store(union_ptr, init_rvalue.as_basic_value())
+            .unwrap();
+
+        InternalValue::new(union_init_expr.ty.clone(), InternalValueKind::LValue(union_ptr))
     }
 
     pub(crate) fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {

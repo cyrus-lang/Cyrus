@@ -1340,10 +1340,10 @@ impl<'a> AnalysisContext<'a> {
         } else {
             if struct_init.is_const {
                 Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::NamedStruct(struct_init.symbol_id),
+                    ResolvedSymbol::Union(struct_init.symbol_id),
                 ))))
             } else {
-                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
                     struct_init.symbol_id,
                 )))
             }

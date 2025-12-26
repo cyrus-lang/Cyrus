@@ -54,7 +54,7 @@ impl<'resolver> CIRWalk<'resolver> {
             mangling,
             current_self_ty: None,
             current_obj_operand_ty: None,
-            symbol_formatter: build_panic_symbol_formatter()
+            symbol_formatter: build_panic_symbol_formatter(),
         }
     }
 
@@ -894,10 +894,18 @@ impl<'resolver> CIRWalk<'resolver> {
 
             CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
         } else if let Some(_) = sym.as_union() {
+            let fields_tys: Vec<CIRTy> = struct_init_expr
+                .fields
+                .iter()
+                .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+                .collect();
+
+            let union_ty = CIRTy::Union(CIRUnionTy { fields: fields_tys });
+
             let struct_field_init = struct_init_expr.fields.first().unwrap();
             let expr = Box::new(self.lower_expr(scope_id_opt, &struct_field_init.value));
 
-            CIRExprKind::UnionInit(CIRUnionInitExpr { expr })
+            CIRExprKind::UnionInit(CIRUnionInitExpr { expr, ty: union_ty })
         } else {
             unreachable!()
         }
