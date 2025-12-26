@@ -460,7 +460,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         &self,
         lhs: PointerValue<'ll>,
         rhs: PointerValue<'ll>,
-        ty: CIRTy
+        ty: CIRTy,
     ) -> InternalValue<'ll> {
         // cond: lhs == null
         let is_null = self
@@ -474,10 +474,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .expect("select")
             .into_pointer_value();
 
-        InternalValue::new(
-            CIRTy::Pointer(Box::new(ty)),
-            InternalValueKind::RValue(selected.into()),
-        )
+        InternalValue::new(CIRTy::Pointer(Box::new(ty)), InternalValueKind::RValue(selected.into()))
     }
 
     pub(crate) fn build_logical_and(
@@ -851,9 +848,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&field_access.operand);
-        let ptr = lvalue.as_basic_value().into_pointer_value();
-        InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(ptr.into()))
+        self.emit_expr(&field_access.operand)
     }
 
     pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
