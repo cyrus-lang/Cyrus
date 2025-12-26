@@ -1193,7 +1193,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         .get_pointer_inner()
                         .clone(),
                 ),
-                vcat: ValueCategory::RValue,
+                vcat: ValueCategory::LValue,
                 loc: SourceLoc::default(),
             })
         }
