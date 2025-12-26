@@ -848,10 +848,18 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
-        let union_lvalue = self.emit_expr(&field_access.operand);
+        let value = self.emit_expr(&field_access.operand);
 
-        let union_ptr = union_lvalue.as_basic_value().into_pointer_value();
         let union_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+        let union_ptr = match value.kind {
+            InternalValueKind::LValue(ptr) => ptr,
+            InternalValueKind::RValue(basic_value) => {
+                let temp = self.llvmbuilder.build_alloca(union_ty, "union.temp").unwrap();
+                self.llvmbuilder.build_store(temp, basic_value).unwrap();
+                temp
+            }
+            _ => unreachable!(),
+        };
 
         let field_ptr = self
             .llvmbuilder
