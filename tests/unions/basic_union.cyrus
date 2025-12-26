@@ -1,0 +1,26 @@
+// @stdout: changed 42
+
+import std::libc{printf};
+
+union Value {
+    text_value: char*;
+    int_value: int64;
+}
+
+fn value_as_text(v: Value) char* {
+    return v.text_value;
+}
+
+fn value_as_int(v: Value) int64 {
+    return v.int_value;
+}
+
+pub fn main() {
+    const inst = Value { text_value: "Cyrus!" };
+
+    inst.text_value = "changed";
+    printf("%s ", value_as_text(inst));
+
+    inst.int_value = 42;
+    printf("%d\n", value_as_int(inst));
+}
