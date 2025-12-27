@@ -1,29 +1,49 @@
-default: run
+.DEFAULT_GOAL := run
 
-cir:
-	cargo run -j24 -p cyrusc_cir -- ./tmp/main.cyrus --disable-warnings $(ARGS)
+JOBS     ?= 24
+PROFILE  ?= debug
 
-sema:
-	cargo run -j24 -p cyrusc_sema -- ./tmp/main.cyrus --disable-warnings $(ARGS)
+INPUT    ?= ./tmp/main.cyrus
+STDLIB   ?= ./stdlib
+LLVM_OUT ?= ./tmp/llvmir
+ARGS     ?=
 
-resolver:
-	cargo run -j24 -p cyrusc_resolver -- ./tmp/main.cyrus --disable-warnings $(ARGS)
+TARGET_DIR = ./target/$(PROFILE)
+COMPILER   = $(TARGET_DIR)/cyrus
+
+ifeq ($(PROFILE),release)
+	CARGO_PROFILE_FLAG = --release
+else
+	CARGO_PROFILE_FLAG =
+endif
+
+CARGO_RUN   = cargo run -j$(JOBS) $(CARGO_PROFILE_FLAG)
+CARGO_BUILD = cargo build -j$(JOBS) $(CARGO_PROFILE_FLAG)
+CARGO_TEST  = cargo test -j$(JOBS) $(CARGO_PROFILE_FLAG)
+
+COMMON_FLAGS = --disable-warnings $(ARGS)
+
+.PHONY: run build test testsuite \
+        cir sema resolver parser emit-llvm
+
+cir sema resolver parser:
+	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
 emit-llvm:
-	cargo run -j24 -- emit-llvm ./tmp/main.cyrus -o ./tmp/llvmir/ --stdlib=./stdlib $(ARGS)
-
-parser:
-	cargo run -j24 -p cyrusc_parser -- ./tmp/main.cyrus --stdlib=./stdlib $(ARGS)
+	$(CARGO_RUN) -- emit-llvm $(INPUT) -o $(LLVM_OUT) --stdlib=$(STDLIB) $(ARGS)
 
 run:
-	cargo run -j24 -- run ./tmp/main.cyrus --stdlib=./stdlib --disable-warnings $(ARGS)
+	$(CARGO_RUN) -- run $(INPUT) --stdlib=$(STDLIB) $(COMMON_FLAGS)
 
 build:
-	cargo build -j24 $(ARGS)
+	$(CARGO_BUILD) $(ARGS)
 
-test: 
-	cargo test -j24 --all $(ARGS)
-	make testsuite
+test: build testsuite
+	$(CARGO_TEST) --all $(ARGS)
 
 testsuite:
-	python3 ./tests/test_suite.py -d tests --output ./tmp/tests --compiler ./target/debug/cyrus --flags "--stdlib=./stdlib --quiet"
+	python3 ./tests/test_suite.py \
+		-d tests \
+		--output ./tmp/tests \
+		--compiler $(COMPILER) \
+		--flags "--stdlib=$(STDLIB) --quiet"
