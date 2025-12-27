@@ -172,7 +172,7 @@ impl Resolver {
             make_module_name_from_filepath(module_file_path.clone(), Some(base_path), stdlib_path.as_deref());
 
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
-            module_name,
+            module_name: module_name.clone(),
             body: typed_body,
             file_path: module_file_path.clone(),
             module_id,
@@ -180,7 +180,7 @@ impl Resolver {
 
         if is_master {
             let mut program_trees = self.program_trees.lock().unwrap();
-            let module_name = get_module_name(module_file_path.clone());
+            // let module_name = get_module_name(module_file_path.clone());
             program_trees.push(Rc::new(ProgramTreeEntry {
                 module_name,
                 module_path: module_file_path.clone(),
@@ -319,7 +319,15 @@ impl Resolver {
                 ) {
                     let module_file_path = self.current_file_path();
                     let mut program_trees = self.program_trees.lock().unwrap();
-                    let module_name = get_module_name(module_file_path.clone());
+
+                    let base_path = Path::new(&self.module_loader.opts.base_path);
+                    let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
+                    let module_name = make_module_name_from_filepath(
+                        module_file_path.clone(),
+                        Some(base_path),
+                        stdlib_path.as_deref(),
+                    );
+
                     program_trees.push(Rc::new(ProgramTreeEntry {
                         module_name,
                         module_path: module_file_path,
@@ -3536,18 +3544,6 @@ impl Resolver {
     }
 }
 
-fn get_module_name(module_file_path: String) -> String {
-    let path = Path::new(&module_file_path);
-    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("module");
-
-    // hash the full path for uniqueness
-    let mut hasher = DefaultHasher::new();
-    path.to_string_lossy().hash(&mut hasher);
-    let hash = hasher.finish();
-
-    format!("{}_{}", file_stem, format!("{:x}", hash))
-}
-
 pub fn generate_module_id() -> ModuleID {
     let mut rng = rand::rng();
     rng.random::<u64>()
@@ -3561,8 +3557,6 @@ impl Visiting {
         }
     }
 }
-
-// REVIEW Move these helpers tools to TypedAST crate
 
 fn get_method_symbol_name(struct_symbol_id: SymbolID, method_name: String) -> String {
     format!("{}{}", struct_symbol_id, method_name)

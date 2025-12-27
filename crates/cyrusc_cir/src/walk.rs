@@ -1,7 +1,7 @@
 use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
-use cyrusc_abi::mangling::ABINameMangling;
+use cyrusc_abi::mangler::ABINameMangler;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::{LiteralKind, SelfModifierKind};
 use cyrusc_resolver::Resolver;
@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) struct CIRWalk<'resolver> {
     program: Box<TypedProgramTree>,
-    mangling: &'resolver dyn ABINameMangling,
+    mangler: &'resolver dyn ABINameMangler,
     current_self_ty: Option<CIRTy>,
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'resolver Resolver,
@@ -44,14 +44,14 @@ impl<'resolver> CIRWalk<'resolver> {
         resolver: &'resolver Resolver,
         module_id: ModuleID,
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-        mangling: &'resolver dyn ABINameMangling,
+        mangler: &'resolver dyn ABINameMangler,
     ) -> Self {
         Self {
             program,
             resolver,
             module_id,
             cir_monomorph_registry,
-            mangling,
+            mangler,
             current_self_ty: None,
             current_obj_operand_ty: None,
             symbol_formatter: build_panic_symbol_formatter(),
@@ -169,7 +169,7 @@ impl<'resolver> CIRWalk<'resolver> {
         object_name: &String,
     ) -> CIRStmt {
         let mangled_name = self
-            .mangling
+            .mangler
             .method_name(&"", object_name, &resolved_method.func_sig.name);
 
         let func_def = TypedFuncDefStmt {
@@ -632,7 +632,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .and_then(|expr| Some(self.lower_expr(scope_id_opt, &expr)));
 
         let mangled_name = self
-            .mangling
+            .mangler
             .global_var_name(&self.program.module_name, &global_var.name);
 
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
@@ -735,9 +735,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let body = self.lower_body(&func_def.body);
         let ret = self.lower_sema_ty(scope_id_opt, &func_def.return_type);
 
-        let mangled_name = self
-            .mangling
-            .func_name(&self.program.module_name, &func_def.name, false);
+        let mangled_name = self.mangler.func_name(&self.program.module_name, &func_def.name, false);
 
         CIRStmt::FuncDef(CIRFuncDefStmt {
             irv_id: func_def.symbol_id,
@@ -754,7 +752,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
 
         let func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name);
-        let mangled_name = self.mangling.func_name(&self.program.module_name, &func_name, true);
+        let mangled_name = self.mangler.func_name(&self.program.module_name, &func_name, true);
 
         CIRFuncDeclStmt {
             irv_id: func_decl.symbol_id,
@@ -838,17 +836,36 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         if let Some(resolved_func) = sym.as_func() {
-            let func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
+            let mut func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
+
+            let mangled_name = self.mangler.func_name(
+                &self.get_module_name_by_module_id(resolved_func.module_id).unwrap(),
+                &resolved_func.func_sig.name,
+                resolved_func.func_sig.is_func_decl,
+            );
+
+            func_decl.name = mangled_name;
+
             CIRExprKind::Load(CIRValue {
                 irv_id: resolved_func.symbol_id,
                 kind: CIRValueKind::Func(Box::new(func_decl)),
             })
         } else if let Some(resolved_global_var) = sym.as_global_var() {
-            let global_var_stmt = self.lower_global_var_sig(
+            let mut global_var_stmt = self.lower_global_var_sig(
                 scope_id_opt,
                 resolved_global_var.symbol_id,
                 &resolved_global_var.global_var_sig,
             );
+
+            let mangled_name = self.mangler.global_var_name(
+                &self
+                    .get_module_name_by_module_id(resolved_global_var.module_id)
+                    .unwrap(),
+                &resolved_global_var.global_var_sig.name,
+            );
+
+            global_var_stmt.name = mangled_name;
+
             CIRExprKind::Load(CIRValue {
                 irv_id: resolved_global_var.symbol_id,
                 kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
@@ -861,6 +878,16 @@ impl<'resolver> CIRWalk<'resolver> {
         } else {
             unreachable!("Unexpected symbol kind when lowering load symbol.")
         }
+    }
+
+    fn get_module_name_by_module_id(&self, module_id: ModuleID) -> Option<String> {
+        let program_trees = self.resolver.program_trees.lock().unwrap();
+        let opt = program_trees
+            .iter()
+            .find(|entry| entry.module_id == module_id)
+            .map(|entry| entry.module_name.clone());
+        drop(program_trees);
+        opt
     }
 
     pub(crate) fn lower_struct_init(
@@ -1618,7 +1645,7 @@ pub fn walk_program_trees_in_parallel(
     program_trees: Vec<Box<TypedProgramTree>>,
     resolver: &Resolver,
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-    mangling: &dyn ABINameMangling,
+    mangler: &dyn ABINameMangler,
 ) -> Vec<Box<CIRProgramTree>> {
     use rayon::prelude::*;
 
@@ -1638,7 +1665,7 @@ pub fn walk_program_trees_in_parallel(
                     resolver,
                     program_tree.module_id,
                     cir_monomorph_registry.clone(),
-                    mangling,
+                    mangler,
                 );
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
                 Box::new(cir_program_tree)

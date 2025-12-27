@@ -1,4 +1,4 @@
-use cyrusc_abi::mangling::Cyrus_ABI;
+use cyrusc_abi::mangler::Cyrus_ABI;
 use cyrusc_cir::{monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
