@@ -12,7 +12,7 @@ use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     module::Linkage,
-    types::{AnyTypeEnum, ArrayType, BasicTypeEnum},
+    types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
         AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue, StructValue,
     },
@@ -1015,16 +1015,44 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
-        let union_ty: BasicTypeEnum<'ll> = self.emit_ty(union_init_expr.ty.clone()).try_into().unwrap();
-        let union_ptr = self.llvmbuilder.build_alloca(union_ty, "union.init").unwrap();
+        // let union_ty: BasicTypeEnum<'ll> = self.emit_ty(union_init_expr.ty.clone()).try_into().unwrap();
+        // let union_ptr = self.llvmbuilder.build_alloca(union_ty, "union.init").unwrap();
 
-        let init_lvalue = self.emit_expr(&union_init_expr.expr);
-        let init_rvalue = self.load_rvalue(init_lvalue);
+        // let init_lvalue = self.emit_expr(&union_init_expr.expr);
+        // let init_rvalue = self.load_rvalue(init_lvalue);
+        // self.llvmbuilder
+        //     .build_store(union_ptr, init_rvalue.as_basic_value())
+        //     .unwrap();
+
+        // InternalValue::new(union_init_expr.ty.clone(), InternalValueKind::LValue(union_ptr))
+
+        self.emit_expr(&union_init_expr.expr)
+    }
+
+    fn emit_struct_init_via_memcpy(
+        &self,
+        struct_type: StructType<'ll>,
+        values: &Vec<(InternalValue<'ll>, CIRTy)>,
+    ) -> StructValue<'ll> {
+        let struct_ptr = self.llvmbuilder.build_alloca(struct_type, "struct.init").unwrap();
+
+        for (index, (field_value, field_cir_ty)) in values.iter().enumerate() {
+            let field_ptr = self
+                .llvmbuilder
+                .build_struct_gep(struct_type, struct_ptr, index as u32, "struct.field")
+                .unwrap();
+
+            self.emit_store(field_ptr, field_value.clone(), field_cir_ty.clone());
+        }
+
         self.llvmbuilder
-            .build_store(union_ptr, init_rvalue.as_basic_value())
-            .unwrap();
+            .build_load(struct_type, struct_ptr, "struct.rvalue")
+            .unwrap()
+            .into_struct_value()
+    }
 
-        InternalValue::new(union_init_expr.ty.clone(), InternalValueKind::LValue(union_ptr))
+    fn must_init_via_memcpy(&self, fields: &Vec<CIRTy>) -> bool {
+        fields.iter().any(|f| f.is_union())
     }
 
     pub(crate) fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
@@ -1039,7 +1067,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut all_const = true;
 
-        let values: Vec<BasicValueEnum<'ll>> = struct_init
+        let values: Vec<InternalValue<'ll>> = struct_init
             .fields
             .iter()
             .enumerate()
@@ -1048,9 +1076,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let rvalue = self.load_rvalue(lvalue);
 
                 let target_type = struct_init.ty.fields.get(idx).unwrap();
-                let casted = self.emit_implicit_cast(target_type, rvalue).as_basic_value();
+                let casted = self.emit_implicit_cast(target_type, rvalue);
 
-                if !is_basic_value_constant(casted) {
+                if !is_basic_value_constant(casted.as_basic_value()) {
                     all_const = false;
                 }
                 casted
@@ -1059,18 +1087,33 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut struct_value: StructValue<'ll>;
 
-        if all_const {
-            struct_value = struct_type.const_named_struct(&values);
+        if self.must_init_via_memcpy(&struct_init.ty.fields) {
+            let field_values = values
+                .iter()
+                .cloned()
+                .zip(struct_init.ty.fields.clone())
+                .collect::<Vec<_>>();
+            struct_value = self.emit_struct_init_via_memcpy(struct_type, &field_values);
         } else {
-            struct_value = struct_type.get_undef();
+            if all_const {
+                let field_values = values.iter().map(|v| v.as_basic_value()).collect::<Vec<_>>();
+                struct_value = struct_type.const_named_struct(&field_values);
+            } else {
+                struct_value = struct_type.get_undef();
 
-            values.iter().enumerate().for_each(|(index, rvalue)| {
-                struct_value = self
-                    .llvmbuilder
-                    .build_insert_value(struct_value, *rvalue, index.try_into().unwrap(), "insert")
-                    .unwrap()
-                    .into_struct_value();
-            });
+                values.iter().enumerate().for_each(|(index, rvalue)| {
+                    struct_value = self
+                        .llvmbuilder
+                        .build_insert_value(
+                            struct_value,
+                            rvalue.as_basic_value(),
+                            index.try_into().unwrap(),
+                            "insert",
+                        )
+                        .unwrap()
+                        .into_struct_value();
+                });
+            }
         }
 
         InternalValue::new(
