@@ -3,7 +3,7 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenABI, CodeGenOptions, LinkerOutputKind},
 };
-use cyrusc_abi::mangling::{ABINameMangling, C_ABI, Cyrus_ABI};
+use cyrusc_abi::mangler::{ABINameMangler, C_ABI, Cyrus_ABI};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
@@ -131,6 +131,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     }
 
     AnalysisContext::check_entry_points(entry_points);
+    drop(resolved_program_trees);
 
     if has_error {
         exit(1);
@@ -169,7 +170,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     }
 }
 
-fn get_name_mangling(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangling> {
+fn get_name_mangling(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangler> {
     match abi.unwrap_or_default() {
         CodeGenABI::Cyrus => Box::new(Cyrus_ABI::new()),
         CodeGenABI::C => Box::new(C_ABI::new()),

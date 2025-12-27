@@ -3,7 +3,7 @@ pub mod export;
 pub mod flags;
 pub mod inline;
 pub mod linkage;
-pub mod mangling;
+pub mod mangler;
 pub mod modifiers;
 pub mod modulename;
 pub mod placement;

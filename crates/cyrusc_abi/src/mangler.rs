@@ -1,6 +1,6 @@
 /// Trait that defines how to generate ABI-safe names for the language.
 /// This allows multiple ABIs to coexist with different name mangling rules.
-pub trait ABINameMangling: Send + Sync {
+pub trait ABINameMangler: Send + Sync {
     /// Function names
     fn func_name(&self, module_name: &str, func_name: &str, exported: bool) -> String;
 
@@ -44,7 +44,7 @@ impl Cyrus_ABI {
     }
 }
 
-impl ABINameMangling for Cyrus_ABI {
+impl ABINameMangler for Cyrus_ABI {
     fn func_name(&self, module_name: &str, func_name: &str, exported: bool) -> String {
         if func_name == "main" {
             func_name.to_string()
@@ -108,7 +108,7 @@ impl C_ABI {
     }
 }
 
-impl ABINameMangling for C_ABI {
+impl ABINameMangler for C_ABI {
     fn func_name(&self, _module_name: &str, func_name: &str, _exported: bool) -> String {
         Self::sanitize(func_name)
     }

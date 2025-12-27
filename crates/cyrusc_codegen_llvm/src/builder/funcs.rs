@@ -112,6 +112,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut modifiers = FuncModifiers::default();
         modifiers.inline = Some(Inlining::Inline);
+        
         let func_decl = CIRFuncDeclStmt {
             irv_id: lambda.irv_id,
             name: "lambda".to_string(),
