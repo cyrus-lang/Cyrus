@@ -1015,17 +1015,6 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
-        // let union_ty: BasicTypeEnum<'ll> = self.emit_ty(union_init_expr.ty.clone()).try_into().unwrap();
-        // let union_ptr = self.llvmbuilder.build_alloca(union_ty, "union.init").unwrap();
-
-        // let init_lvalue = self.emit_expr(&union_init_expr.expr);
-        // let init_rvalue = self.load_rvalue(init_lvalue);
-        // self.llvmbuilder
-        //     .build_store(union_ptr, init_rvalue.as_basic_value())
-        //     .unwrap();
-
-        // InternalValue::new(union_init_expr.ty.clone(), InternalValueKind::LValue(union_ptr))
-
         self.emit_expr(&union_init_expr.expr)
     }
 
