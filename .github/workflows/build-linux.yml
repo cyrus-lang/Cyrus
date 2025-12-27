@@ -43,7 +43,7 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-18
           CC: clang
           CXX: clang++
-        run: TARGET_DIR=./target/release make testsuite 
+        run: make testsuite PROFILE=release
 
       - name: Collect files in single directory
         run: |
