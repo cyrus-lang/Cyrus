@@ -23,6 +23,7 @@ build:
 
 test: 
 	cargo test -j24 --all $(ARGS)
+	make testsuite
 
 testsuite:
 	python3 ./tests/test_suite.py -d tests --output ./tmp/tests --compiler ./target/debug/cyrus --flags "--stdlib=./stdlib --quiet"
