@@ -1,0 +1,17 @@
+// @stdout: 2500
+
+import std::libc{printf};
+
+pub fn main() {
+    union U {
+        p: char*;
+        i: int64;
+    }
+
+    var inst = U { p: null };
+
+    var iptr = &inst.i;
+    *iptr = 2500;
+
+    printf("%d\n", inst.i);
+}
