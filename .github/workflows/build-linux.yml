@@ -43,7 +43,7 @@ jobs:
           LLVM_CONFIG: /usr/bin/llvm-config-18
           CC: clang
           CXX: clang++
-        run: cargo test --all --verbose
+        run: make test
 
       - name: Collect files in single directory
         run: |
