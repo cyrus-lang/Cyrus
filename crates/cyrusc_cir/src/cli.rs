@@ -76,6 +76,7 @@ pub fn main() {
             }
 
             AnalysisContext::check_entry_points(entry_points);
+            drop(resolved_program_trees);
 
             let mangling = Cyrus_ABI::new();
 
