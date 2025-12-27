@@ -41,7 +41,7 @@ impl<'a> InternalValue<'a> {
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRTy) {
-        let target_ty: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty).try_into().unwrap();
+        let target_ty: BasicTypeEnum<'ll> = self.emit_ty(target_cir_ty.clone()).try_into().unwrap();
 
         if let BasicTypeEnum::IntType(int_ty) = target_ty {
             let rvalue_int_value = rvalue.as_basic_value().into_int_value();
@@ -61,6 +61,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                 };
                 rvalue = InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(widened.into()));
             }
+        }
+
+        if target_cir_ty.is_union() {
+            self.emit_memcpy(ptr, rvalue.as_basic_value());
+            return;
         }
 
         self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();

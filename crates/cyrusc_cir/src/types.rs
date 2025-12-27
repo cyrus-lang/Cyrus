@@ -71,49 +71,50 @@ impl CIRTy {
     }
 
     pub fn as_fn(&self) -> Option<CIRFuncTy> {
-        match self {
+        match self.get_const_inner() {
             CIRTy::FuncType(fn_ty) => Some(fn_ty.clone()),
-            CIRTy::Const(inner) => inner.as_fn(),
             _ => None,
         }
     }
 
     pub fn as_plain(&self) -> Option<PlainType> {
-        match self {
+        match self.get_const_inner() {
             CIRTy::PlainType(plain_type) => Some(plain_type.clone()),
-            CIRTy::Const(inner) => inner.as_plain(),
             _ => None,
         }
     }
 
     pub fn as_arr_ty(&self) -> Option<CIRArrayTy> {
-        match self {
+        match self.get_const_inner() {
             CIRTy::Array(arr_ty) => Some(arr_ty.clone()),
-            CIRTy::Const(inner) => inner.as_arr_ty(),
             _ => None,
         }
     }
 
     pub fn as_enum(&self) -> Option<CIREnumTy> {
-        match self {
+        match self.get_const_inner() {
             CIRTy::Enum(enum_ty) => Some(enum_ty.clone()),
-            CIRTy::Const(inner) => inner.as_enum(),
             _ => None,
         }
     }
 
     pub fn is_enum(&self) -> bool {
-        match self {
+        match self.get_const_inner() {
             CIRTy::Enum(..) => true,
-            CIRTy::Const(inner) => inner.is_enum(),
+            _ => false,
+        }
+    }
+
+    pub fn is_union(&self) -> bool {
+        match self.get_const_inner() {
+            CIRTy::Union(..) => true,
             _ => false,
         }
     }
 
     pub fn is_fn(&self) -> bool {
-        match self {
+        match self.get_const_inner() {
             CIRTy::FuncType(_) => true,
-            CIRTy::Const(inner) => inner.is_fn(),
             _ => false,
         }
     }
