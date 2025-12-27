@@ -21,7 +21,7 @@ use cyrusc_tast::types::*;
 use cyrusc_tast::*;
 use rand::Rng;
 use std::collections::HashSet;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -180,7 +180,6 @@ impl Resolver {
 
         if is_master {
             let mut program_trees = self.program_trees.lock().unwrap();
-            // let module_name = get_module_name(module_file_path.clone());
             program_trees.push(Rc::new(ProgramTreeEntry {
                 module_name,
                 module_path: module_file_path.clone(),
