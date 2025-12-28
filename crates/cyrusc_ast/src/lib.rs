@@ -730,6 +730,7 @@ pub struct Lambda {
     pub params: FuncParams,
     pub body: Box<BlockStmt>,
     pub return_type: TypeSpecifier,
+    pub inline: bool,
     pub span: Span,
     pub loc: Location,
 }

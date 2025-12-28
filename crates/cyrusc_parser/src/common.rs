@@ -299,7 +299,7 @@ impl Parser {
                 hint: None,
             });
         }
-        let index = self.parse_expression(Precedence::Lowest)?.0;
+        let index = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightBracket)?;
         Ok(index)
     }
@@ -539,7 +539,7 @@ impl Parser {
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
         }
-        let capacity = self.parse_expression(Precedence::Lowest)?.0;
+        let capacity = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightBracket)?;
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }

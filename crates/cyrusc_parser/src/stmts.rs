@@ -70,7 +70,7 @@ impl Parser {
                         return self.parse_label_statement();
                     }
 
-                    self.parse_expression_statement()
+                    self.parse_expr_statement()
                 }
             }
         } else {
@@ -315,8 +315,8 @@ impl Parser {
         Ok(FuncParams { list, variadic })
     }
 
-    fn parse_expression_statement(&mut self) -> Result<Stmt, Diag> {
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+    fn parse_expr_statement(&mut self) -> Result<Stmt, Diag> {
+        let expr = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         Ok(Stmt::Expr(expr))
     }
@@ -333,7 +333,7 @@ impl Parser {
             return Ok(EnumVariant::Identifier(variant_name));
         } else if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
-            let value = self.parse_expression(Precedence::Lowest)?.0;
+            let value = self.parse_expr(Precedence::Lowest)?.0;
             self.next_token(); // consume last token of the expression
             return Ok(EnumVariant::Valued(variant_name, Box::new(value)));
         } else if self.current_token_is(TokenKind::LeftParen) {
@@ -1025,7 +1025,7 @@ impl Parser {
 
         self.expect_current(TokenKind::In)?;
 
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
 
         self.expect_current(TokenKind::RightParen)?;
@@ -1048,7 +1048,7 @@ impl Parser {
 
         self.next_token(); // consume while token
         self.expect_current(TokenKind::LeftParen)?;
-        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        let condition = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
 
@@ -1127,13 +1127,13 @@ impl Parser {
             }));
         }
 
-        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        let condition = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         self.next_token();
 
         let mut increment: Option<Expr> = None;
         if !self.current_token_is(TokenKind::RightParen) {
-            increment = Some(self.parse_expression(Precedence::Lowest)?.0);
+            increment = Some(self.parse_expr(Precedence::Lowest)?.0);
             self.next_token(); // consume increment token
         }
 
@@ -1292,7 +1292,7 @@ impl Parser {
         self.expect_peek(TokenKind::Assign)?;
         self.next_token(); // consume assign
 
-        let (expr, span) = self.parse_expression(Precedence::Lowest)?;
+        let (expr, span) = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek(TokenKind::Semicolon)?;
 
         Ok(Stmt::ExportTuple(ExportTuple {
@@ -1358,7 +1358,7 @@ impl Parser {
         }
         self.expect_current(TokenKind::Assign)?;
 
-        let (expr, span) = self.parse_expression(Precedence::Lowest)?;
+        let (expr, span) = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek(TokenKind::Semicolon)?;
 
         Ok(Stmt::Variable(Variable {
@@ -1507,7 +1507,7 @@ impl Parser {
             }));
         }
 
-        let argument = self.parse_expression(Precedence::Lowest)?.0;
+        let argument = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
 
         if !self.current_token_is(TokenKind::Semicolon) {
@@ -1557,7 +1557,7 @@ impl Parser {
         let expr = {
             if self.current_token_is(TokenKind::Assign) {
                 self.next_token();
-                let expr = Some(self.parse_expression(Precedence::Lowest)?.0);
+                let expr = Some(self.parse_expr(Precedence::Lowest)?.0);
                 self.next_token();
                 expr
             } else {
@@ -1611,7 +1611,7 @@ impl Parser {
 
         self.next_token();
         self.expect_current(TokenKind::LeftParen)?;
-        let operand = self.parse_expression(Precedence::Lowest)?.0;
+        let operand = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
         self.expect_current(TokenKind::LeftBrace)?;
@@ -1646,14 +1646,14 @@ impl Parser {
             } else {
                 let start = this.current_token().span.start;
                 let loc = this.current_token().loc.clone();
-                let expr = this.parse_expression(Precedence::Prefix)?.0;
+                let expr = this.parse_expr(Precedence::Prefix)?.0;
                 this.next_token();
 
                 if this.current_token_is(TokenKind::TripleDot) {
                     // range (exclusive)
                     this.next_token();
                     let lower = expr;
-                    let upper = this.parse_expression(Precedence::Prefix)?.0;
+                    let upper = this.parse_expr(Precedence::Prefix)?.0;
                     this.next_token();
 
                     SwitchCasePattern::Range(Range {
@@ -1668,7 +1668,7 @@ impl Parser {
                     this.next_token();
                     this.next_token();
                     let lower = expr;
-                    let upper = this.parse_expression(Precedence::Prefix)?.0;
+                    let upper = this.parse_expr(Precedence::Prefix)?.0;
                     this.next_token();
 
                     SwitchCasePattern::Range(Range {
@@ -1755,7 +1755,7 @@ impl Parser {
         self.expect_current(TokenKind::If)?;
         self.expect_current(TokenKind::LeftParen)?;
 
-        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        let condition = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightParen)?;
         self.next_token(); // consume right paren
 
@@ -1773,7 +1773,7 @@ impl Parser {
                 self.next_token(); // consume if token
 
                 self.expect_current(TokenKind::LeftParen)?;
-                let (condition, _) = self.parse_expression(Precedence::Lowest)?;
+                let (condition, _) = self.parse_expr(Precedence::Lowest)?;
                 self.next_token(); // consume last token of the expression
                 self.expect_current(TokenKind::RightParen)?;
 

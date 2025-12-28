@@ -4,9 +4,9 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::abi::modifiers::apply_func_modifiers,
+    llvm::abi::modifiers::{apply_func_modifiers, apply_inlining_func},
 };
-use cyrusc_abi::modifiers::FuncModifiers;
+use cyrusc_abi::{inline::Inlining, modifiers::FuncModifiers};
 use cyrusc_cir::{
     CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
     monomorph::CIRMonomorphEntry,
@@ -114,6 +114,9 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let fn_value = self.emit_func_decl(&func_decl);
         fn_value.set_linkage(inkwell::module::Linkage::Private);
+        if lambda.inline {
+            apply_inlining_func(self.llvmctx, &fn_value, Inlining::Inline);
+        }
 
         self.cur_fn = Some(fn_value);
         self.emit_func_body(&lambda.params, &lambda.body);
