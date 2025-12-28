@@ -228,6 +228,14 @@ impl SemanticType {
         }
     }
 
+    pub fn as_const(&self) -> SemanticType {
+        if self.is_const() {
+            return self.clone();
+        }
+        
+        SemanticType::Const(Box::new(self.clone()))
+    }
+
     pub fn get_pointer_inner(&self) -> &SemanticType {
         match self {
             SemanticType::Pointer(sema_ty) => sema_ty,

@@ -133,8 +133,12 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
-        expected_type: Option<SemanticType>,
+        mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        if let Some(sema_ty) = expected_type {
+            expected_type = Some(sema_ty.get_const_inner().clone());
+        }
+
         self.lower_special_exprs(scope_id_opt, typed_expr, expected_type.clone());
 
         let sema_ty = match &mut typed_expr.kind {
@@ -464,7 +468,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if is_operand_const {
-            Some(SemanticType::Const(Box::new(element_type)))
+            Some(element_type.as_const())
         } else {
             Some(element_type)
         }
@@ -860,7 +864,7 @@ impl<'a> AnalysisContext<'a> {
 
             if is_const {
                 Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::NamedStruct(resolved_enum.symbol_id),
+                    ResolvedSymbol::Enum(resolved_enum.symbol_id),
                 ))))
             } else {
                 Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
@@ -957,7 +961,7 @@ impl<'a> AnalysisContext<'a> {
 
             if is_const {
                 Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::NamedStruct(resolved_enum.symbol_id),
+                    ResolvedSymbol::Enum(resolved_enum.symbol_id),
                 ))))
             } else {
                 Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
@@ -2570,7 +2574,9 @@ impl<'a> AnalysisContext<'a> {
 
         cast.target_type = self
             .normalize_type(scope_id_opt, cast.target_type.clone(), cast.loc.clone(), false)
-            .unwrap();
+            .unwrap()
+            .get_const_inner()
+            .clone();
 
         if !(self.check_type_mismatch(
             scope_id_opt,

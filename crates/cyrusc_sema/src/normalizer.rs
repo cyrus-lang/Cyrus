@@ -182,7 +182,7 @@ impl<'a> AnalysisContext<'a> {
             }
             SemanticType::Const(inner) => {
                 let inner = self.normalize_type(scope_id_opt, *inner, loc.clone(), false)?;
-                Some(SemanticType::Const(Box::new(inner)))
+                Some(inner.as_const())
             }
             SemanticType::Array(arr) => match self.normalize_array_capacity(scope_id_opt, arr, loc.clone()) {
                 Some(arr_type) => Some(SemanticType::Array(arr_type)),
@@ -314,7 +314,7 @@ impl<'a> AnalysisContext<'a> {
                         let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone(), false)?;
 
                         return Some(if var.is_const {
-                            SemanticType::Const(Box::new(sema_ty))
+                            sema_ty.as_const()
                         } else {
                             sema_ty
                         });
@@ -328,7 +328,7 @@ impl<'a> AnalysisContext<'a> {
                     if var.analyzed {
                         if let Some(sema_ty) = &var.ty {
                             return Some(if var.is_const {
-                                SemanticType::Const(Box::new(sema_ty.clone()))
+                                sema_ty.as_const()
                             } else {
                                 sema_ty.clone()
                             });
@@ -342,7 +342,7 @@ impl<'a> AnalysisContext<'a> {
                     self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id, sema_ty.clone());
 
                     Some(if var.is_const {
-                        SemanticType::Const(Box::new(sema_ty))
+                        sema_ty.as_const()
                     } else {
                         sema_ty
                     })

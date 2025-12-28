@@ -35,7 +35,7 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
             })
         }),
         SemanticType::Const(inner) => {
-            sub(*inner, &|t| substitute_type(t, ctx.clone())).map(|t| SemanticType::Const(Box::new(t)))
+            sub(*inner, &|sema_ty| substitute_type(sema_ty, ctx.clone())).map(|sema_ty| sema_ty.as_const())
         }
         SemanticType::Tuple(tuple) => {
             let list = tuple
