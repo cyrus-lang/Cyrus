@@ -103,10 +103,10 @@ impl Parser {
             }
 
             try_set_once!(visibility, parse_vis, "Visibility modifier already specified.");
-            try_set_once!(linkage, parse_linkage, "Linkage modifier already specified.");
             try_set_once!(inline, parse_inlining, "Inlining modifier already specified.");
             try_set_once!(prologue, parse_prologue, "Prologue modifier already specified.");
             try_set_once!(export, parse_export_kind, "Export kind already specified.");
+            try_set_once_result!(linkage, parse_linkage, "Linkage modifier already specified.");
             try_set_once_result!(callconv, parse_callconv, "Call convention already specified.");
 
             match self.parse_optional_flag(token.clone()) {
@@ -351,18 +351,35 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_linkage(&mut self, token: Token) -> Option<Linkage> {
+    pub(crate) fn parse_linkage(&mut self, token: Token) -> Result<Option<Linkage>, Diag> {
         if matches!(token.kind, TokenKind::Extern) {
             self.next_token();
-            Some(Linkage::Extern)
+
+            if matches!(self.current_token().kind, TokenKind::Literal(..)) {
+                let extern_abi = self.parse_string_literal()?;
+                self.next_token();
+
+                let Ok(callconv) = CallConv::try_from(extern_abi.clone()) else {
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidABI(extern_abi)),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                };
+
+                return Ok(Some(Linkage::Extern(Some(callconv))));
+            }
+
+            Ok(Some(Linkage::Extern(None)))
         } else if matches!(token.kind, TokenKind::Weak) {
             self.next_token();
-            Some(Linkage::Weak)
+            Ok(Some(Linkage::Weak))
         } else if matches!(token.kind, TokenKind::LinkOnce) {
             self.next_token();
-            Some(Linkage::LinkOnce)
+            Ok(Some(Linkage::LinkOnce))
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -559,7 +576,7 @@ impl UnresolvedModifiers {
 
         Ok(GlobalVarModifiers {
             vis,
-            linkage: self.linkage,
+            linkage: self.linkage.clone(),
             export: self.export,
             section,
             placement: self.placement,
@@ -630,7 +647,7 @@ impl UnresolvedModifiers {
             });
         }
 
-        let linkage = vis.is_public().then_some(Linkage::Extern);
+        let linkage = vis.is_public().then_some(Linkage::Extern(None));
 
         Ok(FuncModifiers {
             vis,

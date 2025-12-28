@@ -101,7 +101,7 @@ impl<'a> AnalysisContext<'a> {
 
         let template_body_scope = self
             .resolver
-            .get_scope_ref(self.module_id, template_body.scope_id)
+            .get_scope_ref(func_sig.module_id, template_body.scope_id)
             .unwrap();
 
         // make new scope for specialized func body

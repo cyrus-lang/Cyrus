@@ -24,7 +24,7 @@ fn llvm_dll_storage_class(export: &ExportKind) -> DLLStorageClass {
 
 fn llvm_linkage(linkage: &Linkage) -> LLVMLinkage {
     match linkage {
-        Linkage::Extern => LLVMLinkage::External,
+        Linkage::Extern(_) => LLVMLinkage::External,
         Linkage::Weak => LLVMLinkage::WeakAny,
         Linkage::LinkOnce => LLVMLinkage::LinkOnceAny,
     }
