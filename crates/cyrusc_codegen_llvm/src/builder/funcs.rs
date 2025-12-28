@@ -99,19 +99,11 @@ impl<'ll> IRBuilderCtx<'ll> {
         });
     }
 
-    fn increment_lambda_name(&mut self) -> String {
-        let id = self.lambda_id;
-        let name = format!("lambda.{}", id);
-        self.lambda_id += 1;
-        name
-    }
-
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
         let parent_fn = self.cur_fn.clone();
         let parent_block = self.blockreg.cur_block;
 
         let lambda_name = self.increment_lambda_name();
-
         let func_decl = CIRFuncDeclStmt {
             irv_id: lambda.irv_id,
             name: lambda_name,
@@ -119,9 +111,11 @@ impl<'ll> IRBuilderCtx<'ll> {
             ret: lambda.ret.clone(),
             modifiers: FuncModifiers::default(),
         };
-        let fn_value = self.emit_func_decl(&func_decl);
-        self.cur_fn = Some(fn_value);
 
+        let fn_value = self.emit_func_decl(&func_decl);
+        fn_value.set_linkage(inkwell::module::Linkage::Private);
+
+        self.cur_fn = Some(fn_value);
         self.emit_func_body(&lambda.params, &lambda.body);
 
         self.cur_fn = parent_fn;
@@ -183,6 +177,13 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             self.llvmbuilder.build_return(None).unwrap();
         }
+    }
+
+    fn increment_lambda_name(&mut self) -> String {
+        let id = self.lambda_id;
+        let name = format!("lambda.{}", id);
+        self.lambda_id += 1;
+        name
     }
 }
 
