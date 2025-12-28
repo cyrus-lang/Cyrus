@@ -38,6 +38,8 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) cur_fn: Option<FunctionValue<'ll>>,
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    // lambda name (auto increment)
+    pub(crate) lambda_id: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +74,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             cur_fn: None,
             blockreg,
             monomorph_registry,
+            lambda_id: 0,
         }
     }
 
@@ -157,7 +160,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             // zero init
             let zero_internal_value =
                 InternalValue::new(cir_var.ty.clone(), InternalValueKind::RValue(ty.const_zero()));
-                
+
             self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
         }
 

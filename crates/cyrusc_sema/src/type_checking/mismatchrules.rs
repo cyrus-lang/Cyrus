@@ -165,8 +165,6 @@ impl<'a> AnalysisContext<'a> {
             | (SemanticType::PlainType(PlainType::IntPtr), SemanticType::Pointer(..))
             | (SemanticType::PlainType(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
 
-            (SemanticType::FuncType(..), SemanticType::Pointer(pointer_type)) => pointer_type.is_void(),
-
             _ => false,
         }
     }
