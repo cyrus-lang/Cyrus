@@ -508,7 +508,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
-            self.blockreg.cur_block = None;
         }
 
         if else_block != exit_block {
@@ -520,7 +519,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
-            self.blockreg.cur_block = None;
         }
 
         let exit_in_use =
@@ -550,6 +548,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.blockreg.cur_block = None;
             return false;
         }
+        
         true
     }
 
