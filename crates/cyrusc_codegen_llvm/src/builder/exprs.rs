@@ -128,10 +128,6 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_cast(&self, target_type: AnyTypeEnum<'ll>, value: InternalValue<'ll>) -> AnyValueEnum<'ll> {
-        if let Some(fn_value) = value.as_func() {
-            return self.emit_fn_as_ptr(*fn_value).into();
-        }
-
         let basic_value = value.as_basic_value();
 
         match target_type {

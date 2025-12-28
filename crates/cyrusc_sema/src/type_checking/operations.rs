@@ -63,20 +63,20 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_addr_of_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        address_of: &mut TypedAddrOfExpr,
+        addr_of: &mut TypedAddrOfExpr,
     ) -> Option<SemanticType> {
-        if !address_of.operand.is_lvalue() {
+        if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AddressOfRvalue),
-                location: Some(DiagLoc::new(address_of.loc.clone())),
+                location: Some(DiagLoc::new(addr_of.loc.clone())),
                 hint: None,
             });
             return None;
         }
 
-        let operand_inner_type = address_of.operand.sema_ty.clone();
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut address_of.operand, operand_inner_type) {
+        let operand_inner_type = addr_of.operand.sema_ty.clone();
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut addr_of.operand, operand_inner_type) {
             Some(sema_ty) => sema_ty.get_const_inner().clone(),
             None => return None,
         };

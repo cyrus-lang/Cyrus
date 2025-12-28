@@ -485,11 +485,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.blockreg.cur_block = None;
             } else {
                 if then_block != else_block {
-                    self.llvm_emit_cond_br(
-                        cond.as_value_ref(),
-                        then_block.as_mut_ptr(),
-                        else_block.as_mut_ptr(),
-                    );
+                    self.llvm_emit_cond_br(cond.as_value_ref(), then_block.as_mut_ptr(), else_block.as_mut_ptr());
                     self.blockreg.cur_block = None;
                 } else {
                     exit_in_use =

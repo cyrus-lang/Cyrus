@@ -6,17 +6,14 @@ use crate::{
     },
     llvm::abi::modifiers::apply_func_modifiers,
 };
-use cyrusc_abi::{inline::Inlining, modifiers::FuncModifiers};
+use cyrusc_abi::modifiers::FuncModifiers;
 use cyrusc_cir::{
     CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
     monomorph::CIRMonomorphEntry,
     types::{CIRFuncTy, CIRTy},
 };
-use cyrusc_tast::{generics::monomorph::MonomorphKey, types::PlainType};
-use inkwell::{
-    types::BasicTypeEnum,
-    values::{FunctionValue, PointerValue},
-};
+use cyrusc_tast::generics::monomorph::MonomorphKey;
+use inkwell::{types::BasicTypeEnum, values::FunctionValue};
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_monomorph_func_instance(
@@ -83,10 +80,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_fn_as_ptr(&self, fn_value: FunctionValue<'ll>) -> PointerValue<'ll> {
-        fn_value.as_global_value().as_pointer_value()
-    }
-
     pub(crate) fn emit_func_params(&self, func_params: &CIRFuncParams) {
         func_params.list.iter().enumerate().for_each(|(param_idx, param)| {
             let basic_value = self
@@ -106,37 +99,39 @@ impl<'ll> IRBuilderCtx<'ll> {
         });
     }
 
+    fn increment_lambda_name(&mut self) -> String {
+        let id = self.lambda_id;
+        let name = format!("lambda.{}", id);
+        self.lambda_id += 1;
+        name
+    }
+
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
         let parent_fn = self.cur_fn.clone();
         let parent_block = self.blockreg.cur_block;
 
-        let mut modifiers = FuncModifiers::default();
-        modifiers.inline = Some(Inlining::Inline);
-        
+        let lambda_name = self.increment_lambda_name();
+
         let func_decl = CIRFuncDeclStmt {
             irv_id: lambda.irv_id,
-            name: "lambda".to_string(),
+            name: lambda_name,
             params: lambda.params.clone(),
             ret: lambda.ret.clone(),
-            modifiers,
+            modifiers: FuncModifiers::default(),
         };
         let fn_value = self.emit_func_decl(&func_decl);
         self.cur_fn = Some(fn_value);
 
         self.emit_func_body(&lambda.params, &lambda.body);
 
-        let fn_pointer = fn_value.as_global_value().as_pointer_value().into();
-
         self.cur_fn = parent_fn;
         self.blockreg.cur_block = parent_block;
         if let Some(basic_block) = parent_block {
-            self.llvmbuilder.position_at_end(basic_block);
+            self.emit_block(basic_block);
         }
 
-        InternalValue::new(
-            CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
-            InternalValueKind::RValue(fn_pointer),
-        )
+        let cir_fn_ty = cir_func_decl_as_func_ty(&func_decl);
+        InternalValue::new(CIRTy::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
     }
 
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
@@ -164,6 +159,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_func_body(&mut self, func_params: &CIRFuncParams, cir_block: &CIRBlockStmt) {
+        debug_assert!(self.cur_fn.is_some());
+
         self.ensure_entry_block();
         self.emit_func_params(func_params);
         self.emit_body(cir_block);
