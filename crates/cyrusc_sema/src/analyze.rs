@@ -417,7 +417,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         let mut ty = sema_ty.clone();
         if is_const && !matches!(ty, SemanticType::Const(..)) {
-            ty = SemanticType::Const(Box::new(ty));
+            ty = ty.as_const();
         }
 
         if let Some(scope_id) = scope_id_opt {
@@ -1058,7 +1058,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
-            typed_global_var.ty = Some(SemanticType::Const(Box::new(typed_global_var.ty.clone().unwrap())));
+            typed_global_var.ty = Some(typed_global_var.ty.clone().unwrap().as_const());
         }
 
         if let Some(expr) = &typed_global_var.expr {
@@ -1904,7 +1904,7 @@ impl<'a> AnalysisContext<'a> {
 
             if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
                 if let Some(sema_ty) = typed_variable.ty.clone() {
-                    typed_variable.ty = Some(SemanticType::Const(Box::new(sema_ty)));
+                    typed_variable.ty = Some(sema_ty.as_const());
                 }
             }
         }
@@ -1964,7 +1964,7 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        let rhs_type = match self.analyze_expr(scope_id_opt, &mut assign.rhs, Some(lhs_type.get_const_inner().clone()))
+        let rhs_type = match self.analyze_expr(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone()))
         {
             Some(sema_ty) => sema_ty,
             None => return,
