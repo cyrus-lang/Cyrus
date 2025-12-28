@@ -1001,34 +1001,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_global_var_assignment_type(
-        &mut self,
-        global_var_type: SemanticType,
-        expr_type: SemanticType,
-        loc: SourceLoc,
-    ) {
-        let compatible_type = match (global_var_type.clone(), expr_type.clone()) {
-            (SemanticType::Const(concrete_type1), SemanticType::Const(concrete_type2)) => {
-                concrete_type1 == concrete_type2
-            }
-            (SemanticType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
-            (concrete_type1, SemanticType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
-            (concrete_type1, concrete_type2) => concrete_type1 == concrete_type2,
-        };
-
-        if !compatible_type {
-            let lhs_type = format_sema_ty(global_var_type, &(self.symbol_formatter)(None));
-            let rhs_type = format_sema_ty(expr_type, &(self.symbol_formatter)(None));
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
-                location: Some(DiagLoc::new(loc.clone())),
-                hint: None,
-            });
-        }
-    }
-
     fn is_const_foldable_integer(&self, sema_ty: SemanticType) -> bool {
         match sema_ty.get_const_inner().as_basic_type() {
             Some(basic_concrete_type) => basic_concrete_type.is_integer(),
@@ -1127,14 +1099,6 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
-        }
-
-        if let Some(typed_expr) = &typed_global_var.expr {
-            self.check_global_var_assignment_type(
-                typed_global_var.ty.clone().unwrap(),
-                typed_expr.sema_ty.clone().unwrap(),
-                typed_global_var.loc.clone(),
-            );
         }
     }
 
@@ -1971,6 +1935,27 @@ impl<'a> AnalysisContext<'a> {
             );
             drop(local_scope_ref);
         });
+
+        if let Some(expr) = &mut typed_variable.rhs {
+            if let Some(target_type) = &typed_variable.ty {
+                if !self.check_type_mismatch(
+                    None,
+                    expr.sema_ty.clone().unwrap(),
+                    target_type.clone(),
+                    typed_variable.loc.clone(),
+                ) {
+                    let lhs_type = format_sema_ty(target_type.clone(), &(self.symbol_formatter)(None));
+                    let rhs_type = format_sema_ty(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
+                        location: Some(DiagLoc::new(typed_variable.loc.clone())),
+                        hint: None,
+                    });
+                }
+            }
+        }
     }
 
     pub(crate) fn analyze_assign(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignExpr) {
