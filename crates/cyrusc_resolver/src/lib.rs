@@ -2856,6 +2856,7 @@ impl Resolver {
                 params: TypedFuncParams { list, variadic },
                 body,
                 return_type,
+                inline: lambda.inline,
                 loc: loc.clone(),
             }),
             sema_ty: None,

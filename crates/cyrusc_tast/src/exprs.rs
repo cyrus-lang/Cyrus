@@ -67,6 +67,7 @@ pub struct TypedLambdaExpr {
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStmt>,
     pub return_type: SemanticType,
+    pub inline: bool,
     pub loc: SourceLoc,
 }
 

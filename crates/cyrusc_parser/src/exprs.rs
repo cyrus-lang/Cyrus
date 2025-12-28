@@ -12,7 +12,7 @@ use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
 
 impl Parser {
-    pub(crate) fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expr, Span), Diag> {
+    pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<(Expr, Span), Diag> {
         let mut left_start = self.current_token().span.start;
         let mut left = self.parse_prefix_expr()?;
 
@@ -217,7 +217,23 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
-            TokenKind::Function => self.parse_lambda_expr()?,
+            TokenKind::Inline => {
+                if self.peek_token_is(TokenKind::Function) {
+                    self.next_token();
+                    self.parse_lambda_expr(true)?
+                } else {
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc.clone(),
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+            }
+            TokenKind::Function => self.parse_lambda_expr(false)?,
             TokenKind::SizeOf => self.parse_sizeof_expression()?,
             TokenKind::Typecast => self.parse_cast_expression()?,
             TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
@@ -259,7 +275,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 self.next_token();
                 Expr::AddrOf(AddrOf {
-                    expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
+                    expr: Box::new(self.parse_expr(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
@@ -269,7 +285,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 self.next_token();
                 Expr::Deref(Deref {
-                    expr: Box::new(self.parse_expression(Precedence::Prefix)?.0),
+                    expr: Box::new(self.parse_expr(Precedence::Prefix)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
@@ -355,7 +371,7 @@ impl Parser {
                     }
                 };
                 self.next_token(); // consume the prefix operator
-                let (expr, span) = self.parse_expression(Precedence::Prefix)?;
+                let (expr, span) = self.parse_expr(Precedence::Prefix)?;
                 Expr::Prefix(PrefixExpr {
                     op: prefix_operator,
                     operand: Box::new(expr),
@@ -366,7 +382,7 @@ impl Parser {
             TokenKind::LeftParen => {
                 // grouped expression
                 self.next_token();
-                let expr = self.parse_expression(Precedence::Lowest)?.0;
+                let expr = self.parse_expr(Precedence::Lowest)?.0;
                 self.next_token(); // consume last token of expr
 
                 if self.current_token_is(TokenKind::Comma) {
@@ -461,7 +477,7 @@ impl Parser {
         let mut expr_list: Vec<Expr> = vec![first_expr];
 
         loop {
-            let expr = self.parse_expression(Precedence::Lowest)?.0;
+            let expr = self.parse_expr(Precedence::Lowest)?.0;
             self.next_token(); // consume last token
 
             expr_list.push(expr);
@@ -494,7 +510,7 @@ impl Parser {
         }))
     }
 
-    fn parse_lambda_expr(&mut self) -> Result<Expr, Diag> {
+    fn parse_lambda_expr(&mut self, inline: bool) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -509,6 +525,7 @@ impl Parser {
             params,
             body: Box::new(body),
             return_type,
+            inline,
             span: Span::new(start, self.current_token().span.end),
             loc,
         }))
@@ -536,10 +553,10 @@ impl Parser {
                 let type_specifier = self.parse_type_specifier()?;
                 Expr::TypeSpecifier(type_specifier)
             } else {
-                self.parse_expression(Precedence::Lowest)?.0
+                self.parse_expr(Precedence::Lowest)?.0
             }
         } else {
-            self.parse_expression(Precedence::Lowest)?.0
+            self.parse_expr(Precedence::Lowest)?.0
         };
 
         if !self.peek_token_is(TokenKind::RightParen) {
@@ -630,7 +647,7 @@ impl Parser {
                         }));
                     }
                 };
-                let (right, span) = self.parse_expression(precedence).ok()?;
+                let (right, span) = self.parse_expr(precedence).ok()?;
 
                 Some(Ok(Expr::Infix(InfixExpr {
                     op,
@@ -647,7 +664,7 @@ impl Parser {
         }
     }
 
-    fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
+    fn parse_expr_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
         let start = self.current_token().span.start;
         let mut series: Vec<Expr> = Vec::new();
 
@@ -660,12 +677,12 @@ impl Parser {
         }
         self.next_token();
 
-        series.push(self.parse_expression(Precedence::Lowest)?.0);
+        series.push(self.parse_expr(Precedence::Lowest)?.0);
 
         while self.peek_token_is(TokenKind::Comma) {
             self.next_token();
             self.next_token();
-            series.push(self.parse_expression(Precedence::Lowest)?.0);
+            series.push(self.parse_expr(Precedence::Lowest)?.0);
         }
         self.next_token(); // consume latest token of the expression
 
@@ -687,7 +704,7 @@ impl Parser {
         let target_type = self.parse_type_specifier()?;
         self.next_token(); // consume target_type
         self.expect_current(TokenKind::Comma)?;
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
 
         if !self.current_token_is(TokenKind::RightParen) {
@@ -725,7 +742,7 @@ impl Parser {
             });
         }
 
-        let args = self.parse_expression_series(TokenKind::RightParen)?.0;
+        let args = self.parse_expr_series(TokenKind::RightParen)?.0;
         if !self.current_token_is(TokenKind::RightParen) {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::MissingClosingParen),
@@ -809,7 +826,7 @@ impl Parser {
 
         self.expect_peek(TokenKind::LeftParen)?;
 
-        let args = self.parse_expression_series(TokenKind::RightParen)?.0;
+        let args = self.parse_expr_series(TokenKind::RightParen)?.0;
         if !(self.current_token_is(TokenKind::RightParen)) {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
@@ -860,7 +877,7 @@ impl Parser {
             self.next_token(); // consume identifier
             self.expect_current(TokenKind::Colon)?;
 
-            let value = self.parse_expression(Precedence::Lowest)?.0;
+            let value = self.parse_expr(Precedence::Lowest)?.0;
             self.next_token();
 
             field_inits.push(FieldInit {
@@ -944,7 +961,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::Assign)?;
-        let rhs = self.parse_expression(Precedence::Lowest)?.0;
+        let rhs = self.parse_expr(Precedence::Lowest)?.0;
         let end = self.current_token().span.end;
         Ok(Expr::Assign(Box::new(Assign {
             lhs,
@@ -1090,7 +1107,7 @@ impl Parser {
                         });
                     }
 
-                    untyped_array.push(self.parse_expression(Precedence::Lowest)?.0);
+                    untyped_array.push(self.parse_expr(Precedence::Lowest)?.0);
 
                     if self.peek_token_is(TokenKind::Comma) {
                         self.next_token(); // consume last token of the expression
@@ -1127,7 +1144,7 @@ impl Parser {
                     unreachable!()
                 }
             } else {
-                elements.push(self.parse_expression(Precedence::Lowest)?.0);
+                elements.push(self.parse_expr(Precedence::Lowest)?.0);
             }
 
             if self.peek_token_is(TokenKind::Comma) {
@@ -1213,7 +1230,7 @@ impl Parser {
                     }
 
                     self.expect_current(TokenKind::Assign)?;
-                    let field_value = self.parse_expression(Precedence::Lowest)?.0;
+                    let field_value = self.parse_expr(Precedence::Lowest)?.0;
                     self.next_token();
 
                     fields.push(UnnamedStructValueField {

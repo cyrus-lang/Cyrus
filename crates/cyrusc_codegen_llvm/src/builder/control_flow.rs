@@ -12,8 +12,7 @@ use inkwell::{
     context::AsContextRef,
     llvm_sys::{
         core::{
-            LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock, LLVMGetFirstInstruction,
-            LLVMIsAConstantInt,
+            LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock, LLVMGetBasicBlockTerminator, LLVMGetFirstInstruction, LLVMIsAConstantInt
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
@@ -508,6 +507,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
+            self.blockreg.cur_block = None;
         }
 
         if else_block != exit_block {
@@ -519,6 +519,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }
             }
+            self.blockreg.cur_block = None;
         }
 
         let exit_in_use =
@@ -530,27 +531,42 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub unsafe fn llvm_emit_check_block_branch(&mut self) -> bool {
-        let cur = match self.blockreg.cur_block {
-            Some(bb) => bb,
-            None => return false,
+        let Some(cur) = self.blockreg.cur_block else {
+            return false;
         };
 
-        // if it's the function's first block, never delete it.
-        if let Some(first) = self.blockreg.first_block {
-            if cur.as_mut_ptr() == first.as_mut_ptr() {
-                return true;
-            }
+        // If already terminated, do nothing
+        if unsafe { LLVMGetBasicBlockTerminator(cur.as_mut_ptr()).is_null() } {
+            return true;
         }
 
-        let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(cur.as_mut_ptr())) };
-        if first_use.is_null() {
-            unsafe { LLVMDeleteBasicBlock(cur.as_mut_ptr()) };
-            self.blockreg.cur_block = None;
-            return false;
-        }
-        
-        true
+        false
     }
+
+    // FIXME This replaced because it was causing to delete entry block of the function mistakenly;
+    // Consider to remove it later.
+    // 
+    // pub unsafe fn llvm_emit_check_block_branch(&mut self) -> bool {
+    //     let cur = match self.blockreg.cur_block {
+    //         Some(bb) => bb,
+    //         None => return false,
+    //     };
+
+    //     // if it's the function's first block, never delete it.
+    //     if let Some(first) = self.blockreg.first_block {
+    //         if cur.as_mut_ptr() == first.as_mut_ptr() {
+    //             return true;
+    //         }
+    //     }
+
+    //     let first_use = unsafe { LLVMGetFirstUse(LLVMBasicBlockAsValue(cur.as_mut_ptr())) };
+    //     if first_use.is_null() {
+    //         unsafe { LLVMDeleteBasicBlock(cur.as_mut_ptr()) };
+    //         self.blockreg.cur_block = None;
+    //         return false;
+    //     }
+    //     true
+    // }
 
     pub fn llvm_emit_br(&mut self, next_block: LLVMBasicBlockRef) {
         unsafe {

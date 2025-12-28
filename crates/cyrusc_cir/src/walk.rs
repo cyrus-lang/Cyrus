@@ -967,6 +967,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRExprKind::Lambda(CIRLambda {
             irv_id: generate_symbol_id(),
             params,
+            inline: lambda.inline,
             ret,
             body,
         })

@@ -93,6 +93,13 @@ pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, m
     );
 }
 
+pub(crate) fn apply_inlining_func<'a>(llvmctx: &'a Context, fn_value: &FunctionValue<'a>, inline: Inlining) {
+    let attr_name = llvm_inline(&inline);
+    let enum_kind_id = Attribute::get_named_enum_kind_id(attr_name);
+    let enum_attr = llvmctx.create_enum_attribute(enum_kind_id, 0);
+    fn_value.add_attribute(AttributeLoc::Function, enum_attr);
+}
+
 pub(crate) fn apply_func_modifiers<'ll>(llvmctx: &'ll Context, func: &FunctionValue<'ll>, modifiers: &FuncModifiers) {
     if let Some(export) = &modifiers.export {
         func.as_global_value()

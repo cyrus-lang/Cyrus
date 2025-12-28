@@ -79,6 +79,7 @@ pub struct CIRLambda {
     pub irv_id: IRValueID,
     pub params: CIRFuncParams,
     pub ret: CIRTy,
+    pub inline: bool,
     pub body: Box<CIRBlockStmt>,
 }
 
