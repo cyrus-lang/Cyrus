@@ -28,7 +28,7 @@ impl DiagReporter {
 
 impl DiagReporter {
     pub fn display(&self) {
-        for diag in self.diags.iter().rev() {
+        for diag in self.diags.iter() {
             match diag.level {
                 DiagLevel::Error => eprintln!("{}", Self::format_panel(diag)),
                 DiagLevel::Warning => println!("{}", Self::format_panel(diag)),
