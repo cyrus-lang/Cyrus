@@ -47,6 +47,19 @@ impl Parser {
         }
 
         if !toplevel {
+            // modifiers should not be used with non-top-level stmts.
+            if modifiers != UnresolvedModifiers::default() {
+                return Err(Diag {
+                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        self.current_token().loc,
+                        self.file_name.clone(),
+                    ))),
+                    hint: None,
+                });
+            }
+
             match self.current_token().kind {
                 TokenKind::Var | TokenKind::Const => self.parse_variable(),
                 TokenKind::Defer => self.parse_defer_stmt(),

@@ -15,7 +15,7 @@ use cyrusc_ast::{
 };
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct UnresolvedModifiers {
     pub visibility: Option<Visibility>,
     pub linkage: Option<Linkage>,
