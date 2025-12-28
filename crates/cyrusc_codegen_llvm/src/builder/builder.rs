@@ -19,8 +19,8 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::TargetMachine,
-    types::BasicTypeEnum,
-    values::{FunctionValue, GlobalValue},
+    types::{AnyType, BasicTypeEnum},
+    values::{BasicValueEnum, FunctionValue, GlobalValue},
 };
 use std::{
     cell::RefCell,
@@ -139,10 +139,16 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
+        let cur_fn = self.cur_fn.unwrap();
+
         if let Some(expr) = &return_stmt.arg {
             let lvalue = self.emit_expr(&expr);
             let rvalue = self.load_rvalue(lvalue);
-            self.llvmbuilder.build_return(Some(&rvalue.as_basic_value())).unwrap();
+
+            let ret_ty = cur_fn.get_type().get_return_type().unwrap();
+            let casted: BasicValueEnum<'ll> = self.emit_cast(ret_ty.as_any_type_enum(), rvalue).try_into().unwrap();
+
+            self.llvmbuilder.build_return(Some(&casted)).unwrap();
         } else {
             self.llvmbuilder.build_return(None).unwrap();
         }

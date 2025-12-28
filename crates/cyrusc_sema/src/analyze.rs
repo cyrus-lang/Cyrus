@@ -1983,10 +1983,9 @@ impl<'a> AnalysisContext<'a> {
         {
             Some(sema_ty) => sema_ty,
             None => return,
-        }
-        .as_rvalue(true);
+        };
 
-        if lhs_type.as_rvalue(true).is_const() {
+        if lhs_type.is_const() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
@@ -1997,12 +1996,7 @@ impl<'a> AnalysisContext<'a> {
 
         debug_assert!(assign.kind == AssignmentKind::Default);
 
-        if !self.check_type_mismatch(
-            scope_id_opt,
-            rhs_type.clone(),
-            lhs_type.as_rvalue(true).clone(),
-            assign.loc.clone(),
-        ) {
+        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), assign.loc.clone()) {
             let lhs_type = format_sema_ty(lhs_type, &(self.symbol_formatter)(scope_id_opt));
             let rhs_type = format_sema_ty(rhs_type, &(self.symbol_formatter)(scope_id_opt));
 
