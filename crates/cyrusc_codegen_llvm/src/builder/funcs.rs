@@ -101,7 +101,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
         let parent_fn = self.cur_fn.clone();
-        let parent_block = self.blockreg.cur_block;
+        let parent_blockreg = self.blockreg.clone();
 
         let lambda_name = self.increment_lambda_name();
         let func_decl = CIRFuncDeclStmt {
@@ -122,8 +122,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_func_body(&lambda.params, &lambda.body);
 
         self.cur_fn = parent_fn;
-        self.blockreg.cur_block = parent_block;
-        if let Some(basic_block) = parent_block {
+        self.blockreg = parent_blockreg ;
+        if let Some(basic_block) = self.blockreg.cur_block {
             self.emit_block(basic_block);
         }
 
@@ -162,8 +162,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_func_params(func_params);
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();
-
-        self.blockreg.first_block = None;
     }
 
     pub(crate) fn ensure_void_fn_terminated(&self) {
