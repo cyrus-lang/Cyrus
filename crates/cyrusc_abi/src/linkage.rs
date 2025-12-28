@@ -1,6 +1,8 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::callconv::CallConv;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Linkage {
-    Extern,
+    Extern(Option<CallConv>),
     Weak,
     LinkOnce,
 }
