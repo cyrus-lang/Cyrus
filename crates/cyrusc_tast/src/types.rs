@@ -207,18 +207,6 @@ impl SemanticType {
         }
     }
 
-    pub fn as_rvalue(&self, lvalue: bool) -> SemanticType {
-        if lvalue {
-            match self {
-                SemanticType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
-                SemanticType::Pointer(sema_ty) => sema_ty.get_pointer_inner().clone(),
-                _ => self.clone(),
-            }
-        } else {
-            self.clone()
-        }
-    }
-
     pub fn is_char(&self) -> bool {
         match self.get_const_inner() {
             SemanticType::PlainType(PlainType::Char) => true,

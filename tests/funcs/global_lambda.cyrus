@@ -1,0 +1,18 @@
+// @stdout: 9
+
+import std::libc{printf};
+
+type Int = int64;
+type Handler = fn(Int, Int) Int;
+
+pub var globalHandler: Handler*;
+
+pub fn main() {
+    var defaultHandler: Handler = fn(x: Int, y: Int) Int {
+        return cast(Int, x + y);
+    };
+    globalHandler = &defaultHandler;
+
+    const Int: int64 = (*globalHandler)(5, 4);
+    printf("%d\n", Int);
+}

@@ -2568,6 +2568,10 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
+        cast.target_type = self
+            .normalize_type(scope_id_opt, cast.target_type.clone(), cast.loc.clone(), false)
+            .unwrap();
+
         if !(self.check_type_mismatch(
             scope_id_opt,
             operand.clone(),
