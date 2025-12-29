@@ -102,7 +102,9 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     llvm_backend.save_modules_llvm_ir(&owned_modules, output_path);
 }
 
+#[allow(unused)]
 pub(crate) fn command_emit_bytecode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    todo!();
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 
@@ -121,7 +123,9 @@ pub(crate) fn command_emit_bytecode(mut opts: CodeGenOptions, file_path: Option<
     // context.compile_modules(program_trees, monomorph_registry);
 }
 
+#[allow(unused)]
 pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    todo!();
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 
@@ -175,7 +179,9 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
     }
 }
 
+#[allow(unused)]
 pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    todo!();
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 
@@ -194,7 +200,9 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
     // context.compile_modules(program_trees, monomorph_registry);
 }
 
+#[allow(unused)]
 pub(crate) fn command_dylib(opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    todo!();
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 
