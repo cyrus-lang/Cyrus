@@ -12,8 +12,8 @@ use inkwell::{
     context::AsContextRef,
     llvm_sys::{
         core::{
-            LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock, LLVMGetBasicBlockTerminator,
-            LLVMGetFirstInstruction, LLVMIsAConstantInt,
+            LLVMBuildBr, LLVMBuildCondBr, LLVMConstIntGetZExtValue, LLVMDeleteBasicBlock, LLVMGetFirstInstruction,
+            LLVMIsAConstantInt,
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
