@@ -4,8 +4,10 @@ import std::libc{printf, exit};
 
 pub fn main() {
     var x = 0;
+
 increment:
     x++;
+    
 check:
     if (x < 5) {
         goto increment;
