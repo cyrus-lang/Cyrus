@@ -42,7 +42,12 @@ impl<'a> AnalysisContext<'a> {
                 let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
-                    if *field1 != field2 {
+                    if !self.check_type_mismatch(
+                        scope_id_opt,
+                        *field1.field_ty.clone(),
+                        *field2.field_ty.clone(),
+                        loc.clone(),
+                    ) {
                         fields = false;
                         break;
                     }

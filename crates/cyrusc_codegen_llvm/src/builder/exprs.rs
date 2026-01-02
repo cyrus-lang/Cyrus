@@ -241,15 +241,17 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for expr in &array.elms {
             let lvalue = self.emit_expr(expr);
-            let rvalue = self.load_rvalue(lvalue);
+            let mut rvalue = self.load_rvalue(lvalue);
 
-            let casted = self.emit_implicit_cast(&element_ty, rvalue).as_basic_value();
+            if !self.llvmbuilder.get_insert_block().is_none() {
+                rvalue = self.emit_implicit_cast(&element_ty, rvalue);
+            }
 
-            if !is_basic_value_constant(casted) {
+            if !is_basic_value_constant(rvalue.as_basic_value()) {
                 all_const = false;
             }
 
-            elements.push(casted);
+            elements.push(rvalue.as_basic_value());
         }
 
         // zero-fill if array type is fixed-length and not fully initialized
@@ -1058,15 +1060,18 @@ impl<'ll> IRBuilderCtx<'ll> {
             .enumerate()
             .map(|(idx, expr)| {
                 let lvalue = self.emit_expr(expr);
-                let rvalue = self.load_rvalue(lvalue);
+                let mut rvalue = self.load_rvalue(lvalue);
 
                 let target_type = struct_init.ty.fields.get(idx).unwrap();
-                let casted = self.emit_implicit_cast(target_type, rvalue);
 
-                if !is_basic_value_constant(casted.as_basic_value()) {
+                if !self.llvmbuilder.get_insert_block().is_none() {
+                    rvalue = self.emit_implicit_cast(target_type, rvalue);
+                }
+
+                if !is_basic_value_constant(rvalue.as_basic_value()) {
                     all_const = false;
                 }
-                casted
+                rvalue
             })
             .collect();
 
