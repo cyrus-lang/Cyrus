@@ -1082,20 +1082,17 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(expr) = &mut typed_global_var.expr {
             if let Some(target_type) = &typed_global_var.ty {
-                if !self.check_type_mismatch(
-                    None,
-                    expr.sema_ty.clone().unwrap(),
-                    target_type.clone(),
-                    typed_global_var.loc.clone(),
-                ) {
+                let expr_type = expr.sema_ty.clone().unwrap();
+
+                if *expr_type.get_const_inner() != *target_type.get_const_inner() {
                     let lhs_type = format_sema_ty(target_type.clone(), &(self.symbol_formatter)(None));
-                    let rhs_type = format_sema_ty(expr.sema_ty.clone().unwrap(), &(self.symbol_formatter)(None));
+                    let rhs_type = format_sema_ty(expr_type.clone(), &(self.symbol_formatter)(None));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
                         location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-                        hint: None,
+                        hint: Some("Global variable initializers must exactly match the declared type.".into()),
                     });
                 }
             }
@@ -1964,8 +1961,7 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        let rhs_type = match self.analyze_expr(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone()))
-        {
+        let rhs_type = match self.analyze_expr(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
             Some(sema_ty) => sema_ty,
             None => return,
         };

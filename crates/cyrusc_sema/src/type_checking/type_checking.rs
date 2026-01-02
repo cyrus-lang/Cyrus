@@ -1061,6 +1061,12 @@ impl<'a> AnalysisContext<'a> {
         // check for enum variant
 
         self.analyze_expr_non_terminal(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
+        let is_operand_const = field_access
+            .operand
+            .sema_ty
+            .as_ref()
+            .map(|sema_ty| sema_ty.is_const())
+            .unwrap_or(false);
 
         let mut field_access_operand_ty = field_access
             .operand
@@ -1175,7 +1181,11 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        return_sema_ty
+        if is_operand_const {
+            return_sema_ty.map(|sema_ty| sema_ty.as_const())
+        } else {
+            return_sema_ty
+        }
     }
 
     fn check_unexpected_type_args(
