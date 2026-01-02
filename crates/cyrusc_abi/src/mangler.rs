@@ -33,7 +33,7 @@ impl Cyrus_ABI {
     }
 
     fn type_name(module_name: &str, type_name: &str) -> String {
-        format!("{module_name}_{type_name}")
+        format!("{module_name}${type_name}")
     }
 
     fn sanitize(name: &str) -> String {
@@ -52,14 +52,14 @@ impl ABINameMangler for Cyrus_ABI {
             if exported {
                 func_name.to_string()
             } else {
-                format!("{}.{}", Self::sanitize(module_name), Self::sanitize(func_name))
+                format!("{}${}", Self::sanitize(module_name), Self::sanitize(func_name))
             }
         }
     }
 
     fn method_name(&self, module_name: &str, object_name: &str, method_name: &str) -> String {
         format!(
-            "{}_{}_{}",
+            "{}${}.{}",
             Self::sanitize(module_name),
             Self::sanitize(object_name),
             Self::sanitize(method_name)
@@ -67,7 +67,7 @@ impl ABINameMangler for Cyrus_ABI {
     }
 
     fn global_var_name(&self, module_name: &str, var_name: &str) -> String {
-        format!("{}_{}", Self::sanitize(module_name), Self::sanitize(var_name))
+        format!("{}${}", Self::sanitize(module_name), Self::sanitize(var_name))
     }
 
     fn struct_name(&self, module_name: &str, struct_name: &str) -> String {
@@ -84,7 +84,7 @@ impl ABINameMangler for Cyrus_ABI {
 
     fn enum_variant_name(&self, module_name: &str, enum_name: &str, variant_name: &str) -> String {
         format!(
-            "{}_{}_{}",
+            "{}${}${}",
             Self::sanitize(module_name),
             Self::sanitize(enum_name),
             Self::sanitize(variant_name)
@@ -114,7 +114,7 @@ impl ABINameMangler for C_ABI {
     }
 
     fn method_name(&self, _module_name: &str, object_name: &str, method_name: &str) -> String {
-        format!("{}_{}", Self::sanitize(object_name), Self::sanitize(method_name))
+        format!("{}__{}", Self::sanitize(object_name), Self::sanitize(method_name))
     }
 
     fn global_var_name(&self, _module_name: &str, var_name: &str) -> String {
@@ -134,6 +134,6 @@ impl ABINameMangler for C_ABI {
     }
 
     fn enum_variant_name(&self, _module_name: &str, enum_name: &str, variant_name: &str) -> String {
-        format!("{}_{}", Self::sanitize(enum_name), Self::sanitize(variant_name))
+        format!("{}__{}", Self::sanitize(enum_name), Self::sanitize(variant_name))
     }
 }
