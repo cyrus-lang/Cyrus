@@ -346,10 +346,17 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_block(body_block);
         self.emit_body(&for_stmt.body);
 
-        if let Some(body_block_now) = self.blockreg.cur_block {
-            if body_block_now.get_terminator().is_none() {
-                self.emit_block(body_block_now);
-                let next_block = inc_block.or(cond_block).unwrap_or(exit_block);
+        if let Some(cur_block) = self.blockreg.cur_block {
+            if cur_block.get_terminator().is_none() {
+                self.emit_block(cur_block);
+
+                let next_block: BasicBlock<'ll>;
+                if for_stmt.cond.is_some() {
+                    next_block = inc_block.or(cond_block).unwrap_or(exit_block);
+                } else {
+                    next_block = body_block; // unconditional for loop
+                }
+
                 self.llvmbuilder.build_unconditional_branch(next_block).unwrap();
             }
         }
