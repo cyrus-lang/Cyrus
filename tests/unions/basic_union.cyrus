@@ -16,7 +16,7 @@ fn value_as_int(v: Value) int64 {
 }
 
 pub fn main() {
-    const inst = Value { text_value: "Cyrus!" };
+    var inst = Value { text_value: "Cyrus!" };
 
     inst.text_value = "changed";
     printf("%s ", value_as_text(inst));
