@@ -361,7 +361,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn build_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&unary_expr.operand);
+        let lvalue = self.emit_lvalue_address(&unary_expr.operand);
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
         let rvalue = self.load_rvalue(lvalue);
 
