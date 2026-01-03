@@ -31,7 +31,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
             CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
             CIRExprKind::Infix(infix_expr) => self.emit_infix_expr(infix_expr),
-            CIRExprKind::Unary(unary_expr) => self.build_unary_expr(unary_expr),
+            CIRExprKind::Unary(unary_expr) => self.emit_unary_expr(unary_expr),
             CIRExprKind::SizeOf(sizeof_expr) => self.emit_sizeof(sizeof_expr),
             CIRExprKind::Assign(assign_expr) => self.emit_assign(assign_expr),
             CIRExprKind::Cast(cast_expr) => {
@@ -360,7 +360,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn build_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
+    pub(crate) fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_lvalue_address(&unary_expr.operand);
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
         let rvalue = self.load_rvalue(lvalue);
@@ -375,14 +375,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         match unary_expr.op {
             UnaryOperator::PreIncrement => {
-                let new_rhs_rvalue = self.build_add(rvalue, unit_value);
+                let new_rhs_rvalue = self.emit_add(rvalue, unit_value);
                 self.llvmbuilder
                     .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
                     .unwrap();
                 new_rhs_rvalue
             }
             UnaryOperator::PreDecrement => {
-                let new_rhs_rvalue = self.build_sub(rvalue, unit_value);
+                let new_rhs_rvalue = self.emit_sub(rvalue, unit_value);
                 self.llvmbuilder
                     .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
                     .unwrap();
@@ -390,7 +390,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             UnaryOperator::PostIncrement => {
                 let rhs_rvalue_clone = rvalue.clone();
-                let new_rhs_rvalue = self.build_add(rvalue, unit_value);
+                let new_rhs_rvalue = self.emit_add(rvalue, unit_value);
                 self.llvmbuilder
                     .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
                     .unwrap();
@@ -398,7 +398,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             UnaryOperator::PostDecrement => {
                 let rhs_rvalue_clone = rvalue.clone();
-                let new_rhs_rvalue = self.build_sub(rvalue, unit_value);
+                let new_rhs_rvalue = self.emit_sub(rvalue, unit_value);
                 self.llvmbuilder
                     .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
                     .unwrap();
@@ -420,53 +420,53 @@ impl<'ll> IRBuilderCtx<'ll> {
         let get_signed = || rhs_rvalue.ty.as_plain().unwrap().is_signed();
 
         match infix_expr.op {
-            InfixOperator::Add => self.build_add(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Sub => self.build_sub(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Mul => self.build_mul(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Div => self.build_div(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Rem => self.build_rem(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Add => self.emit_add(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Sub => self.emit_sub(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Mul => self.emit_mul(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Div => self.emit_div(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Rem => self.emit_rem(lhs_rvalue, rhs_rvalue),
             InfixOperator::LessThan => {
                 if get_signed() {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLT, FloatPredicate::OLT)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLT, FloatPredicate::OLT)
                 } else {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULT, FloatPredicate::OLT)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULT, FloatPredicate::OLT)
                 }
             }
             InfixOperator::LessEqual => {
                 if get_signed() {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLE, FloatPredicate::OLE)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLE, FloatPredicate::OLE)
                 } else {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULE, FloatPredicate::OLE)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULE, FloatPredicate::OLE)
                 }
             }
             InfixOperator::GreaterThan => {
                 if get_signed() {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGT, FloatPredicate::OGT)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGT, FloatPredicate::OGT)
                 } else {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGT, FloatPredicate::OGT)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGT, FloatPredicate::OGT)
                 }
             }
             InfixOperator::GreaterEqual => {
                 if get_signed() {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGE, FloatPredicate::OGE)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGE, FloatPredicate::OGE)
                 } else {
-                    self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)
+                    self.emit_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)
                 }
             }
-            InfixOperator::Equal => self.build_cmp_eq(lhs_rvalue, rhs_rvalue),
-            InfixOperator::NotEqual => self.build_cmp_neq(lhs_rvalue, rhs_rvalue),
-            InfixOperator::Or => self.build_logical_or(lhs_rvalue, rhs_rvalue),
-            InfixOperator::And => self.build_logical_and(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseAnd => self.build_bitwise_and(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseOr => self.build_bitwise_or(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseXor => self.build_xor(lhs_rvalue, rhs_rvalue),
-            InfixOperator::BitwiseAndNot => self.build_bitwise_and_not(lhs_rvalue, rhs_rvalue),
-            InfixOperator::ShiftLeft => self.build_shift_left(lhs_rvalue, rhs_rvalue),
-            InfixOperator::ShiftRight => self.build_shift_right(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Equal => self.emit_cmp_eq(lhs_rvalue, rhs_rvalue),
+            InfixOperator::NotEqual => self.emit_cmp_neq(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Or => self.emit_logical_or(lhs_rvalue, rhs_rvalue),
+            InfixOperator::And => self.emit_logical_and(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseAnd => self.emit_bitwise_and(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseOr => self.emit_bitwise_or(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseXor => self.emit_xor(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseAndNot => self.emit_bitwise_and_not(lhs_rvalue, rhs_rvalue),
+            InfixOperator::ShiftLeft => self.emit_shift_left(lhs_rvalue, rhs_rvalue),
+            InfixOperator::ShiftRight => self.emit_shift_right(lhs_rvalue, rhs_rvalue),
         }
     }
 
-    pub(crate) fn build_logical_or(
+    pub(crate) fn emit_logical_or(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -480,13 +480,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                 )
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
-                self.build_null_coalescing_pointers(lhs, rhs, lhs_rvalue.ty.clone())
+                self.emit_null_coalescing_pointers(lhs, rhs, lhs_rvalue.ty.clone())
             }
             _ => unreachable!(),
         }
     }
 
-    pub(crate) fn build_null_coalescing_pointers(
+    pub(crate) fn emit_null_coalescing_pointers(
         &self,
         lhs: PointerValue<'ll>,
         rhs: PointerValue<'ll>,
@@ -507,7 +507,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(CIRTy::Pointer(Box::new(ty)), InternalValueKind::RValue(selected.into()))
     }
 
-    pub(crate) fn build_logical_and(
+    pub(crate) fn emit_logical_and(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -524,7 +524,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_xor(
+    pub(crate) fn emit_xor(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -541,7 +541,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_bitwise_and(
+    pub(crate) fn emit_bitwise_and(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -558,7 +558,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_bitwise_or(
+    pub(crate) fn emit_bitwise_or(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -575,7 +575,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_bitwise_and_not(
+    pub(crate) fn emit_bitwise_and_not(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -598,7 +598,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_shift_left(
+    pub(crate) fn emit_shift_left(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -615,7 +615,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_shift_right(
+    pub(crate) fn emit_shift_right(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -634,7 +634,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_add(
+    pub(crate) fn emit_add(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -653,7 +653,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_sub(
+    pub(crate) fn emit_sub(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -672,7 +672,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_mul(
+    pub(crate) fn emit_mul(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -691,7 +691,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_div(
+    pub(crate) fn emit_div(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -711,7 +711,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_rem(
+    pub(crate) fn emit_rem(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -731,7 +731,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_cmp(
+    pub(crate) fn emit_cmp(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -754,7 +754,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_cmp_eq(
+    pub(crate) fn emit_cmp_eq(
         &mut self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -791,7 +791,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_cmp_neq(
+    pub(crate) fn emit_cmp_neq(
         &mut self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -835,14 +835,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         match prefix_expr.op {
             PrefixOperator::Bang => {
                 rvalue = self.internal_value_as_bool_i1(rvalue);
-                self.build_logical_not(rvalue)
+                self.emit_logical_not(rvalue)
             }
-            PrefixOperator::Minus => self.build_negate(rvalue),
-            PrefixOperator::BitwiseNot => self.build_bitwise_not(rvalue),
+            PrefixOperator::Minus => self.emit_negate(rvalue),
+            PrefixOperator::BitwiseNot => self.emit_bitwise_not(rvalue),
         }
     }
 
-    pub(crate) fn build_bitwise_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    pub(crate) fn emit_bitwise_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
@@ -852,7 +852,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_negate(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    pub(crate) fn emit_negate(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_neg(int_value, "neg").unwrap());
@@ -867,7 +867,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn build_logical_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    pub(crate) fn emit_logical_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());

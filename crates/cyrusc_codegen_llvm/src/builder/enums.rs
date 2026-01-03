@@ -35,7 +35,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let tag_concrete_type = CIRTy::PlainType(PlainType::UInt32);
         let tag_cmp_result = if cmp_eq {
-            self.build_cmp_eq(
+            self.emit_cmp_eq(
                 InternalValue::new(
                     tag_concrete_type.clone(),
                     InternalValueKind::RValue(tag1.as_basic_value_enum()),
@@ -43,7 +43,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
             )
         } else {
-            self.build_cmp_neq(
+            self.emit_cmp_neq(
                 InternalValue::new(
                     tag_concrete_type.clone(),
                     InternalValueKind::RValue(tag1.as_basic_value_enum()),
