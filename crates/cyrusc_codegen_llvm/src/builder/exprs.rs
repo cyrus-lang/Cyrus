@@ -18,6 +18,7 @@ use inkwell::{
     },
 };
 
+#[allow(unused)]
 pub enum DerefMode {
     Load,  // for RValue
     Store, // for LHS assignment
@@ -109,10 +110,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_assign(&mut self, assign: &CIRAssignExpr) -> InternalValue<'ll> {
-        let lhs_lvalue = match &assign.lhs.kind {
-            CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Store),
-            _ => self.emit_expr(&assign.lhs),
-        };
+        let lhs_lvalue = self.emit_lvalue_address(&assign.lhs);
 
         let rhs_lvalue = self.emit_expr(&assign.rhs);
         let rhs_value = self.load_rvalue(rhs_lvalue);
@@ -299,6 +297,40 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
+    pub(crate) fn emit_lvalue_address(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
+        match &expr.kind {
+            CIRExprKind::Deref(deref_expr) => {
+                let lvalue = self.emit_expr(&deref_expr.operand);
+                let rvalue = self.load_rvalue(lvalue.clone());
+                let ptr = rvalue.as_basic_value().into_pointer_value();
+                let inner_ty = rvalue.ty.get_pointer_inner().unwrap();
+                InternalValue::new(inner_ty.clone(), InternalValueKind::LValue(ptr))
+            }
+            CIRExprKind::StructFieldAccess(struct_field_access) => {
+                let lvalue = self.emit_lvalue_address(&struct_field_access.operand);
+
+                let struct_ptr_value = lvalue.as_basic_value().into_pointer_value();
+                let struct_ty = lvalue.ty.clone();
+
+                let llvm_struct_ty = self.emit_ty(struct_ty).into_struct_type();
+
+                let field_ptr = self
+                    .llvmbuilder
+                    .build_struct_gep(
+                        llvm_struct_ty,
+                        struct_ptr_value,
+                        struct_field_access.field_idx as u32,
+                        "field_ptr",
+                    )
+                    .unwrap();
+
+                let field_ty = struct_field_access.field_ty.clone();
+                InternalValue::new(field_ty, InternalValueKind::LValue(field_ptr))
+            }
+            _ => self.emit_expr(expr),
+        }
+    }
+
     pub(crate) fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&deref.operand);
         let rvalue = self.load_rvalue(lvalue.clone());
@@ -312,10 +344,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let loaded_value = self.llvmbuilder.build_load(llvm_ty, ptr, "deref").unwrap();
                 InternalValue::new(inner_ty.clone(), InternalValueKind::RValue(loaded_value.into()))
             }
-            DerefMode::Store => {
-                let inner_ty = rvalue.ty.get_pointer_inner().unwrap();
-                InternalValue::new(inner_ty.clone(), InternalValueKind::LValue(ptr))
-            }
+            DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
+                kind: CIRExprKind::Deref(deref.clone()),
+                ty: deref.operand.ty.get_pointer_inner().cloned().unwrap(),
+            }),
         }
     }
 
