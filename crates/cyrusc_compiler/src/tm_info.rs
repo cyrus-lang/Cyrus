@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2026 The Cyrus Programming Language Project
+ * Copyright (c) 2026 The Cyrus Language
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ impl fmt::Display for TargetMachineInfo {
         writeln!(f, "{:<20}: {}", "Triple", self.triple)?;
         writeln!(f, "{:<20}: {}", "CPU Name", self.cpu_name)?;
         writeln!(f, "{:<20}: {}", "Data Layout", self.data_layout)?;
-        writeln!(f, "{:<20}: {}", "Endiannes", self.endianness)?;
+        writeln!(f, "{:<20}: {}", "Endianness", self.endianness)?;
         writeln!(f, "{:<20}: {} bits", "Pointer Size", self.pointer_size_bits)?;
         writeln!(f, "{:<20}: {}", "Optimization Level", self.opt_level)?;
         writeln!(f, "{:<20}: {}", "Relocation Mode", self.reloc_mode)?;

@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2026 The Cyrus Programming Language Project
+ * Copyright (c) 2026 The Cyrus Language
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -239,7 +239,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             }
         };
 
-        let native_endiannes = match target_machine.get_target_data().get_byte_ordering() {
+        let native_endianness = match target_machine.get_target_data().get_byte_ordering() {
             ByteOrdering::LittleEndian => "Little".to_string(),
             ByteOrdering::BigEndian => "Big".to_string(),
         };
@@ -248,7 +248,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 CodeGenEndianness::Little => "Little".to_string(),
                 CodeGenEndianness::Big => "Big".to_string(),
             },
-            None => native_endiannes,
+            None => native_endianness,
         };
 
         TargetMachineInfo {
