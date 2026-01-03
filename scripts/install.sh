@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 INSTALL_DIR="/usr/bin"
 EXECUTABLE_NAME="cyrus"
