@@ -172,7 +172,10 @@ impl<'resolver> CIRWalk<'resolver> {
 
             let lowered_method = self.lower_method(scope_id_opt, resolved_method, object_name);
 
-            stmts.push(lowered_method);
+            stmts.push(match lowered_method {
+                Some(stmt) => stmt,
+                None => continue,
+            });
         }
 
         stmts
@@ -183,10 +186,13 @@ impl<'resolver> CIRWalk<'resolver> {
         scope_id_opt: Option<ScopeID>,
         resolved_method: &ResolvedMethod,
         object_name: &String,
-    ) -> CIRStmt {
+    ) -> Option<CIRStmt> {
         let mangled_name = self
             .mangler
             .method_name(&"", object_name, &resolved_method.func_sig.name);
+
+        // skip if has no body
+        let func_body = resolved_method.func_body.clone()?;
 
         let func_def = TypedFuncDefStmt {
             module_id: resolved_method.module_id,
@@ -194,13 +200,13 @@ impl<'resolver> CIRWalk<'resolver> {
             name: mangled_name,
             params: resolved_method.func_sig.params.clone(),
             generic_params: resolved_method.func_sig.generic_params.clone(),
-            body: resolved_method.func_body.clone().unwrap(),
+            body: func_body,
             return_type: resolved_method.func_sig.return_type.clone(),
             modifiers: resolved_method.func_sig.modifiers.clone(),
             loc: resolved_method.func_sig.loc.clone(),
         };
 
-        self.lower_func_def(scope_id_opt, &func_def)
+        Some(self.lower_func_def(scope_id_opt, &func_def))
     }
 
     fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {

@@ -344,6 +344,13 @@ pub enum TypedFuncParamKind {
 }
 
 impl TypedFuncParamKind {
+    pub fn get_param_ty(&self) -> Option<SemanticType> {
+        match self {
+            TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
+            TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),
+        }
+    }
+
     pub fn as_self_modifier(&self) -> Option<&TypedSelfModifier> {
         match self {
             TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
