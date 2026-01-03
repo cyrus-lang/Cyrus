@@ -48,6 +48,7 @@ pub struct Resolver {
     already_imported_modules: HashSet<ImportKey>,
     current_module: Option<ModuleID>,
     current_object: Option<SymbolID>,
+    current_object_generic_params: Option<TypedGenericParamsList>,
 }
 
 pub struct ProgramTreeEntry {
@@ -105,6 +106,7 @@ impl Resolver {
             module_loader: ModuleLoader::new(opts),
             current_module: None,
             current_object: None,
+            current_object_generic_params: None,
             master_module_file_path,
         }
     }
@@ -571,13 +573,22 @@ impl Resolver {
         generic_params_list_opt: &Option<TypedGenericParamsList>,
         identifier: &Identifier,
     ) -> Option<SemanticType> {
-        generic_params_list_opt.clone().and_then(|generic_params| {
-            generic_params
-                .list
-                .iter()
-                .find(|param| param.param_name.name == identifier.as_string())
-                .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.param_name.clone())))
-        })
+        generic_params_list_opt
+            .clone()
+            .and_then(|generic_params| {
+                generic_params
+                    .list
+                    .iter()
+                    .find(|param| param.param_name.name == identifier.as_string())
+                    .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.param_name.clone())))
+            })
+            .or({
+                self.current_object_generic_params.as_ref().and_then(|generic_params| {
+                    generic_params
+                        .get_named(&identifier.name)
+                        .map(|generic_param| SemanticType::GenericParam(generic_param.param_name.clone()))
+                })
+            })
     }
 
     fn resolve_type(
@@ -1187,6 +1198,8 @@ impl Resolver {
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
+        self.current_object_generic_params = generic_params.clone();
+
         for field in &union_decl.fields {
             match self.resolve_type(
                 &generic_params,
@@ -1281,6 +1294,8 @@ impl Resolver {
             .generic_params
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+
+        self.current_object_generic_params = generic_params.clone();
 
         for variant in &enum_decl.variants {
             let typed_variant = match variant {
@@ -1646,6 +1661,8 @@ impl Resolver {
             .generic_params
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+
+        self.current_object_generic_params = generic_params.clone();
 
         let typed_struct_fields: Vec<TypedStructField> = struct_decl
             .fields
@@ -3482,15 +3499,15 @@ impl Resolver {
         module_import: &ModuleImport,
     ) -> Option<SymbolID> {
         if let Some(identifier) = module_import.as_identifier() {
-            if identifier.as_string() == "Self" {
-                return Some(self.current_object.unwrap());
-            }
-
             if let Some(local_scope_rc) = local_scope_opt {
                 let local_scope = local_scope_rc.borrow();
                 if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
                     return Some(local_symbol.get_symbol_id());
                 }
+            }
+
+            if identifier.as_string() == "Self" {
+                return Some(self.current_object.unwrap());
             }
 
             if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
