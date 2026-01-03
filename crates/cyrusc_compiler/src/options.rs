@@ -47,7 +47,7 @@ pub struct CodeGenOptions {
     pub target_triple: Option<String>,
     pub disable_modulefs_cache: bool,
     pub disable_warnings: bool,
-    pub endiannesss: Option<CodeGenEndiannesss>,
+    pub endianness: Option<CodeGenEndianness>,
     pub abi: Option<CodeGenABI>,
 }
 
@@ -113,7 +113,7 @@ impl Default for CodeGenOptions {
             linker_options: CodeGenLinkerOptions::default(),
             linker_flags: Vec::new(),
             sanitizer: Vec::new(),
-            endiannesss: None,
+            endianness: None,
             abi: None,
         }
     }
@@ -123,7 +123,7 @@ impl CodeGenOptions {
     pub fn merge_preferring(&self, overrides: &Self) -> Self {
         Self {
             abi: overrides.abi.clone().or(self.abi.clone()),
-            endiannesss: overrides.endiannesss.clone().or(self.endiannesss.clone()),
+            endianness: overrides.endianness.clone().or(self.endianness.clone()),
             module_kind: overrides.module_kind.clone().or(self.module_kind.clone()),
             jobs: overrides.jobs.or(self.jobs.clone()),
             linker: overrides.linker.clone().or_else(|| self.linker.clone()),
@@ -232,7 +232,7 @@ impl CodeGenOptions {
 }
 
 #[derive(Debug, Clone)]
-pub enum CodeGenEndiannesss {
+pub enum CodeGenEndianness {
     Little,
     Big,
 }

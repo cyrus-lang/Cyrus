@@ -27,7 +27,7 @@ pub struct TargetMachineInfo {
     pub code_model: String,
     pub link_static: bool,
     pub pie: bool,
-    pub endiannesss: String,
+    pub endianness: String,
 }
 
 impl fmt::Display for TargetMachineInfo {
@@ -37,7 +37,7 @@ impl fmt::Display for TargetMachineInfo {
         writeln!(f, "{:<20}: {}", "Triple", self.triple)?;
         writeln!(f, "{:<20}: {}", "CPU Name", self.cpu_name)?;
         writeln!(f, "{:<20}: {}", "Data Layout", self.data_layout)?;
-        writeln!(f, "{:<20}: {}", "Endianness", self.endiannesss)?;
+        writeln!(f, "{:<20}: {}", "Endianness", self.endianness)?;
         writeln!(f, "{:<20}: {} bits", "Pointer Size", self.pointer_size_bits)?;
         writeln!(f, "{:<20}: {}", "Optimization Level", self.opt_level)?;
         writeln!(f, "{:<20}: {}", "Relocation Mode", self.reloc_mode)?;
