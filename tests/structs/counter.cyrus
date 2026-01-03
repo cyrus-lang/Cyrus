@@ -1,0 +1,44 @@
+// @stdout: 5 0
+
+import std::libc{printf};
+
+struct Counter {
+    pub count: int;
+
+    pub fn new(initial: int) Self { 
+        return Self { count: initial };
+    }
+
+    pub fn increment(&self) {
+        self->count++;
+    }
+
+    pub fn reset(&self) {
+        self->count = 0;
+    }
+
+    pub fn display(self) {
+        printf("%d ", self.count);
+    }
+}
+
+pub fn main() {
+    var counter = Counter.new(1);
+    var ref: Counter* = &counter;
+    
+    counter.count++;
+
+    {
+        counter.increment();
+        counter.increment();
+        counter.increment();    
+
+        counter.display();
+    }
+
+    {
+        counter.reset();
+
+        counter.display();
+    }
+}
