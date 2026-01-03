@@ -19,7 +19,7 @@ use std::{env, path::PathBuf};
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::options::{
-    BuildDir, CodeGenABI, CodeGenEndiannesss, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions,
+    BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions,
     ModuleKind, RelocModeOptions,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
@@ -163,8 +163,8 @@ C-compatible names, while 'Cyrus' uses the compiler's default mangling."
     )]
     abi: ABI,
 
-    #[clap(long, value_enum, help = "Set endiannesss (default uses target machine endiannesss).")]
-    pub endiannesss: Option<Endiannesss>,
+    #[clap(long, value_enum, help = "Set endianness (default uses target machine endianness).")]
+    pub endianness: Option<Endianness>,
 
     #[clap(long, help = "Number of threads to use for compilation.")]
     pub jobs: Option<usize>,
@@ -179,7 +179,7 @@ C-compatible names, while 'Cyrus' uses the compiler's default mangling."
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, ValueEnum)]
-pub enum Endiannesss {
+pub enum Endianness {
     Little,
     Big,
 }
@@ -291,9 +291,9 @@ impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
             abi: Some(self.abi.to_compiler_abi()),
-            endiannesss: self.endiannesss.and_then(|endiannesss| match endiannesss {
-                Endiannesss::Little => Some(CodeGenEndiannesss::Little),
-                Endiannesss::Big => Some(CodeGenEndiannesss::Big),
+            endianness: self.endianness.and_then(|endianness| match endianness {
+                Endianness::Little => Some(CodeGenEndianness::Little),
+                Endianness::Big => Some(CodeGenEndianness::Big),
             }),
             module_kind: self.module_merge_mode.and_then(|mmm| match mmm {
                 ModuleMergeMode::Unified => Some(ModuleKind::Unified),
