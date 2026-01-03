@@ -25,7 +25,7 @@ use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::{CodeGenContext, need_to_be_recompiled},
     object_file_info::ObjectFileInfo,
-    options::{CodeGenEndianness, CodeGenOptions},
+    options::{CodeGenEndiannesss, CodeGenOptions},
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
@@ -81,8 +81,8 @@ impl CodeGenLLVM {
         }
     }
 
-    fn set_endianness<'module>(&self, module: &Module<'module>) {
-        if let Some(endianness) = &self.opts.endianness {
+    fn set_endiannesss<'module>(&self, module: &Module<'module>) {
+        if let Some(endiannesss) = &self.opts.endiannesss {
             let layout = self
                 .llvmtm
                 .get_target_data()
@@ -92,9 +92,9 @@ impl CodeGenLLVM {
                 .unwrap()
                 .to_string();
 
-            let new_layout_str = match endianness {
-                CodeGenEndianness::Little => layout.replacen(&layout[0..1], "e", 1),
-                CodeGenEndianness::Big => layout.replacen(&layout[0..1], "E", 1),
+            let new_layout_str = match endiannesss {
+                CodeGenEndiannesss::Little => layout.replacen(&layout[0..1], "e", 1),
+                CodeGenEndiannesss::Big => layout.replacen(&layout[0..1], "E", 1),
             };
 
             let new_layout = TargetData::create(&new_layout_str);
@@ -113,7 +113,7 @@ impl CodeGenLLVM {
             let llvmmodule = owned_module.module.borrow();
             llvmmodule.set_triple(&self.llvmtm.get_triple());
             llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
-            self.set_endianness(&llvmmodule);
+            self.set_endiannesss(&llvmmodule);
             enable_asan_for_owned_module(
                 &self.opts,
                 owned_module,
@@ -239,16 +239,16 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             }
         };
 
-        let native_endiannes = match target_machine.get_target_data().get_byte_ordering() {
+        let native_endianness = match target_machine.get_target_data().get_byte_ordering() {
             ByteOrdering::LittleEndian => "Little".to_string(),
             ByteOrdering::BigEndian => "Big".to_string(),
         };
-        let endianness = match &self.opts.endianness {
-            Some(codegen_endianness) => match codegen_endianness {
-                CodeGenEndianness::Little => "Little".to_string(),
-                CodeGenEndianness::Big => "Big".to_string(),
+        let endiannesss = match &self.opts.endiannesss {
+            Some(codegen_endiannesss) => match codegen_endiannesss {
+                CodeGenEndiannesss::Little => "Little".to_string(),
+                CodeGenEndiannesss::Big => "Big".to_string(),
             },
-            None => native_endiannes,
+            None => native_endianness,
         };
 
         TargetMachineInfo {
@@ -261,7 +261,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 .to_str()
                 .unwrap()
                 .to_string(),
-            endianness,
+            endiannesss,
             pointer_size_bits: target_machine.get_target_data().get_pointer_byte_size(None),
             opt_level: self
                 .opts
