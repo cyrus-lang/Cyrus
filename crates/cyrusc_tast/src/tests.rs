@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */#[cfg(test)]
+ */
+#[cfg(test)]
 mod tests {
     use cyrusc_ast::source_loc::SourceLoc;
 

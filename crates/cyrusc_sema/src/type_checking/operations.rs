@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+ */
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator},
     source_loc::SourceLoc,

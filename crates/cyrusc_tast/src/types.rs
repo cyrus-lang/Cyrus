@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::exprs::{TypedExprStmt, TypedIdentifier, TypedSelfType};
+ */
+use crate::exprs::{TypedExprStmt, TypedIdentifier, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::generics::mapping_ctx::GenericMappingCtx;
 use crate::stmts::{TypedFuncTypeParams, TypedGenericParamsList};

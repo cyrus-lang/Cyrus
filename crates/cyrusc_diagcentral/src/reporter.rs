@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{Diag, DiagKind, DiagLevel};
+ */
+use crate::{Diag, DiagKind, DiagLevel};
 use colorized::{Color, Colors};
 use console::user_attended;
 use cyrusc_strescape::{saturating_sub, spaces};

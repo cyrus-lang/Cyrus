@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */#[derive(Debug, Clone)]
+ */
+#[derive(Debug, Clone)]
 pub struct ObjectFileInfo {
     pub path: String,
     pub size: usize,

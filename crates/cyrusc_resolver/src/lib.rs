@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::sigs::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
+ */
+use crate::sigs::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::symbols::*;
 use crate::{
     diagnostics::ResolverDiagKind,

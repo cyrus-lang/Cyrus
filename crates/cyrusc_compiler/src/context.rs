@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{
+ */
+use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
     object_file_info::{ObjectFileInfo, get_objects_file_names},

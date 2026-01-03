@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use cyrusc_compiler::options::{CodeModelOptions, RelocModeOptions};
+ */
+use cyrusc_compiler::options::{CodeModelOptions, RelocModeOptions};
 use inkwell::{
     OptimizationLevel,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},

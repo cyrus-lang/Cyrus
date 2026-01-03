@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::options::{CodeGenOptions, RelocModeOptions};
+ */
+use crate::options::{CodeGenOptions, RelocModeOptions};
 use std::path::PathBuf;
 use std::process::Command;
 use which::which;

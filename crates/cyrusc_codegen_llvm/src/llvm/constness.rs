@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use inkwell::values::BasicValueEnum;
+ */
+use inkwell::values::BasicValueEnum;
 
 pub fn is_basic_value_constant<'a>(basic_value: BasicValueEnum<'a>) -> bool {
     match basic_value {

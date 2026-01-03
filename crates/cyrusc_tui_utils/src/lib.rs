@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use colorized::{Color, Colors};
+ */
+use colorized::{Color, Colors};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 

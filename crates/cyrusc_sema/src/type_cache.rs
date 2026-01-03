@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use cyrusc_tast::{SymbolID, types::SemanticType};
+ */
+use cyrusc_tast::{SymbolID, types::SemanticType};
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
 

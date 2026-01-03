@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
+ */
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};

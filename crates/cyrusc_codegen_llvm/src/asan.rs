@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::OwnedModule;
+ */
+use crate::OwnedModule;
 use cyrusc_asan_wrapper::{SanitizerOptions, run_sanitizers};
 use cyrusc_compiler::options::{CodeGenOptions, CodeGenSanitizer};
 use cyrusc_diagcentral::display_single_custom_diag;

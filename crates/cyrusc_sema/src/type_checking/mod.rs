@@ -13,6 +13,7 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */pub(crate) mod mismatchrules;
+ */
+pub(crate) mod mismatchrules;
 pub(crate) mod operations;
 pub(crate) mod type_checking;

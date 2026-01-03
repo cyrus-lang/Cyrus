@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::builder::builder::IRBuilderCtx;
+ */
+use crate::builder::builder::IRBuilderCtx;
 use cyrusc_cir::{CIRExpr, types::CIRTy};
 use inkwell::{
     types::BasicTypeEnum,

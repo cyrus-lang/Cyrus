@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use cyrusc_diagcentral::display_single_custom_diag;
+ */
+use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{MANIFEST_FILENAME, SOURCES_DIR_PATH};
 use serde::{Deserialize, Serialize};
 use std::{

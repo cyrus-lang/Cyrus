@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- *//// Trait that defines how to generate ABI-safe names for the language.
+ */
+/// Trait that defines how to generate ABI-safe names for the language.
 /// This allows multiple ABIs to coexist with different name mangling rules.
 pub trait ABINameMangler: Send + Sync {
     /// Function names

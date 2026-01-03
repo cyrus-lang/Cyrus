@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{object_file_info::ObjectFileInfo, tm_info::TargetMachineInfo};
+ */
+use crate::{object_file_info::ObjectFileInfo, tm_info::TargetMachineInfo};
 use cyrusc_cir::CIRProgramTree;
 use std::any::Any;
 

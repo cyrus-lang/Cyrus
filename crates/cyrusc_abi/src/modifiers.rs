@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{
+ */
+use crate::{
     callconv::CallConv, export::ExportKind, flags::OptionalFlag, inline::Inlining, linkage::Linkage,
     placement::SectionAttr, prologue::Prologue, repr::ReprAttr, visibility::Visibility,
 };

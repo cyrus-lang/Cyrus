@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{Parser, diagnostics::ParserDiagKind};
+ */
+use crate::{Parser, diagnostics::ParserDiagKind};
 use cyrusc_abi::export::ExportKind;
 use cyrusc_abi::flags::{OptionalFlag, validate_flags};
 use cyrusc_abi::inline::Inlining;

@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::monomorph::CIRMonomorphRegistry;
+ */
+use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_abi::mangler::ABINameMangler;

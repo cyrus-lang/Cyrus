@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::stmts::TypedStmt;
+ */
+use crate::stmts::TypedStmt;
 use cyrusc_ast::source_loc::SourceLoc;
 
 pub mod exprs;

@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use cyrusc_fs_utils::read_file;
+ */
+use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
 use std::env;

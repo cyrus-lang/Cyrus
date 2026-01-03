@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::analyze::AnalysisContext;
+ */
+use crate::analyze::AnalysisContext;
 use cyrusc_resolver::symbols::LocalScopeRef;
 use cyrusc_tast::{ModuleID, SymbolID};
 

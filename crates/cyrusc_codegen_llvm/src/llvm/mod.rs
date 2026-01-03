@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */pub mod abi;
+ */
+pub mod abi;
 pub mod c_str;
 pub mod constness;
 pub mod target_machine;

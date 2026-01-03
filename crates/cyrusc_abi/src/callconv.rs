@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */macro_rules! define_call_convs {
+ */
+macro_rules! define_call_convs {
     ($( $variant:ident => $str:expr ),* $(,)?) => {
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub enum CallConv {

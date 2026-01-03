@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use std::path::{Path, PathBuf};
+ */
+use std::path::{Path, PathBuf};
 
 pub fn make_module_name_from_filepath<P: AsRef<Path>>(
     path: P,

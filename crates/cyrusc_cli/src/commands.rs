@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::CompilerOptions;
+ */
+use crate::CompilerOptions;
 use crate::temp_executable_builder::TempExecutableBuilder;
 use cyrusc_ast::token::TokenKind;
 use cyrusc_codegen_llvm::CodeGenLLVM;

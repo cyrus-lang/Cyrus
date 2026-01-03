@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
+ */
+use crate::{SymbolID, exprs::TypedIdentifier, format::format_sema_ty, types::SemanticType};
 use std::{
     cell::RefCell,
     collections::HashMap,

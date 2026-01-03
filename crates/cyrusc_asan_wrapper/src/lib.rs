@@ -13,7 +13,8 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- */use inkwell::llvm_sys::prelude::LLVMModuleRef;
+ */
+use inkwell::llvm_sys::prelude::LLVMModuleRef;
 use inkwell::llvm_sys::target_machine::LLVMTargetMachineRef;
 use inkwell::module::Module;
 use inkwell::targets::TargetMachine;
