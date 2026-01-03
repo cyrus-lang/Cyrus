@@ -1,0 +1,52 @@
+/* 
+ * Copyright (c) 2026 The Cyrus Team
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * See the GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */#[derive(Debug, Clone, PartialEq)]
+pub enum InfixOperator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    LessThan,
+    LessEqual,
+    GreaterThan,
+    GreaterEqual,
+    Equal,
+    NotEqual,
+    Or,
+    And,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseAndNot,
+    ShiftRight,
+    ShiftLeft,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PrefixOperator {
+    Bang,
+    Minus,
+    BitwiseNot,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOperator {
+    PreIncrement,
+    PreDecrement,
+    PostIncrement,
+    PostDecrement,
+}
