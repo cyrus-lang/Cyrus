@@ -1623,7 +1623,10 @@ impl<'a> AnalysisContext<'a> {
                 param_type = sema_ty;
             }
 
-            if !self.check_type_mismatch(scope_id_opt, arg_type.clone(), param_type.clone(), arg.loc.clone()) {
+            // skip if param type not inferred yet
+            if param_type.as_generic_param().is_none()
+                && !self.check_type_mismatch(scope_id_opt, arg_type.clone(), param_type.clone(), arg.loc.clone())
+            {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -2003,14 +2006,6 @@ impl<'a> AnalysisContext<'a> {
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
             {
-                if self.check_unexpected_type_args(
-                    &sym.get_generic_params(),
-                    &method_call.type_args,
-                    method_call.loc.clone(),
-                ) {
-                    return None;
-                };
-
                 if sym.as_variable().is_some() || sym.as_global_var().is_some() {
                     method_call.is_instance_method_operand = true;
                 }
@@ -2227,19 +2222,16 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let mut method_symbol_entry = self.resolver.lookup_symbol_entry_with_id(method_symbol_id).unwrap();
-
         let resolved_method = match &mut method_symbol_entry.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method,
             _ => unreachable!(),
         };
 
-        if resolved_method.func_sig.generic_params.is_none() && method_call.type_args.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                location: Some(DiagLoc::new(method_call.loc.clone())),
-                hint: None,
-            });
+        if self.check_unexpected_type_args(
+            &resolved_method.func_sig.generic_params,
+            &method_call.type_args,
+            method_call.loc.clone(),
+        ) {
             self.clear_method_call_self_type();
             return None;
         }
@@ -2252,7 +2244,6 @@ impl<'a> AnalysisContext<'a> {
 
         // invalid if static method called on instance
         let invalid_call = !is_instance_method_sig && method_call.is_instance_method_operand;
-
         if invalid_call {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -2287,12 +2278,16 @@ impl<'a> AnalysisContext<'a> {
         let mut generic_type_opt = method_call_operand_ty.as_generic_type().cloned();
 
         // init method generic mapping ctx
-        let (_, mut method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
+        let parent_mapping_ctx = generic_type_opt
+            .clone()
+            .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()));
+
+        let (_, method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
             local_scope_opt.clone(),
             resolved_method.symbol_id,
             &method_call.type_args,
-            None,
+            parent_mapping_ctx.clone(),
             resolved_method.func_sig.generic_params.as_ref(),
             false,
             method_call.loc.clone(),
@@ -2305,13 +2300,10 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let method_mapping_ctx = {
-            if let Some(method_generic_type) = &mut method_generic_type_opt {
-                Some(method_generic_type.mapping_ctx.borrow().clone())
-            } else {
-                None
-            }
-        };
+        if parent_mapping_ctx.is_none() {
+            // fallback
+            generic_type_opt = method_generic_type_opt.clone();
+        }
 
         if !method_call.is_instance_method_operand && is_instance_method_sig {
             // explicit instance method
@@ -2326,6 +2318,30 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        // infer generic params from arguments
+        for (idx, arg) in method_call.args.iter_mut().enumerate() {
+            let target_type = match resolved_method
+                .func_sig
+                .params
+                .list
+                .get(idx)
+                .and_then(|param| param.get_param_ty())
+            {
+                Some(sema_ty) => sema_ty,
+                None => continue,
+            };
+
+            if let Some(sema_ty) = self.infer_generic_param(
+                scope_id_opt,
+                &generic_type_opt,
+                target_type,
+                arg.sema_ty.clone(),
+                arg.loc.clone(),
+            ) {
+                arg.sema_ty = Some(sema_ty);
+            }
+        }
+
         method_call.return_type = Some(self.check_func_call(
             scope_id_opt,
             &mut resolved_method.func_sig,
@@ -2335,15 +2351,22 @@ impl<'a> AnalysisContext<'a> {
             instance_method_call,
         )?);
 
+        if let Some(generic_type) = &generic_type_opt {
+            method_call.return_type = substitute_type(
+                method_call.return_type.clone().unwrap(),
+                generic_type.mapping_ctx.clone(),
+            );
+        }
+
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
             {
-                let mut ctx = generic_type.mapping_ctx.borrow_mut();
-                if let Some(method_ctx) = method_mapping_ctx {
-                    let method_ctx = Rc::new(method_ctx);
+                if let Some(method_generic_type) = method_generic_type_opt {
+                    let method_ctx = Rc::new(method_generic_type.mapping_ctx.borrow().clone());
                     self.mapping_ctx_arena.push(method_ctx.clone());
 
-                    ctx.parent = Some(Rc::downgrade(&method_ctx));
+                    let mut generic_mapping_ctx = generic_type.mapping_ctx.borrow_mut();
+                    generic_mapping_ctx.parent = Some(Rc::downgrade(&method_ctx));
                 }
             }
 
