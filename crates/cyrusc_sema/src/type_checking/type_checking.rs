@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -40,7 +40,7 @@ use cyrusc_tast::{
     types::*,
     *,
 };
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_explicit_sema_ty(
@@ -2172,6 +2172,20 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
+
+        // constructing generic type manually if operand is not generic but symbol is.
+        // this is necessary because without it, a generic method that uses object's generic params
+        // can never be inferred.
+        if sym.get_generic_params().is_some() && method_call_operand_ty.as_generic_type().is_none() {
+            method_call_operand_ty = SemanticType::GenericType(GenericType {
+                base: method_call_operand_ty.get_symbol_id().unwrap(),
+                type_args: Vec::new(),
+                mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+                altered_generic_params: None,
+                is_const: false,
+                loc: method_call.loc.clone(),
+            });
+        }
 
         self.analyze_regular_method_call(
             scope_id_opt,

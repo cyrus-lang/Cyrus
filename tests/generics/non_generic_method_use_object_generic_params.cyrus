@@ -1,0 +1,23 @@
+// @stdout: 7.000000 4.000000 15
+
+import std::libc{printf};
+
+struct MathUtils<T> {
+    pub fn add(x: T, y: T) T {
+        return x + y;
+    }
+
+    pub fn sub(x: T, y: T) T {
+        return x - y;
+    }
+
+    pub fn mul(x: T, y: T) T {
+        return x * y;
+    }
+}
+
+pub fn main() {
+    printf("%f ", MathUtils.add(5.5, 1.5));
+    printf("%f ", MathUtils.sub(5.5, 1.5));
+    printf("%d ", MathUtils.mul(3, 5));
+}
