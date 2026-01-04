@@ -293,7 +293,7 @@ pub fn format_unnamed_struct_ty<'a>(
 pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match sema_ty {
         SemanticType::UnresolvedSymbol(..) => format!("UNKNOWN"),
-        SemanticType::GenericParam(identifier) => identifier.name.clone(),
+        SemanticType::GenericParam(generic_param) => generic_param.param_name.name.clone(),
         SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
             ResolvedSymbol::Enum(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Typedef(symbol_id) => format_symbol(symbol_id),

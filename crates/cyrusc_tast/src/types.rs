@@ -1,23 +1,23 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::exprs::{TypedExprStmt, TypedIdentifier, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::generics::mapping_ctx::GenericMappingCtx;
-use crate::stmts::{TypedFuncTypeParams, TypedGenericParamsList};
+use crate::stmts::{TypedFuncTypeParams, TypedGenericParam, TypedGenericParamsList};
 use crate::{ModuleID, SourceLoc, SymbolID};
 use cyrusc_ast::token::TokenKind;
 use std::hash::{Hash, Hasher};
@@ -35,7 +35,7 @@ pub enum SemanticType {
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
     GenericType(GenericType),
-    GenericParam(TypedIdentifier),
+    GenericParam(TypedGenericParam),
     SelfType(TypedSelfType),
 }
 
@@ -136,9 +136,9 @@ impl SemanticType {
         }
     }
 
-    pub fn as_generic_param(&self) -> Option<&TypedIdentifier> {
+    pub fn as_generic_param(&self) -> Option<&TypedGenericParam> {
         match self.get_const_inner() {
-            SemanticType::GenericParam(typed_identifier) => Some(typed_identifier),
+            SemanticType::GenericParam(generic_param) => Some(generic_param),
             _ => None,
         }
     }
@@ -248,7 +248,7 @@ impl SemanticType {
         if self.is_const() {
             return self.clone();
         }
-        
+
         SemanticType::Const(Box::new(self.clone()))
     }
 

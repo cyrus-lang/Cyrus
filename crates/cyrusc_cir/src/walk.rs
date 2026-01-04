@@ -1544,7 +1544,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         {
                             let mapping_ctx = generic_type.mapping_ctx.borrow();
                             return mapping_ctx
-                                .get_with_name(&generic_param.name)
+                                .get_with_name(&generic_param.param_name.name)
                                 .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty))
                                 .unwrap();
                         }

@@ -243,7 +243,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
-        expected_type: Option<SemanticType>,
+        mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         match &typed_expr.kind {
             TypedExprKind::Symbol(symbol_id, _) => {
@@ -269,6 +269,12 @@ impl<'a> AnalysisContext<'a> {
             }
             _ => {}
         };
+
+        if let Some(sema_ty) = &expected_type {
+            if let Some(generic_param) = sema_ty.as_generic_param() {
+                expected_type = generic_param.default.clone().map(|sema_ty| *sema_ty);
+            }
+        }
 
         self.analyze_expr_non_terminal(scope_id_opt, typed_expr, expected_type)
     }

@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -557,14 +557,14 @@ impl Resolver {
                 };
 
                 let default = if let Some(default_type_specifier) = &generic_param.default {
-                    Some(self.resolve_type(
+                    Some(Box::new(self.resolve_type(
                         &None,
                         None,
                         self.current_module?,
                         default_type_specifier.clone(),
                         generic_param.param_name.loc.clone(),
                         generic_param.param_name.span.end,
-                    )?)
+                    )?))
                 } else {
                     None
                 };
@@ -596,13 +596,13 @@ impl Resolver {
                     .list
                     .iter()
                     .find(|param| param.param_name.name == identifier.as_string())
-                    .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.param_name.clone())))
+                    .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.clone())))
             })
             .or({
                 self.current_object_generic_params.as_ref().and_then(|generic_params| {
                     generic_params
                         .get_named(&identifier.name)
-                        .map(|generic_param| SemanticType::GenericParam(generic_param.param_name.clone()))
+                        .map(|generic_param| SemanticType::GenericParam(generic_param.clone()))
                 })
             })
     }

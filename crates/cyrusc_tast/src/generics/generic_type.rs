@@ -112,7 +112,7 @@ impl GenericType {
 
                     if let Some(target_generic_param) = ty.as_generic_param() {
                         mapping_ctx.insert_linked(
-                            GenericMappingEntry::from(target_generic_param.clone()),
+                            GenericMappingEntry::from(target_generic_param.param_name.clone()),
                             GenericMappingEntry::from(generic_param.param_name.clone()),
                         );
                     } else {
@@ -166,7 +166,7 @@ impl GenericType {
                     if let Some(default) = &generic_param.default {
                         mapping_ctx.insert_named(
                             GenericMappingEntry::from(generic_param.param_name.clone()),
-                            default.clone(),
+                            *default.clone(),
                         );
                     }
                 }
