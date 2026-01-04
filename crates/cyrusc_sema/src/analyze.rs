@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -1249,7 +1249,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_generics_params(&mut self, generic_params: &TypedGenericParamsList) {
+    fn analyze_generics_params(
+        &mut self,
+        object_name: &String,
+        object_generic_params: &Option<TypedGenericParamsList>,
+        generic_params: &TypedGenericParamsList,
+    ) {
         let mut collected_names: Vec<String> = Vec::new();
         for generic_param in &generic_params.list {
             if collected_names.contains(&generic_param.param_name.name) {
@@ -1261,6 +1266,20 @@ impl<'a> AnalysisContext<'a> {
                     location: Some(DiagLoc::new(generic_param.param_name.loc.clone())),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
+            }
+
+            if let Some(generic_params) = object_generic_params {
+                if generic_params.get_named(&generic_param.param_name.name).is_some() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
+                            param_name: generic_param.param_name.name.clone(),
+                            object_name: object_name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(generic_param.param_name.loc.clone())),
+                        hint: Some("Consider to rename the field to a different name.".to_string()),
+                    });
+                }
             }
 
             collected_names.push(generic_param.param_name.name.clone());
@@ -1290,7 +1309,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_params) = &typed_struct.generic_params {
-            self.analyze_generics_params(generic_params);
+            let object_name = (self.symbol_formatter)(scope_id_opt)(typed_struct.symbol_id);
+            self.analyze_generics_params(&object_name, &typed_struct.generic_params, generic_params);
         }
 
         self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
@@ -1380,7 +1400,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_params) = &typed_union.generic_params {
-            self.analyze_generics_params(generic_params);
+            let object_name = (self.symbol_formatter)(scope_id_opt)(typed_union.symbol_id);
+            self.analyze_generics_params(&object_name, &typed_union.generic_params, generic_params);
         }
 
         self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
@@ -1463,7 +1484,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_params) = &typed_enum.generic_params {
-            self.analyze_generics_params(generic_params);
+            let object_name = (self.symbol_formatter)(scope_id_opt)(typed_enum.symbol_id);
+            self.analyze_generics_params(&object_name, &typed_enum.generic_params, generic_params);
         }
 
         self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
@@ -1720,7 +1742,8 @@ impl<'a> AnalysisContext<'a> {
         let is_generic_func = typed_func_def.generic_params.is_some();
 
         if let Some(generic_params) = &typed_func_def.generic_params {
-            self.analyze_generics_params(generic_params);
+            let object_name = (self.symbol_formatter)(None)(typed_func_def.symbol_id);
+            self.analyze_generics_params(&object_name, &typed_func_def.generic_params, generic_params);
         }
 
         self.current_func = Some(TypedFuncType {
@@ -1842,7 +1865,8 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDeclStmt) {
         if let Some(generic_params) = &typed_func_decl.generic_params {
-            self.analyze_generics_params(generic_params);
+            let object_name = (self.symbol_formatter)(None)(typed_func_decl.symbol_id);
+            self.analyze_generics_params(&object_name, &typed_func_decl.generic_params, generic_params);
         }
 
         self.check_duplicate_param_names(

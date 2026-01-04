@@ -270,6 +270,9 @@ pub enum AnalyzerDiagKind {
     #[error("Duplicate generic parameter name '{param_name}'.")]
     DuplicateGenericParam { param_name: String },
 
+    #[error("Method generic parameter '{param_name}' shadows generic parameter from '{object_name}'.")]
+    ShadowsObjectGenericParam { param_name: String, object_name: String },
+
     #[error("Duplicate parameter name '{param_name}' at index {param_idx}.")]
     DuplicateFuncParameter { param_name: String, param_idx: u32 },
 
