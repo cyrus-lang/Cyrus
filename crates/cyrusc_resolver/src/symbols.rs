@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -174,6 +174,16 @@ impl LocalOrGlobalSymbol {
         };
 
         method_map.and_then(|map| map.get(name).cloned())
+    }
+
+    pub fn get_method_generic_params(&self) -> Option<&TypedGenericParamsList> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(_) => None,
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.generic_params.as_ref(),
+                _ => None,
+            },
+        }
     }
 
     pub fn get_generic_params(&self) -> Option<TypedGenericParamsList> {
