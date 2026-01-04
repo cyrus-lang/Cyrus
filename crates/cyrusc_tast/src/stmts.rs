@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -471,7 +471,16 @@ pub struct TypedGenericParamsList {
 pub struct TypedGenericParam {
     pub param_name: TypedIdentifier,
     pub bounds: Option<Vec<TypedBound>>,
-    pub default: Option<SemanticType>,
+    pub default: Option<Box<SemanticType>>,
+}
+
+impl Hash for TypedGenericParam {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.param_name.hash(state);
+        if let Some(bounds) = &self.bounds {
+            bounds.hash(state);
+        }
+    }
 }
 
 impl TypedGenericParamsList {
@@ -496,7 +505,7 @@ impl TypedGenericParamsList {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TypedBound {
     pub symbol: Identifier,
     pub type_args: TypedTypeArgs,

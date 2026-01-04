@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -80,7 +80,7 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(generic_type) = sema_ty.as_generic_type() {
                         {
                             let mapping_ctx = generic_type.mapping_ctx.borrow();
-                            if let Some(sema_ty) = mapping_ctx.get_with_name(&generic_param.name) {
+                            if let Some(sema_ty) = mapping_ctx.get_with_name(&generic_param.param_name.name) {
                                 return Some(sema_ty);
                             }
                         }
@@ -329,11 +329,7 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(sema_ty) = &var.ty {
                         let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone(), false)?;
 
-                        return Some(if var.is_const {
-                            sema_ty.as_const()
-                        } else {
-                            sema_ty
-                        });
+                        return Some(if var.is_const { sema_ty.as_const() } else { sema_ty });
                     }
 
                     let rhs = var
@@ -357,11 +353,7 @@ impl<'a> AnalysisContext<'a> {
 
                     self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id, sema_ty.clone());
 
-                    Some(if var.is_const {
-                        sema_ty.as_const()
-                    } else {
-                        sema_ty
-                    })
+                    Some(if var.is_const { sema_ty.as_const() } else { sema_ty })
                 }
                 LocalSymbolKind::Struct(s) => {
                     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))

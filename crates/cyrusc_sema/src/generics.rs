@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -49,6 +49,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(expected_ty) = expected_type {
             if let Some(expected_generic_ty) = expected_ty.as_generic_type() {
                 let parent = Rc::new(expected_generic_ty.mapping_ctx.borrow().clone());
+
                 self.mapping_ctx_arena.push(parent.clone());
 
                 mapping_ctx = Some(match mapping_ctx {
@@ -84,7 +85,8 @@ impl<'a> AnalysisContext<'a> {
 
         let ctx = generic_type.mapping_ctx.borrow();
 
-        ctx.get_with_name(&generic_param.name)
+        ctx.get_with_name(&generic_param.param_name.name)
+            .or(generic_param.default.clone().map(|sema_ty| *sema_ty))
     }
 
     pub(crate) fn register_specialized_generic_func(
@@ -284,19 +286,20 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let generic_param = GenericMappingEntry::from(target_ty.as_generic_param().cloned()?);
+        let generic_param = target_ty.as_generic_param().cloned()?;
+        let generic_mapping_entry = GenericMappingEntry::from(generic_param.param_name);
         let expr_ty = expr_ty?;
 
         let mapping_ctx_rc = &generic_type.mapping_ctx;
         let cloned_ctx = mapping_ctx_rc.borrow().clone();
 
         // resolve linked parent by name
-        let linked_parent_opt = cloned_ctx.get_linked_by_name(&generic_param.name);
+        let linked_parent_opt = cloned_ctx.get_linked_by_name(&generic_mapping_entry.name);
 
         let mut ctx = mapping_ctx_rc.borrow_mut();
 
         // if a local value exists, use it immediately
-        if let Some(local_sema_ty) = ctx.get_with_name(&generic_param.name) {
+        if let Some(local_sema_ty) = ctx.get_with_name(&generic_mapping_entry.name) {
             if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), local_sema_ty.clone(), loc.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -313,11 +316,11 @@ impl<'a> AnalysisContext<'a> {
             return Some(local_sema_ty);
         }
 
-        // if any ancestor directly has a concrete value for this symbol id, obey it
+        // if any parent directly has a concrete value for this symbol id, obey it
         if let Some(parent_val) = ctx.parent.as_ref().and_then(|mapping_ctx| {
             mapping_ctx
                 .upgrade()
-                .and_then(|ctx| ctx.get_with_name(&generic_param.name))
+                .and_then(|ctx| ctx.get_with_name(&generic_mapping_entry.name))
         }) {
             if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
                 self.reporter.report(Diag {
@@ -332,7 +335,7 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
 
-            ctx.insert_named(generic_param.clone(), parent_val.clone());
+            ctx.insert_named(generic_mapping_entry.clone(), parent_val.clone());
             return Some(parent_val);
         }
 
@@ -352,15 +355,15 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
 
-                ctx.insert_named(generic_param.clone(), resolved_ty.clone());
-                ctx.insert_linked(generic_param.clone(), parent_entry);
+                ctx.insert_named(generic_mapping_entry.clone(), resolved_ty.clone());
+                ctx.insert_linked(generic_mapping_entry.clone(), parent_entry);
 
                 return Some(resolved_ty);
             }
         }
 
         // otherwise, just insert the expression type as the generic param value
-        ctx.insert_named(generic_param.clone(), expr_ty.clone());
+        ctx.insert_named(generic_mapping_entry.clone(), expr_ty.clone());
         Some(expr_ty)
     }
 
