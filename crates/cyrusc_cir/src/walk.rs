@@ -18,18 +18,15 @@ use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_abi::mangler::ABINameMangler;
+use cyrusc_ast::LiteralKind;
 use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::{LiteralKind, SelfModifierKind};
 use cyrusc_resolver::Resolver;
-use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, generate_symbol_id};
+use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
-use cyrusc_tast::generics::monomorph::MonomorphEntry;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
-use cyrusc_tast::sigs::{
-    EnumSig, FuncSig, GlobalVarSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig,
-};
+use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
 use cyrusc_tast::types::{PlainType, ResolvedSymbol};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
@@ -995,41 +992,9 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn get_monomorphized_func_sig(
-        &self,
-        local_scope_opt: Option<LocalScopeRef>,
-        monomorph_key: &MonomorphKey,
-    ) -> Option<FuncSig> {
-        {
-            let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
-            let entry = monomorph_registry.get(monomorph_key).unwrap();
-            match entry {
-                MonomorphEntry::Func(monomorph_func_entry) => {
-                    let sym = self
-                        .resolver
-                        .resolve_local_or_global_symbol(local_scope_opt.clone(), monomorph_func_entry.base_symbol)
-                        .unwrap();
-
-                    let func_sig = sym
-                        .as_func()
-                        .map(|resolved_func| resolved_func.func_sig.clone())
-                        .or(sym.as_method().map(|resolved_method| resolved_method.func_sig.clone()))
-                        .unwrap();
-
-                    return substitute_func_sig(
-                        &func_sig,
-                        Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
-                    );
-                }
-            }
-        }
-    }
-
     fn lower_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
-        sym: &LocalOrGlobalSymbol,
         method_call: &TypedMethodCall,
     ) -> CIRExprKind {
         self.current_obj_operand_ty = Some(method_call.operand.sema_ty.clone().unwrap());
@@ -1038,65 +1003,15 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty));
 
-        let mut func_sig: FuncSig;
-        if let Some(monomorph_key) = &method_call.monomorph_key {
-            func_sig = self
-                .get_monomorphized_func_sig(local_scope_opt.clone(), monomorph_key)
-                .unwrap();
-        } else {
-            let method_symbol_id = sym.get_method_symbol_id_by_name(&method_call.method_name).unwrap();
+        let func_sig = method_call.func_sig.as_ref().unwrap();
 
-            let sym = self
-                .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
-                .unwrap();
+        let args = method_call
+            .args
+            .iter()
+            .map(|arg| self.lower_expr(scope_id_opt, arg))
+            .collect::<Vec<CIRExpr>>();
 
-            func_sig = sym.as_method().unwrap().clone().func_sig;
-        }
-
-        let operand_ty = method_call.operand.sema_ty.clone().unwrap();
-        let is_generic = operand_ty.as_generic_type().is_some();
-        let first_param_opt = func_sig.params.list.first().cloned();
-
-        if is_generic {
-            self.lower_generic_object_self_modifier(&operand_ty, &mut func_sig.params);
-        }
-
-        let mut args: Vec<CIRExpr> = Vec::new();
-
-        if func_sig.is_instance_method() && method_call.is_instance_method_operand {
-            let first_param = first_param_opt.unwrap();
-            let self_modifier = first_param.as_self_modifier().unwrap();
-
-            let operand_expr = self.lower_self_modifier(
-                scope_id_opt,
-                &method_call.operand,
-                method_call.is_fat_arrow,
-                self_modifier,
-            );
-
-            args.insert(0, operand_expr);
-        }
-
-        if !method_call.is_instance_method_operand && func_sig.is_instance_method() {
-            // explicit instance method
-            // inferring self type from first argument type
-            if let Some(expr) = method_call.args.first().cloned() {
-                let sema_ty = expr.sema_ty.clone().unwrap();
-                set_self_modifier_type_in_func_sig(&mut func_sig, &sema_ty);
-                self.current_self_ty = Some(self.lower_sema_ty(scope_id_opt, &sema_ty));
-            }
-        }
-
-        args.extend(
-            method_call
-                .args
-                .iter()
-                .map(|arg| self.lower_expr(scope_id_opt, arg))
-                .collect::<Vec<CIRExpr>>(),
-        );
-
-        let ret_ty = self.lower_sema_ty(scope_id_opt, &method_call.return_type.clone().unwrap());
+        let ret_ty = self.lower_sema_ty(scope_id_opt, &func_sig.return_type.clone());
 
         let cir_expr_kind;
         if let Some(monomorph_key) = &method_call.monomorph_key {
@@ -1109,12 +1024,11 @@ impl<'resolver> CIRWalk<'resolver> {
             })
         } else {
             let func_decl = typed_func_decl_from_func_sig(&func_sig);
-
             let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
 
             let operand = Box::new(CIRExpr {
                 kind: CIRExprKind::Load(CIRValue {
-                    irv_id: method_call.method_symbol_id.unwrap(),
+                    irv_id: method_call.func_sig.as_ref().unwrap().symbol_id.unwrap(),
                     kind: CIRValueKind::Func(Box::new(cir_func_decl)),
                 }),
                 ty: ret_ty.clone(),
@@ -1129,101 +1043,62 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_method_call(&mut self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.object_symbol_id.unwrap())
-            .unwrap();
 
-        if let Some(resolved_enum) = sym.as_enum() {
-            let sema_ty = method_call.operand.sema_ty.as_ref().unwrap();
+        if let Some(enum_symbol_id) = method_call.is_enum_const {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id)
+                .unwrap();
 
-            let typed_variant_idx_opt = resolved_enum
-                .enum_sig
-                .variants
-                .iter()
-                .position(|variant| variant.get_identifier().as_string() == method_call.method_name);
+            if let Some(resolved_enum) = sym.as_enum() {
+                let sema_ty = method_call.operand.sema_ty.as_ref().unwrap();
 
-            // it's not a enum variant construction, so try again as a regular method call
-            let typed_variant_idx = if let Some(idx) = typed_variant_idx_opt {
-                idx
-            } else {
-                return self.lower_regular_method_call(scope_id_opt, local_scope_opt, &sym, method_call);
-            };
+                let typed_variant_idx_opt = resolved_enum
+                    .enum_sig
+                    .variants
+                    .iter()
+                    .position(|variant| variant.get_identifier().as_string() == method_call.method_name);
 
-            let typed_variant = resolved_enum.enum_sig.variants.get(typed_variant_idx).unwrap();
-
-            let variant: CIREnumInitVariant;
-            let enum_ty: CIREnumTy;
-            if let Some(generic_type) = sema_ty.as_generic_type() {
-                let enum_sig = substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap();
-                enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
-            } else {
-                enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
-            }
-
-            variant = match typed_variant {
-                TypedEnumVariant::Variant(..) => {
-                    let values: Vec<CIRExpr> = method_call
-                        .args
-                        .iter()
-                        .map(|arg| self.lower_expr(scope_id_opt, arg))
-                        .collect();
-                    CIREnumInitVariant::Fielded(values)
-                }
-                _ => unreachable!(),
-            };
-
-            CIRExprKind::EnumInit(CIREnumInitExpr {
-                tag: typed_variant_idx,
-                variant,
-                enum_ty,
-            })
-        } else {
-            self.lower_regular_method_call(scope_id_opt, local_scope_opt, &sym, method_call)
-        }
-    }
-
-    fn lower_generic_object_self_modifier(&self, operand_ty: &SemanticType, params: &mut TypedFuncParams) {
-        if let Some(param) = params.list.first_mut() {
-            if let Some(self_modifier) = param.as_self_modifier_mut() {
-                match self_modifier.kind {
-                    SelfModifierKind::Copied => {
-                        self_modifier.ty = Some(operand_ty.clone());
-                    }
-                    SelfModifierKind::Referenced => {
-                        self_modifier.ty = Some(SemanticType::Pointer(Box::new(operand_ty.clone())));
-                    }
-                }
-            }
-        }
-    }
-
-    fn lower_self_modifier(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        operand: &TypedExprStmt,
-        is_fat_arrow: bool,
-        self_modifier: &TypedSelfModifier,
-    ) -> CIRExpr {
-        let expr = self.lower_expr(scope_id_opt, &operand);
-
-        match self_modifier.kind {
-            SelfModifierKind::Copied => expr,
-            SelfModifierKind::Referenced => {
-                // only take address if not a fat arrow
-                if is_fat_arrow {
-                    expr
+                // it's not a enum variant construction, so try again as a regular method call
+                let typed_variant_idx = if let Some(idx) = typed_variant_idx_opt {
+                    idx
                 } else {
-                    let expr_ty = expr.ty.clone();
-                    CIRExpr {
-                        kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
-                            operand: Box::new(expr),
-                        }),
-                        ty: CIRTy::Pointer(Box::new(expr_ty)),
-                    }
+                    return self.lower_regular_method_call(scope_id_opt, method_call);
+                };
+
+                let typed_variant = resolved_enum.enum_sig.variants.get(typed_variant_idx).unwrap();
+
+                let variant: CIREnumInitVariant;
+                let enum_ty: CIREnumTy;
+                if let Some(generic_type) = sema_ty.as_generic_type() {
+                    let enum_sig =
+                        substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap();
+                    enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
+                } else {
+                    enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
                 }
+
+                variant = match typed_variant {
+                    TypedEnumVariant::Variant(..) => {
+                        let values: Vec<CIRExpr> = method_call
+                            .args
+                            .iter()
+                            .map(|arg| self.lower_expr(scope_id_opt, arg))
+                            .collect();
+                        CIREnumInitVariant::Fielded(values)
+                    }
+                    _ => unreachable!(),
+                };
+
+                return CIRExprKind::EnumInit(CIREnumInitExpr {
+                    tag: typed_variant_idx,
+                    variant,
+                    enum_ty,
+                });
             }
         }
+
+        self.lower_regular_method_call(scope_id_opt, method_call)
     }
 
     fn lower_field_access(&mut self, scope_id_opt: Option<ScopeID>, mut field_access: TypedFieldAccess) -> CIRExprKind {

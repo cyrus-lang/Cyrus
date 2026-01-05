@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -72,23 +72,23 @@ impl<'resolver> CIRWalk<'resolver> {
         func_sig: &FuncSig,
     ) {
         let monomorph_func_entry = self.get_monomorph_func_entry(monomorph_key).unwrap();
-        let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
 
         let irv_id = monomorph_func_entry.id;
 
-        let cir_func_decl = self.lower_func_sig(scope_id_opt, monomorph_func_entry.id, &func_sig);
+        let specialized_func_entry = {
+            let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
+
+            monomorph_registry
+                .get_specialized_func_instance(monomorph_key.clone())
+                .unwrap()
+                .clone()
+        };
+
+        let cir_func_decl = self.lower_func_sig(scope_id_opt, irv_id, func_sig);
+
         let cir_func_params = cir_func_decl.params.clone();
         let cir_func_ty = cir_func_decl_as_func_ty(&cir_func_decl);
-
-        let specialized_func_entry = monomorph_registry
-            .get_specialized_func_instance(monomorph_key.clone())
-            .unwrap();
-
         let cir_func_body = self.lower_body(&specialized_func_entry.body);
-
-        drop(monomorph_registry);
-
-        // insert discovered function instance to registry
 
         let mut cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
 
@@ -101,7 +101,5 @@ impl<'resolver> CIRWalk<'resolver> {
                 func_body: Box::new(cir_func_body),
             }),
         );
-
-        drop(cir_monomorph_registry);
     }
 }

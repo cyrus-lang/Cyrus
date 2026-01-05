@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -18,7 +18,9 @@ use crate::{
     ModuleID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier},
     stmts::{
-        TypedEnumStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList, TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt
+        TypedEnumStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams,
+        TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList,
+        TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
     },
     types::{SemanticType, TypedFuncType},
 };
@@ -143,7 +145,14 @@ pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &Sema
 
     if let Some(func_param_kind) = first_param {
         if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
-            self_modifier.ty = Some(sema_ty.clone());
+            match self_modifier.kind {
+                SelfModifierKind::Copied => {
+                    self_modifier.ty = Some(sema_ty.clone());
+                }
+                SelfModifierKind::Referenced => {
+                    self_modifier.ty = Some(SemanticType::Pointer(Box::new(sema_ty.clone())));
+                }
+            }
         }
     }
 }
