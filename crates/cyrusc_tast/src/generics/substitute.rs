@@ -39,7 +39,15 @@ pub fn substitute_type(sema_ty: SemanticType, ctx: Rc<RefCell<GenericMappingCtx>
     let ctx_ref = ctx.borrow();
 
     match sema_ty {
-        SemanticType::GenericParam(generic_param) => ctx_ref.get_with_name(&generic_param.param_name.name),
+        SemanticType::GenericParam(generic_param) => {
+            let mut sema_ty = ctx_ref.get_with_name(&generic_param.param_name.name);
+
+            if let Some(SemanticType::GenericParam(generic_param)) = sema_ty {
+                sema_ty = generic_param.default.map(|sema_ty| *sema_ty);
+            }
+
+            sema_ty
+        }
         SemanticType::Pointer(inner) => {
             sub(*inner, &|t| substitute_type(t, ctx.clone())).map(|t| SemanticType::Pointer(Box::new(t)))
         }
