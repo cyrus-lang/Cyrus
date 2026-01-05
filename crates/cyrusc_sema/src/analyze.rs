@@ -161,8 +161,6 @@ impl<'a> AnalysisContext<'a> {
                     unreachable!()
                 }
             }
-
-            self.clear_method_call_self_type();
         }
 
         self.program_tree.borrow_mut().body = body;
@@ -1962,6 +1960,11 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(rhs) = &mut typed_variable.rhs {
             let inferred_ty = self.analyze_expr(scope_id_opt, rhs, typed_variable.ty.clone());
+
+            if inferred_ty.is_none() {
+                // expr has issue, that is reported and we cannot continue this
+                return;
+            }
 
             if typed_variable.ty.is_none() {
                 if let Some(sema_ty) = inferred_ty {
