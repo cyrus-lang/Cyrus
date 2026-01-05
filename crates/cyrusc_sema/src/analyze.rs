@@ -162,7 +162,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            self.current_self = None;
+            self.clear_method_call_self_type();
         }
 
         self.program_tree.borrow_mut().body = body;

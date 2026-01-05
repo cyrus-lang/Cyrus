@@ -2962,15 +2962,13 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
-                object_symbol_id: None,
-                method_symbol_id: None,
+                func_sig: None,
+                type_args,
                 method_name: method_call.method_name.name.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
-                type_args,
                 monomorph_key: None,
-                return_type: None,
                 self_ty: None,
-                is_instance_method_operand: false,
+                is_enum_const: None,
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
                 args,
             }),

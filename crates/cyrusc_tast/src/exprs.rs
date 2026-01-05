@@ -1,22 +1,23 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{
     SymbolID,
     generics::monomorph::MonomorphKey,
+    sigs::FuncSig,
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
     types::{SemanticType, TypedUStructType},
 };
@@ -333,16 +334,18 @@ pub struct TypedFieldAccess {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
-    pub object_symbol_id: Option<SymbolID>,
-    pub method_symbol_id: Option<SymbolID>,
     pub method_name: String,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
-    pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic method
-    pub return_type: Option<SemanticType>,
-    pub self_ty: Option<SemanticType>,
-    pub is_instance_method_operand: bool,
     pub is_fat_arrow: bool,
+
+    pub func_sig: Option<FuncSig>,
+    pub is_enum_const: Option<SymbolID>,
+    pub self_ty: Option<SemanticType>,
+
+    // only used when calling a generic method
+    pub monomorph_key: Option<MonomorphKey>,
+
     pub loc: SourceLoc,
 }
 
