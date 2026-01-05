@@ -2214,11 +2214,6 @@ impl<'a> AnalysisContext<'a> {
         method_call.self_ty = Some(sema_ty.clone());
     }
 
-    pub(crate) fn clear_method_call_self_type(&mut self) {
-        self.current_self = None;
-        self.current_obj_operand_ty = None;
-    }
-
     fn analyze_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -2228,8 +2223,6 @@ impl<'a> AnalysisContext<'a> {
         method_call_operand_ty: SemanticType,
         is_instance_method_operand: bool,
     ) -> Option<SemanticType> {
-        self.set_method_call_self_type(method_call, &method_call_operand_ty);
-
         let symbol_entry = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
         let (object_name, object_methods) = {
@@ -2258,7 +2251,7 @@ impl<'a> AnalysisContext<'a> {
                     location: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: None,
                 });
-                self.clear_method_call_self_type();
+
                 return None;
             }
         };
@@ -2274,7 +2267,6 @@ impl<'a> AnalysisContext<'a> {
             &method_call.type_args,
             method_call.loc.clone(),
         ) {
-            self.clear_method_call_self_type();
             return None;
         }
 
@@ -2294,7 +2286,6 @@ impl<'a> AnalysisContext<'a> {
                     format_sema_ty(method_call_operand_ty, &(self.symbol_formatter)(scope_id_opt))
                 )),
             });
-            self.clear_method_call_self_type();
             return None;
         }
 
@@ -2310,7 +2301,6 @@ impl<'a> AnalysisContext<'a> {
             &resolved_method,
             method_call.loc.clone(),
         ) {
-            self.clear_method_call_self_type();
             return None;
         }
 
@@ -2335,7 +2325,7 @@ impl<'a> AnalysisContext<'a> {
             Ok(opt) => opt?,
             Err(diag) => {
                 self.reporter.report(diag);
-                self.clear_method_call_self_type();
+
                 return None;
             }
         };
@@ -2382,6 +2372,9 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        // instance self type
+        self.set_method_call_self_type(method_call, &method_call_operand_ty);
+
         resolved_method.func_sig.return_type = self.check_func_call(
             scope_id_opt,
             &mut resolved_method.func_sig,
@@ -2417,7 +2410,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(generic_params) = resolved_method.func_sig.generic_params.clone() {
                 if let Err(diag) = generic_type.finalize(generic_params, (self.symbol_formatter)(scope_id_opt)) {
                     self.reporter.report(diag);
-                    self.clear_method_call_self_type();
+
                     return None;
                 }
             }
@@ -2425,7 +2418,7 @@ impl<'a> AnalysisContext<'a> {
             method_call.monomorph_key = self.register_specialized_generic_func(
                 &resolved_method.func_sig,
                 &generic_type,
-                Some(method_call_operand_ty),
+                Some(method_call_operand_ty.clone()),
                 &resolved_method.func_sig.loc,
             );
 
@@ -2435,7 +2428,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if instance_method_call {
-            set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &self.current_self.as_ref().unwrap());
+            set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &method_call_operand_ty);
 
             let self_modifier = resolved_method
                 .func_sig
