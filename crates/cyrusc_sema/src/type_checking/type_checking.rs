@@ -2182,7 +2182,8 @@ impl<'a> AnalysisContext<'a> {
         // constructing generic type manually if operand is not generic but symbol is.
         // this is necessary because without it, a generic method that uses object's generic params
         // can never be inferred.
-        if sym.get_generic_params().is_some() && method_call_operand_ty.as_generic_type().is_none() {
+        if sym.get_generic_params().is_some() && method_call_operand_ty.get_pointer_inner().as_generic_type().is_none()
+        {
             method_call_operand_ty = SemanticType::GenericType(GenericType {
                 base: method_call_operand_ty.get_symbol_id().unwrap(),
                 type_args: Vec::new(),
@@ -2203,6 +2204,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
+        let sema_ty = sema_ty.get_const_inner().get_pointer_inner();
         self.current_self = Some(sema_ty.clone());
         self.current_obj_operand_ty = Some(sema_ty.clone());
         method_call.self_ty = Some(sema_ty.clone());
