@@ -249,6 +249,16 @@ impl LocalOrGlobalSymbol {
         }
     }
 
+    pub fn as_method_mut (&mut self) -> Option<&mut ResolvedMethod> {
+        match self {
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &mut symbol_entry.kind {
+                SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn as_interface(&self) -> Option<&ResolvedInterface> {
         match self {
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {

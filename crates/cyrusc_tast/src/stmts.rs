@@ -143,6 +143,7 @@ pub struct TypedEnumStmt {
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
+    pub impls: Vec<TypedIdentifier>,
     pub modifiers: EnumModifiers,
     pub loc: SourceLoc,
 }
@@ -201,6 +202,7 @@ pub struct TypedUnionStmt {
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
+    pub impls: Vec<TypedIdentifier>,
     pub modifiers: UnionModifiers,
     pub loc: SourceLoc,
 }
@@ -366,7 +368,7 @@ impl TypedFuncParamKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
     pub self_symbol_id: Option<SymbolID>,
@@ -375,7 +377,7 @@ pub struct TypedSelfModifier {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypedFuncParam {
     pub symbol_id: SymbolID,
     pub name: String,
@@ -574,6 +576,18 @@ impl PartialEq for TypedTypeArg {
 
             _ => false,
         }
+    }
+}
+
+impl PartialEq for TypedFuncParam {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl PartialEq for TypedSelfModifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
     }
 }
 

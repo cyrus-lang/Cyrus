@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -447,6 +447,8 @@ impl Parser {
             generic_params = None;
         }
 
+        let impls: Vec<Identifier> = self.parse_object_impls()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
@@ -455,6 +457,7 @@ impl Parser {
                 methods: Vec::new(),
                 fields: Vec::new(),
                 generic_params,
+                impls,
                 modifiers,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
@@ -527,6 +530,7 @@ impl Parser {
             fields,
             generic_params,
             modifiers,
+            impls,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
@@ -550,6 +554,8 @@ impl Parser {
             generic_params = None;
         }
 
+        let impls: Vec<Identifier> = self.parse_object_impls()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut enum_fields: Vec<EnumVariant> = Vec::new();
@@ -561,6 +567,7 @@ impl Parser {
                 generic_params,
                 methods: Vec::new(),
                 modifiers,
+                impls,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }));
@@ -638,9 +645,31 @@ impl Parser {
             generic_params,
             methods,
             modifiers,
+            impls,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
+    }
+
+    fn parse_object_impls(&mut self) -> Result<Vec<Identifier>, Diag> {
+        let mut impls: Vec<Identifier> = Vec::new();
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            
+            loop {
+                let identifier = self.parse_identifier()?;
+                self.next_token();
+
+                impls.push(identifier);
+
+                if self.current_token_is(TokenKind::Comma) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+        }
+        Ok(impls)
     }
 
     fn parse_struct(&mut self, mut modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
@@ -661,50 +690,9 @@ impl Parser {
             generic_params = None;
         }
 
-        let mut impls: Vec<Identifier> = Vec::new();
+        let impls: Vec<Identifier> = self.parse_object_impls()?;
 
-        if self.current_token_is(TokenKind::Colon) {
-            self.next_token();
-
-            loop {
-                match self.current_token().kind {
-                    TokenKind::LeftBrace => {
-                        self.next_token();
-                        break;
-                    }
-                    TokenKind::EOF => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::MissingOpeningBrace),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                            hint: None,
-                        });
-                    }
-                    TokenKind::Identifier { name: inherit_struct } => {
-                        self.next_token();
-                        impls.push(Identifier {
-                            name: inherit_struct,
-                            span: self.current_token().span.clone(),
-                            loc: loc.clone(),
-                        });
-                    }
-                    TokenKind::Comma => {
-                        self.next_token();
-                        continue;
-                    }
-                    _ => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::ExpectedIdentifier),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                            hint: None,
-                        });
-                    }
-                }
-            }
-        } else {
-            self.expect_current(TokenKind::LeftBrace)?;
-        }
+        self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<StructField> = Vec::new();
         let mut methods: Vec<FuncDef> = Vec::new();

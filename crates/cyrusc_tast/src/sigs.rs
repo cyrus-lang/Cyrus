@@ -110,19 +110,8 @@ pub struct GlobalVarSig {
 
 impl PartialEq for FuncSig {
     fn eq(&self, other: &Self) -> bool {
-        let self_params: Vec<_> = self
-            .params
-            .list
-            .iter()
-            .filter(|p| matches!(p, TypedFuncParamKind::FuncParam(_)))
-            .collect();
-
-        let other_params: Vec<_> = other
-            .params
-            .list
-            .iter()
-            .filter(|p| matches!(p, TypedFuncParamKind::FuncParam(_)))
-            .collect();
+        let self_params = self.params.list.iter().collect::<Vec<_>>();
+        let other_params = other.params.list.iter().collect::<Vec<_>>();
 
         self.name == other.name && self_params == other_params && self.return_type == other.return_type
     }
