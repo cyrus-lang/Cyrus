@@ -1429,7 +1429,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
-        }
+        }.get_const_inner().clone()
     }
 
     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
