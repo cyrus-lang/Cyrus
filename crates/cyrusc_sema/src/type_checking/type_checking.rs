@@ -1555,6 +1555,8 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
+        self.current_method_symbol_id = Some(resolved_method.symbol_id);
+
         if !self.validate_method_call(
             scope_id_opt,
             object_id,
