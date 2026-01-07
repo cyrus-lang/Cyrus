@@ -50,11 +50,6 @@ impl<'a> AnalysisContext<'a> {
     // expression categories. They handle top-level analysis and dispatch to
     // specialized helpers for detailed checking.
 
-    // Consider to change it, or use it anywhere which might include explicit sema_ty.
-    // It is also invoked here at normalizer.rs:
-    // https://github.com/cyrus-lang/Cyrus/blob/4dfa71054e046f6a129a6bb537eae4ebe06e2b4c/crates/cyrusc_sema/src/normalizer.rs#L275
-    //
-
     /// Type-checks a non-terminal expression by dispatching to appropriate analyzers.
     ///
     /// This is the core type analysis function that handles all non-terminal expressions.
