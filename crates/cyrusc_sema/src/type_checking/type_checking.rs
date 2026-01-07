@@ -50,158 +50,10 @@ impl<'a> AnalysisContext<'a> {
     // expression categories. They handle top-level analysis and dispatch to
     // specialized helpers for detailed checking.
 
-    // REVIEW This function name and it's body does not match.
     // Consider to change it, or use it anywhere which might include explicit sema_ty.
     // It is also invoked here at normalizer.rs:
     // https://github.com/cyrus-lang/Cyrus/blob/4dfa71054e046f6a129a6bb537eae4ebe06e2b4c/crates/cyrusc_sema/src/normalizer.rs#L275
     //
-    pub(crate) fn analyze_explicit_sema_ty(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        sema_ty: &SemanticType,
-        loc: SourceLoc,
-    ) -> Option<SemanticType> {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-
-        if let Some(symbol_id) = sema_ty.get_symbol_id() {
-            let sym = self
-                .resolver
-                .resolve_local_or_global_symbol(local_scope_opt, symbol_id)?;
-
-            let is_generic_object = sym.get_generic_params().is_some();
-            let is_generic_type = sema_ty.as_generic_type().is_some();
-
-            if is_generic_object && !is_generic_type {
-                let type_name = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::MissingTypeArgs { type_name }),
-                    location: Some(DiagLoc::new(loc.clone())),
-                    hint: None,
-                });
-                return None;
-            }
-        }
-
-        Some(sema_ty.clone())
-    }
-
-    /// Analyzes and infers the semantic type for a literal expression.
-    ///
-    /// This function processes literal expressions (integers, floats, booleans, characters,
-    /// null, and strings) by inferring their semantic types based on both the literal's
-    /// intrinsic properties and any contextually expected type. For string literals,
-    /// it also performs unescaping validation.
-    ///
-    /// # Process
-    /// 1. **Type Inference**: Attempts to infer the most appropriate semantic type
-    ///    for the literal based on:
-    ///    - The literal's kind (integer, float, bool, etc.)
-    ///    - Any explicit suffix (e.g., `42u8`, `3.14f32`)
-    ///    - Contextual expectations from the surrounding expression (`expected_type`)
-    ///
-    /// 2. **String Processing**: For string literals, performs double unescaping
-    ///    (e.g., `\\n` → `\n`) and validates escape sequences. Also handles
-    ///    string prefixes (`C` for C-style strings, `B` for byte arrays).
-    ///
-    /// 3. **Type Assignment**: If successful, attaches the inferred type to the
-    ///    `typed_literal` AST node and returns it.
-    ///
-    /// # Parameters
-    /// - `typed_literal`: The literal expression to analyze. Modified in-place to
-    ///   receive the inferred type.
-    /// - `expected_type`: Optional type expected by the surrounding context.
-    ///   Used as a hint for type inference (e.g., to choose between `i32` and `i64`).
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The inferred semantic type if analysis succeeds.
-    /// - `None`: If analysis fails due to:
-    ///   - Invalid integer/float suffixes
-    ///   - Unescape errors in string literals
-    ///   - Type inference errors
-    ///
-    /// # Diagnostics
-    /// Reports diagnostics through `self.reporter` for:
-    /// - Type inference failures (invalid suffixes, mismatched expectations)
-    /// - String unescape errors (malformed escape sequences)
-    ///
-    /// # Notes
-    /// - String literals are unescaped twice to handle nested escape sequences.
-    /// - Integer and float inference delegates to `infer_integer_type` and
-    ///   `infer_float_type` respectively.
-    /// - The function clones `typed_literal` once at the beginning to avoid
-    ///   borrow conflicts during pattern matching.
-    ///
-    pub(crate) fn analyze_literal(
-        &mut self,
-        typed_literal: &mut TypedLiteralExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        let typed_literal_clone = typed_literal.clone();
-
-        let ty_opt = match &mut typed_literal.kind {
-            LiteralKind::Integer(_, suffix_opt) => {
-                match infer_integer_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
-                    Ok(ty) => Some(ty),
-                    Err(diag) => {
-                        self.reporter.report(diag);
-                        None
-                    }
-                }
-            }
-            LiteralKind::Float(_, suffix_opt) => {
-                match infer_float_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
-                    Ok(ty) => Some(ty),
-                    Err(diag) => {
-                        self.reporter.report(diag);
-                        None
-                    }
-                }
-            }
-            LiteralKind::Bool(_) => Some(SemanticType::PlainType(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
-            LiteralKind::Null => Some(SemanticType::PlainType(PlainType::Null)),
-            LiteralKind::String(value, prefix_opt) => {
-                *value = match unescape_string(&value).and_then(|v| unescape_string(&v)) {
-                    Ok(v) => v,
-                    Err(unescape_err) => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::UnescapeError(unescape_err)),
-                            location: Some(DiagLoc::new(typed_literal.loc.clone())),
-                            hint: None,
-                        });
-                        return None;
-                    }
-                };
-
-                let ty = if let Some(prefix) = prefix_opt {
-                    match prefix {
-                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char))),
-                        StringPrefix::B => SemanticType::Array(TypedArrayType {
-                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
-                                PlainType::Char,
-                            )))),
-                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                                value.len().try_into().unwrap(),
-                            )),
-                            loc: typed_literal.loc.clone(),
-                        }),
-                    }
-                } else {
-                    SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char)))
-                };
-                Some(ty)
-            }
-        };
-
-        if let Some(ref ty) = ty_opt {
-            typed_literal.ty = Some(ty.clone());
-        }
-
-        ty_opt
-    }
 
     /// Type-checks a non-terminal expression by dispatching to appropriate analyzers.
     ///
@@ -395,6 +247,122 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_expr_non_terminal(scope_id_opt, typed_expr, expected_type)
+    }
+
+    /// Analyzes and infers the semantic type for a literal expression.
+    ///
+    /// This function processes literal expressions (integers, floats, booleans, characters,
+    /// null, and strings) by inferring their semantic types based on both the literal's
+    /// intrinsic properties and any contextually expected type. For string literals,
+    /// it also performs unescaping validation.
+    ///
+    /// # Process
+    /// 1. **Type Inference**: Attempts to infer the most appropriate semantic type
+    ///    for the literal based on:
+    ///    - The literal's kind (integer, float, bool, etc.)
+    ///    - Any explicit suffix (e.g., `42u8`, `3.14f32`)
+    ///    - Contextual expectations from the surrounding expression (`expected_type`)
+    ///
+    /// 2. **String Processing**: For string literals, performs double unescaping
+    ///    (e.g., `\\n` → `\n`) and validates escape sequences. Also handles
+    ///    string prefixes (`C` for C-style strings, `B` for byte arrays).
+    ///
+    /// 3. **Type Assignment**: If successful, attaches the inferred type to the
+    ///    `typed_literal` AST node and returns it.
+    ///
+    /// # Parameters
+    /// - `typed_literal`: The literal expression to analyze. Modified in-place to
+    ///   receive the inferred type.
+    /// - `expected_type`: Optional type expected by the surrounding context.
+    ///   Used as a hint for type inference (e.g., to choose between `i32` and `i64`).
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The inferred semantic type if analysis succeeds.
+    /// - `None`: If analysis fails due to:
+    ///   - Invalid integer/float suffixes
+    ///   - Unescape errors in string literals
+    ///   - Type inference errors
+    ///
+    /// # Diagnostics
+    /// Reports diagnostics through `self.reporter` for:
+    /// - Type inference failures (invalid suffixes, mismatched expectations)
+    /// - String unescape errors (malformed escape sequences)
+    ///
+    /// # Notes
+    /// - String literals are unescaped twice to handle nested escape sequences.
+    /// - Integer and float inference delegates to `infer_integer_type` and
+    ///   `infer_float_type` respectively.
+    /// - The function clones `typed_literal` once at the beginning to avoid
+    ///   borrow conflicts during pattern matching.
+    ///
+    pub(crate) fn analyze_literal(
+        &mut self,
+        typed_literal: &mut TypedLiteralExpr,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let typed_literal_clone = typed_literal.clone();
+
+        let ty_opt = match &mut typed_literal.kind {
+            LiteralKind::Integer(_, suffix_opt) => {
+                match infer_integer_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
+                    Ok(ty) => Some(ty),
+                    Err(diag) => {
+                        self.reporter.report(diag);
+                        None
+                    }
+                }
+            }
+            LiteralKind::Float(_, suffix_opt) => {
+                match infer_float_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
+                    Ok(ty) => Some(ty),
+                    Err(diag) => {
+                        self.reporter.report(diag);
+                        None
+                    }
+                }
+            }
+            LiteralKind::Bool(_) => Some(SemanticType::PlainType(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
+            LiteralKind::Null => Some(SemanticType::PlainType(PlainType::Null)),
+            LiteralKind::String(value, prefix_opt) => {
+                *value = match unescape_string(&value).and_then(|v| unescape_string(&v)) {
+                    Ok(v) => v,
+                    Err(unescape_err) => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::UnescapeError(unescape_err)),
+                            location: Some(DiagLoc::new(typed_literal.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                };
+
+                let ty = if let Some(prefix) = prefix_opt {
+                    match prefix {
+                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char))),
+                        StringPrefix::B => SemanticType::Array(TypedArrayType {
+                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
+                                PlainType::Char,
+                            )))),
+                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                                value.len().try_into().unwrap(),
+                            )),
+                            loc: typed_literal.loc.clone(),
+                        }),
+                    }
+                } else {
+                    SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char)))
+                };
+                Some(ty)
+            }
+        };
+
+        if let Some(ref ty) = ty_opt {
+            typed_literal.ty = Some(ty.clone());
+        }
+
+        ty_opt
     }
 
     /// Analyzes lambda expressions, creating and type-checking anonymous functions.
@@ -1437,6 +1405,57 @@ impl<'a> AnalysisContext<'a> {
     // ============================================================
     // Helper Functions
     // ============================================================
+
+    /// Validates that generic types have provided type arguments when required.
+    ///
+    /// Checks whether a semantic type which might have generic params
+    /// has the required type arguments specified. Reports an error if type args
+    /// are used without type arguments in a context where they're mandatory.
+    ///
+    /// # Validation
+    /// - If the type references a generic object (has generic parameters defined).
+    /// - And the type is not already instantiated as a generic type (missing type args).
+    /// - Then reports a missing type arguments error.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Scope for symbol resolution and type name formatting.
+    /// - `sema_ty`: The semantic type to check for missing type arguments.
+    /// - `loc`: Source location for error reporting.
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The original type if validation passes.
+    /// - `None`: If type arguments are missing for a generic type (error reported).
+    pub(crate) fn check_sema_ty_for_missing_type_args(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sema_ty: &SemanticType,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        if let Some(symbol_id) = sema_ty.get_symbol_id() {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt, symbol_id)?;
+
+            let is_generic_object = sym.get_generic_params().is_some();
+            let is_generic_type = sema_ty.as_generic_type().is_some();
+
+            if is_generic_object && !is_generic_type {
+                let type_name = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MissingTypeArgs { type_name }),
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        Some(sema_ty.clone())
+    }
 
     /// Analyzes regular method calls on objects (structs, enums, unions).
     ///

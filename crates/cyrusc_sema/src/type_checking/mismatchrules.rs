@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -84,7 +84,7 @@ impl<'a> AnalysisContext<'a> {
         use PlainType::*;
 
         match (value, target) {
-            // Same type is always compatible
+            // Same plain type is always compatible
             (a, b) if a == b => true,
 
             // Integer compatibility (widening is allowed)
@@ -149,9 +149,6 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn check_explicit_typecast(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
         match (value_type, target_type) {
-            // Same type, always fine
-            (a, b) if a == b => true,
-
             // Any integer to any integer
             (SemanticType::PlainType(value), SemanticType::PlainType(target))
                 if value.is_integer() && target.is_integer() =>
