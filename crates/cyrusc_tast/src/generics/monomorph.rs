@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -85,7 +85,13 @@ pub enum MonomorphEntry {
 impl MonomorphEntry {
     pub fn id(&self) -> MonomorphID {
         match self {
-            MonomorphEntry::Func(e) => e.id,
+            MonomorphEntry::Func(entry) => entry.id,
+        }
+    }
+
+    pub fn base_symbol(&self) -> SymbolID {
+        match self {
+            MonomorphEntry::Func(entry) => entry.base_symbol,
         }
     }
 }
@@ -140,7 +146,7 @@ impl MonomorphRegistry {
                     mapping_ctx_eq_refcell(
                         &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
                         &mapping_ctx,
-                    ) && monomorph_entry.id() == func_symbol_id
+                    ) && monomorph_entry.base_symbol() == func_symbol_id
                 }
             })
             .map(|(monomorph_key, _)| monomorph_key)
