@@ -1,0 +1,16 @@
+// @stdout: 3 4 
+
+import std::libc{printf};
+
+struct Pair<K, V> {
+    pub key: K;
+    pub value: V;
+}
+
+type IntPair = Pair<int, int>;
+
+pub fn main() {
+    const pair = IntPair { key: 3, value: 4 };
+
+    printf("%d %d\n", pair.key, pair.value);
+}
