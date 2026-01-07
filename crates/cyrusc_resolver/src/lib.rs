@@ -1277,6 +1277,8 @@ impl Resolver {
             );
         }
 
+        let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &union_decl.impls);
+
         Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id: union_symbol_id,
             module_id,
@@ -1285,6 +1287,7 @@ impl Resolver {
             methods,
             generic_params,
             modifiers: union_decl.modifiers.clone(),
+            impls,
             loc: SourceLoc::from_loc(union_decl.identifier.loc.clone(), self.current_file_path()),
             is_local: is_local,
         }))
@@ -1391,6 +1394,8 @@ impl Resolver {
             );
         }
 
+        let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &enum_decl.impls);
+
         Some(TypedStmt::Enum(TypedEnumStmt {
             module_id,
             symbol_id: enum_symbol_id,
@@ -1398,6 +1403,7 @@ impl Resolver {
             variants,
             methods,
             generic_params,
+            impls,
             modifiers: enum_decl.modifiers.clone(),
             loc: SourceLoc::from_loc(enum_decl.identifier.loc.clone(), self.current_file_path()),
             is_local,

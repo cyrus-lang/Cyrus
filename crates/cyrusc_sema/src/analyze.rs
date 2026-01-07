@@ -1165,6 +1165,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         object_name: String,
+        object_symbol_id: SymbolID,
         impls: &Vec<TypedIdentifier>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
@@ -1224,13 +1225,14 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
-                let sym = self
+                let mut sym = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *object_method_symbol_id)
                     .unwrap();
-                let object_method = sym.as_method().unwrap();
 
-                // method signature mismatch
+                let object_method = sym.as_method_mut().unwrap();
+
+                // check method signature mismatch
                 if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1381,6 +1383,7 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_object_impls_interface(
             scope_id_opt,
             typed_struct.name.clone(),
+            typed_struct.symbol_id,
             &typed_struct.impls,
             &typed_struct.methods,
         );
@@ -1470,6 +1473,14 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_method_generic_params(&typed_union.name, &typed_union.methods, &typed_union.generic_params);
+
+        self.analyze_object_impls_interface(
+            scope_id_opt,
+            typed_union.name.clone(),
+            typed_union.symbol_id,
+            &typed_union.impls,
+            &typed_union.methods,
+        );
 
         update_union_symbol_entry(self, &typed_union);
     }
@@ -1572,6 +1583,14 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_method_generic_params(&typed_enum.name, &typed_enum.methods, &typed_enum.generic_params);
+
+        self.analyze_object_impls_interface(
+            scope_id_opt,
+            typed_enum.name.clone(),
+            typed_enum.symbol_id,
+            &typed_enum.impls,
+            &typed_enum.methods,
+        );
 
         update_enum_symbol_entry(self, &typed_enum);
     }
