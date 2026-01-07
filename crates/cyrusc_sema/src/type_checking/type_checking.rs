@@ -815,10 +815,24 @@ impl<'a> AnalysisContext<'a> {
             sema_ty = new_sema_ty;
         }
 
+        let Some(pure_symbol_id) = sema_ty.get_pure_symbol_id() else {
+            // normalize the type to provide a meaningful error message.
+            // If the symbol isn't a struct/enum/union, this might be an incorrect
+            // array initialization attempt. Normalization ensures we report the
+            // actual resolved type rather than a placeholder.
+            let normalized = self.normalize_type(scope_id_opt, sema_ty, struct_init.loc.clone(), false)?;
+            let symbol_name = format_sema_ty(normalized, &(self.symbol_formatter)(scope_id_opt));
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
+                location: Some(DiagLoc::new(struct_init.loc.clone())),
+                hint: None,
+            });
+            return None;
+        };
+
         let (generic_params, mapping_ctx) =
             self.initial_generic_params_and_mapping_ctx(&sema_ty, sym.get_generic_params().as_ref(), expected_type);
-
-        let pure_symbol_id = sema_ty.get_pure_symbol_id().unwrap();
 
         let generic_type_opt = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
