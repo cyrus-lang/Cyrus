@@ -272,7 +272,7 @@ impl<'a> AnalysisContext<'a> {
             if no_generics_check {
                 Some(sema_ty)
             } else {
-                self.analyze_explicit_sema_ty(scope_id_opt, &sema_ty, loc)
+                self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc)
             }
         } else {
             None
