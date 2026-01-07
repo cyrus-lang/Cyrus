@@ -372,20 +372,22 @@ impl<'a> AnalysisContext<'a> {
         operand_ty: SemanticType,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        if let Some(generic_type) = operand_ty.as_generic_type() {
-            if let Some(expected_sema_ty) = &expected_type {
-                if let Some(expected_generic_type) = expected_sema_ty.as_generic_type() {
-                    let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
-                    mapping_ctx.parent = Some(Rc::downgrade(&Rc::new(
-                        expected_generic_type.mapping_ctx.borrow().clone(),
-                    )));
-                }
-            }
+        let generic_type = operand_ty.as_generic_type()?;
 
-            Some(SemanticType::GenericType(generic_type.clone()))
-        } else {
-            None
+        let parent = expected_type
+            .as_ref()
+            .and_then(|t| t.as_generic_type())
+            .map(|expected_generic| {
+                let cloned = expected_generic.mapping_ctx.borrow().clone();
+                Rc::downgrade(&Rc::new(cloned))
+            });
+
+        {
+            let mut ctx = generic_type.mapping_ctx.borrow_mut();
+            ctx.parent = parent;
         }
+
+        Some(SemanticType::GenericType(generic_type.clone()))
     }
 
     pub(crate) fn export_expected_generic_mapping_ctx(
@@ -395,7 +397,7 @@ impl<'a> AnalysisContext<'a> {
         expected_type.and_then(|sema_ty| {
             sema_ty
                 .as_generic_type()
-                .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()))
+                .map(|g| Rc::new(g.mapping_ctx.borrow().clone()))
         })
     }
 }
