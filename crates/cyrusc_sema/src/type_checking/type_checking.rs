@@ -2223,10 +2223,10 @@ impl<'a> AnalysisContext<'a> {
         method_call_operand_ty: SemanticType,
         is_instance_method_operand: bool,
     ) -> Option<SemanticType> {
-        let symbol_entry = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
+        let sym = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
         let (object_name, object_methods) = {
-            match symbol_entry.kind {
+            match sym.kind {
                 SymbolEntryKind::Struct(resolved_struct) => {
                     (resolved_struct.struct_sig.name, resolved_struct.struct_sig.methods)
                 }
