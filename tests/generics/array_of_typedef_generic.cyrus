@@ -1,0 +1,21 @@
+// @stdout: 1: 10 | 2: 20
+
+import std::libc{printf};
+
+struct Pair<K, V> {
+    pub key: K;
+    pub value: V;
+}
+
+type IntPair = Pair<int, int>;
+type IntPairList = IntPair[2];
+
+pub fn main() {
+    const list = IntPair[2] {
+        IntPair { key: 1, value: 10 },
+        IntPair { key: 2, value: 20 },
+    };
+    
+    printf("%d: %d | ", list[0].key, list[0].value);
+    printf("%d: %d ", list[1].key, list[1].value);
+}
