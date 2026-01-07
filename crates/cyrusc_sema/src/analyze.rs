@@ -1165,7 +1165,6 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         object_name: String,
-        object_symbol_id: SymbolID,
         impls: &Vec<TypedIdentifier>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
@@ -1383,7 +1382,6 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_object_impls_interface(
             scope_id_opt,
             typed_struct.name.clone(),
-            typed_struct.symbol_id,
             &typed_struct.impls,
             &typed_struct.methods,
         );
@@ -1477,7 +1475,6 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_object_impls_interface(
             scope_id_opt,
             typed_union.name.clone(),
-            typed_union.symbol_id,
             &typed_union.impls,
             &typed_union.methods,
         );
@@ -1587,7 +1584,6 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_object_impls_interface(
             scope_id_opt,
             typed_enum.name.clone(),
-            typed_enum.symbol_id,
             &typed_enum.impls,
             &typed_enum.methods,
         );
