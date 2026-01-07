@@ -1,0 +1,40 @@
+// @stdout: Value! 2 0
+
+import std::libc{printf};
+
+struct IOError<V, E = uint64> {
+    pub value: V;
+    pub error: E;
+
+    pub fn new(_value: V, _error: E) Self {
+        return Self {
+            value: _value,
+            error: _error,
+        };
+    }
+
+    pub fn display_error(self) {
+        printf("%d ", self.error);
+    }
+
+    pub fn display_value(self) {
+        printf("%s ", self.value);
+    }
+
+    pub fn set_error(&self, new_error: E) {
+        self->error = new_error;
+    }
+
+    pub fn get_error(&self) E {
+        return self->error;
+    }
+}
+
+pub fn main() {
+    const inst = IOError.new("Value!", 2);
+    inst.display_value();
+    inst.display_error();
+
+    inst.set_error(0);
+    inst.display_error();
+}

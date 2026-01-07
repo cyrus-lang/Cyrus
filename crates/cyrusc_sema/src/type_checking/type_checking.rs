@@ -43,6 +43,11 @@ use cyrusc_tast::{
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
+    // REVIEW This function name and it's body does not match.
+    // Consider to change it, or use it anywhere which might include explicit sema_ty.
+    // It is also invoked here at normalizer.rs:
+    // https://github.com/cyrus-lang/Cyrus/blob/4dfa71054e046f6a129a6bb537eae4ebe06e2b4c/crates/cyrusc_sema/src/normalizer.rs#L275
+    //
     pub(crate) fn analyze_explicit_sema_ty(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -75,6 +80,52 @@ impl<'a> AnalysisContext<'a> {
         Some(sema_ty.clone())
     }
 
+    /// Analyzes and infers the semantic type for a literal expression.
+    ///
+    /// This function processes literal expressions (integers, floats, booleans, characters,
+    /// null, and strings) by inferring their semantic types based on both the literal's
+    /// intrinsic properties and any contextually expected type. For string literals,
+    /// it also performs unescaping validation.
+    ///
+    /// # Process
+    /// 1. **Type Inference**: Attempts to infer the most appropriate semantic type
+    ///    for the literal based on:
+    ///    - The literal's kind (integer, float, bool, etc.)
+    ///    - Any explicit suffix (e.g., `42u8`, `3.14f32`)
+    ///    - Contextual expectations from the surrounding expression (`expected_type`)
+    ///
+    /// 2. **String Processing**: For string literals, performs double unescaping
+    ///    (e.g., `\\n` → `\n`) and validates escape sequences. Also handles
+    ///    string prefixes (`C` for C-style strings, `B` for byte arrays).
+    ///
+    /// 3. **Type Assignment**: If successful, attaches the inferred type to the
+    ///    `typed_literal` AST node and returns it.
+    ///
+    /// # Parameters
+    /// - `typed_literal`: The literal expression to analyze. Modified in-place to
+    ///   receive the inferred type.
+    /// - `expected_type`: Optional type expected by the surrounding context.
+    ///   Used as a hint for type inference (e.g., to choose between `i32` and `i64`).
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The inferred semantic type if analysis succeeds.
+    /// - `None`: If analysis fails due to:
+    ///   - Invalid integer/float suffixes
+    ///   - Unescape errors in string literals
+    ///   - Type inference errors
+    ///
+    /// # Diagnostics
+    /// Reports diagnostics through `self.reporter` for:
+    /// - Type inference failures (invalid suffixes, mismatched expectations)
+    /// - String unescape errors (malformed escape sequences)
+    ///
+    /// # Notes
+    /// - String literals are unescaped twice to handle nested escape sequences.
+    /// - Integer and float inference delegates to `infer_integer_type` and
+    ///   `infer_float_type` respectively.
+    /// - The function clones `typed_literal` once at the beginning to avoid
+    ///   borrow conflicts during pattern matching.
+    ///
     pub(crate) fn analyze_literal(
         &mut self,
         typed_literal: &mut TypedLiteralExpr,
@@ -145,6 +196,37 @@ impl<'a> AnalysisContext<'a> {
         ty_opt
     }
 
+    /// Type-checks a non-terminal expression by dispatching to appropriate analyzers.
+    ///
+    /// This is the core type analysis function that handles all non-terminal expressions.
+    /// It serves as a dispatcher that delegates to specialized analyzers based on the expression kind.
+    ///
+    /// # Process
+    /// 1. **Const Stripping**: If an `expected_type` is provided, removes any `const`
+    ///    qualifier since constness doesn't affect type compatibility for expressions.
+    /// 2. **Expression Lowering**: Calls `lower_special_exprs` to transform certain
+    ///    expression patterns before type checking.
+    /// 3. **Kind-based Dispatch**: Delegates to specialized analyzers for each
+    ///    expression kind (symbols, literals, prefix/infix operators, function calls,
+    ///    struct initializations, etc.).
+    /// 4. **Type Normalization**: Applies type normalization rules (type aliases,
+    ///    generic substitutions, etc.) to the inferred type.
+    /// 5. **Validation**: In debug builds, ensures no unresolved symbol types remain
+    ///    and that a type was successfully assigned.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Optional scope identifier for name resolution.
+    /// - `typed_expr`: The expression statement to analyze. Modified in-place with
+    ///   the inferred semantic type.
+    /// - `expected_type`: Optional type expected by the surrounding context.
+    ///   Used for type inference and validation.
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The normalized semantic type if analysis succeeds.
+    /// - `None`: If analysis fails due to:
+    ///   - Invalid usage of semantic type as an expression
+    ///   - Type errors in sub-expressions (reported via diagnostics)
+    //
     pub(crate) fn analyze_expr_non_terminal(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -239,6 +321,34 @@ impl<'a> AnalysisContext<'a> {
         normalized_type
     }
 
+    /// Entry point for expression type analysis with pre-validation and generic handling.
+    ///
+    /// This function serves as the public entry point for type checking expressions.
+    /// It performs initial validation and generic parameter handling before delegating
+    /// to `analyze_expr_non_terminal` for the actual type analysis.
+    ///
+    /// # Process
+    /// 1. **Symbol Validation**: For symbol expressions, verifies the symbol refers to
+    ///    a valid variable or function. Reports errors for non-variable/non-function
+    ///    symbols (e.g., types used as values).
+    /// 2. **Generic Parameter Resolution**: If the expected type is a generic parameter
+    ///    with a default, uses the default type as the expected type.
+    /// 3. **Core Analysis**: Delegates to `analyze_expr_non_terminal` for the actual
+    ///    type analysis of all expression kinds.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Optional scope identifier for name resolution.
+    /// - `typed_expr`: The expression statement to analyze. Modified in-place with
+    ///   the inferred semantic type.
+    /// - `expected_type`: Optional type expected by the surrounding context.
+    ///   May be replaced with a generic parameter's default type if applicable.
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The inferred semantic type if analysis succeeds.
+    /// - `None`: If analysis fails due to:
+    ///   - Unknown or invalid symbols (non-variable/non-function symbols)
+    ///   - Type errors reported by `analyze_expr_non_terminal`
+    ///
     pub(crate) fn analyze_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -270,6 +380,7 @@ impl<'a> AnalysisContext<'a> {
             _ => {}
         };
 
+        // If the expected type is a generic parameter with a default, use the default type
         if let Some(sema_ty) = &expected_type {
             if let Some(generic_param) = sema_ty.as_generic_param() {
                 expected_type = generic_param.default.clone().map(|sema_ty| *sema_ty);
@@ -277,17 +388,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_expr_non_terminal(scope_id_opt, typed_expr, expected_type)
-    }
-
-    pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_ty: SemanticType, loc: SourceLoc) {
-        if !sema_ty.is_bool() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
-                location: Some(DiagLoc::new(loc)),
-                hint: None,
-            });
-        }
     }
 
     fn analyze_tuple_member_access(
@@ -496,99 +596,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn validate_field_access(
-        &mut self,
-        operand: &TypedExprStmt,
-        field_access: &TypedFieldAccess,
-        field_vis: Visibility,
-        struct_methods: &HashMap<String, SymbolID>,
-        struct_name: &str,
-    ) -> bool {
-        let mut result = true;
-
-        let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
-            let method_symbol_ids = struct_methods.values().cloned().collect::<Vec<SymbolID>>();
-
-            if method_symbol_ids.contains(&current_method_symbol_id) {
-                false
-            } else {
-                !field_vis.is_public()
-            }
-        } else {
-            !field_vis.is_public()
-        };
-
-        if access_violation {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InternalFieldAccess {
-                    field_name: field_access.field_name.clone(),
-                    struct_name: struct_name.to_string(),
-                }),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: None,
-            });
-            result = false;
-        }
-
-        let base_type = operand
-            .sema_ty
-            .as_ref()
-            .expect("SemanticType should be set before field access")
-            .get_const_inner();
-
-        let is_pointer = base_type.is_pointer() || base_type.as_generic_type().is_some();
-        let is_struct = base_type.is_resolved_symbol() || base_type.as_generic_type().is_some();
-
-        if field_access.is_fat_arrow {
-            if !is_pointer {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
-                    hint: Some("Use '.' instead of '->'.".to_string()),
-                });
-                result = false;
-            }
-        } else {
-            if !is_struct {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
-                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
-                });
-                result = false;
-            }
-        }
-
-        result
-    }
-
-    fn validate_union_field_access(&mut self, operand_ty: SemanticType, field_access: &TypedFieldAccess) -> bool {
-        let mut result = true;
-
-        if operand_ty.is_pointer() && !field_access.is_fat_arrow {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: None,
-            });
-            result = false;
-        } else if !operand_ty.is_pointer() && field_access.is_fat_arrow {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: Some("Use '.' instead of '->'.".to_string()),
-            });
-            result = false;
-        }
-
-        result
-    }
-
     fn analyze_union_field_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -729,7 +736,7 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
-        if !self.validate_field_access(
+        if !self.validate_struct_field_access(
             &field_access.operand,
             &field_access,
             typed_struct_field.vis.clone(),
@@ -1208,24 +1215,6 @@ impl<'a> AnalysisContext<'a> {
         } else {
             return_sema_ty
         }
-    }
-
-    fn check_unexpected_type_args(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        type_args: &Option<TypedTypeArgs>,
-        loc: SourceLoc,
-    ) -> bool {
-        if generic_params.is_none() && type_args.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                location: Some(DiagLoc::new(loc)),
-                hint: None,
-            });
-            return true;
-        }
-        false
     }
 
     fn analyze_struct_init(
@@ -2208,12 +2197,6 @@ impl<'a> AnalysisContext<'a> {
         )
     }
 
-    pub(crate) fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
-        self.current_obj_operand_ty = Some(sema_ty.get_const_inner().get_pointer_inner().get_const_inner().clone());
-        self.current_self = Some(sema_ty.clone());
-        method_call.self_ty = Some(sema_ty.clone());
-    }
-
     fn analyze_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -2441,159 +2424,16 @@ impl<'a> AnalysisContext<'a> {
 
             method_call.args.insert(
                 0,
-                self.lower_self_modifier_arg(&method_call.operand, method_call.is_fat_arrow, self_modifier),
+                self.analyze_object_self_modifier_argument(
+                    &method_call.operand,
+                    method_call.is_fat_arrow,
+                    self_modifier,
+                ),
             );
         }
 
         method_call.func_sig = Some(resolved_method.func_sig.clone());
         Some(resolved_method.func_sig.return_type.clone())
-    }
-
-    fn lower_self_modifier_arg(
-        &mut self,
-        operand: &TypedExprStmt,
-        is_fat_arrow: bool,
-        self_modifier: &TypedSelfModifier,
-    ) -> TypedExprStmt {
-        match self_modifier.kind {
-            SelfModifierKind::Copied => operand.clone(),
-            SelfModifierKind::Referenced => {
-                // only take address if not a fat arrow
-                if is_fat_arrow {
-                    operand.clone()
-                } else {
-                    let expr_ty = operand.sema_ty.clone().unwrap();
-                    TypedExprStmt {
-                        kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
-                            operand: Box::new(operand.clone()),
-                            loc: operand.loc.clone(),
-                        }),
-                        sema_ty: Some(SemanticType::Pointer(Box::new(expr_ty))),
-                        vcat: ValueCategory::LValue,
-                        loc: operand.loc.clone(),
-                    }
-                }
-            }
-        }
-    }
-
-    pub(crate) fn analyze_generic_self_modifier(
-        &self,
-        scope_id: ScopeID,
-        params: &TypedFuncParams,
-        sema_ty: SemanticType,
-    ) {
-        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
-
-        if let Some(first_param) = params.list.first() {
-            if let Some(self_modifier) = first_param.as_self_modifier() {
-                let mut local_scope_ref = local_scope_rc.borrow_mut();
-
-                let new_self_modifier_ty = match self_modifier.kind {
-                    SelfModifierKind::Copied => sema_ty,
-                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
-                };
-
-                local_scope_ref.with_symbol_id_mut(self_modifier.self_symbol_id.unwrap(), |local_symbol| {
-                    let resolved_var = local_symbol.as_variable_mut().unwrap();
-                    resolved_var.typed_variable.ty = Some(new_self_modifier_ty);
-                });
-                drop(local_scope_ref);
-            }
-        }
-    }
-
-    fn validate_method_call(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        instance_symbol_id: SymbolID,
-        method_name: &String,
-        method_call_operand_ty: SemanticType,
-        is_fat_arrow: bool,
-        first_param_opt: Option<&TypedFuncParamKind>,
-        object_methods: HashMap<String, SymbolID>,
-        object_name: String,
-        resolved_method: &ResolvedMethod,
-        loc: SourceLoc,
-    ) -> bool {
-        let mut result = true;
-        let method_vis = &resolved_method.func_sig.modifiers.vis;
-
-        let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
-            let method_symbol_ids = object_methods.values().cloned().collect::<Vec<SymbolID>>();
-
-            if method_symbol_ids.contains(&current_method_symbol_id) {
-                false
-            } else {
-                !method_vis.is_public()
-            }
-        } else {
-            !method_vis.is_public()
-        };
-
-        if access_violation {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
-                    method_name: resolved_method.func_sig.name.clone(),
-                    object_name,
-                }),
-                location: Some(DiagLoc::new(loc.clone())),
-                hint: None,
-            });
-            result = false;
-        }
-
-        let is_pointer = method_call_operand_ty.get_const_inner().is_pointer();
-        let is_operand_const = method_call_operand_ty.is_const();
-        let is_object = method_call_operand_ty.get_const_inner().is_resolved_symbol()
-            || method_call_operand_ty.as_generic_type().is_some();
-
-        if is_fat_arrow {
-            if !is_pointer {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                    location: Some(DiagLoc::new(loc.clone())),
-                    hint: Some("Use '.' instead of '->'.".to_string()),
-                });
-                result = false;
-            }
-        } else {
-            if !is_object {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                    location: Some(DiagLoc::new(loc.clone())),
-                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
-                });
-                result = false;
-            }
-        }
-
-        if let Some(first_param) = first_param_opt {
-            if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
-                if typed_self_modifier.kind == SelfModifierKind::Referenced && is_operand_const {
-                    let instance_name = (self.symbol_formatter)(scope_id_opt)(instance_symbol_id);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
-                            method_name: method_name.clone(),
-                            instance_name: instance_name.clone(),
-                        }),
-                        location: Some(DiagLoc::new(loc.clone())),
-                        hint: Some(format!(
-                            "Instance '{}' is declared as 'const' and cannot be modified.",
-                            instance_name
-                        )),
-                    });
-                    result = false;
-                }
-            }
-        }
-
-        result
     }
 
     fn analyze_array(
@@ -2714,6 +2554,181 @@ impl<'a> AnalysisContext<'a> {
         Some(cast.target_type.clone())
     }
 
+    // ------- Crate Helper Functions -------
+
+    /// Sets contextual type information for the current method call's 'self' parameter.
+    ///
+    /// Updates context state with the type of the object instance being operated on
+    /// in a method call. This contextual information is used for subsequent semantic
+    /// analysis within the method body (e.g., field access validation, implicit 'self').
+    ///
+    /// # State Updates
+    /// - `current_obj_operand_ty`: The non-const, non-pointer inner type of the instance.
+    /// - `current_self`: The exact semantic type of the 'self' parameter.
+    /// - `method_call.self_ty`: The type attached to the method call AST node.
+    ///
+    /// # Parameters
+    /// - `method_call`: The method call AST node to annotate with self type.
+    /// - `sema_ty`: The semantic type of the 'self' parameter (may include const/pointer qualifiers).
+    pub(crate) fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
+        self.current_obj_operand_ty = Some(sema_ty.get_const_inner().get_pointer_inner().get_const_inner().clone());
+        self.current_self = Some(sema_ty.clone());
+        method_call.self_ty = Some(sema_ty.clone());
+    }
+
+    /// Analyzes and potentially transforms the 'self' argument for object method calls.
+    ///
+    /// Processes the operand passed to a method call based on the 'self' modifier kind
+    /// and access operator. For referenced 'self' parameters with dot notation ('.'),
+    /// automatically inserts an address-of operation to create a pointer to the object.
+    ///
+    /// # Transformations
+    /// - `SelfModifierKind::Copied`: Uses the operand directly (pass by value).
+    /// - `SelfModifierKind::Referenced`:
+    ///   - With '->': Uses pointer operand directly.
+    ///   - With '.': Creates an address-of expression to obtain a pointer.
+    ///
+    /// # Parameters
+    /// - `operand`: The expression being passed as the 'self' argument.
+    /// - `is_fat_arrow`: Whether the method was accessed using '->' operator.
+    /// - `self_modifier`: The 'self' modifier specification from the method signature.
+    ///
+    /// # Returns
+    /// The transformed expression ready to be used as the method's 'self' argument.
+    ///
+    fn analyze_object_self_modifier_argument(
+        &mut self,
+        operand: &TypedExprStmt,
+        is_fat_arrow: bool,
+        self_modifier: &TypedSelfModifier,
+    ) -> TypedExprStmt {
+        match self_modifier.kind {
+            SelfModifierKind::Copied => operand.clone(),
+            SelfModifierKind::Referenced => {
+                // only take address if not a fat arrow
+                if is_fat_arrow {
+                    operand.clone()
+                } else {
+                    let expr_ty = operand.sema_ty.clone().unwrap();
+                    TypedExprStmt {
+                        kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
+                            operand: Box::new(operand.clone()),
+                            loc: operand.loc.clone(),
+                        }),
+                        sema_ty: Some(SemanticType::Pointer(Box::new(expr_ty))),
+                        vcat: ValueCategory::LValue,
+                        loc: operand.loc.clone(),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Validates that type arguments are not provided for non-generic types.
+    ///
+    /// Checks whether type arguments (e.g., `<T, U>`) are unexpectedly provided
+    /// for a type that does not have generic parameters. This prevents syntax
+    /// like `NonGenericType<int>` which would be invalid.
+    ///
+    /// # Parameters
+    /// - `generic_params`: Optional generic parameters defined on the type.
+    /// - `type_args`: Optional type arguments provided at the usage site.
+    /// - `loc`: Source location for error reporting.
+    ///
+    /// # Returns
+    /// - `true`: If unexpected type arguments were found (error reported).
+    /// - `false`: If type arguments are properly used or absent.
+    ///
+    fn check_unexpected_type_args(
+        &mut self,
+        generic_params: &Option<TypedGenericParamsList>,
+        type_args: &Option<TypedTypeArgs>,
+        loc: SourceLoc,
+    ) -> bool {
+        if generic_params.is_none() && type_args.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
+            return true;
+        }
+        false
+    }
+
+    /// Analyzes and updates the type of 'self' modifier parameters in generic contexts.
+    ///
+    /// Processes the first parameter of a function when it is a 'self' modifier (copied
+    /// or referenced), updating its semantic type based on the resolved generic type.
+    /// This ensures that 'self' parameters in generic methods receive the correct
+    /// concrete type when the method is instantiated.
+    ///
+    /// # Behavior
+    /// - For `SelfModifierKind::Copied`: Sets the parameter type directly to `sema_ty`.
+    /// - For `SelfModifierKind::Referenced`: Sets the parameter type to a pointer to `sema_ty`.
+    ///
+    /// # Parameters
+    /// - `scope_id`: Scope containing the parameter symbols.
+    /// - `params`: Function parameters to analyze.
+    /// - `sema_ty`: The resolved semantic type to apply to the 'self' parameter.
+    ///
+    pub(crate) fn analyze_generic_self_modifier(
+        &self,
+        scope_id: ScopeID,
+        params: &TypedFuncParams,
+        sema_ty: SemanticType,
+    ) {
+        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+
+        if let Some(first_param) = params.list.first() {
+            if let Some(self_modifier) = first_param.as_self_modifier() {
+                let mut local_scope_ref = local_scope_rc.borrow_mut();
+
+                let new_self_modifier_ty = match self_modifier.kind {
+                    SelfModifierKind::Copied => sema_ty,
+                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
+                };
+
+                local_scope_ref.with_symbol_id_mut(self_modifier.self_symbol_id.unwrap(), |local_symbol| {
+                    let resolved_var = local_symbol.as_variable_mut().unwrap();
+                    resolved_var.typed_variable.ty = Some(new_self_modifier_ty);
+                });
+                drop(local_scope_ref);
+            }
+        }
+    }
+
+    /// Resolves and normalizes the semantic type of a variable or global variable.
+    ///
+    /// This function analyzes variable declarations (both local and global) to determine
+    /// their semantic types. For local variables, it may need to infer the type from
+    /// the initialization expression if not explicitly annotated. For global variables,
+    /// it retrieves the pre-computed type signature.
+    ///
+    /// # Process
+    /// 1. **Symbol Resolution**: Locates the variable symbol in either local or global scope.
+    /// 2. **Local Variable Analysis**:
+    ///    - If the variable has an explicit type annotation, normalizes that type.
+    ///    - If unannotated, type-checks the initialization expression to infer the type.
+    /// 3. **Global Variable Analysis**: Retrieves the pre-computed type from the global
+    ///    variable's signature.
+    /// 4. **Type Normalization**: Applies type normalization (alias resolution, generic
+    ///    substitutions) to ensure consistency.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Optional scope identifier for name resolution and type normalization.
+    /// - `local_scope_opt`: Optional reference to the local scope for symbol lookup.
+    /// - `instance_symbol_id`: Identifier of the variable symbol to analyze.
+    /// - `loc`: Source location for error reporting during type normalization.
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The normalized semantic type of the variable.
+    /// - `None`: If:
+    ///   - The symbol doesn't resolve to a variable (global symbol is not a global var)
+    ///   - Type inference fails for unannotated local variables
+    ///   - Type normalization fails
+    ///
     fn analyze_var_or_global_var_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -2755,6 +2770,302 @@ impl<'a> AnalysisContext<'a> {
             Some(normalized_type)
         } else {
             None
+        }
+    }
+
+    /// Validates struct field access syntax, visibility, and pointer semantics.
+    ///
+    /// Ensures that field accesses comply with access control rules and use correct
+    /// syntax operators ('.' vs '->') based on the base type's characteristics.
+    /// Performs both visibility checks and pointer/object distinction validation.
+    ///
+    /// # Validation Steps
+    /// 1. **Visibility Check**: Verifies field accessibility based on visibility
+    ///    modifiers (public/private) and the calling context.
+    /// 2. **Syntax Operator Validation**: Ensures correct use of '.' for direct
+    ///    struct access and '->' for pointer-to-struct access.
+    ///
+    /// # Parameters
+    /// - `operand`: The expression being accessed (the struct/pointer instance).
+    /// - `field_access`: The field access AST node containing field details.
+    /// - `field_vis`: Visibility modifier of the accessed field.
+    /// - `struct_methods`: Methods defined on the struct for context checking.
+    /// - `struct_name`: Name of the struct type for error messages.
+    ///
+    /// # Returns
+    /// - `true`: If field access passes all validations.
+    /// - `false`: If any validation fails (errors are reported via diagnostics).
+    ///
+    /// # Error Conditions
+    /// - Accessing non-public fields from outside the struct's methods.
+    /// - Using '.' operator on pointers or '->' operator on non-pointers.
+    ///
+    fn validate_struct_field_access(
+        &mut self,
+        operand: &TypedExprStmt,
+        field_access: &TypedFieldAccess,
+        field_vis: Visibility,
+        struct_methods: &HashMap<String, SymbolID>,
+        struct_name: &str,
+    ) -> bool {
+        let mut result = true;
+
+        let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+            let method_symbol_ids = struct_methods.values().cloned().collect::<Vec<SymbolID>>();
+
+            if method_symbol_ids.contains(&current_method_symbol_id) {
+                false
+            } else {
+                !field_vis.is_public()
+            }
+        } else {
+            !field_vis.is_public()
+        };
+
+        if access_violation {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InternalFieldAccess {
+                    field_name: field_access.field_name.clone(),
+                    struct_name: struct_name.to_string(),
+                }),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            result = false;
+        }
+
+        let base_type = operand
+            .sema_ty
+            .as_ref()
+            .expect("SemanticType should be set before field access")
+            .get_const_inner();
+
+        let is_pointer = base_type.is_pointer() || base_type.as_generic_type().is_some();
+        let is_struct = base_type.is_resolved_symbol() || base_type.as_generic_type().is_some();
+
+        if field_access.is_fat_arrow {
+            if !is_pointer {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
+                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    hint: Some("Use '.' instead of '->'.".to_string()),
+                });
+                result = false;
+            }
+        } else {
+            if !is_struct {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
+                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                });
+                result = false;
+            }
+        }
+
+        result
+    }
+
+    /// Validates union field access operator usage based on pointer semantics.
+    ///
+    /// Ensures the correct field access operator ('.' or '->') is used when accessing
+    /// union fields, depending on whether the operand is a direct union or a pointer
+    /// to a union. This validation is specific to union types.
+    ///
+    /// # Operator Rules
+    /// - Use '.' for direct union value access: `union_var.field`
+    /// - Use '->' for pointer-to-union access: `union_ptr->field`
+    ///
+    /// # Parameters
+    /// - `operand_ty`: The semantic type of the union operand.
+    /// - `field_access`: The field access AST node to validate.
+    ///
+    /// # Returns
+    /// - `true`: If the operator usage is correct.
+    /// - `false`: If the wrong operator is used (errors are reported via diagnostics).
+    ///
+    fn validate_union_field_access(&mut self, operand_ty: SemanticType, field_access: &TypedFieldAccess) -> bool {
+        let mut result = true;
+
+        if operand_ty.is_pointer() && !field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UseThinArrow),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: Some("Use '->' when accessing through a pointer.".to_string()),
+            });
+            result = false;
+        } else if !operand_ty.is_pointer() && field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: Some("Use '.' instead of '->'.".to_string()),
+            });
+            result = false;
+        }
+
+        result
+    }
+
+    /// Validates a method call's accessibility, syntax, and mutability constraints.
+    ///
+    /// Performs comprehensive validation of method calls including visibility checks,
+    /// pointer access syntax validation, and const-correctness enforcement. Ensures
+    /// that method calls adhere to the language's access control and safety rules.
+    ///
+    /// # Validation Steps
+    /// 1. **Access Control**: Checks if non-public methods are called from outside
+    ///    their defining type's methods.
+    /// 2. **Syntax Validation**: Verifies correct use of '.' vs '->' operators based
+    ///    on whether the operand is a pointer or object value.
+    /// 3. **Mutability Checking**: Prevents mutation of const instances through
+    ///    non-const methods.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Scope for symbol formatting in error messages.
+    /// - `instance_symbol_id`: Symbol ID of the method call instance.
+    /// - `method_name`: Name of the method being called.
+    /// - `method_call_operand_ty`: Type of the instance the method is called on.
+    /// - `is_fat_arrow`: Whether the '->' operator was used.
+    /// - `first_param_opt`: Optional first parameter (for self-modifier checking).
+    /// - `object_methods`: Map of method names to symbols for the object type.
+    /// - `object_name`: Name of the object/struct type.
+    /// - `resolved_method`: The resolved method signature being called.
+    /// - `loc`: Source location for error reporting.
+    ///
+    /// # Returns
+    /// - `true`: If all validations pass.
+    /// - `false`: If any validation fails (errors are reported via the diagnostic reporter).
+    ///
+    /// # Error Conditions
+    /// - Accessing non-public methods from outside the type's methods.
+    /// - Using '.' on pointers or '->' on non-pointers.
+    /// - Calling mutating methods on const instances.
+    ///
+    fn validate_method_call(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        instance_symbol_id: SymbolID,
+        method_name: &String,
+        method_call_operand_ty: SemanticType,
+        is_fat_arrow: bool,
+        first_param_opt: Option<&TypedFuncParamKind>,
+        object_methods: HashMap<String, SymbolID>,
+        object_name: String,
+        resolved_method: &ResolvedMethod,
+        loc: SourceLoc,
+    ) -> bool {
+        let mut result = true;
+        let method_vis = &resolved_method.func_sig.modifiers.vis;
+
+        let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+            let method_symbol_ids = object_methods.values().cloned().collect::<Vec<SymbolID>>();
+
+            if method_symbol_ids.contains(&current_method_symbol_id) {
+                false
+            } else {
+                !method_vis.is_public()
+            }
+        } else {
+            !method_vis.is_public()
+        };
+
+        if access_violation {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
+                    method_name: resolved_method.func_sig.name.clone(),
+                    object_name,
+                }),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+            result = false;
+        }
+
+        let is_pointer = method_call_operand_ty.get_const_inner().is_pointer();
+        let is_operand_const = method_call_operand_ty.is_const();
+        let is_object = method_call_operand_ty.get_const_inner().is_resolved_symbol()
+            || method_call_operand_ty.as_generic_type().is_some();
+
+        if is_fat_arrow {
+            if !is_pointer {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: Some("Use '.' instead of '->'.".to_string()),
+                });
+                result = false;
+            }
+        } else {
+            if !is_object {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UseThinArrow),
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                });
+                result = false;
+            }
+        }
+
+        if let Some(first_param) = first_param_opt {
+            if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
+                if typed_self_modifier.kind == SelfModifierKind::Referenced && is_operand_const {
+                    let instance_name = (self.symbol_formatter)(scope_id_opt)(instance_symbol_id);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
+                            method_name: method_name.clone(),
+                            instance_name: instance_name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: Some(format!(
+                            "Instance '{}' is declared as 'const' and cannot be modified.",
+                            instance_name
+                        )),
+                    });
+                    result = false;
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Validates that an expression type is suitable for use as a boolean condition.
+    ///
+    /// This function checks whether the given semantic type can be used as a condition
+    /// in control flow statements (`if`, `while`, `for`, etc.).
+    /// In our type system, only `bool` types are valid conditions.
+    ///
+    /// # Parameters
+    /// - `sema_ty`: The semantic type to validate as a condition.
+    /// - `loc`: Source location of the conditional expression, used for error reporting.
+    ///
+    /// # Diagnostics
+    /// Reports a type error if `sema_ty` is not a boolean type.
+    ///
+    /// # Notes
+    /// - Unlike some languages that allow implicit conversions (e.g., C/C++ where
+    ///   non-zero values are truthy), our type system requires explicit boolean types.
+    /// - This validation is typically called after type checking conditional expressions
+    ///   but before generating code for control flow constructs.
+    ///
+    pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_ty: SemanticType, loc: SourceLoc) {
+        if !sema_ty.is_bool() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
         }
     }
 }
