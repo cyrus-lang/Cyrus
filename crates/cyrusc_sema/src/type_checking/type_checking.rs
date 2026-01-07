@@ -50,6 +50,75 @@ impl<'a> AnalysisContext<'a> {
     // expression categories. They handle top-level analysis and dispatch to
     // specialized helpers for detailed checking.
 
+    /// Entry point for expression type analysis with pre-validation and generic handling.
+    ///
+    /// This function serves as the public entry point for type checking expressions.
+    /// It performs initial validation and generic parameter handling before delegating
+    /// to `analyze_expr_non_terminal` for the actual type analysis.
+    ///
+    /// # Process
+    /// 1. **Symbol Validation**: For symbol expressions, verifies the symbol refers to
+    ///    a valid variable or function. Reports errors for non-variable/non-function
+    ///    symbols (e.g., types used as values).
+    /// 2. **Generic Parameter Resolution**: If the expected type is a generic parameter
+    ///    with a default, uses the default type as the expected type.
+    /// 3. **Core Analysis**: Delegates to `analyze_expr_non_terminal` for the actual
+    ///    type analysis of all expression kinds.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Optional scope identifier for name resolution.
+    /// - `typed_expr`: The expression statement to analyze. Modified in-place with
+    ///   the inferred semantic type.
+    /// - `expected_type`: Optional type expected by the surrounding context.
+    ///   May be replaced with a generic parameter's default type if applicable.
+    ///
+    /// # Returns
+    /// - `Some(SemanticType)`: The inferred semantic type if analysis succeeds.
+    /// - `None`: If analysis fails due to:
+    ///   - Unknown or invalid symbols (non-variable/non-function symbols)
+    ///   - Type errors reported by `analyze_expr_non_terminal`
+    ///
+    pub(crate) fn analyze_expr(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_expr: &mut TypedExprStmt,
+        mut expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        match &typed_expr.kind {
+            TypedExprKind::Symbol(symbol_id, _) => {
+                let local_scope_opt =
+                    scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
+                    .unwrap();
+
+                if !sym.is_kind_of_variable() && !sym.as_func().is_some() {
+                    let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::UnknownSymbol { symbol_name }),
+                        location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+            _ => {}
+        };
+
+        // If the expected type is a generic parameter with a default, use the default type
+        if let Some(sema_ty) = &expected_type {
+            if let Some(generic_param) = sema_ty.as_generic_param() {
+                expected_type = generic_param.default.clone().map(|sema_ty| *sema_ty);
+            }
+        }
+
+        self.analyze_expr_non_terminal(scope_id_opt, typed_expr, expected_type)
+    }
+
     /// Type-checks a non-terminal expression by dispatching to appropriate analyzers.
     ///
     /// This is the core type analysis function that handles all non-terminal expressions.
@@ -173,75 +242,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         normalized_type
-    }
-
-    /// Entry point for expression type analysis with pre-validation and generic handling.
-    ///
-    /// This function serves as the public entry point for type checking expressions.
-    /// It performs initial validation and generic parameter handling before delegating
-    /// to `analyze_expr_non_terminal` for the actual type analysis.
-    ///
-    /// # Process
-    /// 1. **Symbol Validation**: For symbol expressions, verifies the symbol refers to
-    ///    a valid variable or function. Reports errors for non-variable/non-function
-    ///    symbols (e.g., types used as values).
-    /// 2. **Generic Parameter Resolution**: If the expected type is a generic parameter
-    ///    with a default, uses the default type as the expected type.
-    /// 3. **Core Analysis**: Delegates to `analyze_expr_non_terminal` for the actual
-    ///    type analysis of all expression kinds.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Optional scope identifier for name resolution.
-    /// - `typed_expr`: The expression statement to analyze. Modified in-place with
-    ///   the inferred semantic type.
-    /// - `expected_type`: Optional type expected by the surrounding context.
-    ///   May be replaced with a generic parameter's default type if applicable.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The inferred semantic type if analysis succeeds.
-    /// - `None`: If analysis fails due to:
-    ///   - Unknown or invalid symbols (non-variable/non-function symbols)
-    ///   - Type errors reported by `analyze_expr_non_terminal`
-    ///
-    pub(crate) fn analyze_expr(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_expr: &mut TypedExprStmt,
-        mut expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        match &typed_expr.kind {
-            TypedExprKind::Symbol(symbol_id, _) => {
-                let local_scope_opt =
-                    scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
-
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
-                    .unwrap();
-
-                if !sym.is_kind_of_variable() && !sym.as_func().is_some() {
-                    let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::UnknownSymbol { symbol_name }),
-                        location: Some(DiagLoc::new(typed_expr.loc.clone())),
-                        hint: None,
-                    });
-                    return None;
-                }
-            }
-            _ => {}
-        };
-
-        // If the expected type is a generic parameter with a default, use the default type
-        if let Some(sema_ty) = &expected_type {
-            if let Some(generic_param) = sema_ty.as_generic_param() {
-                expected_type = generic_param.default.clone().map(|sema_ty| *sema_ty);
-            }
-        }
-
-        self.analyze_expr_non_terminal(scope_id_opt, typed_expr, expected_type)
     }
 
     /// Analyzes and infers the semantic type for a literal expression.
