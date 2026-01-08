@@ -88,6 +88,14 @@ pub enum Expr {
     Lambda(Lambda),
     Tuple(TupleValue),
     TupleAccess(TupleAccess),
+    Dynamic(Dynamic)
+}
+
+#[derive(Debug, Clone)]
+pub struct Dynamic {
+    pub operand: Box<Expr>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -883,7 +891,7 @@ pub struct SelfModifier {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelfModifierKind {
     Copied,
     Referenced,

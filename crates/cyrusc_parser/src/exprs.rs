@@ -233,6 +233,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
+            TokenKind::Dynamic => self.parse_dynamic_expr()?,
             TokenKind::Inline => {
                 if self.peek_token_is(TokenKind::Function) {
                     self.next_token();
@@ -470,6 +471,20 @@ impl Parser {
 
             Ok(expr)
         }
+    }
+
+    fn parse_dynamic_expr(&mut self) -> Result<Expr, Diag> {
+        let start = self.current_token().span.end;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token();
+        let (expr, span) = self.parse_expr(Precedence::Lowest)?;
+
+        Ok(Expr::Dynamic(Dynamic {
+            operand: Box::new(expr),
+            loc,
+            span: Span::new(start, span.end),
+        }))
     }
 
     pub(crate) fn parse_integer_literal(&self) -> Result<i128, Diag> {

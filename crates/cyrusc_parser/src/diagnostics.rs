@@ -91,6 +91,9 @@ pub enum ParserDiagKind {
 
     #[error("Variable declaration requires an explicit type or an initializer expression.")]
     IncompleteVariableDeclaration,
+
+    #[error("Declared method must have a body.")]
+    MethodMustHaveABody,
 }
 
 impl DiagKind for ParserDiagKind {}

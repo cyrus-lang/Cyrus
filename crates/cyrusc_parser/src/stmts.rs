@@ -488,7 +488,15 @@ impl Parser {
                         self.next_token(); // consume right brace
                         methods.push(method);
                     } else {
-                        unreachable!();
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::MethodMustHaveABody),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc,
+                                self.file_name.clone(),
+                            ))),
+                            hint: None,
+                        });
                     }
                 }
                 TokenKind::Identifier { .. } => {
@@ -607,7 +615,15 @@ impl Parser {
                         self.next_token(); // consume right brace
                         methods.push(method);
                     } else {
-                        unreachable!();
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::MethodMustHaveABody),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc,
+                                self.file_name.clone(),
+                            ))),
+                            hint: None,
+                        });
                     }
                 }
                 _ => {
@@ -655,7 +671,7 @@ impl Parser {
         let mut impls: Vec<Identifier> = Vec::new();
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
-            
+
             loop {
                 let identifier = self.parse_identifier()?;
                 self.next_token();
@@ -718,7 +734,15 @@ impl Parser {
                         self.next_token(); // consume right brace
                         methods.push(method);
                     } else {
-                        unreachable!();
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::MethodMustHaveABody),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc,
+                                self.file_name.clone(),
+                            ))),
+                            hint: None,
+                        });
                     }
                 }
                 TokenKind::Identifier { .. } => {

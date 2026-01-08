@@ -900,6 +900,7 @@ impl Lexer {
 
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
+            "dynamic" => TokenKind::Dynamic,
             "var" => TokenKind::Var,
             "defer" => TokenKind::Defer,
             "goto" => TokenKind::Goto,

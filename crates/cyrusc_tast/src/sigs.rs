@@ -54,7 +54,7 @@ pub struct UnionSig {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct FuncSig {
     pub module_id: ModuleID,
     pub symbol_id: Option<SymbolID>,

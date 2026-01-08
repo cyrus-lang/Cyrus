@@ -22,7 +22,7 @@ use cyrusc_tast::{
     stmts::{TypedBlockStmt, TypedGenericParamsList, TypedVarStmt},
 };
 use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
 // Symbol Table (Per Module)
 
@@ -150,8 +150,8 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
-    pub fn get_method_symbol_id_by_name(&self, name: &str) -> Option<SymbolID> {
-        let method_map = match self {
+    pub fn get_symbol_methods(&self) -> Option<HashMap<String, SymbolID>> {
+        match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Variable(_) => None,
                 LocalSymbolKind::Typedef(_) => None,
@@ -171,8 +171,11 @@ impl LocalOrGlobalSymbol {
                 SymbolEntryKind::Union(resolved_union) => Some(resolved_union.union_sig.methods.clone()),
                 SymbolEntryKind::ProxiedSymbol(_, _) => unreachable!(),
             },
-        };
+        }
+    }
 
+    pub fn get_method_symbol_id_by_name(&self, name: &str) -> Option<SymbolID> {
+        let method_map = self.get_symbol_methods();
         method_map.and_then(|map| map.get(name).cloned())
     }
 
@@ -249,7 +252,7 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn as_method_mut (&mut self) -> Option<&mut ResolvedMethod> {
+    pub fn as_method_mut(&mut self) -> Option<&mut ResolvedMethod> {
         match self {
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &mut symbol_entry.kind {
                 SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
