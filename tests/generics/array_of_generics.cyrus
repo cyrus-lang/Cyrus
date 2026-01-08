@@ -1,0 +1,31 @@
+// @stdout: CYRUS
+
+import std::libc{printf};
+
+struct Pair<K, V> {
+    pub key: K;
+    pub value: V;
+
+    pub fn new(key: K, value: V) Self {
+        return Self {
+            key: key,
+            value: value
+        };
+    }
+}
+
+pub fn main() {
+    const arr = Pair<int, char>[5] {
+        Pair.new(1, 'C'),
+        Pair.new(2, 'Y'),
+        Pair.new(3, 'R'),
+        Pair.new(4, 'U'),
+        Pair.new(5, 'S'),
+    };
+
+    for (var i = 1; i <= 5; i++) {
+        printf("%c", arr[i - 1].value);
+    }
+    
+    printf("\n");
+}
