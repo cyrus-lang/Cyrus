@@ -874,7 +874,8 @@ impl Lexer {
         match ident.as_str() {
             "uintptr" => Some(TokenKind::UIntPtr),
             "intptr" => Some(TokenKind::IntPtr),
-            "size_t" => Some(TokenKind::SizeT),
+            "isize" => Some(TokenKind::ISize),
+            "usize" => Some(TokenKind::USize),
             "int" => Some(TokenKind::Int),
             "int8" => Some(TokenKind::Int8),
             "int16" => Some(TokenKind::Int16),

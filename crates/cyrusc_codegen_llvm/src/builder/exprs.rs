@@ -370,10 +370,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_sizeof(&mut self, sizeof_expr: &CIRSizeOfExpr) -> InternalValue<'ll> {
         let ty = self.emit_ty(sizeof_expr.ty.clone());
         let size_value = ty.size_of().unwrap();
-        InternalValue::new(
-            CIRTy::PlainType(PlainType::SizeT),
-            InternalValueKind::RValue(size_value.into()),
-        )
+        InternalValue::new(sizeof_expr.ty.clone(), InternalValueKind::RValue(size_value.into()))
     }
 
     pub(crate) fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {

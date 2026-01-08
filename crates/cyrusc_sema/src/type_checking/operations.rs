@@ -161,13 +161,13 @@ impl<'a> AnalysisContext<'a> {
                     *symbol_id
                 } else {
                     self.normalize_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone(), false)?;
-                    return Some(SemanticType::PlainType(PlainType::SizeT));
+                    return Some(SemanticType::PlainType(PlainType::USize));
                 }
             }
             TypedExprKind::Symbol(symbol_id, ..) => *symbol_id,
             _ => {
                 self.analyze_expr(scope_id_opt, &mut sizeof_expr.operand, expected_type);
-                return Some(SemanticType::PlainType(PlainType::SizeT));
+                return Some(SemanticType::PlainType(PlainType::USize));
             }
         };
 
@@ -191,7 +191,7 @@ impl<'a> AnalysisContext<'a> {
             )?;
         }
 
-        Some(SemanticType::PlainType(PlainType::SizeT))
+        Some(SemanticType::PlainType(PlainType::USize))
     }
 
     pub(crate) fn analyze_prefix_expr_type(

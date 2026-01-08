@@ -3,7 +3,7 @@
 import std::libc{printf, malloc, free};
 
 interface Allocator {
-    fn alloc(&self, size: size_t) void*;
+    fn alloc(&self, size: usize) void*;
     fn free(&self, ptr: void*) void;
 }
 
@@ -12,7 +12,7 @@ struct HeapAllocator : Allocator {
         return Self {};
     }
 
-    pub fn alloc(&self, size: size_t) void* {
+    pub fn alloc(&self, size: usize) void* {
         return malloc(size);
     }
 

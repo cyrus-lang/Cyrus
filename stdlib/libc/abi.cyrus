@@ -27,8 +27,11 @@ pub type c_unsigned_long_long = uint64;
 
 pub type c_bool = bool;
 pub type c_void = void;
-pub type c_size_t = size_t;
-pub type c_ptrdiff_t = size_t;
+
+// FIXME I'm not sure that is gotta map to signed/unsigned ptr size integer
+pub type c_size_t = usize;
+pub type c_ptrdiff_t = usize;
+// END
 
 pub type c_intptr_t = intptr;
 pub type c_uintptr_t = uintptr;
