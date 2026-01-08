@@ -253,6 +253,12 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                     .join(", ")
             )
         }
+        TypedExprKind::Dynamic(typed_dynamic_expr) => {
+            format!(
+                "dynamic {}",
+                format_typed_expr(&typed_dynamic_expr.operand, format_symbol)
+            )
+        }
     }
 }
 
@@ -371,6 +377,7 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
             )
         }
         SemanticType::GenericType(generic_type) => generic_type.format(format_symbol),
+        SemanticType::DynamicType(dynamic_type) => dynamic_type.name,
         SemanticType::SelfType(_) => "Self".to_string(),
     }
 }

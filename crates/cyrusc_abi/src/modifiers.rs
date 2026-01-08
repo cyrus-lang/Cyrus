@@ -19,7 +19,7 @@ use crate::{
     placement::SectionAttr, prologue::Prologue, repr::ReprAttr, visibility::Visibility,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
     pub vis: Visibility,
     pub linkage: Option<Linkage>,

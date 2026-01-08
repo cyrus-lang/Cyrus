@@ -2817,7 +2817,27 @@ impl Resolver {
             Expr::TupleAccess(tuple_member_access) => {
                 self.resolve_tuple_member_access(module_id, local_scope_opt, tuple_member_access)
             }
+            Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, local_scope_opt, dynamic_expr),
         }
+    }
+
+    fn resolve_dynamic_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        dynamic_expr: &Dynamic,
+    ) -> Option<TypedExprStmt> {
+        let operand = self.resolve_expr(module_id, local_scope_opt, &dynamic_expr.operand)?;
+
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Dynamic(TypedDynamicExpr {
+                operand: Box::new(operand),
+                loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
+            }),
+            sema_ty: None,
+            vcat: ValueCategory::RValue,
+            loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
+        })
     }
 
     fn resolve_tuple_member_access(

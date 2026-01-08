@@ -17,6 +17,7 @@
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::generics::mapping_ctx::GenericMappingCtx;
+use crate::sigs::FuncSig;
 use crate::stmts::{TypedFuncTypeParams, TypedGenericParam, TypedGenericParamsList};
 use crate::{ModuleID, SourceLoc, SymbolID};
 use cyrusc_ast::token::TokenKind;
@@ -37,6 +38,7 @@ pub enum SemanticType {
     GenericType(GenericType),
     GenericParam(TypedGenericParam),
     SelfType(TypedSelfType),
+    DynamicType(DynamicType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -465,10 +467,25 @@ impl TryFrom<TokenKind> for SemanticType {
 }
 
 #[derive(Debug, Clone, Eq)]
+pub struct DynamicType {
+    pub name: String,
+    pub method_sigs: Vec<FuncSig>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
 pub struct TypedArrayType {
     pub element_type: Box<SemanticType>,
     pub capacity: TypedArrayCapacity,
     pub loc: SourceLoc,
+}
+
+impl Hash for DynamicType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for func_sig in &self.method_sigs {
+            func_sig.name.hash(state);
+        }
+    }
 }
 
 impl PartialEq for TypedArrayType {
@@ -590,3 +607,9 @@ impl Hash for TypedTupleType {
 
 impl Eq for TypedArrayFixedCapacityValue {}
 impl Eq for TypedFuncType {}
+
+impl PartialEq for DynamicType {
+    fn eq(&self, other: &Self) -> bool {
+        self.method_sigs == other.method_sigs
+    }
+}

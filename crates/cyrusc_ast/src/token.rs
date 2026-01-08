@@ -75,6 +75,7 @@ pub enum TokenKind {
     And,
     Or,
     // Keywords
+    Dynamic,
     Goto,
     Defer,
     Union,
@@ -221,6 +222,7 @@ impl fmt::Display for TokenKind {
             Self::ThinArrow => write!(f, "->"),
             Self::FatArrow => write!(f, "=>"),
             // Keywords
+            Self::Dynamic => write!(f, "dynamic"),
             Self::Var => write!(f, "var"),
             Self::Interface => write!(f, "interface"),
             Self::Typedef => write!(f, "type"),

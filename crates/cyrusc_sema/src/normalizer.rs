@@ -20,12 +20,13 @@ use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
     ModuleID, ScopeID, SymbolID,
+    sigs::{FuncSig, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArgs,
     },
     types::{
-        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
-        TypedTupleType,
+        DynamicType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+        TypedFuncType, TypedTupleType,
     },
 };
 use std::rc::Rc;
@@ -42,6 +43,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
+        // mark symbol used
         match &ty {
             SemanticType::UnresolvedSymbol(symbol_id)
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id))
@@ -198,8 +200,10 @@ impl<'a> AnalysisContext<'a> {
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(_))
             | SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(_))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Union(_))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(_)) => Some(ty),
+            | SemanticType::ResolvedSymbol(ResolvedSymbol::Union(_)) => Some(ty),
+            SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(symbol_id)) => {
+                self.normalize_interface_as_dynamic_type(scope_id_opt, symbol_id, loc.clone())
+            }
             SemanticType::Pointer(inner) => {
                 let inner = self.normalize_type(scope_id_opt, *inner, loc.clone(), false)?;
                 Some(SemanticType::Pointer(Box::new(inner)))
@@ -274,6 +278,7 @@ impl<'a> AnalysisContext<'a> {
                     None
                 }
             }
+            SemanticType::DynamicType(dynamic_type) => Some(SemanticType::DynamicType(dynamic_type)),
         };
 
         if let Some(sema_ty) = sema_ty_opt {
@@ -285,6 +290,43 @@ impl<'a> AnalysisContext<'a> {
         } else {
             None
         }
+    }
+
+    fn normalize_interface_as_dynamic_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        interface_symbol_id: SymbolID,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
+
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, interface_symbol_id)
+            .unwrap();
+        let Some(resolved_interface) = sym.as_interface() else {
+            let symbol_name = (self.symbol_formatter)(scope_id_opt)(interface_symbol_id);
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name }),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
+            return None;
+        };
+
+        let mut method_sigs: Vec<FuncSig> = Vec::new();
+
+        for func_decl in &resolved_interface.interface_sig.methods {
+            let func_sig = typed_func_decl_as_func_sig(func_decl);
+            method_sigs.push(func_sig);
+        }
+
+        Some(SemanticType::DynamicType(DynamicType {
+            name: resolved_interface.interface_sig.name.clone(),
+            method_sigs,
+            loc,
+        }))
     }
 
     fn normalize_array_capacity(
@@ -363,17 +405,22 @@ impl<'a> AnalysisContext<'a> {
 
                     Some(if var.is_const { sema_ty.as_const() } else { sema_ty })
                 }
-                LocalSymbolKind::Struct(s) => {
-                    Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
-                }
-                LocalSymbolKind::Enum(e) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(e.symbol_id))),
-                LocalSymbolKind::Union(e) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(e.symbol_id))),
-                LocalSymbolKind::Interface(i) => {
-                    Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
-                }
+                LocalSymbolKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(
+                    ResolvedSymbol::NamedStruct(resolved_struct.symbol_id),
+                )),
+                LocalSymbolKind::Enum(resolved_enum) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
+                    resolved_enum.symbol_id,
+                ))),
+                LocalSymbolKind::Union(resolved_union) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
+                    resolved_union.symbol_id,
+                ))),
+                LocalSymbolKind::Interface(resolved_interface) => self.normalize_interface_as_dynamic_type(
+                    scope_id_opt,
+                    resolved_interface.symbol_id,
+                    resolved_interface.interface_sig.loc.clone(),
+                ),
                 LocalSymbolKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
             },
-
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
                 SymbolEntryKind::Method(..) => unreachable!(),
                 SymbolEntryKind::Func(resolved_func) => Some(SemanticType::FuncType(TypedFuncType {
@@ -450,9 +497,11 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Union(resolved_union) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
                     resolved_union.symbol_id,
                 ))),
-                SymbolEntryKind::Interface(resolved_interface) => Some(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::Interface(resolved_interface.symbol_id),
-                )),
+                SymbolEntryKind::Interface(resolved_interface) => self.normalize_interface_as_dynamic_type(
+                    scope_id_opt,
+                    resolved_interface.symbol_id,
+                    resolved_interface.interface_sig.loc.clone(),
+                ),
                 SymbolEntryKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
                 SymbolEntryKind::ProxiedSymbol(_, symbol_id) => {
                     let local_scope_opt =

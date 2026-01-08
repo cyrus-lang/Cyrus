@@ -225,6 +225,7 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
+            TypedExprKind::Dynamic(typed_dynamic_expr) => self.analyze_dynamic_expr(scope_id_opt, typed_dynamic_expr),
         };
 
         let normalized_type = self.normalize_type(scope_id_opt, sema_ty.clone()?, typed_expr.loc.clone(), true);
@@ -242,6 +243,42 @@ impl<'a> AnalysisContext<'a> {
         }
 
         normalized_type
+    }
+
+    // TODO Write comment
+    fn analyze_dynamic_expr(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        dynamic_expr: &mut TypedDynamicExpr,
+    ) -> Option<SemanticType> {
+        if dynamic_expr.operand.kind.is_dynamic_expr() {
+            // TODO
+            panic!("cannot dynamic an another dynamic expression.");
+        }
+
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
+        let Some(symbol_id) = operand_ty.get_pure_symbol_id() else {
+            // TODO
+            panic!("cannot make expression dynamic");
+        };
+        let Some(sym) = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+        else {
+            // TODO
+            panic!("cannot make expression dynamic");
+        };
+
+        let Some(methods) = sym.get_symbol_methods() else {
+            // TODO
+            panic!("symbol has not methods to make it dynamic");
+        };
+
+        dbg!(methods.clone());
+        
+        todo!();
     }
 
     /// Analyzes and infers the semantic type for a literal expression.

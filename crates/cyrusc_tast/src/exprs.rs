@@ -63,7 +63,14 @@ pub enum TypedExprKind {
     Lambda(TypedLambdaExpr),
     Tuple(TypedTupleExpr),
     TupleAccess(TypedTupleAccessExpr),
+    Dynamic(TypedDynamicExpr),
     SemanticType(SemanticType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedDynamicExpr {
+    pub operand: Box<TypedExprStmt>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +133,13 @@ impl TypedExprStmt {
 }
 
 impl TypedExprKind {
+    pub fn is_dynamic_expr(&self) -> bool {
+        match self {
+            TypedExprKind::Dynamic(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
             TypedExprKind::Symbol(symbol_id, _) => Some(*symbol_id),
@@ -178,6 +192,7 @@ impl TypedExprKind {
             | TypedExprKind::FuncCall(_)
             | TypedExprKind::Assign(_)
             | TypedExprKind::SizeOf(_)
+            | TypedExprKind::Dynamic(_)
             | TypedExprKind::SemanticType(_)
             | TypedExprKind::AddrOf(_) => false,
         }
@@ -206,6 +221,7 @@ impl TypedExprKind {
             TypedExprKind::SemanticType(_) => false,
             TypedExprKind::Lambda(_) => false,
             TypedExprKind::Tuple(_) => false,
+            TypedExprKind::Dynamic(_) => false,
         }
     }
 }

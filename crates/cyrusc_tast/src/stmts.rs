@@ -315,13 +315,13 @@ pub struct TypedFuncDeclStmt {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedFuncParams {
     pub list: Vec<TypedFuncParamKind>,
     pub variadic: Option<TypedFuncVariadicParams>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,
     Typed(TypedIdentifier, SemanticType),
@@ -339,7 +339,7 @@ pub enum TypedFuncTypeVariadicParams {
     Typed(SemanticType),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
     SelfModifier(TypedSelfModifier),
@@ -368,7 +368,7 @@ impl TypedFuncParamKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
     pub self_symbol_id: Option<SymbolID>,
@@ -377,7 +377,7 @@ pub struct TypedSelfModifier {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypedFuncParam {
     pub symbol_id: SymbolID,
     pub name: String,
