@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -22,6 +22,12 @@ use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_ast::token::*;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::{DiagLevel, DiagLoc};
+
+#[derive(Debug)]
+pub(crate) struct TypeArgStartDetail {
+    pub(crate) includes_type_args: bool,
+    pub(crate) is_array_init: bool,
+}
 
 impl Parser {
     pub(crate) fn parse_identifier(&mut self) -> Result<Identifier, Diag> {
@@ -64,29 +70,28 @@ impl Parser {
                 self.next_token();
                 base_type = TypeSpecifier::Deref(Box::new(base_type));
             } else if self.peek_token_is(TokenKind::LeftBracket) {
-                self.next_token(); // consume base_type
+                self.next_token(); // consume '['
                 base_type = self.parse_array_type(base_type)?;
+            } else if self.peek_token_is(TokenKind::LessThan) {
+                // handle generic type arguments
+                let start = self.peek_token().span.start;
+                let loc = self.peek_token().loc.clone();
+
+                self.next_token(); // consume less than
+                let type_args = self.parse_type_arg_list()?;
+
+                base_type = TypeSpecifier::GenericInst(GenericInst {
+                    base: Box::new(base_type),
+                    type_args,
+                    loc,
+                    span: Span::new(start, self.current_token().span.end),
+                });
             } else {
                 break;
             }
         }
 
-        if self.peek_token_is(TokenKind::LessThan) {
-            let start = self.peek_token().span.start;
-            let loc = self.peek_token().loc.clone();
-
-            self.next_token();
-            let type_args = self.parse_type_arg_list()?;
-
-            Ok(TypeSpecifier::GenericInst(GenericInst {
-                base: Box::new(base_type),
-                type_args,
-                loc,
-                span: Span::new(start, self.current_token().span.end),
-            }))
-        } else {
-            Ok(base_type)
-        }
+        Ok(base_type)
     }
 
     pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, Diag> {
@@ -159,13 +164,19 @@ impl Parser {
         Ok(args)
     }
 
-    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expression: Expr) -> bool {
+    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: Expr) -> TypeArgStartDetail {
         if !self.peek_token_is(TokenKind::LessThan) {
-            return false;
+            return TypeArgStartDetail {
+                includes_type_args: false,
+                is_array_init: false,
+            };
         }
 
-        if !self.current_expr_is_path_like(last_parsed_expression) {
-            return false;
+        if !self.current_expr_is_path_like(last_parsed_expr) {
+            return TypeArgStartDetail {
+                includes_type_args: false,
+                is_array_init: false,
+            };
         }
 
         let mut i = 1;
@@ -173,7 +184,10 @@ impl Parser {
 
         while let Some(token) = self.peek_n_token(i) {
             if self.token_disqualifies_type_arg(&token.kind) {
-                return false;
+                return TypeArgStartDetail {
+                    includes_type_args: false,
+                    is_array_init: false,
+                };
             }
 
             match token.kind {
@@ -182,16 +196,83 @@ impl Parser {
                 }
                 TokenKind::GreaterThan => {
                     depth -= 1;
+
                     if depth == 0 {
-                        return true;
+                        // distinguish array init and struct init when type args used
+                        let after_greater = self.peek_n_token(i + 1);
+
+                        if let Some(next_token) = after_greater {
+                            if next_token.kind == TokenKind::LeftBracket {
+                                let is_array_init = self.check_for_array_init_after_generic(i + 1);
+
+                                return TypeArgStartDetail {
+                                    includes_type_args: true,
+                                    is_array_init,
+                                };
+                            } else if next_token.kind == TokenKind::LeftBrace {
+                                return TypeArgStartDetail {
+                                    includes_type_args: true,
+                                    is_array_init: false,
+                                };
+                            }
+                        }
+
+                        return TypeArgStartDetail {
+                            includes_type_args: true,
+                            is_array_init: false,
+                        };
                     }
                 }
                 TokenKind::Semicolon | TokenKind::EOF => {
-                    return false;
+                    return TypeArgStartDetail {
+                        includes_type_args: false,
+                        is_array_init: false,
+                    };
                 }
                 _ => {}
             }
             i += 1;
+        }
+
+        return TypeArgStartDetail {
+            includes_type_args: true,
+            is_array_init: false,
+        };
+    }
+
+    fn check_for_array_init_after_generic(&mut self, start_idx: usize) -> bool {
+        let mut i = start_idx;
+        let mut bracket_depth = 0;
+
+        // first, skip through all array brackets
+        while let Some(token) = self.peek_n_token(i) {
+            match token.kind {
+                TokenKind::LeftBracket => {
+                    bracket_depth += 1;
+                    i += 1;
+
+                    // skip everything inside the brackets
+                    while let Some(inner_token) = self.peek_n_token(i) {
+                        if inner_token.kind == TokenKind::RightBracket {
+                            bracket_depth -= 1;
+                            i += 1;
+                            break;
+                        }
+                        i += 1;
+                    }
+                }
+                _ => {
+                    // once we're past all array brackets (depth == 0)
+                    // check if the next token is {
+                    if bracket_depth == 0 {
+                        return self
+                            .peek_n_token(i)
+                            .map(|t| t.kind == TokenKind::LeftBrace)
+                            .unwrap_or(false);
+                    }
+                    i += 1;
+                }
+            }
         }
 
         false
@@ -706,7 +787,7 @@ impl Parser {
         })
     }
 
-    fn current_expr_is_path_like(&self, last_parsed_expression: Expr) -> bool {
-        matches!(last_parsed_expression, Expr::Identifier(..) | Expr::ModuleImport(..))
+    fn current_expr_is_path_like(&self, last_parsed_expr: Expr) -> bool {
+        matches!(last_parsed_expr, Expr::Identifier(..) | Expr::ModuleImport(..))
     }
 }

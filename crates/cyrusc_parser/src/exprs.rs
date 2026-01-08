@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -422,10 +422,17 @@ impl Parser {
         };
 
         let mut type_args_opt: Option<Vec<TypeArg>> = None;
-        if self.is_type_arg_start(expr.clone()) {
-            self.next_token(); // consume current token of expr
-
-            type_args_opt = Some(self.parse_type_arg_list()?);
+        let type_arg_start_detail = self.is_type_arg_start(expr.clone());
+        if type_arg_start_detail.includes_type_args {
+            if !type_arg_start_detail.is_array_init {
+                self.next_token(); // consume current token of expr
+                type_args_opt = Some(self.parse_type_arg_list()?);
+            } else {
+                // handle generic array init
+                let type_specifier = self.parse_type_specifier()?;
+                self.next_token();
+                return Ok(self.parse_array(type_specifier)?);
+            }
         }
 
         if self.peek_token_is(TokenKind::LeftBrace) {
@@ -804,9 +811,8 @@ impl Parser {
             let identifier = self.parse_identifier()?;
 
             let mut type_args_opt: Option<Vec<TypeArg>> = None;
-            if self.is_type_arg_start(operand.clone()) {
+            if self.is_type_arg_start(operand.clone()).includes_type_args {
                 self.next_token(); // consume current token of expr
-
                 type_args_opt = Some(self.parse_type_arg_list()?);
             }
 
@@ -1064,11 +1070,11 @@ impl Parser {
         Ok(base_index)
     }
 
-    fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expr, Diag> {
+    fn parse_array(&mut self, type_specifier: TypeSpecifier) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
-        if !matches!(data_type, TypeSpecifier::Array(..)) {
+        if !matches!(type_specifier, TypeSpecifier::Array(..)) {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::NonArrayDataTypeForArrayConstruction),
                 level: DiagLevel::Error,
@@ -1098,7 +1104,7 @@ impl Parser {
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Expr::Array(Array {
                 elements,
-                data_type,
+                data_type: type_specifier,
                 span: Span::new(start, self.current_token().span.end),
                 loc: loc.clone(),
             }));
@@ -1141,7 +1147,7 @@ impl Parser {
                     }
                 }
 
-                if let TypeSpecifier::Array(inner_type_specifier, ..) = data_type.clone() {
+                if let TypeSpecifier::Array(inner_type_specifier, ..) = type_specifier.clone() {
                     let data_type = TypeSpecifier::Array(ArrayTypeSpecifier {
                         size: ArrayCapacity::Fixed(Box::new(Expr::Literal(Literal {
                             kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
@@ -1181,7 +1187,7 @@ impl Parser {
 
         Ok(Expr::Array(Array {
             elements,
-            data_type,
+            data_type: type_specifier,
             span: Span::new(start, self.current_token().span.end),
             loc,
         }))
