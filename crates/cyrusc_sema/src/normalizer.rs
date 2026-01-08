@@ -109,7 +109,15 @@ impl<'a> AnalysisContext<'a> {
                         resolved_typedef.typedef_sig.loc.clone(),
                     )
                 } else {
-                    let generic_params = sym.get_generic_params().unwrap();
+                    let Some(generic_params) = sym.get_generic_params() else {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    };
 
                     if let Err(diag) = generic_type.init(generic_params, &(self.symbol_formatter)(scope_id_opt)) {
                         self.reporter.report(diag);
