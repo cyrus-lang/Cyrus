@@ -285,7 +285,8 @@ impl Parser {
 
             TokenKind::UIntPtr
             | TokenKind::IntPtr
-            | TokenKind::SizeT
+            | TokenKind::ISize
+            | TokenKind::USize
             | TokenKind::Int
             | TokenKind::Int8
             | TokenKind::Int16

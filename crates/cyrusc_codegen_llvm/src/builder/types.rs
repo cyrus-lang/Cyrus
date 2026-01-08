@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -52,7 +52,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let llvmctx = &self.llvmctx;
 
         match plain_ty {
-            PlainType::UIntPtr | PlainType::IntPtr | PlainType::SizeT => llvmctx
+            PlainType::UIntPtr | PlainType::IntPtr | PlainType::USize | PlainType::ISize => llvmctx
                 .ptr_sized_int_type(&self.llvmtm.get_target_data(), None)
                 .as_any_type_enum(),
             PlainType::Int8 => llvmctx.i8_type().as_any_type_enum(),
@@ -159,7 +159,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let target_data = self.llvmtm.get_target_data();
 
         for field_ty in union_ty.fields {
-            let llvm_ty = self
+            let llvm_ty: BasicTypeEnum<'ll> = self
                 .emit_ty(field_ty.clone())
                 .try_into()
                 .expect("Union variant must be a valid basic type");

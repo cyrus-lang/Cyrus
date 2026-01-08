@@ -308,7 +308,8 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
         SemanticType::PlainType(basic_concrete_type) => match basic_concrete_type {
             PlainType::UIntPtr => "uintptr".to_string(),
             PlainType::IntPtr => "intptr".to_string(),
-            PlainType::SizeT => "size_t".to_string(),
+            PlainType::ISize => "isize".to_string(),
+            PlainType::USize => "usize".to_string(),
             PlainType::Int => "int".to_string(),
             PlainType::Int8 => "int8".to_string(),
             PlainType::Int16 => "int16".to_string(),

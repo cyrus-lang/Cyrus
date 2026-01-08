@@ -3,8 +3,8 @@ import std::libc{strlen, malloc, memcpy, free};
 
 pub struct String {
     pub data: char*;
-    pub length: size_t;
-    pub capacity: size_t;
+    pub length: usize;
+    pub capacity: usize;
 
     pub fn new(init: const char*) String {
         var len = strlen(init);

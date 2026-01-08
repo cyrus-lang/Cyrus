@@ -3702,7 +3702,7 @@ fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
     let ty = match suffix {
         TokenKind::UIntPtr => PlainType::UIntPtr,
         TokenKind::IntPtr => PlainType::IntPtr,
-        TokenKind::SizeT => PlainType::SizeT,
+        TokenKind::USize => PlainType::USize,
         TokenKind::Int => PlainType::Int,
         TokenKind::Int8 => PlainType::Int8,
         TokenKind::Int16 => PlainType::Int16,
@@ -3749,7 +3749,7 @@ fn is_integer_type(ty: &SemanticType) -> bool {
                 | PlainType::UInt128
                 | PlainType::IntPtr
                 | PlainType::UIntPtr
-                | PlainType::SizeT
+                | PlainType::USize
         )
     )
 }

@@ -43,7 +43,8 @@ pub enum SemanticType {
 pub enum PlainType {
     UIntPtr,
     IntPtr,
-    SizeT,
+    ISize,
+    USize,
     Int,
     Int8,
     Int16,
@@ -346,7 +347,8 @@ impl PlainType {
             self,
             PlainType::UIntPtr
                 | PlainType::IntPtr
-                | PlainType::SizeT
+                | PlainType::ISize
+                | PlainType::USize
                 | PlainType::Int
                 | PlainType::Int8
                 | PlainType::Int16
@@ -378,7 +380,8 @@ impl PlainType {
             | PlainType::UInt32
             | PlainType::UInt64
             | PlainType::UInt128
-            | PlainType::SizeT
+            | PlainType::ISize
+            | PlainType::USize
             | PlainType::Bool
             | PlainType::Char
             | PlainType::Void
@@ -408,7 +411,7 @@ impl PlainType {
                 Int32 | UInt32 => Some(4),
                 Int | UInt => Some(5),
                 Int64 | UInt64 => Some(6),
-                IntPtr | UIntPtr | SizeT => Some(7),
+                IntPtr | UIntPtr | ISize | USize => Some(7),
                 Int128 | UInt128 => Some(8),
 
                 Float16 => Some(9),
@@ -431,7 +434,8 @@ impl TryFrom<TokenKind> for SemanticType {
 
     fn try_from(token_kind: TokenKind) -> Result<Self, Self::Error> {
         let basic_type = match &token_kind {
-            TokenKind::SizeT => PlainType::SizeT,
+            TokenKind::ISize => PlainType::ISize,
+            TokenKind::USize => PlainType::USize,
             TokenKind::IntPtr => PlainType::IntPtr,
             TokenKind::UIntPtr => PlainType::UIntPtr,
             TokenKind::Int => PlainType::Int,

@@ -6,7 +6,7 @@ pub fn main() {
     const arr = int[3]{1, 2, 3};
     const len = sizeof(arr) / sizeof(arr[0]);
     
-    for (var i: size_t = 0; i < len; i++) {
+    for (var i: usize = 0; i < len; i++) {
         const item = arr[i];
 
         switch (item) {
