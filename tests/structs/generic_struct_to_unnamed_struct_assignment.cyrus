@@ -1,3 +1,5 @@
+// @stdout: 29 10.987654 y
+
 import std::libc{printf};
 
 struct MyGenericStruct<K, V, H> {
