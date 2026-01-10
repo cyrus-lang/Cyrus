@@ -18,8 +18,12 @@ use crate::analyze::AnalysisContext;
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_tast::{
     ScopeID,
-    generics::mapping_ctx::mapping_ctx_eq_refcell,
-    types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    generics::{mapping_ctx::mapping_ctx_eq_refcell, substitute::substitute_struct_sig},
+    sigs::StructSig,
+    types::{
+        PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+        TypedUStructType,
+    },
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -30,6 +34,8 @@ impl<'a> AnalysisContext<'a> {
         target_type: SemanticType,
         loc: SourceLoc,
     ) -> bool {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
         match (
             value_type.get_const_inner().clone(),
             target_type.get_const_inner().clone(),
@@ -70,8 +76,70 @@ impl<'a> AnalysisContext<'a> {
                 }
                 is_packed && fields
             }
-            (SemanticType::GenericType(resolved_generic1), SemanticType::GenericType(resolved_generic2)) => {
-                mapping_ctx_eq_refcell(&resolved_generic1.mapping_ctx, &resolved_generic2.mapping_ctx)
+            (
+                SemanticType::UnnamedStruct(unnamed_struct),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(named_struct_symbol_id)),
+            ) => {
+                let named_struct = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, named_struct_symbol_id)
+                    .unwrap();
+                let resolved_struct = named_struct.as_struct().unwrap();
+
+                self.check_unnamed_struct_and_named_struct_type_mismatch(&unnamed_struct, &resolved_struct.struct_sig)
+            }
+            (
+                SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(named_struct_symbol_id)),
+                SemanticType::UnnamedStruct(unnamed_struct),
+            ) => {
+                let named_struct = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, named_struct_symbol_id)
+                    .unwrap();
+                let resolved_struct = named_struct.as_struct().unwrap();
+
+                self.check_unnamed_struct_and_named_struct_type_mismatch(&unnamed_struct, &resolved_struct.struct_sig)
+            }
+            (SemanticType::UnnamedStruct(unnamed_struct), SemanticType::GenericType(generic_type)) => {
+                let named_struct = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
+                    .unwrap();
+
+                match named_struct.as_struct().cloned() {
+                    Some(mut resolved_struct) => {
+                        resolved_struct.struct_sig =
+                            substitute_struct_sig(&resolved_struct.struct_sig, generic_type.mapping_ctx.clone())
+                                .unwrap();
+                        self.check_unnamed_struct_and_named_struct_type_mismatch(
+                            &unnamed_struct,
+                            &resolved_struct.struct_sig,
+                        )
+                    }
+                    None => false, // not compatible!
+                }
+            }
+            (SemanticType::GenericType(generic_type), SemanticType::UnnamedStruct(unnamed_struct)) => {
+                let named_struct = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
+                    .unwrap();
+
+                match named_struct.as_struct().cloned() {
+                    Some(mut resolved_struct) => {
+                        resolved_struct.struct_sig =
+                            substitute_struct_sig(&resolved_struct.struct_sig, generic_type.mapping_ctx.clone())
+                                .unwrap();
+                        self.check_unnamed_struct_and_named_struct_type_mismatch(
+                            &unnamed_struct,
+                            &resolved_struct.struct_sig,
+                        )
+                    }
+                    None => false, // not compatible!
+                }
+            }
+            (SemanticType::GenericType(generic_type1), SemanticType::GenericType(generic_type2)) => {
+                mapping_ctx_eq_refcell(&generic_type1.mapping_ctx, &generic_type2.mapping_ctx)
             }
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
@@ -81,6 +149,25 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
+    }
+
+    fn check_unnamed_struct_and_named_struct_type_mismatch(
+        &self,
+        unnamed_struct: &TypedUStructType,
+        struct_sig: &StructSig,
+    ) -> bool {
+        let unnamed_struct_fields = unnamed_struct
+            .fields
+            .iter()
+            .map(|field| *field.field_ty.clone())
+            .collect::<Vec<_>>();
+        let named_struct_fields = struct_sig
+            .fields
+            .iter()
+            .map(|field| field.ty.clone())
+            .collect::<Vec<_>>();
+
+        unnamed_struct.is_packed == struct_sig.is_packed && unnamed_struct_fields == named_struct_fields
     }
 
     pub(crate) fn check_basic_type_mismatch(&self, value: PlainType, target: PlainType) -> bool {
