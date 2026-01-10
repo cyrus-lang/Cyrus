@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -78,6 +78,7 @@ impl Parser {
         }
     }
 
+    #[inline]
     pub fn parse(&mut self) -> Result<ProgramTree, Vec<Diag>> {
         self.parse_program()
     }
@@ -101,6 +102,7 @@ impl Parser {
         self.finalize_program_parse(program)
     }
 
+    #[inline]
     pub fn display_parser_errors(&mut self, errors: Vec<Diag>) {
         let len = errors.len();
         if len > 0 {
@@ -109,6 +111,7 @@ impl Parser {
         }
     }
 
+    #[inline]
     /// Finalizes the program parse by checking for errors.
     fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<Diag>> {
         if self.errors.is_empty() {
@@ -118,6 +121,7 @@ impl Parser {
         }
     }
 
+    #[inline]
     fn next_token(&mut self) -> Token {
         let peek_token = match self.tokens.get(self.cur_token_idx) {
             Some(token) => token,
@@ -137,6 +141,7 @@ impl Parser {
         peek_token.clone()
     }
 
+    #[inline]
     fn current_token_is(&self, token_kind: TokenKind) -> bool {
         let current_token = match self.tokens.get(self.cur_token_idx) {
             Some(token) => token,
@@ -151,6 +156,7 @@ impl Parser {
         current_token.kind == token_kind
     }
 
+    #[inline]
     fn peek_token_is(&self, token_kind: TokenKind) -> bool {
         let peek_token = match self.tokens.get(self.cur_token_idx + 1) {
             Some(token) => token,
@@ -165,6 +171,7 @@ impl Parser {
         peek_token.kind == token_kind
     }
 
+    #[inline]
     fn current_token(&self) -> Token {
         match self.tokens.get(self.cur_token_idx).cloned() {
             Some(token) => token,
@@ -176,6 +183,7 @@ impl Parser {
         }
     }
 
+    #[inline]
     fn peek_token(&self) -> Token {
         match self.tokens.get(self.cur_token_idx + 1).cloned() {
             Some(token) => token,
@@ -187,6 +195,7 @@ impl Parser {
         }
     }
 
+    #[inline]
     fn peek_n_token(&self, n: usize) -> Option<Token> {
         self.tokens.get(self.cur_token_idx + n).cloned()
     }

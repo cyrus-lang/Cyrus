@@ -628,6 +628,7 @@ impl Lexer {
         }
     }
 
+    #[inline]
     fn read_literal_suffix(&mut self) -> Option<Box<TokenKind>> {
         if matches!(self.ch, 'f' | 'u' | 'i' | 's') {
             let suffix_token_kind = self.read_identifier().kind;
@@ -776,6 +777,7 @@ impl Lexer {
         }
     }
 
+    #[inline]
     fn is_numeric(&self, ch: char) -> bool {
         ch.is_ascii_digit()
     }
@@ -785,6 +787,7 @@ impl Lexer {
         self.pos == self.input.len() || self.ch == '\0'
     }
 
+    #[inline]
     fn is_whitespace(ch: char) -> bool {
         matches!(
             ch,
@@ -806,12 +809,14 @@ impl Lexer {
         )
     }
 
+    #[inline]
     fn skip_whitespace(&mut self) {
         while Self::is_whitespace(self.ch) && !self.is_eof() {
             self.read_char();
         }
     }
 
+    #[inline]
     fn skip_comments(&mut self) {
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
@@ -870,6 +875,7 @@ impl Lexer {
         }
     }
 
+    #[inline]
     fn lookup_typename(&self, ident: String) -> Option<TokenKind> {
         match ident.as_str() {
             "uintptr" => Some(TokenKind::UIntPtr),
@@ -898,6 +904,7 @@ impl Lexer {
         }
     }
 
+    #[inline]
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
             "dynamic" => TokenKind::Dynamic,
