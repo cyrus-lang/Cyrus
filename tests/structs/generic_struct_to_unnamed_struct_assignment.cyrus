@@ -1,0 +1,23 @@
+import std::libc{printf};
+
+struct MyGenericStruct<K, V, H> {
+    pub a: K;
+    pub b: V;
+    pub c: H;
+}
+
+pub fn main() {
+    const generic = MyGenericStruct {
+        a: 29uint32,
+        b: 10.987654321,
+        c: 'y'
+    };
+
+    const inst: struct { 
+        a: uint32, 
+        b: float64,
+        c: char
+    } = generic;
+    
+    printf("%d %f %c", inst.a, inst.b, inst.c);
+}

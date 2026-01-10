@@ -1,0 +1,16 @@
+// @stdout: 10 3.140000 z
+
+import std::libc{printf};
+
+struct MyStruct {
+    pub a: int;
+    pub b: float64;
+    pub c: char;
+}
+
+pub fn main() {
+    const inst = MyStruct { a: 10, b: 3.14, c: 'z' };
+    const ustruct: struct { a: int, b: float64, c: char } = inst;
+
+    printf("%d %f %c", ustruct.a, ustruct.b, ustruct.c);
+}
