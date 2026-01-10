@@ -22,7 +22,7 @@ use cyrusc_tast::{
     stmts::{TypedBlockStmt, TypedGenericParamsList, TypedVarStmt},
 };
 use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // Symbol Table (Per Module)
 

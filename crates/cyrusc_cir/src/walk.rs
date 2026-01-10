@@ -36,7 +36,7 @@ use cyrusc_tast::{
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 

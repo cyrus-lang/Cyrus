@@ -32,7 +32,10 @@ use cyrusc_tast::{
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
-    sigs::{FuncSig, UnionSig, apply_self_modifier_type_in_func_sig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
+    sigs::{
+        FuncSig, UnionSig, apply_self_modifier_type_in_func_sig, set_self_modifier_type_in_func_sig,
+        typed_func_params_as_func_type_params,
+    },
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
         TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
@@ -272,7 +275,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         // TODO Find a way to verify that symbol implements interface!
-        // Store current symbol id in the type in the mismatch-check, check 
+        // Store current symbol id in the type in the mismatch-check, check
         // that this dynamic-type is implementing the interface.
 
         let object_name = format!("dynamic {}", sym.get_name().unwrap());
@@ -1633,8 +1636,6 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        self.current_method_symbol_id = Some(resolved_method.symbol_id);
-
         if !self.validate_method_call(
             scope_id_opt,
             object_id,
@@ -1649,6 +1650,8 @@ impl<'a> AnalysisContext<'a> {
         ) {
             return None;
         }
+
+        self.current_method_symbol_id = Some(resolved_method.symbol_id);
 
         let instance_method_call = is_instance_method_sig && is_instance_method_operand;
         let mut generic_type_opt = method_call_operand_ty.get_pointer_inner().as_generic_type().cloned();
