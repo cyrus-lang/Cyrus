@@ -32,7 +32,7 @@ use cyrusc_tast::{
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
-    sigs::{FuncSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
+    sigs::{FuncSig, UnionSig, apply_self_modifier_type_in_func_sig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
         TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
@@ -1774,7 +1774,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if instance_method_call {
-            set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &method_call_operand_ty);
+            apply_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &method_call_operand_ty);
 
             let self_modifier = resolved_method
                 .func_sig

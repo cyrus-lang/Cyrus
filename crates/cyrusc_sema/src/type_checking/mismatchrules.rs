@@ -161,6 +161,7 @@ impl<'a> AnalysisContext<'a> {
             .iter()
             .map(|field| *field.field_ty.clone())
             .collect::<Vec<_>>();
+        
         let named_struct_fields = struct_sig
             .fields
             .iter()

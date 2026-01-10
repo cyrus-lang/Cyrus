@@ -139,6 +139,23 @@ pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &Sema
                     self_modifier.ty = Some(sema_ty.clone());
                 }
                 SelfModifierKind::Referenced => {
+                    self_modifier.ty = Some(sema_ty.clone());
+                }
+            }
+        }
+    }
+}
+
+pub fn apply_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &SemanticType) {
+    let first_param = func_sig.params.list.first_mut();
+
+    if let Some(func_param_kind) = first_param {
+        if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
+            match self_modifier.kind {
+                SelfModifierKind::Copied => {
+                    self_modifier.ty = Some(sema_ty.clone());
+                }
+                SelfModifierKind::Referenced => {
                     self_modifier.ty = Some(SemanticType::Pointer(Box::new(sema_ty.clone())));
                 }
             }
