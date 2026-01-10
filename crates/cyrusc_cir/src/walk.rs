@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::monomorph::CIRMonomorphRegistry;
-use crate::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
+use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_abi::mangler::ABINameMangler;
 use cyrusc_ast::LiteralKind;
@@ -36,7 +36,7 @@ use cyrusc_tast::{
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -840,6 +840,7 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(scope_id_opt, lambda_expr),
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(scope_id_opt, tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(scope_id_opt, tuple_access_expr),
+            TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
             // skipped
             TypedExprKind::SemanticType(..) => unreachable!(),
         };
@@ -1429,7 +1430,20 @@ impl<'resolver> CIRWalk<'resolver> {
 
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
-        }.get_const_inner().clone()
+            SemanticType::DynamicType(dynamic_type) => {
+                let mut method_sigs: Vec<CIRFuncTy> = Vec::new();
+
+                for func_sig in &dynamic_type.method_sigs {
+                    let func_decl = self.lower_func_sig(scope_id_opt, func_sig.symbol_id.unwrap(), func_sig);
+                    let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
+                    method_sigs.push(cir_func_ty);
+                }
+
+                CIRTy::Dynamic(CIRDynamicTy { method_sigs })
+            }
+        }
+        .get_const_inner()
+        .clone()
     }
 
     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {

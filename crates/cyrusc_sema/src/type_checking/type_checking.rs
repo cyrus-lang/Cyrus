@@ -265,20 +265,47 @@ impl<'a> AnalysisContext<'a> {
         };
         let Some(sym) = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
         else {
             // TODO
             panic!("cannot make expression dynamic");
         };
+
+        // TODO Find a way to verify that symbol implements interface!
+        // Store current symbol id in the type in the mismatch-check, check 
+        // that this dynamic-type is implementing the interface.
+
+        let object_name = format!("dynamic {}", sym.get_name().unwrap());
 
         let Some(methods) = sym.get_symbol_methods() else {
             // TODO
             panic!("symbol has not methods to make it dynamic");
         };
 
-        dbg!(methods.clone());
-        
-        todo!();
+        let mut method_sigs: Vec<FuncSig> = Vec::new();
+
+        for method_symbol_id in methods.values().cloned() {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
+                .unwrap();
+            let resolved_method = sym.as_method().unwrap();
+
+            let func_sig: FuncSig;
+            if let Some(generic_type) = operand_ty.as_generic_type() {
+                func_sig = substitute_func_sig(&resolved_method.func_sig, generic_type.mapping_ctx.clone()).unwrap();
+            } else {
+                func_sig = resolved_method.func_sig.clone();
+            }
+
+            method_sigs.push(func_sig);
+        }
+
+        Some(SemanticType::DynamicType(DynamicType {
+            name: object_name,
+            method_sigs,
+            loc: dynamic_expr.loc.clone(),
+        }))
     }
 
     /// Analyzes and infers the semantic type for a literal expression.

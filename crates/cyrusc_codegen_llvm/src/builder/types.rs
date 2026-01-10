@@ -17,7 +17,7 @@
 use crate::builder::builder::IRBuilderCtx;
 use cyrusc_cir::{
     CIREnumTyVariant,
-    types::{CIRArrayTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
+    types::{CIRArrayTy, CIRDynamicTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
 };
 use cyrusc_tast::types::PlainType;
 use inkwell::{
@@ -41,7 +41,13 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRTy::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
             CIRTy::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
             CIRTy::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
+            CIRTy::Dynamic(dynamic_ty) => self.emit_dynamic_ty(&dynamic_ty).as_any_type_enum(),
         }
+    }
+
+    #[allow(unused)]
+    pub(crate) fn emit_dynamic_ty(&self, dynamic_ty: &CIRDynamicTy) -> StructType<'ll> {
+        todo!();
     }
 
     pub(crate) fn emit_tys(&self, tys: &[CIRTy]) -> Vec<AnyTypeEnum<'ll>> {

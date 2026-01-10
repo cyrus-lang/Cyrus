@@ -150,6 +150,32 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
+    pub fn get_name(&self) -> Option<String> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Variable(resolved_variable) => Some(resolved_variable.typed_variable.name.clone()),
+                LocalSymbolKind::Struct(resolved_struct) => Some(resolved_struct.struct_sig.name.clone()),
+                LocalSymbolKind::Enum(resolved_enum) => Some(resolved_enum.enum_sig.name.clone()),
+                LocalSymbolKind::Typedef(resolved_typedef) => Some(resolved_typedef.typedef_sig.name.clone()),
+                LocalSymbolKind::Interface(resolved_interface) => Some(resolved_interface.interface_sig.name.clone()),
+                LocalSymbolKind::Union(resolved_union) => Some(resolved_union.union_sig.name.clone()),
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Method(resolved_method) => Some(resolved_method.func_sig.name.clone()),
+                SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig.name.clone()),
+                SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef.typedef_sig.name.clone()),
+                SymbolEntryKind::GlobalVar(resolved_global_var) => {
+                    Some(resolved_global_var.global_var_sig.name.clone())
+                }
+                SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct.struct_sig.name.clone()),
+                SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum.enum_sig.name.clone()),
+                SymbolEntryKind::Union(resolved_union) => Some(resolved_union.union_sig.name.clone()),
+                SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface.interface_sig.name.clone()),
+                SymbolEntryKind::ProxiedSymbol(_, _) => None,
+            },
+        }
+    }
+
     pub fn get_symbol_methods(&self) -> Option<HashMap<String, SymbolID>> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
