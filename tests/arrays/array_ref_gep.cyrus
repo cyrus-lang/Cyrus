@@ -1,0 +1,10 @@
+// @stdout: 1 2 3
+
+import std::libc{printf};
+
+pub fn main() {
+    const arr = int[3] {1, 2, 3};
+    const ref: int[3]* = &arr;
+
+    printf("%d %d %d\n", (*ref)[0], (*ref)[1], (*ref)[2]);
+}
