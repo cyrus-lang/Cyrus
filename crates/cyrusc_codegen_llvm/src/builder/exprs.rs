@@ -30,7 +30,8 @@ use inkwell::{
     module::Linkage,
     types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
-        AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue, StructValue,
+        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue,
+        StructValue,
     },
 };
 
@@ -107,13 +108,29 @@ impl<'ll> IRBuilderCtx<'ll> {
         let index_lvalue = self.emit_expr(&array_index.index);
         let index_rvalue = self.load_rvalue(index_lvalue);
 
-        if let Some(arr_ty) = lvalue.ty.as_arr_ty() {
-            self.emit_inbounds_checked_array_index(
-                lvalue.as_basic_value().into_pointer_value(),
-                *arr_ty.ty.clone(),
-                index_rvalue,
-                arr_ty.len.try_into().unwrap(),
-            )
+        if lvalue.ty.as_arr_ty().is_some() {
+            let arr_ty = lvalue.ty.as_arr_ty().unwrap();
+            let basic_value = lvalue.as_basic_value();
+            if basic_value.is_pointer_value() {
+                self.emit_inbounds_checked_array_index(
+                    lvalue.as_basic_value().into_pointer_value(),
+                    *arr_ty.ty.clone(),
+                    index_rvalue,
+                    arr_ty.len.try_into().unwrap(),
+                )
+            } else if basic_value.is_array_value() {
+                let ptr = self.emit_temp_array_value_alloca(&basic_value.into_array_value());
+
+                // REVIEW Maybe it's possible to optimize this?
+                self.emit_inbounds_checked_array_index(
+                    ptr, // use temp alloca instead
+                    *arr_ty.ty.clone(),
+                    index_rvalue,
+                    arr_ty.len.try_into().unwrap(),
+                )
+            } else {
+                unreachable!("Expected array or pointer type for array indexing expression");
+            }
         } else if let Some(pointee_ty) = lvalue.ty.get_pointer_inner() {
             self.emit_array_index_on_pointer(
                 lvalue.as_basic_value().into_pointer_value(),
@@ -123,6 +140,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         } else {
             unreachable!("Expected array or pointer type for array indexing expression");
         }
+    }
+
+    fn emit_temp_array_value_alloca(&self, array_value: &ArrayValue<'ll>) -> PointerValue<'ll> {
+        let ptr = self.llvmbuilder.build_alloca(array_value.get_type(), "temp").unwrap();
+        self.llvmbuilder
+            .build_store(ptr, array_value.as_basic_value_enum())
+            .unwrap();
+        ptr
     }
 
     pub(crate) fn emit_assign(&mut self, assign: &CIRAssignExpr) -> InternalValue<'ll> {
