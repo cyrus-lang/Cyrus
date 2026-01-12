@@ -53,13 +53,8 @@ impl<'a> AnalysisContext<'a> {
                     && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
             }
             (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
-                // FIXME Consider to remote later due to it's not valid here. (or maybe it's defected!)
-                // if let Some(arr_type) = inner_concrete_type1.as_array_type() {
-                //     *arr_type.element_type == *inner_concrete_type2
-                // } else {
-                    (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
-                        || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
-                // }
+                (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
+                    || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
             }
             (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
                 let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
@@ -162,7 +157,7 @@ impl<'a> AnalysisContext<'a> {
             .iter()
             .map(|field| *field.field_ty.clone())
             .collect::<Vec<_>>();
-        
+
         let named_struct_fields = struct_sig
             .fields
             .iter()
