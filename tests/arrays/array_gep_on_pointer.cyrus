@@ -1,0 +1,12 @@
+// @stdout: 10 20
+
+import std::libc{printf, malloc, free};
+
+pub fn main() {
+    var ptr: int* = malloc(sizeof(int[2]));
+
+    ptr[0] = 10;
+    ptr[1] = 20;
+
+    printf("%d %d\n", ptr[0], ptr[1]);
+}
