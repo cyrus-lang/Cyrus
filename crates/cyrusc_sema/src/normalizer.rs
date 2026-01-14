@@ -19,7 +19,7 @@ use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
-    ModuleID, ScopeID, SymbolID,
+    ModuleID, ScopeID, SymbolID, mapping_ctx_arena,
     sigs::{FuncSig, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArgs,
@@ -80,12 +80,14 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::GenericParam(generic_param) => {
                 if let Some(sema_ty) = &self.current_obj_operand_ty {
                     if let Some(generic_type) = sema_ty.as_generic_type() {
-                        {
+                        mapping_ctx_arena!(self, mapping_ctx_arena, {
                             let mapping_ctx = generic_type.mapping_ctx.borrow();
-                            if let Some(sema_ty) = mapping_ctx.get_with_name(&generic_param.param_name.name) {
+                            if let Some(sema_ty) =
+                                mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_param.param_name.name)
+                            {
                                 return Some(sema_ty);
                             }
-                        }
+                        });
                     }
                 }
                 Some(SemanticType::GenericParam(generic_param))
@@ -121,10 +123,16 @@ impl<'a> AnalysisContext<'a> {
                         return None;
                     };
 
-                    if let Err(diag) = generic_type.init(generic_params, &(self.symbol_formatter)(scope_id_opt)) {
-                        self.reporter.report(diag);
-                        return None;
-                    }
+                    mapping_ctx_arena!(self, mapping_ctx_arena, {
+                        if let Err(diag) = generic_type.init(
+                            &*mapping_ctx_arena,
+                            generic_params,
+                            &(self.symbol_formatter)(scope_id_opt),
+                        ) {
+                            self.reporter.report(diag);
+                            return None;
+                        }
+                    });
 
                     Some(SemanticType::GenericType(generic_type))
                 }

@@ -31,7 +31,9 @@ use cyrusc_tast::{
         ValueCategory,
     },
     format::format_sema_ty,
-    generics::{mapping_ctx::GenericMappingCtx, monomorph::MonomorphRegistry, substitute::substitute_enum_sig},
+    generics::{
+        mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry, substitute::substitute_enum_sig,
+    },
     sigs::{EnumSig, FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
     stmts::*,
     types::{PlainType, SemanticType, TypedFuncType},
@@ -92,7 +94,7 @@ pub struct AnalysisContext<'a> {
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
     pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    pub(crate) mapping_ctx_arena: Vec<Rc<GenericMappingCtx>>,
+    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     control_stack: Vec<ControlContext>,
 }
 
@@ -103,6 +105,7 @@ impl<'a> AnalysisContext<'a> {
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<Mutex<Vec<SourceLoc>>>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         disable_warnings: bool,
     ) -> Self {
         let symbol_formatter = Self::build_symbol_formatter(resolver, module_id);
@@ -122,7 +125,7 @@ impl<'a> AnalysisContext<'a> {
             ty_caches: TypeResolverCaches::default(),
             disable_warnings,
             monomorph_registry,
-            mapping_ctx_arena: Vec::new(),
+            mapping_ctx_arena,
         }
     }
 
@@ -681,7 +684,9 @@ impl<'a> AnalysisContext<'a> {
                 let mut enum_sig = resolved_enum.enum_sig.clone();
 
                 if let Some(generic_type) = generic_type_opt {
-                    enum_sig = substitute_enum_sig(&enum_sig, generic_type.mapping_ctx.clone()).unwrap();
+                    enum_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                        substitute_enum_sig(&*mapping_ctx_arena, &enum_sig, generic_type.mapping_ctx.clone()).unwrap()
+                    });
                 }
 
                 return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);

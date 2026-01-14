@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -32,7 +32,10 @@ use cyrusc_scaffold_parser::{
     OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH, parse_project_toml,
 };
 use cyrusc_sema::analyze::AnalysisContext;
-use cyrusc_tast::{TypedProgramTree, generics::monomorph::MonomorphRegistry};
+use cyrusc_tast::{
+    TypedProgramTree,
+    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
+};
 use cyrusc_tui_utils::tui_error;
 use std::{
     cell::RefCell,
@@ -122,6 +125,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     // analysis
 
     let entry_points = Arc::new(Mutex::new(Vec::new()));
+    let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
     let mut has_error = false;
     let resolved_program_trees = resolver.program_trees.lock().unwrap();
@@ -134,6 +138,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
             program_tree_entry.program.clone(),
             entry_points.clone(),
             monomorph_registry.clone(),
+            mapping_ctx_arena.clone(),
             true,
         );
 
@@ -175,6 +180,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         &resolver,
         cir_monomorph_registry.clone(),
         &*mangling,
+        mapping_ctx_arena.clone(),
     );
 
     CodeGenContextBundle {

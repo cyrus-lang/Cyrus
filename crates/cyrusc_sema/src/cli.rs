@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -21,7 +21,7 @@ use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_sema::analyze::AnalysisContext;
-use cyrusc_tast::generics::monomorph::MonomorphRegistry;
+use cyrusc_tast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
     env,
     process::exit,
@@ -66,6 +66,7 @@ pub fn main() {
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
+                let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
                 let resolved_program_trees = resolver.program_trees.lock().unwrap();
                 for program_tree_entry in &*resolved_program_trees {
@@ -75,6 +76,7 @@ pub fn main() {
                         program_tree_entry.program.clone(),
                         entry_points.clone(),
                         monomorph_registry.clone(),
+                        mapping_ctx_arena.clone(),
                         true,
                     );
                     analyzer.analyze();

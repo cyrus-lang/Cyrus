@@ -23,12 +23,13 @@ use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
+use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
 use cyrusc_tast::types::{PlainType, ResolvedSymbol};
-use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
+use cyrusc_tast::{ModuleID, ScopeID, SymbolID, mapping_ctx_arena};
 use cyrusc_tast::{
     TypedProgramTree,
     exprs::*,
@@ -49,6 +50,7 @@ pub(crate) struct CIRWalk<'resolver> {
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
     pub(crate) symbol_formatter: Box<dyn Fn(SymbolID) -> String + 'resolver>,
+    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 }
 
 impl<'resolver> CIRWalk<'resolver> {
@@ -58,6 +60,7 @@ impl<'resolver> CIRWalk<'resolver> {
         module_id: ModuleID,
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
         mangler: &'resolver dyn ABINameMangler,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     ) -> Self {
         Self {
             program,
@@ -68,6 +71,7 @@ impl<'resolver> CIRWalk<'resolver> {
             current_self_ty: None,
             current_obj_operand_ty: None,
             symbol_formatter: build_panic_symbol_formatter(),
+            mapping_ctx_arena,
         }
     }
 
@@ -511,7 +515,14 @@ impl<'resolver> CIRWalk<'resolver> {
                         .as_enum()
                         .cloned()
                         .map(|resolved_enum| {
-                            substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap()
+                            mapping_ctx_arena!(self, mapping_ctx_arena, {
+                                substitute_enum_sig(
+                                    &*mapping_ctx_arena,
+                                    &resolved_enum.enum_sig,
+                                    generic_type.mapping_ctx.clone(),
+                                )
+                                .unwrap()
+                            })
                         })
                         .unwrap(),
                 )
@@ -1072,8 +1083,14 @@ impl<'resolver> CIRWalk<'resolver> {
                 let variant: CIREnumInitVariant;
                 let enum_ty: CIREnumTy;
                 if let Some(generic_type) = sema_ty.as_generic_type() {
-                    let enum_sig =
-                        substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap();
+                    let enum_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                        substitute_enum_sig(
+                            &*mapping_ctx_arena,
+                            &resolved_enum.enum_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap()
+                    });
                     enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
                 } else {
                     enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
@@ -1157,8 +1174,14 @@ impl<'resolver> CIRWalk<'resolver> {
             let variant: CIREnumInitVariant;
             let enum_ty: CIREnumTy;
             if let Some(generic_type) = sema_ty.as_generic_type() {
-                resolved_enum.enum_sig =
-                    substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx.clone()).unwrap();
+                resolved_enum.enum_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                    substitute_enum_sig(
+                        &*mapping_ctx_arena,
+                        &resolved_enum.enum_sig,
+                        generic_type.mapping_ctx.clone(),
+                    )
+                    .unwrap()
+                });
             }
 
             let typed_variant = resolved_enum
@@ -1213,11 +1236,14 @@ impl<'resolver> CIRWalk<'resolver> {
                 .or(sym.as_method().map(|resolved_method| resolved_method.func_sig.clone()))
                 .expect("Monomorphizaton not supported for the symbol.");
 
-            func_sig = substitute_func_sig(
-                &func_sig,
-                Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
-            )
-            .unwrap();
+            func_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                substitute_func_sig(
+                    &*mapping_ctx_arena,
+                    &func_sig,
+                    Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+                )
+                .unwrap()
+            });
 
             self.insert_monomorph_func_instance(scope_id_opt, monomorph_key, &func_sig);
 
@@ -1420,10 +1446,14 @@ impl<'resolver> CIRWalk<'resolver> {
                     if let Some(generic_type) = sema_ty.as_generic_type() {
                         {
                             let mapping_ctx = generic_type.mapping_ctx.borrow();
-                            return mapping_ctx
-                                .get_with_name(&generic_param.param_name.name)
-                                .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty))
-                                .unwrap();
+
+                            let cir_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                                mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_param.param_name.name)
+                            })
+                            .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty))
+                            .unwrap();
+
+                            return cir_ty;
                         }
                     }
                 }
@@ -1454,23 +1484,33 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         let generic_params = sym.get_generic_params().unwrap();
-        match generic_type.init(generic_params, &self.symbol_formatter) {
-            Ok(val) => val,
-            Err(e) => {
-                eprintln!("Failed to init generic type: {:?}.", e.kind.to_string())
+        mapping_ctx_arena!(self, mapping_ctx_arena, {
+            if let Err(err) = generic_type.init(&*mapping_ctx_arena, generic_params, &self.symbol_formatter) {
+                eprintln!("Failed to init generic type: {:?}.", err.kind.to_string())
             }
-        }
+        });
 
         if let Some(resolved_struct) = sym.as_struct() {
-            let struct_sig = substitute_struct_sig(&resolved_struct.struct_sig, generic_type.mapping_ctx).unwrap();
+            let struct_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                substitute_struct_sig(
+                    &*mapping_ctx_arena,
+                    &resolved_struct.struct_sig,
+                    generic_type.mapping_ctx,
+                )
+                .unwrap()
+            });
             let cir_struct_ty = self.lower_struct_sig_as_struct_ty(scope_id_opt, &struct_sig);
             CIRTy::Struct(cir_struct_ty)
         } else if let Some(resolved_enum) = sym.as_enum() {
-            let enum_sig = substitute_enum_sig(&resolved_enum.enum_sig, generic_type.mapping_ctx).unwrap();
+            let enum_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                substitute_enum_sig(&*mapping_ctx_arena, &resolved_enum.enum_sig, generic_type.mapping_ctx).unwrap()
+            });
             let cir_enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
             CIRTy::Enum(cir_enum_ty)
         } else if let Some(resolved_union) = sym.as_union() {
-            let union_sig = substitute_union_sig(&resolved_union.union_sig, generic_type.mapping_ctx).unwrap();
+            let union_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                substitute_union_sig(&*mapping_ctx_arena, &resolved_union.union_sig, generic_type.mapping_ctx).unwrap()
+            });
             let cir_union_ty = self.lower_union_sig_as_union_ty(scope_id_opt, &union_sig);
             CIRTy::Union(cir_union_ty)
         } else {
@@ -1553,12 +1593,14 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 }
 
+#[inline(never)]
 pub fn walk_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
     resolver: &Resolver,
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     mangler: &dyn ABINameMangler,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 ) -> Vec<Box<CIRProgramTree>> {
     use rayon::prelude::*;
 
@@ -1579,6 +1621,7 @@ pub fn walk_program_trees_in_parallel(
                     program_tree.module_id,
                     cir_monomorph_registry.clone(),
                     mangler,
+                    mapping_ctx_arena.clone(),
                 );
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
                 Box::new(cir_program_tree)
