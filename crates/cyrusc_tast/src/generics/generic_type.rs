@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -20,7 +20,7 @@ use crate::{
     format::format_sema_ty,
     generics::{
         diagnostics::GenericTypesDiagKind,
-        mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
+        mapping_ctx::{GenericMappingCtx, GenericMappingEntry}, mapping_ctx_arena::GenericMappingCtxArena,
     },
     stmts::{TypedGenericParamsList, TypedTypeArg, TypedTypeArgs},
 };
@@ -62,24 +62,25 @@ impl GenericType {
 
     fn check_for_overriding_parent_generic_param(
         &self,
+        mapping_ctx_arena: &dyn GenericMappingCtxArena,
         child_mapping_ctx: &GenericMappingCtx,
         generic_param_name: String,
         format_symbol: &impl Fn(SymbolID) -> String,
         loc: SourceLoc,
     ) -> Result<(), Diag> {
-        if let Some(parent_weak) = &child_mapping_ctx.parent {
-            if let Some(parent_rc) = parent_weak.upgrade() {
-                if let Some(sema_ty) = parent_rc.get_with_name(&generic_param_name) {
-                    return Err(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
-                            generic_param: generic_param_name.clone(),
-                            already_inferred_as: format_sema_ty(sema_ty, &format_symbol),
-                        }),
-                        location: Some(DiagLoc::new(loc)),
-                        hint: None,
-                    });
-                }
+        if let Some(parent_id) = child_mapping_ctx.get_parent_id() {
+            let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
+
+            if let Some(sema_ty) = parent_mapping_ctx.get_with_name(mapping_ctx_arena, &generic_param_name) {
+                return Err(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
+                        generic_param: generic_param_name.clone(),
+                        already_inferred_as: format_sema_ty(sema_ty, &format_symbol),
+                    }),
+                    location: Some(DiagLoc::new(loc)),
+                    hint: None,
+                });
             }
         }
 
@@ -88,6 +89,7 @@ impl GenericType {
 
     pub fn init(
         &mut self,
+        mapping_ctx_arena: &dyn GenericMappingCtxArena,
         template: TypedGenericParamsList,
         format_symbol: &impl Fn(SymbolID) -> String,
     ) -> Result<(), Diag> {
@@ -104,6 +106,7 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     self.check_for_overriding_parent_generic_param(
+                        mapping_ctx_arena,
                         &mapping_ctx,
                         generic_param.param_name.name.clone(),
                         format_symbol,
@@ -126,6 +129,7 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     self.check_for_overriding_parent_generic_param(
+                        mapping_ctx_arena,
                         &mapping_ctx,
                         key.clone(),
                         format_symbol,
@@ -135,7 +139,7 @@ impl GenericType {
                     let typed_identifier = template
                         .get_named(key)
                         .map(|generic_param| GenericMappingEntry::from(generic_param.param_name.clone()))
-                        .or(mapping_ctx.get_linked_by_name(&key))
+                        .or(mapping_ctx.get_linked_by_name(mapping_ctx_arena, &key))
                         .ok_or({
                             Diag {
                                 level: DiagLevel::Error,
@@ -155,6 +159,7 @@ impl GenericType {
 
     pub fn finalize(
         &self,
+        mapping_ctx_arena: &dyn GenericMappingCtxArena,
         template: TypedGenericParamsList,
         format_symbol: impl Fn(SymbolID) -> String,
     ) -> Result<&Self, Diag> {
@@ -162,7 +167,10 @@ impl GenericType {
         {
             let mut mapping_ctx = self.mapping_ctx.borrow_mut();
             for generic_param in &template.list {
-                if mapping_ctx.get_with_name(&generic_param.param_name.name).is_none() {
+                if mapping_ctx
+                    .get_with_name(mapping_ctx_arena, &generic_param.param_name.name)
+                    .is_none()
+                {
                     if let Some(default) = &generic_param.default {
                         mapping_ctx.insert_named(
                             GenericMappingEntry::from(generic_param.param_name.clone()),
@@ -174,7 +182,7 @@ impl GenericType {
         }
 
         // detect + collect unresolved generic params
-        let missing = self.collect_unresolved_generic_params(&template);
+        let missing = self.collect_unresolved_generic_params(mapping_ctx_arena, &template);
 
         if !missing.is_empty() {
             let ty = self.format(&format_symbol);
@@ -196,13 +204,21 @@ impl GenericType {
         Ok(self)
     }
 
-    fn collect_unresolved_generic_params(&self, template: &TypedGenericParamsList) -> Vec<TypedIdentifier> {
+    fn collect_unresolved_generic_params(
+        &self,
+        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        template: &TypedGenericParamsList,
+    ) -> Vec<TypedIdentifier> {
         let mapping_ctx = self.mapping_ctx.borrow();
 
         template
             .list
             .iter()
-            .filter(|gp| mapping_ctx.get_with_name(&gp.param_name.name).is_none())
+            .filter(|gp| {
+                mapping_ctx
+                    .get_with_name(mapping_ctx_arena, &gp.param_name.name)
+                    .is_none()
+            })
             .map(|gp| gp.param_name.clone())
             .collect()
     }
@@ -237,12 +253,9 @@ impl GenericType {
 }
 
 impl PartialEq for GenericType {
-    fn eq(&self, other: &Self) -> bool {
-        if self.base != other.base {
-            return false;
-        }
-
-        mapping_ctx_eq_refcell(&self.mapping_ctx, &other.mapping_ctx)
+    fn eq(&self, _other: &Self) -> bool {
+        // NOTE: Due to it's dependencies on mapping_ctx_arena it cannot be called directly.
+        unreachable!()
     }
 }
 

@@ -23,7 +23,7 @@ use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_sema::analyze::AnalysisContext;
-use cyrusc_tast::{TypedProgramTree, generics::monomorph::MonomorphRegistry};
+use cyrusc_tast::{TypedProgramTree, generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry}};
 use std::{
     cell::RefCell,
     env,
@@ -71,6 +71,7 @@ pub fn main() {
             }
 
             let entry_points = Arc::new(Mutex::new(Vec::new()));
+            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
             let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
@@ -82,12 +83,13 @@ pub fn main() {
                     program_tree_entry.program.clone(),
                     entry_points.clone(),
                     monomorph_registry.clone(),
+                    mapping_ctx_arena.clone(),
                     true,
                 );
 
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
-
+                
                 analyzed_program_trees.push(analyzer.program_tree.clone());
             }
 
@@ -118,6 +120,7 @@ pub fn main() {
                 &resolver,
                 cir_monomorph_registry,
                 &mangling,
+                mapping_ctx_arena.clone(),
             );
 
             dbg!(cir_program_trees);

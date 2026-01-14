@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -26,6 +26,7 @@ use cyrusc_tast::{
     exprs::*,
     format::format_sema_ty,
     generics::mapping_ctx::mapping_ctx_eq_refcell,
+    mapping_ctx_arena,
     types::{PlainType, SemanticType},
 };
 
@@ -403,7 +404,13 @@ impl<'a> AnalysisContext<'a> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
-            let equal_mapping_ctx = mapping_ctx_eq_refcell(&generic_type1.mapping_ctx, &generic_type2.mapping_ctx);
+            let equal_mapping_ctx = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                mapping_ctx_eq_refcell(
+                    &*mapping_ctx_arena,
+                    &generic_type1.mapping_ctx,
+                    &generic_type2.mapping_ctx,
+                )
+            });
             let equal_base = generic_type1.base == generic_type2.base;
             let is_enum = self
                 .resolver

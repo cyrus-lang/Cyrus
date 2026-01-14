@@ -16,7 +16,10 @@
  */
 use crate::{
     SymbolID,
-    generics::mapping_ctx::{GenericMappingCtx, mapping_ctx_eq_refcell},
+    generics::{
+        mapping_ctx::{GenericMappingCtx, mapping_ctx_eq_refcell},
+        mapping_ctx_arena::GenericMappingCtxArena,
+    },
     stmts::TypedBlockStmt,
 };
 use rand::Rng;
@@ -136,6 +139,7 @@ impl MonomorphRegistry {
 
     pub fn get_func_entry_by_mapping_ctx(
         &self,
+        mapping_ctx_arena: &dyn GenericMappingCtxArena,
         func_symbol_id: SymbolID,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
     ) -> Option<&MonomorphKey> {
@@ -144,6 +148,7 @@ impl MonomorphRegistry {
             .find(|(_, monomorph_entry)| match monomorph_entry {
                 MonomorphEntry::Func(monomorph_func_entry) => {
                     mapping_ctx_eq_refcell(
+                        mapping_ctx_arena,
                         &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
                         &mapping_ctx,
                     ) && monomorph_entry.base_symbol() == func_symbol_id
