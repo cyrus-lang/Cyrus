@@ -144,7 +144,6 @@ impl Parser {
                     continue;
                 }
                 TokenKind::GreaterThan => {
-                    // self.next_token();
                     break;
                 }
                 _ => {
