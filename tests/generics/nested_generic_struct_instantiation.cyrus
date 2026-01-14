@@ -1,0 +1,24 @@
+// @stdout: id: 1, name: Cyrus, valid: true
+
+import std::libc{printf};
+
+struct Pair<K, V> {
+    pub key: K;
+    pub value: V;
+}
+
+fn format_bool(x: bool) char* {
+    if (x) { return "true"; }
+    else { return "false"; }
+}
+
+pub fn main() {
+    const inst = Pair<K = uint> {
+        key: 1,
+        value: Pair<char*, bool> {
+            key: "Cyrus",
+            value: true
+        }
+    };
+    printf("id: %d, name: %s, valid: %s\n", inst.key, inst.value.key, format_bool(inst.value.value));
+}
