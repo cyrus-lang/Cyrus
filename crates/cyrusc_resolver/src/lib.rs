@@ -31,6 +31,7 @@ use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
 use cyrusc_tast::exprs::*;
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::mapping_ctx::GenericMappingCtx;
+use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::types::*;
@@ -61,6 +62,7 @@ pub struct Resolver {
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    pub mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     already_imported_modules: HashSet<ImportKey>,
     current_module: Option<ModuleID>,
     current_object: Option<SymbolID>,
@@ -106,6 +108,7 @@ impl Resolver {
     pub fn new(
         opts: ModuleLoaderOptions,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         master_module_file_path: String,
     ) -> Self {
         let file_paths = Arc::new(Mutex::new(HashMap::new()));
@@ -124,6 +127,7 @@ impl Resolver {
             current_object: None,
             current_object_generic_params: None,
             master_module_file_path,
+            mapping_ctx_arena,
         }
     }
 
@@ -642,6 +646,7 @@ impl Resolver {
                         base: symbol_id,
                         type_args,
                         mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+                        mapping_ctx_arena: self.mapping_ctx_arena.clone(),
                         altered_generic_params: None,
                         is_const,
                         loc: SourceLoc::from_loc(generic_inst.loc.clone(), self.current_file_path()),

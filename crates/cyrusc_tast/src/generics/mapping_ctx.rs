@@ -21,7 +21,14 @@ use crate::{
     generics::mapping_ctx_arena::{GenericMappingCtxArena, ParentGenericMappingCtxID},
     types::SemanticType,
 };
-use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Display,
+    hash::Hash,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 pub type ChildGenericParamSymbolID = SymbolID;
 
@@ -37,37 +44,44 @@ pub struct GenericMappingEntry {
     pub name: String,
 }
 
-impl PartialEq for GenericMappingCtx {
-    fn eq(&self, _other: &Self) -> bool {
-        // NOTE: Due to it's dependencies on mapping_ctx_arena it cannot be called directly.
-        unreachable!()
-    }
-}
-
 pub fn mapping_ctx_eq(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     a: &GenericMappingCtx,
     b: &GenericMappingCtx,
 ) -> bool {
-    let a = normalize_generic_mapping_ctx(mapping_ctx_arena, a);
-    let b = normalize_generic_mapping_ctx(mapping_ctx_arena, b);
+    let (a, b) = {
+        let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+        (
+            normalize_generic_mapping_ctx(&*mapping_ctx_arena, a),
+            normalize_generic_mapping_ctx(&*mapping_ctx_arena, b),
+        )
+    };
 
     if a.named.len() != b.named.len() || a.links != b.links {
         return false;
     }
 
     for (k, v1) in &a.named {
-        match b.get_with_name(mapping_ctx_arena, &k.name) {
+        let sema_ty = {
+            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+            b.get_with_name(&*mapping_ctx_arena, &k.name)
+        };
+
+        match sema_ty {
             Some(v2) if *v1 == v2 => {}
             _ => return false,
         }
     }
 
     match (
-        a.parent
-            .and_then(|parent_id| Some(mapping_ctx_arena.get(parent_id).unwrap())),
-        b.parent
-            .and_then(|parent_id| Some(mapping_ctx_arena.get(parent_id).unwrap())),
+        a.parent.and_then(|parent_id| {
+            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+            Some(mapping_ctx_arena.get(parent_id).unwrap().clone())
+        }),
+        b.parent.and_then(|parent_id| {
+            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+            Some(mapping_ctx_arena.get(parent_id).unwrap().clone())
+        }),
     ) {
         (Some(pa), Some(pb)) => mapping_ctx_eq(mapping_ctx_arena, &pa, &pb),
         (None, None) => true,
@@ -76,7 +90,7 @@ pub fn mapping_ctx_eq(
 }
 
 pub fn mapping_ctx_eq_refcell(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     a: &Rc<RefCell<GenericMappingCtx>>,
     b: &Rc<RefCell<GenericMappingCtx>>,
 ) -> bool {
@@ -117,6 +131,11 @@ pub fn normalize_generic_mapping_ctx(
 }
 
 impl GenericMappingCtx {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.named.is_empty() && self.links.is_empty() && self.parent.is_none()
+    }
+
     #[inline]
     pub fn get_parent_id(&self) -> Option<ParentGenericMappingCtxID> {
         self.parent
@@ -228,15 +247,6 @@ impl GenericMappingCtx {
     }
 }
 
-impl Hash for GenericMappingCtx {
-    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {
-        // NOTE: Due to it's dependencies on mapping_ctx_arena it cannot be hashed.
-        unreachable!()
-    }
-}
-
-impl Eq for GenericMappingCtx {}
-
 impl PartialEq for GenericMappingEntry {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
@@ -266,6 +276,7 @@ impl From<TypedIdentifier> for GenericMappingEntry {
 #[macro_export]
 macro_rules! mapping_ctx_arena {
     ($self:expr, $export:ident, $body:stmt) => {{
+        #[allow(unused_mut)]
         let mut $export = $self.mapping_ctx_arena.lock().unwrap();
         $body
     }};

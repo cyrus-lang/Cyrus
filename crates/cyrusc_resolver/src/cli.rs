@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -19,7 +19,7 @@ use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use cyrusc_tast::generics::monomorph::MonomorphRegistry;
+use cyrusc_tast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
     env,
     process::exit,
@@ -54,9 +54,15 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
+            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
             let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
-            let mut resolver = Resolver::new(module_loader_opts, monomorph_registry, file_path.clone());
+            let mut resolver = Resolver::new(
+                module_loader_opts,
+                monomorph_registry,
+                mapping_ctx_arena.clone(),
+                file_path.clone(),
+            );
             let module_id = generate_module_id();
             let typed_program_tree = resolver
                 .resolve_module(module_id, &program, &mut Visiting::new(), true, file_path.clone())

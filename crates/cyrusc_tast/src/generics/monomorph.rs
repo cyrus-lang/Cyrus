@@ -23,7 +23,12 @@ use crate::{
     stmts::TypedBlockStmt,
 };
 use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 pub type MonomorphID = u32;
 
@@ -139,7 +144,7 @@ impl MonomorphRegistry {
 
     pub fn get_func_entry_by_mapping_ctx(
         &self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         func_symbol_id: SymbolID,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
     ) -> Option<&MonomorphKey> {
@@ -148,7 +153,7 @@ impl MonomorphRegistry {
             .find(|(_, monomorph_entry)| match monomorph_entry {
                 MonomorphEntry::Func(monomorph_func_entry) => {
                     mapping_ctx_eq_refcell(
-                        mapping_ctx_arena,
+                        mapping_ctx_arena.clone(),
                         &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
                         &mapping_ctx,
                     ) && monomorph_entry.base_symbol() == func_symbol_id

@@ -146,13 +146,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             (SemanticType::GenericType(generic_type1), SemanticType::GenericType(generic_type2)) => {
-                mapping_ctx_arena!(self, mapping_ctx_arena, {
-                    mapping_ctx_eq_refcell(
-                        &*mapping_ctx_arena,
-                        &generic_type1.mapping_ctx,
-                        &generic_type2.mapping_ctx,
-                    )
-                })
+                mapping_ctx_eq_refcell(
+                    self.mapping_ctx_arena.clone(),
+                    &generic_type1.mapping_ctx,
+                    &generic_type2.mapping_ctx,
+                )
             }
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,

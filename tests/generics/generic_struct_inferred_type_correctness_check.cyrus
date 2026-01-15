@@ -1,0 +1,21 @@
+// @stdout: correct
+
+import std::libc{printf};
+
+struct Wrapper<T> {
+    pub value: T;
+}
+
+pub fn main() {
+    const inst1 = Wrapper<Wrapper<uint64>> {
+        value: Wrapper {
+            value: 3
+        }
+    };
+
+    if (sizeof(inst1.value.value) != 8) {
+        printf("not correct\n");
+    } else {
+        printf("correct\n");
+    }
+}
