@@ -22,8 +22,8 @@ use cyrusc_tast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
     generics::{
-        generic_type::{GenericType, debug_generic_type},
-        mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
+        generic_type::GenericType,
+        mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
         monomorph::{MonomorphKey, SpecializedFuncEntry},
     },
     mapping_ctx_arena,

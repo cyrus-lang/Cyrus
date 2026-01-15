@@ -28,7 +28,7 @@ use cyrusc_tast::{
     exprs::*,
     format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
-        generic_type::{GenericType, debug_generic_type},
+        generic_type::GenericType,
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
@@ -3885,6 +3885,7 @@ fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
         TokenKind::UIntPtr => PlainType::UIntPtr,
         TokenKind::IntPtr => PlainType::IntPtr,
         TokenKind::USize => PlainType::USize,
+        TokenKind::ISize => PlainType::ISize,
         TokenKind::Int => PlainType::Int,
         TokenKind::Int8 => PlainType::Int8,
         TokenKind::Int16 => PlainType::Int16,
