@@ -22,8 +22,8 @@ use cyrusc_tast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
     generics::{
-        generic_type::GenericType,
-        mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
+        generic_type::{GenericType, debug_generic_type},
+        mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
         monomorph::{MonomorphKey, SpecializedFuncEntry},
     },
     mapping_ctx_arena,
@@ -86,10 +86,28 @@ impl<'a> AnalysisContext<'a> {
 
         let ctx = generic_type.mapping_ctx.borrow();
 
-        mapping_ctx_arena!(self, mapping_ctx_arena, {
+        let inferred_sema_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
             ctx.get_with_name(&*mapping_ctx_arena, &generic_param.param_name.name)
                 .or(generic_param.default.clone().map(|sema_ty| *sema_ty))
-        })
+        });
+
+        // NOTE: here we check that if generic mapping ctx is empty,
+        // we consider that there is no expected type for the generic param.
+        // this is special because to prevent nested parent mapping ctx creation in arena.
+        if let Some(generic_type) = inferred_sema_ty
+            .as_ref()
+            .and_then(|sema_ty| sema_ty.as_generic_type().cloned())
+        {
+            let is_generic_mapping_ctx_empty = { generic_type.mapping_ctx.borrow().is_empty() };
+
+            if is_generic_mapping_ctx_empty {
+                None
+            } else {
+                inferred_sema_ty
+            }
+        } else {
+            inferred_sema_ty
+        }
     }
 
     pub(crate) fn register_specialized_generic_func(
@@ -105,16 +123,14 @@ impl<'a> AnalysisContext<'a> {
         let (mut template_body, mapping_ctx, base_symbol) = {
             let ctx = self.monomorph_registry.lock().unwrap();
 
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                if let Some(monomorph_key) = ctx.get_func_entry_by_mapping_ctx(
-                    &*mapping_ctx_arena,
-                    func_sig.symbol_id.unwrap(),
-                    generic_type.mapping_ctx.clone(),
-                ) {
-                    // already registered
-                    return Some(monomorph_key.clone());
-                }
-            });
+            if let Some(monomorph_key) = ctx.get_func_entry_by_mapping_ctx(
+                self.mapping_ctx_arena.clone(),
+                func_sig.symbol_id.unwrap(),
+                generic_type.mapping_ctx.clone(),
+            ) {
+                // already registered
+                return Some(monomorph_key.clone());
+            }
 
             let generic_template_entry = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
 
@@ -281,8 +297,14 @@ impl<'a> AnalysisContext<'a> {
                 .unwrap_or(GenericMappingCtx::new_root()),
         ));
 
-        let mut generic_type =
-            GenericType::new_unresolved(sym.get_symbol_id(), type_args, generic_mapping_ctx, is_const, loc);
+        let mut generic_type = GenericType::new_unresolved(
+            sym.get_symbol_id(),
+            type_args,
+            generic_mapping_ctx,
+            self.mapping_ctx_arena.clone(),
+            is_const,
+            loc,
+        );
 
         mapping_ctx_arena!(self, mapping_ctx_arena, {
             generic_type.init(
@@ -302,104 +324,88 @@ impl<'a> AnalysisContext<'a> {
         expr_ty: Option<SemanticType>,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let Some(generic_type) = generic_type_opt.clone() else {
-            return None;
-        };
-
-        let generic_param = target_ty.as_generic_param().cloned()?;
-        let generic_mapping_entry = GenericMappingEntry::from(generic_param.param_name);
-        let expr_ty = expr_ty?;
-
-        let mapping_ctx_rc = &generic_type.mapping_ctx;
-        let cloned_ctx = mapping_ctx_rc.borrow().clone();
-
-        // resolve linked parent by name
-        let linked_parent_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
-            cloned_ctx.get_linked_by_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
-        });
-
-        let mut ctx = mapping_ctx_rc.borrow_mut();
-
-        // if a local value exists, use it immediately
-        {
-            let local_sema_ty_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
-            });
-
-            if let Some(local_sema_ty) = local_sema_ty_opt {
-                if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), local_sema_ty.clone(), loc.clone()) {
+        macro_rules! check_type_mismatch {
+            ($lhs:expr, $rhs:expr) => {
+                if !self.check_type_mismatch(scope_id_opt, $lhs.clone(), $rhs.clone(), loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty(local_sema_ty, &(self.symbol_formatter)(scope_id_opt)),
-                            rhs_type: format_sema_ty(expr_ty, &(self.symbol_formatter)(scope_id_opt)),
+                            lhs_type: format_sema_ty($lhs, &(self.symbol_formatter)(scope_id_opt)),
+                            rhs_type: format_sema_ty($rhs, &(self.symbol_formatter)(scope_id_opt)),
                         }),
                         location: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
                     return None;
                 }
-
-                return Some(local_sema_ty);
-            }
+            };
         }
 
-        // if any parent directly has a concrete value for this symbol id, obey it
-        if let Some(parent_val) = ctx.get_parent_id().and_then(|parent_id| {
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                let generic_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
-                generic_mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
-            })
-        }) {
-            if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), parent_val.clone(), loc.clone()) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_sema_ty(parent_val.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                        rhs_type: format_sema_ty(expr_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                    }),
-                    location: Some(DiagLoc::new(loc.clone())),
-                    hint: None,
-                });
-                return None;
-            }
+        let Some(generic_type) = generic_type_opt.clone() else {
+            return None;
+        };
 
-            ctx.insert_named(generic_mapping_entry.clone(), parent_val.clone());
-            return Some(parent_val);
-        }
+        // skip function if situation is not good for type inferring
+        let generic_param = target_ty.as_generic_param().cloned()?;
+        let generic_mapping_entry = GenericMappingEntry::from(generic_param.param_name);
+        let expr_ty = expr_ty?;
 
-        // if a linked parent by name exists, resolve its type
         {
-            if let Some(parent_entry) = linked_parent_opt {
-                let resolved_ty_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                    ctx.get_with_name(&*mapping_ctx_arena, &parent_entry.name)
+            let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
+
+            // resolve linked parent by name
+            let linked_parent_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                mapping_ctx.get_linked_by_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
+            });
+
+            // if a local value exists, use it immediately
+            {
+                let sema_ty_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                    mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
                 });
 
-                if let Some(resolved_ty) = resolved_ty_opt {
-                    if !self.check_type_mismatch(scope_id_opt, expr_ty.clone(), resolved_ty.clone(), loc.clone()) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                                lhs_type: format_sema_ty(resolved_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                                rhs_type: format_sema_ty(expr_ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                            }),
-                            location: Some(DiagLoc::new(loc)),
-                            hint: None,
-                        });
-                        return None;
-                    }
+                if let Some(sema_ty) = sema_ty_opt {
+                    check_type_mismatch!(expr_ty, sema_ty);
 
-                    ctx.insert_named(generic_mapping_entry.clone(), resolved_ty.clone());
-                    ctx.insert_linked(generic_mapping_entry.clone(), parent_entry);
-
-                    return Some(resolved_ty);
+                    return Some(sema_ty);
                 }
             }
-        }
 
-        // otherwise, just insert the expression type as the generic param value
-        ctx.insert_named(generic_mapping_entry.clone(), expr_ty.clone());
-        Some(expr_ty)
+            // if any parent directly has a concrete value for this symbol id, use it
+            if let Some(parent_sema_ty) = mapping_ctx.get_parent_id().and_then(|parent_id| {
+                mapping_ctx_arena!(self, mapping_ctx_arena, {
+                    let generic_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
+                    generic_mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
+                })
+            }) {
+                check_type_mismatch!(expr_ty, parent_sema_ty);
+
+                mapping_ctx.insert_named(generic_mapping_entry.clone(), parent_sema_ty.clone());
+                return Some(parent_sema_ty);
+            }
+
+            // if a linked parent by name exists, resolve its type
+            {
+                if let Some(parent_entry) = linked_parent_opt {
+                    let parent_sema_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                        mapping_ctx.get_with_name(&*mapping_ctx_arena, &parent_entry.name)
+                    });
+
+                    if let Some(sema_ty) = parent_sema_ty {
+                        check_type_mismatch!(expr_ty, sema_ty);
+
+                        mapping_ctx.insert_named(generic_mapping_entry.clone(), sema_ty.clone());
+                        mapping_ctx.insert_linked(generic_mapping_entry.clone(), parent_entry);
+
+                        return Some(sema_ty);
+                    }
+                }
+            }
+
+            // otherwise, just insert the expression type as the generic param value
+            mapping_ctx.insert_named(generic_mapping_entry.clone(), expr_ty.clone());
+            Some(expr_ty)
+        }
     }
 
     pub(crate) fn merge_generic_operand_as_expected_type(
@@ -409,26 +415,21 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let generic_type = operand_ty.as_generic_type()?;
 
-        // FIXME
-        // FIXME
-        // FIXME
-        // FIXME
-        // FIXME
-        // let parent_id = expected_type
-        //     .as_ref()
-        //     .and_then(|t| t.as_generic_type())
-        //     .map(|expected_generic| {
-        //         let parent_generic_mapping_ctx_id =
-        //         self.mapping_ctx_arena.insert(expected_generic.mapping_ctx.borrow().clone())
-        //     });
+        let parent_id_opt = expected_type
+            .as_ref()
+            .and_then(|t| t.as_generic_type())
+            .map(|expected_generic| {
+                mapping_ctx_arena!(self, mapping_ctx_arena, {
+                    mapping_ctx_arena.insert(expected_generic.mapping_ctx.borrow().clone())
+                })
+            });
 
-        // {
-        //     let mut ctx = generic_type.mapping_ctx.borrow_mut();
-        //     ctx.parent = parent_id;
-        // }
+        if let Some(parent_id) = parent_id_opt {
+            let mut ctx = generic_type.mapping_ctx.borrow_mut();
+            ctx.set_parent_id(parent_id);
+        }
 
-        // Some(SemanticType::GenericType(generic_type.clone()))
-        todo!();
+        Some(SemanticType::GenericType(generic_type.clone()))
     }
 
     pub(crate) fn export_expected_generic_mapping_ctx(

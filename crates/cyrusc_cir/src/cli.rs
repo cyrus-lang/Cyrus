@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -23,7 +23,10 @@ use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_sema::analyze::AnalysisContext;
-use cyrusc_tast::{TypedProgramTree, generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry}};
+use cyrusc_tast::{
+    TypedProgramTree,
+    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
+};
 use std::{
     cell::RefCell,
     env,
@@ -60,9 +63,15 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
+            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
             let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
-            let mut resolver = Resolver::new(module_loader_opts, monomorph_registry.clone(), file_path.clone());
+            let mut resolver = Resolver::new(
+                module_loader_opts,
+                monomorph_registry.clone(),
+                mapping_ctx_arena.clone(),
+                file_path.clone(),
+            );
             let module_id = generate_module_id();
             resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, file_path.clone());
             if resolver.reporter.has_errors() {
@@ -71,7 +80,6 @@ pub fn main() {
             }
 
             let entry_points = Arc::new(Mutex::new(Vec::new()));
-            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
             let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
@@ -89,7 +97,7 @@ pub fn main() {
 
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
-                
+
                 analyzed_program_trees.push(analyzer.program_tree.clone());
             }
 

@@ -28,7 +28,7 @@ use cyrusc_tast::{
     exprs::*,
     format::{format_func_ty, format_sema_ty, format_typed_expr},
     generics::{
-        generic_type::GenericType,
+        generic_type::{GenericType, debug_generic_type},
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
@@ -38,7 +38,8 @@ use cyrusc_tast::{
     },
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
+        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArg,
+        TypedTypeArgs,
     },
     types::*,
     *,
@@ -742,6 +743,8 @@ impl<'a> AnalysisContext<'a> {
                     ) {
                         return None;
                     };
+
+                    self.normalize_type_args(scope_id_opt, field_access.type_args.as_mut());
                 }
             }
         }
@@ -854,6 +857,29 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn normalize_type_args(&mut self, scope_id_opt: Option<ScopeID>, type_args_opt: Option<&mut TypedTypeArgs>) {
+        let Some(type_args) = type_args_opt else {
+            return;
+        };
+
+        for type_arg in type_args {
+            match type_arg {
+                TypedTypeArg::Positional { ty, loc, .. } => {
+                    *ty = match self.normalize_type(scope_id_opt, ty.clone(), loc.clone(), false) {
+                        Some(sema_ty) => sema_ty,
+                        None => continue,
+                    };
+                }
+                TypedTypeArg::Named { ty, loc, .. } => {
+                    *ty = match self.normalize_type(scope_id_opt, ty.clone(), loc.clone(), false) {
+                        Some(sema_ty) => sema_ty,
+                        None => continue,
+                    };
+                }
+            }
+        }
+    }
+
     /// Analyzes struct/union initialization expressions (e.g., `Point { x: 1, y: 2 }`).
     ///
     /// Type-checks struct and union initialization syntax, handling both generic and
@@ -895,6 +921,8 @@ impl<'a> AnalysisContext<'a> {
             struct_init.loc.clone(),
         );
 
+        self.normalize_type_args(scope_id_opt, struct_init.type_args.as_mut());
+
         let mut sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym.clone())?;
 
         if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type.clone()) {
@@ -917,7 +945,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let (generic_params, generic_mapping_ctx) =
+        let (generic_params, parent_mapping_ctx) =
             self.initial_generic_params_and_mapping_ctx(&sema_ty, sym.get_generic_params().as_ref(), expected_type);
 
         let generic_type_opt = match self.init_generic_type_with_symbol_id(
@@ -925,7 +953,7 @@ impl<'a> AnalysisContext<'a> {
             local_scope_opt.clone(),
             pure_symbol_id,
             &struct_init.type_args,
-            generic_mapping_ctx,
+            parent_mapping_ctx,
             generic_params.as_ref(),
             struct_init.is_const,
             struct_init.loc.clone(),
@@ -1024,6 +1052,16 @@ impl<'a> AnalysisContext<'a> {
 
                 func_sig = sym.as_func().unwrap().func_sig.clone();
 
+                if self.check_unexpected_type_args(
+                    &func_sig.generic_params,
+                    &func_call.type_args,
+                    func_call.loc.clone(),
+                ) {
+                    return None;
+                }
+
+                self.normalize_type_args(scope_id_opt, func_call.type_args.as_mut());
+
                 let expected_mapping_ctx = self.export_expected_generic_mapping_ctx(expected_type);
 
                 let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
@@ -1045,6 +1083,16 @@ impl<'a> AnalysisContext<'a> {
 
                 generic_type_opt = inner_generic_type_opt;
             } else {
+                if func_call.type_args.is_some() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                        location: Some(DiagLoc::new(func_call.loc.clone())),
+                        hint: Some("Lambdas never accept type args.".to_string()),
+                    });
+                    return None;
+                }
+
                 // normalize if is lambda call
                 self.normalize_func_type_params(&mut func_type.params, func_call.loc.clone());
 
@@ -1335,6 +1383,7 @@ impl<'a> AnalysisContext<'a> {
                 base: method_call_operand_ty.get_symbol_id().unwrap(),
                 type_args: Vec::new(),
                 mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
+                mapping_ctx_arena: self.mapping_ctx_arena.clone(),
                 altered_generic_params: None,
                 is_const: false,
                 loc: method_call.loc.clone(),
@@ -1644,6 +1693,8 @@ impl<'a> AnalysisContext<'a> {
         ) {
             return None;
         }
+
+        self.normalize_type_args(scope_id_opt, method_call.type_args.as_mut());
 
         let first_param_opt = resolved_method.func_sig.params.list.first();
 
@@ -2428,9 +2479,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_type) = generic_type_opt {
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
+            let final_generic_type = mapping_ctx_arena!(self, mapping_ctx_arena, {
                 // validate generic type instantiation
-                let final_generic_type = match generic_type.finalize(
+                match generic_type.finalize(
                     &*mapping_ctx_arena,
                     resolved_struct.struct_sig.generic_params.clone().unwrap(),
                     (self.symbol_formatter)(scope_id_opt),
@@ -2440,10 +2491,10 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(diag);
                         return None;
                     }
-                };
+                }
+            });
 
-                Some(SemanticType::GenericType(final_generic_type.clone()))
-            })
+            Some(SemanticType::GenericType(final_generic_type.clone()))
         } else {
             if struct_init.is_const {
                 Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(

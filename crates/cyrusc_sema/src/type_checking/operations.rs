@@ -26,7 +26,6 @@ use cyrusc_tast::{
     exprs::*,
     format::format_sema_ty,
     generics::mapping_ctx::mapping_ctx_eq_refcell,
-    mapping_ctx_arena,
     types::{PlainType, SemanticType},
 };
 
@@ -404,13 +403,11 @@ impl<'a> AnalysisContext<'a> {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
-            let equal_mapping_ctx = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                mapping_ctx_eq_refcell(
-                    &*mapping_ctx_arena,
-                    &generic_type1.mapping_ctx,
-                    &generic_type2.mapping_ctx,
-                )
-            });
+            let equal_mapping_ctx = mapping_ctx_eq_refcell(
+                self.mapping_ctx_arena.clone(),
+                &generic_type1.mapping_ctx,
+                &generic_type2.mapping_ctx,
+            );
             let equal_base = generic_type1.base == generic_type2.base;
             let is_enum = self
                 .resolver

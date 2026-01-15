@@ -111,8 +111,14 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     // init monomorph registry
     let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+    let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
-    let mut resolver = Resolver::new(module_loader_opts, monomorph_registry.clone(), entry_file.clone());
+    let mut resolver = Resolver::new(
+        module_loader_opts,
+        monomorph_registry.clone(),
+        mapping_ctx_arena.clone(),
+        entry_file.clone(),
+    );
 
     // resolve the entry module
     let module_id = generate_module_id();
@@ -125,7 +131,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     // analysis
 
     let entry_points = Arc::new(Mutex::new(Vec::new()));
-    let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
     let mut has_error = false;
     let resolved_program_trees = resolver.program_trees.lock().unwrap();

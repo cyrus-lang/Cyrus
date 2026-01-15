@@ -20,23 +20,28 @@ use crate::{
     format::format_sema_ty,
     generics::{
         diagnostics::GenericTypesDiagKind,
-        mapping_ctx::{GenericMappingCtx, GenericMappingEntry}, mapping_ctx_arena::GenericMappingCtxArena,
+        mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
+        mapping_ctx_arena::GenericMappingCtxArena,
     },
     stmts::{TypedGenericParamsList, TypedTypeArg, TypedTypeArgs},
+    types::SemanticType,
 };
 use cyrusc_ast::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use std::{
     cell::RefCell,
+    fmt::Debug,
     hash::{Hash, Hasher},
     rc::Rc,
+    sync::{Arc, Mutex},
 };
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone)]
 pub struct GenericType {
     pub base: SymbolID,
     pub type_args: TypedTypeArgs,
     pub mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
+    pub mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub altered_generic_params: Option<TypedGenericParamsList>,
     pub is_const: bool,
     pub loc: SourceLoc,
@@ -47,6 +52,7 @@ impl GenericType {
         base: SymbolID,
         type_args: TypedTypeArgs,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         is_const: bool,
         loc: SourceLoc,
     ) -> Self {
@@ -54,6 +60,7 @@ impl GenericType {
             base,
             type_args,
             mapping_ctx,
+            mapping_ctx_arena,
             altered_generic_params: None,
             is_const,
             loc,
@@ -65,22 +72,30 @@ impl GenericType {
         mapping_ctx_arena: &dyn GenericMappingCtxArena,
         child_mapping_ctx: &GenericMappingCtx,
         generic_param_name: String,
+        type_arg_sema_ty: Option<SemanticType>,
         format_symbol: &impl Fn(SymbolID) -> String,
         loc: SourceLoc,
     ) -> Result<(), Diag> {
         if let Some(parent_id) = child_mapping_ctx.get_parent_id() {
             let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
 
-            if let Some(sema_ty) = parent_mapping_ctx.get_with_name(mapping_ctx_arena, &generic_param_name) {
-                return Err(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
-                        generic_param: generic_param_name.clone(),
-                        already_inferred_as: format_sema_ty(sema_ty, &format_symbol),
-                    }),
-                    location: Some(DiagLoc::new(loc)),
-                    hint: None,
-                });
+            if let Some(parent_sema_ty) = parent_mapping_ctx.get_with_name(mapping_ctx_arena, &generic_param_name) {
+                // NOTE: complain only and only if overrode type is not the same!
+                // situations come that type args may always presented explicitly, so we should not complain about that.
+                if type_arg_sema_ty
+                    .map(|inferred_ty| inferred_ty != parent_sema_ty)
+                    .unwrap_or(false)
+                {
+                    return Err(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
+                            generic_param: generic_param_name.clone(),
+                            already_inferred_as: format_sema_ty(parent_sema_ty, &format_symbol),
+                        }),
+                        location: Some(DiagLoc::new(loc)),
+                        hint: None,
+                    });
+                }
             }
         }
 
@@ -109,6 +124,7 @@ impl GenericType {
                         mapping_ctx_arena,
                         &mapping_ctx,
                         generic_param.param_name.name.clone(),
+                        Some(ty.clone()),
                         format_symbol,
                         loc.clone(),
                     )?;
@@ -132,6 +148,7 @@ impl GenericType {
                         mapping_ctx_arena,
                         &mapping_ctx,
                         key.clone(),
+                        Some(ty.clone()),
                         format_symbol,
                         loc.clone(),
                     )?;
@@ -253,15 +270,142 @@ impl GenericType {
 }
 
 impl PartialEq for GenericType {
-    fn eq(&self, _other: &Self) -> bool {
-        // NOTE: Due to it's dependencies on mapping_ctx_arena it cannot be called directly.
-        unreachable!()
+    fn eq(&self, other: &Self) -> bool {
+        if self.base != other.base {
+            return false;
+        }
+
+        mapping_ctx_eq_refcell(self.mapping_ctx_arena.clone(), &self.mapping_ctx, &other.mapping_ctx)
     }
 }
 
 impl Hash for GenericType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.base.hash(state);
-        self.mapping_ctx.borrow().hash(state);
     }
+}
+
+impl Debug for GenericType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GenericType")
+            .field("base", &self.base)
+            .field("type_args", &self.type_args)
+            .field("mapping_ctx", &self.mapping_ctx)
+            .field("altered_generic_params", &self.altered_generic_params)
+            .field("is_const", &self.is_const)
+            .field("loc", &self.loc)
+            .finish()
+    }
+}
+
+impl Eq for GenericType {}
+
+#[cfg(debug_assertions)]
+pub fn debug_generic_type<'a>(
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    generic_type: &GenericType,
+    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
+) {
+    use crate::types::SemanticType;
+
+    println!("-----------------------");
+    println!("Base: {}", format_symbol(generic_type.base));
+
+    if let Some(generic_params) = &generic_type.altered_generic_params {
+        println!("Altered Generic Params: ");
+
+        for generic_param in &generic_params.list {
+            print!("{}", generic_param.param_name.name.clone());
+            if let Some(default) = &generic_param.default {
+                print!(" default({})", format_sema_ty(*default.clone(), format_symbol));
+            }
+            if let Some(bounds) = &generic_param.bounds {
+                print!(
+                    " bounds({})",
+                    bounds
+                        .iter()
+                        .map(|bound| {
+                            let type_args = bound
+                                .type_args
+                                .iter()
+                                .map(|type_arg| match type_arg {
+                                    TypedTypeArg::Positional { idx, ty, .. } => {
+                                        format!("  {}:{}\n", idx, format_sema_ty(ty.clone(), format_symbol))
+                                    }
+                                    TypedTypeArg::Named { key, ty, .. } => {
+                                        format!("  {}:{}\n", key, format_sema_ty(ty.clone(), format_symbol))
+                                    }
+                                })
+                                .collect::<Vec<String>>()
+                                .join(", ");
+
+                            format!("{}<{}>", bound.symbol.name.clone(), type_args)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
+    }
+
+    println!("Type Args: ");
+    for type_arg in &generic_type.type_args {
+        match type_arg {
+            TypedTypeArg::Positional { idx, ty, .. } => {
+                println!("  {}:{}", idx, format_sema_ty(ty.clone(), format_symbol));
+            }
+            TypedTypeArg::Named { key, ty, .. } => {
+                println!("  {}:{}", key, format_sema_ty(ty.clone(), format_symbol));
+            }
+        }
+    }
+
+    {
+        println!("");
+        println!("MappingCtx: ");
+
+        let debug_mapping_ctx = |mapping_ctx: &GenericMappingCtx| {
+            for (entry, sema_ty) in mapping_ctx.get_named_mapping() {
+                println!(
+                    "{} -> {}",
+                    entry.name.clone(),
+                    format_sema_ty(sema_ty.clone(), format_symbol)
+                );
+            }
+        };
+
+        let mapping_ctx = generic_type.mapping_ctx.borrow();
+        debug_mapping_ctx(&mapping_ctx);
+
+        fn recurse_debug_mapping_ctx(
+            mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+            debug_mapping_ctx: impl Fn(&GenericMappingCtx),
+            parent_id: usize,
+        ) {
+            let arena_mutex = mapping_ctx_arena.lock().unwrap();
+            let parent_mapping_ctx = arena_mutex.get(parent_id).unwrap().clone();
+            debug_mapping_ctx(&parent_mapping_ctx);
+            drop(arena_mutex);
+
+            if let Some(parent_parent_id) = parent_mapping_ctx.get_parent_id() {
+                recurse_debug_mapping_ctx(mapping_ctx_arena, debug_mapping_ctx, parent_parent_id);
+            }
+        }
+
+        if let Some(parent_id) = mapping_ctx.get_parent_id() {
+            println!("ParentMappingCtx({}): ", parent_id);
+
+            recurse_debug_mapping_ctx(mapping_ctx_arena, debug_mapping_ctx, parent_id);
+        }
+
+        println!("");
+    }
+
+    println!(
+        "Inline Format: {}",
+        format_sema_ty(SemanticType::GenericType(generic_type.clone()), format_symbol)
+    );
+
+    println!("-----------------------");
+    println!("");
 }

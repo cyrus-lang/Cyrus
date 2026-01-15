@@ -1,0 +1,34 @@
+// @stdout: 3 6 9 
+
+import std::libc{printf};
+
+struct Wrapper<T> {
+    pub value: T;
+}
+pub fn main() {
+    // explicit type args
+    const inst1 = Wrapper<Wrapper<uint>> {
+        value: Wrapper<uint> {
+            value: 3
+        }
+    };
+
+    printf("%d ", inst1.value.value);
+
+    // inferred implicitly 
+    const inst2 = Wrapper {
+        value: Wrapper {
+            value: 6
+        }
+    };
+
+    printf("%d ", inst2.value.value);
+
+    // init later
+    var inst3: Wrapper<Wrapper<int>>;
+    inst3.value = Wrapper {
+        value: 9
+    };
+
+    printf("%d\n", inst3.value.value);
+}

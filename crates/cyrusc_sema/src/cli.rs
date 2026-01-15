@@ -56,9 +56,15 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
+            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
             let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
-            let mut resolver = Resolver::new(module_loader_opts, monomorph_registry.clone(), file_path.clone());
+            let mut resolver = Resolver::new(
+                module_loader_opts,
+                monomorph_registry.clone(),
+                mapping_ctx_arena.clone(),
+                file_path.clone(),
+            );
             let module_id = generate_module_id();
 
             // resolve entry module
