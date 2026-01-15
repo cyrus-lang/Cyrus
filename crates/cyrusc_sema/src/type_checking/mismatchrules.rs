@@ -183,6 +183,12 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn check_basic_type_mismatch(&self, value: PlainType, target: PlainType) -> bool {
+        // REVIEW Consider to refactor this!
+        // if value.is_integer() && target.is_integer() {
+        //     let signedness = value.is_signed() && target.is_signed();;
+        //     let valid_size = ...
+        // }
+
         use PlainType::*;
 
         match (value, target) {
@@ -219,21 +225,17 @@ impl<'a> AnalysisContext<'a> {
             // Integer to intptr (safe if value fits)
             (PlainType::Int | PlainType::Int8 | PlainType::Int16 | PlainType::Int32, PlainType::IntPtr) => true,
 
-            // Unsigned to intptr (less safe, maybe allow some)
+            // Unsigned to uintptr
             (PlainType::UInt | PlainType::UInt8 | PlainType::UInt16 | PlainType::UInt32, PlainType::UIntPtr) => true,
 
-            (Null, Null) => true,
-
-            // char to int
-            (Char, Int8 | Int16 | Int32 | Int64 | Int128 | Int) => true,
+            // char to integer
+            (Char, plain_type) => plain_type.is_integer(),
 
             // int8 to char
             (Int8, Char) => true,
 
             // Bool to Int
             (Bool, Int8 | UInt8) => true,
-
-            (Bool, Bool) => true,
 
             _ => false,
         }
