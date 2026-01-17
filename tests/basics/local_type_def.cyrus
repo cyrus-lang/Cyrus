@@ -1,0 +1,14 @@
+// @stdout: 0 1
+
+import std::libc{printf};
+
+pub fn main() {
+    type Int = int64;
+    type Bool = int64;
+
+    const x: Int = 10;
+    const b: Bool = true;
+
+    if (x > 5) { printf("%d ", x % 2); }
+    if (!!b) { printf("%d ", b); }
+}

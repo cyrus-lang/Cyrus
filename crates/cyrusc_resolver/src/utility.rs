@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -40,7 +40,7 @@ impl Resolver {
             .and_then(|table| table.names.get(name).copied())
     }
 
-    pub fn lookup_symbol(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
+    pub fn lookup_symbol_entry(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
         let global_symbols = self.global_symbols.lock().unwrap();
         let symbol_id = global_symbols
             .get(&module_id)
@@ -85,6 +85,11 @@ impl Resolver {
                 _ => return Some(entry),
             }
         }
+    }
+
+    /// Resolves a symbol id from a specific local scope.
+    pub fn resolve_symbol_id_from_local_scope(&self, local_scope_rc: LocalScopeRef, name: &str) -> Option<SymbolID> {
+        local_scope_rc.borrow().with_symbol(name, |x| x.get_symbol_id())
     }
 
     /// Resolves a symbol from a specific local scope. Simplified to be a single, expressive statement.
