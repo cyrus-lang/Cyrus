@@ -35,6 +35,7 @@ pub struct TypedExprStmt {
     pub loc: SourceLoc,
 }
 
+// TODO: Maybe rename it AddressingMode?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ValueCategory {
     LValue,
@@ -147,6 +148,7 @@ impl TypedExprKind {
         }
     }
 
+    // TODO: Move it cyrusc_interp.
     pub fn is_comptime_valid(&self) -> bool {
         match self {
             TypedExprKind::Literal(_) => true,
