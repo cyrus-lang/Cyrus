@@ -1,0 +1,10 @@
+// @stdout: Cyrus
+
+import std::libc{printf};
+
+pub fn main() {
+    const name: char* = "Cyrus";
+    const ref: char** = &name;
+    
+    printf("%s\n", *ref);
+}

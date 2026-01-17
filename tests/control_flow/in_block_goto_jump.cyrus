@@ -1,0 +1,21 @@
+// @stdout: 5
+
+import std::libc{printf};
+
+pub fn main() {
+    var x: usize = 0;
+
+start:
+    x++;
+xxx:
+    {
+    a:
+        x += 4;
+        goto end;
+    b:
+        x = 8;
+        goto end;
+    } 
+end:
+    printf("%d\n", x);
+}

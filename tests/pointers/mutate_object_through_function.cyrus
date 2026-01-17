@@ -1,0 +1,20 @@
+// @stdout: Cyrus
+
+import std::libc{printf};
+
+type const_str = char*;
+
+fn mutate_const_str(str: const_str*) {
+    *str = "Cyrus";
+}
+
+fn display_const_str(str: const_str) {
+    printf("%s\n", str);
+}
+
+pub fn main() {
+    const name: char* = "unknown";
+
+    mutate_const_str(&name);
+    display_const_str(name);
+}
