@@ -52,20 +52,44 @@ type ModuleGroupName = String;
 type ImportedModules = HashMap<ModuleGroupName, ModuleID>;
 
 pub struct Resolver {
+    // symbol table that holds
     pub global_symbols: Arc<GlobalSymbolsMutex>,
-    // lists imported modules by current module by their alias
-    pub module_aliases: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
+
+    // Holds the analyzed modules which is used to prevent analyzing a module multiple times.
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
+
+    // Holds the program trees of the modules that are analyzed successfully.
     pub program_trees: Arc<Mutex<Vec<Rc<ProgramTreeEntry>>>>,
+
+    // Holds file path related to the module.
     pub file_paths: Arc<Mutex<HashMap<ModuleID, String>>>,
+    
+    // Diagnostic Reporter Instance.
     pub reporter: DiagReporter,
+
+    // TODO: Consider to inject ModuleLoader via an implementation of a trait instead of direct injection.
     pub module_loader: ModuleLoader,
-    pub master_module_file_path: String,
+
+    // TODO: Explain why these two are necessary in resolver layer and what we are doing with them here.
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    pub mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    already_imported_modules: HashSet<ImportKey>,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+
+    // Holds the file path of entry module.
+    master_module_file_path: String,
+
+    // Holds the imported modules by current module by their alias.
+    module_aliases: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
+
+    // Holds a list of imported modules by current module.
+    imported_modules: HashSet<ImportedModuleEntry>,
+
+    // Holds reference to current module.
     current_module: Option<ModuleID>,
+
+    // Used to resolve self type.
     current_object: Option<SymbolID>,
+
+    // Used to resolve generic params.
     current_object_generic_params: Option<TypedGenericParamsList>,
 }
 
@@ -76,9 +100,9 @@ pub struct ProgramTreeEntry {
     pub program: Rc<RefCell<TypedProgramTree>>,
 }
 
-// Track previously imported module + import kind
+// Track previously imported module + alias
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ImportKey {
+struct ImportedModuleEntry {
     module_file_path: String,
     alias: ModuleAlias,
 }
@@ -120,7 +144,7 @@ impl Resolver {
             file_paths: file_paths.clone(),
             program_trees: Arc::new(Mutex::new(Vec::new())),
             monomorph_registry,
-            already_imported_modules: HashSet::new(),
+            imported_modules: HashSet::new(),
             reporter: DiagReporter::new(),
             module_loader: ModuleLoader::new(opts),
             current_module: None,
@@ -270,12 +294,12 @@ impl Resolver {
             }
 
             // check duplicates using module file + alias
-            let import_key = ImportKey {
+            let import_key = ImportedModuleEntry {
                 module_file_path: loaded_module.file_path.clone(),
                 alias: loaded_module.alias.clone(),
             };
-            let already_directly_imported = self.already_imported_modules.contains(&import_key);
-            self.already_imported_modules.insert(import_key);
+            let already_directly_imported = self.imported_modules.contains(&import_key);
+            self.imported_modules.insert(import_key);
 
             // cycle detection
             if visiting.active.contains(&loaded_module.file_path) {
