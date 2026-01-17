@@ -4,7 +4,7 @@ import std::libc{printf};
 
 pub fn main() {
     type Int = int64;
-    type Bool = int64;
+    type Bool = bool;
 
     const x: Int = 10;
     const b: Bool = true;

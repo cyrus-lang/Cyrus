@@ -25,6 +25,8 @@ use cyrusc_tast::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLiteralExpr},
 };
 
+// TODO: Move entire crate and it's logic to cyrusc_interp.
+
 impl<'a> AnalysisContext<'a> {
     fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i128> {
         match &typed_literal.kind {
