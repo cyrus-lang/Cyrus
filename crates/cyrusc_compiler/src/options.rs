@@ -1,22 +1,21 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use core::fmt;
 use cyrusc_scaffold_parser::ScaffoldConfig;
-use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct CodeGenOptions {
@@ -120,68 +119,6 @@ impl Default for CodeGenOptions {
 }
 
 impl CodeGenOptions {
-    pub fn merge_preferring(&self, overrides: &Self) -> Self {
-        Self {
-            abi: overrides.abi.clone().or(self.abi.clone()),
-            endianness: overrides.endianness.clone().or(self.endianness.clone()),
-            module_kind: overrides.module_kind.clone().or(self.module_kind.clone()),
-            jobs: overrides.jobs.or(self.jobs.clone()),
-            linker: overrides.linker.clone().or_else(|| self.linker.clone()),
-            project_type: overrides.project_type.clone().or_else(|| self.project_type.clone()),
-            project_name: overrides.project_name.clone().or_else(|| self.project_name.clone()),
-            project_version: overrides
-                .project_version
-                .clone()
-                .or_else(|| self.project_version.clone()),
-            cyrus_version: overrides.cyrus_version.clone().or_else(|| self.cyrus_version.clone()),
-            authors: overrides.authors.clone().or_else(|| self.authors.clone()),
-            opt_level: overrides.opt_level.or(self.opt_level),
-            cpu: overrides.cpu.clone().or_else(|| self.cpu.clone()),
-            library_path: merge_vec_prepend_unique(&overrides.library_path, &self.library_path),
-            libraries: merge_vec_prepend_unique(&overrides.libraries, &self.libraries),
-            build_dir: match &overrides.build_dir {
-                BuildDir::Provided(s) => BuildDir::Provided(s.clone()),
-                BuildDir::Default => self.build_dir.clone(),
-            },
-            source_dirs: merge_vec_prepend_unique(&overrides.source_dirs, &self.source_dirs),
-            linker_flags: merge_vec_prepend_unique(&overrides.linker_flags, &self.linker_flags),
-            sanitizer: {
-                // additive sanitize flags
-                let out = merge_vec_prepend_unique(
-                    &overrides.sanitizer.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-                    &self.sanitizer.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-                );
-
-                // convert back to enum
-                out.into_iter()
-                    .filter_map(|s| match s.as_str() {
-                        "address" => Some(CodeGenSanitizer::Address),
-                        "memory" => Some(CodeGenSanitizer::Memory),
-                        "thread" => Some(CodeGenSanitizer::Thread),
-                        _ => None,
-                    })
-                    .collect()
-            },
-            quiet: overrides.quiet || self.quiet,
-            verbose: overrides.verbose || self.verbose,
-            disable_modulefs_cache: overrides.disable_modulefs_cache || self.disable_modulefs_cache,
-            stdlib_path: overrides.stdlib_path.clone().or_else(|| self.stdlib_path.clone()),
-            display_target_machine: overrides.display_target_machine || self.display_target_machine,
-            reloc_mode: match &overrides.reloc_mode {
-                RelocModeOptions::Default => self.reloc_mode.clone(),
-                other => other.clone(),
-            },
-            code_model: match &overrides.code_model {
-                CodeModelOptions::Default => self.code_model.clone(),
-                other => other.clone(),
-            },
-            target_triple: overrides.target_triple.clone().or_else(|| self.target_triple.clone()),
-            base_path: overrides.base_path.clone().or_else(|| self.base_path.clone()),
-            disable_warnings: overrides.disable_warnings || self.disable_warnings,
-            linker_options: overrides.linker_options.clone(),
-        }
-    }
-
     pub fn from_scaffold(scaffold: &ScaffoldConfig) -> Self {
         let mut options = CodeGenOptions::default();
 
@@ -319,17 +256,6 @@ impl ModuleKind {
     pub fn is_unified(&self) -> bool {
         matches!(self, ModuleKind::Unified)
     }
-}
-
-fn merge_vec_prepend_unique(overrides: &[String], base: &[String]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::with_capacity(overrides.len() + base.len());
-    for v in overrides.iter().chain(base.iter()) {
-        if seen.insert(v) {
-            out.push(v.clone());
-        }
-    }
-    out
 }
 
 impl Default for CodeGenABI {
