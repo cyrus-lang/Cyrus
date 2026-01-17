@@ -34,7 +34,6 @@ pub struct CodeGenOptions {
     pub opt_level: Option<i32>,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
-    pub source_dirs: Vec<String>,
     pub build_dir: BuildDir,
     pub quiet: bool,
     pub verbose: bool,
@@ -48,6 +47,9 @@ pub struct CodeGenOptions {
     pub disable_warnings: bool,
     pub endianness: Option<CodeGenEndianness>,
     pub abi: Option<CodeGenABI>,
+    
+    // TODO: Consider to use Path/PathBuf here and do not used never ever String to store paths.
+    pub source_dirs: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +69,7 @@ pub enum LinkerOutputKind {
     Executable,
     SharedLib,
     StaticLib,
-    ObjectFile, // single .o file
+    ObjectFile,
 }
 
 #[derive(Debug, Clone, PartialEq)]

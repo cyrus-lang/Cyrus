@@ -59,7 +59,7 @@ pub fn create_compiler_context(
     file_path: Option<String>,
     linker_output_kind: LinkerOutputKind,
 ) -> CodeGenContext {
-    let entry_module_file_path = get_entry_source_code_path(opts.base_path.clone(), file_path);
+    let entry_module_file_path = get_entry_module_file_path(opts.base_path.clone(), file_path);
     let build_dir = get_final_build_directory_path(opts.base_path.clone(), opts.build_dir.clone());
     let build_dir_path = Path::new(&build_dir);
     let base_path = opts
@@ -85,10 +85,10 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         opts.disable_modulefs_cache = true;
     }
 
-    // resolve core paths
-    let entry_file = get_entry_source_code_path(opts.base_path.clone(), file_path);
+    // resolve entry module file path & build directory path
+    let entry_file = get_entry_module_file_path(opts.base_path.clone(), file_path);
     let build_dir = get_final_build_directory_path(opts.base_path.clone(), opts.build_dir.clone());
-    ensure_build_dir_subs(opts.base_path.clone(), build_dir.clone());
+    ensure_build_dir_subs_exist(opts.base_path.clone(), build_dir.clone());
 
     // lex & parse
     let file_content = read_file(entry_file.clone()).0;
@@ -102,14 +102,12 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     // discover stdlib and input source directory
     let input_file_dir = get_directory_of_file(entry_file.clone()).unwrap();
 
-    // configure resolver
     let module_loader_opts = ModuleLoaderOptions {
         base_path: opts.base_path.clone().unwrap(),
         stdlib_path: opts.stdlib_path.clone(),
         source_dirs: vec![input_file_dir],
     };
 
-    // init monomorph registry
     let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
     let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
@@ -128,14 +126,14 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         exit(1);
     }
 
-    // analysis
+    // analyze modules
 
     let entry_points = Arc::new(Mutex::new(Vec::new()));
-
-    let mut has_error = false;
     let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
+    let mut has_error = false;
     let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+
     for program_tree_entry in &*resolved_program_trees {
         let mut analyzer = AnalysisContext::new(
             &resolver,
@@ -163,9 +161,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         exit(1);
     }
 
-    // abi name mangling
-
-    let mangling = get_name_mangling(opts.abi.clone());
+    let mangler = get_name_mangler_impl(opts.abi.clone());
 
     // prepare trees for codegen
 
@@ -184,7 +180,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         boxed_trees,
         &resolver,
         cir_monomorph_registry.clone(),
-        &*mangling,
+        &*mangler,
         mapping_ctx_arena.clone(),
     );
 
@@ -194,77 +190,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         build_dir,
         program_trees: cir_program_trees,
         monomorph_registry: cir_monomorph_registry,
-    }
-}
-
-fn get_name_mangling(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangler> {
-    match abi.unwrap_or_default() {
-        CodeGenABI::Cyrus => Box::new(Cyrus_ABI::new()),
-        CodeGenABI::C => Box::new(C_ABI::new()),
-    }
-}
-
-fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir) -> String {
-    let base = base_path.unwrap_or_default();
-
-    match build_dir {
-        BuildDir::Provided(path) => path,
-        BuildDir::Default => {
-            // resolve project file path
-            let project_file = env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(&base)
-                .join(PROJECT_FILE_PATH);
-
-            parse_project_toml(&project_file)
-                .map(|cfg| {
-                    cfg.compiler
-                        .and_then(|c| c.build_dir)
-                        .filter(|p| !p.is_empty())
-                        .map(|p| {
-                            let final_dir = Path::new(&base).join(&p);
-                            ensure_output_dir(final_dir.to_string_lossy().to_string());
-                            final_dir.to_string_lossy().to_string()
-                        })
-                        .unwrap_or_else(fallback_temp_dir)
-                })
-                .unwrap_or_else(|_| fallback_temp_dir())
-        }
-    }
-}
-
-/// Returns a fallback temporary directory path as a String
-fn fallback_temp_dir() -> String {
-    let temp_dir = env::temp_dir();
-    ensure_output_dir(temp_dir.to_string_lossy().to_string());
-    temp_dir.to_string_lossy().to_string()
-}
-
-fn get_entry_source_code_path(base_path: Option<String>, input_file_path: Option<String>) -> String {
-    input_file_path.unwrap_or_else(|| {
-        let base = base_path.unwrap_or_default();
-        let main_file = env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(&base)
-            .join("src/main.cyrus");
-
-        if !main_file.exists() {
-            display_single_custom_diag!("Project.toml not found in the current directory.".to_string());
-        }
-
-        main_file.to_string_lossy().to_string()
-    })
-}
-
-fn ensure_build_dir_subs(base_path: Option<String>, build_dir_path: String) {
-    let base = base_path.unwrap_or_default();
-    let dirs = [SOURCES_DIR_PATH, OBJECTS_FILENAME, OUTPUT_FILENAME];
-
-    let base_build_dir = Path::new(&base).join(build_dir_path);
-
-    for dir in dirs {
-        let build_dir = base_build_dir.join(dir);
-        ensure_output_dir(build_dir.to_str().unwrap().to_string());
     }
 }
 
@@ -291,5 +216,75 @@ pub fn get_artifact_output_path(build_dir: BuildDir, output_path: Option<String>
             });
             temp_dir.to_string_lossy().to_string()
         }
+    }
+}
+
+fn get_name_mangler_impl(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangler> {
+    match abi.unwrap_or_default() {
+        CodeGenABI::Cyrus => Box::new(Cyrus_ABI::new()),
+        CodeGenABI::C => Box::new(C_ABI::new()),
+    }
+}
+
+fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir) -> String {
+    fn temp_build_dir() -> String {
+        let temp_dir = env::temp_dir();
+        ensure_output_dir(temp_dir.to_string_lossy().to_string());
+        temp_dir.to_string_lossy().to_string()
+    }
+
+    let base = base_path.unwrap_or_default();
+
+    match build_dir {
+        BuildDir::Provided(path) => path,
+        BuildDir::Default => {
+            // resolve project file path
+            let project_file = env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(&base)
+                .join(PROJECT_FILE_PATH);
+
+            parse_project_toml(&project_file)
+                .map(|cfg| {
+                    cfg.compiler
+                        .and_then(|c| c.build_dir)
+                        .filter(|p| !p.is_empty())
+                        .map(|p| {
+                            let final_dir = Path::new(&base).join(&p);
+                            ensure_output_dir(final_dir.to_string_lossy().to_string());
+                            final_dir.to_string_lossy().to_string()
+                        })
+                        .unwrap_or_else(temp_build_dir)
+                })
+                .unwrap_or_else(|_| temp_build_dir())
+        }
+    }
+}
+
+fn get_entry_module_file_path(base_path: Option<String>, input_file_path: Option<String>) -> String {
+    input_file_path.unwrap_or_else(|| {
+        let base = base_path.unwrap_or_default();
+        let main_file = env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(&base)
+            .join("src/main.cyrus");
+
+        if !main_file.exists() {
+            display_single_custom_diag!("Project.toml not found in the current directory.".to_string());
+        }
+
+        main_file.to_string_lossy().to_string()
+    })
+}
+
+fn ensure_build_dir_subs_exist(base_path: Option<String>, build_dir_path: String) {
+    let base = base_path.unwrap_or_default();
+    let dirs = [SOURCES_DIR_PATH, OBJECTS_FILENAME, OUTPUT_FILENAME];
+
+    let base_build_dir = Path::new(&base).join(build_dir_path);
+
+    for dir in dirs {
+        let build_dir = base_build_dir.join(dir);
+        ensure_output_dir(build_dir.to_str().unwrap().to_string());
     }
 }
