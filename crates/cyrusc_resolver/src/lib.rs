@@ -824,14 +824,34 @@ impl Resolver {
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: "import".to_string(),
                 }),
-            TypeSpecifier::Identifier(identifier) => self
-                .resolve_generic_param_as_type(generic_params, identifier)
-                .or(self
-                    .lookup_symbol_id(module_id, &identifier.name)
-                    .map(SemanticType::UnresolvedSymbol))
-                .ok_or(ResolverDiagKind::TypeNotFound {
-                    name: identifier.name.clone(),
-                }),
+            TypeSpecifier::Identifier(identifier) => {
+                let mut sema_ty_opt: Option<SemanticType>;
+
+                sema_ty_opt = self.resolve_generic_param_as_type(generic_params, identifier);
+
+                if sema_ty_opt.is_none() {
+                    sema_ty_opt = Some(
+                        self.lookup_symbol_id(module_id, &identifier.name)
+                            .map(SemanticType::UnresolvedSymbol)?,
+                    );
+                }
+
+                if sema_ty_opt.is_none() {
+                    sema_ty_opt = local_scope_opt
+                        .and_then(|local_scope_rc| {
+                            self.resolve_symbol_id_from_local_scope(local_scope_rc, &identifier.name)
+                        })
+                        .map(SemanticType::UnresolvedSymbol);
+                }
+
+                if let Some(sema_ty) = sema_ty_opt {
+                    Ok(sema_ty)
+                } else {
+                    Err(ResolverDiagKind::TypeNotFound {
+                        name: identifier.name.clone(),
+                    })
+                }
+            }
             TypeSpecifier::SelfType(self_type) => Ok(SemanticType::SelfType(TypedSelfType {
                 loc: SourceLoc::from_loc(self_type.loc.clone(), self.current_file_path()),
             })),
@@ -1641,7 +1661,7 @@ impl Resolver {
                             .map(|sym| LocalOrGlobalSymbol::LocalSymbol(sym.clone()))
                     })
                     .or_else(|| {
-                        self.lookup_symbol(module_id, &identifier.name)
+                        self.lookup_symbol_entry(module_id, &identifier.name)
                             .map(LocalOrGlobalSymbol::GlobalSymbol)
                     });
 
