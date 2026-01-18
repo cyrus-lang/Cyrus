@@ -437,30 +437,35 @@ impl PlainType {
         }
     }
 
-    pub fn bigger_type(a: PlainType, b: PlainType) -> Option<PlainType> {
+    pub fn widen_rank(ty: &PlainType) -> Option<u8> {
         use PlainType::*;
 
-        fn rank(ty: &PlainType) -> Option<u8> {
-            match ty {
-                Int8 | UInt8 => Some(2),
-                Int16 | UInt16 => Some(3),
-                Int32 | UInt32 => Some(4),
-                Int | UInt => Some(5),
-                Int64 | UInt64 => Some(6),
-                IntPtr | UIntPtr | ISize | USize => Some(7),
-                Int128 | UInt128 => Some(8),
+        match ty {
+            // char has the same rank is int8
+            Char => Some(2),
 
-                Float16 => Some(9),
-                Float32 => Some(10),
-                Float64 => Some(11),
-                Float128 => Some(12),
+            // integers
+            Int8 | UInt8 => Some(2),
+            Int16 | UInt16 => Some(3),
+            Int32 | UInt32 => Some(4),
+            Int | UInt => Some(5),
+            Int64 | UInt64 => Some(6),
+            IntPtr | UIntPtr | ISize | USize => Some(7),
+            Int128 | UInt128 => Some(8),
 
-                _ => None,
-            }
+            // floats
+            Float16 => Some(9),
+            Float32 => Some(10),
+            Float64 => Some(11),
+            Float128 => Some(12),
+
+            _ => None,
         }
+    }
 
-        let a_rank = rank(&a)?;
-        let b_rank = rank(&b)?;
+    pub fn widen_type(a: PlainType, b: PlainType) -> Option<PlainType> {
+        let a_rank = PlainType::widen_rank(&a)?;
+        let b_rank = PlainType::widen_rank(&b)?;
         if a_rank >= b_rank { Some(a) } else { Some(b) }
     }
 }

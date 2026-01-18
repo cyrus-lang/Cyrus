@@ -45,7 +45,7 @@ impl<'a> AnalysisContext<'a> {
                 resolved_symbol1 == resolved_symbol2
             }
             (SemanticType::PlainType(basic_concrete_type1), SemanticType::PlainType(basic_concrete_type2)) => {
-                self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
+                self.check_plain_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
                 let valid_capacity = self.check_const_str_to_array_assignment(array_type1.clone(), array_type2.clone());
@@ -182,60 +182,59 @@ impl<'a> AnalysisContext<'a> {
         unnamed_struct.is_packed == struct_sig.is_packed && unnamed_struct_fields == named_struct_fields
     }
 
-    pub(crate) fn check_basic_type_mismatch(&self, value: PlainType, target: PlainType) -> bool {
-        // REVIEW Consider to refactor this!
-        // if value.is_integer() && target.is_integer() {
-        //     let signedness = value.is_signed() && target.is_signed();;
-        //     let valid_size = ...
-        // }
-
+    pub(crate) fn check_plain_type_mismatch(&self, value_type: PlainType, target_type: PlainType) -> bool {
         use PlainType::*;
 
-        match (value, target) {
+        match (value_type, target_type) {
             // Same plain type is always compatible
             (a, b) if a == b => true,
 
-            // Integer compatibility (widening is allowed)
-            (Int8, Int16 | Int32 | Int64 | Int128 | Int) => true,
-            (Int16, Int32 | Int64 | Int128 | Int) => true,
-            (Int32, Int64 | Int128 | Int) => true,
-            (Int64, Int128) => true,
-            (Int, Int64 | Int128) => true,
+            // Lower rank integer value is always compatible if both are signed/unsigned
+            (a, b) if a.is_integer() && b.is_integer() => {
+                let signedness = (a.is_signed() && b.is_signed()) || (!a.is_signed() && !b.is_signed());
 
-            (UInt8, UInt16 | UInt32 | UInt64 | UInt128 | UInt) => true,
-            (UInt16, UInt32 | UInt64 | UInt128 | UInt) => true,
-            (UInt32, UInt64 | UInt128 | UInt) => true,
-            (UInt64, UInt128) => true,
-            (UInt, UInt64 | UInt128) => true,
+                if let (Some(rank1), Some(rank2)) = (PlainType::widen_rank(&a), PlainType::widen_rank(&b)) {
+                    // target value must have lower rank and signedness be valid
+                    rank1 <= rank2 && signedness
+                } else {
+                    false
+                }
+            }
 
-            // Cross unsigned-to-signed conversions (only if target is wider)
-            (UInt8, Int16 | Int32 | Int64 | Int128 | Int) => true,
-            (UInt16, Int32 | Int64 | Int128 | Int) => true,
-            (UInt32, Int64 | Int128 | Int) => true,
-            (UInt64, Int128 | Int) => true,
+            // Lower rank float value is always compatible
+            (a, b) if a.is_float() && b.is_float() => {
+                if let (Some(rank1), Some(rank2)) = (PlainType::widen_rank(&a), PlainType::widen_rank(&b)) {
+                    rank1 <= rank2
+                } else {
+                    false
+                }
+            }
 
-            // Floating-point widening
-            (Float16, Float32 | Float64 | Float128) => true,
-            (Float32, Float64 | Float128) => true,
-            (Float64, Float128) => true,
+            // Char To Integer
+            (value_type @ Char, target_type) => {
+                let is_integer = target_type.is_integer();
 
-            // Pointer int compatibility (if same bit width)
-            (UIntPtr, IntPtr) | (IntPtr, UIntPtr) => true,
+                if let (Some(rank1), Some(rank2)) =
+                    (PlainType::widen_rank(&value_type), PlainType::widen_rank(&target_type))
+                {
+                    rank1 <= rank2 && is_integer
+                } else {
+                    false
+                }
+            }
 
-            // Integer to intptr (safe if value fits)
-            (PlainType::Int | PlainType::Int8 | PlainType::Int16 | PlainType::Int32, PlainType::IntPtr) => true,
+            // Integer to Char
+            (value_type, target_type @ Char) => {
+                if let (Some(rank1), Some(rank2)) =
+                    (PlainType::widen_rank(&value_type), PlainType::widen_rank(&target_type))
+                {
+                    rank1 <= rank2
+                } else {
+                    false
+                }
+            }
 
-            // Unsigned to uintptr
-            (PlainType::UInt | PlainType::UInt8 | PlainType::UInt16 | PlainType::UInt32, PlainType::UIntPtr) => true,
-
-            // char to integer
-            (Char, plain_type) => plain_type.is_integer(),
-
-            // int8 to char
-            (Int8, Char) => true,
-
-            // Bool to Int
-            (Bool, Int8 | UInt8) => true,
+            (Bool, Int8 | UInt8) | (Int8 | UInt8, Bool) => true,
 
             _ => false,
         }
