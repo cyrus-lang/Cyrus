@@ -147,9 +147,9 @@ fn substitute_func_params(
         .collect();
 
     let variadic = func_params.variadic.clone().and_then(|variadic| match &variadic {
-        unsubstituted_variadic_param @ TypedFuncVariadicParams::Typed(identifier, sema_ty) => {
+        unsubstituted_variadic_param @ TypedFuncVariadicParams::Typed(ident, sema_ty) => {
             if let Some(sema_ty) = substitute_type(mapping_ctx_arena, sema_ty.clone(), ctx.clone()) {
-                Some(TypedFuncVariadicParams::Typed(identifier.clone(), sema_ty))
+                Some(TypedFuncVariadicParams::Typed(ident.clone(), sema_ty))
             } else {
                 Some(unsubstituted_variadic_param.clone())
             }
@@ -245,7 +245,7 @@ pub fn substitute_enum_sig(
         .variants
         .iter()
         .map(|v| match v {
-            TypedEnumVariant::Identifier(ident) => Some(TypedEnumVariant::Identifier(ident.clone())),
+            TypedEnumVariant::Ident(ident) => Some(TypedEnumVariant::Ident(ident.clone())),
             TypedEnumVariant::Valued(ident, expr) => {
                 let substituted = substitute_type(mapping_ctx_arena, expr.sema_ty.clone().unwrap(), ctx.clone())?;
                 let mut expr_v2 = *expr.clone();

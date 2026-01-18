@@ -252,7 +252,7 @@ impl<'resolver> CIRWalk<'resolver> {
         vars: &mut Vec<CIRVarStmt>,
     ) {
         match pattern {
-            TypedExportPattern::Identifier(symbol_id) => {
+            TypedExportPattern::Ident(symbol_id) => {
                 let local_scope = local_scope_rc.borrow();
                 let resolved_variable = local_scope
                     .with_symbol_id(*symbol_id, |local_symbol| local_symbol.as_variable().cloned().unwrap())
@@ -536,19 +536,19 @@ impl<'resolver> CIRWalk<'resolver> {
 
             for pattern in &case.patterns {
                 match pattern {
-                    TypedSwitchCasePattern::Identifier(identifier, _) => {
+                    TypedSwitchCasePattern::Ident(ident, _) => {
                         let variant_idx = enum_sig
                             .variants
                             .iter()
-                            .position(|variant| variant.get_identifier().as_string() == *identifier)
+                            .position(|variant| variant.get_identifier().as_string() == *ident)
                             .unwrap();
-                        lowered_patterns.push(CIRSwitchOnEnumPattern::Identifier(variant_idx));
+                        lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(variant_idx));
                     }
-                    TypedSwitchCasePattern::EnumVariant(identifier, exported_fields, _) => {
+                    TypedSwitchCasePattern::EnumVariant(ident, exported_fields, _) => {
                         let variant_idx = enum_sig
                             .variants
                             .iter()
-                            .position(|variant| variant.get_identifier().as_string() == *identifier)
+                            .position(|variant| variant.get_identifier().as_string() == *ident)
                             .unwrap();
 
                         let variant = &enum_sig.variants[variant_idx];
@@ -567,16 +567,16 @@ impl<'resolver> CIRWalk<'resolver> {
                                 let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
                                     .iter()
                                     .enumerate()
-                                    .map(|(idx, identifier)| {
+                                    .map(|(idx, ident)| {
                                         let field_ty = &valued_fields.get(idx).as_ref().unwrap().ty;
-                                        (identifier.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
+                                        (ident.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
                                     })
                                     .collect();
 
                                 lowered_patterns
                                     .push(CIRSwitchOnEnumPattern::ExportFields(variant_idx, typed_exported_fields));
                             }
-                            TypedEnumVariant::Identifier(_) => unreachable!(),
+                            TypedEnumVariant::Ident(_) => unreachable!(),
                         }
                     }
                     _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
@@ -1191,7 +1191,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 .unwrap();
 
             variant = match typed_variant {
-                TypedEnumVariant::Identifier(..) => CIREnumInitVariant::Identifier,
+                TypedEnumVariant::Ident(..) => CIREnumInitVariant::Ident,
                 TypedEnumVariant::Valued(_, expr) => {
                     CIREnumInitVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
                 }
@@ -1533,7 +1533,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_enum_ty_variant(&mut self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumTyVariant {
         match variant {
-            TypedEnumVariant::Identifier(..) => CIREnumTyVariant::Identifier,
+            TypedEnumVariant::Ident(..) => CIREnumTyVariant::Ident,
             TypedEnumVariant::Valued(_, expr) => {
                 CIREnumTyVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
             }

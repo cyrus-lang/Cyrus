@@ -427,8 +427,8 @@ impl Resolver {
         let mut imported_symbol_ids = Vec::new();
 
         for single in singles {
-            let actual_name = single.identifier.as_string();
-            let renamed_name = single.renamed.as_ref().unwrap_or(&single.identifier).as_string();
+            let actual_name = single.ident.as_string();
+            let renamed_name = single.renamed.as_ref().unwrap_or(&single.ident).as_string();
 
             let Some(symbol_id) = self.lookup_symbol_id(imported_module_id, &actual_name) else {
                 self.reporter.report(Diag {
@@ -615,7 +615,7 @@ impl Resolver {
     fn resolve_generic_param_as_type(
         &mut self,
         generic_params_list_opt: &Option<TypedGenericParamsList>,
-        identifier: &Identifier,
+        ident: &Ident,
     ) -> Option<SemanticType> {
         generic_params_list_opt
             .clone()
@@ -623,13 +623,13 @@ impl Resolver {
                 generic_params
                     .list
                     .iter()
-                    .find(|param| param.param_name.name == identifier.as_string())
+                    .find(|param| param.param_name.name == ident.as_string())
                     .and_then(|generic_param| Some(SemanticType::GenericParam(generic_param.clone())))
             })
             .or({
                 self.current_object_generic_params.as_ref().and_then(|generic_params| {
                     generic_params
-                        .get_named(&identifier.name)
+                        .get_named(&ident.value)
                         .map(|generic_param| SemanticType::GenericParam(generic_param.clone()))
                 })
             })
@@ -829,7 +829,7 @@ impl Resolver {
                         field.span.end,
                     ) {
                         fields.push(TypedUnnamedStructTypeField {
-                            field_name: field.field_name.name.clone(),
+                            field_name: field.field_name.value.clone(),
                             field_ty: Box::new(ft),
                             loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
                         });
@@ -848,14 +848,14 @@ impl Resolver {
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: "import".to_string(),
                 }),
-            TypeSpecifier::Identifier(identifier) => {
+            TypeSpecifier::Ident(ident) => {
                 let mut sema_ty_opt: Option<SemanticType>;
 
-                sema_ty_opt = self.resolve_generic_param_as_type(generic_params, identifier);
+                sema_ty_opt = self.resolve_generic_param_as_type(generic_params, ident);
 
                 if sema_ty_opt.is_none() {
                     sema_ty_opt = Some(
-                        self.lookup_symbol_id(module_id, &identifier.name)
+                        self.lookup_symbol_id(module_id, &ident.value)
                             .map(SemanticType::UnresolvedSymbol)?,
                     );
                 }
@@ -863,7 +863,7 @@ impl Resolver {
                 if sema_ty_opt.is_none() {
                     sema_ty_opt = local_scope_opt
                         .and_then(|local_scope_rc| {
-                            self.resolve_symbol_id_from_local_scope(local_scope_rc, &identifier.name)
+                            self.resolve_symbol_id_from_local_scope(local_scope_rc, &ident.value)
                         })
                         .map(SemanticType::UnresolvedSymbol);
                 }
@@ -872,7 +872,7 @@ impl Resolver {
                     Ok(sema_ty)
                 } else {
                     Err(ResolverDiagKind::TypeNotFound {
-                        name: identifier.name.clone(),
+                        name: ident.value.clone(),
                     })
                 }
             }
@@ -901,7 +901,7 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         typedef: &Typedef,
     ) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(module_id, &typedef.identifier.name)?;
+        let symbol_id = self.lookup_symbol_id(module_id, &typedef.ident.value)?;
 
         let generic_params = typedef
             .generic_params
@@ -918,7 +918,7 @@ impl Resolver {
         )?;
 
         let typedef_sig = TypedefSig {
-            name: typedef.identifier.name.clone(),
+            name: typedef.ident.value.clone(),
             generic_params,
             ty: sema_ty.clone(),
             vis: typedef.vis.clone(),
@@ -933,7 +933,7 @@ impl Resolver {
 
         if let Some(local_scope_rc) = &local_scope_opt {
             local_scope_rc.borrow_mut().insert(
-                typedef.identifier.name.clone(),
+                typedef.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Typedef(resolved_typedef)),
             );
         } else {
@@ -951,7 +951,7 @@ impl Resolver {
 
         Some(TypedStmt::Typedef(TypedTypedefStmt {
             symbol_id,
-            name: typedef.identifier.name.clone(),
+            name: typedef.ident.value.clone(),
             ty: sema_ty,
             generic_params,
             vis: typedef.vis.clone(),
@@ -983,51 +983,51 @@ impl Resolver {
                 Stmt::Interface(interface) => {
                     if self.duplicate_symbol(
                         module_id,
-                        interface.identifier.name.clone(),
+                        interface.ident.value.clone(),
                         SourceLoc::from_loc(interface.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &interface.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &interface.ident.value.clone());
                 }
                 Stmt::Union(union_decl) => {
                     if self.duplicate_symbol(
                         module_id,
-                        union_decl.identifier.name.clone(),
+                        union_decl.ident.value.clone(),
                         SourceLoc::from_loc(union_decl.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &union_decl.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &union_decl.ident.value.clone());
                 }
                 Stmt::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
-                        typedef.identifier.name.clone(),
+                        typedef.ident.value.clone(),
                         SourceLoc::from_loc(typedef.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &typedef.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &typedef.ident.value.clone());
                 }
                 Stmt::FuncDef(func_def) => {
                     if self.duplicate_symbol(
                         module_id,
-                        func_def.identifier.name.clone(),
+                        func_def.ident.value.clone(),
                         SourceLoc::from_loc(func_def.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &func_def.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &func_def.ident.value.clone());
                 }
                 Stmt::FuncDecl(func_decl) => {
                     if self.duplicate_symbol(
                         module_id,
-                        func_decl.identifier.name.clone(),
+                        func_decl.ident.value.clone(),
                         SourceLoc::from_loc(func_decl.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
@@ -1038,35 +1038,35 @@ impl Resolver {
                 Stmt::GlobalVar(global_variable) => {
                     if self.duplicate_symbol(
                         module_id,
-                        global_variable.identifier.name.clone(),
+                        global_variable.ident.value.clone(),
                         SourceLoc::from_loc(global_variable.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &global_variable.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &global_variable.ident.value.clone());
                 }
                 Stmt::Struct(struct_decl) => {
                     if self.duplicate_symbol(
                         module_id,
-                        struct_decl.identifier.name.clone(),
+                        struct_decl.ident.value.clone(),
                         SourceLoc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &struct_decl.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &struct_decl.ident.value.clone());
                 }
                 Stmt::Enum(enum_decl) => {
                     if self.duplicate_symbol(
                         module_id,
-                        enum_decl.identifier.name.clone(),
+                        enum_decl.ident.value.clone(),
                         SourceLoc::from_loc(enum_decl.loc.clone(), self.current_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &enum_decl.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &enum_decl.ident.value.clone());
                 }
                 _ => {}
             };
@@ -1166,7 +1166,7 @@ impl Resolver {
         let interface_symbol_id = local_scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.identifier.name).unwrap());
+            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.ident.value).unwrap());
 
         let typed_methods: Vec<TypedFuncDeclStmt> = interface
             .methods
@@ -1190,7 +1190,7 @@ impl Resolver {
                 Some(TypedFuncDeclStmt {
                     module_id: self.current_module.unwrap(),
                     symbol_id: interface_symbol_id,
-                    name: func_decl.identifier.name.clone(),
+                    name: func_decl.ident.value.clone(),
                     generic_params,
                     params: TypedFuncParams {
                         list: typed_func_params,
@@ -1210,7 +1210,7 @@ impl Resolver {
             interface_sig: InterfaceSig {
                 module_id,
                 symbol_id: interface_symbol_id,
-                name: interface.identifier.name.clone(),
+                name: interface.ident.value.clone(),
                 methods: typed_methods.clone(),
                 vis: interface.vis.clone(),
                 loc: SourceLoc::from_loc(interface.loc.clone(), self.current_file_path()),
@@ -1220,7 +1220,7 @@ impl Resolver {
         match local_scope_opt {
             Some(local_scope_rc) => {
                 local_scope_rc.borrow_mut().insert(
-                    interface.identifier.name.clone(),
+                    interface.ident.value.clone(),
                     LocalSymbol::new(LocalSymbolKind::Interface(resolved_interface)),
                 );
             }
@@ -1234,7 +1234,7 @@ impl Resolver {
         }
 
         Some(TypedStmt::Interface(TypedInterfaceStmt {
-            name: interface.identifier.name.clone(),
+            name: interface.ident.value.clone(),
             symbol_id: interface_symbol_id,
             methods: typed_methods,
             vis: interface.vis.clone(),
@@ -1252,7 +1252,7 @@ impl Resolver {
         let union_symbol_id = local_scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &union_decl.identifier.name).unwrap());
+            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &union_decl.ident.value).unwrap());
 
         self.current_object = Some(union_symbol_id);
 
@@ -1276,7 +1276,7 @@ impl Resolver {
             ) {
                 Some(sema_ty) => {
                     typed_union_fields.push(TypedUnionField {
-                        name: field.identifier.name.clone(),
+                        name: field.ident.value.clone(),
                         ty: sema_ty,
                         loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
                     });
@@ -1285,7 +1285,7 @@ impl Resolver {
             }
         }
 
-        self.check_duplicate_method_names(&union_decl.identifier.name, union_decl.methods.clone());
+        self.check_duplicate_method_names(&union_decl.ident.value, union_decl.methods.clone());
 
         let methods = match self.resolve_methods(
             module_id,
@@ -1302,7 +1302,7 @@ impl Resolver {
             symbol_id: union_symbol_id,
             union_sig: UnionSig {
                 symbol_id: union_symbol_id,
-                name: union_decl.identifier.name.clone(),
+                name: union_decl.ident.value.clone(),
                 fields: typed_union_fields.clone(),
                 methods: methods.clone(),
                 generic_params: generic_params.clone(),
@@ -1314,7 +1314,7 @@ impl Resolver {
         if let Some(local_scope_rc) = &local_scope_opt {
             let mut local_scope = local_scope_rc.borrow_mut();
             local_scope.insert(
-                union_decl.identifier.name.clone(),
+                union_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Union(resolved_union)),
             );
             drop(local_scope);
@@ -1331,13 +1331,13 @@ impl Resolver {
         Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id: union_symbol_id,
             module_id,
-            name: union_decl.identifier.name.clone(),
+            name: union_decl.ident.value.clone(),
             fields: typed_union_fields,
             methods,
             generic_params,
             modifiers: union_decl.modifiers.clone(),
             impls,
-            loc: SourceLoc::from_loc(union_decl.identifier.loc.clone(), self.current_file_path()),
+            loc: SourceLoc::from_loc(union_decl.ident.loc.clone(), self.current_file_path()),
             is_local: is_local,
         }))
     }
@@ -1352,7 +1352,7 @@ impl Resolver {
         let enum_symbol_id = local_scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &enum_decl.identifier.name).unwrap());
+            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &enum_decl.ident.value).unwrap());
 
         self.current_object = Some(enum_symbol_id);
 
@@ -1367,8 +1367,8 @@ impl Resolver {
 
         for variant in &enum_decl.variants {
             let typed_variant = match variant {
-                EnumVariant::Identifier(identifier) => TypedEnumVariant::Identifier(identifier.clone()),
-                EnumVariant::Variant(identifier, enum_valued_fields) => {
+                EnumVariant::Ident(ident) => TypedEnumVariant::Ident(ident.clone()),
+                EnumVariant::Variant(ident, enum_valued_fields) => {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
                         let field_ty = match self.resolve_type(
@@ -1388,9 +1388,9 @@ impl Resolver {
                             loc: SourceLoc::from_loc(valued_field.loc.clone(), self.current_file_path()),
                         });
                     }
-                    TypedEnumVariant::Variant(identifier.clone(), fields)
+                    TypedEnumVariant::Variant(ident.clone(), fields)
                 }
-                EnumVariant::Valued(identifier, expr) => match self.resolve_expr(
+                EnumVariant::Valued(ident, expr) => match self.resolve_expr(
                     module_id,
                     match &local_scope_opt {
                         Some(local_scope) => Some(Rc::clone(&local_scope)),
@@ -1398,7 +1398,7 @@ impl Resolver {
                     },
                     expr,
                 ) {
-                    Some(typed_expr) => TypedEnumVariant::Valued(identifier.clone(), Box::new(typed_expr)),
+                    Some(typed_expr) => TypedEnumVariant::Valued(ident.clone(), Box::new(typed_expr)),
                     None => continue,
                 },
             };
@@ -1406,7 +1406,7 @@ impl Resolver {
             variants.push(typed_variant);
         }
 
-        self.check_duplicate_method_names(&enum_decl.identifier.name, enum_decl.methods.clone());
+        self.check_duplicate_method_names(&enum_decl.ident.value, enum_decl.methods.clone());
 
         let methods =
             match self.resolve_methods(module_id, &enum_decl.methods, enum_symbol_id, generic_params.is_some()) {
@@ -1419,7 +1419,7 @@ impl Resolver {
             symbol_id: enum_symbol_id,
             enum_sig: EnumSig {
                 symbol_id: enum_symbol_id,
-                name: enum_decl.identifier.name.clone(),
+                name: enum_decl.ident.value.clone(),
                 methods: methods.clone(),
                 variants: variants.clone(),
                 generic_params: generic_params.clone(),
@@ -1431,7 +1431,7 @@ impl Resolver {
         if let Some(local_scope_rc) = &local_scope_opt {
             let mut local_scope = local_scope_rc.borrow_mut();
             local_scope.insert(
-                enum_decl.identifier.name.clone(),
+                enum_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Enum(resolved_enum)),
             );
             drop(local_scope);
@@ -1448,13 +1448,13 @@ impl Resolver {
         Some(TypedStmt::Enum(TypedEnumStmt {
             module_id,
             symbol_id: enum_symbol_id,
-            name: enum_decl.identifier.name.clone(),
+            name: enum_decl.ident.value.clone(),
             variants,
             methods,
             generic_params,
             impls,
             modifiers: enum_decl.modifiers.clone(),
-            loc: SourceLoc::from_loc(enum_decl.identifier.loc.clone(), self.current_file_path()),
+            loc: SourceLoc::from_loc(enum_decl.ident.loc.clone(), self.current_file_path()),
             is_local,
         }))
     }
@@ -1470,14 +1470,14 @@ impl Resolver {
             .as_ref()
             .and_then(|expr| self.resolve_expr(module_id, None, expr));
 
-        let symbol_id = self.lookup_symbol_id(module_id, &global_var.identifier.name).unwrap();
+        let symbol_id = self.lookup_symbol_id(module_id, &global_var.ident.value).unwrap();
 
         let resolved_global_var = ResolvedGlobalVar {
             module_id,
             symbol_id,
             global_var_sig: GlobalVarSig {
                 module_id,
-                name: global_var.identifier.name.clone(),
+                name: global_var.ident.value.clone(),
                 ty: sema_ty.clone(),
                 rhs: typed_expr.clone(),
                 analyzed: true,
@@ -1495,7 +1495,7 @@ impl Resolver {
         Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
             module_id,
             symbol_id,
-            name: global_var.identifier.name.clone(),
+            name: global_var.ident.value.clone(),
             ty: sema_ty,
             expr: typed_expr,
             modifiers: global_var.modifiers.clone(),
@@ -1508,7 +1508,7 @@ impl Resolver {
         let mut method_names: Vec<String> = Vec::new();
 
         for func_def in methods_list {
-            let method_name = func_def.identifier.name.clone();
+            let method_name = func_def.ident.value.clone();
 
             if method_names.contains(&method_name) {
                 self.reporter.report(Diag {
@@ -1548,7 +1548,7 @@ impl Resolver {
             if let Some((return_type, mut typed_func_params, typed_variadic_param, generic_params)) =
                 self.resolve_func(module_id, Some(Rc::clone(&local_scope_rc)), &func_def.as_func_decl())
             {
-                let method_name = func_def.identifier.name.clone();
+                let method_name = func_def.ident.value.clone();
                 let method_resolve_name = get_method_symbol_name(struct_symbol_id, method_name.clone());
 
                 typed_func_params = typed_func_params
@@ -1671,38 +1671,38 @@ impl Resolver {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
-        impls: &Vec<Identifier>,
+        impls: &Vec<Ident>,
     ) -> Vec<TypedIdentifier> {
         impls
             .iter()
-            .filter_map(|identifier| {
+            .filter_map(|ident| {
                 let resolved = local_scope_opt
                     .as_ref()
                     .and_then(|local_scope| {
                         local_scope
                             .borrow()
-                            .resolve(&identifier.as_string())
+                            .resolve(&ident.as_string())
                             .map(|sym| LocalOrGlobalSymbol::LocalSymbol(sym.clone()))
                     })
                     .or_else(|| {
-                        self.lookup_symbol_entry(module_id, &identifier.name)
+                        self.lookup_symbol_entry(module_id, &ident.value)
                             .map(LocalOrGlobalSymbol::GlobalSymbol)
                     });
 
                 match resolved {
                     Some(sym) => Some(TypedIdentifier {
-                        name: identifier.as_string(),
+                        name: ident.as_string(),
                         symbol_id: sym.get_symbol_id(),
-                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                        loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                     }),
                     None => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                                name: identifier.as_string(),
+                                name: ident.as_string(),
                             }),
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                identifier.loc.clone(),
+                                ident.loc.clone(),
                                 self.current_file_path(),
                             ))),
                             hint: None,
@@ -1724,7 +1724,7 @@ impl Resolver {
         let struct_symbol_id = local_scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap());
+            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &struct_decl.ident.value).unwrap());
 
         self.current_object = Some(struct_symbol_id);
 
@@ -1748,7 +1748,7 @@ impl Resolver {
                     field.span.end,
                 )
                 .map(|ty| TypedStructField {
-                    name: field.identifier.name.clone(),
+                    name: field.ident.value.clone(),
                     vis: field.vis.clone(),
                     ty,
                     loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
@@ -1756,7 +1756,7 @@ impl Resolver {
             })
             .collect();
 
-        self.check_duplicate_method_names(&struct_decl.identifier.name, struct_decl.methods.clone());
+        self.check_duplicate_method_names(&struct_decl.ident.value, struct_decl.methods.clone());
 
         let methods = self.resolve_methods(
             module_id,
@@ -1770,7 +1770,7 @@ impl Resolver {
             module_id,
             symbol_id: struct_symbol_id,
             struct_sig: StructSig {
-                name: struct_decl.identifier.name.clone(),
+                name: struct_decl.ident.value.clone(),
                 fields: typed_struct_fields.clone(),
                 generic_params: generic_params.clone(),
                 impls: impls.clone(),
@@ -1783,7 +1783,7 @@ impl Resolver {
 
         if let Some(local_scope_rc) = local_scope_opt {
             local_scope_rc.borrow_mut().insert(
-                struct_decl.identifier.name.clone(),
+                struct_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Struct(resolved_struct)),
             );
         } else {
@@ -1797,7 +1797,7 @@ impl Resolver {
         Some(TypedStmt::Struct(TypedStructStmt {
             module_id: self.current_module.unwrap(),
             symbol_id: struct_symbol_id,
-            name: struct_decl.identifier.name.clone(),
+            name: struct_decl.ident.value.clone(),
             fields: typed_struct_fields,
             methods,
             generic_params,
@@ -1885,13 +1885,13 @@ impl Resolver {
                     if let Some(local_scope_rc) = &local_scope_opt {
                         let mut local_scope = local_scope_rc.borrow_mut();
                         local_scope.insert(
-                            func_param.identifier.name.clone(),
+                            func_param.ident.value.clone(),
                             LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                 module_id,
                                 symbol_id,
                                 typed_variable: TypedVarStmt {
                                     symbol_id,
-                                    name: func_param.identifier.name.clone(),
+                                    name: func_param.ident.value.clone(),
                                     ty: Some(param_type.clone()),
                                     rhs: None,
                                     is_const: false,
@@ -1904,7 +1904,7 @@ impl Resolver {
 
                     typed_func_params.push(TypedFuncParamKind::FuncParam(TypedFuncParam {
                         symbol_id,
-                        name: func_param.identifier.name.clone(),
+                        name: func_param.ident.value.clone(),
                         ty: param_type,
                         loc: SourceLoc::from_loc(func_param.loc.clone(), self.current_file_path()),
                     }));
@@ -1923,14 +1923,14 @@ impl Resolver {
 
         let typed_variadic_param = params.variadic.as_ref().and_then(|variadic| match variadic {
             FuncVariadicParams::UntypedCStyle => Some(TypedFuncVariadicParams::UntypedCStyle),
-            FuncVariadicParams::Typed(identifier, type_specifier) => {
+            FuncVariadicParams::Typed(ident, type_specifier) => {
                 let variadic_type = self.resolve_type(
                     &None, // FIXME Generic Params
                     local_scope_opt.clone(),
                     module_id,
                     type_specifier.clone(),
-                    identifier.loc.clone(),
-                    identifier.span.end,
+                    ident.loc.clone(),
+                    ident.span.end,
                 )?;
 
                 let symbol_id = generate_symbol_id();
@@ -1938,18 +1938,18 @@ impl Resolver {
                 if let Some(local_scope_rc) = &local_scope_opt {
                     let mut local_scope = local_scope_rc.borrow_mut();
                     local_scope.insert(
-                        identifier.name.clone(),
+                        ident.value.clone(),
                         LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                             module_id,
                             symbol_id,
                             typed_variable: TypedVarStmt {
                                 symbol_id,
-                                name: identifier.name.clone(),
+                                name: ident.value.clone(),
                                 ty: Some(variadic_type.clone()),
                                 rhs: None,
                                 is_const: false,
                                 analyzed: true,
-                                loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                                loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                             },
                         })),
                     );
@@ -1957,9 +1957,9 @@ impl Resolver {
 
                 Some(TypedFuncVariadicParams::Typed(
                     TypedIdentifier {
-                        name: identifier.as_string(),
+                        name: ident.as_string(),
                         symbol_id,
-                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                        loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                     },
                     variadic_type,
                 ))
@@ -1978,7 +1978,7 @@ impl Resolver {
         let func_sig = FuncSig {
             symbol_id: Some(symbol_id),
             module_id,
-            name: func_decl.identifier.name.clone(),
+            name: func_decl.ident.value.clone(),
             is_func_decl: true,
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
@@ -2003,7 +2003,7 @@ impl Resolver {
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
             module_id,
             symbol_id,
-            name: func_decl.identifier.name.clone(),
+            name: func_decl.ident.value.clone(),
             generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
@@ -2021,7 +2021,7 @@ impl Resolver {
         let body_scope = LocalScope::new(None);
         self.insert_scope_ref(module_id, scope_id, body_scope.clone());
 
-        let symbol_id = self.lookup_symbol_id(module_id, &func_def.identifier.name)?;
+        let symbol_id = self.lookup_symbol_id(module_id, &func_def.ident.value)?;
 
         let (return_type, typed_func_params, typed_variadic_param, generic_params) =
             self.resolve_func(module_id, Some(body_scope.clone()), &func_def.as_func_decl())?;
@@ -2029,7 +2029,7 @@ impl Resolver {
         let func_sig = FuncSig {
             symbol_id: Some(symbol_id),
             module_id,
-            name: func_def.identifier.name.clone(),
+            name: func_def.ident.value.clone(),
             generic_params: generic_params.clone(),
             is_func_decl: false,
             params: TypedFuncParams {
@@ -2060,7 +2060,7 @@ impl Resolver {
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
             symbol_id,
             module_id,
-            name: func_def.identifier.name.clone(),
+            name: func_def.ident.value.clone(),
             generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
@@ -2079,11 +2079,11 @@ impl Resolver {
         local_scope_rc: LocalScopeRef,
         variable: &Variable,
     ) -> Option<TypedVarStmt> {
-        if local_scope_rc.borrow().resolve(&variable.identifier.name).is_some() {
+        if local_scope_rc.borrow().resolve(&variable.ident.value).is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
-                    symbol_name: variable.identifier.name.clone(),
+                    symbol_name: variable.ident.value.clone(),
                 }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
                     variable.loc.clone(),
@@ -2114,7 +2114,7 @@ impl Resolver {
 
         let typed_variable = TypedVarStmt {
             symbol_id,
-            name: variable.identifier.name.clone(),
+            name: variable.ident.value.clone(),
             ty: var_type.clone(),
             rhs: typed_rhs.clone(),
             is_const: variable.is_const,
@@ -2129,7 +2129,7 @@ impl Resolver {
         };
 
         local_scope_rc.borrow_mut().insert(
-            variable.identifier.name.clone(),
+            variable.ident.value.clone(),
             LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
         );
 
@@ -2253,19 +2253,19 @@ impl Resolver {
             .as_ref()
             .and_then(|expr| self.resolve_expr(module_id, Some(local_scope.clone()), expr));
 
-        let define_identifier = |this: &mut Resolver, identifier: &Identifier| -> Option<SymbolID> {
+        let define_identifier = |this: &mut Resolver, ident: &Ident| -> Option<SymbolID> {
             let symbol_id = generate_symbol_id();
 
             let mut local_scope_ref = local_scope.borrow_mut();
 
-            if local_scope_ref.resolve(&identifier.name).is_some() {
+            if local_scope_ref.resolve(&ident.value).is_some() {
                 this.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
-                        symbol_name: identifier.name.clone(),
+                        symbol_name: ident.value.clone(),
                     }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        identifier.loc.clone(),
+                        ident.loc.clone(),
                         this.current_file_path(),
                     ))),
                     hint: None,
@@ -2275,12 +2275,12 @@ impl Resolver {
 
             let typed_variable = TypedVarStmt {
                 symbol_id,
-                name: identifier.as_string(),
+                name: ident.as_string(),
                 ty: None,
                 rhs: None,
                 is_const: false,
                 analyzed: typed_rhs.is_some(),
-                loc: SourceLoc::from_loc(identifier.loc.clone(), this.current_file_path()),
+                loc: SourceLoc::from_loc(ident.loc.clone(), this.current_file_path()),
             };
 
             let resolved_var = ResolvedVariable {
@@ -2290,7 +2290,7 @@ impl Resolver {
             };
 
             local_scope_ref.insert(
-                identifier.as_string(),
+                ident.as_string(),
                 LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
             );
 
@@ -2299,18 +2299,18 @@ impl Resolver {
         };
 
         let pattern = match &export_tuple.pattern {
-            ExportPattern::Identifier(identifier) => {
-                let symbol_id = define_identifier(self, identifier)?;
-                TypedExportPattern::Identifier(symbol_id)
+            ExportPattern::Ident(ident) => {
+                let symbol_id = define_identifier(self, ident)?;
+                TypedExportPattern::Ident(symbol_id)
             }
             ExportPattern::Tuple(patterns) => {
                 let mut typed_patterns = Vec::new();
 
                 for sub_pattern in patterns {
                     match sub_pattern {
-                        ExportPattern::Identifier(identifier) => {
-                            let symbol_id = define_identifier(self, identifier)?;
-                            typed_patterns.push(TypedExportPattern::Identifier(symbol_id));
+                        ExportPattern::Ident(ident) => {
+                            let symbol_id = define_identifier(self, ident)?;
+                            typed_patterns.push(TypedExportPattern::Ident(symbol_id));
                         }
                         ExportPattern::Tuple(inner) => {
                             let inner_export = ExportPattern::Tuple(inner.clone());
@@ -2452,54 +2452,54 @@ impl Resolver {
                                 let loc = typed_expr.loc.clone();
                                 TypedSwitchCasePattern::Expr(typed_expr, loc)
                             }
-                            SwitchCasePattern::Identifier(identifier) => {
+                            SwitchCasePattern::Ident(ident) => {
                                 let symbol_id = generate_symbol_id();
                                 let mut case_scope = case_scope_rc.borrow_mut();
                                 case_scope.insert(
-                                    identifier.name.clone(),
+                                    ident.value.clone(),
                                     LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                         module_id,
                                         symbol_id,
                                         typed_variable: TypedVarStmt {
                                             symbol_id,
-                                            name: identifier.name.clone(),
+                                            name: ident.value.clone(),
                                             ty: None,
                                             rhs: None,
                                             is_const: false,
                                             analyzed: true,
-                                            loc: SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                                            loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                                         },
                                     })),
                                 );
                                 drop(case_scope);
 
-                                TypedSwitchCasePattern::Identifier(
-                                    identifier.name.clone(),
-                                    SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                                TypedSwitchCasePattern::Ident(
+                                    ident.value.clone(),
+                                    SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                                 )
                             }
-                            SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
+                            SwitchCasePattern::EnumVariant(ident, valued_fields) => {
                                 TypedSwitchCasePattern::EnumVariant(
-                                    identifier.name.clone(),
+                                    ident.value.clone(),
                                     valued_fields
                                         .iter()
-                                        .map(|identifier| {
+                                        .map(|ident| {
                                             let symbol_id = generate_symbol_id();
                                             let mut case_scope = case_scope_rc.borrow_mut();
                                             case_scope.insert(
-                                                identifier.name.clone(),
+                                                ident.value.clone(),
                                                 LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                                     module_id,
                                                     symbol_id,
                                                     typed_variable: TypedVarStmt {
                                                         symbol_id,
-                                                        name: identifier.name.clone(),
+                                                        name: ident.value.clone(),
                                                         ty: None,
                                                         rhs: None,
                                                         is_const: false,
                                                         analyzed: true,
                                                         loc: SourceLoc::from_loc(
-                                                            identifier.loc.clone(),
+                                                            ident.loc.clone(),
                                                             self.current_file_path(),
                                                         ),
                                                     },
@@ -2507,16 +2507,16 @@ impl Resolver {
                                             );
                                             drop(case_scope);
                                             TypedIdentifier {
-                                                name: identifier.name.clone(),
+                                                name: ident.value.clone(),
                                                 symbol_id,
                                                 loc: SourceLoc::from_loc(
-                                                    identifier.loc.clone(),
+                                                    ident.loc.clone(),
                                                     self.current_file_path(),
                                                 ),
                                             }
                                         })
                                         .collect(),
-                                    SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path()),
+                                    SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                                 )
                             }
                             SwitchCasePattern::Range(range) => {
@@ -2667,26 +2667,26 @@ impl Resolver {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
-        identifier: &Identifier,
+        ident: &Ident,
     ) -> Option<SymbolID> {
         if let Some(local_scope_rc) = &local_scope_opt {
             let local_scope = local_scope_rc.borrow();
-            if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
+            if let Some(local_symbol) = local_scope.resolve(&ident.value) {
                 return Some(local_symbol.get_symbol_id());
             }
         }
 
-        if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
+        if let Some(symbol_id) = self.lookup_symbol_id(module_id, &ident.value) {
             return Some(symbol_id);
         }
 
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                name: identifier.name.clone(),
+                name: ident.value.clone(),
             }),
             location: Some(DiagLoc::new(SourceLoc::from_loc(
-                identifier.loc.clone(),
+                ident.loc.clone(),
                 self.current_file_path(),
             ))),
             hint: None,
@@ -2699,13 +2699,13 @@ impl Resolver {
         if module_import.segments.len() == 1 {
             let maybe_ident = module_import.as_identifier();
             if let Some(ident) = maybe_ident {
-                if let Some(sym) = self.lookup_symbol_id(module_id, &ident.name) {
+                if let Some(sym) = self.lookup_symbol_id(module_id, &ident.value) {
                     return Some(sym);
                 }
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                        name: ident.name.clone(),
+                        name: ident.value.clone(),
                     }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         ident.loc.clone(),
@@ -2752,7 +2752,7 @@ impl Resolver {
             });
             return None;
         };
-        let symbol_name = symbol_ident.name;
+        let symbol_name = symbol_ident.value;
 
         let module_alias = module_segments_as_string(module_import.segments);
         let Some(target_module_id) = self.get_module_alias(&module_alias) else {
@@ -2793,10 +2793,10 @@ impl Resolver {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
-        identifier: &Identifier,
+        ident: &Ident,
     ) -> Option<TypedExprStmt> {
-        let symbol_id = self.resolve_ident(local_scope_opt, module_id, identifier)?;
-        let loc = SourceLoc::from_loc(identifier.loc.clone(), self.current_file_path());
+        let symbol_id = self.resolve_ident(local_scope_opt, module_id, ident)?;
+        let loc = SourceLoc::from_loc(ident.loc.clone(), self.current_file_path());
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(symbol_id, loc.clone()),
             sema_ty: None,
@@ -2811,8 +2811,8 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         module_import: &ModuleImport,
     ) -> Option<TypedExprStmt> {
-        if let Some(identifier) = module_import.as_identifier() {
-            self.resolve_ident_expr(local_scope_opt, module_id, &identifier)
+        if let Some(ident) = module_import.as_identifier() {
+            self.resolve_ident_expr(local_scope_opt, module_id, &ident)
         } else {
             self.resolve_module_import(module_id, module_import.clone())
                 .map(|symbol_id| TypedExprStmt {
@@ -2840,7 +2840,7 @@ impl Resolver {
             Expr::ModuleImport(module_import) => {
                 self.resolve_module_import_expr(module_id, local_scope_opt, module_import)
             }
-            Expr::Identifier(identifier) => self.resolve_ident_expr(local_scope_opt, module_id, identifier),
+            Expr::Ident(ident) => self.resolve_ident_expr(local_scope_opt, module_id, ident),
             Expr::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
             Expr::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
             Expr::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
@@ -2995,7 +2995,7 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::FieldAccess(TypedFieldAccess {
                 operand: Box::new(operand),
-                field_name: field_access.field_name.name.clone(),
+                field_name: field_access.field_name.value.clone(),
                 is_fat_arrow: field_access.is_fat_arrow,
                 field_index: None,
                 field_ty: None,
@@ -3039,7 +3039,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 func_sig: None,
                 type_args,
-                method_name: method_call.method_name.name.clone(),
+                method_name: method_call.method_name.value.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
                 monomorph_key: None,
                 self_ty: None,
@@ -3068,7 +3068,7 @@ impl Resolver {
             .filter_map(|field_init| {
                 self.resolve_expr(module_id, local_scope_opt.clone(), &field_init.value)
                     .map(|value| TypedStructFieldInit {
-                        name: field_init.identifier.name.clone(),
+                        name: field_init.ident.value.clone(),
                         value,
                         loc: SourceLoc::from_loc(field_init.loc.clone(), self.current_file_path()),
                     })
@@ -3257,7 +3257,7 @@ impl Resolver {
         let (loc, span_end) = type_specifier.get_loc();
 
         let symbol_id = match type_specifier {
-            TypeSpecifier::Identifier(identifier) => self.resolve_ident(local_scope_opt, module_id, &identifier)?,
+            TypeSpecifier::Ident(ident) => self.resolve_ident(local_scope_opt, module_id, &ident)?,
             TypeSpecifier::ModuleImport(module_import) => {
                 self.resolve_module_import(module_id, module_import.clone())?
             }
@@ -3489,7 +3489,7 @@ impl Resolver {
             };
 
             fields.push(TypedUStructValueField {
-                field_name: field.field_name.name.clone(),
+                field_name: field.field_name.value.clone(),
                 field_ty,
                 field_value: Box::new(field_value),
                 loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
@@ -3587,29 +3587,29 @@ impl Resolver {
         module_id: ModuleID,
         module_import: &ModuleImport,
     ) -> Option<SymbolID> {
-        if let Some(identifier) = module_import.as_identifier() {
+        if let Some(ident) = module_import.as_identifier() {
             if let Some(local_scope_rc) = local_scope_opt {
                 let local_scope = local_scope_rc.borrow();
-                if let Some(local_symbol) = local_scope.resolve(&identifier.name) {
+                if let Some(local_symbol) = local_scope.resolve(&ident.value) {
                     return Some(local_symbol.get_symbol_id());
                 }
             }
 
-            if identifier.as_string() == "Self" {
+            if ident.as_string() == "Self" {
                 return Some(self.current_object.unwrap());
             }
 
-            if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
+            if let Some(symbol_id) = self.lookup_symbol_id(module_id, &ident.value) {
                 return Some(symbol_id);
             }
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                    name: identifier.name.clone(),
+                    name: ident.value.clone(),
                 }),
                 location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    identifier.loc.clone(),
+                    ident.loc.clone(),
                     self.current_file_path(),
                 ))),
                 hint: None,

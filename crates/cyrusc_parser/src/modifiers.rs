@@ -175,9 +175,9 @@ impl Parser {
             let loc = self.current_token().loc.clone();
 
             while !self.current_token_is(TokenKind::RightParen) {
-                if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-                    let identifier = self.parse_identifier()?;
-                    let name = identifier.as_string();
+                if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                    let ident = self.parse_identifier()?;
+                    let name = ident.as_string();
 
                     if name == "align" {
                         if has_align {

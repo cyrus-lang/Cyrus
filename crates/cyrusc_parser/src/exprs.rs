@@ -108,9 +108,9 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let mut segments = match self.current_token().kind {
-            TokenKind::Identifier { name } => {
-                vec![ModuleSegment::SubModule(Identifier {
-                    name,
+            TokenKind::Ident(ident) => {
+                vec![ModuleSegment::SubModule(Ident {
+                    value: ident,
                     span: Span {
                         start,
                         end: self.current_token().span.end - 1,
@@ -136,14 +136,14 @@ impl Parser {
             });
         }
 
-        self.next_token(); // consume first identifier
+        self.next_token(); // consume first ident
 
         loop {
             if self.current_token_is(TokenKind::DoubleColon) {
                 self.next_token(); // consume double colon
-            } else if let TokenKind::Identifier { name } = self.current_token().kind {
-                segments.push(ModuleSegment::SubModule(Identifier {
-                    name,
+            } else if let TokenKind::Ident(name) = self.current_token().kind {
+                segments.push(ModuleSegment::SubModule(Ident {
+                    value: name,
                     span: Span {
                         start,
                         end: self.peek_token().span.end - 1,
@@ -182,12 +182,12 @@ impl Parser {
 
         while !self.current_token_is(TokenKind::Semicolon) {
             match self.current_token().kind {
-                TokenKind::Identifier { name: identifier } => {
+                TokenKind::Ident(ident)=> {
                     let span = self.current_token().span.clone();
-                    self.next_token(); // consume identifier
+                    self.next_token(); // consume ident
 
-                    module_path.segments.push(ModuleSegment::SubModule(Identifier {
-                        name: identifier.clone(),
+                    module_path.segments.push(ModuleSegment::SubModule(Ident {
+                        value: ident.clone(),
                         span: span.clone(),
                         loc: loc.clone(),
                     }));
@@ -258,7 +258,7 @@ impl Parser {
                 if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
                     self.next_token();
                     self.parse_unnamed_struct_value(true)?
-                } else if let TokenKind::Identifier { .. } = self.peek_token().kind {
+                } else if let TokenKind::Ident { .. } = self.peek_token().kind {
                     self.next_token(); // consume const
                     let module_import = self.parse_module_import()?;
                     self.next_token();
@@ -278,7 +278,7 @@ impl Parser {
                     });
                 }
             }
-            TokenKind::Identifier { .. } => {
+            TokenKind::Ident { .. } => {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
@@ -332,7 +332,7 @@ impl Parser {
                 self.next_token(); // consume the operator
 
                 match self.current_token().kind {
-                    TokenKind::Identifier { .. } => {
+                    TokenKind::Ident { .. } => {
                         let module_import = self.parse_module_import()?;
 
                         Expr::Unary(UnaryExpr {
@@ -666,7 +666,7 @@ impl Parser {
             | TokenKind::Caret
             | TokenKind::ShiftLeft
             | TokenKind::ShiftRight
-            | TokenKind::Identifier { .. } => {
+            | TokenKind::Ident { .. } => {
                 self.next_token(); // consume left expression
                 let op_token = self.current_token().kind;
                 if self.peek_token_is(TokenKind::Assign) {
@@ -786,7 +786,7 @@ impl Parser {
     fn parse_method_call(
         &mut self,
         operand: Expr,
-        method_name: Identifier,
+        method_name: Ident,
         is_fat_arrow: bool,
         type_args: Option<TypeArgs>,
         start: usize,
@@ -843,8 +843,8 @@ impl Parser {
             }
         };
 
-        if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-            let identifier = self.parse_identifier()?;
+        if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+            let ident = self.parse_identifier()?;
 
             let mut type_args_opt: Option<Vec<TypeArg>> = None;
             if self.is_type_arg_start(operand.clone()).includes_type_args {
@@ -853,14 +853,14 @@ impl Parser {
             }
 
             if self.peek_token_is(TokenKind::LeftParen) {
-                self.next_token(); // consume identifier
+                self.next_token(); // consume ident
 
-                self.parse_method_call(operand, identifier, is_fat_arrow, type_args_opt, start, loc)
+                self.parse_method_call(operand, ident, is_fat_arrow, type_args_opt, start, loc)
             } else {
                 Ok(Expr::FieldAccess(FieldAccess {
                     is_fat_arrow,
                     operand: Box::new(operand),
-                    field_name: identifier,
+                    field_name: ident,
                     type_args: type_args_opt,
                     span: Span::new(start, self.current_token().span.end),
                     loc,
@@ -932,14 +932,14 @@ impl Parser {
             let field_name = self.parse_identifier()?;
             let field_loc = self.current_token().loc.clone();
 
-            self.next_token(); // consume identifier
+            self.next_token(); // consume ident
             self.expect_current(TokenKind::Colon)?;
 
             let value = self.parse_expr(Precedence::Lowest)?.0;
             self.next_token();
 
             field_inits.push(FieldInit {
-                identifier: field_name,
+                ident: field_name,
                 value,
                 loc: field_loc,
             });
@@ -1070,7 +1070,7 @@ impl Parser {
         if self.peek_token_is(TokenKind::LeftBrace) {
             let element_type = {
                 match expr.clone() {
-                    Expr::Identifier(identifier) => TypeSpecifier::Identifier(identifier),
+                    Expr::Ident(ident) => TypeSpecifier::Ident(ident),
                     Expr::ModuleImport(module_import) => TypeSpecifier::ModuleImport(module_import),
                     Expr::TypeSpecifier(type_specifier) => type_specifier,
                     _ => {
@@ -1271,11 +1271,11 @@ impl Parser {
                         hint: None,
                     });
                 }
-                TokenKind::Identifier { name: field_name } => {
+                TokenKind::Ident(field_name) => {
                     let start = self.current_token().span.start;
                     let loc = self.current_token().loc.clone();
 
-                    self.next_token(); // consume identifier
+                    self.next_token(); // consume ident
 
                     let mut field_ty: Option<TypeSpecifier> = None;
                     if self.current_token_is(TokenKind::Colon) {
@@ -1292,8 +1292,8 @@ impl Parser {
                     self.next_token();
 
                     fields.push(UnnamedStructValueField {
-                        field_name: Identifier {
-                            name: field_name.clone(),
+                        field_name: Ident {
+                            value: field_name.clone(),
                             span: Span {
                                 start,
                                 end: self.current_token().span.end,

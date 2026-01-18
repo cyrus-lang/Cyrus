@@ -717,7 +717,7 @@ impl Lexer {
                 }
             }
         } else {
-            let is_unsigned = matches!(suffix, Some(ref s) if s.is_unsigned_type_token());
+            let is_unsigned = matches!(suffix, Some(ref token_kind) if token_kind.is_unsigned());
             let value: i128 = if is_unsigned || base != 10 {
                 match u128::from_str_radix(&number, base) {
                     Ok(v) => v as i128,
@@ -865,35 +865,6 @@ impl Lexer {
     }
 
     #[inline]
-    fn lookup_typename(&self, ident: String) -> Option<TokenKind> {
-        match ident.as_str() {
-            "uintptr" => Some(TokenKind::UIntPtr),
-            "intptr" => Some(TokenKind::IntPtr),
-            "isize" => Some(TokenKind::ISize),
-            "usize" => Some(TokenKind::USize),
-            "int" => Some(TokenKind::Int),
-            "int8" => Some(TokenKind::Int8),
-            "int16" => Some(TokenKind::Int16),
-            "int32" => Some(TokenKind::Int32),
-            "int64" => Some(TokenKind::Int64),
-            "int128" => Some(TokenKind::Int128),
-            "uint" => Some(TokenKind::UInt),
-            "uint8" => Some(TokenKind::UInt8),
-            "uint16" => Some(TokenKind::UInt16),
-            "uint32" => Some(TokenKind::UInt32),
-            "uint64" => Some(TokenKind::UInt64),
-            "uint128" => Some(TokenKind::UInt128),
-            "float16" => Some(TokenKind::Float16),
-            "float32" => Some(TokenKind::Float32),
-            "float64" => Some(TokenKind::Float64),
-            "float128" => Some(TokenKind::Float128),
-            "char" => Some(TokenKind::Char),
-            "bool" => Some(TokenKind::Bool),
-            _ => None,
-        }
-    }
-
-    #[inline]
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
             "dynamic" => TokenKind::Dynamic,
@@ -947,9 +918,29 @@ impl Lexer {
             "no_sanitize" => TokenKind::NoSanitize,
             "nounwind" => TokenKind::NoUnwind,
             "section" => TokenKind::Section,
-            _ => self.lookup_typename(ident.clone()).unwrap_or(TokenKind::Identifier {
-                name: ident.to_string(),
-            }),
+            "uintptr" => TokenKind::UIntPtr,
+            "intptr" => TokenKind::IntPtr,
+            "isize" => TokenKind::ISize,
+            "usize" => TokenKind::USize,
+            "int" => TokenKind::Int,
+            "int8" => TokenKind::Int8,
+            "int16" => TokenKind::Int16,
+            "int32" => TokenKind::Int32,
+            "int64" => TokenKind::Int64,
+            "int128" => TokenKind::Int128,
+            "uint" => TokenKind::UInt,
+            "uint8" => TokenKind::UInt8,
+            "uint16" => TokenKind::UInt16,
+            "uint32" => TokenKind::UInt32,
+            "uint64" => TokenKind::UInt64,
+            "uint128" => TokenKind::UInt128,
+            "float16" => TokenKind::Float16,
+            "float32" => TokenKind::Float32,
+            "float64" => TokenKind::Float64,
+            "float128" => TokenKind::Float128,
+            "char" => TokenKind::Char,
+            "bool" => TokenKind::Bool,
+            _ => TokenKind::Ident(ident),
         }
     }
 }

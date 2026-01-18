@@ -206,7 +206,7 @@ impl GenericType {
 
             let missing_fmt = missing
                 .iter()
-                .map(|identifier| format!("'{}'", identifier.name))
+                .map(|ident| format!("'{}'", ident.name))
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -339,7 +339,7 @@ pub fn debug_generic_type<'a>(
                                 .collect::<Vec<String>>()
                                 .join(", ");
 
-                            format!("{}<{}>", bound.symbol.name.clone(), type_args)
+                            format!("{}<{}>", bound.symbol.value.clone(), type_args)
                         })
                         .collect::<Vec<_>>()
                         .join(", ")

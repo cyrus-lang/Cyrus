@@ -70,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
     ///    type analysis of all expression kinds.
     ///
     /// # Parameters
-    /// - `scope_id_opt`: Optional scope identifier for name resolution.
+    /// - `scope_id_opt`: Optional scope ident for name resolution.
     /// - `typed_expr`: The expression statement to analyze. Modified in-place with
     ///   the inferred semantic type.
     /// - `expected_type`: Optional type expected by the surrounding context.
@@ -142,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
     ///    and that a type was successfully assigned.
     ///
     /// # Parameters
-    /// - `scope_id_opt`: Optional scope identifier for name resolution.
+    /// - `scope_id_opt`: Optional scope ident for name resolution.
     /// - `typed_expr`: The expression statement to analyze. Modified in-place with
     ///   the inferred semantic type.
     /// - `expected_type`: Optional type expected by the surrounding context.
@@ -3468,9 +3468,9 @@ impl<'a> AnalysisContext<'a> {
     ///    substitutions) to ensure consistency.
     ///
     /// # Parameters
-    /// - `scope_id_opt`: Optional scope identifier for name resolution and type normalization.
+    /// - `scope_id_opt`: Optional scope ident for name resolution and type normalization.
     /// - `local_scope_opt`: Optional reference to the local scope for symbol lookup.
-    /// - `instance_symbol_id`: Identifier of the variable symbol to analyze.
+    /// - `instance_symbol_id`: Ident of the variable symbol to analyze.
     /// - `loc`: Source location for error reporting during type normalization.
     ///
     /// # Returns

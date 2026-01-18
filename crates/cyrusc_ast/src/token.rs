@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -26,10 +26,10 @@ pub struct Token {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
-    Illegal,
     EOF,
-    Identifier { name: String },
+    Ident(String),
     Literal(Literal),
+
     // Operators
     Plus,
     Minus,
@@ -38,6 +38,7 @@ pub enum TokenKind {
     Percent,
     Increment,
     Decrement,
+
     // Symbols
     ShiftRight,
     ShiftLeft,
@@ -55,7 +56,6 @@ pub enum TokenKind {
     LeftBracket,
     RightBracket,
     Comma,
-    Var,
     ThinArrow,
     FatArrow,
     Dot,
@@ -74,7 +74,9 @@ pub enum TokenKind {
     GreaterEqual,
     And,
     Or,
+
     // Keywords
+    Var,
     Dynamic,
     Goto,
     Defer,
@@ -98,8 +100,14 @@ pub enum TokenKind {
     Bits,
     Import,
     SizeOf,
-    AlignOf,
-    OffsetOf,
+    Macro,
+    In,
+    Enum,
+    True,
+    False,
+    Null,
+    As,
+
     // Types
     UIntPtr,
     IntPtr,
@@ -124,13 +132,6 @@ pub enum TokenKind {
     Char,
     Void,
     Bool,
-    Macro,
-    In,
-    Enum,
-    True,
-    False,
-    Null,
-    As,
     Const,
 
     // Modifiers
@@ -156,22 +157,25 @@ pub enum TokenKind {
 }
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
-    TokenKind::UIntPtr,
-    TokenKind::IntPtr,
-    TokenKind::ISize,
-    TokenKind::USize,
+    // signed integers
     TokenKind::Int,
     TokenKind::Int8,
     TokenKind::Int16,
     TokenKind::Int32,
     TokenKind::Int64,
     TokenKind::Int128,
+    TokenKind::IntPtr,
+    TokenKind::ISize,
+    // unsigned integers
     TokenKind::UInt,
     TokenKind::UInt8,
     TokenKind::UInt16,
     TokenKind::UInt32,
     TokenKind::UInt64,
     TokenKind::UInt128,
+    TokenKind::UIntPtr,
+    TokenKind::USize,
+    // floats
     TokenKind::Float16,
     TokenKind::Float32,
     TokenKind::Float64,
@@ -181,15 +185,27 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     TokenKind::Void,
 ];
 
-#[derive(Debug, Clone)]
-pub enum LiteralSuffix {
-    PrimitiveType(TokenKind),
+impl TokenKind {
+    pub fn is_unsigned(&self) -> bool {
+        match self {
+            TokenKind::UInt
+            | TokenKind::UInt8
+            | TokenKind::UInt16
+            | TokenKind::UInt32
+            | TokenKind::UInt64
+            | TokenKind::UInt128
+            | TokenKind::UIntPtr
+            | TokenKind::USize => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Identifier { name } => write!(f, "{}", name),
+            Self::EOF => write!(f, "EOF"),
+            Self::Ident(ident) => write!(f, "{}", ident),
             Self::Plus => write!(f, "+"),
             Self::Minus => write!(f, "-"),
             Self::Asterisk => write!(f, "*"),
@@ -221,7 +237,6 @@ impl fmt::Display for TokenKind {
             Self::Colon => write!(f, ":"),
             Self::ThinArrow => write!(f, "->"),
             Self::FatArrow => write!(f, "=>"),
-            // Keywords
             Self::Dynamic => write!(f, "dynamic"),
             Self::Var => write!(f, "var"),
             Self::Interface => write!(f, "interface"),
@@ -255,6 +270,7 @@ impl fmt::Display for TokenKind {
             Self::Int64 => write!(f, "int64"),
             Self::Int128 => write!(f, "int128"),
             Self::UInt => write!(f, "uint"),
+            Self::UInt8 => write!(f, "uint8"),
             Self::UInt16 => write!(f, "uint16"),
             Self::UInt32 => write!(f, "uint32"),
             Self::UInt64 => write!(f, "uint64"),
@@ -275,8 +291,6 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "pub"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
-            Self::AlignOf => write!(f, "alignof"),
-            Self::OffsetOf => write!(f, "offsetof"),
             Self::Weak => write!(f, "weak"),
             Self::LinkOnce => write!(f, "linkonce"),
             Self::Callconv => write!(f, "callconv"),
@@ -291,25 +305,23 @@ impl fmt::Display for TokenKind {
             Self::NoSanitize => write!(f, "no_sanitize"),
             Self::NoUnwind => write!(f, "nounwind"),
             Self::Section => write!(f, "section"),
+            Self::Increment => write!(f, "++"),
+            Self::Decrement => write!(f, "--"),
+            Self::ShiftRight => write!(f, ">>"),
+            Self::ShiftLeft => write!(f, "<<"),
+            Self::Caret => write!(f, "^"),
+            Self::AmpTilde => write!(f, "&~"),
+            Self::Tilde => write!(f, "~"),
+            Self::NotEqual => write!(f, "!="),
+            Self::Bang => write!(f, "!"),
+            Self::DoubleColon => write!(f, "\""),
+            Self::Goto => write!(f, "goto"),
+            Self::Defer => write!(f, "defer"),
+            Self::Union => write!(f, "union"),
+            Self::While => write!(f, "while"),
+            Self::NoInline => write!(f, "noinline"),
+            Self::AlwaysInline => write!(f, "alwaysinline"),
             Self::Literal(literal) => write!(f, "{}", literal),
-            // ETC
-            Self::Illegal => write!(f, "ILLEGAL"),
-            Self::EOF => write!(f, "EOF"),
-            _ => write!(f, "INVALID_TOKEN"),
-        }
-    }
-}
-
-impl TokenKind {
-    pub fn is_unsigned_type_token(&self) -> bool {
-        match self {
-            TokenKind::UInt
-            | TokenKind::UInt8
-            | TokenKind::UInt16
-            | TokenKind::UInt32
-            | TokenKind::UInt64
-            | TokenKind::UInt128 => true,
-            _ => false,
         }
     }
 }

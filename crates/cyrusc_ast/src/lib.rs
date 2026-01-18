@@ -67,7 +67,7 @@ impl ProgramTree {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Cast(Cast),
-    Identifier(Identifier),
+    Ident(Ident),
     TypeSpecifier(TypeSpecifier),
     ModuleImport(ModuleImport),
     Assign(Box<Assign>),
@@ -145,7 +145,7 @@ pub struct UStructValue {
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
-    pub field_name: Identifier,
+    pub field_name: Ident,
     pub field_ty: Option<TypeSpecifier>,
     pub field_value: Box<Expr>,
     pub loc: Location,
@@ -162,7 +162,7 @@ pub struct UnnamedStructType {
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
-    pub field_name: Identifier,
+    pub field_name: Ident,
     pub field_ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -170,11 +170,11 @@ pub struct UnnamedStructTypeField {
 
 #[derive(Debug, Clone)]
 pub struct Union {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub fields: Vec<UnionField>,
     pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
-    pub impls: Vec<Identifier>,
+    pub impls: Vec<Ident>,
     pub modifiers: UnionModifiers,
     pub loc: Location,
     pub span: Span,
@@ -182,7 +182,7 @@ pub struct Union {
 
 #[derive(Debug, Clone)]
 pub struct UnionField {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -190,11 +190,11 @@ pub struct UnionField {
 
 #[derive(Debug, Clone)]
 pub struct Enum {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub variants: Vec<EnumVariant>,
     pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
-    pub impls: Vec<Identifier>,
+    pub impls: Vec<Ident>,
     pub modifiers: EnumModifiers,
     pub loc: Location,
     pub span: Span,
@@ -202,9 +202,9 @@ pub struct Enum {
 
 #[derive(Debug, Clone)]
 pub enum EnumVariant {
-    Identifier(Identifier),
-    Variant(Identifier, Vec<EnumValuedField>),
-    Valued(Identifier, Box<Expr>),
+    Ident(Ident),
+    Variant(Ident, Vec<EnumValuedField>),
+    Valued(Ident, Box<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -242,7 +242,7 @@ pub struct FuncCall {
 pub struct FieldAccess {
     pub is_fat_arrow: bool,
     pub operand: Box<Expr>,
-    pub field_name: Identifier,
+    pub field_name: Ident,
     pub type_args: Option<TypeArgs>,
     pub span: Span,
     pub loc: Location,
@@ -252,7 +252,7 @@ pub struct FieldAccess {
 pub struct MethodCall {
     pub is_fat_arrow: bool,
     pub operand: Box<Expr>,
-    pub method_name: Identifier,
+    pub method_name: Ident,
     pub args: Vec<Expr>,
     pub type_args: Option<TypeArgs>,
     pub span: Span,
@@ -260,21 +260,21 @@ pub struct MethodCall {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Identifier {
-    pub name: String,
+pub struct Ident {
+    pub value: String,
     pub span: Span,
     pub loc: Location,
 }
 
-impl Hash for Identifier {
+impl Hash for Ident {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
+        self.value.hash(state);
     }
 }
 
-impl Identifier {
+impl Ident {
     pub fn as_string(&self) -> String {
-        self.name.clone()
+        self.value.clone()
     }
 }
 
@@ -286,10 +286,10 @@ pub struct ModuleImport {
 }
 
 impl ModuleImport {
-    pub fn as_identifier(&self) -> Option<Identifier> {
+    pub fn as_identifier(&self) -> Option<Ident> {
         if self.segments.len() == 1 {
             match self.segments.last().unwrap() {
-                ModuleSegment::SubModule(identifier) => Some(identifier.clone()),
+                ModuleSegment::SubModule(ident) => Some(ident.clone()),
                 ModuleSegment::Single(_) => None,
             }
         } else {
@@ -324,7 +324,7 @@ pub enum StringPrefix {
 #[derive(Debug, Clone)]
 pub enum TypeSpecifier {
     TypeToken(Token),
-    Identifier(Identifier),
+    Ident(Ident),
     Const(Box<TypeSpecifier>),
     Array(ArrayTypeSpecifier),
     ModuleImport(ModuleImport),
@@ -343,10 +343,10 @@ impl TypeSpecifier {
 
     pub fn as_module_import(&self) -> Option<ModuleImport> {
         match self {
-            TypeSpecifier::Identifier(identifier) => Some(ModuleImport {
-                segments: vec![ModuleSegment::SubModule(identifier.clone())],
-                span: identifier.span.clone(),
-                loc: identifier.loc.clone(),
+            TypeSpecifier::Ident(ident) => Some(ModuleImport {
+                segments: vec![ModuleSegment::SubModule(ident.clone())],
+                span: ident.span.clone(),
+                loc: ident.loc.clone(),
             }),
             TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
             _ => None,
@@ -356,7 +356,7 @@ impl TypeSpecifier {
     pub fn get_loc(&self) -> (Location, usize) {
         match self {
             TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
-            TypeSpecifier::Identifier(identifier) => (identifier.loc.clone(), identifier.span.end),
+            TypeSpecifier::Ident(ident) => (ident.loc.clone(), ident.span.end),
             TypeSpecifier::Const(inner) => inner.get_loc(),
             TypeSpecifier::Array(array) => array.element_type.get_loc(),
             TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
@@ -487,14 +487,14 @@ pub enum Stmt {
 
 #[derive(Debug, Clone)]
 pub struct Goto {
-    pub name: Identifier,
+    pub name: Ident,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct Label {
-    pub name: Identifier,
+    pub name: Ident,
     pub loc: Location,
     pub span: Span,
 }
@@ -508,7 +508,7 @@ pub struct Defer {
 
 #[derive(Debug, Clone)]
 pub struct Interface {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub methods: Vec<FuncDecl>,
     pub vis: Visibility,
     pub loc: Location,
@@ -517,7 +517,7 @@ pub struct Interface {
 
 #[derive(Debug, Clone)]
 pub struct GlobalVar {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub type_specifier: Option<TypeSpecifier>,
     pub expr: Option<Expr>,
     pub is_const: bool,
@@ -528,7 +528,7 @@ pub struct GlobalVar {
 
 #[derive(Debug, Clone)]
 pub struct Typedef {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub type_specifier: TypeSpecifier,
     pub generic_params: Option<GenericParamsList>,
     pub vis: Visibility,
@@ -557,27 +557,27 @@ pub struct Return {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSegmentSingle {
-    pub identifier: Identifier,
-    pub renamed: Option<Identifier>,
+    pub ident: Ident,
+    pub renamed: Option<Ident>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ModuleSegment {
-    SubModule(Identifier),
+    SubModule(Ident),
     Single(Vec<ModuleSegmentSingle>),
 }
 
 impl Hash for ModuleSegmentSingle {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.identifier.hash(state);
+        self.ident.hash(state);
         self.renamed.hash(state);
     }
 }
 
 impl ModuleSegment {
-    pub fn as_identifier_opt(&self) -> Option<Identifier> {
+    pub fn as_identifier_opt(&self) -> Option<Ident> {
         match self {
-            ModuleSegment::SubModule(identifier) => Some(identifier.clone()),
+            ModuleSegment::SubModule(ident) => Some(ident.clone()),
             ModuleSegment::Single(_) => None,
         }
     }
@@ -594,8 +594,8 @@ pub struct ModulePath {
 impl Hash for ModulePath {
     fn hash<H: Hasher>(&self, state: &mut H) {
         for segment in &self.segments {
-            if let ModuleSegment::SubModule(identifier) = segment {
-                identifier.name.hash(state);
+            if let ModuleSegment::SubModule(ident) = segment {
+                ident.value.hash(state);
             }
         }
     }
@@ -609,8 +609,8 @@ impl PartialEq for ModulePath {
             .segments
             .iter()
             .filter_map(|segment| {
-                if let ModuleSegment::SubModule(identifier) = segment {
-                    Some(&identifier.name)
+                if let ModuleSegment::SubModule(ident) = segment {
+                    Some(&ident.value)
                 } else {
                     None
                 }
@@ -621,8 +621,8 @@ impl PartialEq for ModulePath {
             .segments
             .iter()
             .filter_map(|segment| {
-                if let ModuleSegment::SubModule(identifier) = segment {
-                    Some(&identifier.name)
+                if let ModuleSegment::SubModule(ident) = segment {
+                    Some(&ident.value)
                 } else {
                     None
                 }
@@ -652,9 +652,9 @@ pub struct Import {
 
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub generic_params: Option<GenericParamsList>,
-    pub impls: Vec<Identifier>,
+    pub impls: Vec<Ident>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
     pub modifiers: StructModifiers,
@@ -675,7 +675,7 @@ pub struct StructInit {
 
 #[derive(Debug, Clone)]
 pub struct StructField {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub vis: Visibility,
     pub ty: TypeSpecifier,
     pub loc: Location,
@@ -684,7 +684,7 @@ pub struct StructField {
 
 #[derive(Debug, Clone)]
 pub struct FieldInit {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub value: Expr,
     pub loc: Location,
 }
@@ -709,8 +709,8 @@ pub struct For {
 
 #[derive(Debug, Clone)]
 pub struct Foreach {
-    pub item: Identifier,
-    pub index: Option<Identifier>,
+    pub item: Ident,
+    pub index: Option<Ident>,
     pub expr: Expr,
     pub body: Box<BlockStmt>,
     pub span: Span,
@@ -738,8 +738,8 @@ pub struct SwitchCase {
 pub enum SwitchCasePattern {
     Expr(Expr),
     Range(Range),
-    Identifier(Identifier),
-    EnumVariant(Identifier, Vec<Identifier>),
+    Ident(Ident),
+    EnumVariant(Ident, Vec<Ident>),
 }
 
 #[derive(Debug, Clone)]
@@ -763,7 +763,7 @@ pub struct Lambda {
 
 #[derive(Debug, Clone)]
 pub struct FuncDef {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub generic_params: Option<GenericParamsList>,
     pub params: FuncParams,
     pub body: Box<BlockStmt>,
@@ -775,12 +775,12 @@ pub struct FuncDef {
 
 #[derive(Debug, Clone)]
 pub struct FuncDecl {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub generic_params: Option<GenericParamsList>,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
-    pub renamed_as: Option<Identifier>,
+    pub renamed_as: Option<Ident>,
     pub span: Span,
     pub loc: Location,
 }
@@ -788,7 +788,7 @@ pub struct FuncDecl {
 impl FuncDef {
     pub fn as_func_decl(&self) -> FuncDecl {
         FuncDecl {
-            identifier: self.identifier.clone(),
+            ident: self.ident.clone(),
             generic_params: self.generic_params.clone(),
             params: self.params.clone(),
             return_type: self.return_type.clone(),
@@ -803,8 +803,8 @@ impl FuncDef {
 impl FuncDecl {
     pub fn get_usable_name(&self) -> String {
         match &self.renamed_as {
-            Some(identifier) => identifier.name.clone(),
-            None => self.identifier.name.clone(),
+            Some(ident) => ident.value.clone(),
+            None => self.ident.value.clone(),
         }
     }
 }
@@ -818,7 +818,7 @@ pub struct BlockStmt {
 
 #[derive(Debug, Clone)]
 pub struct Variable {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expr>,
     pub is_const: bool,
@@ -838,7 +838,7 @@ pub struct ExportTuple {
 
 #[derive(Debug, Clone)]
 pub enum ExportPattern {
-    Identifier(Identifier),
+    Ident(Ident),
     Tuple(Vec<ExportPattern>),
 }
 
@@ -905,7 +905,7 @@ pub enum FuncParamKind {
 
 #[derive(Debug, Clone)]
 pub struct FuncParam {
-    pub identifier: Identifier,
+    pub ident: Ident,
     pub ty: Option<TypeSpecifier>,
     pub span: Span,
     pub loc: Location,
@@ -920,7 +920,7 @@ pub struct FuncParams {
 #[derive(Debug, Clone)]
 pub enum FuncVariadicParams {
     UntypedCStyle,
-    Typed(Identifier, TypeSpecifier),
+    Typed(Ident, TypeSpecifier),
 }
 
 #[derive(Debug, Clone)]
@@ -968,21 +968,21 @@ pub type GenericParamsList = Vec<GenericParam>;
 
 #[derive(Debug, Clone)]
 pub struct GenericParam {
-    pub param_name: Identifier,
+    pub param_name: Ident,
     pub bounds: Option<Vec<Bound>>,
     pub default: Option<TypeSpecifier>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Bound {
-    pub symbol: Identifier,
+    pub symbol: Ident,
     pub type_args: Vec<TypeArg>,
 }
 
 #[derive(Debug, Clone)]
 pub enum TypeArg {
     Positional(TypeSpecifier),
-    Named { key: Identifier, ty: TypeSpecifier },
+    Named { key: Ident, ty: TypeSpecifier },
 }
 
 pub type TypeArgs = Vec<TypeArg>;

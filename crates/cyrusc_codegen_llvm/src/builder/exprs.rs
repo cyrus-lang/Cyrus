@@ -1019,7 +1019,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .into_struct_value();
 
         match &enum_init_expr.variant {
-            CIREnumInitVariant::Identifier => {
+            CIREnumInitVariant::Ident => {
                 let zero_payload = payload_ty.const_zero();
                 enum_value = self
                     .llvmbuilder

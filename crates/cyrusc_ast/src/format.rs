@@ -23,9 +23,9 @@ impl fmt::Display for BlockStmt {
     }
 }
 
-impl fmt::Display for Identifier {
+impl fmt::Display for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.value)
     }
 }
 
@@ -93,7 +93,7 @@ impl fmt::Display for FuncCall {
 impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ModuleSegment::SubModule(identifier) => write!(f, "{}", identifier.name),
+            ModuleSegment::SubModule(ident) => write!(f, "{}", ident.value),
             ModuleSegment::Single(singles) => {
                 write!(f, "{{")?;
                 for (idx, item) in singles.iter().enumerate() {
@@ -101,7 +101,7 @@ impl fmt::Display for ModuleSegment {
                         write!(f, "{}: ", renamed)?;
                     }
 
-                    write!(f, "{}", item.identifier)?;
+                    write!(f, "{}", item.ident)?;
 
                     if !(singles.len() - 1 == idx) {
                         write!(f, ",")?;
@@ -137,7 +137,7 @@ impl fmt::Display for TypeSpecifier {
                 write!(f, "fn ({}) {}", params, func_type.return_type.to_string())
             }
             TypeSpecifier::TypeToken(token) => write!(f, "{}", token.kind),
-            TypeSpecifier::Identifier(identifier) => write!(f, "{}", identifier),
+            TypeSpecifier::Ident(ident) => write!(f, "{}", ident),
             TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
             TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
             TypeSpecifier::Deref(type_specifier) => write!(f, "{}*", type_specifier),
@@ -256,7 +256,7 @@ impl fmt::Display for Expr {
                         write!(
                             f,
                             "{}: {}",
-                            func_param.identifier.as_string(),
+                            func_param.ident.as_string(),
                             func_param.ty.clone().unwrap()
                         )
                         .unwrap();
@@ -269,7 +269,7 @@ impl fmt::Display for Expr {
             Expr::Unary(unary_expr) => {
                 write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
             }
-            Expr::Identifier(identifier) => write!(f, "{}", identifier.name),
+            Expr::Ident(ident) => write!(f, "{}", ident.value),
             Expr::Literal(literal) => write!(f, "{}", literal.to_string()),
             Expr::Prefix(prefix_expr) => {
                 write!(f, "({}{})", prefix_expr.op.clone(), prefix_expr.operand.clone())
@@ -314,7 +314,7 @@ impl fmt::Display for Expr {
                     Expr::ModuleImport(struct_init.struct_name.clone()).to_string()
                 )?;
                 for field in &struct_init.field_inits {
-                    write!(f, "{}: {};", field.identifier, field.value)?;
+                    write!(f, "{}: {};", field.ident, field.value)?;
                 }
                 write!(f, "}}")
             }
@@ -397,7 +397,7 @@ impl fmt::Display for UStructValue {
         }
         write!(f, " {{ ")?;
         for field in self.fields.clone() {
-            write!(f, "{}", field.field_name.name)?;
+            write!(f, "{}", field.field_name.value)?;
             if let Some(field_ty) = field.field_ty {
                 write!(f, ": {}", field_ty)?;
             }
@@ -413,8 +413,8 @@ pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
 
     for (idx, item) in segments.iter().enumerate() {
         match item {
-            ModuleSegment::SubModule(identifier) => {
-                out.push_str(&identifier.name);
+            ModuleSegment::SubModule(ident) => {
+                out.push_str(&ident.value);
                 // add '::' only if the next segment exists and is a SubModule
                 if matches!(segments.get(idx + 1), Some(ModuleSegment::SubModule(_))) {
                     out.push_str("::");
@@ -424,9 +424,9 @@ pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
                 out.push('{');
                 for (jdx, single) in module_segment_singles.iter().enumerate() {
                     if let Some(renamed) = &single.renamed {
-                        out.push_str(&format!("{}:", renamed.name));
+                        out.push_str(&format!("{}:", renamed.value));
                     }
-                    out.push_str(&single.identifier.name);
+                    out.push_str(&single.ident.value);
                     if jdx != module_segment_singles.len() - 1 {
                         out.push_str(", ");
                     }

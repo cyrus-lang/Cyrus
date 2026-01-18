@@ -236,8 +236,8 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(variadic) = &params.variadic {
                 match variadic {
-                    TypedFuncVariadicParams::Typed(identifier, sema_ty) => {
-                        local_scope.with_symbol_id_mut(identifier.symbol_id, |local_symbol| {
+                    TypedFuncVariadicParams::Typed(ident, sema_ty) => {
+                        local_scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
                             resolved_var.typed_variable.ty = Some(sema_ty.clone());
                         });
