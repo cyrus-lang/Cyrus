@@ -93,7 +93,7 @@ impl Parser {
                     Ok(Stmt::BlockStmt(block_statement))
                 }
                 _ => {
-                    if matches!(self.current_token().kind, TokenKind::Identifier { .. })
+                    if matches!(self.current_token().kind, TokenKind::Ident { .. })
                         && self.peek_token_is(TokenKind::Colon)
                     {
                         return self.parse_label_statement();
@@ -233,12 +233,12 @@ impl Parser {
                 }
                 TokenKind::Ampersand => {
                     self.next_token(); // ampersand
-                    let identifier = self.parse_identifier()?;
-                    self.next_token(); // consume identifier
+                    let ident = self.parse_identifier()?;
+                    self.next_token(); // consume ident
 
-                    if &identifier.name != "self" {
+                    if &ident.value != "self" {
                         return Err(Diag {
-                            kind: Box::new(ParserDiagKind::ExpectedSelfModifier(identifier.name.clone())),
+                            kind: Box::new(ParserDiagKind::ExpectedSelfModifier(ident.value.clone())),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                             hint: None,
@@ -252,13 +252,13 @@ impl Parser {
                         span: Span::new(start, self.current_token().span.end),
                     }));
                 }
-                TokenKind::Identifier { name } => {
+                TokenKind::Ident(_) => {
                     let param_loc = self.current_token().loc.clone();
                     let start = self.current_token().span.start;
-                    let identifier = self.parse_identifier()?;
-                    self.next_token(); // consume the identifier
+                    let ident = self.parse_identifier()?;
+                    self.next_token(); // consume the ident
 
-                    if identifier.name == "self" {
+                    if ident.value == "self" {
                         self_modifier_count += 1;
                         list.push(FuncParamKind::SelfModifier(SelfModifier {
                             kind: SelfModifierKind::Copied,
@@ -278,7 +278,7 @@ impl Parser {
                                 let variadic_data_type = self.parse_type_specifier()?;
                                 self.next_token();
 
-                                variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
+                                variadic = Some(FuncVariadicParams::Typed(ident, variadic_data_type));
                                 continue;
                             } else {
                                 var_type = Some(self.parse_type_specifier()?);
@@ -287,11 +287,7 @@ impl Parser {
                         }
 
                         list.push(FuncParamKind::FuncParam(FuncParam {
-                            identifier: Identifier {
-                                name: name,
-                                span: self.current_token().span.clone(),
-                                loc: param_loc.clone(),
-                            },
+                            ident,
                             ty: var_type,
                             span: Span {
                                 start: start,
@@ -359,7 +355,7 @@ impl Parser {
         let mut variant_fields: Vec<EnumValuedField> = Vec::new();
 
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(EnumVariant::Identifier(variant_name));
+            return Ok(EnumVariant::Ident(variant_name));
         } else if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
             let value = self.parse_expr(Precedence::Lowest)?.0;
@@ -397,7 +393,7 @@ impl Parser {
         }
 
         if variant_fields.is_empty() {
-            Ok(EnumVariant::Identifier(variant_name))
+            Ok(EnumVariant::Ident(variant_name))
         } else {
             Ok(EnumVariant::Variant(variant_name, variant_fields))
         }
@@ -407,8 +403,8 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let identifier = self.parse_identifier()?;
-        self.next_token(); // consume identifier
+        let ident = self.parse_identifier()?;
+        self.next_token(); // consume ident
 
         self.expect_current(TokenKind::Colon)?;
 
@@ -416,7 +412,7 @@ impl Parser {
         self.next_token();
 
         let field = UnionField {
-            identifier,
+            ident,
             ty: type_token,
             loc,
             span: Span {
@@ -437,7 +433,7 @@ impl Parser {
 
         modifiers.repr = self.parse_repr()?;
 
-        let identifier = self.parse_identifier()?;
+        let ident = self.parse_identifier()?;
         self.next_token();
 
         let generic_params;
@@ -447,13 +443,13 @@ impl Parser {
             generic_params = None;
         }
 
-        let impls: Vec<Identifier> = self.parse_object_impls()?;
+        let impls: Vec<Ident> = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Stmt::Union(Union {
-                identifier,
+                ident,
                 methods: Vec::new(),
                 fields: Vec::new(),
                 generic_params,
@@ -499,7 +495,7 @@ impl Parser {
                         });
                     }
                 }
-                TokenKind::Identifier { .. } => {
+                TokenKind::Ident { .. } => {
                     let field = self.parse_union_field()?;
                     fields.push(field);
                 }
@@ -533,7 +529,7 @@ impl Parser {
         }
 
         Ok(Stmt::Union(Union {
-            identifier,
+            ident,
             methods,
             fields,
             generic_params,
@@ -562,7 +558,7 @@ impl Parser {
             generic_params = None;
         }
 
-        let impls: Vec<Identifier> = self.parse_object_impls()?;
+        let impls: Vec<Ident> = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -570,7 +566,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Stmt::Enum(Enum {
-                identifier: enum_name,
+                ident: enum_name,
                 variants: enum_fields,
                 generic_params,
                 methods: Vec::new(),
@@ -656,7 +652,7 @@ impl Parser {
         }
 
         Ok(Stmt::Enum(Enum {
-            identifier: enum_name,
+            ident: enum_name,
             variants: enum_fields,
             generic_params,
             methods,
@@ -667,16 +663,16 @@ impl Parser {
         }))
     }
 
-    fn parse_object_impls(&mut self) -> Result<Vec<Identifier>, Diag> {
-        let mut impls: Vec<Identifier> = Vec::new();
+    fn parse_object_impls(&mut self) -> Result<Vec<Ident>, Diag> {
+        let mut impls: Vec<Ident> = Vec::new();
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
 
             loop {
-                let identifier = self.parse_identifier()?;
+                let ident = self.parse_identifier()?;
                 self.next_token();
 
-                impls.push(identifier);
+                impls.push(ident);
 
                 if self.current_token_is(TokenKind::Comma) {
                     continue;
@@ -706,7 +702,7 @@ impl Parser {
             generic_params = None;
         }
 
-        let impls: Vec<Identifier> = self.parse_object_impls()?;
+        let impls: Vec<Ident> = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -745,7 +741,7 @@ impl Parser {
                         });
                     }
                 }
-                TokenKind::Identifier { .. } => {
+                TokenKind::Ident { .. } => {
                     let field = self.parse_struct_field(None)?;
                     fields.push(field);
                 }
@@ -753,7 +749,7 @@ impl Parser {
                     let modifiers = self.parse_unresolved_modifiers()?;
                     let loc = self.current_token().loc.clone();
 
-                    if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+                    if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
                         let field_modifiers =
                             modifiers.into_field_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
 
@@ -783,7 +779,7 @@ impl Parser {
         }
 
         Ok(Stmt::Struct(Struct {
-            identifier: struct_name,
+            ident: struct_name,
             generic_params,
             impls,
             modifiers,
@@ -802,8 +798,8 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let identifier = self.parse_identifier()?;
-        self.next_token(); // consume identifier
+        let ident = self.parse_identifier()?;
+        self.next_token(); // consume ident
 
         self.expect_current(TokenKind::Colon)?;
 
@@ -811,7 +807,7 @@ impl Parser {
         self.next_token();
 
         let field = StructField {
-            identifier,
+            ident,
             ty: type_token,
             vis: vis.unwrap_or_default(),
             loc,
@@ -873,10 +869,10 @@ impl Parser {
 
             while !self.current_token_is(TokenKind::RightBrace) {
                 // enable aliasing features for a single
-                let identifier = self.parse_identifier()?;
+                let ident = self.parse_identifier()?;
                 self.next_token();
 
-                let mut renamed: Option<Identifier> = None;
+                let mut renamed: Option<Ident> = None;
 
                 if self.current_token_is(TokenKind::As) {
                     self.next_token(); // consume as 
@@ -886,7 +882,7 @@ impl Parser {
                     renamed = Some(renamed_identifier);
                 }
 
-                singles.push(ModuleSegmentSingle { identifier, renamed });
+                singles.push(ModuleSegmentSingle { ident, renamed });
 
                 if !self.current_token_is(TokenKind::RightBrace) {
                     self.expect_current(TokenKind::Comma)?;
@@ -908,7 +904,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.next_token();
-        let identifier = self.parse_identifier()?;
+        let ident = self.parse_identifier()?;
         self.next_token();
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -916,7 +912,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Stmt::Interface(Interface {
-                identifier,
+                ident,
                 methods,
                 loc,
                 vis,
@@ -957,7 +953,7 @@ impl Parser {
         self.expect_peek(TokenKind::RightBrace)?;
 
         Ok(Stmt::Interface(Interface {
-            identifier,
+            ident,
             methods,
             loc,
             vis,
@@ -1056,7 +1052,7 @@ impl Parser {
         let item_identifier = self.parse_identifier()?;
         self.next_token();
 
-        let mut index_identifier: Option<Identifier> = None;
+        let mut index_identifier: Option<Ident> = None;
 
         if self.current_token_is(TokenKind::Comma) {
             self.next_token(); // consume comma
@@ -1196,9 +1192,9 @@ impl Parser {
 
     fn parse_export_pattern(&mut self) -> Result<ExportPattern, Diag> {
         match self.current_token().kind {
-            TokenKind::Identifier { .. } => {
+            TokenKind::Ident { .. } => {
                 let ident = self.parse_identifier()?;
-                Ok(ExportPattern::Identifier(ident))
+                Ok(ExportPattern::Ident(ident))
             }
             TokenKind::LeftParen => {
                 self.next_token();
@@ -1242,7 +1238,7 @@ impl Parser {
                     self.current_token().loc.clone(),
                     self.file_name.clone(),
                 ))),
-                hint: Some("Expected identifier or '('.".to_string()),
+                hint: Some("Expected ident or '('.".to_string()),
             }),
         }
     }
@@ -1364,7 +1360,7 @@ impl Parser {
             return self.parse_grouped_tuple_export(is_const);
         }
 
-        let identifier = self.parse_identifier()?;
+        let ident = self.parse_identifier()?;
         self.next_token();
 
         if self.current_token_is(TokenKind::Semicolon) {
@@ -1386,7 +1382,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Stmt::Variable(Variable {
-                identifier,
+                ident,
                 ty: variable_type,
                 rhs: None,
                 is_const,
@@ -1403,7 +1399,7 @@ impl Parser {
         self.expect_peek(TokenKind::Semicolon)?;
 
         Ok(Stmt::Variable(Variable {
-            identifier,
+            ident,
             rhs: Some(expr),
             ty: variable_type,
             is_const,
@@ -1419,7 +1415,7 @@ impl Parser {
         self.expect_current(TokenKind::Function)?;
 
         let func_name = self.parse_identifier()?; // export the name of the function
-        self.next_token(); // consume the name of the identifier
+        self.next_token(); // consume the name of the ident
 
         let generic_params = if self.current_token_is(TokenKind::LessThan) {
             Some(self.parse_generic_params()?)
@@ -1436,7 +1432,7 @@ impl Parser {
             return_type = None;
         } else if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Stmt::FuncDecl(FuncDecl {
-                identifier: func_name,
+                ident: func_name,
                 generic_params,
                 params,
                 return_type: None,
@@ -1454,7 +1450,7 @@ impl Parser {
             self.next_token();
 
             return Ok(Stmt::FuncDecl(FuncDecl {
-                identifier: func_name,
+                ident: func_name,
                 generic_params,
                 params,
                 return_type: None,
@@ -1473,7 +1469,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Stmt::FuncDecl(FuncDecl {
-                identifier: func_name,
+                ident: func_name,
                 generic_params,
                 params,
                 return_type,
@@ -1505,7 +1501,7 @@ impl Parser {
             }
 
             return Ok(Stmt::FuncDecl(FuncDecl {
-                identifier: func_name,
+                ident: func_name,
                 generic_params,
                 params,
                 return_type,
@@ -1523,7 +1519,7 @@ impl Parser {
         let end = self.current_token().span.end;
 
         return Ok(Stmt::FuncDef(FuncDef {
-            identifier: func_name,
+            ident: func_name,
             generic_params,
             params,
             body,
@@ -1585,7 +1581,7 @@ impl Parser {
         let global_var_modifiers =
             modifiers.into_global_var_modifiers(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))?;
 
-        let identifier = self.parse_identifier()?;
+        let ident = self.parse_identifier()?;
         self.next_token();
 
         let mut type_specifier: Option<TypeSpecifier> = None;
@@ -1607,7 +1603,7 @@ impl Parser {
         };
 
         Ok(Stmt::GlobalVar(GlobalVar {
-            identifier,
+            ident,
             type_specifier,
             expr,
             is_const,
@@ -1623,7 +1619,7 @@ impl Parser {
 
         self.expect_current(TokenKind::Typedef)?;
 
-        let identifier = self.parse_identifier()?;
+        let ident = self.parse_identifier()?;
         self.next_token();
 
         let generic_params;
@@ -1638,7 +1634,7 @@ impl Parser {
         self.next_token();
         Ok(Stmt::Typedef(Typedef {
             vis,
-            identifier,
+            ident,
             type_specifier,
             generic_params,
             loc,
@@ -1663,12 +1659,12 @@ impl Parser {
         fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
             let case_pattern = if this.current_token_is(TokenKind::Dot) {
                 this.next_token();
-                let identifier = this.parse_identifier()?;
+                let ident = this.parse_identifier()?;
                 this.next_token();
 
                 if this.current_token_is(TokenKind::LeftParen) {
                     this.next_token();
-                    let mut items: Vec<Identifier> = Vec::new();
+                    let mut items: Vec<Ident> = Vec::new();
                     loop {
                         let item = this.parse_identifier()?;
                         this.next_token();
@@ -1680,9 +1676,9 @@ impl Parser {
                         }
                     }
                     this.expect_current(TokenKind::RightParen)?;
-                    SwitchCasePattern::EnumVariant(identifier, items)
+                    SwitchCasePattern::EnumVariant(ident, items)
                 } else {
-                    SwitchCasePattern::Identifier(identifier)
+                    SwitchCasePattern::Ident(ident)
                 }
             } else {
                 let start = this.current_token().span.start;

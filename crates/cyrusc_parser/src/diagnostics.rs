@@ -59,7 +59,7 @@ pub enum ParserDiagKind {
     #[error("Missing opening paren '('.")]
     MissingOpeningParen,
 
-    #[error("Expected an identifier.")]
+    #[error("Expected an ident.")]
     ExpectedIdentifier,
 
     #[error("Missing semicolon.")]
@@ -74,7 +74,7 @@ pub enum ParserDiagKind {
     #[error("Cannot define self modifier several times in a function.")]
     SeveralSelfModifierDefinition,
 
-    #[error("Self modifier identifier must be 'self' not '{0}'.")]
+    #[error("Self modifier ident must be 'self' not '{0}'.")]
     ExpectedSelfModifier(String),
 
     #[error("Invalid infix operator '{0}'.")]

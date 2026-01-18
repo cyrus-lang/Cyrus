@@ -425,9 +425,9 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, format_symbol: &(dyn Fn(Symbo
     if let Some(variadic) = lambda.params.variadic.clone() {
         match &variadic {
             TypedFuncVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncVariadicParams::Typed(identifier, sema_ty) => params.push_str(&format!(
+            TypedFuncVariadicParams::Typed(ident, sema_ty) => params.push_str(&format!(
                 ", {}: ...{}",
-                identifier.name,
+                ident.name,
                 format_sema_ty(sema_ty.clone(), format_symbol)
             )),
         }

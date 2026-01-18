@@ -369,7 +369,7 @@ impl<'a> AnalysisContext<'a> {
         access_path: Vec<usize>,
     ) {
         match pattern {
-            TypedExportPattern::Identifier(symbol_id) => {
+            TypedExportPattern::Ident(symbol_id) => {
                 let mut rhs_element = expr.clone();
                 let rhs_element_ty = rhs_element.sema_ty.clone().unwrap();
                 let tuple_type = rhs_element_ty.as_tuple_type().unwrap();
@@ -460,9 +460,9 @@ impl<'a> AnalysisContext<'a> {
             let case = &mut typed_switch.cases[i];
 
             'patterns: for pattern in &case.patterns {
-                let identifier = match &pattern {
-                    TypedSwitchCasePattern::Identifier(identifier, _) => identifier,
-                    TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, loc) => {
+                let ident = match &pattern {
+                    TypedSwitchCasePattern::Ident(ident, _) => ident,
+                    TypedSwitchCasePattern::EnumVariant(ident, valued_fields, loc) => {
                         let mut field_names: Vec<String> = Vec::new();
 
                         for valued_field in valued_fields {
@@ -482,7 +482,7 @@ impl<'a> AnalysisContext<'a> {
                             field_names.push(valued_field.name.clone());
                         }
 
-                        identifier
+                        ident
                     }
                     TypedSwitchCasePattern::Expr(..) | TypedSwitchCasePattern::Range(..) => {
                         self.reporter.report(Diag {
@@ -495,11 +495,11 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
 
-                if used_enum_variants.contains(&identifier) {
+                if used_enum_variants.contains(&ident) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantInSwitchPatterns {
-                            variant_name: identifier.clone(),
+                            variant_name: ident.clone(),
                         }),
                         location: Some(DiagLoc::new(case.loc.clone())),
                         hint: Some("Remove the duplicate to avoid redundancy.".to_string()),
@@ -509,14 +509,14 @@ impl<'a> AnalysisContext<'a> {
                 let variant_opt = enum_sig
                     .variants
                     .iter_mut()
-                    .find(|variant| variant.get_identifier().as_string() == *identifier);
+                    .find(|variant| variant.get_identifier().as_string() == *ident);
 
                 if variant_opt.is_none() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
                             enum_name: enum_sig.name.clone(),
-                            variant_name: identifier.clone(),
+                            variant_name: ident.clone(),
                         }),
                         location: Some(DiagLoc::new(typed_switch.loc.clone())),
                         hint: None,
@@ -524,7 +524,7 @@ impl<'a> AnalysisContext<'a> {
                     continue 'patterns;
                 } else if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
                     if let Some(variant) = variant_opt {
-                        if let TypedEnumVariant::Variant(identifier, enum_valued_fields) = variant {
+                        if let TypedEnumVariant::Variant(ident, enum_valued_fields) = variant {
                             let actual_enum_fields_len = enum_valued_fields.len();
 
                             if valued_fields.len() != actual_enum_fields_len {
@@ -548,7 +548,7 @@ impl<'a> AnalysisContext<'a> {
                                 enum_valued_field.ty = match self.normalize_type(
                                     scope_id_opt,
                                     enum_valued_field.ty.clone(),
-                                    SourceLoc::from_loc(identifier.loc.clone(), enum_sig.loc.file_path.clone()),
+                                    SourceLoc::from_loc(ident.loc.clone(), enum_sig.loc.file_path.clone()),
                                     false,
                                 ) {
                                     Some(sema_ty) => sema_ty,
@@ -566,12 +566,12 @@ impl<'a> AnalysisContext<'a> {
                                     );
                                 }
                             }
-                        } else if let TypedEnumVariant::Valued(identifier, valued) = variant {
+                        } else if let TypedEnumVariant::Valued(ident, valued) = variant {
                             if valued_fields.len() > 1 {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
-                                        variant_name: identifier.as_string(),
+                                        variant_name: ident.as_string(),
                                     }),
                                     location: Some(DiagLoc::new(typed_switch.loc.clone())),
                                     hint: None,
@@ -598,7 +598,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
 
-                used_enum_variants.push(identifier.clone());
+                used_enum_variants.push(ident.clone());
             }
 
             let body_flow_state = self.analyze_block_stmt(&mut case.body);
@@ -748,7 +748,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         }
                     }
-                    TypedSwitchCasePattern::Identifier(..) | TypedSwitchCasePattern::EnumVariant(..) => {
+                    TypedSwitchCasePattern::Ident(..) | TypedSwitchCasePattern::EnumVariant(..) => {
                         let expr_type = format_sema_ty(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                         self.reporter.report(Diag {
@@ -1175,10 +1175,10 @@ impl<'a> AnalysisContext<'a> {
     ) {
         let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
-        for identifier in impls {
+        for ident in impls {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), identifier.symbol_id)
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), ident.symbol_id)
                 .unwrap();
 
             let resolved_interface = match sym.as_interface() {
@@ -1187,9 +1187,9 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::SymbolMustBeAnInterface {
-                            symbol_name: identifier.name.clone(),
+                            symbol_name: ident.name.clone(),
                         }),
-                        location: Some(DiagLoc::new(identifier.loc.clone())),
+                        location: Some(DiagLoc::new(ident.loc.clone())),
                         hint: None,
                     });
                     continue;
@@ -1202,9 +1202,9 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InternalSymbolAccess {
-                        symbol_name: identifier.name.clone(),
+                        symbol_name: ident.name.clone(),
                     }),
-                    location: Some(DiagLoc::new(identifier.loc.clone())),
+                    location: Some(DiagLoc::new(ident.loc.clone())),
                     hint: None,
                 });
                 continue;
@@ -1220,9 +1220,9 @@ impl<'a> AnalysisContext<'a> {
                         kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
                             object_name: object_name.clone(),
                             method_name: func_decl.name.clone(),
-                            interface_name: identifier.name.clone(),
+                            interface_name: ident.name.clone(),
                         }),
-                        location: Some(DiagLoc::new(identifier.loc.clone())),
+                        location: Some(DiagLoc::new(ident.loc.clone())),
                         hint: None,
                     });
                     continue;
@@ -1242,7 +1242,7 @@ impl<'a> AnalysisContext<'a> {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
                             object_name: object_name.clone(),
-                            interface_name: identifier.name.clone(),
+                            interface_name: ident.name.clone(),
                             method_name: func_decl.name.clone(),
                         }),
                         location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),
@@ -1523,15 +1523,15 @@ impl<'a> AnalysisContext<'a> {
 
         for variant in &mut typed_enum.variants {
             let variant_identifier = match variant {
-                TypedEnumVariant::Identifier(identifier) => identifier,
-                TypedEnumVariant::Valued(identifier, typed_expr) => {
+                TypedEnumVariant::Ident(ident) => ident,
+                TypedEnumVariant::Valued(ident, typed_expr) => {
                     typed_expr.sema_ty = match self.analyze_expr(scope_id_opt, typed_expr, None) {
                         Some(sema_ty) => Some(sema_ty),
                         None => continue,
                     };
-                    identifier
+                    ident
                 }
-                TypedEnumVariant::Variant(identifier, typed_enum_valued_fields) => {
+                TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
                     for field in typed_enum_valued_fields {
                         field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone(), false) {
                             Some(sema_ty) => sema_ty,
@@ -1557,16 +1557,16 @@ impl<'a> AnalysisContext<'a> {
 
                         self.validate_field_type(&field.ty, field.loc.clone());
                     }
-                    identifier
+                    ident
                 }
             };
 
-            if variant_names.contains(&variant_identifier.name) {
+            if variant_names.contains(&variant_identifier.value) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
                         enum_name: typed_enum.name.clone(),
-                        variant_name: variant_identifier.name.clone(),
+                        variant_name: variant_identifier.value.clone(),
                     }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         variant_identifier.loc.clone(),
@@ -1577,7 +1577,7 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            variant_names.push(variant_identifier.name.clone());
+            variant_names.push(variant_identifier.value.clone());
         }
 
         if typed_enum.generic_params.is_none() {
@@ -1630,12 +1630,12 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_param) = variadic {
             match variadic_param {
-                TypedFuncVariadicParams::Typed(identifier, _) => {
-                    if param_names.contains(&identifier.name) {
+                TypedFuncVariadicParams::Typed(ident, _) => {
+                    if param_names.contains(&ident.name) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
-                                param_name: identifier.name.clone(),
+                                param_name: ident.name.clone(),
                             }),
                             location: Some(location.clone()),
                             hint: Some("Consider to rename the parameter to a different name.".to_string()),
@@ -1857,15 +1857,15 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(variadic_params) = &mut params.variadic {
-            if let TypedFuncVariadicParams::Typed(identifier, sema_ty) = variadic_params {
+            if let TypedFuncVariadicParams::Typed(ident, sema_ty) = variadic_params {
                 let sema_ty = match self.normalize_type(None, sema_ty.clone(), loc.clone(), false) {
                     Some(sema_ty) => sema_ty,
                     None => return,
                 };
 
-                self.validate_param_type(&sema_ty, identifier.loc.clone());
+                self.validate_param_type(&sema_ty, ident.loc.clone());
 
-                *variadic_params = TypedFuncVariadicParams::Typed(identifier.clone(), sema_ty);
+                *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_ty);
             }
         }
     }

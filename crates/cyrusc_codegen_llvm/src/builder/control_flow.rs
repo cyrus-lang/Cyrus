@@ -206,7 +206,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         payload_struct_type,
                         exported_fields,
                     );
-                } else if let CIRSwitchOnEnumPattern::Valued(_, (identifier, expr)) = pattern {
+                } else if let CIRSwitchOnEnumPattern::Valued(_, (ident, expr)) = pattern {
                     self.emit_block(case_block);
 
                     let lvalue = self.emit_expr(expr);
@@ -218,7 +218,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
 
                     let mut irreg = self.irreg.borrow_mut();
-                    irreg.insert(identifier.symbol_id, LocalIRValue::LValue(alloca, rvalue.ty));
+                    irreg.insert(ident.symbol_id, LocalIRValue::LValue(alloca, rvalue.ty));
                     drop(irreg);
                 }
 

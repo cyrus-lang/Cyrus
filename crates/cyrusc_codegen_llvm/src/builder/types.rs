@@ -105,7 +105,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for variant in &enum_ty.variants {
             let (payload_size, payload_align) = match variant {
-                CIREnumTyVariant::Identifier => (0, 1),
+                CIREnumTyVariant::Ident => (0, 1),
                 CIREnumTyVariant::Valued(expr) => {
                     let llvm_ty: BasicTypeEnum<'ll> = self
                         .emit_ty(expr.ty.clone())

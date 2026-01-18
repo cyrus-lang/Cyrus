@@ -25,7 +25,7 @@ pub enum ResolverDiagKind {
     #[error("Type '{type_name}' does not accept any type arguments.")]
     TypeDoesNotAcceptTypeArgs { type_name: String },
 
-    #[error("Expected an identifier in module import path, but found something else.")]
+    #[error("Expected an ident in module import path, but found something else.")]
     ExpectedIdentifierInImport,
 
     #[error("Symbol '{symbol_name}' is private and cannot be imported.")]

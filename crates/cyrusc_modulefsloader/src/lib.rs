@@ -106,8 +106,8 @@ impl ModuleLoader {
                     });
 
                     let module_alias = match sub_import.segments.last().unwrap() {
-                        ModuleSegment::SubModule(identifier) => {
-                            ModuleAlias::Group(sub_import.alias.clone().unwrap_or(identifier.name.clone()))
+                        ModuleSegment::SubModule(ident) => {
+                            ModuleAlias::Group(sub_import.alias.clone().unwrap_or(ident.value.clone()))
                         }
                         ModuleSegment::Single(module_segment_singles) => {
                             ModuleAlias::Single(module_segment_singles.clone())
@@ -136,7 +136,7 @@ impl ModuleLoader {
         let mut sources = self.opts.source_dirs.clone();
 
         let mut segments = segments;
-        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.name == "std") {
+        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.value == "std") {
             segments.remove(0);
             sources = vec![self.get_stdlib_modules_path()];
         }
@@ -156,9 +156,9 @@ impl ModuleLoader {
 
         for (idx, segment) in segments.iter().enumerate() {
             match segment {
-                ModuleSegment::SubModule(identifier) => {
-                    let file_path = format!("{}{}.cyrus", module_file_path, identifier.name);
-                    let dir_path = format!("{}{}/", module_file_path, identifier.name);
+                ModuleSegment::SubModule(ident) => {
+                    let file_path = format!("{}{}.cyrus", module_file_path, ident.value);
+                    let dir_path = format!("{}{}/", module_file_path, ident.value);
 
                     let file_exists = if Path::new(&file_path).exists() {
                         Some(PathBuf::from(&file_path))
@@ -175,7 +175,7 @@ impl ModuleLoader {
                     match (file_exists, dir_exists) {
                         (Some(_), Some(_)) => {
                             return Err(ModuleFSLoaderDiagKind::DuplicateModule {
-                                module_name: identifier.name.clone(),
+                                module_name: ident.value.clone(),
                             });
                         }
                         (Some(file_buf), None) => {
@@ -192,7 +192,7 @@ impl ModuleLoader {
                                 let index_path = dir_buf.join("index.cyrus");
                                 if !index_path.exists() {
                                     return Err(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
-                                        module_name: identifier.name.clone(),
+                                        module_name: ident.value.clone(),
                                     });
                                 }
                                 return Ok(index_path.to_str().unwrap().to_string());

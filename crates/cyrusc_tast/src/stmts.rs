@@ -23,7 +23,7 @@ use cyrusc_abi::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     visibility::Visibility,
 };
-use cyrusc_ast::{Identifier, SelfModifierKind, source_loc::SourceLoc};
+use cyrusc_ast::{Ident, SelfModifierKind, source_loc::SourceLoc};
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
@@ -106,14 +106,14 @@ pub struct TypedExportTupleStmt {
 
 #[derive(Debug, Clone)]
 pub enum TypedExportPattern {
-    Identifier(SymbolID),
+    Ident(SymbolID),
     Tuple(Vec<TypedExportPattern>),
 }
 
 impl TypedExportPattern {
     pub fn into_tuple(&self) -> &Vec<TypedExportPattern> {
         match self {
-            TypedExportPattern::Identifier(_) => unreachable!(),
+            TypedExportPattern::Ident(_) => unreachable!(),
             TypedExportPattern::Tuple(patterns) => patterns,
         }
     }
@@ -150,17 +150,17 @@ pub struct TypedEnumStmt {
 
 #[derive(Debug, Clone)]
 pub enum TypedEnumVariant {
-    Identifier(Identifier),
-    Valued(Identifier, Box<TypedExprStmt>),
-    Variant(Identifier, Vec<TypedEnumValuedField>),
+    Ident(Ident),
+    Valued(Ident, Box<TypedExprStmt>),
+    Variant(Ident, Vec<TypedEnumValuedField>),
 }
 
 impl TypedEnumVariant {
-    pub fn get_identifier(&self) -> &Identifier {
+    pub fn get_identifier(&self) -> &Ident {
         match self {
-            TypedEnumVariant::Identifier(identifier) => identifier,
-            TypedEnumVariant::Valued(identifier, ..) => identifier,
-            TypedEnumVariant::Variant(identifier, ..) => identifier,
+            TypedEnumVariant::Ident(ident) => ident,
+            TypedEnumVariant::Valued(ident, ..) => ident,
+            TypedEnumVariant::Variant(ident, ..) => ident,
         }
     }
 
@@ -442,7 +442,7 @@ pub struct TypedSwitchCase {
 pub enum TypedSwitchCasePattern {
     Range(TypedRange),
     Expr(TypedExprStmt, SourceLoc),
-    Identifier(String, SourceLoc),
+    Ident(String, SourceLoc),
     EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
 }
 
@@ -509,7 +509,7 @@ impl TypedGenericParamsList {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TypedBound {
-    pub symbol: Identifier,
+    pub symbol: Ident,
     pub type_args: TypedTypeArgs,
 }
 

@@ -30,10 +30,10 @@ pub(crate) struct TypeArgStartDetail {
 }
 
 impl Parser {
-    pub(crate) fn parse_identifier(&mut self) -> Result<Identifier, Diag> {
+    pub(crate) fn parse_identifier(&mut self) -> Result<Ident, Diag> {
         match self.current_token().kind {
-            TokenKind::Identifier { name } => Ok(Identifier {
-                name,
+            TokenKind::Ident(ident) => Ok(Ident {
+                value: ident,
                 span: self.current_token().span.clone(),
                 loc: self.current_token().loc.clone(),
             }),
@@ -52,7 +52,7 @@ impl Parser {
     pub(crate) fn is_type_token(&mut self, token_kind: TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(&token_kind) {
             true
-        } else if let TokenKind::Identifier { .. } = token_kind {
+        } else if let TokenKind::Ident { .. } = token_kind {
             true
         } else {
             matches!(
@@ -121,11 +121,9 @@ impl Parser {
         let mut args = Vec::new();
 
         loop {
-            if matches!(self.current_token().kind, TokenKind::Identifier { .. })
-                && self.peek_token_is(TokenKind::Assign)
-            {
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) && self.peek_token_is(TokenKind::Assign) {
                 let key = self.parse_identifier()?;
-                self.next_token(); // consume identifier
+                self.next_token(); // consume ident
                 self.expect_current(TokenKind::Assign)?;
 
                 let ty = self.parse_type_specifier()?;
@@ -280,7 +278,7 @@ impl Parser {
     fn token_disqualifies_type_arg(&mut self, kind: &TokenKind) -> bool {
         match kind {
             // allowed tokens
-            TokenKind::Identifier { .. } => false,
+            TokenKind::Ident { .. } => false,
 
             TokenKind::UIntPtr
             | TokenKind::IntPtr
@@ -374,9 +372,7 @@ impl Parser {
 
             TokenKind::Semicolon => true,
 
-            TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf | TokenKind::AlignOf | TokenKind::OffsetOf => {
-                true
-            }
+            TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf => true,
 
             other => !self.is_type_token(other.clone()),
         }
@@ -571,21 +567,21 @@ impl Parser {
                 let inner_type = self.parse_base_type_token()?;
                 Ok(TypeSpecifier::Const(Box::new(inner_type)))
             }
-            TokenKind::Identifier { ref name } => {
+            TokenKind::Ident(ref ident) => {
                 if self.peek_token_is(TokenKind::DoubleColon) {
                     let module_import = self.parse_module_import()?;
                     Ok(TypeSpecifier::ModuleImport(module_import))
                 } else {
-                    if name == "Self" {
+                    if ident == "Self" {
                         Ok(TypeSpecifier::SelfType(SelfType {
                             span: current.span,
                             loc: self.current_token().loc.clone(),
                         }))
                     } else {
-                        Ok(TypeSpecifier::Identifier(Identifier {
-                            name: {
-                                if let TokenKind::Identifier { name } = current.kind {
-                                    name
+                        Ok(TypeSpecifier::Ident(Ident {
+                            value: {
+                                if let TokenKind::Ident(ident) = current.kind {
+                                    ident
                                 } else {
                                     unreachable!()
                                 }
@@ -684,12 +680,12 @@ impl Parser {
                         hint: None,
                     });
                 }
-                TokenKind::Identifier { .. } => {
+                TokenKind::Ident { .. } => {
                     let start = self.current_token().span.start;
                     let loc = self.current_token().loc.clone();
 
                     let field_name = self.parse_identifier()?;
-                    self.next_token(); // consume identifier
+                    self.next_token(); // consume ident
 
                     self.expect_current(TokenKind::Colon)?;
 
@@ -765,7 +761,7 @@ impl Parser {
         self.next_token();
 
         let bounds = if self.current_token_is(TokenKind::Colon) {
-            self.next_token(); // consume identifier
+            self.next_token(); // consume ident
             Some(self.parse_bounds()?)
         } else {
             None
@@ -788,6 +784,6 @@ impl Parser {
     }
 
     fn current_expr_is_path_like(&self, last_parsed_expr: Expr) -> bool {
-        matches!(last_parsed_expr, Expr::Identifier(..) | Expr::ModuleImport(..))
+        matches!(last_parsed_expr, Expr::Ident(..) | Expr::ModuleImport(..))
     }
 }
