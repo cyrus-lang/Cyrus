@@ -15,11 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::diagnostics::LexicalDiagKind;
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::token::*;
-use cyrusc_ast::{Literal, LiteralKind, StringPrefix};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, source_loc::SourceLoc};
 use cyrusc_strescape::unescape_string;
+use cyrusc_tokens::{
+    Token, TokenKind,
+    literals::{Literal, LiteralKind, StringPrefix},
+    loc::{Location, Span},
+};
 use diagnostics::lexer_invalid_char_error;
 use std::{fmt::Debug, process::exit};
 
@@ -510,7 +512,7 @@ impl Lexer {
                 kind: TokenKind::Literal(Literal {
                     kind: LiteralKind::Char(value),
                     loc: Location::new(self.line, self.column),
-                    span: span.clone(),
+                    span: span,
                 }),
                 span,
                 loc: Location::new(self.line, self.column),
@@ -588,7 +590,7 @@ impl Lexer {
         Token {
             kind: TokenKind::Literal(Literal {
                 kind: LiteralKind::String(unescaped, prefix),
-                span: span.clone(),
+                span: span,
                 loc: Location::new(self.line, self.column),
             }),
             span,

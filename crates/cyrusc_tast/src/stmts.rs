@@ -23,7 +23,8 @@ use cyrusc_abi::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     visibility::Visibility,
 };
-use cyrusc_ast::{Ident, SelfModifierKind, source_loc::SourceLoc};
+use cyrusc_ast::{Ident, SelfModifierKind};
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]

@@ -23,9 +23,8 @@ use crate::{
 use cyrusc_abi::modulename::make_module_name_from_filepath;
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::format::module_segments_as_string;
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::token::{Location, Span, Token, TokenKind};
 use cyrusc_ast::*;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_diagcentral::{reporter::DiagReporter, *};
 use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
 use cyrusc_tast::exprs::*;
@@ -36,6 +35,9 @@ use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::types::*;
 use cyrusc_tast::*;
+use cyrusc_tokens::literals::{Literal, LiteralKind, StringPrefix};
+use cyrusc_tokens::loc::{Location, Span};
+use cyrusc_tokens::{Token, TokenKind};
 use rand::Rng;
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -63,7 +65,7 @@ pub struct Resolver {
 
     // Holds file path related to the module.
     pub file_paths: Arc<Mutex<HashMap<ModuleID, String>>>,
-    
+
     // Diagnostic Reporter Instance.
     pub reporter: DiagReporter,
 
@@ -1820,11 +1822,8 @@ impl Resolver {
         Option<TypedFuncVariadicParams>,
         Option<TypedGenericParamsList>,
     )> {
-        let return_type_specifier = func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
-            kind: TokenKind::Void,
-            span: Span::default(),
-            loc: Location::default(),
-        }));
+        let return_type_specifier =
+            return_type_or_void_as_default(func_decl.return_type.clone(), func_decl.loc.clone(), func_decl.span);
 
         let generic_params = func_decl
             .generic_params
@@ -2324,7 +2323,7 @@ impl Resolver {
                                     rhs: None,
                                     is_const: export_tuple.is_const,
                                     loc: export_tuple.loc.clone(),
-                                    span: export_tuple.span.clone(),
+                                    span: export_tuple.span,
                                 },
                             )?;
 
@@ -2509,10 +2508,7 @@ impl Resolver {
                                             TypedIdentifier {
                                                 name: ident.value.clone(),
                                                 symbol_id,
-                                                loc: SourceLoc::from_loc(
-                                                    ident.loc.clone(),
-                                                    self.current_file_path(),
-                                                ),
+                                                loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                                             }
                                         })
                                         .collect(),
@@ -3648,6 +3644,18 @@ impl Resolver {
         drop(file_paths);
         file_path
     }
+}
+
+fn return_type_or_void_as_default(
+    type_specifier_opt: Option<TypeSpecifier>,
+    loc: Location,
+    span: Span,
+) -> TypeSpecifier {
+    type_specifier_opt.unwrap_or(TypeSpecifier::TypeToken(Token {
+        kind: TokenKind::Void,
+        loc,
+        span,
+    }))
 }
 
 pub fn generate_module_id() -> ModuleID {

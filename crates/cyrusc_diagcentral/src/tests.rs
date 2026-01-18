@@ -18,7 +18,6 @@
 mod tests {
     use crate::reporter::*;
     use crate::*;
-    use cyrusc_ast::source_loc::SourceLoc;
     use std::fmt;
 
     #[derive(Debug, Clone, PartialEq, Eq)]

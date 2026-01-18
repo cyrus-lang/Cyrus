@@ -15,8 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
     ModuleID, ScopeID, SymbolID, mapping_ctx_arena,

@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -25,11 +25,9 @@ use cyrusc_abi::prologue::Prologue;
 use cyrusc_abi::repr::{ReprAttr, ReprAttrKind};
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_abi::{callconv::CallConv, modifiers::FuncModifiers};
-use cyrusc_ast::{
-    source_loc::SourceLoc,
-    token::{Token, TokenKind},
-};
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_tokens::{Token, TokenKind};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct UnresolvedModifiers {

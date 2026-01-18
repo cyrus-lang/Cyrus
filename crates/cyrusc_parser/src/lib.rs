@@ -15,16 +15,19 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::diagnostics::ParserDiagKind;
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::token::*;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
 use cyrusc_diagcentral::display_single_diag;
 use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::*;
+use cyrusc_tokens::Token;
+use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::loc::Location;
+use cyrusc_tokens::loc::Span;
 use std::rc::Rc;
 
 mod common;

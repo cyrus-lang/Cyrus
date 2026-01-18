@@ -1,22 +1,22 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::analyze::AnalysisContext;
 use cyrusc_ast::{
-    AssignmentKind, LiteralKind,
+    AssignmentKind,
     operators::{InfixOperator, PrefixOperator},
 };
 use cyrusc_tast::{
@@ -26,9 +26,10 @@ use cyrusc_tast::{
     },
     types::{PlainType, SemanticType},
 };
+use cyrusc_tokens::literals::LiteralKind;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn lower_special_exprs(
+    pub(crate) fn deduce_special_exprs(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
@@ -43,7 +44,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Prefix(prefix_expr) => {
                 match prefix_expr.op {
                     PrefixOperator::Bang => {
-                        if let Some(lowered_typed_expr) = self.lower_prefix_bang_with_pointer_operand(
+                        if let Some(lowered_typed_expr) = self.deduce_prefix_not_pointer(
                             scope_id_opt,
                             expected_type.clone(),
                             prefix_expr,
@@ -58,7 +59,7 @@ impl<'a> AnalysisContext<'a> {
         };
     }
 
-    fn lower_prefix_bang_with_pointer_operand(
+    fn deduce_prefix_not_pointer(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         expected_type: Option<SemanticType>,

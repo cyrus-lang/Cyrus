@@ -18,8 +18,7 @@ use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
 use cyrusc_abi::mangler::ABINameMangler;
-use cyrusc_ast::LiteralKind;
-use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
 use cyrusc_tast::generics::generic_type::GenericType;
@@ -36,6 +35,7 @@ use cyrusc_tast::{
     stmts::*,
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
+use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

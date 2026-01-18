@@ -22,10 +22,11 @@ use crate::{
     types::{SemanticType, TypedUStructType},
 };
 use cyrusc_ast::{
-    AssignmentKind, LiteralKind,
+    AssignmentKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    source_loc::SourceLoc,
 };
+use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_tokens::literals::LiteralKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedExprStmt {

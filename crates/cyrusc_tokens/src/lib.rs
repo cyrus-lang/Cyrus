@@ -14,8 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::Literal;
 use std::fmt;
+
+use crate::{
+    literals::Literal,
+    loc::{Location, Span},
+};
+
+pub mod literals;
+pub mod loc;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
@@ -322,54 +329,6 @@ impl fmt::Display for TokenKind {
             Self::NoInline => write!(f, "noinline"),
             Self::AlwaysInline => write!(f, "alwaysinline"),
             Self::Literal(literal) => write!(f, "{}", literal),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
-}
-
-impl Default for Span {
-    fn default() -> Self {
-        Self {
-            start: Default::default(),
-            end: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Location {
-    pub line: usize,
-    pub column: usize,
-}
-
-impl Location {
-    pub fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
-    }
-}
-
-impl fmt::Display for Location {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
-    }
-}
-
-impl Default for Location {
-    fn default() -> Self {
-        Self {
-            line: Default::default(),
-            column: Default::default(),
         }
     }
 }

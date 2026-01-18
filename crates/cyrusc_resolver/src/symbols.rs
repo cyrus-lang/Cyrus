@@ -16,7 +16,7 @@
  */
 use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
 use cyrusc_abi::visibility::Visibility;
-use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     LabelID, ModuleID, ScopeID, SymbolID,
     stmts::{TypedBlockStmt, TypedGenericParamsList, TypedVarStmt},

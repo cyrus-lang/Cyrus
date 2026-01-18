@@ -21,7 +21,7 @@ mod entrypoints;
 mod flowstate;
 mod format;
 mod generics;
-mod lowerings;
+mod deduce;
 mod nameconv;
 mod normalizer;
 pub mod type_cache;
