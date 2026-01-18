@@ -347,7 +347,7 @@ impl<'a> AnalysisContext<'a> {
 
             if valid {
                 if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (lhs, rhs) {
-                    PlainType::bigger_type(lhs_basic, rhs_basic)
+                    PlainType::widen_type(lhs_basic, rhs_basic)
                 } else {
                     None
                 }
@@ -597,7 +597,7 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    Some(PlainType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                    Some(PlainType::widen_type(lhs_basic.clone(), rhs_basic.clone())?)
                 } else {
                     None
                 }
@@ -633,7 +633,7 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                        Some(PlainType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                        Some(PlainType::widen_type(lhs_basic.clone(), rhs_basic.clone())?)
                     } else {
                         None
                     }
@@ -655,7 +655,7 @@ impl<'a> AnalysisContext<'a> {
             // only allow integer types
             if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_basic_type(), rhs.as_basic_type()) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    return Some(PlainType::bigger_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
+                    return Some(PlainType::widen_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
                 }
             }
 
