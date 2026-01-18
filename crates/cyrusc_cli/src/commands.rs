@@ -16,7 +16,6 @@
  */
 use crate::CompilerOptions;
 use crate::temp_executable_builder::TempExecutableBuilder;
-use cyrusc_ast::token::TokenKind;
 use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{build_compilation_bundle, create_compiler_context};
@@ -238,22 +237,26 @@ pub(crate) fn command_dylib(opts: CodeGenOptions, file_path: Option<String>, out
     // context.compile_modules(program_trees, monomorph_registry);
 }
 
+// TODO: Consider to move it into `cyrusc_compiler` crate and make it consistent.
+#[allow(unused)]
 pub(crate) fn command_lex_only(file_path: String) {
-    let (file_content, file_name) = read_file(file_path.clone());
-    let mut lexer = Lexer::new(file_content, file_name);
-    loop {
-        let token = lexer.next_token();
-        if token.kind == TokenKind::EOF {
-            break;
-        }
+    todo!();
+    // let (file_content, file_name) = read_file(file_path.clone());
+    // let mut lexer = Lexer::new(file_content, file_name);
+    // loop {
+    //     let token = lexer.next_token();
+    //     if token.kind == TokenKind::EOF {
+    //         break;
+    //     }
 
-        println!(
-            "{:?} Span({}, {}) Line({}) Column({})",
-            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
-        );
-    }
+    //     println!(
+    //         "{:?} Span({}, {}) Line({}) Column({})",
+    //         token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
+    //     );
+    // }
 }
 
+// TODO: Consider to move it into `cyrusc_compiler` crate and make it consistent.
 pub(crate) fn command_parse_only(file_path: String) {
     let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name.clone());
@@ -268,6 +271,7 @@ pub(crate) fn command_parse_only(file_path: String) {
     }
 }
 
+// TODO: Consider to move it into `cyrusc_compiler` crate and make it consistent.
 pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: String) {
     let file_content = read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path.clone());

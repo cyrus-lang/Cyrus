@@ -19,8 +19,8 @@ use crate::{
     flowstate::{ControlContext, FlowState},
     type_cache::TypeResolverCaches,
 };
-use cyrusc_ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
+use cyrusc_ast::{AssignmentKind, SelfModifierKind};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
 use cyrusc_resolver::{
     Resolver,
     symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
@@ -39,6 +39,7 @@ use cyrusc_tast::{
     types::{PlainType, SemanticType, TypedFuncType},
     *,
 };
+use cyrusc_tokens::literals::LiteralKind;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -1034,6 +1035,9 @@ impl<'a> AnalysisContext<'a> {
                 None => return,
             };
 
+            // TODO: Const folding logic gotta change.
+            // Especially custom `LiteralKind` should not be constructed manually here
+            // and must be replaced with helper methods.
             if self.is_const_foldable_integer(sema_ty) {
                 if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
                     let integer_concrete_type = Some(SemanticType::PlainType(PlainType::Int));

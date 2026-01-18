@@ -21,11 +21,16 @@ use crate::prec::*;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_ast::operators::PrefixOperator;
 use cyrusc_ast::operators::UnaryOperator;
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::token::*;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
+use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_tokens::Token;
+use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::literals::Literal;
+use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_tokens::loc::Location;
+use cyrusc_tokens::loc::Span;
 
 impl Parser {
     pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<(Expr, Span), Diag> {
@@ -54,7 +59,7 @@ impl Parser {
                     Expr::Unary(UnaryExpr {
                         operand: Box::new(left),
                         op: UnaryOperator::PostIncrement,
-                        span: span.clone(),
+                        span: span,
                         loc,
                     }),
                     span,
@@ -67,7 +72,7 @@ impl Parser {
                     Expr::Unary(UnaryExpr {
                         operand: Box::new(left),
                         op: UnaryOperator::PostDecrement,
-                        span: span.clone(),
+                        span: span,
                         loc,
                     }),
                     span,
@@ -182,13 +187,13 @@ impl Parser {
 
         while !self.current_token_is(TokenKind::Semicolon) {
             match self.current_token().kind {
-                TokenKind::Ident(ident)=> {
-                    let span = self.current_token().span.clone();
+                TokenKind::Ident(ident) => {
+                    let span = self.current_token().span;
                     self.next_token(); // consume ident
 
                     module_path.segments.push(ModuleSegment::SubModule(Ident {
                         value: ident.clone(),
-                        span: span.clone(),
+                        span: span,
                         loc: loc.clone(),
                     }));
 
@@ -252,7 +257,7 @@ impl Parser {
             }
             TokenKind::Function => self.parse_lambda_expr(false)?,
             TokenKind::SizeOf => self.parse_sizeof_expression()?,
-            TokenKind::Typecast => self.parse_cast_expression()?,
+            TokenKind::Typecast => self.parse_cast_expr()?,
             TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
             TokenKind::Const => {
                 if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
@@ -754,7 +759,7 @@ impl Parser {
         ))
     }
 
-    fn parse_cast_expression(&mut self) -> Result<Expr, Diag> {
+    fn parse_cast_expr(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 

@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::analyze::AnalysisContext;
-use cyrusc_ast::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     ScopeID,
     generics::{mapping_ctx::mapping_ctx_eq_refcell, substitute::substitute_struct_sig},

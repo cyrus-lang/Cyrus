@@ -251,6 +251,7 @@ name = "cyrusc_ast"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
+ "cyrusc_tokens",
 ]
 
 [[package]]
@@ -279,6 +280,7 @@ dependencies = [
  "cyrusc_resolver",
  "cyrusc_sema",
  "cyrusc_tast",
+ "cyrusc_tokens",
  "num_cpus",
  "rayon",
 ]
@@ -335,6 +337,7 @@ dependencies = [
  "console",
  "cyrusc_ast",
  "cyrusc_strescape",
+ "cyrusc_tokens",
 ]
 
 [[package]]
@@ -352,6 +355,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_strescape",
+ "cyrusc_tokens",
  "thiserror",
  "thiserror-impl",
  "unicode-segmentation",
@@ -379,6 +383,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
+ "cyrusc_tokens",
  "thiserror",
  "thiserror-impl",
 ]
@@ -395,6 +400,7 @@ dependencies = [
  "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_tast",
+ "cyrusc_tokens",
  "rand",
  "thiserror",
  "thiserror-impl",
@@ -431,6 +437,7 @@ dependencies = [
  "cyrusc_resolver",
  "cyrusc_strescape",
  "cyrusc_tast",
+ "cyrusc_tokens",
  "fx-hash",
  "smallvec",
  "thiserror",
@@ -452,10 +459,15 @@ dependencies = [
  "cyrusc_abi",
  "cyrusc_ast",
  "cyrusc_diagcentral",
+ "cyrusc_tokens",
  "rand",
  "thiserror",
  "thiserror-impl",
 ]
+
+[[package]]
+name = "cyrusc_tokens"
+version = "0.1.0"
 
 [[package]]
 name = "cyrusc_tui_utils"

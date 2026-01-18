@@ -18,10 +18,13 @@ use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::token::*;
 use cyrusc_ast::*;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_diagcentral::{DiagLevel, DiagLoc};
+use cyrusc_tokens::PRIMITIVE_TYPES;
+use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_tokens::loc::Span;
 
 #[derive(Debug)]
 pub(crate) struct TypeArgStartDetail {
@@ -34,7 +37,7 @@ impl Parser {
         match self.current_token().kind {
             TokenKind::Ident(ident) => Ok(Ident {
                 value: ident,
-                span: self.current_token().span.clone(),
+                span: self.current_token().span,
                 loc: self.current_token().loc.clone(),
             }),
             _ => Err(Diag {

@@ -15,8 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_scope_id};
 use cyrusc_tast::{
     ScopeID, SymbolID,

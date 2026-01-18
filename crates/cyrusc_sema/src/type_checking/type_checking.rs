@@ -18,8 +18,8 @@ use crate::{
     analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields, update_global_symbol,
 };
 use cyrusc_abi::visibility::Visibility;
-use cyrusc_ast::{LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_ast::SelfModifierKind;
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::symbols::{
     LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion, SymbolEntryKind,
 };
@@ -43,6 +43,10 @@ use cyrusc_tast::{
     },
     types::*,
     *,
+};
+use cyrusc_tokens::{
+    TokenKind,
+    literals::{LiteralKind, StringPrefix},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -131,7 +135,7 @@ impl<'a> AnalysisContext<'a> {
     /// # Process
     /// 1. **Const Stripping**: If an `expected_type` is provided, removes any `const`
     ///    qualifier since constness doesn't affect type compatibility for expressions.
-    /// 2. **Expression Lowering**: Calls `lower_special_exprs` to transform certain
+    /// 2. **Expression Lowering**: Calls `deduce_special_exprs` to transform certain
     ///    expression patterns before type checking.
     /// 3. **Kind-based Dispatch**: Delegates to specialized analyzers for each
     ///    expression kind (symbols, literals, prefix/infix operators, function calls,
@@ -164,7 +168,7 @@ impl<'a> AnalysisContext<'a> {
             expected_type = Some(sema_ty.get_const_inner().clone());
         }
 
-        self.lower_special_exprs(scope_id_opt, typed_expr, expected_type.clone());
+        self.deduce_special_exprs(scope_id_opt, typed_expr, expected_type.clone());
 
         let sema_ty = match &mut typed_expr.kind {
             TypedExprKind::Symbol(symbol_id, ..) => {

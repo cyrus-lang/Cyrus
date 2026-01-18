@@ -15,11 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::{
-    operators::{InfixOperator, PrefixOperator},
-    source_loc::SourceLoc,
-};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::symbols::LocalScopeRef;
 use cyrusc_tast::{
     ScopeID,

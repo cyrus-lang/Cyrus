@@ -26,8 +26,7 @@ use crate::{
     stmts::{TypedGenericParamsList, TypedTypeArg, TypedTypeArgs},
     types::SemanticType,
 };
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use std::{
     cell::RefCell,
     fmt::Debug,

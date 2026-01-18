@@ -24,11 +24,12 @@ use cyrusc_abi::modifiers::FuncModifiers;
 use cyrusc_abi::modifiers::StructModifiers;
 use cyrusc_abi::modifiers::UnionModifiers;
 use cyrusc_abi::visibility::Visibility;
-use cyrusc_ast::source_loc::SourceLoc;
-use cyrusc_ast::token::*;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
+use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::loc::Span;
 
 impl Parser {
     pub(crate) fn parse_statement(&mut self, toplevel: bool) -> Result<Stmt, Diag> {

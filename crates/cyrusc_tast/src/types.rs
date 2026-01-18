@@ -1,3 +1,6 @@
+use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_tokens::TokenKind;
+
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -19,8 +22,7 @@ use crate::generics::generic_type::GenericType;
 use crate::generics::mapping_ctx::GenericMappingCtx;
 use crate::sigs::FuncSig;
 use crate::stmts::{TypedFuncTypeParams, TypedGenericParam, TypedGenericParamsList};
-use crate::{ModuleID, SourceLoc, SymbolID};
-use cyrusc_ast::token::TokenKind;
+use crate::{ModuleID, SymbolID};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 

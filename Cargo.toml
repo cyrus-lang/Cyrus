@@ -19,6 +19,7 @@ members = [
     "crates/cyrusc_modulefsloader",
     "crates/cyrusc_abi",
     "crates/cyrusc_asan_wrapper",
+    "crates/cyrusc_tokens",
 ]
 
 default-members = ["crates/cyrusc_cli"]

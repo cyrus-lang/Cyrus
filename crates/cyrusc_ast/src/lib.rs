@@ -1,26 +1,28 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::{
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::*,
-};
+use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_abi::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     visibility::Visibility,
+};
+use cyrusc_tokens::{
+    Token,
+    literals::Literal,
+    loc::{Location, Span},
 };
 use std::{
     hash::{Hash, Hasher},
@@ -29,8 +31,6 @@ use std::{
 
 pub mod format;
 pub mod operators;
-pub mod source_loc;
-pub mod token;
 
 #[derive(Debug)]
 pub struct ProgramTree {
@@ -88,7 +88,7 @@ pub enum Expr {
     Lambda(Lambda),
     Tuple(TupleValue),
     TupleAccess(TupleAccess),
-    Dynamic(Dynamic)
+    Dynamic(Dynamic),
 }
 
 #[derive(Debug, Clone)]
@@ -298,29 +298,6 @@ impl ModuleImport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Literal {
-    pub kind: LiteralKind,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum LiteralKind {
-    Integer(i128, Option<Box<TokenKind>>),
-    Float(f64, Option<Box<TokenKind>>),
-    String(String, Option<StringPrefix>),
-    Bool(bool),
-    Char(char),
-    Null,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum StringPrefix {
-    C, // C-style string which is const char*
-    B, // Bytes string
-}
-
 #[derive(Debug, Clone)]
 pub enum TypeSpecifier {
     TypeToken(Token),
@@ -345,8 +322,8 @@ impl TypeSpecifier {
         match self {
             TypeSpecifier::Ident(ident) => Some(ModuleImport {
                 segments: vec![ModuleSegment::SubModule(ident.clone())],
-                span: ident.span.clone(),
-                loc: ident.loc.clone(),
+                loc: ident.loc,
+                span: ident.span,
             }),
             TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
             _ => None,
@@ -637,7 +614,7 @@ impl ModulePath {
     pub fn as_module_import(&self) -> ModuleImport {
         ModuleImport {
             segments: self.segments.clone(),
-            span: self.span.clone(),
+            span: self.span,
             loc: self.loc.clone(),
         }
     }
@@ -794,7 +771,7 @@ impl FuncDef {
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
             renamed_as: None,
-            span: self.span.clone(),
+            span: self.span,
             loc: self.loc.clone(),
         }
     }
