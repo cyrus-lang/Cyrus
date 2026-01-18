@@ -341,6 +341,38 @@ impl SemanticType {
     }
 }
 
+pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
+    Some(SemanticType::PlainType(match suffix {
+        TokenKind::UIntPtr => PlainType::UIntPtr,
+        TokenKind::IntPtr => PlainType::IntPtr,
+        TokenKind::USize => PlainType::USize,
+        TokenKind::ISize => PlainType::ISize,
+        TokenKind::Int => PlainType::Int,
+        TokenKind::Int8 => PlainType::Int8,
+        TokenKind::Int16 => PlainType::Int16,
+        TokenKind::Int32 => PlainType::Int32,
+        TokenKind::Int64 => PlainType::Int64,
+        TokenKind::Int128 => PlainType::Int128,
+        TokenKind::UInt => PlainType::UInt,
+        TokenKind::UInt8 => PlainType::UInt8,
+        TokenKind::UInt16 => PlainType::UInt16,
+        TokenKind::UInt32 => PlainType::UInt32,
+        TokenKind::UInt64 => PlainType::UInt64,
+        TokenKind::UInt128 => PlainType::UInt128,
+        _ => return None,
+    }))
+}
+
+pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
+    Some(SemanticType::PlainType(match suffix {
+        TokenKind::Float16 => PlainType::Float16,
+        TokenKind::Float32 => PlainType::Float32,
+        TokenKind::Float64 => PlainType::Float64,
+        TokenKind::Float128 => PlainType::Float128,
+        _ => return None,
+    }))
+}
+
 impl PlainType {
     pub fn is_bool(&self) -> bool {
         matches!(self, PlainType::Bool)
