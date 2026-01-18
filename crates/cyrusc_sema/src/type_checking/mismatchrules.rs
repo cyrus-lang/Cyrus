@@ -193,7 +193,7 @@ impl<'a> AnalysisContext<'a> {
             (a, b) if a.is_integer() && b.is_integer() => {
                 let signedness = (a.is_signed() && b.is_signed()) || (!a.is_signed() && !b.is_signed());
 
-                if let (Some(rank1), Some(rank2)) = (PlainType::widen_rank(&a), PlainType::widen_rank(&b)) {
+                if let (Some(rank1), Some(rank2)) = (PlainType::plain_type_rank(&a), PlainType::plain_type_rank(&b)) {
                     // target value must have lower rank and signedness be valid
                     rank1 <= rank2 && signedness
                 } else {
@@ -203,7 +203,7 @@ impl<'a> AnalysisContext<'a> {
 
             // Lower rank float value is always compatible
             (a, b) if a.is_float() && b.is_float() => {
-                if let (Some(rank1), Some(rank2)) = (PlainType::widen_rank(&a), PlainType::widen_rank(&b)) {
+                if let (Some(rank1), Some(rank2)) = (PlainType::plain_type_rank(&a), PlainType::plain_type_rank(&b)) {
                     rank1 <= rank2
                 } else {
                     false
@@ -214,9 +214,10 @@ impl<'a> AnalysisContext<'a> {
             (value_type @ Char, target_type) => {
                 let is_integer = target_type.is_integer();
 
-                if let (Some(rank1), Some(rank2)) =
-                    (PlainType::widen_rank(&value_type), PlainType::widen_rank(&target_type))
-                {
+                if let (Some(rank1), Some(rank2)) = (
+                    PlainType::plain_type_rank(&value_type),
+                    PlainType::plain_type_rank(&target_type),
+                ) {
                     rank1 <= rank2 && is_integer
                 } else {
                     false
@@ -225,9 +226,10 @@ impl<'a> AnalysisContext<'a> {
 
             // Integer to Char
             (value_type, target_type @ Char) => {
-                if let (Some(rank1), Some(rank2)) =
-                    (PlainType::widen_rank(&value_type), PlainType::widen_rank(&target_type))
-                {
+                if let (Some(rank1), Some(rank2)) = (
+                    PlainType::plain_type_rank(&value_type),
+                    PlainType::plain_type_rank(&target_type),
+                ) {
                     rank1 <= rank2
                 } else {
                     false

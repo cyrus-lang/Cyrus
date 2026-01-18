@@ -437,7 +437,7 @@ impl PlainType {
         }
     }
 
-    pub fn widen_rank(ty: &PlainType) -> Option<u8> {
+    pub fn plain_type_rank(ty: &PlainType) -> Option<u8> {
         use PlainType::*;
 
         match ty {
@@ -464,8 +464,8 @@ impl PlainType {
     }
 
     pub fn widen_type(a: PlainType, b: PlainType) -> Option<PlainType> {
-        let a_rank = PlainType::widen_rank(&a)?;
-        let b_rank = PlainType::widen_rank(&b)?;
+        let a_rank = PlainType::plain_type_rank(&a)?;
+        let b_rank = PlainType::plain_type_rank(&b)?;
         if a_rank >= b_rank { Some(a) } else { Some(b) }
     }
 }
