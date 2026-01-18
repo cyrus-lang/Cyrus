@@ -50,14 +50,13 @@ use cyrusc_tokens::{
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+// ============================================================
+// Analysis Entry Points
+// ============================================================
+// These functions are the primary entry points for type checking different
+// expression categories. They handle top-level analysis and dispatch to
+// specialized helpers for detailed checking.
 impl<'a> AnalysisContext<'a> {
-    // ============================================================
-    // Analysis Entry Points
-    // ============================================================
-    // These functions are the primary entry points for type checking different
-    // expression categories. They handle top-level analysis and dispatch to
-    // specialized helpers for detailed checking.
-
     /// Entry point for expression type analysis with pre-validation and generic handling.
     ///
     /// This function serves as the public entry point for type checking expressions.
@@ -254,11 +253,14 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // TODO Write comment
+    #[allow(unused)]
     fn analyze_dynamic_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         dynamic_expr: &mut TypedDynamicExpr,
     ) -> Option<SemanticType> {
+        unimplemented!();
+
         if dynamic_expr.operand.kind.is_dynamic_expr() {
             // TODO
             panic!("cannot dynamic an another dynamic expression.");
@@ -1558,11 +1560,12 @@ impl<'a> AnalysisContext<'a> {
 
         Some(cast.target_type.clone())
     }
+}
 
-    // ============================================================
-    // Helper Functions
-    // ============================================================
-
+// ============================================================
+// Helper Functions
+// ============================================================
+impl<'a> AnalysisContext<'a> {
     /// Validates that generic types have provided type arguments when required.
     ///
     /// Checks whether a semantic type which might have generic params
@@ -3838,7 +3841,7 @@ fn infer_integer_type(
     expected: Option<SemanticType>,
 ) -> Result<SemanticType, Diag> {
     if let Some(suffix) = suffix_opt {
-        match map_integer_suffix_to_type(&suffix) {
+        return match map_integer_suffix_to_sema_type(&suffix) {
             Some(ty) => Ok(ty),
             None => Err(Diag {
                 level: DiagLevel::Error,
@@ -3846,16 +3849,15 @@ fn infer_integer_type(
                 location: Some(DiagLoc::new(literal.loc.clone())),
                 hint: Some(format!("Invalid suffix {:?} for integer literal.", suffix)),
             }),
+        };
+    } else if let Some(ty) = expected {
+        if ty.is_integer() {
+            return Ok(ty);
         }
-    } else if let Some(ctx_ty) = expected {
-        if is_integer_type(&ctx_ty) {
-            Ok(ctx_ty)
-        } else {
-            Ok(SemanticType::PlainType(PlainType::Int)) // safe default
-        }
-    } else {
-        Ok(SemanticType::PlainType(PlainType::Int))
     }
+
+    // default integer type
+    Ok(SemanticType::PlainType(PlainType::Int))
 }
 
 fn infer_float_type(
@@ -3864,86 +3866,21 @@ fn infer_float_type(
     expected: Option<SemanticType>,
 ) -> Result<SemanticType, Diag> {
     if let Some(suffix) = suffix_opt {
-        match map_float_suffix_to_type(&suffix) {
+        return match map_float_suffix_to_sema_type(&suffix) {
             Some(ty) => Ok(ty),
             None => Err(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidFloatLiteralSuffix),
                 location: Some(DiagLoc::new(literal.loc.clone())),
-                hint: Some(format!("Invalid suffix {:?} for float literal.", suffix)),
+                hint: Some(format!("Invalid suffix {} for float literal.", suffix)),
             }),
+        };
+    } else if let Some(ty) = expected {
+        if ty.is_float() {
+            return Ok(ty);
         }
-    } else if let Some(ctx_ty) = expected {
-        if is_float_type(&ctx_ty) {
-            Ok(ctx_ty)
-        } else {
-            Ok(SemanticType::PlainType(PlainType::Float64)) // safe default
-        }
-    } else {
-        Ok(SemanticType::PlainType(PlainType::Float64))
     }
-}
 
-fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
-    let ty = match suffix {
-        TokenKind::UIntPtr => PlainType::UIntPtr,
-        TokenKind::IntPtr => PlainType::IntPtr,
-        TokenKind::USize => PlainType::USize,
-        TokenKind::ISize => PlainType::ISize,
-        TokenKind::Int => PlainType::Int,
-        TokenKind::Int8 => PlainType::Int8,
-        TokenKind::Int16 => PlainType::Int16,
-        TokenKind::Int32 => PlainType::Int32,
-        TokenKind::Int64 => PlainType::Int64,
-        TokenKind::Int128 => PlainType::Int128,
-        TokenKind::UInt => PlainType::UInt,
-        TokenKind::UInt8 => PlainType::UInt8,
-        TokenKind::UInt16 => PlainType::UInt16,
-        TokenKind::UInt32 => PlainType::UInt32,
-        TokenKind::UInt64 => PlainType::UInt64,
-        TokenKind::UInt128 => PlainType::UInt128,
-        _ => return None,
-    };
-    Some(SemanticType::PlainType(ty))
-}
-
-fn map_float_suffix_to_type(suffix: &TokenKind) -> Option<SemanticType> {
-    let ty = match suffix {
-        TokenKind::Float16 => PlainType::Float16,
-        TokenKind::Float32 => PlainType::Float32,
-        TokenKind::Float64 => PlainType::Float64,
-        TokenKind::Float128 => PlainType::Float128,
-        _ => return None,
-    };
-    Some(SemanticType::PlainType(ty))
-}
-
-fn is_integer_type(ty: &SemanticType) -> bool {
-    matches!(
-        ty,
-        SemanticType::PlainType(
-            PlainType::Int
-                | PlainType::Int8
-                | PlainType::Int16
-                | PlainType::Int32
-                | PlainType::Int64
-                | PlainType::Int128
-                | PlainType::UInt
-                | PlainType::UInt8
-                | PlainType::UInt16
-                | PlainType::UInt32
-                | PlainType::UInt64
-                | PlainType::UInt128
-                | PlainType::IntPtr
-                | PlainType::UIntPtr
-                | PlainType::USize
-        )
-    )
-}
-
-fn is_float_type(ty: &SemanticType) -> bool {
-    matches!(
-        ty,
-        SemanticType::PlainType(PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128)
-    )
+    // default float type
+    Ok(SemanticType::PlainType(PlainType::Float64))
 }
