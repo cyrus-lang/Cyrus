@@ -68,7 +68,7 @@ pub enum ParserDiagKind {
     InvalidUntypedArrayConstructor,
 
     #[error("Cannot define self modifier several times in a function.")]
-    SeveralSelfModifierDefinition,
+    SeveralSelfModifierUsed,
 
     #[error("Self modifier ident must be 'self' not '{0}'.")]
     ExpectedSelfModifier(String),
