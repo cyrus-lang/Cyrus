@@ -79,7 +79,7 @@ impl Parser {
             // infix handling (respect precedence)
             let peek_prec = token_precedence_of(self.peek_token().kind);
             if self.peek_token().kind != TokenKind::EOF && precedence < peek_prec {
-                match self.parse_infix_expression(left.clone(), left_start) {
+                match self.parse_infix_expr(left.clone(), left_start) {
                     Some(infix) => {
                         left = infix?;
                         if let Expr::Infix(b) = left.clone() {
@@ -392,19 +392,7 @@ impl Parser {
         }))
     }
 
-    pub(crate) fn parse_integer_literal(&self) -> Result<i128, Diag> {
-        match match self.current_token().kind {
-            TokenKind::Literal(literal) => match &literal.kind {
-                LiteralKind::Integer(value, _) => Some(*value),
-                _ => None,
-            },
-            _ => None,
-        } {
-            Some(value) => Ok(value.try_into().unwrap()),
-            None => Err(self.error_at_current(ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind))),
-        }
-    }
-
+   
     fn parse_tuple_value(&mut self, first_expr: Expr) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
@@ -486,7 +474,7 @@ impl Parser {
         }))
     }
 
-    fn parse_infix_expression(&mut self, left: Expr, left_start: usize) -> Option<Result<Expr, Diag>> {
+    fn parse_infix_expr(&mut self, left: Expr, left_start: usize) -> Option<Result<Expr, Diag>> {
         let loc = self.current_token().loc.clone();
 
         {
@@ -720,7 +708,7 @@ impl Parser {
                 }))
             }
         } else {
-            let index = self.parse_integer_literal()?;
+            let index = self.parse_never_suffixed_integer()?;
 
             Ok(Expr::TupleAccess(TupleAccess {
                 operand: Box::new(operand),

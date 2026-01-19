@@ -79,8 +79,11 @@ pub enum ParserDiagKind {
     #[error("Invalid prefix operator '{0}'.")]
     InvalidPrefixOperator(TokenKind),
 
-    #[error("String literals cannot have prefixes in this context")]
+    #[error("String literals cannot have prefixes in this context.")]
     StringPrefixNotAllowed,
+
+    #[error("Integer literals cannot have suffixes in this context.")]
+    IntegerSuffixNotAllowed,
 
     #[error("Invalid assign operator '{0}'.")]
     InvalidAssignOperator(TokenKind),
