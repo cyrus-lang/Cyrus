@@ -1438,10 +1438,16 @@ impl<'a> AnalysisContext<'a> {
 
         let mut analyzed_first_element = false;
 
+        let expected_element_type = expected_type.and_then(|sema_ty| {
+            sema_ty
+                .as_array_type()
+                .map(|array_type| *array_type.element_type.clone())
+        });
+
         // try to infer from first element
         if typed_array.array_type.is_none() {
             if let Some(first_elem) = typed_array.elements.first_mut() {
-                if let Some(sema_ty) = self.analyze_expr(scope_id_opt, first_elem, None) {
+                if let Some(sema_ty) = self.analyze_expr(scope_id_opt, first_elem, expected_element_type.clone()) {
                     let elements_count = typed_array.elements.len();
 
                     typed_array.array_type = Some(SemanticType::Array(TypedArrayType {
@@ -1458,13 +1464,7 @@ impl<'a> AnalysisContext<'a> {
 
         // try to infer from expected type
         if typed_array.array_type.is_none() {
-            let element_type_inferred = expected_type.and_then(|sema_ty| {
-                sema_ty
-                    .as_array_type()
-                    .map(|array_type| *array_type.element_type.clone())
-            });
-
-            if let Some(sema_ty) = element_type_inferred {
+            if let Some(sema_ty) = expected_element_type {
                 let elements_count = typed_array.elements.len();
 
                 typed_array.array_type = Some(SemanticType::Array(TypedArrayType {

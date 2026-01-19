@@ -1,0 +1,26 @@
+// @stdout: 6 15 24
+
+import std::libc{printf};
+
+const n = 3;
+
+pub fn main() {
+    const cube: int64[n][n] = {
+        {1, 2, 3},
+        {4, 5, 6},
+        {7, 8, 9}
+    };
+
+    for (var i = 0; i < n; i++) {
+        var sum: int64;
+        for (var j = 0; j < n; j++) {
+            sum += cube[i][j];
+        }
+
+        if (i + 1 != n) {
+            printf("%d ", sum);
+        } else {
+            printf("%d\n", sum);
+        }
+    }
+}
