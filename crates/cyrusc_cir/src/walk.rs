@@ -1297,7 +1297,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .collect();
 
         CIRExprKind::Array(CIRArrayExpr {
-            ty: self.lower_sema_ty(scope_id_opt, &array.array_type),
+            ty: self.lower_sema_ty(scope_id_opt, &array.array_type.as_ref().unwrap()),
             elms,
         })
     }

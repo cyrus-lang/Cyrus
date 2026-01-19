@@ -76,6 +76,7 @@ pub enum Expr {
     Infix(InfixExpr),
     Unary(UnaryExpr),
     Array(Array),
+    UntypedArray(UntypedArray),
     ArrayIndex(ArrayIndex),
     AddrOf(AddrOf),
     Deref(Deref),
@@ -421,6 +422,13 @@ pub struct InfixExpr {
 #[derive(Debug, Clone)]
 pub struct Array {
     pub data_type: TypeSpecifier,
+    pub elements: Vec<Expr>,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct UntypedArray {
     pub elements: Vec<Expr>,
     pub span: Span,
     pub loc: Location,

@@ -2863,6 +2863,9 @@ impl Resolver {
                 self.resolve_tuple_member_access(module_id, local_scope_opt, tuple_member_access)
             }
             Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, local_scope_opt, dynamic_expr),
+            Expr::UntypedArray(untyped_array) => {
+                self.resolve_untyped_array_expr(module_id, local_scope_opt, untyped_array)
+            }
         }
     }
 
@@ -3140,6 +3143,30 @@ impl Resolver {
         })
     }
 
+    fn resolve_untyped_array_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        untyped_array: &UntypedArray,
+    ) -> Option<TypedExprStmt> {
+        let typed_elements: Vec<TypedExprStmt> = untyped_array
+            .elements
+            .iter()
+            .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
+            .collect();
+
+        Some(TypedExprStmt {
+            kind: TypedExprKind::Array(TypedArrayExpr {
+                array_type: None,
+                elements: typed_elements,
+                loc: SourceLoc::from_loc(untyped_array.loc.clone(), self.current_file_path()),
+            }),
+            mloc: MemoryLocation::RValue,
+            sema_ty: None,
+            loc: SourceLoc::from_loc(untyped_array.loc.clone(), self.current_file_path()),
+        })
+    }
+
     fn resolve_array_expr(
         &mut self,
         module_id: ModuleID,
@@ -3161,9 +3188,11 @@ impl Resolver {
             .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
             .collect();
 
+        dbg!(array_type.clone());
+
         Some(TypedExprStmt {
             kind: TypedExprKind::Array(TypedArrayExpr {
-                array_type,
+                array_type: Some(array_type),
                 elements: typed_elements,
                 loc: SourceLoc::from_loc(arr.loc.clone(), self.current_file_path()),
             }),

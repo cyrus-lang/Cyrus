@@ -327,10 +327,7 @@ impl Parser {
                     expr
                 }
             }
-            // TODO: Implement Untyped Array Construction
-            TokenKind::LeftBrace => {
-                unimplemented!("Untyped Array Construction")
-            }
+            TokenKind::LeftBrace => self.parse_untyped_array()?,
             _ => {
                 let type_specifier = self.parse_type_specifier()?;
 
@@ -392,7 +389,6 @@ impl Parser {
         }))
     }
 
-   
     fn parse_tuple_value(&mut self, first_expr: Expr) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
@@ -910,6 +906,19 @@ impl Parser {
         }
 
         Ok(base_index)
+    }
+
+    fn parse_untyped_array(&mut self) -> Result<Expr, Diag> {
+        let loc = self.current_token().loc.clone();
+        let start = self.current_token().span.start;
+        let elements = self.parse_expr_series(TokenKind::RightBrace)?.0;
+        
+        self.must_be_right_brace()?;
+        Ok(Expr::UntypedArray(UntypedArray {
+            elements,
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
     }
 
     fn parse_array(&mut self, type_specifier: TypeSpecifier) -> Result<Expr, Diag> {

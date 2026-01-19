@@ -19,7 +19,7 @@ use core::fmt;
 
 impl fmt::Display for BlockStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format_statements(&self.exprs))
+        write!(f, "{}", format_stmts(&self.exprs))
     }
 }
 
@@ -48,12 +48,7 @@ impl fmt::Display for Cast {
 
 impl fmt::Display for FuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}({})",
-            self.operand,
-            expression_series_to_string(self.args.clone())
-        )
+        write!(f, "{}({})", self.operand, expr_series_to_string(self.args.clone()))
     }
 }
 
@@ -231,7 +226,7 @@ impl fmt::Display for Expr {
                     FuncParamKind::SelfModifier(..) => unreachable!(),
                 });
                 write!(f, ") {}", lambda.return_type.clone())?;
-                write!(f, "{{ {} }}", format_statements(&lambda.body.exprs))
+                write!(f, "{{ {} }}", format_stmts(&lambda.body.exprs))
             }
             Expr::Unary(unary_expr) => {
                 write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
@@ -260,11 +255,14 @@ impl fmt::Display for Expr {
                     "{}.{}({})",
                     method_call.operand,
                     method_call.method_name,
-                    expression_series_to_string(method_call.args.clone())
+                    expr_series_to_string(method_call.args.clone())
                 )
             }
             Expr::Array(array) => {
-                write!(f, "[{}]", expression_series_to_string(array.elements.clone()))
+                write!(f, "[{}]", expr_series_to_string(array.elements.clone()))
+            }
+            Expr::UntypedArray(untyped_array) => {
+                write!(f, "[{}]", expr_series_to_string(untyped_array.elements.clone()))
             }
             Expr::ArrayIndex(array_index) => {
                 write!(f, "{}[{}]", array_index.operand, array_index.index)
@@ -332,7 +330,7 @@ impl fmt::Display for Expr {
     }
 }
 
-fn expression_series_to_string(exprs: Vec<Expr>) -> String {
+fn expr_series_to_string(exprs: Vec<Expr>) -> String {
     let str = exprs.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
     str
 }
@@ -345,7 +343,7 @@ impl fmt::Display for Stmt {
 
 impl fmt::Display for ProgramTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format_statements(&self.body))
+        write!(f, "{}", format_stmts(&self.body))
     }
 }
 
@@ -406,10 +404,10 @@ pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
     out
 }
 
-pub fn format_expressions(exprs: &Vec<Expr>) -> String {
+pub fn format_exprs(exprs: &Vec<Expr>) -> String {
     exprs.iter().map(|expr| expr.to_string()).collect()
 }
 
-pub fn format_statements(stmts: &Vec<Stmt>) -> String {
+pub fn format_stmts(stmts: &Vec<Stmt>) -> String {
     stmts.iter().map(|stmt| stmt.to_string()).collect()
 }

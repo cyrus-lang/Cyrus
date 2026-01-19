@@ -1,0 +1,8 @@
+// @stdout: 1 2 3
+
+import std::libc{printf};
+
+pub fn main() {
+    const untyped_arr = {1, 2, 3};
+    printf("%d %d %d\n", untyped_arr[0], untyped_arr[1], untyped_arr[2]);
+}

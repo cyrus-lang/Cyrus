@@ -127,7 +127,11 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
         }
         TypedExprKind::Array(typed_array) => {
             let mut fmt = String::new();
-            let array_type_fmt = format_sema_ty(typed_array.array_type.clone(), format_symbol);
+            let array_type_fmt = typed_array
+                .array_type
+                .as_ref()
+                .and_then(|sema_ty| Some(format_sema_ty(sema_ty.clone(), format_symbol)))
+                .unwrap_or("".to_string());
             fmt.push_str(&format!(
                 "{}{{{}}}",
                 array_type_fmt,
