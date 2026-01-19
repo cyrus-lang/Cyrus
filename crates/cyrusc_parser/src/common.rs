@@ -377,6 +377,20 @@ impl Parser {
         Ok(index)
     }
 
+    pub(crate) fn parse_never_suffixed_integer(&self) -> Result<i128, Diag> {
+        let token = self.current_token();
+
+        if let TokenKind::Literal(literal) = &token.kind {
+            if let LiteralKind::Integer(value, suffix) = &literal.kind {
+                if suffix.is_none() {
+                    return Ok(*value);
+                }
+            }
+        }
+
+        Err(self.error_at_current(ParserDiagKind::IntegerSuffixNotAllowed))
+    }
+
     pub(crate) fn parse_never_prefixed_string(&mut self) -> Result<String, Diag> {
         let token = self.current_token();
 

@@ -187,7 +187,7 @@ impl Parser {
 
                         self.next_token(); // consume align
                         self.expect_current(TokenKind::LeftParen)?;
-                        let align_value = self.parse_integer_literal()?;
+                        let align_value = self.parse_never_suffixed_integer()?;
                         self.next_token(); // consume integer
                         self.expect_current(TokenKind::RightParen)?;
 
