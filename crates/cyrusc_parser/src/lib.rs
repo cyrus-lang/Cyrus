@@ -216,7 +216,7 @@ impl Parser {
     }
 
     /// Check if current token is a left parenthesis '(' and report error if not
-    pub(crate) fn expect_left_paren(&self) -> Result<(), Diag> {
+    pub(crate) fn must_be_left_paren(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::LeftParen) {
             Err(self.error_at_current(ParserDiagKind::MissingOpeningParen))
         } else {
@@ -225,7 +225,7 @@ impl Parser {
     }
 
     /// Check if current token is a right parenthesis ')' and report error if not
-    pub(crate) fn expect_right_paren(&self) -> Result<(), Diag> {
+    pub(crate) fn must_be_right_paren(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::RightParen) {
             Err(self.error_at_current(ParserDiagKind::MissingClosingParen))
         } else {
@@ -234,7 +234,7 @@ impl Parser {
     }
 
     /// Check if current token is a left brace '{' and report error if not
-    pub(crate) fn expect_left_brace(&self) -> Result<(), Diag> {
+    pub(crate) fn must_be_left_brace(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::LeftBrace) {
             Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace))
         } else {
@@ -243,7 +243,7 @@ impl Parser {
     }
 
     /// Check if current token is a right brace '}' and report error if not
-    pub(crate) fn expect_right_brace(&self) -> Result<(), Diag> {
+    pub(crate) fn must_be_right_brace(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::RightBrace) {
             Err(self.error_at_current(ParserDiagKind::MissingClosingBrace))
         } else {

@@ -429,7 +429,7 @@ impl Parser {
             }
         }
 
-        self.expect_right_paren()?;
+        self.must_be_right_paren()?;
 
         Ok(Expr::Tuple(TupleValue {
             expr_list,
@@ -465,7 +465,7 @@ impl Parser {
 
         self.next_token(); // consume sizeof
 
-        self.expect_left_paren()?;
+        self.must_be_left_paren()?;
         self.next_token(); // consume left paren
 
         let expr = if let Some(token) = self.peek_n_token(1) {
@@ -480,7 +480,7 @@ impl Parser {
         };
 
         self.next_token();
-        self.expect_right_paren()?;
+        self.must_be_right_paren()?;
 
         Ok(Expr::SizeOf(SizeOf {
             expr: Box::new(expr),
@@ -649,7 +649,7 @@ impl Parser {
         let expr = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
 
-        self.expect_right_paren()?;
+        self.must_be_right_paren()?;
 
         Ok(Expr::Cast(Cast {
             expr: Box::new(expr),
@@ -668,9 +668,9 @@ impl Parser {
         start: usize,
         loc: Location,
     ) -> Result<Expr, Diag> {
-        self.expect_left_paren()?;
+        self.must_be_left_paren()?;
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
-        self.expect_right_paren()?;
+        self.must_be_right_paren()?;
 
         Ok(Expr::MethodCall(MethodCall {
             is_fat_arrow,
@@ -741,7 +741,7 @@ impl Parser {
         self.expect_peek(TokenKind::LeftParen)?;
 
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
-        self.expect_right_paren()?;
+        self.must_be_right_paren()?;
 
         Ok(Expr::FuncCall(FuncCall {
             operand: Box::new(operand),
@@ -935,7 +935,7 @@ impl Parser {
             return Err(self.error_at_current(ParserDiagKind::NonArrayDataTypeForArrayConstruction));
         }
 
-        self.expect_left_brace()?;
+        self.must_be_left_brace()?;
 
         let mut elements: Vec<Expr> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
