@@ -17,11 +17,7 @@
 use crate::diagnostics::ParserDiagKind;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
-use cyrusc_diagcentral::DiagLevel;
-use cyrusc_diagcentral::DiagLoc;
-use cyrusc_diagcentral::display_single_diag;
 use cyrusc_diagcentral::reporter::DiagReporter;
-use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::*;
 use cyrusc_tokens::Token;
@@ -125,23 +121,16 @@ impl Parser {
     }
 
     #[inline]
-    fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> Option<Token> {
         let peek_token = match self.tokens.get(self.cur_token_idx) {
             Some(token) => token,
             None => {
-                display_single_diag!(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(self.peek_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                });
+                self.error_at_peek(ParserDiagKind::InvalidToken(self.peek_token().kind));
+                return None;
             }
         };
         self.cur_token_idx += 1;
-        peek_token.clone()
+        Some(peek_token.clone())
     }
 
     #[inline]
@@ -212,15 +201,7 @@ impl Parser {
             return Ok(());
         }
 
-        Err(Diag {
-            kind: Box::new(ParserDiagKind::ExpectedToken(token_kind)),
-            level: DiagLevel::Error,
-            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                self.current_token().loc,
-                self.file_name.clone(),
-            ))),
-            hint: None,
-        })
+        Err(self.error_at_token(&self.peek_token(), ParserDiagKind::ExpectedToken(token_kind)))
     }
 
     /// This function checks the current token and consumes it if it matches the expected kind.
@@ -231,14 +212,42 @@ impl Parser {
             return Ok(());
         }
 
-        Err(Diag {
-            kind: Box::new(ParserDiagKind::UnexpectedToken(self.current_token().kind, token_kind)),
-            level: DiagLevel::Error,
-            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                self.current_token().loc,
-                self.file_name.clone(),
-            ))),
-            hint: None,
-        })
+        Err(self.error_at_token(&self.peek_token(), ParserDiagKind::ExpectedToken(token_kind)))
+    }
+
+    /// Check if current token is a left parenthesis '(' and report error if not
+    pub(crate) fn expect_left_paren(&self) -> Result<(), Diag> {
+        if !self.current_token_is(TokenKind::LeftParen) {
+            Err(self.error_at_current(ParserDiagKind::MissingOpeningParen))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Check if current token is a right parenthesis ')' and report error if not
+    pub(crate) fn expect_right_paren(&self) -> Result<(), Diag> {
+        if !self.current_token_is(TokenKind::RightParen) {
+            Err(self.error_at_current(ParserDiagKind::MissingClosingParen))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Check if current token is a left brace '{' and report error if not
+    pub(crate) fn expect_left_brace(&self) -> Result<(), Diag> {
+        if !self.current_token_is(TokenKind::LeftBrace) {
+            Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Check if current token is a right brace '}' and report error if not
+    pub(crate) fn expect_right_brace(&self) -> Result<(), Diag> {
+        if !self.current_token_is(TokenKind::RightBrace) {
+            Err(self.error_at_current(ParserDiagKind::MissingClosingBrace))
+        } else {
+            Ok(())
+        }
     }
 }

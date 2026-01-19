@@ -34,21 +34,15 @@ pub(crate) struct TypeArgStartDetail {
 
 impl Parser {
     pub(crate) fn parse_identifier(&mut self) -> Result<Ident, Diag> {
-        match self.current_token().kind {
+        let token = self.current_token();
+
+        match token.kind {
             TokenKind::Ident(ident) => Ok(Ident {
                 value: ident,
-                span: self.current_token().span,
-                loc: self.current_token().loc.clone(),
+                span: token.span,
+                loc: token.loc,
             }),
-            _ => Err(Diag {
-                kind: Box::new(ParserDiagKind::ExpectedIdentifier),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            }),
+            _ => Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier)),
         }
     }
 
@@ -148,15 +142,7 @@ impl Parser {
                     break;
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc.clone(),
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_invalid_token());
                 }
             }
         }
@@ -385,56 +371,29 @@ impl Parser {
         self.expect_current(TokenKind::LeftBracket)?;
 
         if self.current_token_is(TokenKind::RightBracket) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            });
+            return Err(self.error_invalid_token());
         }
+
         let index = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightBracket)?;
         Ok(index)
     }
 
-    pub(crate) fn parse_string_literal(&mut self) -> Result<String, Diag> {
-        let loc = self.current_token().loc.clone();
+    pub(crate) fn parse_never_prefixed_string(&mut self) -> Result<String, Diag> {
+        let token = self.current_token();
 
-        match self.current_token().kind {
-            TokenKind::Literal(literal) => match literal.kind {
-                LiteralKind::String(value, string_prefix) => {
-                    if string_prefix.is_some() {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::ExpectedStringLiteral),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                            hint: Some("Consider to remove the string prefix.".to_string()),
-                        });
-                    }
-                    Ok(value)
+        if let TokenKind::Literal(literal) = &token.kind {
+            if let LiteralKind::String(value, prefix) = &literal.kind {
+                if prefix.is_none() {
+                    return Ok(value.clone());
                 }
-                _ => Err(Diag {
-                    kind: Box::new(ParserDiagKind::ExpectedStringLiteral),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                    hint: Some("Expected string literal as argument".to_string()),
-                }),
-            },
-            _ => Err(Diag {
-                kind: Box::new(ParserDiagKind::ExpectedStringLiteral),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                hint: Some("Expected string literal as argument".to_string()),
-            }),
+            }
         }
+
+        Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed))
     }
 
     fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, Diag> {
-        let loc = self.current_token().loc.clone();
-
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut variadic: Option<FuncTypeVariadicParams> = None;
@@ -467,14 +426,7 @@ impl Parser {
                 TokenKind::RightParen => {
                     break;
                 }
-                _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::MissingComma),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                        hint: None,
-                    });
-                }
+                _ => return Err(self.error_invalid_token()),
             }
         }
 
@@ -524,30 +476,13 @@ impl Parser {
             }
         }
 
-        if !self.current_token_is(TokenKind::RightParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingClosingParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            });
-        }
+        self.expect_right_paren()?;
 
         if type_list.len() <= 1 {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::SingleElementTupleType),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: Some(
-                    "If you only need a single element, remove the tuple syntax and use the type directly.".to_string(),
-                ),
-            });
+            return Err(self.error_at_current_with_hint(
+                ParserDiagKind::SingleElementTupleType,
+                "If you only need a single element, remove the tuple syntax and use the type directly.",
+            ));
         }
 
         Ok(TypeSpecifier::Tuple(TupleType {
@@ -558,13 +493,15 @@ impl Parser {
     }
 
     fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, Diag> {
-        let current = self.current_token().clone();
+        let token = self.current_token().clone();
 
-        match current.kind {
-            ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
+        match token.kind {
+            ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(token)),
+            TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
+            TokenKind::Union => unimplemented!("Unnamed Union Type"),
+            TokenKind::Enum => unimplemented!("Unnamed Union Type"),
             TokenKind::LeftParen => self.parse_tuple(),
             TokenKind::Function => self.parse_func_type(),
-            TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
             TokenKind::Const => {
                 self.next_token(); // consume const
                 let inner_type = self.parse_base_type_token()?;
@@ -577,52 +514,55 @@ impl Parser {
                 } else {
                     if ident == "Self" {
                         Ok(TypeSpecifier::SelfType(SelfType {
-                            span: current.span,
+                            span: token.span,
                             loc: self.current_token().loc.clone(),
                         }))
                     } else {
                         Ok(TypeSpecifier::Ident(Ident {
                             value: {
-                                if let TokenKind::Ident(ident) = current.kind {
+                                if let TokenKind::Ident(ident) = token.kind {
                                     ident
                                 } else {
                                     unreachable!()
                                 }
                             },
-                            span: current.span,
+                            span: token.span,
                             loc: self.current_token().loc.clone(),
                         }))
                     }
                 }
             }
-            _ => Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidTypeToken(current.kind)),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            }),
+            _ => Err(self.error_at_current(ParserDiagKind::InvalidTypeToken(token.kind))),
         }
     }
 
     fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
-        let mut dimensions: Vec<ArrayCapacity> = Vec::new();
+        let mut dims: Vec<ArrayCapacity> = Vec::new();
 
+        // Parse consecutive array dimensions: `int[3][4]` -> dims = [3, 4]
         while self.current_token_is(TokenKind::LeftBracket) {
             let array_capacity = self.parse_single_array_capacity()?;
-            // prevent consuming the latest token_kind here
+
+            // If another dimension follows `[3][4]`, consume the closing bracket
+            // to position the parser at the next `[`. Without this, we'd be stuck at the `]`.
             if self.peek_token_is(TokenKind::LeftBracket) {
-                self.next_token(); // consume right bracket
+                self.next_token(); // consume `]`
             }
-            dimensions.push(array_capacity);
+
+            dims.push(array_capacity);
         }
 
+        // Build the nested array type from the inside out:
+        // Start with base type `int`, then wrap with outer dimensions.
+        //
+        // Example: `int[3][4]` builds as:
+        // 1. `type_specifier = int`
+        // 2. `type_specifier = Array(4, element=int)`
+        // 3. `type_specifier = Array(3, element=Array(4, element=int))`
         let mut type_specifier = base_type_specifier.clone();
-        for dimension in dimensions.iter().rev() {
+        for array_capacity in dims.iter().rev() {
             type_specifier = TypeSpecifier::Array(ArrayTypeSpecifier {
-                size: dimension.clone(),
+                size: array_capacity.clone(),
                 element_type: Box::new(type_specifier),
             });
         }
@@ -652,15 +592,7 @@ impl Parser {
                 self.next_token();
                 false
             } else {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                });
+                return Err(self.error_invalid_token());
             }
         };
         self.expect_current(TokenKind::LeftBrace)?;
@@ -673,15 +605,7 @@ impl Parser {
                     break;
                 }
                 TokenKind::EOF => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc.clone(),
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
                 TokenKind::Ident { .. } => {
                     let start = self.current_token().span.start;
@@ -711,17 +635,7 @@ impl Parser {
                         self.expect_current(TokenKind::Comma)?;
                     }
                 }
-                _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc.clone(),
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
-                }
+                _ => return Err(self.error_invalid_token()),
             }
         }
 

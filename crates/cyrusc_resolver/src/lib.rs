@@ -838,7 +838,7 @@ impl Resolver {
                     }
                 }
 
-                Ok(SemanticType::UnnamedStruct(TypedUStructType {
+                Ok(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                     fields,
                     is_packed: struct_spec.is_packed,
                     loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.current_file_path()),
@@ -2796,7 +2796,7 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(symbol_id, loc.clone()),
             sema_ty: None,
-            vcat: ValueCategory::LValue,
+            mloc: MemoryLocation::LValue,
             loc,
         })
     }
@@ -2817,7 +2817,7 @@ impl Resolver {
                         SourceLoc::from_loc(module_import.loc.clone(), self.current_file_path()),
                     ),
                     sema_ty: None,
-                    vcat: ValueCategory::LValue,
+                    mloc: MemoryLocation::LValue,
                     loc: SourceLoc::from_loc(module_import.loc.clone(), self.current_file_path()),
                 })
         }
@@ -2851,7 +2851,7 @@ impl Resolver {
             Expr::ArrayIndex(array_index) => self.resolve_array_index_expr(module_id, local_scope_opt, array_index),
             Expr::AddrOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
             Expr::Deref(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
-            Expr::UStructValue(unnamed_struct_value) => {
+            Expr::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(module_id, local_scope_opt, unnamed_struct_value)
             }
             Expr::SizeOf(size_of_expression) => {
@@ -2880,7 +2880,7 @@ impl Resolver {
                 loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
         })
     }
@@ -2900,7 +2900,7 @@ impl Resolver {
                 loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
-            vcat: ValueCategory::LValue,
+            mloc: MemoryLocation::LValue,
             loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.current_file_path()),
         })
     }
@@ -2926,7 +2926,7 @@ impl Resolver {
                 loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
         })
     }
@@ -2964,7 +2964,7 @@ impl Resolver {
                 loc: loc.clone(),
             }),
             sema_ty: None,
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             loc,
         })
     }
@@ -2999,7 +2999,7 @@ impl Resolver {
                 type_args,
                 loc: SourceLoc::from_loc(field_access.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::LValue,
+            mloc: MemoryLocation::LValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(field_access.loc.clone(), self.current_file_path()),
         })
@@ -3043,7 +3043,7 @@ impl Resolver {
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
                 args,
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
         })
@@ -3090,7 +3090,7 @@ impl Resolver {
                 is_const: struct_init.is_const,
                 loc: SourceLoc::from_loc(struct_init.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(struct_init.loc.clone(), self.current_file_path()),
         })
@@ -3134,7 +3134,7 @@ impl Resolver {
                 monomorph_key: None,
                 loc: SourceLoc::from_loc(func_call.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(func_call.loc.clone(), self.current_file_path()),
         })
@@ -3167,7 +3167,7 @@ impl Resolver {
                 elements: typed_elements,
                 loc: SourceLoc::from_loc(arr.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(arr.loc.clone(), self.current_file_path()),
         })
@@ -3189,7 +3189,7 @@ impl Resolver {
                 op: bin.op.clone(),
                 loc: SourceLoc::from_loc(bin.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(bin.loc.clone(), self.current_file_path()),
         })
@@ -3209,7 +3209,7 @@ impl Resolver {
                 op: prefix.op.clone(),
                 loc: SourceLoc::from_loc(prefix.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(prefix.loc.clone(), self.current_file_path()),
         })
@@ -3238,7 +3238,7 @@ impl Resolver {
                 target_type,
                 loc: SourceLoc::from_loc(cast.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(cast.loc.clone(), self.current_file_path()),
         })
@@ -3268,7 +3268,7 @@ impl Resolver {
                 )?;
                 return Some(TypedExprStmt {
                     kind: TypedExprKind::SemanticType(sema_ty.clone()),
-                    vcat: ValueCategory::RValue,
+                    mloc: MemoryLocation::RValue,
                     sema_ty: Some(sema_ty),
                     loc: SourceLoc::from_loc(loc, self.current_file_path()),
                 });
@@ -3280,7 +3280,7 @@ impl Resolver {
                 symbol_id,
                 SourceLoc::from_loc(type_specifier.get_loc().0, self.current_file_path()),
             ),
-            vcat: ValueCategory::LValue,
+            mloc: MemoryLocation::LValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(loc, self.current_file_path()),
         })
@@ -3302,7 +3302,7 @@ impl Resolver {
                 kind: assignment.kind.clone(),
                 loc: SourceLoc::from_loc(assignment.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(assignment.loc.clone(), self.current_file_path()),
         })
@@ -3370,7 +3370,7 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Literal(typed_literal.clone()),
             sema_ty: None,
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             loc: typed_literal.loc,
         })
     }
@@ -3389,7 +3389,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: SourceLoc::from_loc(unary.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(unary.loc.clone(), self.current_file_path()),
         })
@@ -3410,7 +3410,7 @@ impl Resolver {
                 index: Box::new(index),
                 loc: SourceLoc::from_loc(array_index.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::LValue,
+            mloc: MemoryLocation::LValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(array_index.loc.clone(), self.current_file_path()),
         })
@@ -3429,7 +3429,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: SourceLoc::from_loc(address_of.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::LValue,
+            mloc: MemoryLocation::LValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(address_of.loc.clone(), self.current_file_path()),
         })
@@ -3448,7 +3448,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 loc: SourceLoc::from_loc(dereference.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(dereference.loc.clone(), self.current_file_path()),
         })
@@ -3458,9 +3458,9 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        unnamed_struct_value: &UStructValue,
+        unnamed_struct_value: &UnnamedStructValue,
     ) -> Option<TypedExprStmt> {
-        let mut fields: Vec<TypedUStructValueField> = Vec::new();
+        let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
 
         for field in &unnamed_struct_value.fields {
             let field_ty = if let Some(type_specifier) = &field.field_ty {
@@ -3484,7 +3484,7 @@ impl Resolver {
                 None => continue,
             };
 
-            fields.push(TypedUStructValueField {
+            fields.push(TypedUnnamedStructValueField {
                 field_name: field.field_name.value.clone(),
                 field_ty,
                 field_value: Box::new(field_value),
@@ -3493,14 +3493,14 @@ impl Resolver {
         }
 
         Some(TypedExprStmt {
-            kind: TypedExprKind::UStructValue(TypedUStructValue {
+            kind: TypedExprKind::UnnamedStructValue(TypedUnnamedStructValue {
                 fields,
                 unnamed_struct_type: None,
                 is_packed: unnamed_struct_value.is_packed,
                 is_const: unnamed_struct_value.is_const,
                 loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
         })
@@ -3519,7 +3519,7 @@ impl Resolver {
                 operand: Box::new(typed_expr),
                 loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.current_file_path()),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.current_file_path()),
         })

@@ -83,7 +83,7 @@ pub enum Expr {
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
-    UStructValue(UStructValue),
+    UnnamedStructValue(UnnamedStructValue),
     SizeOf(SizeOf),
     Lambda(Lambda),
     Tuple(TupleValue),
@@ -135,7 +135,7 @@ pub struct AddrOf {
 }
 
 #[derive(Debug, Clone)]
-pub struct UStructValue {
+pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub is_packed: bool,
     pub is_const: bool,
@@ -823,13 +823,13 @@ pub enum ExportPattern {
 pub struct Assign {
     pub lhs: Expr,
     pub rhs: Expr,
-    pub kind: AssignmentKind,
+    pub kind: AssignKind,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AssignmentKind {
+pub enum AssignKind {
     Default,
     AddAssign,
     SubAssign,
@@ -843,20 +843,20 @@ pub enum AssignmentKind {
     RightShiftAssign,
 }
 
-impl AssignmentKind {
+impl AssignKind {
     pub fn to_infix_operator(&self) -> InfixOperator {
         match self {
-            AssignmentKind::Default => unreachable!(),
-            AssignmentKind::AddAssign => InfixOperator::Add,
-            AssignmentKind::SubAssign => InfixOperator::Sub,
-            AssignmentKind::MulAssign => InfixOperator::Mul,
-            AssignmentKind::DivAssign => InfixOperator::Div,
-            AssignmentKind::ModAssign => InfixOperator::Rem,
-            AssignmentKind::BitwiseAndAssign => InfixOperator::BitwiseAnd,
-            AssignmentKind::BitwiseXorAssign => InfixOperator::BitwiseXor,
-            AssignmentKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
-            AssignmentKind::LeftShiftAssign => InfixOperator::ShiftLeft,
-            AssignmentKind::RightShiftAssign => InfixOperator::ShiftRight,
+            AssignKind::Default => unreachable!(),
+            AssignKind::AddAssign => InfixOperator::Add,
+            AssignKind::SubAssign => InfixOperator::Sub,
+            AssignKind::MulAssign => InfixOperator::Mul,
+            AssignKind::DivAssign => InfixOperator::Div,
+            AssignKind::ModAssign => InfixOperator::Rem,
+            AssignKind::BitwiseAndAssign => InfixOperator::BitwiseAnd,
+            AssignKind::BitwiseXorAssign => InfixOperator::BitwiseXor,
+            AssignKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
+            AssignKind::LeftShiftAssign => InfixOperator::ShiftLeft,
+            AssignKind::RightShiftAssign => InfixOperator::ShiftRight,
         }
     }
 }

@@ -19,7 +19,7 @@ use crate::{
     flowstate::{ControlContext, FlowState},
     type_cache::TypeResolverCaches,
 };
-use cyrusc_ast::{AssignmentKind, SelfModifierKind};
+use cyrusc_ast::{AssignKind, SelfModifierKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
 use cyrusc_resolver::{
     Resolver,
@@ -28,7 +28,7 @@ use cyrusc_resolver::{
 use cyrusc_tast::{
     exprs::{
         TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, TypedTupleAccessExpr,
-        ValueCategory,
+        MemoryLocation,
     },
     format::format_sema_ty,
     generics::{
@@ -383,7 +383,7 @@ impl<'a> AnalysisContext<'a> {
                             loc: loc.clone(),
                         }),
                         sema_ty: Some(tuple_type.type_list.get(idx).unwrap().clone()),
-                        vcat: ValueCategory::LValue,
+                        mloc: MemoryLocation::LValue,
                         loc: loc.clone(),
                     };
                 }
@@ -1049,7 +1049,7 @@ impl<'a> AnalysisContext<'a> {
                             loc: expr.loc.clone(),
                         }),
                         sema_ty: integer_concrete_type,
-                        vcat: ValueCategory::RValue,
+                        mloc: MemoryLocation::RValue,
                         loc: expr.loc.clone(),
                     };
                 } else {
@@ -2056,7 +2056,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        debug_assert!(assign.kind == AssignmentKind::Default);
+        debug_assert!(assign.kind == AssignKind::Default);
 
         if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), assign.loc.clone()) {
             let lhs_type = format_sema_ty(lhs_type, &(self.symbol_formatter)(scope_id_opt));

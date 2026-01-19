@@ -842,7 +842,7 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::Deref(deref_expr) => self.lower_deref(scope_id_opt, deref_expr),
             TypedExprKind::Array(array_expr) => self.lower_array(scope_id_opt, array_expr),
             TypedExprKind::ArrayIndex(array_index_expr) => self.lower_array_index(scope_id_opt, array_index_expr),
-            TypedExprKind::UStructValue(ustruct_value) => self.lower_ustruct_value(scope_id_opt, ustruct_value),
+            TypedExprKind::UnnamedStructValue(ustruct_value) => self.lower_ustruct_value(scope_id_opt, ustruct_value),
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access.clone()),
@@ -1137,7 +1137,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         .get_pointer_inner()
                         .clone(),
                 ),
-                vcat: ValueCategory::LValue,
+                mloc: MemoryLocation::LValue,
                 loc: SourceLoc::default(),
             })
         }
@@ -1258,7 +1258,7 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_ustruct_value(&mut self, scope_id_opt: Option<ScopeID>, ustruct_value: &TypedUStructValue) -> CIRExprKind {
+    fn lower_ustruct_value(&mut self, scope_id_opt: Option<ScopeID>, ustruct_value: &TypedUnnamedStructValue) -> CIRExprKind {
         let fields: Vec<CIRExpr> = ustruct_value
             .fields
             .iter()

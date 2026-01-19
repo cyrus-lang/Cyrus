@@ -22,7 +22,7 @@ use crate::{
         TypedFuncVariadicParams,
     },
     types::{
-        SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUStructType, TypedUnnamedStructTypeField,
+        SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
 };
 use std::cell::RefCell;
@@ -112,7 +112,7 @@ pub fn substitute_type(
                     })
                 })
                 .collect::<Option<Vec<_>>>()?;
-            Some(SemanticType::UnnamedStruct(TypedUStructType {
+            Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                 fields,
                 is_packed: s.is_packed,
                 loc: s.loc.clone(),
