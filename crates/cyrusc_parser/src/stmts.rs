@@ -1592,7 +1592,7 @@ impl Parser {
             }
         }
 
-        self.expect_right_brace()?;
+        self.must_be_right_brace()?;
 
         Ok(Stmt::Switch(Switch {
             operand,
@@ -1664,7 +1664,7 @@ impl Parser {
             }
         }
 
-        self.expect_right_brace()?;
+        self.must_be_right_brace()?;
 
         let end = self.current_token().span.end;
 

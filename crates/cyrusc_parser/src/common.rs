@@ -476,7 +476,7 @@ impl Parser {
             }
         }
 
-        self.expect_right_paren()?;
+        self.must_be_right_paren()?;
 
         if type_list.len() <= 1 {
             return Err(self.error_at_current_with_hint(
