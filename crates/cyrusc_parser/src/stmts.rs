@@ -92,7 +92,7 @@ impl Parser {
                         return self.parse_label_statement();
                     }
 
-                    self.parse_expr_statement()
+                    self.parse_expr_stmt()
                 }
             }
         } else {
@@ -187,8 +187,7 @@ impl Parser {
     }
 
     pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let token = self.current_token();
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -225,7 +224,7 @@ impl Parser {
                         return Err(Diag {
                             kind: Box::new(ParserDiagKind::ExpectedSelfModifier(ident.value.clone())),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
                             hint: None,
                         });
                     }
@@ -233,8 +232,8 @@ impl Parser {
                     self_modifier_count += 1;
                     list.push(FuncParamKind::SelfModifier(SelfModifier {
                         kind: SelfModifierKind::Referenced,
-                        loc: loc.clone(),
-                        span: Span::new(start, self.current_token().span.end),
+                        loc: token.loc.clone(),
+                        span: Span::new(token.span.start, self.current_token().span.end),
                     }));
                 }
                 TokenKind::Ident(_) => {
@@ -283,16 +282,10 @@ impl Parser {
                     }
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::ExpectedIdentifier),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier));
                 }
             }
 
-            // after reading
             match &self.current_token().kind {
                 TokenKind::Comma => {
                     self.next_token();
@@ -301,23 +294,13 @@ impl Parser {
                     break;
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::MissingComma),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_token(&token, ParserDiagKind::MissingComma));
                 }
             }
         }
 
         if self_modifier_count > 1 {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::SeveralSelfModifierDefinition),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                hint: None,
-            });
+            return Err(self.error_at_token(&token, ParserDiagKind::SeveralSelfModifierUsed));
         }
 
         self.expect_current(TokenKind::RightParen)?;
@@ -325,7 +308,7 @@ impl Parser {
         Ok(FuncParams { list, variadic })
     }
 
-    fn parse_expr_statement(&mut self) -> Result<Stmt, Diag> {
+    fn parse_expr_stmt(&mut self) -> Result<Stmt, Diag> {
         let expr = self.parse_expr(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         Ok(Stmt::Expr(expr))
@@ -1007,8 +990,6 @@ impl Parser {
     }
 
     fn parse_for_loop_body(&mut self) -> Result<Box<BlockStmt>, Diag> {
-        let loc = self.current_token().loc.clone();
-
         let body: Box<BlockStmt>;
         if self.current_token_is(TokenKind::LeftBrace) {
             body = Box::new(self.parse_compound_stmt()?);
@@ -1017,12 +998,7 @@ impl Parser {
                 self.next_token();
             }
         } else {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingOpeningBrace),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                hint: None,
-            });
+            return Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace));
         }
         Ok(body)
     }
