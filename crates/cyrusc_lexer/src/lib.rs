@@ -43,12 +43,12 @@ impl Lexer {
     pub fn new(input: String, file_name: String) -> Self {
         let mut lexer = Self {
             input: input.to_string(),
-            pos: 0,      // points to current position
-            next_pos: 0, // points to next position
+            pos: 0,
+            next_pos: 0,
             ch: '\0',
             file_name,
             line: 1,
-            column: 0,
+            column: 1,
         };
 
         lexer.read_char();
@@ -69,7 +69,11 @@ impl Lexer {
 
     #[inline]
     fn peek_char(&self) -> char {
-        self.input[self.next_pos..].chars().next().unwrap_or('\0')
+        if self.next_pos >= self.input.len() {
+            '\0'
+        } else {
+            self.input[self.next_pos..].chars().next().unwrap_or('\0')
+        }
     }
 
     fn read_char(&mut self) {
@@ -85,7 +89,7 @@ impl Lexer {
             self.next_pos += c.len_utf8();
             if c == '\n' {
                 self.line += 1;
-                self.column = 0;
+                self.column = 1;
             } else {
                 self.column += 1;
             }
@@ -98,7 +102,9 @@ impl Lexer {
         self.skip_whitespace();
         self.skip_comments();
 
-        let loc = Location::new(self.line, self.column);
+        let token_line = self.line;
+        let token_column = self.column;
+        let token_start = self.pos;
 
         if self.ch == '\0' {
             return Token {
@@ -112,10 +118,6 @@ impl Lexer {
         }
 
         let token_kind: TokenKind = match self.ch {
-            ' ' => {
-                self.next_token(); // consume whitespace
-                return self.next_token(); // recurse to get the next non-whitespace token
-            }
             '~' => TokenKind::Tilde,
             '+' => {
                 if self.peek_char() == '+' {
@@ -123,21 +125,15 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Increment,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Plus,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -147,32 +143,23 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Decrement,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else if self.peek_char() == '>' {
                     self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::ThinArrow,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Minus,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -186,25 +173,21 @@ impl Lexer {
             '[' => TokenKind::LeftBracket,
             ']' => TokenKind::RightBracket,
             ':' => {
-                self.read_char();
-                if self.ch == ':' {
+                if self.peek_char() == ':' {
+                    let start = self.pos;
+                    self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::DoubleColon,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
+                    self.read_char();
                     return Token {
                         kind: TokenKind::Colon,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -225,11 +208,8 @@ impl Lexer {
 
                 return Token {
                     kind,
-                    span: Span {
-                        start: self.pos - 1,
-                        end: self.pos - 1,
-                    },
-                    loc,
+                    span: Span::new(token_start, self.pos),
+                    loc: Location::new(token_line, token_column),
                 };
             }
             '^' => TokenKind::Caret,
@@ -241,32 +221,23 @@ impl Lexer {
                     self.read_char(); // consume peeked equal sign
                     return Token {
                         kind: TokenKind::Equal,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else if self.peek_char() == '>' {
                     self.read_char(); // consume current equal sign
                     self.read_char(); // consume peeked equal sign
                     return Token {
                         kind: TokenKind::FatArrow,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char(); // consume current equal sign
                     return Token {
                         kind: TokenKind::Assign,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -276,21 +247,15 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::NotEqual,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char(); // consume current equal sign
                     return Token {
                         kind: TokenKind::Bang,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -300,32 +265,23 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::LessEqual,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else if self.peek_char() == '<' {
                     self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::ShiftLeft,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::LessThan,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -337,21 +293,15 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::GreaterEqual,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::GreaterThan,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -361,32 +311,23 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::And,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else if self.peek_char() == '~' {
                     self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::AmpTilde,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Ampersand,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -396,21 +337,15 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Or,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Pipe,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                        loc,
+                        span: Span::new(token_start, self.pos),
+                        loc: Location::new(token_line, token_column),
                     };
                 }
             }
@@ -424,7 +359,7 @@ impl Lexer {
                     self.read_char();
                     return self.read_string(Some(StringPrefix::B));
                 } else if self.ch.is_alphabetic() || self.ch == '_' {
-                    return self.read_identifier();
+                    return self.read_ident();
                 } else if self.is_numeric(self.ch) {
                     return self.read_number();
                 } else {
@@ -438,21 +373,21 @@ impl Lexer {
 
         Token {
             kind: token_kind,
-            span: Span {
-                start: self.pos - 1,
-                end: self.pos - 1,
-            },
-            loc,
+            span: Span::new(token_start, self.pos),
+            loc: Location::new(token_line, token_column),
         }
     }
 
     fn read_char_literal(&mut self) -> Token {
-        let start: usize = self.pos + 1;
+        let start = self.pos;
+        let line = self.line;
+        let column = self.column;
+
+        self.read_char(); // skip opening quote
+
         let mut final_char: Option<char> = None;
 
         loop {
-            self.read_char();
-
             if self.ch == '\'' {
                 break;
             }
@@ -462,8 +397,8 @@ impl Lexer {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
                     location: Some(DiagLoc::new(SourceLoc {
-                        line: self.line,
-                        column: self.column,
+                        line,
+                        column,
                         file_path: self.file_name.clone()
                     })),
                     hint: Some("Character literals may contain exactly one character.".to_string()),
@@ -476,8 +411,8 @@ impl Lexer {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
                     location: Some(DiagLoc::new(SourceLoc {
-                        line: self.line,
-                        column: self.column,
+                        line,
+                        column,
                         file_path: self.file_name.clone()
                     })),
                     hint: Some("Use a string literal for multi-byte characters or emojis.".to_string()),
@@ -485,14 +420,15 @@ impl Lexer {
             }
 
             final_char = Some(self.ch);
+            self.read_char();
 
             if self.is_eof() {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
                     location: Some(DiagLoc::new(SourceLoc {
-                        line: self.line,
-                        column: self.column,
+                        line,
+                        column,
                         file_path: self.file_name.clone()
                     })),
                     hint: None,
@@ -500,30 +436,25 @@ impl Lexer {
             }
         }
 
-        if self.ch == '\'' {
-            self.read_char();
-        }
-
-        let end = self.pos;
-        let span = Span { start: start - 1, end };
+        self.read_char(); // consume closing quote
 
         if let Some(value) = final_char {
             Token {
                 kind: TokenKind::Literal(Literal {
                     kind: LiteralKind::Char(value),
-                    loc: Location::new(self.line, self.column),
-                    span: span,
+                    loc: Location::new(line, column),
+                    span: Span::new(start, self.pos),
                 }),
-                span,
-                loc: Location::new(self.line, self.column),
+                span: Span::new(start, self.pos),
+                loc: Location::new(line, column),
             }
         } else {
             display_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(LexicalDiagKind::EmptyCharLiteral),
                 location: Some(DiagLoc::new(SourceLoc {
-                    line: self.line,
-                    column: self.column,
+                    line,
+                    column,
                     file_path: self.file_name.clone()
                 })),
                 hint: None,
@@ -532,20 +463,22 @@ impl Lexer {
     }
 
     fn read_string(&mut self, prefix: Option<StringPrefix>) -> Token {
-        let start = self.pos + 1;
+        let start = self.pos; // Position of opening quote or prefix
+        let line = self.line;
+        let column = self.column;
+
+        self.read_char(); // Skip opening quote (or prefix char)
 
         let mut raw = String::new();
 
         loop {
-            self.read_char();
-
             if self.is_eof() {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
                     location: Some(DiagLoc::new(SourceLoc {
-                        line: self.line,
-                        column: self.column,
+                        line,
+                        column,
                         file_path: self.file_name.clone()
                     })),
                     hint: None,
@@ -557,11 +490,15 @@ impl Lexer {
                     raw.push('\\');
                     self.read_char();
                     raw.push(self.ch);
+                    self.read_char();
                 }
                 '"' => {
                     break;
                 }
-                _ => raw.push(self.ch),
+                _ => {
+                    raw.push(self.ch);
+                    self.read_char();
+                }
             }
         }
 
@@ -575,8 +512,8 @@ impl Lexer {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
                     location: Some(DiagLoc::new(SourceLoc {
-                        line: self.line,
-                        column: self.column,
+                        line,
+                        column,
                         file_path: self.file_name.clone()
                     })),
                     hint: Some(err.to_string()),
@@ -584,47 +521,51 @@ impl Lexer {
             }
         };
 
-        let end = self.pos;
-        let span = Span { start: start - 1, end };
-
         Token {
             kind: TokenKind::Literal(Literal {
                 kind: LiteralKind::String(unescaped, prefix),
-                span: span,
-                loc: Location::new(self.line, self.column),
+                span: Span::new(start, self.pos),
+                loc: Location::new(line, column),
             }),
-            span,
-            loc: Location::new(self.line, self.column),
+            span: Span::new(start, self.pos),
+            loc: Location::new(line, column),
         }
     }
 
-    fn read_identifier(&mut self) -> Token {
+    fn read_ident(&mut self) -> Token {
         let start = self.pos;
+        let line = self.line;
+        let column = self.column;
 
-        let mut final_identifier = String::new();
+        let mut final_ident = String::new();
 
         while self.ch.is_alphanumeric() || self.ch == '_' {
-            final_identifier.push(self.ch);
+            final_ident.push(self.ch);
             self.read_char();
         }
 
         let end = self.pos;
 
-        let token_kind = self.lookup_identifier(final_identifier);
+        let token_kind = self.lookup_identifier(final_ident);
 
         Token {
             kind: token_kind,
             span: Span { start, end },
-            loc: Location::new(self.line, self.column),
+            loc: Location::new(line, column),
         }
     }
 
     #[inline]
     fn read_literal_suffix(&mut self) -> Option<Box<TokenKind>> {
         if matches!(self.ch, 'f' | 'u' | 'i' | 's') {
-            let suffix_token_kind = self.read_identifier().kind;
+            let mut suffix = String::new();
 
-            Some(Box::new(suffix_token_kind))
+            while self.ch.is_alphanumeric() || self.ch == '_' {
+                suffix.push(self.ch);
+                self.read_char();
+            }
+
+            Some(Box::new(self.lookup_identifier(suffix)))
         } else {
             None
         }
@@ -632,6 +573,9 @@ impl Lexer {
 
     fn read_number(&mut self) -> Token {
         let start = self.pos;
+        let line = self.line;
+        let column = self.column;
+
         let mut number = String::new();
         let mut is_float = false;
 
@@ -710,8 +654,8 @@ impl Lexer {
                         level: DiagLevel::Error,
                         kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
                         location: Some(DiagLoc::new(SourceLoc {
-                            line: self.line,
-                            column: self.column,
+                            line,
+                            column,
                             file_path: self.file_name.clone()
                         })),
                         hint: None,
@@ -728,8 +672,8 @@ impl Lexer {
                             level: DiagLevel::Error,
                             kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
                             location: Some(DiagLoc::new(SourceLoc {
-                                line: self.line,
-                                column: self.column,
+                                line,
+                                column,
                                 file_path: self.file_name.clone()
                             })),
                             hint: None,
@@ -744,8 +688,8 @@ impl Lexer {
                             level: DiagLevel::Error,
                             kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
                             location: Some(DiagLoc::new(SourceLoc {
-                                line: self.line,
-                                column: self.column,
+                                line,
+                                column,
                                 file_path: self.file_name.clone()
                             })),
                             hint: None,
@@ -760,11 +704,11 @@ impl Lexer {
         Token {
             kind: TokenKind::Literal(Literal {
                 kind: token_kind,
-                span: Span::new(start, self.column),
-                loc: Location::new(self.line, self.column),
+                span: Span::new(start, self.pos),
+                loc: Location::new(line, column),
             }),
-            span: Span::new(start, self.column),
-            loc: Location::new(self.line, self.column),
+            span: Span::new(start, self.pos),
+            loc: Location::new(line, column),
         }
     }
 
@@ -807,9 +751,11 @@ impl Lexer {
         }
     }
 
-    #[inline]
     fn skip_comments(&mut self) {
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
+            let comment_start_line = self.line;
+            let comment_start_column = self.column;
+
             if self.peek_char() == '/' {
                 // handle single-line comment
                 self.read_char(); // consume '/'
@@ -849,19 +795,21 @@ impl Lexer {
                         level: DiagLevel::Error,
                         kind: Box::new(LexicalDiagKind::UnterminatedMultiLineComment),
                         location: Some(DiagLoc::new(SourceLoc {
-                            line: self.line,
-                            column: self.column,
+                            line: comment_start_line,
+                            column: comment_start_column,
                             file_path: self.file_name.clone()
                         })),
                         hint: None,
                     });
                 }
 
+                // skip any newlines after comment
                 while !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             }
 
+            // skip whitespace that might be after comment
             self.skip_whitespace();
         }
     }
