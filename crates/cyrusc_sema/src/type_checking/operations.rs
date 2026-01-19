@@ -320,7 +320,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        if !operand_type.is_integer() {
+        if !(operand_type.is_integer() && unary_expr.operand.is_lvalue()) {
             let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
 
             self.reporter.report(Diag {

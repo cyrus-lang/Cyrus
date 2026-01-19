@@ -285,7 +285,7 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            Expr::UStructValue(unnamed_struct_value) => {
+            Expr::UnnamedStructValue(unnamed_struct_value) => {
                 write!(f, "struct {{ ")?;
                 for (idx, field) in unnamed_struct_value.fields.iter().enumerate() {
                     if let Some(field_ty) = &field.field_ty {
@@ -355,7 +355,7 @@ impl fmt::Display for ModuleImport {
     }
 }
 
-impl fmt::Display for UStructValue {
+impl fmt::Display for UnnamedStructValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_packed {
             write!(f, "bits")?;

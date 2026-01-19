@@ -77,15 +77,10 @@ impl Parser {
                 ($field:ident, $parser_method:ident, $err_msg:expr) => {
                     if let Some(value) = self.$parser_method(token.clone()) {
                         if mods.$field.is_some() {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier($err_msg.to_string())),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                    token.loc,
-                                    self.file_name.clone(),
-                                ))),
-                                hint: None,
-                            });
+                            return Err(self.error_at_token(
+                                &token,
+                                ParserDiagKind::InvalidModifier($err_msg.to_string()),
+                            ));
                         }
                         mods.$field = Some(value);
                         consumed = true;
@@ -98,15 +93,10 @@ impl Parser {
                     match self.$parser_method(token.clone())? {
                         Some(value) => {
                             if mods.$field.is_some() {
-                                return Err(Diag {
-                                    kind: Box::new(ParserDiagKind::InvalidModifier($err_msg.to_string())),
-                                    level: DiagLevel::Error,
-                                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                        token.loc,
-                                        self.file_name.clone(),
-                                    ))),
-                                    hint: None,
-                                });
+                                return Err(self.error_at_token(
+                                    &token,
+                                    ParserDiagKind::InvalidModifier($err_msg.to_string()),
+                                ));
                             }
                             mods.$field = Some(value);
                             consumed = true;
@@ -170,34 +160,29 @@ impl Parser {
             let mut repr_attr = ReprAttr::new();
             let mut has_kind = false;
             let mut has_align = false;
-            let loc = self.current_token().loc.clone();
 
             while !self.current_token_is(TokenKind::RightParen) {
-                if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let token = self.current_token();
+
+                if matches!(token.kind, TokenKind::Ident { .. }) {
                     let ident = self.parse_identifier()?;
                     let name = ident.as_string();
 
                     if name == "align" {
                         if has_align {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                            return Err(self.error_at_token(
+                                &token,
+                                ParserDiagKind::InvalidModifier(
                                     "Duplicate align modifier in repr attribute.".to_string(),
-                                )),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                                hint: None,
-                            });
+                                ),
+                            ));
                         }
 
                         if !has_kind && !repr_attr.items.is_empty() {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(
-                                    "Align must appear after repr kind.".to_string(),
-                                )),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                                hint: None,
-                            });
+                            return Err(self.error_at_token(
+                                &token,
+                                ParserDiagKind::InvalidModifier("Align must appear after repr kind.".to_string()),
+                            ));
                         }
 
                         self.next_token(); // consume align
@@ -213,24 +198,15 @@ impl Parser {
                         let kind = match ReprAttr::try_kind_from_str(&name) {
                             Ok(k) => k,
                             Err(err) => {
-                                return Err(Diag {
-                                    kind: Box::new(ParserDiagKind::InvalidModifier(err)),
-                                    level: DiagLevel::Error,
-                                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                                    hint: None,
-                                });
+                                return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err)));
                             }
                         };
 
                         if has_kind {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(
-                                    "Duplicate repr kind in repr attribute.".to_string(),
-                                )),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                                hint: None,
-                            });
+                            return Err(self.error_at_token(
+                                &token,
+                                ParserDiagKind::InvalidModifier("Duplicate repr kind in repr attribute.".to_string()),
+                            ));
                         }
 
                         has_kind = true;
@@ -256,7 +232,7 @@ impl Parser {
         if matches!(token.kind, TokenKind::Section) {
             self.next_token();
             self.expect_current(TokenKind::LeftParen)?;
-            let section_name = self.parse_string_literal()?;
+            let section_name = self.parse_never_prefixed_string()?;
             self.next_token();
             self.expect_current(TokenKind::RightParen)?;
             Ok(Some(section_name))
@@ -294,7 +270,7 @@ impl Parser {
             TokenKind::NoSanitize => {
                 self.next_token();
                 self.expect_current(TokenKind::LeftParen)?;
-                let arg = self.parse_string_literal()?;
+                let arg = self.parse_never_prefixed_string()?;
                 self.next_token();
                 self.expect_current(TokenKind::RightParen)?;
                 Ok(Some(OptionalFlag::NoSanitize(arg)))
@@ -305,23 +281,18 @@ impl Parser {
 
     pub(crate) fn parse_callconv(&mut self, token: Token) -> Result<Option<CallConv>, Diag> {
         if matches!(token.kind, TokenKind::Callconv) {
-            let loc = self.current_token().loc.clone();
-
             self.expect_current(TokenKind::Callconv)?;
             self.expect_current(TokenKind::LeftParen)?;
+
             let callconv_str = self.parse_identifier()?;
             self.next_token();
+
             self.expect_current(TokenKind::RightParen)?;
 
             match CallConv::try_from(callconv_str.as_string()) {
                 Ok(callconv) => Ok(Some(callconv)),
-                Err(err) => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(err.to_string())),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                        hint: None,
-                    });
+                Err(call_conv_err) => {
+                    return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(call_conv_err.to_string())));
                 }
             }
         } else {
@@ -370,16 +341,11 @@ impl Parser {
             self.next_token();
 
             if matches!(self.current_token().kind, TokenKind::Literal(..)) {
-                let extern_abi = self.parse_string_literal()?;
+                let extern_abi = self.parse_never_prefixed_string()?;
                 self.next_token();
 
                 let Ok(callconv) = CallConv::try_from(extern_abi.clone()) else {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidABI(extern_abi)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_token(&token, ParserDiagKind::InvalidABI(extern_abi)));
                 };
 
                 return Ok(Some(Linkage::Extern(Some(callconv))));

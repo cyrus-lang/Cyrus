@@ -16,13 +16,13 @@
  */
 use crate::analyze::AnalysisContext;
 use cyrusc_ast::{
-    AssignmentKind,
+    AssignKind,
     operators::{InfixOperator, PrefixOperator},
 };
 use cyrusc_tast::{
     ScopeID,
     exprs::{
-        TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, ValueCategory,
+        TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, MemoryLocation,
     },
     types::{PlainType, SemanticType},
 };
@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         match &mut typed_expr.kind {
             TypedExprKind::Assign(typed_assignment) => {
-                if typed_assignment.kind != AssignmentKind::Default {
+                if typed_assignment.kind != AssignKind::Default {
                     typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
                 }
             }
@@ -78,7 +78,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc.clone(),
             }),
-            vcat: ValueCategory::RValue,
+            mloc: MemoryLocation::RValue,
             sema_ty: None,
             loc: prefix_expr.loc.clone(),
         };
@@ -95,7 +95,7 @@ impl<'a> AnalysisContext<'a> {
 
             Some(TypedExprStmt {
                 kind: new_infix_expr,
-                vcat: ValueCategory::RValue,
+                mloc: MemoryLocation::RValue,
                 sema_ty: None,
                 loc: prefix_expr.loc.clone(),
             })
@@ -118,9 +118,9 @@ impl<'a> AnalysisContext<'a> {
                 kind: infix_expr,
                 sema_ty: None,
                 loc: assign.loc.clone(),
-                vcat: ValueCategory::RValue,
+                mloc: MemoryLocation::RValue,
             }),
-            kind: AssignmentKind::Default,
+            kind: AssignKind::Default,
             loc: assign.loc.clone(),
         })
     }

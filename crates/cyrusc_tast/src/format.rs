@@ -20,10 +20,10 @@ use crate::{
     stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
-        TypedUStructType,
+        TypedUnnamedStructType,
     },
 };
-use cyrusc_ast::{AssignmentKind, operators::UnaryOperator};
+use cyrusc_ast::{AssignKind, operators::UnaryOperator};
 use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
 
 pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
@@ -103,17 +103,17 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             let mut fmt = String::new();
             fmt.push_str(&format_typed_expr(&typed_assign.lhs, format_symbol));
             match &typed_assign.kind {
-                AssignmentKind::Default => fmt.push_str("="),
-                AssignmentKind::AddAssign => fmt.push_str("+="),
-                AssignmentKind::SubAssign => fmt.push_str("-="),
-                AssignmentKind::MulAssign => fmt.push_str("*="),
-                AssignmentKind::DivAssign => fmt.push_str("/="),
-                AssignmentKind::ModAssign => fmt.push_str("%="),
-                AssignmentKind::BitwiseAndAssign => fmt.push_str("&="),
-                AssignmentKind::BitwiseXorAssign => fmt.push_str("^="),
-                AssignmentKind::BitwiseAndNotAssign => fmt.push_str("&~="),
-                AssignmentKind::LeftShiftAssign => fmt.push_str("<<="),
-                AssignmentKind::RightShiftAssign => fmt.push_str(">>="),
+                AssignKind::Default => fmt.push_str("="),
+                AssignKind::AddAssign => fmt.push_str("+="),
+                AssignKind::SubAssign => fmt.push_str("-="),
+                AssignKind::MulAssign => fmt.push_str("*="),
+                AssignKind::DivAssign => fmt.push_str("/="),
+                AssignKind::ModAssign => fmt.push_str("%="),
+                AssignKind::BitwiseAndAssign => fmt.push_str("&="),
+                AssignKind::BitwiseXorAssign => fmt.push_str("^="),
+                AssignKind::BitwiseAndNotAssign => fmt.push_str("&~="),
+                AssignKind::LeftShiftAssign => fmt.push_str("<<="),
+                AssignKind::RightShiftAssign => fmt.push_str(">>="),
             };
             fmt.push_str(&format_typed_expr(&typed_assign.rhs, format_symbol));
             fmt
@@ -205,7 +205,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             fmt.push_str(&typed_method_call.func_sig.clone().unwrap().name);
             fmt
         }
-        TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
+        TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
             let mut fmt = String::new();
             if typed_unnamed_struct_value.is_const {
                 fmt.push_str("const ");
@@ -264,7 +264,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
 }
 
 pub fn format_unnamed_struct_ty<'a>(
-    typed_unnamed_struct_type: &TypedUStructType,
+    typed_unnamed_struct_type: &TypedUnnamedStructType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     let mut fmt = String::new();

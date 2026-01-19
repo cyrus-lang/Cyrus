@@ -1,22 +1,24 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::DiagKind;
-use cyrusc_tokens::TokenKind;
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, DiagLoc, source_loc::SourceLoc};
+use cyrusc_tokens::{Token, TokenKind};
 use thiserror::Error;
+
+use crate::Parser;
 
 #[derive(Debug, Error, Clone)]
 pub enum ParserDiagKind {
@@ -26,17 +28,11 @@ pub enum ParserDiagKind {
     #[error("Invalid ABI: '{0}'.")]
     InvalidABI(String),
 
-    #[error("Expected string literal.")]
-    ExpectedStringLiteral,
-
     #[error("Expected integer literal, but found '{0}'.")]
     ExpectedIntegerLiteral(TokenKind),
 
     #[error("Tuple type must contain at least two elements.")]
     SingleElementTupleType,
-
-    #[error("Expected token '{1}' but got '{0}'.")]
-    UnexpectedToken(TokenKind, TokenKind),
 
     #[error("Expected token '{0}'.")]
     ExpectedToken(TokenKind),
@@ -83,6 +79,9 @@ pub enum ParserDiagKind {
     #[error("Invalid prefix operator '{0}'.")]
     InvalidPrefixOperator(TokenKind),
 
+    #[error("String literals cannot have prefixes in this context")]
+    StringPrefixNotAllowed,
+
     #[error("Invalid assign operator '{0}'.")]
     InvalidAssignOperator(TokenKind),
 
@@ -97,3 +96,75 @@ pub enum ParserDiagKind {
 }
 
 impl DiagKind for ParserDiagKind {}
+
+impl Parser {
+    pub(crate) fn error_invalid_token(&self) -> Diag {
+        let token = self.current_token();
+        Diag {
+            kind: Box::new(ParserDiagKind::InvalidToken(token.kind)),
+            level: DiagLevel::Error,
+            location: Some(
+                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
+            ),
+            hint: None,
+        }
+    }
+
+    pub(crate) fn error_at_current_with_hint(&self, kind: ParserDiagKind, hint: &str) -> Diag {
+        let token = self.current_token();
+        Diag {
+            kind: Box::new(kind),
+            level: DiagLevel::Error,
+            location: Some(
+                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
+            ),
+            hint: Some(hint.to_string()),
+        }
+    }
+
+    pub(crate) fn error_at_current(&self, kind: ParserDiagKind) -> Diag {
+        let token = self.current_token();
+        Diag {
+            kind: Box::new(kind),
+            level: DiagLevel::Error,
+            location: Some(
+                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
+            ),
+            hint: None,
+        }
+    }
+
+    pub(crate) fn error_at_peek(&self, kind: ParserDiagKind) -> Diag {
+        let token = self.peek_token();
+        Diag {
+            kind: Box::new(kind),
+            level: DiagLevel::Error,
+            location: Some(
+                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
+            ),
+            hint: None,
+        }
+    }
+
+    pub(crate) fn error_at_token(&self, token: &Token, kind: ParserDiagKind) -> Diag {
+        Diag {
+            kind: Box::new(kind),
+            level: DiagLevel::Error,
+            location: Some(
+                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
+            ),
+            hint: None,
+        }
+    }
+
+    pub(crate) fn error_with_hint(&self, token: &Token, kind: ParserDiagKind, hint: &str) -> Diag {
+        Diag {
+            kind: Box::new(kind),
+            level: DiagLevel::Error,
+            location: Some(
+                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
+            ),
+            hint: Some(hint.to_string()),
+        }
+    }
+}

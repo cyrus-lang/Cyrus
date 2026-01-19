@@ -109,128 +109,110 @@ impl Parser {
     }
 
     pub(crate) fn parse_module_import(&mut self) -> Result<ModuleImport, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start_token = self.current_token();
+        let start_pos = start_token.span.start;
 
-        let mut segments = match self.current_token().kind {
+        let mut segments = match &self.current_token().kind {
             TokenKind::Ident(ident) => {
                 vec![ModuleSegment::SubModule(Ident {
-                    value: ident,
-                    span: Span {
-                        start,
-                        end: self.current_token().span.end - 1,
-                    },
-                    loc: loc.clone(),
+                    value: ident.clone(),
+                    span: start_token.span,
+                    loc: start_token.loc.clone(),
                 })]
             }
             _ => {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::ExpectedIdentifier),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                    hint: None,
-                });
+                return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier));
             }
         };
 
+        // if no '::' follows, this is a single identifier import
         if !self.peek_token_is(TokenKind::DoubleColon) {
             return Ok(ModuleImport {
                 segments,
-                span: Span::new(start, self.current_token().span.end),
-                loc,
+                span: Span::new(start_pos, self.current_token().span.end),
+                loc: start_token.loc.clone(),
             });
         }
 
-        self.next_token(); // consume first ident
+        self.next_token(); // consume first identifier
 
         loop {
-            if self.current_token_is(TokenKind::DoubleColon) {
-                self.next_token(); // consume double colon
-            } else if let TokenKind::Ident(name) = self.current_token().kind {
-                segments.push(ModuleSegment::SubModule(Ident {
-                    value: name,
-                    span: Span {
-                        start,
-                        end: self.peek_token().span.end - 1,
-                    },
-                    loc: loc.clone(),
-                }));
-
-                if self.peek_token_is(TokenKind::DoubleColon) {
-                    self.next_token();
-                    continue;
-                } else {
-                    break;
-                }
-            } else {
+            if !self.current_token_is(TokenKind::DoubleColon) {
                 break;
             }
+
+            self.next_token(); // consume '::'
+
+            let ident_token = self.current_token();
+            match &ident_token.kind {
+                TokenKind::Ident(name) => {
+                    segments.push(ModuleSegment::SubModule(Ident {
+                        value: name.clone(),
+                        span: ident_token.span,
+                        loc: ident_token.loc.clone(),
+                    }));
+                }
+                _ => {
+                    // if we find '::' but no identifier after it
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier));
+                }
+            }
+
+            // check if there's another '::' after this identifier
+            if !self.peek_token_is(TokenKind::DoubleColon) {
+                break;
+            }
+
+            // Prepare for next iteration
+            self.next_token();
         }
+
+        let end_token = self.current_token();
 
         Ok(ModuleImport {
             segments,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
+            span: Span::new(start_pos, end_token.span.end),
+            loc: start_token.loc.clone(),
         })
     }
 
     pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start_token = self.current_token();
+        let start_pos = start_token.span.start;
+        let start_loc = start_token.loc.clone();
 
-        let mut module_path = ModulePath {
-            alias: None,
-            segments: Vec::new(),
-            loc: loc.clone(),
-            span: Span::default(),
-        };
+        let mut segments = Vec::new();
+        let mut alias = None;
 
-        while !self.current_token_is(TokenKind::Semicolon) {
-            match self.current_token().kind {
-                TokenKind::Ident(ident) => {
-                    let span = self.current_token().span;
-                    self.next_token(); // consume ident
+        let ident = self.parse_identifier()?;
+        segments.push(ModuleSegment::SubModule(ident));
+        self.next_token();
 
-                    module_path.segments.push(ModuleSegment::SubModule(Ident {
-                        value: ident.clone(),
-                        span: span,
-                        loc: loc.clone(),
-                    }));
+        while self.current_token_is(TokenKind::DoubleColon) {
+            self.next_token(); // consume '::'
 
-                    if self.current_token_is(TokenKind::DoubleColon) {
-                        continue;
-                    } else if self.current_token_is(TokenKind::Semicolon) {
-                        return Ok(module_path);
-                    } else if self.current_token_is(TokenKind::As) {
-                        self.next_token(); // consume as
-
-                        let alias = self.parse_identifier()?;
-                        self.next_token();
-
-                        module_path.alias = Some(alias.as_string());
-                        break;
-                    } else {
-                        break;
-                    }
-                }
-                TokenKind::DoubleColon => {
-                    self.next_token();
-                    continue;
-                }
-                _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::ExpectedIdentifier),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                        hint: None,
-                    });
-                }
-            }
+            let ident = self.parse_identifier()?;
+            segments.push(ModuleSegment::SubModule(ident));
+            self.next_token();
         }
 
-        module_path.span = Span::new(start, self.current_token().span.end);
+        // check for optional 'as' alias
+        if self.current_token_is(TokenKind::As) {
+            self.next_token();
 
-        Ok(module_path)
+            let alias_ident = self.parse_identifier()?;
+            alias = Some(alias_ident.value);
+            self.next_token(); // consume the alias identifier
+        }
+
+        let end_pos = self.current_token().span.end;
+
+        Ok(ModulePath {
+            alias,
+            segments,
+            loc: start_loc,
+            span: Span::new(start_pos, end_pos),
+        })
     }
 
     fn parse_prefix_expr(&mut self) -> Result<Expr, Diag> {
@@ -244,19 +226,11 @@ impl Parser {
                     self.next_token();
                     self.parse_lambda_expr(true)?
                 } else {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc.clone(),
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_invalid_token());
                 }
             }
             TokenKind::Function => self.parse_lambda_expr(false)?,
-            TokenKind::SizeOf => self.parse_sizeof_expression()?,
+            TokenKind::SizeOf => self.parse_sizeof_expr()?,
             TokenKind::Typecast => self.parse_cast_expr()?,
             TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
             TokenKind::Const => {
@@ -272,15 +246,7 @@ impl Parser {
                     struct_init.is_const = true;
                     Expr::StructInit(struct_init)
                 } else {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc.clone(),
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_invalid_token());
                 }
             }
             TokenKind::Ident { .. } => {
@@ -317,52 +283,6 @@ impl Parser {
                 span: Span::new(start, self.current_token().span.end),
                 loc: loc.clone(),
             }),
-            token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
-                let unary_operator = match token_kind {
-                    TokenKind::Increment => UnaryOperator::PreIncrement,
-                    TokenKind::Decrement => UnaryOperator::PreDecrement,
-                    _ => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidToken(token_kind.clone())),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                self.current_token().loc.clone(),
-                                self.file_name.clone(),
-                            ))),
-                            hint: Some(String::from("Wanted increment or decrement operator.")),
-                        });
-                    }
-                };
-
-                self.next_token(); // consume the operator
-
-                match self.current_token().kind {
-                    TokenKind::Ident { .. } => {
-                        let module_import = self.parse_module_import()?;
-
-                        Expr::Unary(UnaryExpr {
-                            operand: Box::new(Expr::ModuleImport(module_import)),
-                            op: unary_operator,
-                            span: Span {
-                                start,
-                                end: self.current_token().span.end,
-                            },
-                            loc: loc.clone(),
-                        })
-                    }
-                    _ => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidToken(token_kind.clone())),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                self.current_token().loc.clone(),
-                                self.file_name.clone(),
-                            ))),
-                            hint: None,
-                        });
-                    }
-                }
-            }
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
                 let value = match bool_token {
                     TokenKind::True => true,
@@ -384,12 +304,7 @@ impl Parser {
                     TokenKind::Bang => PrefixOperator::Bang,
                     TokenKind::Tilde => PrefixOperator::BitwiseNot,
                     _ => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidPrefixOperator(token_kind.clone())),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                            hint: None,
-                        });
+                        return Err(self.error_at_current(ParserDiagKind::InvalidPrefixOperator(token_kind.clone())));
                     }
                 };
                 self.next_token(); // consume the prefix operator
@@ -414,6 +329,10 @@ impl Parser {
                 } else {
                     expr
                 }
+            }
+            // TODO: Implement Untyped Array Construction
+            TokenKind::LeftBrace => {
+                unimplemented!("Untyped Array Construction")
             }
             _ => {
                 let type_specifier = self.parse_type_specifier()?;
@@ -448,30 +367,14 @@ impl Parser {
                 let struct_init = self.parse_struct_init(module_import, type_args_opt)?;
                 Ok(Expr::StructInit(struct_init))
             } else {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                });
+                return Err(self.error_invalid_token());
             }
         } else if self.peek_token_is(TokenKind::LeftParen) {
             return self.parse_func_call(expr, type_args_opt);
         } else {
-            // type args for invalid expression
+            // type args are given to the wrong expression
             if type_args_opt.is_some() {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc.clone(),
-                        self.file_name.clone(),
-                    ))),
-                    hint: Some("Type args are given to a wrong expression.".to_string()),
-                });
+                return Err(self.error_invalid_token());
             }
 
             Ok(expr)
@@ -501,15 +404,7 @@ impl Parser {
             _ => None,
         } {
             Some(value) => Ok(value.try_into().unwrap()),
-            None => Err(Diag {
-                kind: Box::new(ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind)),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            }),
+            None => Err(self.error_at_current(ParserDiagKind::ExpectedIntegerLiteral(self.current_token().kind))),
         }
     }
 
@@ -521,7 +416,7 @@ impl Parser {
 
         loop {
             let expr = self.parse_expr(Precedence::Lowest)?.0;
-            self.next_token(); // consume last token
+            self.next_token();
 
             expr_list.push(expr);
 
@@ -534,17 +429,7 @@ impl Parser {
             }
         }
 
-        if !self.current_token_is(TokenKind::RightParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingClosingParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            });
-        }
+        self.expect_right_paren()?;
 
         Ok(Expr::Tuple(TupleValue {
             expr_list,
@@ -574,21 +459,13 @@ impl Parser {
         }))
     }
 
-    fn parse_sizeof_expression(&mut self) -> Result<Expr, Diag> {
+    fn parse_sizeof_expr(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc;
 
         self.next_token(); // consume sizeof
 
-        if !self.current_token_is(TokenKind::LeftParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingOpeningParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                hint: None,
-            });
-        }
-
+        self.expect_left_paren()?;
         self.next_token(); // consume left paren
 
         let expr = if let Some(token) = self.peek_n_token(1) {
@@ -602,15 +479,8 @@ impl Parser {
             self.parse_expr(Precedence::Lowest)?.0
         };
 
-        if !self.peek_token_is(TokenKind::RightParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingClosingParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                hint: None,
-            });
-        }
         self.next_token();
+        self.expect_right_paren()?;
 
         Ok(Expr::SizeOf(SizeOf {
             expr: Box::new(expr),
@@ -646,7 +516,7 @@ impl Parser {
         match self.peek_token().kind {
             TokenKind::Assign => {
                 self.next_token();
-                match self.parse_assignment(left, AssignmentKind::Default, left_start) {
+                match self.parse_assignment(left, AssignKind::Default, left_start) {
                     Ok(expr) => Some(Ok(expr)),
                     Err(err) => Some(Err(err)),
                 }
@@ -673,16 +543,23 @@ impl Parser {
             | TokenKind::ShiftRight
             | TokenKind::Ident { .. } => {
                 self.next_token(); // consume left expression
-                let op_token = self.current_token().kind;
+
+                let operator_token = self.current_token().kind;
                 if self.peek_token_is(TokenKind::Assign) {
                     self.next_token();
-                    let kind = self.parse_assign_kind(op_token, loc).ok()?;
-                    return Some(self.parse_assignment(left, kind, left_start));
+                    let Some(assign_kind) = self.map_assign_kind(operator_token.clone(), loc) else {
+                        return Some(Err(
+                            self.error_at_current(ParserDiagKind::InvalidAssignOperator(operator_token))
+                        ));
+                    };
+
+                    return Some(self.parse_assignment(left, assign_kind, left_start));
                 }
-                let precedence = token_precedence_of(op_token.clone());
+
+                let precedence = token_precedence_of(operator_token.clone());
                 self.next_token(); // consume the operator
 
-                let op = match op_token {
+                let op = match operator_token {
                     TokenKind::Plus => InfixOperator::Add,
                     TokenKind::Minus => InfixOperator::Sub,
                     TokenKind::Asterisk => InfixOperator::Mul,
@@ -703,14 +580,12 @@ impl Parser {
                     TokenKind::ShiftLeft => InfixOperator::ShiftLeft,
                     TokenKind::ShiftRight => InfixOperator::ShiftRight,
                     _ => {
-                        return Some(Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidInfixOperator(self.current_token().kind)),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                            hint: None,
-                        }));
+                        return Some(Err(self.error_at_current(ParserDiagKind::InvalidInfixOperator(
+                            self.current_token().kind,
+                        ))));
                     }
                 };
+
                 let (right, span) = self.parse_expr(precedence).ok()?;
 
                 Some(Ok(Expr::Infix(InfixExpr {
@@ -763,22 +638,18 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        self.next_token(); // consume typecast token
+        self.next_token(); // consume cast 
         self.expect_current(TokenKind::LeftParen)?;
+
         let target_type = self.parse_type_specifier()?;
         self.next_token(); // consume target_type
+
         self.expect_current(TokenKind::Comma)?;
+
         let expr = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
 
-        if !self.current_token_is(TokenKind::RightParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingClosingParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                hint: None,
-            });
-        }
+        self.expect_right_paren()?;
 
         Ok(Expr::Cast(Cast {
             expr: Box::new(expr),
@@ -797,24 +668,9 @@ impl Parser {
         start: usize,
         loc: Location,
     ) -> Result<Expr, Diag> {
-        if !self.current_token_is(TokenKind::LeftParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingOpeningParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                hint: None,
-            });
-        }
-
+        self.expect_left_paren()?;
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
-        if !self.current_token_is(TokenKind::RightParen) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingClosingParen),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                hint: None,
-            });
-        }
+        self.expect_right_paren()?;
 
         Ok(Expr::MethodCall(MethodCall {
             is_fat_arrow,
@@ -839,12 +695,7 @@ impl Parser {
                 self.next_token();
                 false
             } else {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                    hint: None,
-                });
+                return Err(self.error_invalid_token())?;
             }
         };
 
@@ -890,14 +741,7 @@ impl Parser {
         self.expect_peek(TokenKind::LeftParen)?;
 
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
-        if !(self.current_token_is(TokenKind::RightParen)) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                hint: None,
-            });
-        }
+        self.expect_right_paren()?;
 
         Ok(Expr::FuncCall(FuncCall {
             operand: Box::new(operand),
@@ -951,15 +795,7 @@ impl Parser {
 
             match self.current_token().kind {
                 TokenKind::EOF => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc,
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
                 TokenKind::Comma => {
                     self.next_token();
@@ -971,15 +807,7 @@ impl Parser {
                     break;
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc,
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_invalid_token());
                 }
             }
         }
@@ -997,30 +825,23 @@ impl Parser {
         })
     }
 
-    fn parse_assign_kind(&mut self, token_kind: TokenKind, loc: Location) -> Result<AssignmentKind, Diag> {
+    fn map_assign_kind(&mut self, token_kind: TokenKind, loc: Location) -> Option<AssignKind> {
         match token_kind {
-            TokenKind::Plus => Ok(AssignmentKind::AddAssign),
-            TokenKind::Minus => Ok(AssignmentKind::SubAssign),
-            TokenKind::Asterisk => Ok(AssignmentKind::MulAssign),
-            TokenKind::Slash => Ok(AssignmentKind::DivAssign),
-            TokenKind::Percent => Ok(AssignmentKind::ModAssign),
-            TokenKind::Ampersand => Ok(AssignmentKind::BitwiseAndAssign),
-            TokenKind::Tilde => Ok(AssignmentKind::BitwiseXorAssign),
-            TokenKind::AmpTilde => Ok(AssignmentKind::BitwiseAndNotAssign),
-            TokenKind::ShiftLeft => Ok(AssignmentKind::LeftShiftAssign),
-            TokenKind::ShiftRight => Ok(AssignmentKind::RightShiftAssign),
-            _ => {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidAssignOperator(token_kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                    hint: None,
-                });
-            }
+            TokenKind::Plus => Some(AssignKind::AddAssign),
+            TokenKind::Minus => Some(AssignKind::SubAssign),
+            TokenKind::Asterisk => Some(AssignKind::MulAssign),
+            TokenKind::Slash => Some(AssignKind::DivAssign),
+            TokenKind::Percent => Some(AssignKind::ModAssign),
+            TokenKind::Ampersand => Some(AssignKind::BitwiseAndAssign),
+            TokenKind::Tilde => Some(AssignKind::BitwiseXorAssign),
+            TokenKind::AmpTilde => Some(AssignKind::BitwiseAndNotAssign),
+            TokenKind::ShiftLeft => Some(AssignKind::LeftShiftAssign),
+            TokenKind::ShiftRight => Some(AssignKind::RightShiftAssign),
+            _ => None,
         }
     }
 
-    fn parse_assignment(&mut self, lhs: Expr, kind: AssignmentKind, start: usize) -> Result<Expr, Diag> {
+    fn parse_assignment(&mut self, lhs: Expr, kind: AssignKind, start: usize) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::Assign)?;
@@ -1079,12 +900,7 @@ impl Parser {
                     Expr::ModuleImport(module_import) => TypeSpecifier::ModuleImport(module_import),
                     Expr::TypeSpecifier(type_specifier) => type_specifier,
                     _ => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidToken(self.peek_token().kind)),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                            hint: None,
-                        });
+                        return Err(self.error_invalid_token());
                     }
                 }
             };
@@ -1116,28 +932,10 @@ impl Parser {
         let start = self.current_token().span.start;
 
         if !matches!(type_specifier, TypeSpecifier::Array(..)) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::NonArrayDataTypeForArrayConstruction),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            });
+            return Err(self.error_at_current(ParserDiagKind::NonArrayDataTypeForArrayConstruction));
         }
 
-        if !self.current_token_is(TokenKind::LeftBrace) {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::MissingOpeningBrace),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    self.current_token().loc.clone(),
-                    self.file_name.clone(),
-                ))),
-                hint: None,
-            });
-        }
+        self.expect_left_brace()?;
 
         let mut elements: Vec<Expr> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
@@ -1158,16 +956,9 @@ impl Parser {
                 self.next_token(); // consume left brace
 
                 loop {
+                    // REVIEW: Maybe this is not necessary here anymore? Because we support untyped array constructors...
                     if self.current_token_is(TokenKind::RightBrace) {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidUntypedArrayConstructor),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                self.current_token().loc.clone(),
-                                self.file_name.clone(),
-                            ))),
-                            hint: None,
-                        });
+                        return Err(self.error_at_current(ParserDiagKind::InvalidUntypedArrayConstructor));
                     }
 
                     untyped_array.push(self.parse_expr(Precedence::Lowest)?.0);
@@ -1179,12 +970,7 @@ impl Parser {
                         self.next_token();
                         break;
                     } else {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidToken(self.peek_token().kind)),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                            hint: None,
-                        });
+                        return Err(self.error_at_peek(ParserDiagKind::InvalidToken(self.peek_token().kind)));
                     }
                 }
 
@@ -1245,15 +1031,7 @@ impl Parser {
                 self.next_token(); // consume bits
                 true
             } else {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        self.current_token().loc,
-                        self.file_name.clone(),
-                    ))),
-                    hint: None,
-                });
+                return Err(self.error_invalid_token());
             }
         };
         self.expect_current(TokenKind::LeftBrace)?;
@@ -1266,15 +1044,7 @@ impl Parser {
                     break;
                 }
                 TokenKind::EOF => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::MissingClosingBrace),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc,
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
                 TokenKind::Ident(field_name) => {
                     let start = self.current_token().span.start;
@@ -1321,20 +1091,12 @@ impl Parser {
                     }
                 }
                 _ => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            self.current_token().loc,
-                            self.file_name.clone(),
-                        ))),
-                        hint: None,
-                    });
+                    return Err(self.error_invalid_token());
                 }
             }
         }
 
-        Ok(Expr::UStructValue(UStructValue {
+        Ok(Expr::UnnamedStructValue(UnnamedStructValue {
             fields,
             is_packed,
             is_const,

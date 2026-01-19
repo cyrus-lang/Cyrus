@@ -1,3 +1,5 @@
+use cyrusc_tokens::loc::Span;
+
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -32,6 +34,9 @@ pub struct DiagLoc {
     pub file: String,
     pub line: usize,
     pub column: usize,
+
+    // to highlight a range of tokens
+    pub range: Option<(usize, usize)>,
 }
 
 impl DiagLoc {
@@ -40,7 +45,18 @@ impl DiagLoc {
             file: loc.file_path.clone(),
             line: loc.line,
             column: loc.column,
+            range: None,
         }
+    }
+
+    pub fn span(mut self, span: Span) -> Self {
+        self.range = Some((span.start, span.end));
+        self
+    }
+
+    pub fn range(mut self, start: usize, end: usize) -> Self {
+        self.range = Some((start, end));
+        self
     }
 }
 

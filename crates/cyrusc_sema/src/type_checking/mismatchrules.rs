@@ -23,7 +23,7 @@ use cyrusc_tast::{
     sigs::StructSig,
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedUStructType,
+        TypedUnnamedStructType,
     },
 };
 
@@ -164,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn check_unnamed_struct_and_named_struct_type_mismatch(
         &self,
-        unnamed_struct: &TypedUStructType,
+        unnamed_struct: &TypedUnnamedStructType,
         struct_sig: &StructSig,
     ) -> bool {
         let unnamed_struct_fields = unnamed_struct

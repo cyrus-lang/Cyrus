@@ -206,7 +206,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call(scope_id_opt, typed_func_call, expected_type)
             }
-            TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
+            TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value(scope_id_opt, typed_unnamed_struct_value)
             }
             TypedExprKind::FieldAccess(field_access) => {
@@ -546,7 +546,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_unnamed_struct_value(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        unnamed_struct_value: &mut TypedUStructValue,
+        unnamed_struct_value: &mut TypedUnnamedStructValue,
     ) -> Option<SemanticType> {
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
@@ -564,7 +564,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let unnamed_struct_type = TypedUStructType {
+        let unnamed_struct_type = TypedUnnamedStructType {
             fields,
             is_packed: unnamed_struct_value.is_packed,
             loc: unnamed_struct_value.loc.clone(),
@@ -2738,7 +2738,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_unnamed_struct_field_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        unnamed_struct_type: &TypedUStructType,
+        unnamed_struct_type: &TypedUnnamedStructType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -3374,7 +3374,7 @@ impl<'a> AnalysisContext<'a> {
                             loc: operand.loc.clone(),
                         }),
                         sema_ty: Some(SemanticType::Pointer(Box::new(expr_ty))),
-                        vcat: ValueCategory::LValue,
+                        mloc: MemoryLocation::LValue,
                         loc: operand.loc.clone(),
                     }
                 }
@@ -3830,7 +3830,7 @@ impl<'a> AnalysisContext<'a> {
 
 #[derive(Debug, Clone)]
 enum MemberAccessKind {
-    UnnamedStruct(Box<TypedUStructType>),
+    UnnamedStruct(Box<TypedUnnamedStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
 }

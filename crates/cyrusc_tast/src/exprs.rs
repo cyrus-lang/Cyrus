@@ -19,10 +19,10 @@ use crate::{
     generics::monomorph::MonomorphKey,
     sigs::FuncSig,
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedUStructType},
+    types::{SemanticType, TypedUnnamedStructType},
 };
 use cyrusc_ast::{
-    AssignmentKind,
+    AssignKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_diagcentral::source_loc::SourceLoc;
@@ -32,13 +32,12 @@ use cyrusc_tokens::literals::LiteralKind;
 pub struct TypedExprStmt {
     pub kind: TypedExprKind,
     pub sema_ty: Option<SemanticType>,
-    pub vcat: ValueCategory,
+    pub mloc: MemoryLocation,
     pub loc: SourceLoc,
 }
 
-// TODO: Maybe rename it AddressingMode?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ValueCategory {
+pub enum MemoryLocation {
     LValue,
     RValue,
 }
@@ -57,7 +56,7 @@ pub enum TypedExprKind {
     Array(TypedArrayExpr),
     ArrayIndex(TypedArrayIndexExpr),
     StructInit(TypedStructInitExpr),
-    UStructValue(TypedUStructValue),
+    UnnamedStructValue(TypedUnnamedStructValue),
     FuncCall(TypedFuncCall),
     MethodCall(TypedMethodCall),
     FieldAccess(TypedFieldAccess),
@@ -126,11 +125,11 @@ impl TypedLiteralExpr {
 
 impl TypedExprStmt {
     pub fn is_lvalue(&self) -> bool {
-        self.vcat == ValueCategory::LValue
+        self.mloc == MemoryLocation::LValue
     }
 
     pub fn is_rvalue(&self) -> bool {
-        self.vcat == ValueCategory::RValue
+        self.mloc == MemoryLocation::RValue
     }
 }
 
@@ -178,7 +177,7 @@ impl TypedExprKind {
                 .fields
                 .iter()
                 .all(|field_init| field_init.value.kind.is_comptime_valid()),
-            TypedExprKind::UStructValue(typed_unnamed_struct_value) => {
+            TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 typed_unnamed_struct_value
                     .fields
                     .iter()
@@ -211,7 +210,7 @@ impl TypedExprKind {
             TypedExprKind::MethodCall(_) => false,
             TypedExprKind::FuncCall(_) => false,
             TypedExprKind::StructInit(_) => false,
-            TypedExprKind::UStructValue(_) => false,
+            TypedExprKind::UnnamedStructValue(_) => false,
             TypedExprKind::Literal(_) => false,
             TypedExprKind::Prefix(_) => false,
             TypedExprKind::Infix(_) => false,
@@ -275,7 +274,7 @@ pub struct TypedInfixExpr {
 pub struct TypedAssignExpr {
     pub lhs: Box<TypedExprStmt>,
     pub rhs: Box<TypedExprStmt>,
-    pub kind: AssignmentKind,
+    pub kind: AssignKind,
     pub loc: SourceLoc,
 }
 
@@ -369,16 +368,16 @@ pub struct TypedMethodCall {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedUStructValue {
-    pub fields: Vec<TypedUStructValueField>,
-    pub unnamed_struct_type: Option<TypedUStructType>,
+pub struct TypedUnnamedStructValue {
+    pub fields: Vec<TypedUnnamedStructValueField>,
+    pub unnamed_struct_type: Option<TypedUnnamedStructType>,
     pub is_packed: bool,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedUStructValueField {
+pub struct TypedUnnamedStructValueField {
     pub field_name: String,
     pub field_ty: Option<SemanticType>,
     pub field_value: Box<TypedExprStmt>,

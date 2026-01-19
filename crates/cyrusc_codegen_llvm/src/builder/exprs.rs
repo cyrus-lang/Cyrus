@@ -448,6 +448,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_expr(&infix_expr.lhs);
         let rhs_lvalue = self.emit_expr(&infix_expr.rhs);
+        
         let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
         let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
 
