@@ -218,7 +218,7 @@ impl Parser {
     /// Check if current token is a left parenthesis '(' and report error if not
     pub(crate) fn must_be_left_paren(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::LeftParen) {
-            Err(self.error_at_current(ParserDiagKind::MissingOpeningParen))
+            Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingOpeningParen))
         } else {
             Ok(())
         }
@@ -227,7 +227,7 @@ impl Parser {
     /// Check if current token is a right parenthesis ')' and report error if not
     pub(crate) fn must_be_right_paren(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::RightParen) {
-            Err(self.error_at_current(ParserDiagKind::MissingClosingParen))
+            Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingClosingParen))
         } else {
             Ok(())
         }
@@ -236,7 +236,7 @@ impl Parser {
     /// Check if current token is a left brace '{' and report error if not
     pub(crate) fn must_be_left_brace(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::LeftBrace) {
-            Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace))
+            Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingOpeningBrace))
         } else {
             Ok(())
         }
@@ -245,9 +245,43 @@ impl Parser {
     /// Check if current token is a right brace '}' and report error if not
     pub(crate) fn must_be_right_brace(&self) -> Result<(), Diag> {
         if !self.current_token_is(TokenKind::RightBrace) {
-            Err(self.error_at_current(ParserDiagKind::MissingClosingBrace))
+            Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingClosingBrace))
         } else {
             Ok(())
         }
+    }
+
+    /// Check if current token is a semicolon ';' and report error if not
+    pub(crate) fn must_be_semicolon(&self) -> Result<(), Diag> {
+        if !self.current_token_is(TokenKind::Semicolon) {
+            Err(self.error_at_token(&self.prev_token(), ParserDiagKind::MissingSemicolon))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Check if peek token is a semicolon ';' and report error if not
+    pub(crate) fn peek_must_be_semicolon(&self) -> Result<(), Diag> {
+        if !self.peek_token_is(TokenKind::Semicolon) {
+            Err(self.error_at_token(&self.current_token(), ParserDiagKind::MissingSemicolon))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn expect_semicolon(&mut self) -> Result<(), Diag> {
+        self.must_be_semicolon()?;
+        self.next_token();
+        Ok(())
+    }
+
+    pub(crate) fn expect_peek_semicolon(&mut self) -> Result<(), Diag> {
+        self.peek_must_be_semicolon()?;
+        self.next_token();
+        Ok(())
+    }
+
+    fn prev_token(&self) -> Token {
+        self.tokens[self.cur_token_idx - 1].clone()
     }
 }

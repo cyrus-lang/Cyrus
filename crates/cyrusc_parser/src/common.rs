@@ -19,8 +19,6 @@ use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
 use cyrusc_ast::*;
-use cyrusc_diagcentral::source_loc::SourceLoc;
-use cyrusc_diagcentral::{DiagLevel, DiagLoc};
 use cyrusc_tokens::PRIMITIVE_TYPES;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::LiteralKind;
