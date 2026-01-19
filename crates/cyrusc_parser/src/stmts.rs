@@ -108,9 +108,11 @@ impl Parser {
     pub(crate) fn parse_goto(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
+
         self.expect_current(TokenKind::Goto)?;
         let label = self.parse_identifier()?;
-        self.expect_peek(TokenKind::Semicolon)?;
+
+        self.expect_peek_semicolon()?;
 
         Ok(Stmt::Goto(Goto {
             name: label,
@@ -295,13 +297,11 @@ impl Parser {
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, Diag> {
         let expr = self.parse_expr(Precedence::Lowest)?.0;
-        self.expect_peek(TokenKind::Semicolon)?;
+        self.expect_peek_semicolon()?;
         Ok(Stmt::Expr(expr))
     }
 
     fn parse_enum_field(&mut self) -> Result<EnumVariant, Diag> {
-        let loc = self.current_token().loc.clone();
-
         let variant_name = self.parse_identifier()?;
         self.next_token();
 
@@ -371,7 +371,8 @@ impl Parser {
             },
         };
 
-        self.expect_current(TokenKind::Semicolon)?;
+        self.expect_semicolon()?;
+
         Ok(field)
     }
 
@@ -719,7 +720,7 @@ impl Parser {
             },
         };
 
-        self.expect_current(TokenKind::Semicolon)?;
+        self.expect_semicolon()?;
         Ok(field)
     }
 
@@ -727,30 +728,28 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        self.next_token();
-        if !self.current_token_is(TokenKind::Semicolon) {
-            return Err(self.error_at_current(ParserDiagKind::MissingSemicolon));
-        } else {
-            Ok(Stmt::Break(Break {
-                loc,
-                span: Span::new(start, self.current_token().span.end),
-            }))
-        }
+        self.next_token(); // consume break
+
+        self.must_be_semicolon()?;
+
+        Ok(Stmt::Break(Break {
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
     }
 
     fn parse_continue(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        self.next_token();
-        if !self.current_token_is(TokenKind::Semicolon) {
-            return Err(self.error_at_current(ParserDiagKind::MissingSemicolon));
-        } else {
-            Ok(Stmt::Continue(Continue {
-                loc,
-                span: Span::new(start, self.current_token().span.end),
-            }))
-        }
+        self.next_token(); // consume continue
+
+        self.must_be_semicolon()?;
+
+        Ok(Stmt::Continue(Continue {
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
     }
 
     fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, Diag> {
@@ -825,7 +824,7 @@ impl Parser {
                     methods.push(func_decl);
 
                     if !self.peek_token_is(TokenKind::RightBrace) {
-                        self.expect_current(TokenKind::Semicolon)?;
+                        self.expect_semicolon()?;
                     } else {
                         break;
                     }
@@ -1008,7 +1007,8 @@ impl Parser {
                 initializer = Some(var);
             }
         }
-        self.expect_current(TokenKind::Semicolon)?;
+
+        self.expect_semicolon()?;
 
         // for loop with only initializer expression
         if self.peek_token_is(TokenKind::LeftBrace) {
@@ -1029,7 +1029,7 @@ impl Parser {
         }
 
         let condition = self.parse_expr(Precedence::Lowest)?.0;
-        self.expect_peek(TokenKind::Semicolon)?;
+        self.expect_peek_semicolon()?;
         self.next_token();
 
         let mut increment: Option<Expr> = None;
@@ -1168,7 +1168,8 @@ impl Parser {
         self.next_token(); // consume assign
 
         let (expr, span) = self.parse_expr(Precedence::Lowest)?;
-        self.expect_peek(TokenKind::Semicolon)?;
+
+        self.expect_peek_semicolon()?;
 
         Ok(Stmt::ExportTuple(ExportTuple {
             pattern,
@@ -1232,7 +1233,7 @@ impl Parser {
         self.expect_current(TokenKind::Assign)?;
 
         let (expr, span) = self.parse_expr(Precedence::Lowest)?;
-        self.expect_peek(TokenKind::Semicolon)?;
+        self.expect_peek_semicolon()?;
 
         Ok(Stmt::Variable(Variable {
             ident,
@@ -1380,9 +1381,7 @@ impl Parser {
         let argument = self.parse_expr(Precedence::Lowest)?.0;
         self.next_token();
 
-        if !self.current_token_is(TokenKind::Semicolon) {
-            return Err(self.error_at_current(ParserDiagKind::MissingSemicolon));
-        }
+        self.must_be_semicolon()?;
 
         let end = self.peek_token().span.end;
 
