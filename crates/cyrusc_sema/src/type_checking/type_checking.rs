@@ -196,7 +196,7 @@ impl<'a> AnalysisContext<'a> {
                 typed_assign.rhs.sema_ty.clone()
             }
             TypedExprKind::Cast(typed_cast) => self.analyze_cast(scope_id_opt, typed_cast),
-            TypedExprKind::Array(typed_array) => self.analyze_array(scope_id_opt, typed_array),
+            TypedExprKind::Array(typed_array) => self.analyze_array(scope_id_opt, typed_array, expected_type),
             TypedExprKind::ArrayIndex(typed_array_index) => self.analyze_array_index(scope_id_opt, typed_array_index),
             TypedExprKind::AddrOf(typed_address_of) => self.analyze_addr_of_expr_type(scope_id_opt, typed_address_of),
             TypedExprKind::Deref(typed_deref) => self.analyze_deref_expr_type(scope_id_opt, typed_deref),
@@ -1428,30 +1428,89 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_array: &mut TypedArrayExpr,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        macro_rules! array_type {
+            () => {
+                typed_array.array_type.clone().unwrap().as_array_type().unwrap()
+            };
+        }
+
+        let mut analyzed_first_element = false;
+
+        // try to infer from first element
+        if typed_array.array_type.is_none() {
+            if let Some(first_elem) = typed_array.elements.first_mut() {
+                if let Some(sema_ty) = self.analyze_expr(scope_id_opt, first_elem, None) {
+                    let elements_count = typed_array.elements.len();
+
+                    typed_array.array_type = Some(SemanticType::Array(TypedArrayType {
+                        element_type: Box::new(sema_ty),
+                        capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                            elements_count.try_into().unwrap(),
+                        )),
+                        loc: typed_array.loc.clone(),
+                    }));
+                }
+                analyzed_first_element = true;
+            }
+        }
+
+        // try to infer from expected type
+        if typed_array.array_type.is_none() {
+            let element_type_inferred = expected_type.and_then(|sema_ty| {
+                sema_ty
+                    .as_array_type()
+                    .map(|array_type| *array_type.element_type.clone())
+            });
+
+            if let Some(sema_ty) = element_type_inferred {
+                let elements_count = typed_array.elements.len();
+
+                typed_array.array_type = Some(SemanticType::Array(TypedArrayType {
+                    element_type: Box::new(sema_ty),
+                    capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                        elements_count.try_into().unwrap(),
+                    )),
+                    loc: typed_array.loc.clone(),
+                }));
+            }
+        }
+
+        if typed_array.array_type.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UntypedArrayCannotBeInferred),
+                location: Some(DiagLoc::new(typed_array.loc.clone())),
+                hint: None,
+            });
+        }
+
         typed_array.array_type = match self.normalize_type(
             scope_id_opt,
-            typed_array.array_type.clone(),
+            typed_array.array_type.clone().unwrap(),
             typed_array.loc.clone(),
             false,
         ) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_ty) => Some(sema_ty),
             None => return None,
         };
 
         for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
-            let argument_type = match self.analyze_expr(
-                scope_id_opt,
-                argument,
-                Some(*typed_array.array_type.as_array_type().unwrap().element_type.clone()),
-            ) {
-                Some(sema_ty) => sema_ty,
-                None => continue,
+            let argument_type = {
+                if analyzed_first_element && argument.sema_ty.is_some() {
+                    argument.sema_ty.clone().unwrap()
+                } else {
+                    match self.analyze_expr(scope_id_opt, argument, Some(*array_type!().element_type.clone())) {
+                        Some(sema_ty) => sema_ty,
+                        None => continue,
+                    }
+                }
             };
 
             let element_type = match self.normalize_type(
                 scope_id_opt,
-                *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
+                *array_type!().element_type.clone(),
                 argument.loc.clone(),
                 false,
             ) {
@@ -1462,7 +1521,7 @@ impl<'a> AnalysisContext<'a> {
             if !self.check_type_mismatch(scope_id_opt, argument_type.clone(), element_type, argument.loc.clone()) {
                 let element_type = format_sema_ty(argument_type, &(self.symbol_formatter)(scope_id_opt));
                 let expected_type = format_sema_ty(
-                    *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
+                    *array_type!().element_type.clone(),
                     &(self.symbol_formatter)(scope_id_opt),
                 );
 
@@ -1479,7 +1538,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let array_type = typed_array.array_type.as_array_type().unwrap();
+        let array_type = array_type!().clone();
         let array_capacity = match &array_type.capacity {
             TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
                 TypedArrayFixedCapacityValue::Expr(typed_expr) => {
@@ -1504,7 +1563,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(SemanticType::Array(
-            typed_array.array_type.as_array_type().unwrap().clone(),
+            typed_array.array_type.clone().unwrap().as_array_type().unwrap().clone(),
         ))
     }
 

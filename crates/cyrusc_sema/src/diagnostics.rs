@@ -325,6 +325,9 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot use {elements} elements in an array of size {expected}.")]
     ArrayElementsCountMismatch { elements: u32, expected: u32 },
 
+    #[error("An untyped array was constructed, but the compiler was unable to infer a suitable element type.")]
+    UntypedArrayCannotBeInferred,
+
     #[error(
         "Type mismatch for value of type '{element_type}' at index {element_index} for array of type '{expected_type}'."
     )]
