@@ -523,7 +523,9 @@ impl<'a> AnalysisContext<'a> {
                         hint: None,
                     });
                     continue 'patterns;
-                } else if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
+                }
+
+                if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
                     if let Some(variant) = variant_opt {
                         if let TypedEnumVariant::Variant(ident, enum_valued_fields) = variant {
                             let actual_enum_fields_len = enum_valued_fields.len();

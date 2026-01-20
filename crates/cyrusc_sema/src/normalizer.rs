@@ -352,10 +352,7 @@ impl<'a> AnalysisContext<'a> {
                         return Some(if var.is_const { sema_ty.as_const() } else { sema_ty });
                     }
 
-                    let rhs = var
-                        .rhs
-                        .as_mut()
-                        .expect("Cannot resolve variable type: no type and no rhs.");
+                    let rhs = var.rhs.as_mut()?;
 
                     if var.analyzed {
                         if let Some(sema_ty) = &var.ty {
