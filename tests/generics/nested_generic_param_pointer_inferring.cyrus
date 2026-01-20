@@ -1,0 +1,25 @@
+// @stdout: 99 
+
+import std::libc{printf, malloc, free};
+
+struct Box<T> {
+    raw: T*;
+
+    pub fn new(raw: T*) Self {
+        return Self { raw: raw };
+    }
+
+    pub fn raw_ptr(&self) T* {
+        return self->raw;
+    }
+}
+
+pub fn main() {
+    const raw: int* = malloc(sizeof(int));
+    *raw = 99;
+
+    const box = Box { raw: raw };
+    
+    printf("%d\n", *raw);
+    free(box.raw_ptr());
+}

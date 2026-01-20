@@ -3188,8 +3188,6 @@ impl Resolver {
             .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
             .collect();
 
-        dbg!(array_type.clone());
-
         Some(TypedExprStmt {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 array_type: Some(array_type),

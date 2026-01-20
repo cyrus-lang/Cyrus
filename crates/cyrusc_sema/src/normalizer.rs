@@ -18,7 +18,9 @@ use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_glob
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
-    ModuleID, ScopeID, SymbolID, mapping_ctx_arena,
+    ModuleID, ScopeID, SymbolID,
+    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_type},
+    mapping_ctx_arena,
     sigs::{FuncSig, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArgs,
@@ -28,7 +30,7 @@ use cyrusc_tast::{
         TypedFuncType, TypedTupleType,
     },
 };
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
@@ -41,39 +43,6 @@ impl<'a> AnalysisContext<'a> {
         no_generics_check: bool,
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
-
-        // mark symbol used
-        match &ty {
-            SemanticType::UnresolvedSymbol(symbol_id)
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Interface(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::GlobalVar(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Variable(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Func(symbol_id))
-            | SemanticType::ResolvedSymbol(ResolvedSymbol::Method(symbol_id)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)?;
-
-                // mark symbol used
-                match &sym {
-                    LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
-                        if let Some(local_scope) = self
-                            .resolver
-                            .get_scope_ref(self.module_id, local_symbol.get_symbol_id())
-                        {
-                            self.mark_local_symbol_used_once(local_scope, self.module_id, *symbol_id);
-                        }
-                    }
-                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                        self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
-                    }
-                };
-            }
-            _ => {}
-        };
 
         let sema_ty_opt = match ty {
             SemanticType::GenericParam(generic_param) => {
@@ -143,12 +112,9 @@ impl<'a> AnalysisContext<'a> {
                 self.normalize_type(scope_id_opt, resolved, loc.clone(), false)
             }
             SemanticType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
-                let sym = match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
-                    Some(sym) => sym,
-                    None => {
-                        self.report_non_type_symbol(symbol_id, loc.clone());
-                        return None;
-                    }
+                let Some(sym) = self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) else {
+                    self.report_non_type_symbol(symbol_id, loc.clone());
+                    return None;
                 };
 
                 let resolved_typedef_opt = match &sym {
@@ -156,12 +122,9 @@ impl<'a> AnalysisContext<'a> {
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_typedef(),
                 };
 
-                let resolved_typedef = match resolved_typedef_opt {
-                    Some(resolved_typedef) => resolved_typedef,
-                    None => {
-                        self.report_non_type_symbol(symbol_id, loc.clone());
-                        return None;
-                    }
+                let Some(resolved_typedef) = resolved_typedef_opt else {
+                    self.report_non_type_symbol(symbol_id, loc.clone());
+                    return None;
                 };
 
                 self.resolve_typedef_inner_type(resolved_typedef)
@@ -549,35 +512,67 @@ impl<'a> AnalysisContext<'a> {
         type_args: &TypedTypeArgs,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let mut generic_type = resolved_typedef.typedef_sig.ty.as_generic_type().cloned().unwrap();
-        let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
-
         let typedef_generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
 
-        match self
-            .init_generic_type_with_symbol_id(
-                scope_id_opt,
-                local_scope_opt.clone(),
-                generic_type.base,
-                &Some(type_args.clone()),
-                parent_mapping_ctx,
-                Some(&typedef_generic_params),
+        // typedef is generating an another generic
+        if let Some(mut generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type().cloned() {
+            let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
+
+            match self
+                .init_generic_type_with_symbol_id(
+                    scope_id_opt,
+                    local_scope_opt.clone(),
+                    generic_type.base,
+                    &Some(type_args.clone()),
+                    parent_mapping_ctx,
+                    Some(&typedef_generic_params),
+                    false,
+                    loc,
+                )
+                .transpose()
+                .unwrap()
+            {
+                Ok((_, new_generic_type_opt)) => {
+                    // new generic params gotta be used!
+                    generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+
+                    new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
+                }
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    None
+                }
+            }
+        } else {
+            // typedef itself is generic but it does not generate generic,
+            // so simply initialize generic mapping ctx and substitute the type
+
+            let mapping_ctx = Rc::new(RefCell::new(GenericMappingCtx::new_root()));
+            let mut generic_type = GenericType::new_unresolved(
+                0,
+                type_args.clone(),
+                mapping_ctx.clone(),
+                self.mapping_ctx_arena.clone(),
                 false,
                 loc,
-            )
-            .transpose()
-            .unwrap()
-        {
-            Ok((_, new_generic_type_opt)) => {
-                // new generic params gotta be used!
-                generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+            );
 
-                new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
-            }
-            Err(diag) => {
-                self.reporter.report(diag);
-                None
-            }
+            mapping_ctx_arena!(self, mapping_ctx_arena, {
+                if let Err(diag) = generic_type.init(
+                    &*mapping_ctx_arena,
+                    typedef_generic_params.clone(),
+                    &(self.symbol_formatter)(scope_id_opt),
+                ) {
+                    self.reporter.report(diag);
+                    return None;
+                }
+
+                substitute_type(
+                    &*mapping_ctx_arena,
+                    resolved_typedef.typedef_sig.ty.clone(),
+                    mapping_ctx,
+                )
+            })
         }
     }
 

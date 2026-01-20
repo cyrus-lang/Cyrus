@@ -1,0 +1,12 @@
+// @stdout: 1 2
+
+import std::libc{printf, malloc, free};
+
+fn make_2d<T>(x: T[2]) T[2] {
+    return x;
+}
+
+pub fn main() {
+    const m2d = make_2d(int[2]{1, 2});
+    printf("%d %d\n", m2d[0], m2d[1]);
+}
