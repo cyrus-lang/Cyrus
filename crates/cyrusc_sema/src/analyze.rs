@@ -27,8 +27,8 @@ use cyrusc_resolver::{
 };
 use cyrusc_tast::{
     exprs::{
-        TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr, TypedTupleAccessExpr,
-        MemoryLocation,
+        MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr,
+        TypedTupleAccessExpr,
     },
     format::format_sema_ty,
     generics::{
@@ -1689,11 +1689,6 @@ impl<'a> AnalysisContext<'a> {
                 loc: func_sig.loc.clone(),
             });
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
-
-            // public methods are allowed to not be used
-            if func_sig.modifiers.vis.is_public() {
-                self.mark_symbol_used_once(module_id, *symbol_id);
-            }
 
             self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 

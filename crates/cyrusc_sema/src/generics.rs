@@ -24,6 +24,7 @@ use cyrusc_tast::{
         generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
         monomorph::{MonomorphKey, SpecializedFuncEntry},
+        substitute::substitute_type,
     },
     mapping_ctx_arena,
     sigs::{FuncSig, typed_func_type_from_func_sig},
@@ -315,6 +316,31 @@ impl<'a> AnalysisContext<'a> {
         Ok(Some((sym.get_symbol_id(), Some(generic_type))))
     }
 
+    // TODO
+    // ANCHOR
+    fn unwrap_sema_tys_for_type_inferring(
+        &self,
+        expr_ty: &SemanticType,
+        target_ty: &SemanticType,
+    ) -> Option<(SemanticType, SemanticType)> {
+        match (expr_ty.get_const_inner(), target_ty.get_const_inner()) {
+            (SemanticType::Array(value_array_type), SemanticType::Array(target_array_type)) => Some((
+                *value_array_type.element_type.clone(),
+                *target_array_type.element_type.clone(),
+            )),
+            (SemanticType::Pointer(value_inner), SemanticType::Pointer(target_inner)) => {
+                Some((*value_inner.clone(), *target_inner.clone()))
+            }
+            (SemanticType::Tuple(value_tuple_type), SemanticType::Tuple(target_tuple_type)) => {
+                todo!();
+            }
+            // TODO: UnnamedStruct
+            // TODO: FuncType
+            // TODO: DynamicType
+            _ => Some((expr_ty.clone(), target_ty.clone())),
+        }
+    }
+
     pub(crate) fn infer_generic_param(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -323,6 +349,8 @@ impl<'a> AnalysisContext<'a> {
         expr_ty: Option<SemanticType>,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
+        let expr_ty = expr_ty?;
+
         macro_rules! check_type_mismatch {
             ($lhs:expr, $rhs:expr) => {
                 if !self.check_type_mismatch(scope_id_opt, $lhs.clone(), $rhs.clone(), loc.clone()) {
@@ -344,10 +372,10 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        // skip function if situation is not good for type inferring
-        let generic_param = target_ty.as_generic_param().cloned()?;
+        let (unwrapped_expr_ty, unwrapped_target_ty) = self.unwrap_sema_tys_for_type_inferring(&expr_ty, &target_ty)?;
+        let generic_param = unwrapped_target_ty.as_generic_param().cloned()?;
+
         let generic_mapping_entry = GenericMappingEntry::from(generic_param.param_name);
-        let expr_ty = expr_ty?;
 
         {
             let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
@@ -364,7 +392,12 @@ impl<'a> AnalysisContext<'a> {
                 });
 
                 if let Some(sema_ty) = sema_ty_opt {
-                    check_type_mismatch!(expr_ty, sema_ty);
+                    let substitution_mapping_ctx = Rc::new(RefCell::new(mapping_ctx.clone()));
+                    let substituted_target_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                        substitute_type(&*mapping_ctx_arena, sema_ty.clone(), substitution_mapping_ctx.clone()).unwrap()
+                    });
+
+                    check_type_mismatch!(expr_ty, substituted_target_ty);
 
                     return Some(sema_ty);
                 }
@@ -377,7 +410,17 @@ impl<'a> AnalysisContext<'a> {
                     generic_mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
                 })
             }) {
-                check_type_mismatch!(expr_ty, parent_sema_ty);
+                let substitution_mapping_ctx = Rc::new(RefCell::new(mapping_ctx.clone()));
+                let substituted_target_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                    substitute_type(
+                        &*mapping_ctx_arena,
+                        parent_sema_ty.clone(),
+                        substitution_mapping_ctx.clone(),
+                    )
+                    .unwrap()
+                });
+
+                check_type_mismatch!(expr_ty, substituted_target_ty);
 
                 mapping_ctx.insert_named(generic_mapping_entry.clone(), parent_sema_ty.clone());
                 return Some(parent_sema_ty);
@@ -391,7 +434,13 @@ impl<'a> AnalysisContext<'a> {
                     });
 
                     if let Some(sema_ty) = parent_sema_ty {
-                        check_type_mismatch!(expr_ty, sema_ty);
+                        let substitution_mapping_ctx = Rc::new(RefCell::new(mapping_ctx.clone()));
+                        let substituted_target_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
+                            substitute_type(&*mapping_ctx_arena, sema_ty.clone(), substitution_mapping_ctx.clone())
+                                .unwrap()
+                        });
+
+                        check_type_mismatch!(expr_ty, substituted_target_ty);
 
                         mapping_ctx.insert_named(generic_mapping_entry.clone(), sema_ty.clone());
                         mapping_ctx.insert_linked(generic_mapping_entry.clone(), parent_entry);
@@ -402,7 +451,7 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // otherwise, just insert the expression type as the generic param value
-            mapping_ctx.insert_named(generic_mapping_entry.clone(), expr_ty.clone());
+            mapping_ctx.insert_named(generic_mapping_entry.clone(), unwrapped_expr_ty.clone());
             Some(expr_ty)
         }
     }

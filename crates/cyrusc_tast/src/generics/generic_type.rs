@@ -66,41 +66,6 @@ impl GenericType {
         }
     }
 
-    fn check_for_overriding_parent_generic_param(
-        &self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
-        child_mapping_ctx: &GenericMappingCtx,
-        generic_param_name: String,
-        type_arg_sema_ty: Option<SemanticType>,
-        format_symbol: &impl Fn(SymbolID) -> String,
-        loc: SourceLoc,
-    ) -> Result<(), Diag> {
-        if let Some(parent_id) = child_mapping_ctx.get_parent_id() {
-            let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
-
-            if let Some(parent_sema_ty) = parent_mapping_ctx.get_with_name(mapping_ctx_arena, &generic_param_name) {
-                // NOTE: complain only and only if overrode type is not the same!
-                // situations come that type args may always presented explicitly, so we should not complain about that.
-                if type_arg_sema_ty
-                    .map(|inferred_ty| inferred_ty != parent_sema_ty)
-                    .unwrap_or(false)
-                {
-                    return Err(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
-                            generic_param: generic_param_name.clone(),
-                            already_inferred_as: format_sema_ty(parent_sema_ty, &format_symbol),
-                        }),
-                        location: Some(DiagLoc::new(loc)),
-                        hint: None,
-                    });
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn init(
         &mut self,
         mapping_ctx_arena: &dyn GenericMappingCtxArena,
@@ -218,6 +183,41 @@ impl GenericType {
         }
 
         Ok(self)
+    }
+
+    fn check_for_overriding_parent_generic_param(
+        &self,
+        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        child_mapping_ctx: &GenericMappingCtx,
+        generic_param_name: String,
+        type_arg_sema_ty: Option<SemanticType>,
+        format_symbol: &impl Fn(SymbolID) -> String,
+        loc: SourceLoc,
+    ) -> Result<(), Diag> {
+        if let Some(parent_id) = child_mapping_ctx.get_parent_id() {
+            let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
+
+            if let Some(parent_sema_ty) = parent_mapping_ctx.get_with_name(mapping_ctx_arena, &generic_param_name) {
+                // NOTE: complain only and only if overrode type is not the same!
+                // situations come that type args may always presented explicitly, so we should not complain about that.
+                if type_arg_sema_ty
+                    .map(|inferred_ty| inferred_ty != parent_sema_ty)
+                    .unwrap_or(false)
+                {
+                    return Err(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
+                            generic_param: generic_param_name.clone(),
+                            already_inferred_as: format_sema_ty(parent_sema_ty, &format_symbol),
+                        }),
+                        location: Some(DiagLoc::new(loc)),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn collect_unresolved_generic_params(
