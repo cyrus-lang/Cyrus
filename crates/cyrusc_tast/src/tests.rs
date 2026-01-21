@@ -54,7 +54,7 @@ mod tests {
         list.push(make_param("A"));
         list.push(make_param("B"));
 
-        let found = list.get_named(&"B".to_string());
+        let found = list.lookup_named(&"B".to_string());
         assert!(found.is_some());
         assert_eq!(found.unwrap().param_name.name, "B");
     }
@@ -64,7 +64,7 @@ mod tests {
         let mut list = TypedGenericParamsList::new();
         list.push(make_param("X"));
 
-        let found = list.get_named(&"Y".to_string());
+        let found = list.lookup_named(&"Y".to_string());
         assert!(found.is_none());
     }
 
@@ -74,7 +74,7 @@ mod tests {
         list.push(make_param("T"));
         list.push(make_param("U"));
 
-        let found = list.get_positional(1);
+        let found = list.lookup_positional(1);
         assert!(found.is_some());
         assert_eq!(found.unwrap().param_name.name, "U");
     }
@@ -84,7 +84,7 @@ mod tests {
         let mut list = TypedGenericParamsList::new();
         list.push(make_param("T"));
 
-        let found = list.get_positional(5);
+        let found = list.lookup_positional(5);
         assert!(found.is_none());
     }
 }

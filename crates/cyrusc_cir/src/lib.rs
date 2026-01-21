@@ -349,7 +349,7 @@ pub enum CIRSwitchOnEnumPattern {
 }
 
 impl CIRSwitchOnEnumPattern {
-    pub fn get_variant_idx(&self) -> usize {
+    pub fn variant_idx(&self) -> usize {
         match self {
             CIRSwitchOnEnumPattern::Ident(variant_idx) => *variant_idx,
             CIRSwitchOnEnumPattern::ExportFields(variant_idx, ..) => *variant_idx,

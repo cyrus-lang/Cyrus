@@ -26,6 +26,7 @@ impl ObjectFileInfo {
     }
 }
 
-pub fn get_objects_file_names(objs: Vec<ObjectFileInfo>) -> Vec<String> {
+#[inline]
+pub fn collect_objects_file_names(objs: Vec<ObjectFileInfo>) -> Vec<String> {
     objs.iter().map(|obj| obj.path.clone()).collect()
 }

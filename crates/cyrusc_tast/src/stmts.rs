@@ -54,7 +54,7 @@ pub enum TypedStmt {
 }
 
 impl TypedStmt {
-    pub fn get_loc(&self) -> SourceLoc {
+    pub fn loc(&self) -> SourceLoc {
         match self {
             TypedStmt::Variable(typed_variable) => typed_variable.loc.clone(),
             TypedStmt::Typedef(typed_typedef) => typed_typedef.loc.clone(),
@@ -157,7 +157,7 @@ pub enum TypedEnumVariant {
 }
 
 impl TypedEnumVariant {
-    pub fn get_identifier(&self) -> &Ident {
+    pub fn ident(&self) -> &Ident {
         match self {
             TypedEnumVariant::Ident(ident) => ident,
             TypedEnumVariant::Valued(ident, ..) => ident,
@@ -347,7 +347,7 @@ pub enum TypedFuncParamKind {
 }
 
 impl TypedFuncParamKind {
-    pub fn get_param_ty(&self) -> Option<SemanticType> {
+    pub fn param_type(&self) -> Option<SemanticType> {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
             TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),
@@ -495,15 +495,15 @@ impl TypedGenericParamsList {
         self.list.push(gp);
     }
 
-    pub fn get_named(&self, name: &String) -> Option<&TypedGenericParam> {
+    pub fn resolve_symbol_id(&self, name: &String) -> Option<SymbolID> {
+        self.lookup_named(name).map(|p| p.param_name.symbol_id)
+    }
+
+    pub fn lookup_named(&self, name: &String) -> Option<&TypedGenericParam> {
         self.list.iter().find(|p| &p.param_name.name == name)
     }
 
-    pub fn get_symbol_id(&self, name: &String) -> Option<SymbolID> {
-        self.get_named(name).map(|p| p.param_name.symbol_id)
-    }
-
-    pub fn get_positional(&self, idx: usize) -> Option<&TypedGenericParam> {
+    pub fn lookup_positional(&self, idx: usize) -> Option<&TypedGenericParam> {
         self.list.get(idx)
     }
 }

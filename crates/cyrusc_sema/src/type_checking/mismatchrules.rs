@@ -35,11 +35,11 @@ impl<'a> AnalysisContext<'a> {
         target_type: SemanticType,
         loc: SourceLoc,
     ) -> bool {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         match (
-            value_type.get_const_inner().clone(),
-            target_type.get_const_inner().clone(),
+            value_type.const_inner().clone(),
+            target_type.const_inner().clone(),
         ) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2

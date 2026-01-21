@@ -28,9 +28,6 @@ pub enum ParserDiagKind {
     #[error("Invalid ABI: '{0}'.")]
     InvalidABI(String),
 
-    #[error("Expected integer literal, but found '{0}'.")]
-    ExpectedIntegerLiteral(TokenKind),
-
     #[error("Tuple type must contain at least two elements.")]
     SingleElementTupleType,
 

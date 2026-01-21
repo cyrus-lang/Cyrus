@@ -180,7 +180,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let pattern_int_value = self
                     .llvmctx
                     .i32_type()
-                    .const_int(pattern.get_variant_idx().try_into().unwrap(), false);
+                    .const_int(pattern.variant_idx().try_into().unwrap(), false);
 
                 if let CIRSwitchOnEnumPattern::ExportFields(variant_idx, exported_fields) = pattern {
                     self.emit_block(case_block);

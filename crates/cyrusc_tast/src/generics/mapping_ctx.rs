@@ -64,7 +64,7 @@ pub fn mapping_ctx_eq(
     for (k, v1) in &a.named {
         let sema_ty = {
             let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
-            b.get_with_name(&*mapping_ctx_arena, &k.name)
+            b.resolve_with_name(&*mapping_ctx_arena, &k.name)
         };
 
         match sema_ty {
@@ -137,7 +137,7 @@ impl GenericMappingCtx {
     }
 
     #[inline]
-    pub fn get_parent_id(&self) -> Option<ParentGenericMappingCtxID> {
+    pub fn parent_id(&self) -> Option<ParentGenericMappingCtxID> {
         self.parent
     }
 
@@ -147,23 +147,23 @@ impl GenericMappingCtx {
     }
 
     #[inline]
-    pub fn get_named_mapping(&self) -> &HashMap<GenericMappingEntry, SemanticType> {
+    pub fn named_mapping(&self) -> &HashMap<GenericMappingEntry, SemanticType> {
         &self.named
     }
 
     #[inline]
-    pub fn get_links(&self) -> &HashMap<GenericMappingEntry, GenericMappingEntry> {
+    pub fn links(&self) -> &HashMap<GenericMappingEntry, GenericMappingEntry> {
         &self.links
     }
 
-    pub fn get_with_name(&self, mapping_ctx_arena: &dyn GenericMappingCtxArena, name: &str) -> Option<SemanticType> {
+    pub fn resolve_with_name(&self, mapping_ctx_arena: &dyn GenericMappingCtxArena, name: &str) -> Option<SemanticType> {
         if let Some((_, ty)) = self.named.iter().find(|(id, _)| id.name == name) {
             return Some(ty.clone());
         }
 
         if let Some(parent_id) = self.parent {
             let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
-            return parent_mapping_ctx.get_with_name(mapping_ctx_arena, name);
+            return parent_mapping_ctx.resolve_with_name(mapping_ctx_arena, name);
         }
 
         None
@@ -175,7 +175,7 @@ impl GenericMappingCtx {
         }
     }
 
-    pub fn get_linked_by_name(
+    pub fn resolve_linked_by_name(
         &self,
         mapping_ctx_arena: &dyn GenericMappingCtxArena,
         child_name: &str,
@@ -191,7 +191,7 @@ impl GenericMappingCtx {
 
         if let Some(parent_id) = self.parent {
             let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
-            return parent_mapping_ctx.get_linked_by_name(mapping_ctx_arena, child_name);
+            return parent_mapping_ctx.resolve_linked_by_name(mapping_ctx_arena, child_name);
         }
 
         None

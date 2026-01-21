@@ -61,7 +61,7 @@ impl GenericTemplateRegistry {
         self.map.insert(base, GenericTemplateEntry { body });
     }
 
-    pub fn get_template(&self, base: SymbolID) -> Option<&GenericTemplateEntry> {
+    pub fn resolve_template(&self, base: SymbolID) -> Option<&GenericTemplateEntry> {
         self.map.get(&base)
     }
 }
@@ -122,27 +122,32 @@ impl MonomorphRegistry {
         }
     }
 
+    #[inline]
     pub fn register_template(&mut self, base: SymbolID, body: TypedBlockStmt) {
         self.templates.register_template(base, body);
     }
 
+    #[inline]
     pub fn register_specialized_func_instance(&mut self, monomorph_key: MonomorphKey, instance: SpecializedFuncEntry) {
         self.specialized_func_instances.insert(monomorph_key, instance);
     }
 
-    pub fn get_specialized_func_instance(&self, monomorph_key: MonomorphKey) -> Option<&SpecializedFuncEntry> {
+    #[inline]
+    pub fn resolve_specialized_func_instance(&self, monomorph_key: MonomorphKey) -> Option<&SpecializedFuncEntry> {
         self.specialized_func_instances.get(&monomorph_key)
     }
 
-    pub fn get_template(&self, base: SymbolID) -> Option<&GenericTemplateEntry> {
-        self.templates.get_template(base)
+    #[inline]
+    pub fn resolve_template(&self, base: SymbolID) -> Option<&GenericTemplateEntry> {
+        self.templates.resolve_template(base)
     }
 
-    pub fn get(&self, key: &MonomorphKey) -> Option<&MonomorphEntry> {
+    #[inline]
+    pub fn resolve_by_monomorph_key(&self, key: &MonomorphKey) -> Option<&MonomorphEntry> {
         self.map.get(key)
     }
 
-    pub fn get_func_entry_by_mapping_ctx(
+    pub fn resolve_func_entry_by_mapping_ctx(
         &self,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         func_symbol_id: SymbolID,
@@ -186,7 +191,7 @@ impl MonomorphRegistry {
 }
 
 #[macro_export]
-macro_rules! with_monomorph_registry {
+macro_rules! monomorph_registry {
     ($self:ident, $ctx:ident, $body:block) => {{
         let mut $ctx = $self.monomorph_registry.lock().unwrap();
         $body

@@ -1,6 +1,3 @@
-use cyrusc_diagcentral::source_loc::SourceLoc;
-use cyrusc_tokens::TokenKind;
-
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -19,12 +16,12 @@ use cyrusc_tokens::TokenKind;
  */
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
-use crate::generics::mapping_ctx::GenericMappingCtx;
 use crate::sigs::FuncSig;
-use crate::stmts::{TypedFuncTypeParams, TypedGenericParam, TypedGenericParamsList};
+use crate::stmts::{TypedFuncTypeParams, TypedGenericParam};
 use crate::{ModuleID, SymbolID};
+use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_tokens::TokenKind;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SemanticType {
@@ -101,7 +98,7 @@ pub struct TypedFuncType {
 }
 
 impl ResolvedSymbol {
-    pub fn get_symbol_id(&self) -> SymbolID {
+    pub fn symbol_id(&self) -> SymbolID {
         match self {
             ResolvedSymbol::Union(symbol_id) => *symbol_id,
             ResolvedSymbol::Enum(symbol_id) => *symbol_id,
@@ -118,31 +115,31 @@ impl ResolvedSymbol {
 
 impl SemanticType {
     // Returns symbol ID only if the type is a concrete resolved symbol.
-    pub fn get_symbol_id(&self) -> Option<SymbolID> {
-        match self.get_const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+    pub fn symbol_id(&self) -> Option<SymbolID> {
+        match self.const_inner() {
+            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
             _ => None,
         }
     }
 
     // Returns symbol ID for both resolved symbols and generic types.
-    pub fn get_pure_symbol_id(&self) -> Option<SymbolID> {
-        match self.get_const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+    pub fn pure_symbol_id(&self) -> Option<SymbolID> {
+        match self.const_inner() {
+            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
             SemanticType::GenericType(generic_type) => Some(generic_type.base),
             _ => None,
         }
     }
 
     pub fn as_generic_type(&self) -> Option<&GenericType> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::GenericType(generic_type) => Some(generic_type),
             _ => None,
         }
     }
 
     pub fn as_generic_param(&self) -> Option<&TypedGenericParam> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::GenericParam(generic_param) => Some(generic_param),
             _ => None,
         }
@@ -156,14 +153,14 @@ impl SemanticType {
     }
 
     pub fn is_integer(&self) -> bool {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::PlainType(basic) => basic.is_integer(),
             _ => false,
         }
     }
 
     pub fn is_float(&self) -> bool {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::PlainType(basic) => basic.is_float(),
             _ => false,
         }
@@ -171,21 +168,21 @@ impl SemanticType {
 
     pub fn is_enum(&self) -> bool {
         matches!(
-            self.get_const_inner(),
+            self.const_inner(),
             SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(..))
         )
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::PlainType(PlainType::Bool))
+        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Bool))
     }
 
     pub fn is_array(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::Array(..))
+        matches!(self.const_inner(), SemanticType::Array(..))
     }
 
     pub fn is_func_type(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::FuncType(..))
+        matches!(self.const_inner(), SemanticType::FuncType(..))
     }
 
     pub fn is_const(&self) -> bool {
@@ -193,56 +190,63 @@ impl SemanticType {
     }
 
     pub fn is_void(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::PlainType(PlainType::Void))
+        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Void))
     }
 
     pub fn is_pointer(&self) -> bool {
-        matches!(self.get_const_inner(), SemanticType::Pointer(..))
+        matches!(self.const_inner(), SemanticType::Pointer(..))
     }
 
     pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
-        match &self.get_const_inner() {
+        match &self.const_inner() {
             SemanticType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
             _ => None,
         }
     }
 
     pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
-        match &self.get_const_inner() {
+        match &self.const_inner() {
             SemanticType::Tuple(tuple_type) => Some(tuple_type),
             _ => None,
         }
     }
 
     pub fn as_func_type(&self) -> Option<&TypedFuncType> {
-        match &self.get_const_inner() {
+        match &self.const_inner() {
             SemanticType::FuncType(func_type) => Some(func_type),
             _ => None,
         }
     }
 
     pub fn is_resolved_symbol(&self) -> bool {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::ResolvedSymbol(..) => true,
             _ => false,
         }
     }
 
     pub fn is_char(&self) -> bool {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::PlainType(PlainType::Char) => true,
             _ => false,
         }
     }
 
     pub fn as_basic_type(&self) -> Option<&PlainType> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::PlainType(ty) => Some(ty),
             _ => None,
         }
     }
 
-    pub fn get_const_inner(&self) -> &SemanticType {
+    pub fn pointer_inner(&self) -> &SemanticType {
+        match self {
+            SemanticType::Pointer(sema_ty) => sema_ty,
+            ty @ _ => ty,
+        }
+    }
+
+    pub fn const_inner(&self) -> &SemanticType {
         match self {
             SemanticType::Const(sema_ty) => sema_ty,
             sema_ty @ _ => sema_ty,
@@ -257,22 +261,15 @@ impl SemanticType {
         SemanticType::Const(Box::new(self.clone()))
     }
 
-    pub fn get_pointer_inner(&self) -> &SemanticType {
-        match self {
-            SemanticType::Pointer(sema_ty) => sema_ty,
-            ty @ _ => ty,
-        }
-    }
-
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::Array(ty) => Some(ty),
             _ => None,
         }
     }
 
     pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
                 _ => None,
@@ -282,7 +279,7 @@ impl SemanticType {
     }
 
     pub fn as_union_symbol_id(&self) -> Option<SymbolID> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Union(symbol_id) => Some(*symbol_id),
                 _ => None,
@@ -292,7 +289,7 @@ impl SemanticType {
     }
 
     pub fn as_enum_symbol_id(&self) -> Option<SymbolID> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
                 _ => None,
@@ -302,41 +299,16 @@ impl SemanticType {
     }
 
     pub fn as_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
-        match self.get_const_inner() {
-            SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
             _ => None,
         }
     }
 
     pub fn as_self_type(&self) -> Option<&TypedSelfType> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             SemanticType::SelfType(self_type) => Some(self_type),
             _ => None,
-        }
-    }
-
-    pub fn extract_generic_for_use(
-        &self,
-        fallback_generic_params: Option<&TypedGenericParamsList>,
-    ) -> Option<(TypedGenericParamsList, Rc<GenericMappingCtx>)> {
-        if let Some(generic_type) = self.as_generic_type() {
-            let generic_params = generic_type
-                .altered_generic_params
-                .clone()
-                .or(fallback_generic_params.cloned())?;
-
-            let mapping_ctx = Rc::new(generic_type.mapping_ctx.borrow().clone());
-
-            Some((generic_params, mapping_ctx))
-        } else {
-            None
         }
     }
 }
