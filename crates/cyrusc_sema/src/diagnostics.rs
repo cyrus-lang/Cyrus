@@ -179,8 +179,8 @@ pub enum AnalyzerDiagKind {
     #[error("Constant variable must be initialized with a value.")]
     ConstVariableMustBeInitialized,
 
-    #[error("Cyclic type definition found for type '{symbol}'.")]
-    CyclicTypeDefinition { symbol: String },
+    #[error("Cyclic type definition found for type '{symbol_name}'.")]
+    CyclicTypeDefinition { symbol_name: String },
 
     #[error("The program entry point is a linkage-visible symbol and cannot be private.")]
     PrivateEntryPoint,
