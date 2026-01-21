@@ -364,9 +364,7 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
 
-                    let mut sema_ty = self.analyze_expr_non_terminal(scope_id_opt, rhs, None)?;
-
-                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone(), false)?;
+                    let sema_ty = self.analyze_expr_non_terminal(scope_id_opt, rhs, None)?;
 
                     Some(if var.is_const { sema_ty.as_const() } else { sema_ty })
                 }
@@ -564,18 +562,23 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        if let Some(cached) = self.ty_caches.cache.get(&symbol_id) {
-            return Some(cached.clone());
+        if let Some(cached_sema_ty) = self.ty_caches.cache.get(&symbol_id) {
+            return Some(cached_sema_ty.clone());
         }
 
         if !self.ty_caches.push(symbol_id) {
-            let symbol = (self.symbol_formatter)(scope_id_opt)(symbol_id);
-            self.report_cyclic_typedef(symbol, loc);
+            let symbol_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
+                location: Some(DiagLoc::new(loc)),
+                hint: None,
+            });
             return None;
         }
 
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
-        let lg = self
+        let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .or_else(|| {
@@ -583,36 +586,29 @@ impl<'a> AnalysisContext<'a> {
                 Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry))
             });
 
-        let mut concrete_type_opt: Option<SemanticType> = None;
+        let mut sema_ty_opt: Option<SemanticType>;
 
-        if let Some(local_or_global) = lg {
-            concrete_type_opt = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global);
+        if let Some(local_or_global) = sym {
+            sema_ty_opt = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global);
 
-            if let Some(ty) = concrete_type_opt.clone() {
-                concrete_type_opt = self.normalize_type(scope_id_opt, ty, loc.clone(), true);
+            if let Some(ty) = sema_ty_opt.clone() {
+                sema_ty_opt = self.normalize_type(scope_id_opt, ty, loc.clone(), true);
             }
         } else {
             self.report_non_type_symbol(symbol_id, loc);
+            return None;
         }
 
         self.ty_caches.pop(symbol_id);
 
-        if let Some(ref final_ty) = concrete_type_opt {
+        if let Some(ref final_ty) = sema_ty_opt {
             self.ty_caches.cache.insert(symbol_id, final_ty.clone());
         }
 
-        concrete_type_opt
+        sema_ty_opt
     }
 
-    fn report_cyclic_typedef(&mut self, symbol: String, loc: SourceLoc) {
-        self.reporter.report(Diag {
-            level: DiagLevel::Error,
-            kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol }),
-            location: Some(DiagLoc::new(loc)),
-            hint: None,
-        });
-    }
-
+    #[inline]
     fn report_non_type_symbol(&mut self, symbol_id: SymbolID, loc: SourceLoc) {
         let symbol_name = (self.symbol_formatter)(None)(symbol_id);
 
