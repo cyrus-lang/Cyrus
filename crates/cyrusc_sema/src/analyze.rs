@@ -24,6 +24,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, sourc
 use cyrusc_resolver::{
     Resolver,
     symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
+    update_global_symbol, update_local_symbol,
 };
 use cyrusc_tast::{
     exprs::{
@@ -48,55 +49,27 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[macro_export]
-macro_rules! update_global_symbol {
-    ($self:expr, $module_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
-        let mut global_symbols = $self.resolver.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get_mut(&$module_id).unwrap();
-        match &mut symbol_table.entries.get_mut(&$symbol_id).unwrap().kind {
-            $pattern => {
-                let $var = $var;
-                $body
-            }
-            _ => {
-                unreachable!()
-            }
-        }
-    }};
-}
-
-#[macro_export]
-macro_rules! update_local_symbol {
-    ($self:expr, $scope_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
-        let scope_rc = $self.resolver.resolve_local_scope($self.module_id, $scope_id).unwrap();
-        scope_rc
-            .borrow_mut()
-            .with_symbol_id_mut($symbol_id, |local_symbol| match &mut local_symbol.kind {
-                $pattern => {
-                    let $var = $var;
-                    $body
-                }
-                _ => unreachable!(),
-            });
-    }};
-}
-
 pub struct AnalysisContext<'a> {
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
-    pub resolver: &'a Resolver,
     pub reporter: DiagReporter,
-    pub module_id: ModuleID,
-    pub ty_caches: TypeResolverCaches,
+    pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
+
+    pub(crate) module_id: ModuleID,
+    pub(crate) resolver: &'a Resolver,
+    pub(crate) ty_caches: TypeResolverCaches,
+    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
+
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_self: Option<SemanticType>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
-    pub disable_warnings: bool,
-    pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
-    pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+
     control_stack: Vec<ControlContext>,
+
+    // TODO: Refactor by converting to a stronger struct to configure analysis context.
+    pub(crate) disable_warnings: bool,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -181,7 +154,14 @@ impl<'a> AnalysisContext<'a> {
             let stmt_state = self.analyze_stmt(block_stmt.scope_id, &mut stmt);
 
             if terminated {
-                self.report_unreachable_block(&stmt);
+                if !self.disable_warnings {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: Box::new(AnalyzerDiagKind::UnreachableCode),
+                        location: Some(DiagLoc::new(stmt.loc())),
+                        hint: None,
+                    });
+                }
                 continue;
             }
 
@@ -281,11 +261,16 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         export_tuple: &mut TypedExportTupleStmt,
-    ) {
-        let explicit_sema_ty = export_tuple
-            .ty
-            .as_ref()
-            .and_then(|sema_ty| self.normalize_type(scope_id_opt, sema_ty.clone(), export_tuple.loc.clone()));
+    ) -> Option<()> {
+        let mut explicit_sema_ty: Option<SemanticType> = None;
+        if let Some(sema_ty) = &export_tuple.ty {
+            match self.normalize_and_check_sema_ty(scope_id_opt, sema_ty.clone(), export_tuple.loc.clone()) {
+                Some(sema_ty) => {
+                    explicit_sema_ty = Some(sema_ty);
+                }
+                None => return None,
+            }
+        }
 
         match &mut export_tuple.rhs {
             Some(expr) => expr.clone(),
@@ -296,30 +281,24 @@ impl<'a> AnalysisContext<'a> {
                     location: Some(DiagLoc::new(export_tuple.loc.clone())),
                     hint: None,
                 });
-                return;
+                return None;
             }
         };
 
-        let expr_sema_ty = match self.analyze_expr(
+        let expr_sema_ty = self.analyze_expr(
             scope_id_opt,
             &mut export_tuple.rhs.as_mut().unwrap(),
             explicit_sema_ty.clone(),
-        ) {
-            Some(ty) => ty,
-            None => return,
-        };
+        )?;
 
-        let tuple_type = match expr_sema_ty.as_tuple_type() {
-            Some(t) => t.clone(),
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                    location: Some(DiagLoc::new(export_tuple.loc.clone())),
-                    hint: None,
-                });
-                return;
-            }
+        let Some(tuple_type) = expr_sema_ty.as_tuple_type() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
+                location: Some(DiagLoc::new(export_tuple.loc.clone())),
+                hint: None,
+            });
+            return None;
         };
 
         if explicit_sema_ty.is_none() {
@@ -341,7 +320,7 @@ impl<'a> AnalysisContext<'a> {
                     location: Some(DiagLoc::new(export_tuple.loc.clone())),
                     hint: None,
                 });
-                return;
+                return None;
             }
         }
 
@@ -357,6 +336,9 @@ impl<'a> AnalysisContext<'a> {
                 vec![i],
             );
         }
+
+        self.normalize_and_check_sema_ty(scope_id_opt, export_tuple.ty.clone()?, export_tuple.loc.clone())?;
+        Some(())
     }
 
     fn analyze_tuple_pattern(
@@ -371,14 +353,14 @@ impl<'a> AnalysisContext<'a> {
     ) {
         match pattern {
             TypedExportPattern::Ident(symbol_id) => {
-                let mut rhs_element = expr.clone();
-                let rhs_element_ty = rhs_element.sema_ty.clone().unwrap();
-                let tuple_type = rhs_element_ty.as_tuple_type().unwrap();
+                let mut rhs = expr.clone();
+                let rhs_ty = rhs.sema_ty.clone().unwrap();
+                let tuple_type = rhs_ty.as_tuple_type().unwrap();
 
                 for &idx in &access_path {
-                    rhs_element = TypedExprStmt {
+                    rhs = TypedExprStmt {
                         kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
-                            operand: Box::new(rhs_element),
+                            operand: Box::new(rhs),
                             index: idx,
                             loc: loc.clone(),
                         }),
@@ -387,7 +369,8 @@ impl<'a> AnalysisContext<'a> {
                         loc: loc.clone(),
                     };
                 }
-                self.analyze_tuple_identifier_pattern(scope_id_opt, is_const, *symbol_id, sema_ty, &rhs_element);
+
+                self.analyze_tuple_identifier_pattern(scope_id_opt, is_const, *symbol_id, sema_ty, &rhs);
             }
             TypedExportPattern::Tuple(patterns) => {
                 if let Some(tuple_type) = sema_ty.as_tuple_type() {
@@ -1009,24 +992,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn report_unreachable_block(&mut self, typed_stmt: &TypedStmt) {
-        if !self.disable_warnings {
-            self.reporter.report(Diag {
-                level: DiagLevel::Warning,
-                kind: Box::new(AnalyzerDiagKind::UnreachableCode),
-                location: Some(DiagLoc::new(typed_stmt.loc())),
-                hint: None,
-            });
-        }
-    }
-
-    fn is_const_foldable_integer(&self, sema_ty: SemanticType) -> bool {
-        match sema_ty.const_inner().as_basic_type() {
-            Some(basic_concrete_type) => basic_concrete_type.is_integer(),
-            None => false,
-        }
-    }
-
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
             let sema_ty = match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
@@ -1071,12 +1036,17 @@ impl<'a> AnalysisContext<'a> {
         }
 
         typed_global_var.ty = match &typed_global_var.ty {
-            Some(sema_ty) => self.normalize_type(None, sema_ty.clone(), typed_global_var.loc.clone()),
+            Some(sema_ty) => self.normalize_and_check_sema_ty(None, sema_ty.clone(), typed_global_var.loc.clone()),
             None => Some(typed_global_var.expr.clone().unwrap().sema_ty.unwrap()),
         };
 
         if let Some(sema_ty) = &typed_global_var.ty {
-            self.validate_variable_type(sema_ty, typed_global_var.expr.is_some(), typed_global_var.loc.clone());
+            self.validate_variable_type(
+                None,
+                sema_ty,
+                typed_global_var.expr.is_some(),
+                typed_global_var.loc.clone(),
+            );
         }
 
         if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
@@ -1190,9 +1160,7 @@ impl<'a> AnalysisContext<'a> {
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::SymbolMustBeAnInterface {
-                            symbol_name: ident.name.clone(),
-                        }),
+                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name: ident.name.clone() }),
                         location: Some(DiagLoc::new(ident.loc.clone())),
                         hint: None,
                     });
@@ -1960,12 +1928,6 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(sema_ty) = &typed_variable.ty {
             typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
-
-            if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
-                if let Some(sema_ty) = typed_variable.ty.clone() {
-                    typed_variable.ty = Some(sema_ty.as_const());
-                }
-            }
         }
 
         if let Some(rhs) = &mut typed_variable.rhs {
@@ -1983,8 +1945,17 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
+            typed_variable.ty = typed_variable.ty.clone().and_then(|sema_ty| Some(sema_ty.as_const()));
+        }
+
         if let Some(sema_ty) = &typed_variable.ty {
-            self.validate_variable_type(sema_ty, typed_variable.rhs.is_some(), typed_variable.loc.clone());
+            self.validate_variable_type(
+                scope_id_opt,
+                sema_ty,
+                typed_variable.rhs.is_some(),
+                typed_variable.loc.clone(),
+            );
         }
 
         local_scope_opt.inspect(|scope| {
@@ -2057,10 +2028,14 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn validate_variable_type(&mut self, sema_ty: &SemanticType, is_init: bool, loc: SourceLoc) {
-        let sema_ty = sema_ty.const_inner();
-
-        if sema_ty.is_void() {
+    pub(crate) fn validate_variable_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sema_ty: &SemanticType,
+        is_init: bool,
+        loc: SourceLoc,
+    ) {
+        if sema_ty.const_inner().is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -2069,7 +2044,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_ty.is_const() && !is_init {
+        if sema_ty.const_inner().is_const() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
@@ -2078,16 +2053,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_ty.count_const_layers() >= 1 {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                location: Some(DiagLoc::new(loc.clone())),
-                hint: None,
-            });
-        }
-
-        if sema_ty.is_func_type() && !is_init {
+        if sema_ty.const_inner().is_func_type() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
@@ -2095,6 +2061,8 @@ impl<'a> AnalysisContext<'a> {
                 hint: Some("Assign a function or lambda expression to this variable at declaration.".to_string()),
             });
         }
+
+        self.check_sema_ty(scope_id_opt, sema_ty.clone(), loc);
     }
 
     pub(crate) fn validate_field_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {

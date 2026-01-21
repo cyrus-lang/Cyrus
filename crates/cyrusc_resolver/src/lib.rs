@@ -46,6 +46,7 @@ use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 mod diagnostics;
+pub mod macros;
 pub mod symbols;
 pub mod utility;
 
@@ -1664,47 +1665,35 @@ impl Resolver {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
-        impls: &Vec<Ident>,
+        impls: &Vec<ModuleImport>,
     ) -> Vec<TypedIdentifier> {
-        impls
-            .iter()
-            .filter_map(|ident| {
-                let resolved = local_scope_opt
-                    .as_ref()
-                    .and_then(|scope| {
-                        scope
-                            .borrow()
-                            .resolve(&ident.as_string())
-                            .map(|sym| LocalOrGlobalSymbol::LocalSymbol(sym.clone()))
-                    })
-                    .or_else(|| {
-                        self.lookup_symbol_entry(module_id, &ident.value)
-                            .map(LocalOrGlobalSymbol::GlobalSymbol)
-                    });
+        let mut symbol_ids: Vec<TypedIdentifier> = Vec::new();
 
-                match resolved {
-                    Some(sym) => Some(TypedIdentifier {
-                        name: ident.as_string(),
-                        symbol_id: sym.symbol_id(),
-                        loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
+        for module_import in impls {
+            let Some(symbol_id) = self.resolve_local_module_import(local_scope_opt.clone(), module_id, module_import)
+            else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
+                        name: module_import.to_string(),
                     }),
-                    None => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                                name: ident.as_string(),
-                            }),
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                ident.loc.clone(),
-                                self.current_file_path(),
-                            ))),
-                            hint: None,
-                        });
-                        None
-                    }
-                }
-            })
-            .collect()
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        module_import.loc.clone(),
+                        self.current_file_path(),
+                    ))),
+                    hint: None,
+                });
+                continue;
+            };
+
+            symbol_ids.push(TypedIdentifier {
+                name: module_import.to_string(),
+                symbol_id,
+                loc: SourceLoc::from_loc(module_import.loc, self.resolve_module_file_path(module_id).unwrap()),
+            });
+        }
+
+        symbol_ids
     }
 
     fn resolve_struct_stmt(
