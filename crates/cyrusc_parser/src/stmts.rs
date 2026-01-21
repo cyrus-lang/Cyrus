@@ -394,7 +394,7 @@ impl Parser {
             generic_params = None;
         }
 
-        let impls: Vec<Ident> = self.parse_object_impls()?;
+        let impls = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -485,7 +485,7 @@ impl Parser {
             generic_params = None;
         }
 
-        let impls: Vec<Ident> = self.parse_object_impls()?;
+        let impls = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -590,16 +590,16 @@ impl Parser {
         }))
     }
 
-    fn parse_object_impls(&mut self) -> Result<Vec<Ident>, Diag> {
-        let mut impls: Vec<Ident> = Vec::new();
+    fn parse_object_impls(&mut self) -> Result<Vec<ModuleImport>, Diag> {
+        let mut impls: Vec<ModuleImport> = Vec::new();
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
 
             loop {
-                let ident = self.parse_identifier()?;
+                let module_import = self.parse_module_import()?;
                 self.next_token();
 
-                impls.push(ident);
+                impls.push(module_import);
 
                 if self.current_token_is(TokenKind::Comma) {
                     continue;
@@ -629,7 +629,7 @@ impl Parser {
             generic_params = None;
         }
 
-        let impls: Vec<Ident> = self.parse_object_impls()?;
+        let impls = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 

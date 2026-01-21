@@ -40,12 +40,39 @@ impl<'a> AnalysisContext<'a> {
     pub fn check_sema_ty(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        ty: &SemanticType,
+        sema_ty: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        self.check_sema_ty_for_missing_type_args(scope_id_opt, ty, loc);
         // TODO: Check against cyclic type definition;
-        Some(ty.clone())
+        // let symbol_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
+        // self.reporter.report(Diag {
+        //     level: DiagLevel::Error,
+        //     kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
+        //     location: Some(DiagLoc::new(loc)),
+        //     hint: None,
+        // });
+
+        if sema_ty.count_const_layers() >= 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+        }
+
+        if sema_ty.is_self_type() && self.current_self.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+        }
+
+        self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc.clone());
+
+        Some(sema_ty)
     }
 
     /// Fully normalize AND validate a type
@@ -53,11 +80,12 @@ impl<'a> AnalysisContext<'a> {
     pub fn normalize_and_check_sema_ty(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        ty: SemanticType,
+        sema_ty: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let normalized = self.normalize_type(scope_id_opt, ty, loc.clone())?;
-        self.check_sema_ty(scope_id_opt, &normalized, loc.clone())
+        let sema_ty = self.normalize_type(scope_id_opt, sema_ty, loc.clone())?;
+
+        self.check_sema_ty(scope_id_opt, sema_ty, loc.clone())
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
@@ -225,7 +253,6 @@ impl<'a> AnalysisContext<'a> {
         if let Some(ty) = &global_var.global_var_sig.ty {
             self.normalize_type(scope_id_opt, ty.clone(), loc)
         } else {
-            self.report_non_type_symbol(symbol_id, loc);
             None
         }
     }
@@ -245,33 +272,24 @@ impl<'a> AnalysisContext<'a> {
             return self.normalize_type(scope_id_opt, ty.clone(), loc);
         }
 
-        // Tty to infer from RHS
+        // try to infer from RHS
         if let Some(rhs) = &variable.typed_variable.rhs {
             let rhs_ty =
                 self.analyze_expr_non_terminal(scope_id_opt, &mut rhs.clone(), variable.typed_variable.ty.clone())?;
             return self.normalize_type(scope_id_opt, rhs_ty, loc);
         }
 
-        self.report_non_type_symbol(symbol_id, loc);
         None
     }
 
-    fn normalize_typedef(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        symbol_id: SymbolID,
-        loc: SourceLoc,
-    ) -> Option<SemanticType> {
+    fn normalize_typedef(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> Option<SemanticType> {
         let local_scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)?;
 
-        let resolved_typedef = sym.as_typedef().or_else(|| {
-            self.report_non_type_symbol(symbol_id, loc.clone());
-            None
-        })?;
+        let resolved_typedef = sym.as_typedef().or_else(|| None)?;
 
         self.resolve_typedef_inner_type(resolved_typedef)
     }
@@ -283,7 +301,7 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         match resolved {
-            ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(scope_id_opt, symbol_id, loc),
+            ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(scope_id_opt, symbol_id),
             ResolvedSymbol::Variable(symbol_id) => self.normalize_variable(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::GlobalVar(symbol_id) => self.normalize_global_var(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::Interface(symbol_id) => {
@@ -330,15 +348,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
-        self.current_self.as_ref().cloned().or_else(|| {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
-                location: Some(DiagLoc::new(self_type.loc.clone())),
-                hint: None,
-            });
-            None
-        })
+        self.current_self.clone().or(Some(SemanticType::SelfType(self_type)))
     }
 
     fn normalize_generic_type(
@@ -364,6 +374,9 @@ impl<'a> AnalysisContext<'a> {
             let generic_params = sym.symbol_generic_params()?;
 
             mapping_ctx_arena!(self, mapping_ctx_arena, {
+                // REVIEW: Maybe report some diagnostics,
+                // Hence it's inside normalization process, it may lead to chained diagnostic reporting,
+                // Consider to move it into `check_sema_ty`.
                 generic_type
                     .init(
                         &*mapping_ctx_arena,
@@ -387,21 +400,12 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
-
         let sym = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, interface_symbol_id)
             .unwrap();
-        let Some(resolved_interface) = sym.as_interface() else {
-            let symbol_name = (self.symbol_formatter)(scope_id_opt)(interface_symbol_id);
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name }),
-                location: Some(DiagLoc::new(loc)),
-                hint: None,
-            });
-            return None;
-        };
+
+        let resolved_interface = sym.as_interface()?;
 
         let mut method_sigs: Vec<FuncSig> = Vec::new();
 
@@ -647,16 +651,9 @@ impl<'a> AnalysisContext<'a> {
             return Some(cached_sema_ty.clone());
         }
 
-        if !self.ty_caches.push(symbol_id) {
-            let symbol_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-                location: Some(DiagLoc::new(loc)),
-                hint: None,
-            });
+        if self.ty_caches.push(symbol_id).is_err() {
             return None;
-        }
+        };
 
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
         let sym = self
@@ -676,7 +673,6 @@ impl<'a> AnalysisContext<'a> {
                 sema_ty_opt = self.normalize_type(scope_id_opt, ty, loc.clone());
             }
         } else {
-            self.report_non_type_symbol(symbol_id, loc);
             return None;
         }
 
@@ -687,17 +683,5 @@ impl<'a> AnalysisContext<'a> {
         }
 
         sema_ty_opt
-    }
-
-    #[inline]
-    fn report_non_type_symbol(&mut self, symbol_id: SymbolID, loc: SourceLoc) {
-        let symbol_name = (self.symbol_formatter)(None)(symbol_id);
-
-        self.reporter.report(Diag {
-            level: DiagLevel::Error,
-            kind: Box::new(AnalyzerDiagKind::NonTypeSymbol { symbol_name }),
-            location: Some(DiagLoc::new(loc)),
-            hint: None,
-        });
     }
 }

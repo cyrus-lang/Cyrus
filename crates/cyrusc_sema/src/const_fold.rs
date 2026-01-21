@@ -20,12 +20,20 @@ use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef};
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::{TypedExprKind, TypedExprStmt, TypedLiteralExpr},
+    types::SemanticType,
 };
 use cyrusc_tokens::literals::LiteralKind;
 
 // TODO: Move entire crate and it's logic to cyrusc_interp.
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn is_const_foldable_integer(&self, sema_ty: SemanticType) -> bool {
+        match sema_ty.const_inner().as_basic_type() {
+            Some(basic_concrete_type) => basic_concrete_type.is_integer(),
+            None => false,
+        }
+    }
+
     // TODO: Maybe it's a better solution to use `union` or std::Any type to store several variants of integers and floats?
     fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i128> {
         match &typed_literal.kind {

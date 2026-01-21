@@ -14,14 +14,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::{
-    analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields, update_global_symbol,
-};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields};
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
-use cyrusc_resolver::symbols::{
-    LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion, SymbolEntryKind,
+use cyrusc_resolver::{
+    symbols::{
+        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
+        SymbolEntryKind,
+    },
+    update_global_symbol,
 };
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{

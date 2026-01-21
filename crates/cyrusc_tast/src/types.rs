@@ -233,6 +233,13 @@ impl SemanticType {
         }
     }
 
+    pub fn is_self_type(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::SelfType(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn as_basic_type(&self) -> Option<&PlainType> {
         match self.const_inner() {
             SemanticType::PlainType(ty) => Some(ty),

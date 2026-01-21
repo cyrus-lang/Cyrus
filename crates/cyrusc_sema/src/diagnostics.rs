@@ -80,9 +80,6 @@ pub enum AnalyzerDiagKind {
     #[error("Internal symbol '{symbol_name}' is not accessible here.")]
     InternalSymbolAccess { symbol_name: String },
 
-    #[error("'{symbol_name}' must be an interface.")]
-    SymbolMustBeAnInterface { symbol_name: String },
-
     #[error(
         "Object '{object_name}' does not implement required method '{method_name}' from interface '{interface_name}'."
     )]
