@@ -34,12 +34,12 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let lhs_type = match self.analyze_expr(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
         let rhs_type = match self.analyze_expr(scope_id_opt, &mut infix_expr.rhs, Some(lhs_type.clone())) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
@@ -90,7 +90,7 @@ impl<'a> AnalysisContext<'a> {
 
         let operand_inner_type = addr_of.operand.sema_ty.clone();
         let operand_type = match self.analyze_expr(scope_id_opt, &mut addr_of.operand, operand_inner_type) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
@@ -104,7 +104,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let operand_inner_type = deref.operand.sema_ty.clone();
         let operand_type = match self.analyze_expr(scope_id_opt, &mut deref.operand, operand_inner_type) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
@@ -168,7 +168,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let sym = self
             .resolver
@@ -198,7 +198,7 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let operand_type = match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
@@ -306,7 +306,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let operand_inner_type = unary_expr.operand.sema_ty.clone();
         let operand_type = match self.analyze_expr(scope_id_opt, &mut unary_expr.operand, operand_inner_type) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
@@ -363,8 +363,8 @@ impl<'a> AnalysisContext<'a> {
         lhs_type: SemanticType,
         rhs_type: SemanticType,
     ) -> Option<SemanticType> {
-        let enum_symbol_id1 = lhs_type.get_const_inner().as_enum_symbol_id().unwrap();
-        let enum_symbol_id2 = rhs_type.get_const_inner().as_enum_symbol_id().unwrap();
+        let enum_symbol_id1 = lhs_type.const_inner().as_enum_symbol_id().unwrap();
+        let enum_symbol_id2 = rhs_type.const_inner().as_enum_symbol_id().unwrap();
 
         let local_or_global_symbol1 = self
             .resolver
@@ -394,10 +394,10 @@ impl<'a> AnalysisContext<'a> {
         cmp_eq: bool,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let lhs_type = lhs_type.get_const_inner();
-        let rhs_type = rhs_type.get_const_inner();
+        let lhs_type = lhs_type.const_inner();
+        let rhs_type = rhs_type.const_inner();
 
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
             let equal_mapping_ctx = mapping_ctx_eq_refcell(
@@ -493,8 +493,8 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
         type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<PlainType>,
     ) -> Option<SemanticType> {
-        let lhs_type = lhs_type.get_const_inner();
-        let rhs_type = rhs_type.get_const_inner();
+        let lhs_type = lhs_type.const_inner();
+        let rhs_type = rhs_type.const_inner();
 
         if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
             let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));

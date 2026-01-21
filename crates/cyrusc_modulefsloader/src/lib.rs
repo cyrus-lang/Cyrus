@@ -57,6 +57,8 @@ pub struct LoadedModule {
     pub program: Rc<ProgramTree>,
 }
 
+// TODO: Consider to accurately write comments for this section.
+
 impl ModuleLoader {
     pub fn new(opts: ModuleLoaderOptions) -> Self {
         ModuleLoader { opts }
@@ -66,7 +68,7 @@ impl ModuleLoader {
         let mut loaded_modules_list: Vec<Result<LoadedModule, ModuleFSLoaderDiagKind>> = Vec::new();
 
         for sub_import in &import.paths {
-            let mut module_file_path = match self.get_imported_module_path(sub_import.segments.clone()) {
+            let mut module_file_path = match self.imported_module_path(sub_import.segments.clone()) {
                 Ok(path) => path,
                 Err(diag_kind) => {
                     loaded_modules_list.push(Err(diag_kind));
@@ -132,13 +134,13 @@ impl ModuleLoader {
         loaded_modules_list
     }
 
-    fn get_imported_module_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSLoaderDiagKind> {
+    fn imported_module_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSLoaderDiagKind> {
         let mut sources = self.opts.source_dirs.clone();
 
         let mut segments = segments;
         if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.value == "std") {
             segments.remove(0);
-            sources = vec![self.get_stdlib_modules_path()];
+            sources = vec![self.std_modules_path()];
         }
 
         // starting point
@@ -216,7 +218,7 @@ impl ModuleLoader {
         Ok(module_file_path)
     }
 
-    fn get_stdlib_modules_path(&self) -> String {
+    fn std_modules_path(&self) -> String {
         match self.opts.stdlib_path.clone() {
             Some(stdlib_path) => stdlib_path,
             None => match env::var("CYRUS_STDLIB_PATH") {

@@ -55,9 +55,9 @@ impl CIRMonomorphRegistry {
 }
 
 impl<'resolver> CIRWalk<'resolver> {
-    pub fn get_monomorph_func_entry(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry> {
+    pub fn resolve_monomorph_func_entry(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry> {
         let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
-        let monomorph_entry = monomorph_registry.get(monomorph_key).unwrap();
+        let monomorph_entry = monomorph_registry.resolve_by_monomorph_key(monomorph_key).unwrap();
         let monomorph_func_entry = match monomorph_entry.clone() {
             MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
         };
@@ -71,7 +71,7 @@ impl<'resolver> CIRWalk<'resolver> {
         monomorph_key: &MonomorphKey,
         func_sig: &FuncSig,
     ) {
-        let monomorph_func_entry = self.get_monomorph_func_entry(monomorph_key).unwrap();
+        let monomorph_func_entry = self.resolve_monomorph_func_entry(monomorph_key).unwrap();
 
         let irv_id = monomorph_func_entry.id;
 
@@ -79,7 +79,7 @@ impl<'resolver> CIRWalk<'resolver> {
             let monomorph_registry = self.resolver.monomorph_registry.lock().unwrap();
 
             monomorph_registry
-                .get_specialized_func_instance(monomorph_key.clone())
+                .resolve_specialized_func_instance(monomorph_key.clone())
                 .unwrap()
                 .clone()
         };

@@ -108,8 +108,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let index_lvalue = self.emit_expr(&array_index.index);
         let index_rvalue = self.load_rvalue(index_lvalue);
 
-        if lvalue.ty.as_arr_ty().is_some() {
-            let arr_ty = lvalue.ty.as_arr_ty().unwrap();
+        if lvalue.ty.as_array_ty().is_some() {
+            let arr_ty = lvalue.ty.as_array_ty().unwrap();
             let basic_value = lvalue.as_basic_value();
             if basic_value.is_pointer_value() {
                 self.emit_inbounds_checked_array_index(
@@ -131,7 +131,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             } else {
                 unreachable!("Expected array or pointer type for array indexing expression");
             }
-        } else if let Some(pointee_ty) = lvalue.ty.get_pointer_inner() {
+        } else if let Some(pointee_ty) = lvalue.ty.pointer_inner() {
             self.emit_array_index_on_pointer(
                 lvalue.as_basic_value().into_pointer_value(),
                 index_rvalue,
@@ -269,7 +269,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
-        let cir_arr_ty = array.ty.as_arr_ty().expect("Expected array type");
+        let cir_arr_ty = array.ty.as_array_ty().expect("Expected array type");
         let element_ty = cir_arr_ty.ty.clone();
 
         let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().expect("Expected ArrayType");
@@ -344,7 +344,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let lvalue = self.emit_expr(&deref_expr.operand);
                 let rvalue = self.load_rvalue(lvalue.clone());
                 let ptr = rvalue.as_basic_value().into_pointer_value();
-                let inner_ty = rvalue.ty.get_pointer_inner().unwrap();
+                let inner_ty = rvalue.ty.pointer_inner().unwrap();
                 InternalValue::new(inner_ty.clone(), InternalValueKind::LValue(ptr))
             }
             CIRExprKind::StructFieldAccess(struct_field_access) => {
@@ -379,7 +379,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         match mode {
             DerefMode::Load => {
-                let inner_ty = rvalue.ty.get_pointer_inner().unwrap();
+                let inner_ty = rvalue.ty.pointer_inner().unwrap();
 
                 let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(inner_ty.clone()).try_into().unwrap();
                 let loaded_value = self.llvmbuilder.build_load(llvm_ty, ptr, "deref").unwrap();
@@ -387,7 +387,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
                 kind: CIRExprKind::Deref(deref.clone()),
-                ty: deref.operand.ty.get_pointer_inner().cloned().unwrap(),
+                ty: deref.operand.ty.pointer_inner().cloned().unwrap(),
             }),
         }
     }
@@ -941,7 +941,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
         let operand = self.emit_expr(&field_access.operand);
 
-        let struct_ty: BasicTypeEnum<'ll> = if let Some(inner) = field_access.operand.ty.get_pointer_inner() {
+        let struct_ty: BasicTypeEnum<'ll> = if let Some(inner) = field_access.operand.ty.pointer_inner() {
             self.emit_ty(inner.clone()).try_into().unwrap()
         } else {
             self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap()

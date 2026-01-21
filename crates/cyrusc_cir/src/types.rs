@@ -71,20 +71,6 @@ pub struct CIREnumTy {
 }
 
 impl CIRTy {
-    pub fn is_bool(&self) -> bool {
-        match self {
-            CIRTy::PlainType(PlainType::Bool) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_integer(&self) -> bool {
-        match self.get_const_inner() {
-            CIRTy::PlainType(plain_type) => plain_type.is_integer(),
-            _ => false,
-        }
-    }
-
     pub fn as_tuple(&self) -> Option<CIRTupleTy> {
         match self {
             CIRTy::Tuple(tuple) => Some(tuple.clone()),
@@ -93,64 +79,78 @@ impl CIRTy {
     }
 
     pub fn as_fn(&self) -> Option<CIRFuncTy> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             CIRTy::FuncType(fn_ty) => Some(fn_ty.clone()),
             _ => None,
         }
     }
 
     pub fn as_plain(&self) -> Option<PlainType> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             CIRTy::PlainType(plain_type) => Some(plain_type.clone()),
             _ => None,
         }
     }
 
-    pub fn as_arr_ty(&self) -> Option<CIRArrayTy> {
-        match self.get_const_inner() {
+    pub fn as_array_ty(&self) -> Option<CIRArrayTy> {
+        match self.const_inner() {
             CIRTy::Array(arr_ty) => Some(arr_ty.clone()),
             _ => None,
         }
     }
 
     pub fn as_enum(&self) -> Option<CIREnumTy> {
-        match self.get_const_inner() {
+        match self.const_inner() {
             CIRTy::Enum(enum_ty) => Some(enum_ty.clone()),
             _ => None,
         }
     }
 
+    pub fn is_bool(&self) -> bool {
+        match self {
+            CIRTy::PlainType(PlainType::Bool) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        match self.const_inner() {
+            CIRTy::PlainType(plain_type) => plain_type.is_integer(),
+            _ => false,
+        }
+    }
+
     pub fn is_enum(&self) -> bool {
-        match self.get_const_inner() {
+        match self.const_inner() {
             CIRTy::Enum(..) => true,
             _ => false,
         }
     }
 
     pub fn is_union(&self) -> bool {
-        match self.get_const_inner() {
+        match self.const_inner() {
             CIRTy::Union(..) => true,
             _ => false,
         }
     }
 
-    pub fn is_fn(&self) -> bool {
-        match self.get_const_inner() {
+    pub fn is_func(&self) -> bool {
+        match self.const_inner() {
             CIRTy::FuncType(_) => true,
             _ => false,
         }
     }
 
-    pub fn get_pointer_inner(&self) -> Option<&CIRTy> {
+    pub fn pointer_inner(&self) -> Option<&CIRTy> {
         match self {
             CIRTy::Pointer(inner) => Some(&inner),
             _ => None,
         }
     }
 
-    pub fn get_const_inner(&self) -> &CIRTy {
+    pub fn const_inner(&self) -> &CIRTy {
         match self {
-            CIRTy::Const(inner) => inner.get_const_inner(),
+            CIRTy::Const(inner) => inner.const_inner(),
             other => other,
         }
     }

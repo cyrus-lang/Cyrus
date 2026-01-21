@@ -161,7 +161,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         exit(1);
     }
 
-    let mangler = get_name_mangler_impl(opts.abi.clone());
+    let mangler = name_mangler_impl(opts.abi.clone());
 
     // prepare trees for codegen
 
@@ -219,7 +219,7 @@ pub fn get_artifact_output_path(build_dir: BuildDir, output_path: Option<String>
     }
 }
 
-fn get_name_mangler_impl(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangler> {
+fn name_mangler_impl(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangler> {
     match abi.unwrap_or_default() {
         CodeGenABI::Cyrus => Box::new(Cyrus_ABI::new()),
         CodeGenABI::C => Box::new(C_ABI::new()),

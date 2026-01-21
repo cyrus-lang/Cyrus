@@ -206,7 +206,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         }
     }
 
-    fn get_target_machine_info(&self) -> TargetMachineInfo {
+    fn target_machine_info(&self) -> TargetMachineInfo {
         Target::initialize_all(&InitializationConfig::default());
 
         let cpu = if let Some(cpu) = &self.opts.cpu {

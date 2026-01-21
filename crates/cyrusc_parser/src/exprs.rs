@@ -528,7 +528,7 @@ impl Parser {
                 let operator_token = self.current_token().kind;
                 if self.peek_token_is(TokenKind::Assign) {
                     self.next_token();
-                    let Some(assign_kind) = self.map_assign_kind(operator_token.clone(), loc) else {
+                    let Some(assign_kind) = self.map_assign_kind(operator_token.clone()) else {
                         return Some(Err(
                             self.error_at_current(ParserDiagKind::InvalidAssignOperator(operator_token))
                         ));
@@ -806,7 +806,7 @@ impl Parser {
         })
     }
 
-    fn map_assign_kind(&mut self, token_kind: TokenKind, loc: Location) -> Option<AssignKind> {
+    fn map_assign_kind(&mut self, token_kind: TokenKind) -> Option<AssignKind> {
         match token_kind {
             TokenKind::Plus => Some(AssignKind::AddAssign),
             TokenKind::Minus => Some(AssignKind::SubAssign),
@@ -912,7 +912,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
         let elements = self.parse_expr_series(TokenKind::RightBrace)?.0;
-        
+
         self.must_be_right_brace()?;
         Ok(Expr::UntypedArray(UntypedArray {
             elements,

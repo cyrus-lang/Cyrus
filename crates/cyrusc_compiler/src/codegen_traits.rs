@@ -40,7 +40,7 @@ pub trait CodeGenBackend<'cdg, BackendModule> {
     ///
     /// This includes details like the target triple, CPU name, pointer size,
     /// relocation mode, code model, and optimization level.
-    fn get_target_machine_info(&'cdg self) -> TargetMachineInfo;
+    fn target_machine_info(&'cdg self) -> TargetMachineInfo;
 
     /// Returns a human-readable name for the backend.
     ///

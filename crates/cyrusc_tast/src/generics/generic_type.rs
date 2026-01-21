@@ -75,7 +75,7 @@ impl GenericType {
         for type_arg in &self.type_args {
             match type_arg {
                 TypedTypeArg::Positional { idx, ty, loc } => {
-                    let generic_param = template.get_positional(*idx).ok_or(Diag {
+                    let generic_param = template.lookup_positional(*idx).ok_or(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { idx: *idx }),
                         location: Some(DiagLoc::new(loc.clone())),
@@ -118,9 +118,9 @@ impl GenericType {
                     )?;
 
                     let typed_identifier = template
-                        .get_named(key)
+                        .lookup_named(key)
                         .map(|generic_param| GenericMappingEntry::from(generic_param.param_name.clone()))
-                        .or(mapping_ctx.get_linked_by_name(mapping_ctx_arena, &key))
+                        .or(mapping_ctx.resolve_linked_by_name(mapping_ctx_arena, &key))
                         .ok_or({
                             Diag {
                                 level: DiagLevel::Error,
@@ -149,7 +149,7 @@ impl GenericType {
             let mut mapping_ctx = self.mapping_ctx.borrow_mut();
             for generic_param in &template.list {
                 if mapping_ctx
-                    .get_with_name(mapping_ctx_arena, &generic_param.param_name.name)
+                    .resolve_with_name(mapping_ctx_arena, &generic_param.param_name.name)
                     .is_none()
                 {
                     if let Some(default) = &generic_param.default {
@@ -194,10 +194,10 @@ impl GenericType {
         format_symbol: &impl Fn(SymbolID) -> String,
         loc: SourceLoc,
     ) -> Result<(), Diag> {
-        if let Some(parent_id) = child_mapping_ctx.get_parent_id() {
+        if let Some(parent_id) = child_mapping_ctx.parent_id() {
             let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
 
-            if let Some(parent_sema_ty) = parent_mapping_ctx.get_with_name(mapping_ctx_arena, &generic_param_name) {
+            if let Some(parent_sema_ty) = parent_mapping_ctx.resolve_with_name(mapping_ctx_arena, &generic_param_name) {
                 // NOTE: complain only and only if overrode type is not the same!
                 // situations come that type args may always presented explicitly, so we should not complain about that.
                 if type_arg_sema_ty
@@ -232,7 +232,7 @@ impl GenericType {
             .iter()
             .filter(|gp| {
                 mapping_ctx
-                    .get_with_name(mapping_ctx_arena, &gp.param_name.name)
+                    .resolve_with_name(mapping_ctx_arena, &gp.param_name.name)
                     .is_none()
             })
             .map(|gp| gp.param_name.clone())
@@ -364,7 +364,7 @@ pub fn debug_generic_type<'a>(
         println!("MappingCtx: ");
 
         let debug_mapping_ctx = |mapping_ctx: &GenericMappingCtx| {
-            for (entry, sema_ty) in mapping_ctx.get_named_mapping() {
+            for (entry, sema_ty) in mapping_ctx.named_mapping() {
                 println!(
                     "{} -> {}",
                     entry.name.clone(),
@@ -386,12 +386,12 @@ pub fn debug_generic_type<'a>(
             debug_mapping_ctx(&parent_mapping_ctx);
             drop(arena_mutex);
 
-            if let Some(parent_parent_id) = parent_mapping_ctx.get_parent_id() {
+            if let Some(parent_parent_id) = parent_mapping_ctx.parent_id() {
                 recurse_debug_mapping_ctx(mapping_ctx_arena, debug_mapping_ctx, parent_parent_id);
             }
         }
 
-        if let Some(parent_id) = mapping_ctx.get_parent_id() {
+        if let Some(parent_id) = mapping_ctx.parent_id() {
             println!("ParentMappingCtx({}): ", parent_id);
 
             recurse_debug_mapping_ctx(mapping_ctx_arena, debug_mapping_ctx, parent_id);

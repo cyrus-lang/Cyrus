@@ -17,7 +17,7 @@
 use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
-    object_file_info::{ObjectFileInfo, get_objects_file_names},
+    object_file_info::{ObjectFileInfo, collect_objects_file_names},
     options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
     tm_info::TargetMachineInfo,
 };
@@ -84,26 +84,26 @@ impl CodeGenContext {
         &self,
         backend: &'cdg dyn CodeGenBackend<'cdg, BackendModule>,
     ) -> TargetMachineInfo {
-        backend.get_target_machine_info()
+        backend.target_machine_info()
     }
 
     pub fn trigger_linker(&self, object_files: Vec<ObjectFileInfo>, output_path: String) -> Result<(), String> {
+        let object_files = collect_objects_file_names(object_files);
+
         match self.linker_output_kind {
-            LinkerOutputKind::Executable => self
-                .linker
-                .link_executable(&get_objects_file_names(object_files), &output_path),
+            LinkerOutputKind::Executable => self.linker.link_executable(&object_files, &output_path),
             LinkerOutputKind::SharedLib => {
                 let output_dir = PathBuf::from(&output_path);
                 let lib_name = self.opts.canonical_project_name();
                 self.linker
-                    .link_shared_library(&get_objects_file_names(object_files), &output_dir, lib_name)
+                    .link_shared_library(&object_files, &output_dir, lib_name)
                     .map(|_| ())
             }
             LinkerOutputKind::StaticLib => {
                 let output_dir = PathBuf::from(&output_path);
                 let lib_name = self.opts.canonical_project_name();
                 self.linker
-                    .link_static_library(&get_objects_file_names(object_files), &output_dir, lib_name)
+                    .link_static_library(&object_files, &output_dir, lib_name)
                     .map(|_| ())
             }
             LinkerOutputKind::ObjectFile => Ok(()),

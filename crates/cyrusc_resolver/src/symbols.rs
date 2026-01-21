@@ -150,7 +150,7 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
-    pub fn get_name(&self) -> Option<String> {
+    pub fn symbol_name(&self) -> Option<String> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Variable(resolved_variable) => Some(resolved_variable.typed_variable.name.clone()),
@@ -176,7 +176,7 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn get_symbol_methods(&self) -> Option<HashMap<String, SymbolID>> {
+    pub fn symbol_methods(&self) -> Option<HashMap<String, SymbolID>> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Variable(_) => None,
@@ -200,12 +200,12 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn get_method_symbol_id_by_name(&self, name: &str) -> Option<SymbolID> {
-        let method_map = self.get_symbol_methods();
+    pub fn method_symbol_id_by_name(&self, name: &str) -> Option<SymbolID> {
+        let method_map = self.symbol_methods();
         method_map.and_then(|map| map.get(name).cloned())
     }
 
-    pub fn get_method_generic_params(&self) -> Option<&TypedGenericParamsList> {
+    pub fn symbol_method_generic_params(&self) -> Option<&TypedGenericParamsList> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(_) => None,
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
@@ -215,7 +215,7 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn get_generic_params(&self) -> Option<TypedGenericParamsList> {
+    pub fn symbol_generic_params(&self) -> Option<TypedGenericParamsList> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Variable(_) => None,
@@ -251,10 +251,10 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn get_symbol_id(&self) -> SymbolID {
+    pub fn symbol_id(&self) -> SymbolID {
         match self {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.symbol_id(),
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.symbol_id(),
         }
     }
 
@@ -373,7 +373,7 @@ impl LocalSymbol {
         Self { used: false, kind }
     }
 
-    pub fn get_symbol_id(&self) -> SymbolID {
+    pub fn symbol_id(&self) -> SymbolID {
         match &self.kind {
             LocalSymbolKind::Variable(resolved) => resolved.symbol_id,
             LocalSymbolKind::Struct(resolved) => resolved.symbol_id,
@@ -489,7 +489,7 @@ impl LocalScope {
     where
         F: FnOnce(&LocalSymbol) -> R,
     {
-        if let Some((_, sym)) = self.symbols.iter().find(|(_, s)| s.get_symbol_id() == symbol_id) {
+        if let Some((_, sym)) = self.symbols.iter().find(|(_, s)| s.symbol_id() == symbol_id) {
             return Some(f(sym));
         }
 
@@ -505,7 +505,7 @@ impl LocalScope {
     where
         F: FnOnce(&mut LocalSymbol) -> R,
     {
-        if let Some((_, sym)) = self.symbols.iter_mut().find(|(_, s)| s.get_symbol_id() == symbol_id) {
+        if let Some((_, sym)) = self.symbols.iter_mut().find(|(_, s)| s.symbol_id() == symbol_id) {
             return Some(f(sym));
         }
 
@@ -532,7 +532,7 @@ impl SymbolEntry {
         Self { used: false, kind }
     }
 
-    pub fn get_vis(&self) -> Visibility {
+    pub fn vis(&self) -> Visibility {
         match &self.kind {
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.modifiers.vis.clone(),
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.vis.clone(),
@@ -546,7 +546,7 @@ impl SymbolEntry {
         }
     }
 
-    pub fn get_loc(&self) -> SourceLoc {
+    pub fn loc(&self) -> SourceLoc {
         match &self.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.loc.clone(),
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.loc.clone(),
@@ -560,7 +560,7 @@ impl SymbolEntry {
         }
     }
 
-    pub fn get_symbol_id(&self) -> SymbolID {
+    pub fn symbol_id(&self) -> SymbolID {
         match &self.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method.symbol_id,
             SymbolEntryKind::Func(resolved_func) => resolved_func.symbol_id,
@@ -574,7 +574,7 @@ impl SymbolEntry {
         }
     }
 
-    pub fn get_module_id(&self) -> ModuleID {
+    pub fn module_id(&self) -> ModuleID {
         match &self.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method.module_id,
             SymbolEntryKind::Func(resolved_func) => resolved_func.module_id,

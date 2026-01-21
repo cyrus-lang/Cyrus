@@ -27,7 +27,7 @@ use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 impl Resolver {
     /// Safely gets a reference to a local scope. Returns `None` if the
     /// module or scope ID is invalid, instead of panicking.
-    pub fn get_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID) -> Option<LocalScopeRef> {
+    pub fn resolve_local_scope(&self, module_id: ModuleID, scope_id: ScopeID) -> Option<LocalScopeRef> {
         let global_symbols = self.global_symbols.lock().unwrap();
         global_symbols.get(&module_id)?.scopes.get(&scope_id).cloned()
     }
@@ -88,17 +88,17 @@ impl Resolver {
     }
 
     /// Resolves a symbol id from a specific local scope.
-    pub fn resolve_symbol_id_from_local_scope(&self, local_scope_rc: LocalScopeRef, name: &str) -> Option<SymbolID> {
-        local_scope_rc.borrow().with_symbol(name, |x| x.get_symbol_id())
+    pub fn resolve_symbol_id_from_local_scope(&self, scope_rc: LocalScopeRef, name: &str) -> Option<SymbolID> {
+        scope_rc.borrow().with_symbol(name, |x| x.symbol_id())
     }
 
     /// Resolves a symbol from a specific local scope. Simplified to be a single, expressive statement.
     pub fn resolve_symbol_from_local_scope(
         &self,
-        local_scope_rc: LocalScopeRef,
+        scope_rc: LocalScopeRef,
         symbol_id: SymbolID,
     ) -> Option<LocalSymbol> {
-        local_scope_rc.borrow().with_symbol_id(symbol_id, |sym| sym.clone())
+        scope_rc.borrow().with_symbol_id(symbol_id, |sym| sym.clone())
     }
 
     pub fn resolve_variable_symbol(

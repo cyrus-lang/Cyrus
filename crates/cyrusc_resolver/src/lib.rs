@@ -205,7 +205,7 @@ impl Resolver {
         let parent_module_id = module_id;
 
         // Analyze imports of this module
-        for import in ast.get_imports() {
+        for import in ast.import_stmts() {
             self.resolve_import(parent_module_id, import, &mut visiting);
         }
 
@@ -252,7 +252,7 @@ impl Resolver {
 
     /// Resolves a module import with duplicate and cycle detection.
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, visiting: &mut Visiting) {
-        let current_module_file_path = self.get_module_file_path(parent_module_id).unwrap();
+        let current_module_file_path = self.resolve_module_file_path(parent_module_id).unwrap();
         let loaded_modules_list = self.module_loader.load_module(&import);
 
         for loaded_module in loaded_modules_list {
@@ -287,7 +287,7 @@ impl Resolver {
             }
 
             let module_id = self
-                .get_module_id_by_file_path(loaded_module.file_path.clone())
+                .resolve_module_id_by_file_path(loaded_module.file_path.clone())
                 .unwrap_or_else(generate_module_id);
 
             {
@@ -440,7 +440,7 @@ impl Resolver {
                     }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         loc.clone(),
-                        self.get_module_file_path(parent_module_id).unwrap(),
+                        self.resolve_module_file_path(parent_module_id).unwrap(),
                     ))),
                     hint: None,
                 });
@@ -452,7 +452,7 @@ impl Resolver {
             {
                 // check symbol visibility
                 let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
-                let vis = symbol_entry.get_vis();
+                let vis = symbol_entry.vis();
                 self.check_import_single_vis(actual_name.clone(), vis, loc.clone());
             }
 
@@ -470,7 +470,7 @@ impl Resolver {
                         }),
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             loc.clone(),
-                            self.get_module_file_path(parent_module_id).unwrap(),
+                            self.resolve_module_file_path(parent_module_id).unwrap(),
                         ))),
                         hint: None,
                     });
@@ -537,7 +537,7 @@ impl Resolver {
                     Some(TypedTypeArg::Positional {
                         idx,
                         ty,
-                        loc: SourceLoc::from_loc(type_specifier.get_loc().0, self.current_file_path()),
+                        loc: SourceLoc::from_loc(type_specifier.loc().0, self.current_file_path()),
                     })
                 }
                 TypeArg::Named { key, ty } => {
@@ -631,7 +631,7 @@ impl Resolver {
             .or({
                 self.current_object_generic_params.as_ref().and_then(|generic_params| {
                     generic_params
-                        .get_named(&ident.value)
+                        .lookup_named(&ident.value)
                         .map(|generic_param| SemanticType::GenericParam(generic_param.clone()))
                 })
             })
@@ -658,7 +658,7 @@ impl Resolver {
                 )?;
 
                 let is_const = base.is_const();
-                if let Some(symbol_id) = base.get_const_inner().as_unresolved_symbol() {
+                if let Some(symbol_id) = base.const_inner().as_unresolved_symbol() {
                     let type_args = self.resolve_type_args(
                         generic_params,
                         module_id,
@@ -864,9 +864,7 @@ impl Resolver {
 
                 if sema_ty_opt.is_none() {
                     sema_ty_opt = local_scope_opt
-                        .and_then(|local_scope_rc| {
-                            self.resolve_symbol_id_from_local_scope(local_scope_rc, &ident.value)
-                        })
+                        .and_then(|scope_rc| self.resolve_symbol_id_from_local_scope(scope_rc, &ident.value))
                         .map(SemanticType::UnresolvedSymbol);
                 }
 
@@ -933,8 +931,8 @@ impl Resolver {
             typedef_sig: typedef_sig.clone(),
         };
 
-        if let Some(local_scope_rc) = &local_scope_opt {
-            local_scope_rc.borrow_mut().insert(
+        if let Some(scope_rc) = &local_scope_opt {
+            scope_rc.borrow_mut().insert(
                 typedef.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Typedef(resolved_typedef)),
             );
@@ -1035,7 +1033,7 @@ impl Resolver {
                         continue;
                     }
 
-                    self.insert_symbol_name(module_id, &func_decl.get_usable_name());
+                    self.insert_symbol_name(module_id, &func_decl.usable_name());
                 }
                 Stmt::GlobalVar(global_variable) => {
                     if self.duplicate_symbol(
@@ -1220,8 +1218,8 @@ impl Resolver {
         };
 
         match local_scope_opt {
-            Some(local_scope_rc) => {
-                local_scope_rc.borrow_mut().insert(
+            Some(scope_rc) => {
+                scope_rc.borrow_mut().insert(
                     interface.ident.value.clone(),
                     LocalSymbol::new(LocalSymbolKind::Interface(resolved_interface)),
                 );
@@ -1313,13 +1311,13 @@ impl Resolver {
             },
         };
 
-        if let Some(local_scope_rc) = &local_scope_opt {
-            let mut local_scope = local_scope_rc.borrow_mut();
-            local_scope.insert(
+        if let Some(scope_rc) = &local_scope_opt {
+            let mut scope = scope_rc.borrow_mut();
+            scope.insert(
                 union_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Union(resolved_union)),
             );
-            drop(local_scope);
+            drop(scope);
         } else {
             self.insert_symbol_entry(
                 module_id,
@@ -1395,7 +1393,7 @@ impl Resolver {
                 EnumVariant::Valued(ident, expr) => match self.resolve_expr(
                     module_id,
                     match &local_scope_opt {
-                        Some(local_scope) => Some(Rc::clone(&local_scope)),
+                        Some(scope) => Some(Rc::clone(&scope)),
                         None => None,
                     },
                     expr,
@@ -1430,13 +1428,13 @@ impl Resolver {
             },
         };
 
-        if let Some(local_scope_rc) = &local_scope_opt {
-            let mut local_scope = local_scope_rc.borrow_mut();
-            local_scope.insert(
+        if let Some(scope_rc) = &local_scope_opt {
+            let mut scope = scope_rc.borrow_mut();
+            scope.insert(
                 enum_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Enum(resolved_enum)),
             );
-            drop(local_scope);
+            drop(scope);
         } else {
             self.insert_symbol_entry(
                 module_id,
@@ -1544,14 +1542,14 @@ impl Resolver {
 
         for func_def in methods_list {
             let method_scope_id = generate_scope_id();
-            let local_scope_rc = LocalScope::new(None);
-            self.insert_scope_ref(module_id, method_scope_id, Rc::clone(&local_scope_rc));
+            let scope_rc = LocalScope::new(None);
+            self.insert_scope_ref(module_id, method_scope_id, Rc::clone(&scope_rc));
 
             if let Some((return_type, mut typed_func_params, typed_variadic_param, generic_params)) =
-                self.resolve_func(module_id, Some(Rc::clone(&local_scope_rc)), &func_def.as_func_decl())
+                self.resolve_func(module_id, Some(Rc::clone(&scope_rc)), &func_def.as_func_decl())
             {
-                let method_name = func_def.ident.value.clone();
-                let method_resolve_name = get_method_symbol_name(struct_symbol_id, method_name.clone());
+                let original_method_name = func_def.ident.value.clone();
+                let unique_method_name = method_symbol_name_for_struct(struct_symbol_id, original_method_name.clone());
 
                 typed_func_params = typed_func_params
                     .into_iter()
@@ -1564,14 +1562,14 @@ impl Resolver {
                     })
                     .collect();
 
-                let symbol_id = self.insert_symbol_name(module_id, &method_resolve_name);
+                let symbol_id = self.insert_symbol_name(module_id, &unique_method_name);
 
-                methods.insert(method_name.clone(), symbol_id);
+                methods.insert(original_method_name.clone(), symbol_id);
 
                 let func_sig = FuncSig {
                     symbol_id: Some(symbol_id),
                     module_id,
-                    name: method_name.clone(),
+                    name: original_method_name.clone(),
                     is_func_decl: false,
                     generic_params,
                     params: TypedFuncParams {
@@ -1600,17 +1598,12 @@ impl Resolver {
 
                 method_bodies.insert(
                     symbol_id,
-                    (
-                        Rc::clone(&local_scope_rc),
-                        func_def.body.clone(),
-                        method_scope_id,
-                        is_generic,
-                    ),
+                    (Rc::clone(&scope_rc), func_def.body.clone(), method_scope_id, is_generic),
                 );
             }
         }
 
-        for (&symbol_id, (local_scope_rc, method_body, method_scope_id, is_generic)) in &method_bodies {
+        for (&symbol_id, (scope_rc, method_body, method_scope_id, is_generic)) in &method_bodies {
             let mut resolved_method = match self.lookup_symbol_entry_with_id(symbol_id).unwrap().kind {
                 SymbolEntryKind::Method(m) => m,
                 _ => unreachable!(),
@@ -1640,16 +1633,14 @@ impl Resolver {
                         },
                     }));
 
-                    local_scope_rc.borrow_mut().insert("self".to_string(), local_symbol);
+                    scope_rc.borrow_mut().insert("self".to_string(), local_symbol);
                 }
             }
 
-            if let Some(typed_func_body) =
-                self.resolve_block_stmt(*method_scope_id, local_scope_rc.clone(), method_body)
-            {
+            if let Some(typed_func_body) = self.resolve_block_stmt(*method_scope_id, scope_rc.clone(), method_body) {
                 if *is_generic {
                     // generic method body is being analyzed when called
-                    with_monomorph_registry!(self, ctx, {
+                    monomorph_registry!(self, ctx, {
                         ctx.register_template(symbol_id, typed_func_body);
                     });
                 } else {
@@ -1680,8 +1671,8 @@ impl Resolver {
             .filter_map(|ident| {
                 let resolved = local_scope_opt
                     .as_ref()
-                    .and_then(|local_scope| {
-                        local_scope
+                    .and_then(|scope| {
+                        scope
                             .borrow()
                             .resolve(&ident.as_string())
                             .map(|sym| LocalOrGlobalSymbol::LocalSymbol(sym.clone()))
@@ -1694,7 +1685,7 @@ impl Resolver {
                 match resolved {
                     Some(sym) => Some(TypedIdentifier {
                         name: ident.as_string(),
-                        symbol_id: sym.get_symbol_id(),
+                        symbol_id: sym.symbol_id(),
                         loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
                     }),
                     None => {
@@ -1783,8 +1774,8 @@ impl Resolver {
             },
         };
 
-        if let Some(local_scope_rc) = local_scope_opt {
-            local_scope_rc.borrow_mut().insert(
+        if let Some(scope_rc) = local_scope_opt {
+            scope_rc.borrow_mut().insert(
                 struct_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Struct(resolved_struct)),
             );
@@ -1881,9 +1872,9 @@ impl Resolver {
                     };
 
                     let symbol_id = generate_symbol_id();
-                    if let Some(local_scope_rc) = &local_scope_opt {
-                        let mut local_scope = local_scope_rc.borrow_mut();
-                        local_scope.insert(
+                    if let Some(scope_rc) = &local_scope_opt {
+                        let mut scope = scope_rc.borrow_mut();
+                        scope.insert(
                             func_param.ident.value.clone(),
                             LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                 module_id,
@@ -1934,9 +1925,9 @@ impl Resolver {
 
                 let symbol_id = generate_symbol_id();
 
-                if let Some(local_scope_rc) = &local_scope_opt {
-                    let mut local_scope = local_scope_rc.borrow_mut();
-                    local_scope.insert(
+                if let Some(scope_rc) = &local_scope_opt {
+                    let mut scope = scope_rc.borrow_mut();
+                    scope.insert(
                         ident.value.clone(),
                         LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                             module_id,
@@ -1969,7 +1960,7 @@ impl Resolver {
     }
 
     fn resolve_func_decl_stmt(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(module_id, &func_decl.get_usable_name()).unwrap();
+        let symbol_id = self.lookup_symbol_id(module_id, &func_decl.usable_name()).unwrap();
 
         let (return_type, typed_func_params, typed_variadic_param, generic_params) =
             self.resolve_func(module_id, None, func_decl)?;
@@ -2052,7 +2043,7 @@ impl Resolver {
 
         let typed_func_body = self.resolve_block_stmt(scope_id, body_scope, &func_def.body)?;
 
-        with_monomorph_registry!(self, ctx, {
+        monomorph_registry!(self, ctx, {
             ctx.register_template(symbol_id, typed_func_body.clone());
         });
 
@@ -2075,10 +2066,10 @@ impl Resolver {
     fn declare_local_variable(
         &mut self,
         module_id: ModuleID,
-        local_scope_rc: LocalScopeRef,
+        scope_rc: LocalScopeRef,
         variable: &Variable,
     ) -> Option<TypedVarStmt> {
-        if local_scope_rc.borrow().resolve(&variable.ident.value).is_some() {
+        if scope_rc.borrow().resolve(&variable.ident.value).is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
@@ -2096,7 +2087,7 @@ impl Resolver {
         let var_type = variable.ty.as_ref().and_then(|ty_spec| {
             self.resolve_type(
                 &None,
-                Some(local_scope_rc.clone()),
+                Some(scope_rc.clone()),
                 module_id,
                 ty_spec.clone(),
                 variable.loc.clone(),
@@ -2107,7 +2098,7 @@ impl Resolver {
         let typed_rhs = variable
             .rhs
             .as_ref()
-            .and_then(|expr| self.resolve_expr(module_id, Some(local_scope_rc.clone()), expr));
+            .and_then(|expr| self.resolve_expr(module_id, Some(scope_rc.clone()), expr));
 
         let symbol_id = generate_symbol_id();
 
@@ -2127,7 +2118,7 @@ impl Resolver {
             typed_variable: typed_variable.clone(),
         };
 
-        local_scope_rc.borrow_mut().insert(
+        scope_rc.borrow_mut().insert(
             variable.ident.value.clone(),
             LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
         );
@@ -2135,19 +2126,14 @@ impl Resolver {
         Some(typed_variable)
     }
 
-    fn resolve_if_stmt(
-        &mut self,
-        module_id: ModuleID,
-        local_scope: LocalScopeRef,
-        if_stmt: &If,
-    ) -> Option<TypedIfStmt> {
-        let typed_condition = match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &if_stmt.condition) {
+    fn resolve_if_stmt(&mut self, module_id: ModuleID, scope: LocalScopeRef, if_stmt: &If) -> Option<TypedIfStmt> {
+        let typed_condition = match self.resolve_expr(module_id, Some(Rc::clone(&scope)), &if_stmt.condition) {
             Some(typed_expr) => typed_expr,
             None => return None,
         };
 
         let consequent_scope_id = generate_scope_id();
-        let consequent_scope = LocalScope::new(Some(local_scope.clone()));
+        let consequent_scope = LocalScope::new(Some(scope.clone()));
         self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
 
         let typed_consequent = match self.resolve_block_stmt(consequent_scope_id, consequent_scope, &if_stmt.consequent)
@@ -2159,7 +2145,7 @@ impl Resolver {
         let typed_alternate = {
             if let Some(alternate) = &if_stmt.alternate {
                 let alternate_scope_id = generate_scope_id();
-                let alternate_scope = LocalScope::new(Some(local_scope.clone()));
+                let alternate_scope = LocalScope::new(Some(scope.clone()));
                 self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
 
                 match self.resolve_block_stmt(alternate_scope_id, alternate_scope.clone(), &*alternate) {
@@ -2174,7 +2160,7 @@ impl Resolver {
         let mut branches: Vec<TypedIfStmt> = Vec::new();
 
         for else_if_stmt in &if_stmt.branches {
-            let typed_if = match self.resolve_if_stmt(module_id, local_scope.clone(), else_if_stmt) {
+            let typed_if = match self.resolve_if_stmt(module_id, scope.clone(), else_if_stmt) {
                 Some(typed_if) => typed_if,
                 None => continue,
             };
@@ -2194,7 +2180,7 @@ impl Resolver {
     fn resolve_block_stmt(
         &mut self,
         scope_id: ScopeID,
-        local_scope: LocalScopeRef,
+        scope: LocalScopeRef,
         block_statement: &BlockStmt,
     ) -> Option<TypedBlockStmt> {
         let module_id = self.current_module.unwrap();
@@ -2204,9 +2190,7 @@ impl Resolver {
         for stmt in &block_statement.exprs {
             match stmt {
                 Stmt::Defer(defer) => {
-                    if let Some(typed_stmt) =
-                        self.resolve_stmt(module_id, scope_id, local_scope.clone(), &defer.operand)
-                    {
+                    if let Some(typed_stmt) = self.resolve_stmt(module_id, scope_id, scope.clone(), &defer.operand) {
                         defers.push(TypedDeferStmt {
                             operand: Box::new(typed_stmt),
                             loc: SourceLoc::from_loc(defer.loc.clone(), self.current_file_path()),
@@ -2214,7 +2198,7 @@ impl Resolver {
                     }
                 }
                 _ => {
-                    if let Some(typed_stmt) = self.resolve_stmt(module_id, scope_id, local_scope.clone(), stmt) {
+                    if let Some(typed_stmt) = self.resolve_stmt(module_id, scope_id, scope.clone(), stmt) {
                         typed_body.push(typed_stmt);
                     }
                 }
@@ -2233,13 +2217,13 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         scope_id: ScopeID,
-        local_scope: LocalScopeRef,
+        scope: LocalScopeRef,
         export_tuple: &ExportTuple,
     ) -> Option<TypedStmt> {
         let var_type = export_tuple.ty.as_ref().and_then(|ty_spec| {
             self.resolve_type(
                 &None,
-                Some(local_scope.clone()),
+                Some(scope.clone()),
                 module_id,
                 ty_spec.clone(),
                 export_tuple.loc.clone(),
@@ -2250,14 +2234,14 @@ impl Resolver {
         let typed_rhs = export_tuple
             .rhs
             .as_ref()
-            .and_then(|expr| self.resolve_expr(module_id, Some(local_scope.clone()), expr));
+            .and_then(|expr| self.resolve_expr(module_id, Some(scope.clone()), expr));
 
         let define_identifier = |this: &mut Resolver, ident: &Ident| -> Option<SymbolID> {
             let symbol_id = generate_symbol_id();
 
-            let mut local_scope_ref = local_scope.borrow_mut();
+            let mut scope_ref = scope.borrow_mut();
 
-            if local_scope_ref.resolve(&ident.value).is_some() {
+            if scope_ref.resolve(&ident.value).is_some() {
                 this.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
@@ -2288,12 +2272,12 @@ impl Resolver {
                 typed_variable: typed_variable.clone(),
             };
 
-            local_scope_ref.insert(
+            scope_ref.insert(
                 ident.as_string(),
                 LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
             );
 
-            drop(local_scope_ref);
+            drop(scope_ref);
             Some(symbol_id)
         };
 
@@ -2316,7 +2300,7 @@ impl Resolver {
                             let inner_stmt = self.resolve_export_tuple(
                                 module_id,
                                 scope_id,
-                                local_scope.clone(),
+                                scope.clone(),
                                 &ExportTuple {
                                     pattern: inner_export,
                                     ty: None,
@@ -2352,28 +2336,26 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         scope_id: ScopeID,
-        local_scope: LocalScopeRef,
+        scope: LocalScopeRef,
         stmt: &Stmt,
     ) -> Option<TypedStmt> {
         let typed_stmt = match stmt {
-            Stmt::ExportTuple(export_tuple) => {
-                self.resolve_export_tuple(module_id, scope_id, local_scope, export_tuple)
-            }
+            Stmt::ExportTuple(export_tuple) => self.resolve_export_tuple(module_id, scope_id, scope, export_tuple),
             Stmt::Variable(variable) => {
-                let typed_var = self.declare_local_variable(module_id, local_scope.clone(), &variable)?;
+                let typed_var = self.declare_local_variable(module_id, scope.clone(), &variable)?;
                 Some(TypedStmt::Variable(typed_var))
             }
             Stmt::Expr(expr) => {
-                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr)?;
+                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&scope)), expr)?;
                 Some(TypedStmt::Expr(typed_expr))
             }
             Stmt::If(if_stmt) => {
-                let typed_if = self.resolve_if_stmt(module_id, Rc::clone(&local_scope), if_stmt)?;
+                let typed_if = self.resolve_if_stmt(module_id, Rc::clone(&scope), if_stmt)?;
                 Some(TypedStmt::If(typed_if))
             }
             Stmt::Return(return_stmt) => {
                 let arg = if let Some(argument) = &return_stmt.argument {
-                    Some(self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), argument)?)
+                    Some(self.resolve_expr(module_id, Some(Rc::clone(&scope)), argument)?)
                 } else {
                     None
                 };
@@ -2385,7 +2367,7 @@ impl Resolver {
             Stmt::Foreach(..) => todo!(),
             Stmt::For(for_stmt) => {
                 let body_scope_id = generate_scope_id();
-                let body_scope = LocalScope::new(Some(local_scope.clone()));
+                let body_scope = LocalScope::new(Some(scope.clone()));
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
                 let initializer = if let Some(variable) = &for_stmt.initializer {
@@ -2419,7 +2401,7 @@ impl Resolver {
             }
             Stmt::While(while_stmt) => {
                 let body_scope_id = generate_scope_id();
-                let body_scope = LocalScope::new(Some(local_scope.clone()));
+                let body_scope = LocalScope::new(Some(scope.clone()));
                 self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
                 let cond = self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition)?;
@@ -2434,11 +2416,11 @@ impl Resolver {
                 }))
             }
             Stmt::Switch(switch) => {
-                let operand = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &switch.operand)?;
+                let operand = self.resolve_expr(module_id, Some(Rc::clone(&scope)), &switch.operand)?;
 
                 let mut cases: Vec<TypedSwitchCase> = Vec::new();
                 for case in &switch.cases {
-                    let case_scope_rc = LocalScope::new(Some(local_scope.clone()));
+                    let case_scope_rc = LocalScope::new(Some(scope.clone()));
                     let case_scope_id = generate_scope_id();
                     self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
 
@@ -2447,7 +2429,7 @@ impl Resolver {
                     for pattern in &case.patterns {
                         let typed_pattern = match pattern {
                             SwitchCasePattern::Expr(expr) => {
-                                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr)?;
+                                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&scope)), &expr)?;
                                 let loc = typed_expr.loc.clone();
                                 TypedSwitchCasePattern::Expr(typed_expr, loc)
                             }
@@ -2516,8 +2498,8 @@ impl Resolver {
                                 )
                             }
                             SwitchCasePattern::Range(range) => {
-                                let lower = self.resolve_expr(module_id, Some(local_scope.clone()), &range.lower);
-                                let upper = self.resolve_expr(module_id, Some(local_scope.clone()), &range.upper);
+                                let lower = self.resolve_expr(module_id, Some(scope.clone()), &range.lower);
+                                let upper = self.resolve_expr(module_id, Some(scope.clone()), &range.upper);
 
                                 TypedSwitchCasePattern::Range(TypedRange {
                                     lower: lower?,
@@ -2544,7 +2526,7 @@ impl Resolver {
 
                 let default_case = if let Some(default_case) = &switch.default_case {
                     let body_scope_id = generate_scope_id();
-                    let body_scope = LocalScope::new(Some(local_scope.clone()));
+                    let body_scope = LocalScope::new(Some(scope.clone()));
                     self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
                     Some(self.resolve_block_stmt(body_scope_id, body_scope.clone(), &default_case)?)
@@ -2561,26 +2543,26 @@ impl Resolver {
             }
             Stmt::Enum(enum_decl) => {
                 let typed_stmt =
-                    self.resolve_enum_stmt(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id))?;
+                    self.resolve_enum_stmt(module_id, Some(Rc::clone(&scope)), enum_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
             Stmt::Union(union_decl) => {
                 let typed_stmt =
-                    self.resolve_union_stmt(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id))?;
+                    self.resolve_union_stmt(module_id, Some(Rc::clone(&scope)), union_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
             Stmt::Interface(interface) => {
-                let typed_stmt = self.resolve_interface_stmt(module_id, Some(local_scope.clone()), interface)?;
+                let typed_stmt = self.resolve_interface_stmt(module_id, Some(scope.clone()), interface)?;
                 Some(typed_stmt)
             }
             Stmt::Struct(struct_decl) => {
                 let typed_stmt =
-                    self.resolve_struct_stmt(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id))?;
+                    self.resolve_struct_stmt(module_id, Some(scope.clone()), struct_decl, Some(scope_id))?;
                 Some(typed_stmt)
             }
             Stmt::BlockStmt(block_statement) => {
                 let scope_id = generate_scope_id();
-                let new_local_scope = LocalScope::new(Some(local_scope.clone()));
+                let new_local_scope = LocalScope::new(Some(scope.clone()));
 
                 self.insert_scope_ref(module_id, scope_id, new_local_scope.clone());
 
@@ -2594,22 +2576,19 @@ impl Resolver {
                 loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.current_file_path()),
             })),
             Stmt::Typedef(typedef) => {
-                let typed_stmt = self.resolve_typedef_stmt(module_id, Some(local_scope.clone()), &typedef)?;
+                let typed_stmt = self.resolve_typedef_stmt(module_id, Some(scope.clone()), &typedef)?;
                 Some(typed_stmt)
             }
             Stmt::GlobalVar(..) | Stmt::FuncDef(..) | Stmt::FuncDecl(..) | Stmt::Import(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::InvalidStatement),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        stmt.get_loc(),
-                        self.current_file_path(),
-                    ))),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(stmt.loc(), self.current_file_path()))),
                     hint: None,
                 });
                 None
             }
-            Stmt::Label(label) => self.resolve_label(local_scope, label),
+            Stmt::Label(label) => self.resolve_label(scope, label),
             Stmt::Goto(goto) => self.resolve_goto(goto),
             Stmt::Defer(_) => unreachable!(),
         };
@@ -2625,10 +2604,10 @@ impl Resolver {
         }))
     }
 
-    fn resolve_label(&mut self, local_scope: LocalScopeRef, label: &Label) -> Option<TypedStmt> {
+    fn resolve_label(&mut self, scope: LocalScopeRef, label: &Label) -> Option<TypedStmt> {
         {
-            let local_scope_ref = local_scope.borrow();
-            if local_scope_ref.resolve_label(&label.name.as_string()).is_some() {
+            let scope_ref = scope.borrow();
+            if scope_ref.resolve_label(&label.name.as_string()).is_some() {
                 // label already declare for current scope
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -2648,8 +2627,8 @@ impl Resolver {
         let label_id = generate_label_id();
 
         {
-            let mut local_scope_ref = local_scope.borrow_mut();
-            local_scope_ref.insert_label(label.name.as_string(), label_id);
+            let mut scope_ref = scope.borrow_mut();
+            scope_ref.insert_label(label.name.as_string(), label_id);
         }
 
         Some(TypedStmt::Label(TypedLabelStmt {
@@ -2665,10 +2644,10 @@ impl Resolver {
         module_id: ModuleID,
         ident: &Ident,
     ) -> Option<SymbolID> {
-        if let Some(local_scope_rc) = &local_scope_opt {
-            let local_scope = local_scope_rc.borrow();
-            if let Some(local_symbol) = local_scope.resolve(&ident.value) {
-                return Some(local_symbol.get_symbol_id());
+        if let Some(scope_rc) = &local_scope_opt {
+            let scope = scope_rc.borrow();
+            if let Some(local_symbol) = scope.resolve(&ident.value) {
+                return Some(local_symbol.symbol_id());
             }
         }
 
@@ -2751,7 +2730,7 @@ impl Resolver {
         let symbol_name = symbol_ident.value;
 
         let module_alias = module_segments_as_string(module_import.segments);
-        let Some(target_module_id) = self.get_module_alias(&module_alias) else {
+        let Some(target_module_id) = self.resolve_module_alias(&module_alias) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::ModuleImportNotFound {
@@ -2936,20 +2915,19 @@ impl Resolver {
 
     fn resolve_lambda_expr(&mut self, module_id: ModuleID, lambda: &Lambda) -> Option<TypedExprStmt> {
         let scope_id = generate_scope_id();
-        let local_scope_rc = LocalScope::new(None);
-        self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
+        let scope_rc = LocalScope::new(None);
+        self.insert_scope_ref(module_id, scope_id, scope_rc.clone());
 
-        let (list, variadic) =
-            self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &None, &lambda.params)?;
+        let (list, variadic) = self.resolve_func_params(module_id, Some(scope_rc.clone()), &None, &lambda.params)?;
 
-        let body = match self.resolve_block_stmt(scope_id, local_scope_rc.clone(), &lambda.body) {
+        let body = match self.resolve_block_stmt(scope_id, scope_rc.clone(), &lambda.body) {
             Some(typed_block) => Box::new(typed_block),
             None => return None,
         };
 
         let return_type = self.resolve_type(
             &None,
-            Some(local_scope_rc),
+            Some(scope_rc),
             module_id,
             lambda.return_type.clone(),
             lambda.loc.clone(),
@@ -3277,7 +3255,7 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         type_specifier: &TypeSpecifier,
     ) -> Option<TypedExprStmt> {
-        let (loc, span_end) = type_specifier.get_loc();
+        let (loc, span_end) = type_specifier.loc();
 
         let symbol_id = match type_specifier {
             TypeSpecifier::Ident(ident) => self.resolve_ident(local_scope_opt, module_id, &ident)?,
@@ -3305,7 +3283,7 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(
                 symbol_id,
-                SourceLoc::from_loc(type_specifier.get_loc().0, self.current_file_path()),
+                SourceLoc::from_loc(type_specifier.loc().0, self.current_file_path()),
             ),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
@@ -3580,7 +3558,7 @@ impl Resolver {
         drop(module_aliases);
     }
 
-    fn get_module_alias(&self, group_name: &ModuleGroupName) -> Option<ModuleID> {
+    fn resolve_module_alias(&self, group_name: &ModuleGroupName) -> Option<ModuleID> {
         let module_aliases = self.module_aliases.lock().unwrap();
         let imported_modules = module_aliases.get(&self.current_module.unwrap()).unwrap();
         let option = imported_modules.get(group_name).cloned();
@@ -3588,7 +3566,7 @@ impl Resolver {
         option
     }
 
-    fn get_module_id_by_file_path(&self, module_file_path: String) -> Option<ModuleID> {
+    fn resolve_module_id_by_file_path(&self, module_file_path: String) -> Option<ModuleID> {
         let file_paths = self.file_paths.lock().unwrap();
         let module_id_opt = match file_paths.iter().find(|(_, fp)| **fp == module_file_path) {
             Some((module_id, _)) => Some(*module_id),
@@ -3611,10 +3589,10 @@ impl Resolver {
         module_import: &ModuleImport,
     ) -> Option<SymbolID> {
         if let Some(ident) = module_import.as_identifier() {
-            if let Some(local_scope_rc) = local_scope_opt {
-                let local_scope = local_scope_rc.borrow();
-                if let Some(local_symbol) = local_scope.resolve(&ident.value) {
-                    return Some(local_symbol.get_symbol_id());
+            if let Some(scope_rc) = local_scope_opt {
+                let scope = scope_rc.borrow();
+                if let Some(local_symbol) = scope.resolve(&ident.value) {
+                    return Some(local_symbol.symbol_id());
                 }
             }
 
@@ -3662,7 +3640,7 @@ impl Resolver {
         file_path
     }
 
-    pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<String> {
+    pub fn resolve_module_file_path(&self, module_id: ModuleID) -> Option<String> {
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&module_id) {
             Some(module_file_path) => Some(module_file_path.clone()),
@@ -3671,6 +3649,12 @@ impl Resolver {
         drop(file_paths);
         file_path
     }
+}
+
+/// Constructs a unique name for a struct method by prefixing with the struct's SymbolID.
+/// This allows the resolver to differentiate between `Point::distance()` and `Circle::distance()`.
+fn method_symbol_name_for_struct(struct_id: SymbolID, method_name: String) -> String {
+    format!("{}{}", struct_id, method_name)
 }
 
 fn return_type_or_void_as_default(
@@ -3697,10 +3681,6 @@ impl Visiting {
             done: HashSet::new(),
         }
     }
-}
-
-fn get_method_symbol_name(struct_symbol_id: SymbolID, method_name: String) -> String {
-    format!("{}{}", struct_symbol_id, method_name)
 }
 
 unsafe impl Send for Resolver {}

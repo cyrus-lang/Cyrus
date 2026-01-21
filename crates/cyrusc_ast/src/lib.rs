@@ -50,7 +50,7 @@ impl ProgramTree {
         }
     }
 
-    pub fn get_imports(&self) -> Vec<Import> {
+    pub fn import_stmts(&self) -> Vec<Import> {
         let mut imports: Vec<Import> = Vec::new();
 
         self.body.iter().for_each(|stmt| match stmt {
@@ -289,7 +289,7 @@ pub struct ModuleImport {
 impl ModuleImport {
     pub fn as_identifier(&self) -> Option<Ident> {
         if self.segments.len() == 1 {
-            match self.segments.last().unwrap() {
+            match self.segments.last()? {
                 ModuleSegment::SubModule(ident) => Some(ident.clone()),
                 ModuleSegment::Single(_) => None,
             }
@@ -331,14 +331,14 @@ impl TypeSpecifier {
         }
     }
 
-    pub fn get_loc(&self) -> (Location, usize) {
+    pub fn loc(&self) -> (Location, usize) {
         match self {
             TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
             TypeSpecifier::Ident(ident) => (ident.loc.clone(), ident.span.end),
-            TypeSpecifier::Const(inner) => inner.get_loc(),
-            TypeSpecifier::Array(array) => array.element_type.get_loc(),
+            TypeSpecifier::Const(inner) => inner.loc(),
+            TypeSpecifier::Array(array) => array.element_type.loc(),
             TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
-            TypeSpecifier::Deref(inner) => inner.get_loc(),
+            TypeSpecifier::Deref(inner) => inner.loc(),
             TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
             TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
             TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
@@ -786,7 +786,8 @@ impl FuncDef {
 }
 
 impl FuncDecl {
-    pub fn get_usable_name(&self) -> String {
+    /// Returns the function's effective name, preferring the renamed version if available.
+    pub fn usable_name(&self) -> String {
         match &self.renamed_as {
             Some(ident) => ident.value.clone(),
             None => self.ident.value.clone(),
@@ -919,7 +920,7 @@ pub struct If {
 }
 
 impl Stmt {
-    pub fn get_loc(&self) -> Location {
+    pub fn loc(&self) -> Location {
         match self {
             Stmt::Interface(interface) => interface.loc.clone(),
             Stmt::Variable(variable) => variable.loc.clone(),

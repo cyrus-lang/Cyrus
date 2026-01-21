@@ -40,11 +40,20 @@ impl<'a> AnalysisContext<'a> {
         generic_params: Option<&TypedGenericParamsList>,
         expected_type: Option<SemanticType>,
     ) -> (Option<TypedGenericParamsList>, Option<Rc<GenericMappingCtx>>) {
-        // extract use-site generics (may or may not exist)
-        let (generic_params, mut mapping_ctx) = sema_ty
-            .extract_generic_for_use(generic_params)
-            .map(|(params, ctx)| (Some(params), Some(ctx)))
-            .unwrap_or((None, None));
+        // try to extract generics from the semantic type
+        let mut mapping_ctx = None;
+        let mut params = None;
+
+        if let Some(generic_type) = sema_ty.as_generic_type() {
+            if let Some(generic_params) = generic_type
+                .altered_generic_params
+                .clone()
+                .or_else(|| generic_params.cloned())
+            {
+                params = Some(generic_params);
+                mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
+            }
+        }
 
         // merge expected-type generics if present
         if let Some(expected_ty) = expected_type {
@@ -55,8 +64,8 @@ impl<'a> AnalysisContext<'a> {
 
                 mapping_ctx = Some(match mapping_ctx {
                     Some(old_ctx) => Rc::new(GenericMappingCtx::new_manual(
-                        old_ctx.get_named_mapping().clone(),
-                        old_ctx.get_links().clone(),
+                        old_ctx.named_mapping().clone(),
+                        old_ctx.links().clone(),
                         Some(parent_generic_mapping_id),
                     )),
                     None => Rc::new({
@@ -68,7 +77,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        (generic_params, mapping_ctx)
+        (params, mapping_ctx)
     }
 
     pub(crate) fn try_infer_generic_param_as_expected_type(
@@ -87,7 +96,7 @@ impl<'a> AnalysisContext<'a> {
         let ctx = generic_type.mapping_ctx.borrow();
 
         let inferred_sema_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
-            ctx.get_with_name(&*mapping_ctx_arena, &generic_param.param_name.name)
+            ctx.resolve_with_name(&*mapping_ctx_arena, &generic_param.param_name.name)
                 .or(generic_param.default.clone().map(|sema_ty| *sema_ty))
         });
 
@@ -123,7 +132,7 @@ impl<'a> AnalysisContext<'a> {
         let (mut template_body, mapping_ctx, base_symbol) = {
             let ctx = self.monomorph_registry.lock().unwrap();
 
-            if let Some(monomorph_key) = ctx.get_func_entry_by_mapping_ctx(
+            if let Some(monomorph_key) = ctx.resolve_func_entry_by_mapping_ctx(
                 self.mapping_ctx_arena.clone(),
                 func_sig.symbol_id.unwrap(),
                 generic_type.mapping_ctx.clone(),
@@ -132,7 +141,7 @@ impl<'a> AnalysisContext<'a> {
                 return Some(monomorph_key.clone());
             }
 
-            let generic_template_entry = ctx.get_template(func_sig.symbol_id.unwrap()).unwrap().clone();
+            let generic_template_entry = ctx.resolve_template(func_sig.symbol_id.unwrap()).unwrap().clone();
 
             let mapping = generic_type.mapping_ctx.borrow().clone();
             let base = func_sig.symbol_id.unwrap();
@@ -142,7 +151,7 @@ impl<'a> AnalysisContext<'a> {
 
         let template_body_scope = self
             .resolver
-            .get_scope_ref(func_sig.module_id, template_body.scope_id)
+            .resolve_local_scope(func_sig.module_id, template_body.scope_id)
             .unwrap();
 
         // make new scope for specialized func body
@@ -213,20 +222,23 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
-        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, body_scope_id).unwrap();
+        let scope_rc = self
+            .resolver
+            .resolve_local_scope(self.module_id, body_scope_id)
+            .unwrap();
         {
-            let mut local_scope = local_scope_rc.borrow_mut();
+            let mut scope = scope_rc.borrow_mut();
 
             for param_kind in &params.list {
                 match param_kind {
                     TypedFuncParamKind::FuncParam(typed_func_param) => {
-                        local_scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
+                        scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
                             resolved_var.typed_variable.ty = Some(typed_func_param.ty.clone());
                         });
                     }
                     TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                        local_scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
+                        scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
                             resolved_var.typed_variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
                         });
@@ -237,7 +249,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(variadic) = &params.variadic {
                 match variadic {
                     TypedFuncVariadicParams::Typed(ident, sema_ty) => {
-                        local_scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
+                        scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
                             resolved_var.typed_variable.ty = Some(sema_ty.clone());
                         });
@@ -267,12 +279,12 @@ impl<'a> AnalysisContext<'a> {
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .unwrap();
 
-        let symbol_generic_params = sym.get_generic_params();
+        let symbol_generic_params = sym.symbol_generic_params();
         let generic_params = match generic_params.or(symbol_generic_params.as_ref()) {
             Some(generic_params) => generic_params,
             None => {
                 if type_args.is_empty() {
-                    return Ok(Some((sym.get_symbol_id(), None)));
+                    return Ok(Some((sym.symbol_id(), None)));
                 } else {
                     return Err(Diag {
                         level: DiagLevel::Error,
@@ -298,7 +310,7 @@ impl<'a> AnalysisContext<'a> {
         ));
 
         let mut generic_type = GenericType::new_unresolved(
-            sym.get_symbol_id(),
+            sym.symbol_id(),
             type_args,
             generic_mapping_ctx,
             self.mapping_ctx_arena.clone(),
@@ -313,7 +325,7 @@ impl<'a> AnalysisContext<'a> {
                 &(self.symbol_formatter)(scope_id_opt),
             )?;
         });
-        Ok(Some((sym.get_symbol_id(), Some(generic_type))))
+        Ok(Some((sym.symbol_id(), Some(generic_type))))
     }
 
     // TODO
@@ -323,7 +335,7 @@ impl<'a> AnalysisContext<'a> {
         expr_ty: &SemanticType,
         target_ty: &SemanticType,
     ) -> Option<(SemanticType, SemanticType)> {
-        match (expr_ty.get_const_inner(), target_ty.get_const_inner()) {
+        match (expr_ty.const_inner(), target_ty.const_inner()) {
             (SemanticType::Array(value_array_type), SemanticType::Array(target_array_type)) => Some((
                 *value_array_type.element_type.clone(),
                 *target_array_type.element_type.clone(),
@@ -331,9 +343,10 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::Pointer(value_inner), SemanticType::Pointer(target_inner)) => {
                 Some((*value_inner.clone(), *target_inner.clone()))
             }
-            (SemanticType::Tuple(value_tuple_type), SemanticType::Tuple(target_tuple_type)) => {
-                todo!();
-            }
+            // TODO: TupleType
+            // (SemanticType::Tuple(value_tuple_type), SemanticType::Tuple(target_tuple_type)) => {
+            //     todo!();
+            // }
             // TODO: UnnamedStruct
             // TODO: FuncType
             // TODO: DynamicType
@@ -382,13 +395,13 @@ impl<'a> AnalysisContext<'a> {
 
             // resolve linked parent by name
             let linked_parent_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                mapping_ctx.get_linked_by_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
+                mapping_ctx.resolve_linked_by_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
             });
 
             // if a local value exists, use it immediately
             {
                 let sema_ty_opt = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                    mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
+                    mapping_ctx.resolve_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
                 });
 
                 if let Some(sema_ty) = sema_ty_opt {
@@ -404,10 +417,10 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // if any parent directly has a concrete value for this symbol id, use it
-            if let Some(parent_sema_ty) = mapping_ctx.get_parent_id().and_then(|parent_id| {
+            if let Some(parent_sema_ty) = mapping_ctx.parent_id().and_then(|parent_id| {
                 mapping_ctx_arena!(self, mapping_ctx_arena, {
                     let generic_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
-                    generic_mapping_ctx.get_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
+                    generic_mapping_ctx.resolve_with_name(&*mapping_ctx_arena, &generic_mapping_entry.name)
                 })
             }) {
                 let substitution_mapping_ctx = Rc::new(RefCell::new(mapping_ctx.clone()));
@@ -430,7 +443,7 @@ impl<'a> AnalysisContext<'a> {
             {
                 if let Some(parent_entry) = linked_parent_opt {
                     let parent_sema_ty = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                        mapping_ctx.get_with_name(&*mapping_ctx_arena, &parent_entry.name)
+                        mapping_ctx.resolve_with_name(&*mapping_ctx_arena, &parent_entry.name)
                     });
 
                     if let Some(sema_ty) = parent_sema_ty {

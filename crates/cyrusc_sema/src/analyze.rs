@@ -68,8 +68,8 @@ macro_rules! update_global_symbol {
 #[macro_export]
 macro_rules! update_local_symbol {
     ($self:expr, $scope_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
-        let local_scope_rc = $self.resolver.get_scope_ref($self.module_id, $scope_id).unwrap();
-        local_scope_rc
+        let scope_rc = $self.resolver.resolve_local_scope($self.module_id, $scope_id).unwrap();
+        scope_rc
             .borrow_mut()
             .with_symbol_id_mut($symbol_id, |local_symbol| match &mut local_symbol.kind {
                 $pattern => {
@@ -510,7 +510,7 @@ impl<'a> AnalysisContext<'a> {
                 let variant_opt = enum_sig
                     .variants
                     .iter_mut()
-                    .find(|variant| variant.get_identifier().as_string() == *ident);
+                    .find(|variant| variant.ident().as_string() == *ident);
 
                 if variant_opt.is_none() {
                     self.reporter.report(Diag {
@@ -534,7 +534,7 @@ impl<'a> AnalysisContext<'a> {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
-                                        variant_name: variant.get_identifier().as_string(),
+                                        variant_name: variant.ident().as_string(),
                                         expected: actual_enum_fields_len as u32,
                                         provided: valued_fields.len() as u32,
                                     }),
@@ -643,15 +643,15 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let operand_ty = match self.analyze_expr(scope_id_opt, &mut typed_switch.operand, None) {
-            Some(sema_ty) => sema_ty.get_const_inner().clone(),
+            Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return FlowState::Reachable,
         };
 
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        match if let Some(enum_symbol_id) = operand_ty.get_const_inner().as_enum_symbol_id() {
+        match if let Some(enum_symbol_id) = operand_ty.const_inner().as_enum_symbol_id() {
             Some((enum_symbol_id, None))
-        } else if let Some(generic_type) = operand_ty.get_const_inner().as_generic_type() {
+        } else if let Some(generic_type) = operand_ty.const_inner().as_generic_type() {
             match self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
@@ -923,18 +923,18 @@ impl<'a> AnalysisContext<'a> {
         } else if let Some(typed_expr) = &mut typed_return.arg {
             if let Some(sema_ty) = self.analyze_expr(Some(scope_id), typed_expr, Some(return_type.clone())) {
                 let expected = format_sema_ty(
-                    return_type.get_const_inner().clone(),
+                    return_type.const_inner().clone(),
                     &(self.symbol_formatter)(Some(scope_id)),
                 );
                 let got = format_sema_ty(
-                    sema_ty.get_const_inner().clone(),
+                    sema_ty.const_inner().clone(),
                     &(self.symbol_formatter)(Some(scope_id)),
                 );
 
                 if !self.check_type_mismatch(
                     Some(scope_id),
-                    sema_ty.get_const_inner().clone(),
-                    return_type.get_const_inner().clone(),
+                    sema_ty.const_inner().clone(),
+                    return_type.const_inner().clone(),
                     typed_return.loc.clone(),
                 ) {
                     self.reporter.report(Diag {
@@ -974,10 +974,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_goto(&mut self, scope_id: ScopeID, typed_goto: &mut TypedGotoStmt) {
-        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
-        let local_scope_ref = local_scope_rc.borrow();
+        let scope_rc = self.resolver.resolve_local_scope(self.module_id, scope_id).unwrap();
+        let scope_ref = scope_rc.borrow();
 
-        if let Some(label_id) = local_scope_ref.resolve_label(&typed_goto.name) {
+        if let Some(label_id) = scope_ref.resolve_label(&typed_goto.name) {
             typed_goto.label_id = Some(label_id);
         } else {
             self.reporter.report(Diag {
@@ -989,7 +989,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
-        drop(local_scope_ref);
+        drop(scope_ref);
     }
 
     fn analyze_continue(&mut self, typed_continue: &TypedContinueStmt) -> FlowState {
@@ -1017,14 +1017,14 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
                 kind: Box::new(AnalyzerDiagKind::UnreachableCode),
-                location: Some(DiagLoc::new(typed_stmt.get_loc())),
+                location: Some(DiagLoc::new(typed_stmt.loc())),
                 hint: None,
             });
         }
     }
 
     fn is_const_foldable_integer(&self, sema_ty: SemanticType) -> bool {
-        match sema_ty.get_const_inner().as_basic_type() {
+        match sema_ty.const_inner().as_basic_type() {
             Some(basic_concrete_type) => basic_concrete_type.is_integer(),
             None => false,
         }
@@ -1109,7 +1109,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(target_type) = &typed_global_var.ty {
                 let expr_type = expr.sema_ty.clone().unwrap();
 
-                if *expr_type.get_const_inner() != *target_type.get_const_inner() {
+                if *expr_type.const_inner() != *target_type.const_inner() {
                     let lhs_type = format_sema_ty(target_type.clone(), &(self.symbol_formatter)(None));
                     let rhs_type = format_sema_ty(expr_type.clone(), &(self.symbol_formatter)(None));
 
@@ -1125,11 +1125,11 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_local_unused_symbols(&mut self, scope_id: ScopeID) {
-        if let Some(local_scope_rc) = self.resolver.get_scope_ref(self.module_id, scope_id) {
-            let local_scope = local_scope_rc.borrow();
-            let symbols_clone = local_scope.symbols.clone();
+        if let Some(scope_rc) = self.resolver.resolve_local_scope(self.module_id, scope_id) {
+            let scope = scope_rc.borrow();
+            let symbols_clone = scope.symbols.clone();
             let symbols_iter = symbols_clone.values().into_iter();
-            drop(local_scope);
+            drop(scope);
 
             for local_symbol in symbols_iter {
                 if !local_symbol.used {
@@ -1179,7 +1179,7 @@ impl<'a> AnalysisContext<'a> {
         impls: &Vec<TypedIdentifier>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         for ident in impls {
             let sym = self
@@ -1269,10 +1269,10 @@ impl<'a> AnalysisContext<'a> {
             for method_id in methods.values().cloned() {
                 let sym = self.resolver.resolve_local_or_global_symbol(None, method_id).unwrap();
 
-                if let Some(method_generic_params) = sym.get_method_generic_params() {
+                if let Some(method_generic_params) = sym.symbol_method_generic_params() {
                     for method_generic_param in &method_generic_params.list {
                         if generic_params
-                            .get_named(&method_generic_param.param_name.name)
+                            .lookup_named(&method_generic_param.param_name.name)
                             .is_some()
                         {
                             self.reporter.report(Diag {
@@ -1967,7 +1967,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(sema_ty) = &typed_variable.ty {
             typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone(), false);
@@ -1998,9 +1998,9 @@ impl<'a> AnalysisContext<'a> {
             self.validate_variable_type(sema_ty, typed_variable.rhs.is_some(), typed_variable.loc.clone());
         }
 
-        local_scope_opt.inspect(|local_scope| {
-            let mut local_scope_ref = local_scope.borrow_mut();
-            local_scope_ref.insert(
+        local_scope_opt.inspect(|scope| {
+            let mut scope_ref = scope.borrow_mut();
+            scope_ref.insert(
                 typed_variable.name.clone(),
                 LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                     module_id: self.module_id,
@@ -2008,7 +2008,7 @@ impl<'a> AnalysisContext<'a> {
                     typed_variable: typed_variable.clone(),
                 })),
             );
-            drop(local_scope_ref);
+            drop(scope_ref);
         });
 
         if let Some(expr) = &mut typed_variable.rhs {
@@ -2069,7 +2069,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn validate_variable_type(&mut self, sema_ty: &SemanticType, is_init: bool, loc: SourceLoc) {
-        let sema_ty = sema_ty.get_const_inner();
+        let sema_ty = sema_ty.const_inner();
 
         if sema_ty.is_void() {
             self.reporter.report(Diag {
@@ -2109,7 +2109,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn validate_field_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {
-        let sema_ty = sema_ty.get_const_inner();
+        let sema_ty = sema_ty.const_inner();
 
         if sema_ty.is_void() {
             self.reporter.report(Diag {
@@ -2131,7 +2131,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn validate_param_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {
-        let sema_ty = sema_ty.get_const_inner();
+        let sema_ty = sema_ty.const_inner();
 
         if sema_ty.is_void() {
             self.reporter.report(Diag {

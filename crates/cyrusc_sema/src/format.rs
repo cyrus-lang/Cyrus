@@ -41,7 +41,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
     ) -> String {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| resolver.get_scope_ref(module_id, scope_id).clone());
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| resolver.resolve_local_scope(module_id, scope_id).clone());
 
         let Some(sym) = resolver.resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id) else {
             return "SYMBOL".to_string();
