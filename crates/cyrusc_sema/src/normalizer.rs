@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
 use cyrusc_tast::{
@@ -368,8 +368,6 @@ impl<'a> AnalysisContext<'a> {
 
                     sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone(), false)?;
 
-                    self.mark_local_var_analyzed(scope_id_opt.unwrap(), resolved_variable.symbol_id, sema_ty.clone());
-
                     Some(if var.is_const { sema_ty.as_const() } else { sema_ty })
                 }
                 LocalSymbolKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(
@@ -447,12 +445,6 @@ impl<'a> AnalysisContext<'a> {
 
                     sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone(), false)?;
 
-                    self.mark_global_var_analyzed(
-                        resolved_global_var.module_id,
-                        resolved_global_var.symbol_id,
-                        sema_ty.clone(),
-                    );
-
                     Some(sema_ty)
                 }
                 SymbolEntryKind::Struct(s) => {
@@ -481,24 +473,6 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
         }
-    }
-
-    fn mark_global_var_analyzed(&self, module_id: ModuleID, symbol_id: SymbolID, sema_ty: SemanticType) {
-        update_global_symbol!(self, module_id, symbol_id,
-            SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
-                resolved_var.global_var_sig.analyzed = true;
-                resolved_var.global_var_sig.ty = Some(sema_ty);
-            }
-        );
-    }
-
-    fn mark_local_var_analyzed(&self, scope_id: ScopeID, symbol_id: SymbolID, sema_ty: SemanticType) {
-        update_local_symbol!(self, scope_id, symbol_id,
-            LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                resolved_variable.typed_variable.analyzed = true;
-                resolved_variable.typed_variable.ty = Some(sema_ty);
-            }
-        );
     }
 
     fn resolve_generic_typedef(

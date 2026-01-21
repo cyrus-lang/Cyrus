@@ -183,19 +183,6 @@ impl MonomorphRegistry {
 
         (key, id)
     }
-
-    pub fn mark_analyzed(&mut self, key: &MonomorphKey) {
-        if let Some(MonomorphEntry::Func(e)) = self.map.get_mut(key) {
-            e.analyzed = true;
-        }
-    }
-
-    pub fn needs_analysis(&self, key: &MonomorphKey) -> bool {
-        match self.map.get(key) {
-            Some(MonomorphEntry::Func(e)) => !e.analyzed,
-            _ => false,
-        }
-    }
 }
 
 #[macro_export]
