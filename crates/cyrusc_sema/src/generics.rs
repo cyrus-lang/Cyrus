@@ -34,7 +34,23 @@ use cyrusc_tast::{
 use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn initial_generic_params_and_mapping_ctx(
+    /// Extracts and merges generic parameters and mapping contexts from type information.
+    ///
+    /// This function serves as a starting point for generic type operations by:
+    /// 1. Extracting generic parameters and mapping context from a semantic type (if it's a generic type)
+    /// 2. Merging generic context from an expected type (if provided)
+    /// 3. Preserving the parent relationship in the mapping context hierarchy
+    ///
+    /// # Parameters
+    /// - `sema_ty`: The semantic type to extract generics from (usually the actual/declared type)
+    /// - `declared_generic_params`: Optional generic parameters from the declaration context
+    /// - `expected_type`: Optional expected/contextual type for additional generic merging
+    ///
+    /// # Returns
+    /// A tuple of:
+    /// - `Option<TypedGenericParamsList>`: Extracted/merged generic parameters
+    /// - `Option<Rc<GenericMappingCtx>>`: Combined mapping context with parent relationships
+    pub(crate) fn extract_and_merge_generic_context(
         &mut self,
         sema_ty: &SemanticType,
         generic_params: Option<&TypedGenericParamsList>,
@@ -102,7 +118,7 @@ impl<'a> AnalysisContext<'a> {
 
         // NOTE: here we check that if generic mapping ctx is empty,
         // we consider that there is no expected type for the generic param.
-        // this is special because to prevent nested parent mapping ctx creation in arena.
+        // intended to prevent redundant nested parent mapping ctx insertion into arena.
         if let Some(generic_type) = inferred_sema_ty
             .as_ref()
             .and_then(|sema_ty| sema_ty.as_generic_type().cloned())
