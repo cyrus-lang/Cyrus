@@ -157,7 +157,7 @@ impl<'a> AnalysisContext<'a> {
                 if let SemanticType::UnresolvedSymbol(symbol_id) = sema_ty {
                     *symbol_id
                 } else {
-                    self.normalize_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone(), false)?;
+                    self.normalize_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone())?;
                     return Some(SemanticType::PlainType(PlainType::USize));
                 }
             }
@@ -168,7 +168,8 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let local_scope_opt =
+            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let sym = self
             .resolver
@@ -184,7 +185,6 @@ impl<'a> AnalysisContext<'a> {
                 scope_id_opt,
                 SemanticType::UnresolvedSymbol(symbol_id),
                 sizeof_expr.loc.clone(),
-                false,
             )?;
         }
 
@@ -397,7 +397,8 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let local_scope_opt =
+            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
             let equal_mapping_ctx = mapping_ctx_eq_refcell(

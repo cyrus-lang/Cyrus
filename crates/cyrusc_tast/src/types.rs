@@ -122,8 +122,9 @@ impl SemanticType {
         }
     }
 
-    // Returns symbol ID for both resolved symbols and generic types.
-    pub fn pure_symbol_id(&self) -> Option<SymbolID> {
+    /// Extracts the base symbol ID from either a resolved symbol or generic type.
+    /// Returns `None` for non-symbol types.
+    pub fn maybe_generic_base_symbol_id(&self) -> Option<SymbolID> {
         match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
             SemanticType::GenericType(generic_type) => Some(generic_type.base),

@@ -26,6 +26,7 @@ use cyrusc_tokens::literals::LiteralKind;
 // TODO: Move entire crate and it's logic to cyrusc_interp.
 
 impl<'a> AnalysisContext<'a> {
+    // TODO: Maybe it's a better solution to use `union` or std::Any type to store several variants of integers and floats?
     fn extract_literal_value(&self, typed_literal: &TypedLiteralExpr) -> Option<i128> {
         match &typed_literal.kind {
             LiteralKind::Integer(value, ..) => Some(*value),
@@ -33,7 +34,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn resolve_var_or_global_var_rhs_expr(
+    fn resolve_any_variable_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
@@ -73,21 +74,20 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_expr: &TypedExprStmt,
     ) -> Option<i128> {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let local_scope_opt =
+            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let integer_result = match &typed_expr.kind {
-            TypedExprKind::Symbol(symbol_id, ..) => {
-                match self.resolve_var_or_global_var_rhs_expr(local_scope_opt, *symbol_id) {
-                    Some(var_rhs_typed_expr) => {
-                        if var_rhs_typed_expr.sema_ty.clone().unwrap().is_const() {
-                            Some(self.const_expr_as_raw_integer(scope_id_opt, &var_rhs_typed_expr)?)
-                        } else {
-                            None
-                        }
+            TypedExprKind::Symbol(symbol_id, ..) => match self.resolve_any_variable_expr(local_scope_opt, *symbol_id) {
+                Some(var_rhs_typed_expr) => {
+                    if var_rhs_typed_expr.sema_ty.clone().unwrap().is_const() {
+                        Some(self.const_expr_as_raw_integer(scope_id_opt, &var_rhs_typed_expr)?)
+                    } else {
+                        None
                     }
-                    None => None,
                 }
-            }
+                None => None,
+            },
             TypedExprKind::Literal(typed_literal) => self.extract_literal_value(typed_literal),
             TypedExprKind::Prefix(typed_prefix_expr) => {
                 let integer = self.const_expr_as_raw_integer(scope_id_opt, &typed_prefix_expr.operand)?;
