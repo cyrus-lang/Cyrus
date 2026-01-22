@@ -172,7 +172,7 @@ impl<'a> AnalysisContext<'a> {
         self.deduce_special_exprs(scope_id_opt, typed_expr, expected_type.clone());
 
         let sema_ty = match &mut typed_expr.kind {
-            TypedExprKind::Symbol(symbol_id, ..) => {
+            TypedExprKind::Symbol(symbol_id, loc) => {
                 let local_scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
@@ -181,7 +181,7 @@ impl<'a> AnalysisContext<'a> {
                     .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
                     .unwrap();
 
-                let sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym);
+                let sema_ty = self.resolve_symbol_type(scope_id_opt, sym.symbol_id(), loc.clone());
                 typed_expr.sema_ty = sema_ty.clone();
                 sema_ty
             }
@@ -933,7 +933,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.normalize_type_args(scope_id_opt, struct_init.type_args.as_mut());
 
-        let mut sema_ty = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym.clone())?;
+        let mut sema_ty = self.resolve_symbol_type(scope_id_opt, sym.symbol_id(), struct_init.loc.clone())?;
 
         if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type.clone()) {
             sema_ty = new_sema_ty;

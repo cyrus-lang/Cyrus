@@ -439,7 +439,135 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    pub(crate) fn resolve_full_type_from_local_or_global_symbol(
+    // REVIEW: Refactor and improve this!
+    fn resolve_generic_typedef(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        resolved_typedef: &ResolvedTypedef,
+        type_args: &TypedTypeArgs,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        let typedef_generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
+
+        // typedef is generating an another generic
+        if let Some(mut generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type().cloned() {
+            let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
+
+            match self
+                .init_generic_type_with_symbol_id(
+                    scope_id_opt,
+                    local_scope_opt.clone(),
+                    generic_type.base,
+                    &Some(type_args.clone()),
+                    parent_mapping_ctx,
+                    Some(&typedef_generic_params),
+                    false,
+                    loc,
+                )
+                .transpose()
+                .unwrap()
+            {
+                Ok((_, new_generic_type_opt)) => {
+                    // new generic params gotta be used!
+                    generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+
+                    new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
+                }
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    None
+                }
+            }
+        } else {
+            // typedef itself is generic but it does not generate generic,
+            // so simply initialize generic mapping ctx and substitute the type
+
+            let mapping_ctx = Rc::new(RefCell::new(GenericMappingCtx::new_root()));
+            let mut generic_type = GenericType::new_unresolved(
+                0,
+                type_args.clone(),
+                mapping_ctx.clone(),
+                self.mapping_ctx_arena.clone(),
+                false,
+                loc,
+            );
+
+            mapping_ctx_arena!(self, mapping_ctx_arena, {
+                if let Err(diag) = generic_type.init(
+                    &*mapping_ctx_arena,
+                    typedef_generic_params.clone(),
+                    &(self.symbol_formatter)(scope_id_opt),
+                ) {
+                    self.reporter.report(diag);
+                    return None;
+                }
+
+                substitute_type(
+                    &*mapping_ctx_arena,
+                    resolved_typedef.typedef_sig.ty.clone(),
+                    mapping_ctx,
+                )
+            })
+        }
+    }
+
+    fn resolve_typedef_inner_type(&mut self, resolved_typedef: &ResolvedTypedef) -> Option<SemanticType> {
+        let inner_ty = resolved_typedef.typedef_sig.ty.clone();
+
+        if let Some(mut generic_type) = inner_ty.as_generic_type().cloned() {
+            generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+            Some(SemanticType::GenericType(generic_type))
+        } else {
+            Some(inner_ty)
+        }
+    }
+
+    pub(crate) fn resolve_symbol_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        if let Some(cached_sema_ty) = self.ty_caches.cache.get(&symbol_id) {
+            return Some(cached_sema_ty.clone());
+        }
+
+        if self.ty_caches.push(symbol_id).is_err() {
+            return None;
+        };
+
+        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .or_else(|| {
+                let symbol_entry = self.resolver.lookup_symbol_entry_with_id(symbol_id)?;
+                Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry))
+            });
+
+        let mut sema_ty_opt: Option<SemanticType>;
+
+        if let Some(local_or_global) = sym {
+            sema_ty_opt = self.resolve_symbol_type_internal(scope_id_opt, local_or_global);
+
+            if let Some(ty) = sema_ty_opt.clone() {
+                sema_ty_opt = self.normalize_type(scope_id_opt, ty, loc.clone());
+            }
+        } else {
+            return None;
+        }
+
+        self.ty_caches.pop(symbol_id);
+
+        if let Some(ref final_ty) = sema_ty_opt {
+            self.ty_caches.cache.insert(symbol_id, final_ty.clone());
+        }
+
+        sema_ty_opt
+    }
+
+    fn resolve_symbol_type_internal(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         sym: LocalOrGlobalSymbol,
@@ -602,137 +730,9 @@ impl<'a> AnalysisContext<'a> {
                         .resolver
                         .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
                         .unwrap();
-                    self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, sym)
+                    self.resolve_symbol_type_internal(scope_id_opt, sym)
                 }
             },
         }
-    }
-
-    // REVIEW: Refactor and improve this!
-    fn resolve_generic_typedef(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
-        resolved_typedef: &ResolvedTypedef,
-        type_args: &TypedTypeArgs,
-        loc: SourceLoc,
-    ) -> Option<SemanticType> {
-        let typedef_generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
-
-        // typedef is generating an another generic
-        if let Some(mut generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type().cloned() {
-            let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
-
-            match self
-                .init_generic_type_with_symbol_id(
-                    scope_id_opt,
-                    local_scope_opt.clone(),
-                    generic_type.base,
-                    &Some(type_args.clone()),
-                    parent_mapping_ctx,
-                    Some(&typedef_generic_params),
-                    false,
-                    loc,
-                )
-                .transpose()
-                .unwrap()
-            {
-                Ok((_, new_generic_type_opt)) => {
-                    // new generic params gotta be used!
-                    generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
-
-                    new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
-                }
-                Err(diag) => {
-                    self.reporter.report(diag);
-                    None
-                }
-            }
-        } else {
-            // typedef itself is generic but it does not generate generic,
-            // so simply initialize generic mapping ctx and substitute the type
-
-            let mapping_ctx = Rc::new(RefCell::new(GenericMappingCtx::new_root()));
-            let mut generic_type = GenericType::new_unresolved(
-                0,
-                type_args.clone(),
-                mapping_ctx.clone(),
-                self.mapping_ctx_arena.clone(),
-                false,
-                loc,
-            );
-
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                if let Err(diag) = generic_type.init(
-                    &*mapping_ctx_arena,
-                    typedef_generic_params.clone(),
-                    &(self.symbol_formatter)(scope_id_opt),
-                ) {
-                    self.reporter.report(diag);
-                    return None;
-                }
-
-                substitute_type(
-                    &*mapping_ctx_arena,
-                    resolved_typedef.typedef_sig.ty.clone(),
-                    mapping_ctx,
-                )
-            })
-        }
-    }
-
-    fn resolve_typedef_inner_type(&mut self, resolved_typedef: &ResolvedTypedef) -> Option<SemanticType> {
-        let inner_ty = resolved_typedef.typedef_sig.ty.clone();
-
-        if let Some(mut generic_type) = inner_ty.as_generic_type().cloned() {
-            generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
-            Some(SemanticType::GenericType(generic_type))
-        } else {
-            Some(inner_ty)
-        }
-    }
-
-    fn resolve_symbol_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        symbol_id: SymbolID,
-        loc: SourceLoc,
-    ) -> Option<SemanticType> {
-        if let Some(cached_sema_ty) = self.ty_caches.cache.get(&symbol_id) {
-            return Some(cached_sema_ty.clone());
-        }
-
-        if self.ty_caches.push(symbol_id).is_err() {
-            return None;
-        };
-
-        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
-            .or_else(|| {
-                let symbol_entry = self.resolver.lookup_symbol_entry_with_id(symbol_id)?;
-                Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry))
-            });
-
-        let mut sema_ty_opt: Option<SemanticType>;
-
-        if let Some(local_or_global) = sym {
-            sema_ty_opt = self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global);
-
-            if let Some(ty) = sema_ty_opt.clone() {
-                sema_ty_opt = self.normalize_type(scope_id_opt, ty, loc.clone());
-            }
-        } else {
-            return None;
-        }
-
-        self.ty_caches.pop(symbol_id);
-
-        if let Some(ref final_ty) = sema_ty_opt {
-            self.ty_caches.cache.insert(symbol_id, final_ty.clone());
-        }
-
-        sema_ty_opt
     }
 }
