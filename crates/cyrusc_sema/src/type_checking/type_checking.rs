@@ -118,7 +118,7 @@ impl<'a> AnalysisContext<'a> {
             _ => {}
         };
 
-        // If the expected type is a generic parameter with a default, use the default type
+        // if the expected type is a generic parameter with a default, use the default type
         if let Some(sema_ty) = &expected_type {
             if let Some(generic_param) = sema_ty.as_generic_param() {
                 expected_type = generic_param.default.clone().map(|sema_ty| *sema_ty);
