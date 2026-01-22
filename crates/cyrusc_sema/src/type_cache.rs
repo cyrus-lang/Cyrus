@@ -19,14 +19,14 @@ use fx_hash::FxHashMap;
 use smallvec::SmallVec;
 
 #[derive(Default)]
-pub struct TypeResolverCaches {
+pub struct TypeResolutionCache {
     // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef)
     pub cache: FxHashMap<SymbolID, SemanticType>,
     // Guard against cycles
     pub in_progress: SmallVec<[SymbolID; 16]>,
 }
 
-impl TypeResolverCaches {
+impl TypeResolutionCache {
     pub fn push(&mut self, sym: SymbolID) -> Result<(), ()> {
         if self.in_progress.contains(&sym) {
             return Err(());

@@ -139,6 +139,13 @@ impl SemanticType {
         }
     }
 
+    pub fn as_generic_type_mut(&mut self) -> Option<&mut GenericType> {
+        match self.const_inner_mut() {
+            SemanticType::GenericType(generic_type) => Some(generic_type),
+            _ => None,
+        }
+    }
+
     pub fn as_generic_param(&self) -> Option<&TypedGenericParam> {
         match self.const_inner() {
             SemanticType::GenericParam(generic_param) => Some(generic_param),
@@ -255,6 +262,13 @@ impl SemanticType {
     }
 
     pub fn const_inner(&self) -> &SemanticType {
+        match self {
+            SemanticType::Const(sema_ty) => sema_ty,
+            sema_ty @ _ => sema_ty,
+        }
+    }
+
+    pub fn const_inner_mut(&mut self) -> &mut SemanticType {
         match self {
             SemanticType::Const(sema_ty) => sema_ty,
             sema_ty @ _ => sema_ty,

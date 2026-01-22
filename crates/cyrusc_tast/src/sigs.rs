@@ -101,9 +101,11 @@ pub struct InterfaceSig {
 #[derive(Debug, Clone)]
 pub struct GlobalVarSig {
     pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
+    pub is_const: bool,
     pub analyzed: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: SourceLoc,

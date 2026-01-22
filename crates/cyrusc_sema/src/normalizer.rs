@@ -16,7 +16,10 @@
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
-use cyrusc_resolver::symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind};
+use cyrusc_resolver::{
+    symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
+    update_global_symbol, update_local_symbol,
+};
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::TypedSelfType,
@@ -40,7 +43,7 @@ impl<'a> AnalysisContext<'a> {
     pub fn check_sema_ty(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        sema_ty: SemanticType,
+        mut sema_ty: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         // TODO: Check against cyclic type definition;
@@ -52,7 +55,7 @@ impl<'a> AnalysisContext<'a> {
         //     hint: None,
         // });
 
-        if sema_ty.count_const_layers() >= 1 {
+        if sema_ty.count_const_layers() > 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
@@ -67,6 +70,27 @@ impl<'a> AnalysisContext<'a> {
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
                 location: Some(DiagLoc::new(loc.clone())),
                 hint: None,
+            });
+        }
+
+        if let Some(generic_type) = sema_ty.as_generic_type_mut() {
+            let local_scope_opt =
+                scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)?;
+
+            let generic_params = sym.symbol_generic_params()?;
+
+            mapping_ctx_arena!(self, mapping_ctx_arena, {
+                generic_type
+                    .init(
+                        &*mapping_ctx_arena,
+                        generic_params,
+                        &(self.symbol_formatter)(scope_id_opt),
+                    )
+                    .ok()?;
             });
         }
 
@@ -374,19 +398,13 @@ impl<'a> AnalysisContext<'a> {
             let generic_params = sym.symbol_generic_params()?;
 
             mapping_ctx_arena!(self, mapping_ctx_arena, {
-                // REVIEW: Maybe report some diagnostics,
-                // Hence it's inside normalization process, it may lead to chained diagnostic reporting,
-                // Consider to move it into `check_sema_ty`.
                 generic_type
                     .init(
                         &*mapping_ctx_arena,
                         generic_params,
                         &(self.symbol_formatter)(scope_id_opt),
                     )
-                    .map_err(|diag| {
-                        self.reporter.report(diag);
-                    })
-                    .ok()?
+                    .ok()?;
             });
 
             Some(SemanticType::GenericType(generic_type))
@@ -429,29 +447,46 @@ impl<'a> AnalysisContext<'a> {
         match sym {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
                 LocalSymbolKind::Variable(mut resolved_variable) => {
-                    let var = &mut resolved_variable.typed_variable;
+                    let resolved_var = &mut resolved_variable.typed_variable;
 
-                    if let Some(sema_ty) = &var.ty {
-                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone())?;
+                    if let Some(sema_ty) = &resolved_var.ty {
+                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), resolved_var.loc.clone())?;
 
-                        return Some(if var.is_const { sema_ty.as_const() } else { sema_ty });
+                        return Some(if resolved_var.is_const {
+                            sema_ty.as_const()
+                        } else {
+                            sema_ty
+                        });
                     }
 
-                    let rhs = var.rhs.as_mut()?;
+                    if resolved_var.analyzed {
+                        let sema_ty_opt = resolved_var
+                            .ty
+                            .clone()
+                            .or(resolved_var.rhs.clone().and_then(|expr| expr.sema_ty));
 
-                    if var.analyzed {
-                        if let Some(sema_ty) = &var.ty {
-                            return Some(if var.is_const {
-                                sema_ty.as_const()
-                            } else {
-                                sema_ty.clone()
-                            });
+                        return if resolved_var.is_const {
+                            sema_ty_opt.and_then(|sema_ty| Some(sema_ty.as_const()))
+                        } else {
+                            sema_ty_opt
+                        };
+                    }
+
+                    let variable_expr = resolved_var.rhs.as_mut()?;
+                    let sema_ty_opt = self.analyze_expr_non_terminal(scope_id_opt, variable_expr, None);
+
+                    update_local_symbol!(self, scope_id_opt.unwrap(), resolved_var.symbol_id,
+                        LocalSymbolKind::Variable(resolved_var_mut) => resolved_var_mut, {
+                            resolved_var_mut.typed_variable.analyzed = true;
+                            resolved_var_mut.typed_variable.rhs = Some(variable_expr.clone());
                         }
+                    );
+
+                    if resolved_var.is_const {
+                        sema_ty_opt.and_then(|sema_ty| Some(sema_ty.as_const()))
+                    } else {
+                        sema_ty_opt
                     }
-
-                    let sema_ty = self.analyze_expr_non_terminal(scope_id_opt, rhs, None)?;
-
-                    Some(if var.is_const { sema_ty.as_const() } else { sema_ty })
                 }
                 LocalSymbolKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(
                     ResolvedSymbol::NamedStruct(resolved_struct.symbol_id),
@@ -504,31 +539,46 @@ impl<'a> AnalysisContext<'a> {
                     loc: resolved_func.func_sig.loc.clone(),
                 })),
                 SymbolEntryKind::GlobalVar(mut resolved_global_var) => {
-                    let var = &mut resolved_global_var.global_var_sig;
+                    let global_var_sig = &mut resolved_global_var.global_var_sig;
 
-                    if let Some(sema_ty) = &var.ty {
-                        return self.normalize_type(scope_id_opt, sema_ty.clone(), var.loc.clone());
+                    if let Some(sema_ty) = &global_var_sig.ty {
+                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), global_var_sig.loc.clone())?;
+
+                        return Some(if global_var_sig.is_const {
+                            sema_ty.as_const()
+                        } else {
+                            sema_ty
+                        });
                     }
 
-                    let rhs = var
-                        .rhs
-                        .as_mut()
-                        .expect("Cannot resolve global variable type: no type and no rhs.");
-
-                    if var.analyzed {
-                        let sema_ty = var
+                    if global_var_sig.analyzed {
+                        let sema_ty_opt = global_var_sig
                             .ty
                             .clone()
-                            .expect("Global variable marked analyzed but has no type.");
+                            .or(global_var_sig.rhs.clone().and_then(|expr| expr.sema_ty));
 
-                        return Some(sema_ty);
+                        return if global_var_sig.is_const {
+                            sema_ty_opt.and_then(|sema_ty| Some(sema_ty.as_const()))
+                        } else {
+                            sema_ty_opt
+                        };
                     }
 
-                    let mut sema_ty = self.analyze_expr(scope_id_opt, rhs, None)?;
+                    let variable_expr = global_var_sig.rhs.as_mut()?;
+                    let sema_ty_opt = self.analyze_expr_non_terminal(scope_id_opt, variable_expr, None);
 
-                    sema_ty = self.normalize_type(scope_id_opt, sema_ty, var.loc.clone())?;
+                    update_global_symbol!(self, global_var_sig.module_id, global_var_sig.symbol_id,
+                        SymbolEntryKind::GlobalVar(resolved_global_var_mut) => resolved_global_var_mut, {
+                            resolved_global_var_mut.global_var_sig.analyzed = true;
+                            resolved_global_var_mut.global_var_sig.rhs = Some(variable_expr.clone());
+                        }
+                    );
 
-                    Some(sema_ty)
+                    if global_var_sig.is_const {
+                        sema_ty_opt.and_then(|sema_ty| Some(sema_ty.as_const()))
+                    } else {
+                        sema_ty_opt
+                    }
                 }
                 SymbolEntryKind::Struct(s) => {
                     Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
@@ -558,6 +608,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    // REVIEW: Refactor and improve this!
     fn resolve_generic_typedef(
         &mut self,
         scope_id_opt: Option<ScopeID>,

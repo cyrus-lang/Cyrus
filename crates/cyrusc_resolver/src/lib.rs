@@ -1478,10 +1478,12 @@ impl Resolver {
             symbol_id,
             global_var_sig: GlobalVarSig {
                 module_id,
+                symbol_id,
                 name: global_var.ident.value.clone(),
                 ty: sema_ty.clone(),
                 rhs: typed_expr.clone(),
                 analyzed: true,
+                is_const: global_var.is_const,
                 modifiers: global_var.modifiers.clone(),
                 loc: SourceLoc::from_loc(global_var.loc.clone(), self.current_file_path()),
             },
@@ -1672,17 +1674,6 @@ impl Resolver {
         for module_import in impls {
             let Some(symbol_id) = self.resolve_local_module_import(local_scope_opt.clone(), module_id, module_import)
             else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                        name: module_import.to_string(),
-                    }),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        module_import.loc.clone(),
-                        self.current_file_path(),
-                    ))),
-                    hint: None,
-                });
                 continue;
             };
 
@@ -2116,28 +2107,27 @@ impl Resolver {
     }
 
     fn resolve_if_stmt(&mut self, module_id: ModuleID, scope: LocalScopeRef, if_stmt: &If) -> Option<TypedIfStmt> {
-        let typed_condition = match self.resolve_expr(module_id, Some(Rc::clone(&scope)), &if_stmt.condition) {
+        let cond = match self.resolve_expr(module_id, Some(Rc::clone(&scope)), &if_stmt.condition) {
             Some(typed_expr) => typed_expr,
             None => return None,
         };
 
-        let consequent_scope_id = generate_scope_id();
-        let consequent_scope = LocalScope::new(Some(scope.clone()));
-        self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
+        let then_block_scope_id = generate_scope_id();
+        let then_block_scope = LocalScope::new(Some(scope.clone()));
+        self.insert_scope_ref(module_id, then_block_scope_id, then_block_scope.clone());
 
-        let typed_consequent = match self.resolve_block_stmt(consequent_scope_id, consequent_scope, &if_stmt.consequent)
-        {
+        let then_block = match self.resolve_block_stmt(then_block_scope_id, then_block_scope, &if_stmt.consequent) {
             Some(typed_block) => Box::new(typed_block),
             None => return None,
         };
 
-        let typed_alternate = {
+        let else_block = {
             if let Some(alternate) = &if_stmt.alternate {
-                let alternate_scope_id = generate_scope_id();
-                let alternate_scope = LocalScope::new(Some(scope.clone()));
-                self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
+                let else_block_scope_id = generate_scope_id();
+                let else_block_scope = LocalScope::new(Some(scope.clone()));
+                self.insert_scope_ref(module_id, else_block_scope_id, else_block_scope.clone());
 
-                match self.resolve_block_stmt(alternate_scope_id, alternate_scope.clone(), &*alternate) {
+                match self.resolve_block_stmt(else_block_scope_id, else_block_scope.clone(), &*alternate) {
                     Some(typed_block) => Some(Box::new(typed_block)),
                     None => return None,
                 }
@@ -2149,18 +2139,18 @@ impl Resolver {
         let mut branches: Vec<TypedIfStmt> = Vec::new();
 
         for else_if_stmt in &if_stmt.branches {
-            let typed_if = match self.resolve_if_stmt(module_id, scope.clone(), else_if_stmt) {
+            let if_stmt = match self.resolve_if_stmt(module_id, scope.clone(), else_if_stmt) {
                 Some(typed_if) => typed_if,
                 None => continue,
             };
 
-            branches.push(typed_if);
+            branches.push(if_stmt);
         }
 
         Some(TypedIfStmt {
-            cond: typed_condition,
-            else_block: typed_alternate,
-            then_block: typed_consequent,
+            cond,
+            else_block,
+            then_block,
             branches,
             loc: SourceLoc::from_loc(if_stmt.loc.clone(), self.current_file_path()),
         })
@@ -2377,14 +2367,13 @@ impl Resolver {
                     None
                 };
 
-                let for_typed_body =
-                    Box::new(self.resolve_block_stmt(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body)?);
+                let body = Box::new(self.resolve_block_stmt(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body)?);
 
                 Some(TypedStmt::For(TypedForStmt {
                     initializer,
                     cond,
                     increment,
-                    body: for_typed_body,
+                    body,
                     loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.current_file_path()),
                 }))
             }

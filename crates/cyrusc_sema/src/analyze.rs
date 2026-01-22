@@ -17,7 +17,7 @@
 use crate::{
     diagnostics::AnalyzerDiagKind,
     flowstate::{ControlContext, FlowState},
-    type_cache::TypeResolverCaches,
+    type_cache::TypeResolutionCache,
 };
 use cyrusc_ast::{AssignKind, SelfModifierKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
@@ -57,7 +57,7 @@ pub struct AnalysisContext<'a> {
 
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'a Resolver,
-    pub(crate) ty_caches: TypeResolverCaches,
+    pub(crate) ty_caches: TypeResolutionCache,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
 
@@ -96,7 +96,7 @@ impl<'a> AnalysisContext<'a> {
             current_obj_operand_ty: None,
             current_method_symbol_id: None,
             entry_points,
-            ty_caches: TypeResolverCaches::default(),
+            ty_caches: TypeResolutionCache::default(),
             disable_warnings,
             monomorph_registry,
             mapping_ctx_arena,
@@ -1160,7 +1160,9 @@ impl<'a> AnalysisContext<'a> {
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name: ident.name.clone() }),
+                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface {
+                            symbol_name: ident.name.clone(),
+                        }),
                         location: Some(DiagLoc::new(ident.loc.clone())),
                         hint: None,
                     });
