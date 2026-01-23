@@ -40,8 +40,7 @@ use cyrusc_tast::{
     },
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArg,
-        TypedTypeArgs,
+        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
     },
     types::*,
     *,
@@ -306,14 +305,12 @@ impl<'a> AnalysisContext<'a> {
 
             let func_sig: FuncSig;
             if let Some(generic_type) = operand_ty.as_generic_type() {
-                mapping_ctx_arena!(self, mapping_ctx_arena, {
-                    func_sig = substitute_func_sig(
-                        &*mapping_ctx_arena,
-                        &resolved_method.func_sig,
-                        generic_type.mapping_ctx.clone(),
-                    )
-                    .unwrap();
-                });
+                func_sig = substitute_func_sig(
+                    self.mapping_ctx_arena.clone(),
+                    &resolved_method.func_sig,
+                    generic_type.mapping_ctx.clone(),
+                )
+                .unwrap();
             } else {
                 func_sig = resolved_method.func_sig.clone();
             }
@@ -752,8 +749,6 @@ impl<'a> AnalysisContext<'a> {
                     ) {
                         return None;
                     };
-
-                    self.normalize_type_args(scope_id_opt, field_access.type_args.as_mut());
                 }
             }
         }
@@ -807,13 +802,11 @@ impl<'a> AnalysisContext<'a> {
                 MemberAccessKind::NamedStruct(resolved_struct) => {
                     let mut struct_sig = resolved_struct.struct_sig.clone();
                     if let Some(generic_type) = generic_type_opt {
-                        mapping_ctx_arena!(self, mapping_ctx_arena, {
-                            struct_sig = substitute_struct_sig(
-                                &*mapping_ctx_arena,
-                                &struct_sig,
-                                generic_type.mapping_ctx.clone(),
-                            )?;
-                        });
+                        struct_sig = substitute_struct_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &struct_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )?;
                     }
 
                     (
@@ -831,13 +824,11 @@ impl<'a> AnalysisContext<'a> {
                 MemberAccessKind::Union(resolved_union) => {
                     let mut union_sig = resolved_union.union_sig.clone();
                     if let Some(generic_type) = generic_type_opt {
-                        mapping_ctx_arena!(self, mapping_ctx_arena, {
-                            union_sig = substitute_union_sig(
-                                &*mapping_ctx_arena,
-                                &union_sig,
-                                generic_type.mapping_ctx.clone(),
-                            )?;
-                        });
+                        union_sig = substitute_union_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &union_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )?;
                     }
 
                     (
@@ -863,29 +854,6 @@ impl<'a> AnalysisContext<'a> {
             return_sema_ty.map(|sema_ty| sema_ty.as_const())
         } else {
             return_sema_ty
-        }
-    }
-
-    fn normalize_type_args(&mut self, scope_id_opt: Option<ScopeID>, type_args_opt: Option<&mut TypedTypeArgs>) {
-        let Some(type_args) = type_args_opt else {
-            return;
-        };
-
-        for type_arg in type_args {
-            match type_arg {
-                TypedTypeArg::Positional { ty, loc, .. } => {
-                    *ty = match self.normalize_sema_type(scope_id_opt, ty.clone(), loc.clone()) {
-                        Some(sema_ty) => sema_ty,
-                        None => continue,
-                    };
-                }
-                TypedTypeArg::Named { ty, loc, .. } => {
-                    *ty = match self.normalize_sema_type(scope_id_opt, ty.clone(), loc.clone()) {
-                        Some(sema_ty) => sema_ty,
-                        None => continue,
-                    };
-                }
-            }
         }
     }
 
@@ -931,8 +899,6 @@ impl<'a> AnalysisContext<'a> {
             struct_init.loc.clone(),
         );
 
-        self.normalize_type_args(scope_id_opt, struct_init.type_args.as_mut());
-
         let mut sema_ty = self.resolve_symbol_type(scope_id_opt, sym.symbol_id(), struct_init.loc.clone())?;
 
         if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type.clone()) {
@@ -962,7 +928,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             local_scope_opt.clone(),
             pure_symbol_id,
-            &struct_init.type_args,
+            &mut struct_init.type_args,
             parent_mapping_ctx,
             generic_params.as_ref(),
             struct_init.is_const,
@@ -1070,15 +1036,13 @@ impl<'a> AnalysisContext<'a> {
                     return None;
                 }
 
-                self.normalize_type_args(scope_id_opt, func_call.type_args.as_mut());
-
                 let expected_mapping_ctx = self.export_expected_generic_mapping_ctx(expected_type);
 
                 let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
                     scope_id_opt,
                     local_scope_opt.clone(),
                     symbol_id,
-                    &func_call.type_args,
+                    &mut func_call.type_args,
                     expected_mapping_ctx,
                     func_sig.generic_params.as_ref(),
                     operand_ty.is_const(),
@@ -1148,19 +1112,21 @@ impl<'a> AnalysisContext<'a> {
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                func_sig =
-                    substitute_func_sig(&*mapping_ctx_arena, &func_sig, generic_type.mapping_ctx.clone()).unwrap();
+            func_sig = substitute_func_sig(
+                self.mapping_ctx_arena.clone(),
+                &func_sig,
+                generic_type.mapping_ctx.clone(),
+            )
+            .unwrap();
 
-                if let Err(diag) = generic_type.finalize(
-                    &*mapping_ctx_arena,
-                    func_sig.generic_params.clone().unwrap(),
-                    (self.symbol_formatter)(scope_id_opt),
-                ) {
-                    self.reporter.report(diag);
-                    return None;
-                }
-            });
+            if let Err(diag) = generic_type.finalize(
+                self.mapping_ctx_arena.clone(),
+                func_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                self.reporter.report(diag);
+                return None;
+            }
 
             if !func_sig.is_func_decl {
                 // only specialize function definition which necessarily includes the body block
@@ -1169,13 +1135,11 @@ impl<'a> AnalysisContext<'a> {
             }
 
             // substitutes the func type inside of the func_call operand
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                func_call.operand.sema_ty = substitute_type(
-                    &*mapping_ctx_arena,
-                    func_call.operand.sema_ty.clone().unwrap(),
-                    generic_type.mapping_ctx,
-                );
-            });
+            func_call.operand.sema_ty = substitute_type(
+                self.mapping_ctx_arena.clone(),
+                func_call.operand.sema_ty.clone().unwrap(),
+                generic_type.mapping_ctx,
+            );
         }
 
         func_call.return_type = Some(func_sig.return_type.clone());
@@ -1392,10 +1356,10 @@ impl<'a> AnalysisContext<'a> {
         if sym.symbol_generic_params().is_some() && method_call_operand_ty.pointer_inner().as_generic_type().is_none() {
             method_call_operand_ty = SemanticType::GenericType(GenericType {
                 base: method_call_operand_ty.symbol_id().unwrap(),
-                type_args: Vec::new(),
+                type_args: None,
                 mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
                 mapping_ctx_arena: self.mapping_ctx_arena.clone(),
-                altered_generic_params: None,
+                generic_params: sym.symbol_generic_params().unwrap(),
                 is_const: false,
                 loc: method_call.loc.clone(),
             });
@@ -1513,7 +1477,8 @@ impl<'a> AnalysisContext<'a> {
             };
 
             let element_type =
-                match self.normalize_sema_type(scope_id_opt, *array_type!().element_type.clone(), argument.loc.clone()) {
+                match self.normalize_sema_type(scope_id_opt, *array_type!().element_type.clone(), argument.loc.clone())
+                {
                     Some(sema_ty) => sema_ty,
                     None => continue,
                 };
@@ -1757,8 +1722,6 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        self.normalize_type_args(scope_id_opt, method_call.type_args.as_mut());
-
         let first_param_opt = resolved_method.func_sig.params.list.first();
 
         let is_instance_method_sig = resolved_method.func_sig.is_instance_method();
@@ -1807,7 +1770,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             local_scope_opt.clone(),
             resolved_method.symbol_id,
-            &method_call.type_args,
+            &mut method_call.type_args,
             parent_mapping_ctx.clone(),
             resolved_method.func_sig.generic_params.as_ref(),
             false,
@@ -1876,51 +1839,45 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         if let Some(generic_type) = &generic_type_opt {
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                resolved_method.func_sig.return_type = substitute_type(
-                    &*mapping_ctx_arena,
-                    resolved_method.func_sig.return_type.clone(),
-                    generic_type.mapping_ctx.clone(),
-                )
-                .unwrap();
-            });
+            resolved_method.func_sig.return_type = substitute_type(
+                self.mapping_ctx_arena.clone(),
+                resolved_method.func_sig.return_type.clone(),
+                generic_type.mapping_ctx.clone(),
+            )
+            .unwrap();
         }
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
             {
                 if let Some(method_generic_type) = method_generic_type_opt {
-                    mapping_ctx_arena!(self, mapping_ctx_arena, {
-                        let method_generic_mapping_ctx_id =
-                            mapping_ctx_arena.insert(method_generic_type.mapping_ctx.borrow().clone());
+                    let method_generic_mapping_ctx_id = {
+                        let mut mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
+                        mapping_ctx_arena.insert(method_generic_type.mapping_ctx.borrow().clone())
+                    };
 
-                        let mut generic_mapping_ctx = generic_type.mapping_ctx.borrow_mut();
-                        generic_mapping_ctx.set_parent_id(method_generic_mapping_ctx_id);
-                    });
+                    let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
+                    mapping_ctx.set_parent_id(method_generic_mapping_ctx_id);
                 }
             }
 
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                resolved_method.func_sig = substitute_func_sig(
-                    &*mapping_ctx_arena,
-                    &resolved_method.func_sig,
-                    generic_type.mapping_ctx.clone(),
-                )
-                .unwrap();
-            });
+            resolved_method.func_sig = substitute_func_sig(
+                self.mapping_ctx_arena.clone(),
+                &resolved_method.func_sig,
+                generic_type.mapping_ctx.clone(),
+            )
+            .unwrap();
 
             if let Some(generic_params) = resolved_method.func_sig.generic_params.clone() {
-                mapping_ctx_arena!(self, mapping_ctx_arena, {
-                    if let Err(diag) = generic_type.finalize(
-                        &*mapping_ctx_arena,
-                        generic_params,
-                        (self.symbol_formatter)(scope_id_opt),
-                    ) {
-                        self.reporter.report(diag);
+                if let Err(diag) = generic_type.finalize(
+                    self.mapping_ctx_arena.clone(),
+                    generic_params,
+                    (self.symbol_formatter)(scope_id_opt),
+                ) {
+                    self.reporter.report(diag);
 
-                        return None;
-                    }
-                });
+                    return None;
+                }
             }
 
             method_call.monomorph_key = self.register_specialized_generic_func(
@@ -1931,13 +1888,11 @@ impl<'a> AnalysisContext<'a> {
             );
 
             // substitutes the func type inside of the func_call operand
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                method_call.operand.sema_ty = substitute_type(
-                    &*mapping_ctx_arena,
-                    method_call.operand.sema_ty.clone().unwrap(),
-                    generic_type.mapping_ctx,
-                );
-            });
+            method_call.operand.sema_ty = substitute_type(
+                self.mapping_ctx_arena.clone(),
+                method_call.operand.sema_ty.clone().unwrap(),
+                generic_type.mapping_ctx,
+            );
         }
 
         if instance_method_call {
@@ -2113,6 +2068,11 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
+            param_type = match  self.normalize_and_check_sema_ty(scope_id_opt, param_type, param.loc()) {
+                Some(sema_ty) => sema_ty,
+                None => continue,
+            };
+
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
                 generic_type_opt,
@@ -2122,6 +2082,9 @@ impl<'a> AnalysisContext<'a> {
             ) {
                 param_type = sema_ty;
             }
+
+            dbg!(param_type.clone());
+            
 
             // skip if param type not inferred yet
             if param_type.as_generic_param().is_none()
@@ -2247,7 +2210,9 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let param_type = self.normalize_sema_type(scope_id_opt, param.clone(), loc.clone()).unwrap();
+            let param_type = self
+                .normalize_sema_type(scope_id_opt, param.clone(), loc.clone())
+                .unwrap();
 
             let arg_type = match self.analyze_expr(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
@@ -2385,22 +2350,20 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_type) = generic_type_opt {
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                // validate generic type instantiation
-                let final_generic_type = match generic_type.finalize(
-                    &*mapping_ctx_arena,
-                    resolved_union.union_sig.generic_params.clone().unwrap(),
-                    (self.symbol_formatter)(scope_id_opt),
-                ) {
-                    Ok(generic_type) => generic_type,
-                    Err(diag) => {
-                        self.reporter.report(diag);
-                        return None;
-                    }
-                };
+            // validate generic type instantiation
+            let final_generic_type = match generic_type.finalize(
+                self.mapping_ctx_arena.clone(),
+                resolved_union.union_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => generic_type,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
 
-                Some(SemanticType::GenericType(final_generic_type.clone()))
-            })
+            Some(SemanticType::GenericType(final_generic_type.clone()))
         } else {
             if struct_init.is_const {
                 Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
@@ -2539,10 +2502,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_type) = generic_type_opt {
-            let final_generic_type = mapping_ctx_arena!(self, mapping_ctx_arena, {
+            let final_generic_type = {
                 // validate generic type instantiation
                 match generic_type.finalize(
-                    &*mapping_ctx_arena,
+                    self.mapping_ctx_arena.clone(),
                     resolved_struct.struct_sig.generic_params.clone().unwrap(),
                     (self.symbol_formatter)(scope_id_opt),
                 ) {
@@ -2552,7 +2515,7 @@ impl<'a> AnalysisContext<'a> {
                         return None;
                     }
                 }
-            });
+            };
 
             Some(SemanticType::GenericType(final_generic_type.clone()))
         } else {
@@ -2956,7 +2919,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
-            &method_call.type_args,
+            &mut method_call.type_args,
             mapping_ctx,
             generic_params,
             is_const,
@@ -3021,22 +2984,20 @@ impl<'a> AnalysisContext<'a> {
                 .cloned()
                 .unwrap();
 
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                let final_generic_type = match generic_type.finalize(
-                    &*mapping_ctx_arena,
-                    generic_params,
-                    (self.symbol_formatter)(scope_id_opt),
-                ) {
-                    Ok(generic_type) => generic_type,
-                    Err(diag) => {
-                        self.reporter.report(diag);
-                        return None;
-                    }
-                };
+            let final_generic_type = match generic_type.finalize(
+                self.mapping_ctx_arena.clone(),
+                generic_params,
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => generic_type,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
 
-                method_call.operand.sema_ty = Some(SemanticType::GenericType(final_generic_type.clone()));
-                Some(SemanticType::GenericType(final_generic_type.clone()))
-            })
+            method_call.operand.sema_ty = Some(SemanticType::GenericType(final_generic_type.clone()));
+            Some(SemanticType::GenericType(final_generic_type.clone()))
         } else {
             method_call.operand.sema_ty = Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                 resolved_enum.symbol_id,
@@ -3186,7 +3147,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             local_scope_opt.clone(),
             resolved_enum.symbol_id,
-            &field_access.type_args,
+            &mut field_access.type_args,
             mapping_ctx,
             generic_params,
             is_const,
@@ -3200,23 +3161,21 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if let Some(generic_type) = generic_type_opt {
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                // validate generic type instantiation
-                let final_generic_type = match generic_type.finalize(
-                    &*mapping_ctx_arena,
-                    resolved_enum.enum_sig.generic_params.clone().unwrap(),
-                    (self.symbol_formatter)(scope_id_opt),
-                ) {
-                    Ok(generic_type) => generic_type,
-                    Err(diag) => {
-                        self.reporter.report(diag);
-                        return None;
-                    }
-                };
+            // validate generic type instantiation
+            let final_generic_type = match generic_type.finalize(
+                self.mapping_ctx_arena.clone(),
+                resolved_enum.enum_sig.generic_params.clone().unwrap(),
+                (self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => generic_type,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
 
-                field_access.operand.sema_ty = Some(SemanticType::GenericType(final_generic_type.clone()));
-                Some(SemanticType::GenericType(final_generic_type.clone()))
-            })
+            field_access.operand.sema_ty = Some(SemanticType::GenericType(final_generic_type.clone()));
+            Some(SemanticType::GenericType(final_generic_type.clone()))
         } else {
             field_access.operand.sema_ty = Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                 resolved_enum.symbol_id,

@@ -22,14 +22,18 @@ use crate::{
         TypedFuncVariadicParams,
     },
     types::{
-        SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+        SemanticType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        TypedUnnamedStructTypeField,
     },
 };
-use std::cell::RefCell;
 use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    sync::{Arc, Mutex},
+};
 
 pub fn substitute_type(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sema_ty: SemanticType,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<SemanticType> {
@@ -52,10 +56,10 @@ pub fn substitute_type(
 
             sema_ty
         }
-        SemanticType::Pointer(inner) => sub(*inner, &|t| substitute_type(mapping_ctx_arena, t, ctx.clone()))
+        SemanticType::Pointer(inner) => sub(*inner, &|t| substitute_type(mapping_ctx_arena.clone(), t, ctx.clone()))
             .map(|t| SemanticType::Pointer(Box::new(t))),
         SemanticType::Array(inner) => sub(*inner.element_type, &|t| {
-            substitute_type(mapping_ctx_arena, t, ctx.clone())
+            substitute_type(mapping_ctx_arena.clone(), t, ctx.clone())
         })
         .map(|elem_ty| {
             SemanticType::Array(TypedArrayType {
@@ -65,14 +69,14 @@ pub fn substitute_type(
             })
         }),
         SemanticType::Const(inner) => sub(*inner, &|sema_ty| {
-            substitute_type(mapping_ctx_arena, sema_ty, ctx.clone())
+            substitute_type(mapping_ctx_arena.clone(), sema_ty, ctx.clone())
         })
         .map(|sema_ty| sema_ty.as_const()),
         SemanticType::Tuple(tuple) => {
             let list = tuple
                 .type_list
                 .into_iter()
-                .map(|t| substitute_type(mapping_ctx_arena, t, ctx.clone()))
+                .map(|t| substitute_type(mapping_ctx_arena.clone(), t, ctx.clone()))
                 .collect::<Option<Vec<_>>>()?;
             Some(SemanticType::Tuple(TypedTupleType {
                 type_list: list,
@@ -84,7 +88,7 @@ pub fn substitute_type(
                 .params
                 .list
                 .into_iter()
-                .map(|p| substitute_type(mapping_ctx_arena, p, ctx.clone()))
+                .map(|p| substitute_type(mapping_ctx_arena.clone(), p, ctx.clone()))
                 .collect::<Option<Vec<_>>>()?;
             let ret_ty = Box::new(substitute_type(mapping_ctx_arena, *func.return_type, ctx.clone())?);
             Some(SemanticType::FuncType(TypedFuncType {
@@ -104,7 +108,7 @@ pub fn substitute_type(
                 .fields
                 .iter()
                 .map(|f| {
-                    let inner = substitute_type(mapping_ctx_arena, *f.ty.clone(), ctx.clone())?;
+                    let inner = substitute_type(mapping_ctx_arena.clone(), *f.ty.clone(), ctx.clone())?;
                     Some(TypedUnnamedStructTypeField {
                         name: f.name.clone(),
                         ty: Box::new(inner),
@@ -123,7 +127,7 @@ pub fn substitute_type(
 }
 
 fn substitute_func_params(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     func_params: &TypedFuncParams,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<TypedFuncParams> {
@@ -132,7 +136,7 @@ fn substitute_func_params(
         .iter()
         .map(|func_param_kind| match func_param_kind.clone() {
             TypedFuncParamKind::FuncParam(mut func_param) => {
-                if let Some(sema_ty) = substitute_type(mapping_ctx_arena, func_param.ty.clone(), ctx.clone()) {
+                if let Some(sema_ty) = substitute_type(mapping_ctx_arena.clone(), func_param.ty.clone(), ctx.clone()) {
                     func_param.ty = sema_ty;
                 }
                 TypedFuncParamKind::FuncParam(func_param)
@@ -140,7 +144,7 @@ fn substitute_func_params(
             TypedFuncParamKind::SelfModifier(mut self_modifier) => {
                 self_modifier.ty = self_modifier
                     .ty
-                    .and_then(|sema_ty| substitute_type(mapping_ctx_arena, sema_ty, ctx.clone()));
+                    .and_then(|sema_ty| substitute_type(mapping_ctx_arena.clone(), sema_ty, ctx.clone()));
                 TypedFuncParamKind::SelfModifier(self_modifier)
             }
         })
@@ -161,12 +165,12 @@ fn substitute_func_params(
 }
 
 pub fn substitute_func_sig(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sig: &FuncSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<FuncSig> {
-    let params = substitute_func_params(mapping_ctx_arena, &sig.params, ctx.clone())?;
-    let return_type = substitute_type(mapping_ctx_arena, sig.return_type.clone(), ctx)?;
+    let params = substitute_func_params(mapping_ctx_arena.clone(), &sig.params, ctx.clone())?;
+    let return_type = substitute_type(mapping_ctx_arena.clone(), sig.return_type.clone(), ctx)?;
 
     Some(FuncSig {
         name: sig.name.clone(),
@@ -182,7 +186,7 @@ pub fn substitute_func_sig(
 }
 
 pub fn substitute_struct_sig(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sig: &StructSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<StructSig> {
@@ -190,7 +194,7 @@ pub fn substitute_struct_sig(
         .fields
         .iter()
         .map(|f| {
-            let substituted = substitute_type(mapping_ctx_arena, f.ty.clone(), ctx.clone())?;
+            let substituted = substitute_type(mapping_ctx_arena.clone(), f.ty.clone(), ctx.clone())?;
             let mut f2 = f.clone();
             f2.ty = substituted;
             Some(f2)
@@ -210,7 +214,7 @@ pub fn substitute_struct_sig(
 }
 
 pub fn substitute_union_sig(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sig: &UnionSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<UnionSig> {
@@ -218,7 +222,7 @@ pub fn substitute_union_sig(
         .fields
         .iter()
         .map(|f| {
-            let substituted = substitute_type(mapping_ctx_arena, f.ty.clone(), ctx.clone())?;
+            let substituted = substitute_type(mapping_ctx_arena.clone(), f.ty.clone(), ctx.clone())?;
             let mut f2 = f.clone();
             f2.ty = substituted;
             Some(f2)
@@ -237,7 +241,7 @@ pub fn substitute_union_sig(
 }
 
 pub fn substitute_enum_sig(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sig: &EnumSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<EnumSig> {
@@ -247,7 +251,8 @@ pub fn substitute_enum_sig(
         .map(|v| match v {
             TypedEnumVariant::Ident(ident) => Some(TypedEnumVariant::Ident(ident.clone())),
             TypedEnumVariant::Valued(ident, expr) => {
-                let substituted = substitute_type(mapping_ctx_arena, expr.sema_ty.clone().unwrap(), ctx.clone())?;
+                let substituted =
+                    substitute_type(mapping_ctx_arena.clone(), expr.sema_ty.clone().unwrap(), ctx.clone())?;
                 let mut expr_v2 = *expr.clone();
                 expr_v2.sema_ty = Some(substituted);
                 Some(TypedEnumVariant::Valued(ident.clone(), Box::new(expr_v2)))
@@ -256,7 +261,7 @@ pub fn substitute_enum_sig(
                 let new_fields = fields
                     .iter()
                     .map(|field| {
-                        let substituted = substitute_type(mapping_ctx_arena, field.ty.clone(), ctx.clone())?;
+                        let substituted = substitute_type(mapping_ctx_arena.clone(), field.ty.clone(), ctx.clone())?;
                         Some(TypedEnumValuedField {
                             ty: substituted,
                             loc: field.loc.clone(),

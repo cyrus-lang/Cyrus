@@ -403,7 +403,9 @@ impl<'a> AnalysisContext<'a> {
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
             let equal_mapping_ctx = mapping_ctx_eq_refcell(
                 self.mapping_ctx_arena.clone(),
+                &generic_type1.generic_params,
                 &generic_type1.mapping_ctx,
+                &generic_type2.generic_params,
                 &generic_type2.mapping_ctx,
             );
             let equal_base = generic_type1.base == generic_type2.base;

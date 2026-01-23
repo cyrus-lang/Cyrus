@@ -23,13 +23,11 @@ use cyrusc_resolver::{
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::TypedSelfType,
-    format::format_sema_ty,
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_type},
-    mapping_ctx_arena,
     sigs::{FuncSig, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
-        TypedGenericParam, TypedTypeArgs,
+        TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
         DynamicType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
@@ -38,7 +36,7 @@ use cyrusc_tast::{
 };
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Default)]
 pub struct TypeResolutionCache {
@@ -91,24 +89,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(generic_type) = sema_ty.as_generic_type_mut() {
-            let local_scope_opt =
-                scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-
-            let sym = self
-                .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)?;
-
-            let generic_params = sym.symbol_generic_params()?;
-
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                generic_type
-                    .init(
-                        &*mapping_ctx_arena,
-                        generic_params,
-                        &(self.symbol_formatter)(scope_id_opt),
-                    )
-                    .ok()?;
-            });
+            generic_type
+                .init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+                .ok()?;
         }
 
         self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc.clone());
@@ -212,7 +195,7 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    // NOTE: This logic here is temporary and is not completed yet!
+    // NOTE: This logic here is temporary and it's not completed yet!
     // TODO: Implement comptime array capacity evaluation later.
     // TODO: Implement slices.
     fn normalize_array_capacity(
@@ -375,14 +358,12 @@ impl<'a> AnalysisContext<'a> {
         // try to resolve from current object operand context
         if let Some(sema_ty) = &self.ty_ctx.current_obj_operand_ty {
             if let Some(generic_type) = sema_ty.as_generic_type() {
-                mapping_ctx_arena!(self, mapping_ctx_arena, {
-                    let mapping_ctx = generic_type.mapping_ctx.borrow();
-                    if let Some(sema_ty) =
-                        mapping_ctx.resolve_with_name(&*mapping_ctx_arena, &generic_param.param_name.name)
-                    {
-                        return Some(sema_ty);
-                    }
-                });
+                let mapping_ctx = generic_type.mapping_ctx.borrow();
+                if let Some(sema_ty) =
+                    mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                {
+                    return Some(sema_ty);
+                }
             }
         }
         Some(SemanticType::GenericParam(generic_param))
@@ -406,28 +387,59 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)?;
 
+        if generic_type.generic_params.list.is_empty() {
+            generic_type.generic_params = sym.symbol_generic_params().unwrap();
+        }
+
+        self.normalize_type_args(scope_id_opt, generic_type.type_args.as_mut());
+
+        debug_assert!(generic_type.generic_params.list.is_empty() == false);
+
         if let Some(typedef) = sym.as_typedef() {
             self.resolve_generic_typedef(
                 scope_id_opt,
                 local_scope_opt,
                 typedef,
-                &generic_type.type_args,
+                generic_type.type_args,
                 typedef.typedef_sig.loc.clone(),
             )
         } else {
-            let generic_params = sym.symbol_generic_params()?;
+            generic_type
+                .init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+                .ok()?;
 
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                generic_type
-                    .init(
-                        &*mapping_ctx_arena,
-                        generic_params,
-                        &(self.symbol_formatter)(scope_id_opt),
-                    )
-                    .ok()?;
-            });
+            if generic_type.is_const {
+                Some(SemanticType::GenericType(generic_type).as_const())
+            } else {
+                Some(SemanticType::GenericType(generic_type))
+            }
+        }
+    }
 
-            Some(SemanticType::GenericType(generic_type))
+    pub(crate) fn normalize_type_args(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        type_args_opt: Option<&mut TypedTypeArgs>,
+    ) {
+        let Some(type_args) = type_args_opt else {
+            return;
+        };
+
+        for type_arg in type_args {
+            match type_arg {
+                TypedTypeArg::Positional { ty, loc, .. } => {
+                    *ty = match self.normalize_and_check_sema_ty(scope_id_opt, ty.clone(), loc.clone()) {
+                        Some(sema_ty) => sema_ty,
+                        None => continue,
+                    };
+                }
+                TypedTypeArg::Named { ty, loc, .. } => {
+                    *ty = match self.normalize_and_check_sema_ty(scope_id_opt, ty.clone(), loc.clone()) {
+                        Some(sema_ty) => sema_ty,
+                        None => continue,
+                    };
+                }
+            }
         }
     }
 
@@ -465,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         local_scope_opt: Option<LocalScopeRef>,
         resolved_typedef: &ResolvedTypedef,
-        type_args: &TypedTypeArgs,
+        mut type_args: Option<TypedTypeArgs>,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         let typedef_generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
@@ -479,7 +491,7 @@ impl<'a> AnalysisContext<'a> {
                     scope_id_opt,
                     local_scope_opt.clone(),
                     generic_type.base,
-                    &Some(type_args.clone()),
+                    &mut type_args,
                     parent_mapping_ctx,
                     Some(&typedef_generic_params),
                     false,
@@ -489,8 +501,8 @@ impl<'a> AnalysisContext<'a> {
                 .unwrap()
             {
                 Ok((_, new_generic_type_opt)) => {
-                    // new generic params gotta be used!
-                    generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+                    // update generic params
+                    generic_type.generic_params = typedef_generic_params.clone();
 
                     new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
                 }
@@ -509,26 +521,22 @@ impl<'a> AnalysisContext<'a> {
                 type_args.clone(),
                 mapping_ctx.clone(),
                 self.mapping_ctx_arena.clone(),
+                typedef_generic_params.clone(),
                 false,
                 loc,
             );
 
-            mapping_ctx_arena!(self, mapping_ctx_arena, {
-                if let Err(diag) = generic_type.init(
-                    &*mapping_ctx_arena,
-                    typedef_generic_params.clone(),
-                    &(self.symbol_formatter)(scope_id_opt),
-                ) {
-                    self.reporter.report(diag);
-                    return None;
-                }
+            if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+            {
+                self.reporter.report(diag);
+                return None;
+            }
 
-                substitute_type(
-                    &*mapping_ctx_arena,
-                    resolved_typedef.typedef_sig.ty.clone(),
-                    mapping_ctx,
-                )
-            })
+            substitute_type(
+                self.mapping_ctx_arena.clone(),
+                resolved_typedef.typedef_sig.ty.clone(),
+                mapping_ctx,
+            )
         }
     }
 
@@ -536,7 +544,10 @@ impl<'a> AnalysisContext<'a> {
         let inner_ty = resolved_typedef.typedef_sig.ty.clone();
 
         if let Some(mut generic_type) = inner_ty.as_generic_type().cloned() {
-            generic_type.altered_generic_params = resolved_typedef.typedef_sig.generic_params.clone();
+            if let Some(generic_params) = &resolved_typedef.typedef_sig.generic_params {
+                generic_type.generic_params = generic_params.clone();
+            }
+
             Some(SemanticType::GenericType(generic_type))
         } else {
             Some(inner_ty)

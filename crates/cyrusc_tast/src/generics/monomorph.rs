@@ -20,7 +20,7 @@ use crate::{
         mapping_ctx::{GenericMappingCtx, mapping_ctx_eq_refcell},
         mapping_ctx_arena::GenericMappingCtxArena,
     },
-    stmts::TypedBlockStmt,
+    stmts::{TypedBlockStmt, TypedGenericParamsList},
 };
 use rand::Rng;
 use std::{
@@ -82,6 +82,7 @@ pub struct MonomorphFuncEntry {
     pub id: MonomorphID,
     pub base_symbol: SymbolID,
     pub mapping_ctx: GenericMappingCtx,
+    pub generic_params: TypedGenericParamsList,
     pub analyzed: bool,
 }
 
@@ -151,6 +152,7 @@ impl MonomorphRegistry {
         &self,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         func_symbol_id: SymbolID,
+        generic_params: TypedGenericParamsList,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
     ) -> Option<&MonomorphKey> {
         self.map
@@ -159,7 +161,9 @@ impl MonomorphRegistry {
                 MonomorphEntry::Func(monomorph_func_entry) => {
                     mapping_ctx_eq_refcell(
                         mapping_ctx_arena.clone(),
+                        &generic_params,
                         &Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+                        &monomorph_func_entry.generic_params,
                         &mapping_ctx,
                     ) && monomorph_entry.base_symbol() == func_symbol_id
                 }
@@ -170,6 +174,7 @@ impl MonomorphRegistry {
     pub fn register_func(
         &mut self,
         base_symbol: SymbolID,
+        generic_params: TypedGenericParamsList,
         mapping_ctx: GenericMappingCtx,
     ) -> (MonomorphKey, MonomorphID) {
         let key = MonomorphKey::new_instance_key();
@@ -180,6 +185,7 @@ impl MonomorphRegistry {
         let entry = MonomorphEntry::Func(MonomorphFuncEntry {
             id,
             base_symbol,
+            generic_params,
             mapping_ctx,
             analyzed: false,
         });

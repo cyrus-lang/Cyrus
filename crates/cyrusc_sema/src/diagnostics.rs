@@ -316,9 +316,6 @@ pub enum AnalyzerDiagKind {
     #[error("Symbol '{symbol_name}' is not a struct.")]
     NonStructSymbol { symbol_name: String },
 
-    #[error("Symbol '{symbol_name}' is not a type.")]
-    NonTypeSymbol { symbol_name: String },
-
     #[error("Cannot use {elements} elements in an array of size {expected}.")]
     ArrayElementsCountMismatch { elements: u32, expected: u32 },
 

@@ -340,6 +340,15 @@ pub enum TypedFuncTypeVariadicParams {
     Typed(SemanticType),
 }
 
+impl TypedFuncTypeParams {
+    pub fn as_typed_variadic(&self) -> Option<SemanticType> {
+        self.variadic.clone().and_then(|variadic| match *variadic {
+            TypedFuncTypeVariadicParams::Typed(sema_ty) => Some(sema_ty),
+            TypedFuncTypeVariadicParams::UntypedCStyle => None,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
@@ -347,6 +356,13 @@ pub enum TypedFuncParamKind {
 }
 
 impl TypedFuncParamKind {
+    pub fn loc(&self) -> SourceLoc {
+        match self {
+            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc.clone(),
+            TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.loc.clone(),
+        }
+    }
+
     pub fn param_type(&self) -> Option<SemanticType> {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
@@ -533,6 +549,13 @@ impl TypedTypeArg {
         match self {
             TypedTypeArg::Named { key, ty, .. } => Some((key, ty)),
             _ => None,
+        }
+    }
+
+    pub fn ty(&self) -> &SemanticType {
+        match self {
+            TypedTypeArg::Named { ty, .. } => ty,
+            TypedTypeArg::Positional { ty, .. } => ty,
         }
     }
 }

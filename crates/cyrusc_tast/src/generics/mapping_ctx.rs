@@ -19,6 +19,7 @@ use crate::{
     exprs::TypedIdentifier,
     format::format_sema_ty,
     generics::mapping_ctx_arena::{GenericMappingCtxArena, ParentGenericMappingCtxID},
+    stmts::TypedGenericParamsList,
     types::SemanticType,
 };
 use std::{
@@ -46,81 +47,94 @@ pub struct GenericMappingEntry {
 
 pub fn mapping_ctx_eq(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    a: &GenericMappingCtx,
-    b: &GenericMappingCtx,
+    generic_params1: &TypedGenericParamsList,
+    mapping_ctx1: &GenericMappingCtx,
+    generic_params2: &TypedGenericParamsList,
+    mapping_ctx2: &GenericMappingCtx,
 ) -> bool {
-    let (a, b) = {
-        let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+    let (mapping_ctx1, mapping_ctx2) = {
         (
-            normalize_generic_mapping_ctx(&*mapping_ctx_arena, a),
-            normalize_generic_mapping_ctx(&*mapping_ctx_arena, b),
+            normalize_generic_mapping_ctx(mapping_ctx_arena.clone(), mapping_ctx1),
+            normalize_generic_mapping_ctx(mapping_ctx_arena.clone(), mapping_ctx2),
         )
     };
 
-    if a.named.len() != b.named.len() || a.links != b.links {
-        return false;
-    }
-
-    for (k, v1) in &a.named {
-        let sema_ty = {
-            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
-            b.resolve_with_name(&*mapping_ctx_arena, &k.name)
-        };
-
-        match sema_ty {
-            Some(v2) if *v1 == v2 => {}
-            _ => return false,
+    let final_generic_params = {
+        let mut list = generic_params1.list.clone();
+        for generic_param in &generic_params2.list {
+            if list
+                .iter()
+                .find(|x| x.param_name.name == generic_param.param_name.name)
+                .is_none()
+            {
+                list.push(generic_param.clone());
+            }
         }
-    }
+        list
+    };
 
-    match (
-        a.parent.and_then(|parent_id| {
-            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
-            Some(mapping_ctx_arena.get(parent_id).unwrap().clone())
-        }),
-        b.parent.and_then(|parent_id| {
-            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
-            Some(mapping_ctx_arena.get(parent_id).unwrap().clone())
-        }),
-    ) {
-        (Some(pa), Some(pb)) => mapping_ctx_eq(mapping_ctx_arena, &pa, &pb),
-        (None, None) => true,
-        _ => false,
+    debug_assert!(final_generic_params.is_empty() == false);
+
+    {
+        for generic_param in &final_generic_params {
+            let sema_ty_opt1 =
+                mapping_ctx1.resolve_with_name(mapping_ctx_arena.clone(), &generic_param.param_name.name);
+            let sema_ty_opt2 =
+                mapping_ctx2.resolve_with_name(mapping_ctx_arena.clone(), &generic_param.param_name.name);
+
+            if sema_ty_opt1 != sema_ty_opt2 {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
+#[inline]
 pub fn mapping_ctx_eq_refcell(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    a: &Rc<RefCell<GenericMappingCtx>>,
-    b: &Rc<RefCell<GenericMappingCtx>>,
+    generic_params1: &TypedGenericParamsList,
+    mapping_ctx1: &Rc<RefCell<GenericMappingCtx>>,
+    generic_params2: &TypedGenericParamsList,
+    mapping_ctx2: &Rc<RefCell<GenericMappingCtx>>,
 ) -> bool {
-    let a_ref = a.borrow();
-    let b_ref = b.borrow();
+    let mapping_ctx1_ref = mapping_ctx1.borrow();
+    let mapping_ctx2_ref = mapping_ctx2.borrow();
 
-    mapping_ctx_eq(mapping_ctx_arena, &a_ref, &b_ref)
+    mapping_ctx_eq(
+        mapping_ctx_arena,
+        generic_params1,
+        &mapping_ctx1_ref,
+        generic_params2,
+        &mapping_ctx2_ref,
+    )
 }
 
 pub fn normalize_generic_mapping_ctx(
-    mapping_ctx_arena: &dyn GenericMappingCtxArena,
-    generic_mapping_ctx: &GenericMappingCtx,
+    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    mapping_ctx: &GenericMappingCtx,
 ) -> GenericMappingCtx {
     let mut named = HashMap::new();
     let mut links = HashMap::new();
 
-    let mut current_generic_mapping_ctx: Option<GenericMappingCtx> = Some(generic_mapping_ctx.clone());
+    let mut current_generic_mapping_ctx: Option<GenericMappingCtx> = Some(mapping_ctx.clone());
 
-    while let Some(generic_mapping_ctx) = current_generic_mapping_ctx {
-        for (k, v) in &generic_mapping_ctx.named {
+    while let Some(inner_mapping_ctx) = current_generic_mapping_ctx {
+        for (k, v) in &inner_mapping_ctx.named {
             named.entry(k.clone()).or_insert(v.clone());
         }
-        for (k, v) in &generic_mapping_ctx.links {
+        for (k, v) in &inner_mapping_ctx.links {
             links.entry(k.clone()).or_insert(v.clone());
         }
 
-        current_generic_mapping_ctx = generic_mapping_ctx
-            .parent
-            .and_then(|parent_id| Some(mapping_ctx_arena.get(parent_id).unwrap()))
-            .cloned();
+        {
+            let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+            current_generic_mapping_ctx = inner_mapping_ctx
+                .parent
+                .and_then(|parent_id| Some(mapping_ctx_arena.get(parent_id).unwrap()))
+                .cloned();
+        }
     }
 
     GenericMappingCtx {
@@ -156,13 +170,20 @@ impl GenericMappingCtx {
         &self.links
     }
 
-    pub fn resolve_with_name(&self, mapping_ctx_arena: &dyn GenericMappingCtxArena, name: &str) -> Option<SemanticType> {
+    pub fn resolve_with_name(
+        &self,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+        name: &str,
+    ) -> Option<SemanticType> {
         if let Some((_, ty)) = self.named.iter().find(|(id, _)| id.name == name) {
             return Some(ty.clone());
         }
 
         if let Some(parent_id) = self.parent {
-            let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
+            let parent_mapping_ctx = {
+                let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+                mapping_ctx_arena.get(parent_id).unwrap().clone()
+            };
             return parent_mapping_ctx.resolve_with_name(mapping_ctx_arena, name);
         }
 
@@ -177,7 +198,7 @@ impl GenericMappingCtx {
 
     pub fn resolve_linked_by_name(
         &self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         child_name: &str,
     ) -> Option<GenericMappingEntry> {
         if let Some(parent) = self
@@ -190,7 +211,10 @@ impl GenericMappingCtx {
         }
 
         if let Some(parent_id) = self.parent {
-            let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
+            let parent_mapping_ctx = {
+                let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+                mapping_ctx_arena.get(parent_id).unwrap().clone()
+            };
             return parent_mapping_ctx.resolve_linked_by_name(mapping_ctx_arena, child_name);
         }
 
@@ -271,13 +295,4 @@ impl From<TypedIdentifier> for GenericMappingEntry {
             name: value.name.clone(),
         }
     }
-}
-
-#[macro_export]
-macro_rules! mapping_ctx_arena {
-    ($self:expr, $export:ident, $body:stmt) => {{
-        #[allow(unused_mut)]
-        let mut $export = $self.mapping_ctx_arena.lock().unwrap();
-        $body
-    }};
 }
