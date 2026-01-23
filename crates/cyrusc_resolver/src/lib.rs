@@ -685,21 +685,20 @@ impl Resolver {
                 }
             }
             TypeSpecifier::Tuple(tuple_type) => {
-                let mut type_list: Vec<SemanticType> = Vec::new();
-
-                for element_type in &tuple_type.type_list {
-                    match self.resolve_type(
-                        generic_params,
-                        local_scope_opt.clone(),
-                        module_id,
-                        element_type.clone(),
-                        loc.clone(),
-                        span_end,
-                    ) {
-                        Some(sema_ty) => type_list.push(sema_ty),
-                        None => continue,
-                    }
-                }
+                let type_list: Vec<SemanticType> = tuple_type
+                    .type_list
+                    .iter()
+                    .map(|elem| {
+                        self.resolve_type(
+                            generic_params,
+                            local_scope_opt.clone(),
+                            module_id,
+                            elem.clone(),
+                            loc.clone(),
+                            span_end,
+                        )
+                    })
+                    .collect::<Option<Vec<_>>>()?;
 
                 Ok(SemanticType::Tuple(TypedTupleType {
                     type_list,
@@ -711,7 +710,7 @@ impl Resolver {
                     .params
                     .list
                     .iter()
-                    .filter_map(|param| {
+                    .map(|param| {
                         self.resolve_type(
                             generic_params,
                             local_scope_opt.clone(),
@@ -721,7 +720,7 @@ impl Resolver {
                             span_end,
                         )
                     })
-                    .collect();
+                    .collect::<Option<Vec<_>>>()?;
 
                 let variadic = match &func_type.params.variadic {
                     Some(FuncTypeVariadicParams::UntypedCStyle) => {
@@ -765,7 +764,7 @@ impl Resolver {
                 })
             }
             TypeSpecifier::Const(inner) => {
-                let ct = self.resolve_type(
+                let inner = self.resolve_type(
                     generic_params,
                     local_scope_opt,
                     module_id,
@@ -773,10 +772,10 @@ impl Resolver {
                     loc.clone(),
                     span_end,
                 )?;
-                Ok(SemanticType::Const(Box::new(ct)))
+                Ok(SemanticType::Const(Box::new(inner)))
             }
             TypeSpecifier::Deref(inner) => {
-                let ct = self.resolve_type(
+                let inner = self.resolve_type(
                     generic_params,
                     local_scope_opt,
                     module_id,
@@ -784,19 +783,19 @@ impl Resolver {
                     loc.clone(),
                     span_end,
                 )?;
-                Ok(SemanticType::Pointer(Box::new(ct)))
+                Ok(SemanticType::Pointer(Box::new(inner)))
             }
-            TypeSpecifier::Array(array_spec) => {
-                let elem_type = self.resolve_type(
+            TypeSpecifier::Array(array_type) => {
+                let element_type = self.resolve_type(
                     generic_params,
                     local_scope_opt.clone(),
                     module_id,
-                    *array_spec.element_type.clone(),
+                    *array_type.element_type.clone(),
                     loc.clone(),
                     span_end,
                 )?;
 
-                let capacity = match &array_spec.size {
+                let capacity = match &array_type.size {
                     ArrayCapacity::Fixed(expr) => {
                         let typed_expr = self.resolve_expr(module_id, local_scope_opt.clone(), expr)?;
                         if let TypedExprKind::Literal(lit) = &typed_expr.kind {
@@ -815,15 +814,16 @@ impl Resolver {
                 };
 
                 Ok(SemanticType::Array(TypedArrayType {
-                    element_type: Box::new(elem_type),
+                    element_type: Box::new(element_type),
                     capacity,
                     loc: SourceLoc::from_loc(loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::UnnamedStruct(struct_spec) => {
                 let mut fields = Vec::new();
+
                 for field in &struct_spec.fields {
-                    if let Some(ft) = self.resolve_type(
+                    if let Some(ty) = self.resolve_type(
                         generic_params,
                         local_scope_opt.clone(),
                         module_id,
@@ -832,8 +832,8 @@ impl Resolver {
                         field.span.end,
                     ) {
                         fields.push(TypedUnnamedStructTypeField {
-                            field_name: field.field_name.value.clone(),
-                            field_ty: Box::new(ft),
+                            name: field.field_name.value.clone(),
+                            ty: Box::new(ty),
                             loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
                         });
                     }
@@ -845,11 +845,11 @@ impl Resolver {
                     loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.current_file_path()),
                 }))
             }
-            TypeSpecifier::ModuleImport(import) => self
-                .resolve_module_import(module_id, import.clone())
+            TypeSpecifier::ModuleImport(module_import) => self
+                .resolve_module_import(module_id, module_import.clone())
                 .map(SemanticType::UnresolvedSymbol)
                 .ok_or(ResolverDiagKind::TypeNotFound {
-                    name: "import".to_string(),
+                    name: module_import.to_string(),
                 }),
             TypeSpecifier::Ident(ident) => {
                 let mut sema_ty_opt: Option<SemanticType>;
@@ -857,10 +857,9 @@ impl Resolver {
                 sema_ty_opt = self.resolve_generic_param_as_type(generic_params, ident);
 
                 if sema_ty_opt.is_none() {
-                    sema_ty_opt = Some(
-                        self.lookup_symbol_id(module_id, &ident.value)
-                            .map(SemanticType::UnresolvedSymbol)?,
-                    );
+                    sema_ty_opt = self
+                        .lookup_symbol_id(module_id, &ident.value)
+                        .map(SemanticType::UnresolvedSymbol);
                 }
 
                 if sema_ty_opt.is_none() {

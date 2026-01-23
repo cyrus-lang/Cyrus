@@ -17,7 +17,8 @@
 use crate::{
     diagnostics::AnalyzerDiagKind,
     flowstate::{ControlContext, FlowState},
-    type_cache::TypeResolutionCache,
+    normalizer::TypeResolutionCache,
+    type_checking::context::TypeCheckContext,
 };
 use cyrusc_ast::{AssignKind, SelfModifierKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
@@ -43,7 +44,7 @@ use cyrusc_tast::{
 use cyrusc_tokens::literals::LiteralKind;
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     mem,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -60,11 +61,7 @@ pub struct AnalysisContext<'a> {
     pub(crate) ty_caches: TypeResolutionCache,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
-
-    pub(crate) current_func: Option<TypedFuncType>,
-    pub(crate) current_self: Option<SemanticType>,
-    pub(crate) current_obj_operand_ty: Option<SemanticType>,
-    pub(crate) current_method_symbol_id: Option<SymbolID>,
+    pub(crate) ty_ctx: TypeCheckContext,
 
     control_stack: Vec<ControlContext>,
 
@@ -85,18 +82,15 @@ impl<'a> AnalysisContext<'a> {
         let symbol_formatter = Self::build_symbol_formatter(resolver, module_id);
 
         Self {
+            ty_caches: TypeResolutionCache::default(),
+            ty_ctx: TypeCheckContext::new(),
+            reporter: DiagReporter::new(),
+            control_stack: Vec::new(),
             program_tree,
             resolver,
-            reporter: DiagReporter::new(),
             module_id,
             symbol_formatter,
-            control_stack: Vec::new(),
-            current_func: None,
-            current_self: None,
-            current_obj_operand_ty: None,
-            current_method_symbol_id: None,
             entry_points,
-            ty_caches: TypeResolutionCache::default(),
             disable_warnings,
             monomorph_registry,
             mapping_ctx_arena,
@@ -531,7 +525,7 @@ impl<'a> AnalysisContext<'a> {
 
                             for (enum_valued_field_idx, enum_valued_field) in enum_valued_fields.iter_mut().enumerate()
                             {
-                                enum_valued_field.ty = match self.normalize_type(
+                                enum_valued_field.ty = match self.normalize_sema_type(
                                     scope_id_opt,
                                     enum_valued_field.ty.clone(),
                                     SourceLoc::from_loc(ident.loc.clone(), enum_sig.loc.file_path.clone()),
@@ -891,9 +885,9 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturnStmt) -> FlowState {
-        let func_type = self.current_func.clone().unwrap();
+        let func_type = self.ty_ctx.current_func.clone().unwrap();
         let return_type = self
-            .normalize_type(Some(scope_id), *func_type.return_type, typed_return.loc.clone())
+            .normalize_sema_type(Some(scope_id), *func_type.return_type, typed_return.loc.clone())
             .unwrap();
 
         if return_type.is_void() && typed_return.arg.is_some() {
@@ -1303,7 +1297,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
             typed_struct.symbol_id,
         )));
 
@@ -1325,7 +1319,7 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+            field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
@@ -1395,7 +1389,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
             typed_union.symbol_id,
         )));
 
@@ -1416,7 +1410,7 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
 
-            match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+            match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
                 Some(sema_ty) => {
                     field.ty = sema_ty;
                 }
@@ -1487,7 +1481,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
             typed_enum.symbol_id,
         )));
 
@@ -1507,7 +1501,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
                     for field in typed_enum_valued_fields {
-                        field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                        field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
                             Some(sema_ty) => sema_ty,
                             None => continue,
                         };
@@ -1649,8 +1643,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            self.current_method_symbol_id = Some(*symbol_id);
-            self.current_func = Some(TypedFuncType {
+            self.ty_ctx.current_method_symbol_id = Some(*symbol_id);
+            self.ty_ctx.current_func = Some(TypedFuncType {
                 symbol_id: Some(*symbol_id),
                 def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
@@ -1662,10 +1656,11 @@ impl<'a> AnalysisContext<'a> {
 
             self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 
-            func_sig.return_type = match self.normalize_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
-                Some(sema_ty) => sema_ty,
-                None => return,
-            };
+            func_sig.return_type =
+                match self.normalize_sema_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
+                    Some(sema_ty) => sema_ty,
+                    None => return,
+                };
 
             if let Some(typed_func_param_kind) = func_sig.params.list.first() {
                 if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = typed_func_param_kind.clone() {
@@ -1687,8 +1682,8 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze methods bodies
         for (symbol_id, func_sig, mut func_body) in local_methods_list {
-            self.current_method_symbol_id = Some(symbol_id);
-            self.current_func = Some(TypedFuncType {
+            self.ty_ctx.current_method_symbol_id = Some(symbol_id);
+            self.ty_ctx.current_func = Some(TypedFuncType {
                 symbol_id: Some(symbol_id),
                 def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
@@ -1716,7 +1711,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.current_method_symbol_id = None;
+        self.ty_ctx.current_method_symbol_id = None;
     }
 
     fn analyze_entry_func(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
@@ -1747,7 +1742,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.current_func = Some(TypedFuncType {
+        self.ty_ctx.current_func = Some(TypedFuncType {
             symbol_id: Some(typed_func_def.symbol_id),
             def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(&typed_func_def.params),
@@ -1759,7 +1754,7 @@ impl<'a> AnalysisContext<'a> {
         self.normalize_func_params(&mut typed_func_def.params, typed_func_def.loc.clone());
 
         typed_func_def.return_type =
-            match self.normalize_type(None, typed_func_def.return_type.clone(), typed_func_def.loc.clone()) {
+            match self.normalize_sema_type(None, typed_func_def.return_type.clone(), typed_func_def.loc.clone()) {
                 Some(sema_ty) => sema_ty,
                 None => return,
             };
@@ -1786,7 +1781,7 @@ impl<'a> AnalysisContext<'a> {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
                     let normalized_type = self
-                        .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
+                        .normalize_sema_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
                         .unwrap();
 
                     typed_func_param.ty = normalized_type.clone();
@@ -1795,7 +1790,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
                     let normalized_type = self
-                        .normalize_type(
+                        .normalize_sema_type(
                             None,
                             SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
                             typed_self_modifier.loc.clone(),
@@ -1821,7 +1816,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_params) = &mut params.variadic {
             if let TypedFuncVariadicParams::Typed(ident, sema_ty) = variadic_params {
-                let sema_ty = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
+                let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
                     Some(sema_ty) => sema_ty,
                     None => return,
                 };
@@ -1836,7 +1831,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: SourceLoc) {
         // analyze static arguments
         for param in params.list.iter_mut() {
-            let sema_ty = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
+            let sema_ty = self.normalize_sema_type(None, param.clone(), loc.clone()).unwrap();
             *param = sema_ty.clone();
 
             self.validate_param_type(&sema_ty, loc.clone());
@@ -1846,7 +1841,7 @@ impl<'a> AnalysisContext<'a> {
             match *variadic_params.clone() {
                 TypedFuncTypeVariadicParams::UntypedCStyle => {}
                 TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    let sema_ty = match self.normalize_type(None, sema_ty.clone(), loc.clone()) {
+                    let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
                         Some(sema_ty) => sema_ty,
                         None => return,
                     };
@@ -1871,7 +1866,7 @@ impl<'a> AnalysisContext<'a> {
         );
 
         typed_func_decl.return_type =
-            match self.normalize_type(None, typed_func_decl.return_type.clone(), typed_func_decl.loc.clone()) {
+            match self.normalize_sema_type(None, typed_func_decl.return_type.clone(), typed_func_decl.loc.clone()) {
                 Some(sema_ty) => sema_ty,
                 None => return,
             };
@@ -1917,11 +1912,33 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedefStmt) {
-        typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone())
-        {
-            Some(sema_ty) => sema_ty,
-            None => return,
-        };
+        dbg!(typed_typedef.ty.clone());
+        // typed_typedef.ty =
+        //     match self.normalize_sema_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone()) {
+        //         Some(sema_ty) => sema_ty,
+        //         None => {
+
+        //             todo!();
+        //         },
+        //     };
+
+        // if self.check_cyclic_typedef(
+        //     scope_id_opt,
+        //     typed_typedef.symbol_id,
+        //     &typed_typedef.ty,
+        //     &mut HashSet::new(),
+        //     &mut HashSet::new(),
+        //     typed_typedef.loc.clone(),
+        // ) {
+        //     let symbol_name = format_sema_ty(typed_typedef.ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
+        //         location: Some(DiagLoc::new(typed_typedef.loc.clone())),
+        //         hint: None,
+        //     });
+        // }
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
@@ -1929,7 +1946,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(sema_ty) = &typed_variable.ty {
-            typed_variable.ty = self.normalize_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
+            typed_variable.ty = self.normalize_sema_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());
         }
 
         if let Some(rhs) = &mut typed_variable.rhs {

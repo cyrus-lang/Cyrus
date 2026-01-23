@@ -1441,9 +1441,6 @@ impl Parser {
     }
 
     fn parse_typedef(&mut self, vis: Visibility) -> Result<Stmt, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
-
         self.expect_current(TokenKind::Typedef)?;
 
         let ident = self.parse_identifier()?;
@@ -1457,6 +1454,10 @@ impl Parser {
         }
 
         self.expect_current(TokenKind::Assign)?;
+
+        let loc = self.current_token().loc.clone();
+        let start = self.current_token().span.start;
+
         let type_specifier = self.parse_type_specifier()?;
         self.next_token();
         Ok(Stmt::Typedef(Typedef {

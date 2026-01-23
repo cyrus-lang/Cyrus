@@ -180,7 +180,7 @@ impl<'a> AnalysisContext<'a> {
                 .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
         };
 
-        self.current_func = Some(typed_func_type_from_func_sig(func_sig));
+        self.ty_ctx.current_func = Some(typed_func_type_from_func_sig(func_sig));
         self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
 
         if let Some(sema_ty) = self_modifier_ty {
