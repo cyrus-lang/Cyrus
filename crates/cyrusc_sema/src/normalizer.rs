@@ -554,6 +554,14 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if self.ty_caches.push(symbol_id).is_err() {
+            let symbol_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
             return None;
         };
 
@@ -756,114 +764,5 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
         }
-    }
-
-    fn sema_ty_symbol_refs(&self, ty: &SemanticType) -> Vec<SymbolID> {
-        match ty {
-            SemanticType::ResolvedSymbol(res) => {
-                match res {
-                    ResolvedSymbol::Enum(id)
-                    | ResolvedSymbol::Union(id)
-                    | ResolvedSymbol::Typedef(id)
-                    | ResolvedSymbol::NamedStruct(id)
-                    | ResolvedSymbol::Interface(id) => vec![*id],
-
-                    // Usually not part of type cycles
-                    ResolvedSymbol::GlobalVar(_)
-                    | ResolvedSymbol::Variable(_)
-                    | ResolvedSymbol::Func(_)
-                    | ResolvedSymbol::Method(_) => vec![],
-                }
-            }
-
-            SemanticType::Array(array) => self.sema_ty_symbol_refs(&array.element_type),
-
-            SemanticType::Tuple(tuple) => {
-                let mut refs: Vec<SymbolID> = Vec::new();
-                for sema_ty in &tuple.type_list {
-                    refs.extend(self.sema_ty_symbol_refs(sema_ty));
-                }
-                refs
-            }
-
-            SemanticType::FuncType(func_type) => {
-                todo!();
-                // func_type.params.
-                // let mut ids = func.param_type_ids();
-                // ids.push(func.return_type_id());
-                // ids
-            }
-
-            SemanticType::GenericType(inner) => {
-                todo!();
-            }
-            SemanticType::UnnamedStruct(unnamed_struct_type) => {
-                let mut refs: Vec<SymbolID> = Vec::new();
-                for field in &unnamed_struct_type.fields {
-                    refs.extend(self.sema_ty_symbol_refs(&field.ty));
-                }
-                refs
-            }
-
-            SemanticType::DynamicType(_)
-            | SemanticType::Pointer(_)
-            | SemanticType::PlainType(_)
-            | SemanticType::GenericParam(_)
-            | SemanticType::SelfType(_)
-            | SemanticType::UnresolvedSymbol(_)
-            | SemanticType::Const(_) => vec![],
-        }
-    }
-
-    pub(crate) fn check_cyclic_typedef(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typedef_symbol_id: SymbolID,
-        ty: &SemanticType,
-        visited: &mut HashSet<SymbolID>,
-        visiting: &mut HashSet<SymbolID>,
-        loc: SourceLoc,
-    ) -> bool {
-        dbg!(ty.clone());
-        dbg!(self.sema_ty_symbol_refs(&ty.clone()));
-
-        for referenced in self.sema_ty_symbol_refs(ty) {
-            // cycle detected: we reached the typedef again
-            if referenced == typedef_symbol_id {
-                return true;
-            }
-
-            // already fully checked
-            if visited.contains(&referenced) {
-                continue;
-            }
-
-            // currently on stack → indirect cycle
-            if visiting.contains(&referenced) {
-                return true;
-            }
-
-            visiting.insert(referenced);
-
-            if let Some(next_ty) = self.resolve_symbol_type(scope_id_opt, referenced, loc.clone()) {
-                dbg!(next_ty.clone());
-
-                if self.check_cyclic_typedef(
-                    scope_id_opt,
-                    typedef_symbol_id,
-                    &next_ty,
-                    visited,
-                    visiting,
-                    loc.clone(),
-                ) {
-                    return true;
-                }
-            }
-
-            visiting.remove(&referenced);
-            visited.insert(referenced);
-        }
-
-        false
     }
 }

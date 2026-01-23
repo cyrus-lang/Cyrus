@@ -1912,33 +1912,11 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedefStmt) {
-        dbg!(typed_typedef.ty.clone());
-        // typed_typedef.ty =
-        //     match self.normalize_sema_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone()) {
-        //         Some(sema_ty) => sema_ty,
-        //         None => {
-
-        //             todo!();
-        //         },
-        //     };
-
-        // if self.check_cyclic_typedef(
-        //     scope_id_opt,
-        //     typed_typedef.symbol_id,
-        //     &typed_typedef.ty,
-        //     &mut HashSet::new(),
-        //     &mut HashSet::new(),
-        //     typed_typedef.loc.clone(),
-        // ) {
-        //     let symbol_name = format_sema_ty(typed_typedef.ty.clone(), &(self.symbol_formatter)(scope_id_opt));
-
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-        //         location: Some(DiagLoc::new(typed_typedef.loc.clone())),
-        //         hint: None,
-        //     });
-        // }
+        typed_typedef.ty =
+            match self.normalize_sema_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone()) {
+                Some(sema_ty) => sema_ty,
+                None => return,
+            };
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
