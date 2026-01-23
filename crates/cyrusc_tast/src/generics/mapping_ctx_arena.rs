@@ -3,7 +3,7 @@ use crate::generics::mapping_ctx::GenericMappingCtx;
 pub type ParentGenericMappingCtxID = usize;
 
 pub trait GenericMappingCtxArena: Send + Sync {
-    fn insert(&mut self, generic_mapping_ctx: GenericMappingCtx) -> ParentGenericMappingCtxID;
+    fn insert(&mut self, mapping_ctx: GenericMappingCtx) -> ParentGenericMappingCtxID;
     fn get(&self, idx: usize) -> Option<&GenericMappingCtx>;
 }
 
@@ -16,8 +16,8 @@ impl GenericMappingCtxArenaImpl {
 }
 
 impl GenericMappingCtxArena for GenericMappingCtxArenaImpl {
-    fn insert(&mut self, generic_mapping_ctx: GenericMappingCtx) -> ParentGenericMappingCtxID {
-        self.0.push(generic_mapping_ctx);
+    fn insert(&mut self, mapping_ctx: GenericMappingCtx) -> ParentGenericMappingCtxID {
+        self.0.push(mapping_ctx);
         self.0.len() - 1
     }
 

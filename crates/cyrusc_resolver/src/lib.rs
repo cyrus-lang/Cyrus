@@ -671,10 +671,10 @@ impl Resolver {
 
                     Ok(SemanticType::GenericType(GenericType {
                         base: symbol_id,
-                        type_args,
+                        type_args: Some(type_args),
                         mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
                         mapping_ctx_arena: self.mapping_ctx_arena.clone(),
-                        altered_generic_params: None,
+                        generic_params: TypedGenericParamsList::new(),
                         is_const,
                         loc: SourceLoc::from_loc(generic_inst.loc.clone(), self.current_file_path()),
                     }))

@@ -19,7 +19,6 @@ use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     ScopeID,
     generics::{mapping_ctx::mapping_ctx_eq_refcell, substitute::substitute_struct_sig},
-    mapping_ctx_arena,
     sigs::StructSig,
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
@@ -35,12 +34,10 @@ impl<'a> AnalysisContext<'a> {
         target_type: SemanticType,
         loc: SourceLoc,
     ) -> bool {
-        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let local_scope_opt =
+            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        match (
-            value_type.const_inner().clone(),
-            target_type.const_inner().clone(),
-        ) {
+        match (value_type.const_inner().clone(), target_type.const_inner().clone()) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
             }
@@ -61,12 +58,7 @@ impl<'a> AnalysisContext<'a> {
                 let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
-                    if !self.check_type_mismatch(
-                        scope_id_opt,
-                        *field1.ty.clone(),
-                        *field2.ty.clone(),
-                        loc.clone(),
-                    ) {
+                    if !self.check_type_mismatch(scope_id_opt, *field1.ty.clone(), *field2.ty.clone(), loc.clone()) {
                         fields = false;
                         break;
                     }
@@ -105,18 +97,17 @@ impl<'a> AnalysisContext<'a> {
 
                 match named_struct.as_struct().cloned() {
                     Some(mut resolved_struct) => {
-                        mapping_ctx_arena!(self, mapping_ctx_arena, {
-                            resolved_struct.struct_sig = substitute_struct_sig(
-                                &*mapping_ctx_arena,
-                                &resolved_struct.struct_sig,
-                                generic_type.mapping_ctx.clone(),
-                            )
-                            .unwrap();
-                            self.check_unnamed_struct_and_named_struct_type_mismatch(
-                                &unnamed_struct,
-                                &resolved_struct.struct_sig,
-                            )
-                        })
+                        resolved_struct.struct_sig = substitute_struct_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_struct.struct_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        self.check_unnamed_struct_and_named_struct_type_mismatch(
+                            &unnamed_struct,
+                            &resolved_struct.struct_sig,
+                        )
                     }
                     None => false, // not compatible!
                 }
@@ -129,18 +120,17 @@ impl<'a> AnalysisContext<'a> {
 
                 match named_struct.as_struct().cloned() {
                     Some(mut resolved_struct) => {
-                        mapping_ctx_arena!(self, mapping_ctx_arena, {
-                            resolved_struct.struct_sig = substitute_struct_sig(
-                                &*mapping_ctx_arena,
-                                &resolved_struct.struct_sig,
-                                generic_type.mapping_ctx.clone(),
-                            )
-                            .unwrap();
-                            self.check_unnamed_struct_and_named_struct_type_mismatch(
-                                &unnamed_struct,
-                                &resolved_struct.struct_sig,
-                            )
-                        })
+                        resolved_struct.struct_sig = substitute_struct_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_struct.struct_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        self.check_unnamed_struct_and_named_struct_type_mismatch(
+                            &unnamed_struct,
+                            &resolved_struct.struct_sig,
+                        )
                     }
                     None => false, // not compatible!
                 }
@@ -148,7 +138,9 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::GenericType(generic_type1), SemanticType::GenericType(generic_type2)) => {
                 mapping_ctx_eq_refcell(
                     self.mapping_ctx_arena.clone(),
+                    &generic_type1.generic_params,
                     &generic_type1.mapping_ctx,
+                    &generic_type2.generic_params,
                     &generic_type2.mapping_ctx,
                 )
             }

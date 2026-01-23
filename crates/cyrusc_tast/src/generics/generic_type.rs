@@ -38,10 +38,10 @@ use std::{
 #[derive(Clone)]
 pub struct GenericType {
     pub base: SymbolID,
-    pub type_args: TypedTypeArgs,
+    pub type_args: Option<TypedTypeArgs>,
     pub mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
     pub mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    pub altered_generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParamsList,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
@@ -49,18 +49,21 @@ pub struct GenericType {
 impl GenericType {
     pub fn new_unresolved(
         base: SymbolID,
-        type_args: TypedTypeArgs,
+        type_args: Option<TypedTypeArgs>,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+        generic_params: TypedGenericParamsList,
         is_const: bool,
         loc: SourceLoc,
     ) -> Self {
+        debug_assert!(generic_params.list.is_empty() == false);
+
         Self {
             base,
             type_args,
             mapping_ctx,
             mapping_ctx_arena,
-            altered_generic_params: None,
+            generic_params,
             is_const,
             loc,
         }
@@ -68,16 +71,21 @@ impl GenericType {
 
     pub fn init(
         &mut self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
-        template: TypedGenericParamsList,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         format_symbol: &impl Fn(SymbolID) -> String,
     ) -> Result<(), Diag> {
-        for type_arg in &self.type_args {
+        debug_assert!(self.generic_params.list.is_empty() == false);
+
+        let Some(type_args) = self.type_args.clone() else {
+            return Ok(());
+        };
+
+        for type_arg in type_args {
             match type_arg {
                 TypedTypeArg::Positional { idx, ty, loc } => {
-                    let generic_param = template.lookup_positional(*idx).ok_or(Diag {
+                    let generic_param = self.generic_params.lookup_positional(idx).ok_or(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { idx: *idx }),
+                        kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { idx }),
                         location: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     })?;
@@ -85,7 +93,7 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     self.check_for_overriding_parent_generic_param(
-                        mapping_ctx_arena,
+                        mapping_ctx_arena.clone(),
                         &mapping_ctx,
                         generic_param.param_name.name.clone(),
                         Some(ty.clone()),
@@ -109,7 +117,7 @@ impl GenericType {
                     let mut mapping_ctx = self.mapping_ctx.borrow_mut();
 
                     self.check_for_overriding_parent_generic_param(
-                        mapping_ctx_arena,
+                        mapping_ctx_arena.clone(),
                         &mapping_ctx,
                         key.clone(),
                         Some(ty.clone()),
@@ -117,10 +125,11 @@ impl GenericType {
                         loc.clone(),
                     )?;
 
-                    let typed_identifier = template
-                        .lookup_named(key)
+                    let typed_identifier = self
+                        .generic_params
+                        .lookup_named(&key)
                         .map(|generic_param| GenericMappingEntry::from(generic_param.param_name.clone()))
-                        .or(mapping_ctx.resolve_linked_by_name(mapping_ctx_arena, &key))
+                        .or(mapping_ctx.resolve_linked_by_name(mapping_ctx_arena.clone(), &key))
                         .ok_or({
                             Diag {
                                 level: DiagLevel::Error,
@@ -135,12 +144,13 @@ impl GenericType {
                 }
             }
         }
+
         Ok(())
     }
 
     pub fn finalize(
         &self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         template: TypedGenericParamsList,
         format_symbol: impl Fn(SymbolID) -> String,
     ) -> Result<&Self, Diag> {
@@ -149,7 +159,7 @@ impl GenericType {
             let mut mapping_ctx = self.mapping_ctx.borrow_mut();
             for generic_param in &template.list {
                 if mapping_ctx
-                    .resolve_with_name(mapping_ctx_arena, &generic_param.param_name.name)
+                    .resolve_with_name(mapping_ctx_arena.clone(), &generic_param.param_name.name)
                     .is_none()
                 {
                     if let Some(default) = &generic_param.default {
@@ -187,7 +197,7 @@ impl GenericType {
 
     fn check_for_overriding_parent_generic_param(
         &self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         child_mapping_ctx: &GenericMappingCtx,
         generic_param_name: String,
         type_arg_sema_ty: Option<SemanticType>,
@@ -195,7 +205,10 @@ impl GenericType {
         loc: SourceLoc,
     ) -> Result<(), Diag> {
         if let Some(parent_id) = child_mapping_ctx.parent_id() {
-            let parent_mapping_ctx = mapping_ctx_arena.get(parent_id).unwrap();
+            let parent_mapping_ctx = {
+                let mapping_ctx_arena = mapping_ctx_arena.lock().unwrap();
+                mapping_ctx_arena.get(parent_id).unwrap().clone()
+            };
 
             if let Some(parent_sema_ty) = parent_mapping_ctx.resolve_with_name(mapping_ctx_arena, &generic_param_name) {
                 // NOTE: complain only and only if overrode type is not the same!
@@ -222,7 +235,7 @@ impl GenericType {
 
     fn collect_unresolved_generic_params(
         &self,
-        mapping_ctx_arena: &dyn GenericMappingCtxArena,
+        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         template: &TypedGenericParamsList,
     ) -> Vec<TypedIdentifier> {
         let mapping_ctx = self.mapping_ctx.borrow();
@@ -232,7 +245,7 @@ impl GenericType {
             .iter()
             .filter(|gp| {
                 mapping_ctx
-                    .resolve_with_name(mapping_ctx_arena, &gp.param_name.name)
+                    .resolve_with_name(mapping_ctx_arena.clone(), &gp.param_name.name)
                     .is_none()
             })
             .map(|gp| gp.param_name.clone())
@@ -243,24 +256,29 @@ impl GenericType {
         let base = format_symbol(self.base);
         let is_const = if self.is_const { "const " } else { "" };
 
-        let type_args_str = self
-            .type_args
-            .iter()
-            .map(|type_arg| match type_arg {
-                TypedTypeArg::Positional { ty, .. } => format_sema_ty(ty.clone(), &format_symbol),
-                TypedTypeArg::Named { key, ty, .. } => {
-                    format!("{} = {}", key, format_sema_ty(ty.clone(), &format_symbol))
+        let mut collected_type_args: Vec<String> = Vec::new();
+
+        {
+            let mapping_ctx = self.mapping_ctx.borrow();
+
+            for generic_param in self.generic_params.list.clone() {
+                {
+                    let sema_ty_opt =
+                        mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name);
+
+                    if let Some(sema_ty) = sema_ty_opt {
+                        collected_type_args.push(format_sema_ty(sema_ty, &format_symbol));
+                    }
                 }
-            })
-            .collect::<Vec<String>>()
-            .join(", ");
+            }
+        }
 
         format!(
             "{}{}{}",
             is_const,
             base,
-            if self.type_args.len() > 0 {
-                format!("<{}>", type_args_str)
+            if collected_type_args.len() > 0 {
+                format!("<{}>", collected_type_args.join(", "))
             } else {
                 "".to_string()
             }
@@ -274,7 +292,13 @@ impl PartialEq for GenericType {
             return false;
         }
 
-        mapping_ctx_eq_refcell(self.mapping_ctx_arena.clone(), &self.mapping_ctx, &other.mapping_ctx)
+        mapping_ctx_eq_refcell(
+            self.mapping_ctx_arena.clone(),
+            &self.generic_params,
+            &self.mapping_ctx,
+            &other.generic_params,
+            &other.mapping_ctx,
+        )
     }
 }
 
@@ -290,7 +314,7 @@ impl Debug for GenericType {
             .field("base", &self.base)
             .field("type_args", &self.type_args)
             .field("mapping_ctx", &self.mapping_ctx)
-            .field("altered_generic_params", &self.altered_generic_params)
+            .field("generic_params", &self.generic_params)
             .field("is_const", &self.is_const)
             .field("loc", &self.loc)
             .finish()
@@ -310,51 +334,52 @@ pub fn debug_generic_type<'a>(
     println!("-----------------------");
     println!("Base: {}", format_symbol(generic_type.base));
 
-    if let Some(generic_params) = &generic_type.altered_generic_params {
-        println!("Altered Generic Params: ");
+    println!("Generic Params: ");
 
-        for generic_param in &generic_params.list {
-            print!("{}", generic_param.param_name.name.clone());
-            if let Some(default) = &generic_param.default {
-                print!(" default({})", format_sema_ty(*default.clone(), format_symbol));
-            }
-            if let Some(bounds) = &generic_param.bounds {
-                print!(
-                    " bounds({})",
-                    bounds
-                        .iter()
-                        .map(|bound| {
-                            let type_args = bound
-                                .type_args
-                                .iter()
-                                .map(|type_arg| match type_arg {
-                                    TypedTypeArg::Positional { idx, ty, .. } => {
-                                        format!("  {}:{}\n", idx, format_sema_ty(ty.clone(), format_symbol))
-                                    }
-                                    TypedTypeArg::Named { key, ty, .. } => {
-                                        format!("  {}:{}\n", key, format_sema_ty(ty.clone(), format_symbol))
-                                    }
-                                })
-                                .collect::<Vec<String>>()
-                                .join(", ");
+    for generic_param in &generic_type.generic_params.list {
+        print!("{}", generic_param.param_name.name.clone());
+        if let Some(default) = &generic_param.default {
+            print!(" default({})", format_sema_ty(*default.clone(), format_symbol));
+        }
+        if let Some(bounds) = &generic_param.bounds {
+            print!(
+                " bounds({})",
+                bounds
+                    .iter()
+                    .map(|bound| {
+                        let type_args = bound
+                            .type_args
+                            .iter()
+                            .map(|type_arg| match type_arg {
+                                TypedTypeArg::Positional { idx, ty, .. } => {
+                                    format!("  {}:{}\n", idx, format_sema_ty(ty.clone(), format_symbol))
+                                }
+                                TypedTypeArg::Named { key, ty, .. } => {
+                                    format!("  {}:{}\n", key, format_sema_ty(ty.clone(), format_symbol))
+                                }
+                            })
+                            .collect::<Vec<String>>()
+                            .join(", ");
 
-                            format!("{}<{}>", bound.symbol.value.clone(), type_args)
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
+                        format!("{}<{}>", bound.symbol.value.clone(), type_args)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
     }
 
-    println!("Type Args: ");
-    for type_arg in &generic_type.type_args {
-        match type_arg {
-            TypedTypeArg::Positional { idx, ty, .. } => {
-                println!("  {}:{}", idx, format_sema_ty(ty.clone(), format_symbol));
-            }
-            TypedTypeArg::Named { key, ty, .. } => {
-                println!("  {}:{}", key, format_sema_ty(ty.clone(), format_symbol));
+    if let Some(type_args) = &generic_type.type_args {
+        println!("Type Args: ");
+
+        for type_arg in type_args {
+            match type_arg {
+                TypedTypeArg::Positional { idx, ty, .. } => {
+                    println!("  {}:{}", idx, format_sema_ty(ty.clone(), format_symbol));
+                }
+                TypedTypeArg::Named { key, ty, .. } => {
+                    println!("  {}:{}", key, format_sema_ty(ty.clone(), format_symbol));
+                }
             }
         }
     }

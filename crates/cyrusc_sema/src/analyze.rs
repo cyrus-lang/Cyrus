@@ -44,7 +44,7 @@ use cyrusc_tast::{
 use cyrusc_tokens::literals::LiteralKind;
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     mem,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -664,9 +664,12 @@ impl<'a> AnalysisContext<'a> {
                 let mut enum_sig = resolved_enum.enum_sig.clone();
 
                 if let Some(generic_type) = generic_type_opt {
-                    enum_sig = mapping_ctx_arena!(self, mapping_ctx_arena, {
-                        substitute_enum_sig(&*mapping_ctx_arena, &enum_sig, generic_type.mapping_ctx.clone()).unwrap()
-                    });
+                    enum_sig = substitute_enum_sig(
+                        self.mapping_ctx_arena.clone(),
+                        &enum_sig,
+                        generic_type.mapping_ctx.clone(),
+                    )
+                    .unwrap()
                 }
 
                 return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);
