@@ -63,8 +63,8 @@ impl<'a> AnalysisContext<'a> {
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
                     if !self.check_type_mismatch(
                         scope_id_opt,
-                        *field1.field_ty.clone(),
-                        *field2.field_ty.clone(),
+                        *field1.ty.clone(),
+                        *field2.ty.clone(),
                         loc.clone(),
                     ) {
                         fields = false;
@@ -170,7 +170,7 @@ impl<'a> AnalysisContext<'a> {
         let unnamed_struct_fields = unnamed_struct
             .fields
             .iter()
-            .map(|field| *field.field_ty.clone())
+            .map(|field| *field.ty.clone())
             .collect::<Vec<_>>();
 
         let named_struct_fields = struct_sig

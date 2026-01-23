@@ -288,8 +288,8 @@ pub fn format_unnamed_struct_ty<'a>(
             .map(|field| {
                 format!(
                     "{}: {}",
-                    field.field_name,
-                    format_sema_ty(*field.field_ty.clone(), format_symbol)
+                    field.name,
+                    format_sema_ty(*field.ty.clone(), format_symbol)
                 )
             })
             .collect::<Vec<String>>()

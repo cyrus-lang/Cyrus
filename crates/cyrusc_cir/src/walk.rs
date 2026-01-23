@@ -1282,7 +1282,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap()
             .fields
             .iter()
-            .map(|field| self.lower_sema_ty(scope_id_opt, &field.field_ty))
+            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
             .collect();
 
         let struct_ty = CIRStructTy {
@@ -1417,7 +1417,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 let field_tys: Vec<CIRTy> = ustruct_ty
                     .fields
                     .iter()
-                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.field_ty))
+                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
                     .collect();
                 CIRTy::Struct(CIRStructTy {
                     fields: field_tys,

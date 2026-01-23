@@ -24,5 +24,4 @@ mod generics;
 mod deduce;
 mod nameconv;
 mod normalizer;
-pub mod type_cache;
 mod type_checking;

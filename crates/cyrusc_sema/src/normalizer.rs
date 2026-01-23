@@ -23,6 +23,7 @@ use cyrusc_resolver::{
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::TypedSelfType,
+    format::format_sema_ty,
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_type},
     mapping_ctx_arena,
     sigs::{FuncSig, typed_func_decl_as_func_sig},
@@ -35,7 +36,32 @@ use cyrusc_tast::{
         TypedFuncType, TypedTupleType,
     },
 };
-use std::{cell::RefCell, rc::Rc};
+use fx_hash::FxHashMap;
+use smallvec::SmallVec;
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
+
+#[derive(Default)]
+pub struct TypeResolutionCache {
+    // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef)
+    pub cache: FxHashMap<SymbolID, SemanticType>,
+    // Guard against cycles
+    pub in_progress: SmallVec<[SymbolID; 16]>,
+}
+
+impl TypeResolutionCache {
+    pub fn push(&mut self, sym: SymbolID) -> Result<(), ()> {
+        if self.in_progress.contains(&sym) {
+            return Err(());
+        }
+        self.in_progress.push(sym);
+        Ok(())
+    }
+
+    pub fn pop(&mut self, sym: SymbolID) {
+        debug_assert!(self.in_progress.last() == Some(&sym));
+        self.in_progress.pop();
+    }
+}
 
 impl<'a> AnalysisContext<'a> {
     /// Validate a semantic type.
@@ -46,15 +72,6 @@ impl<'a> AnalysisContext<'a> {
         mut sema_ty: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        // TODO: Check against cyclic type definition;
-        // let symbol_name = (self.symbol_formatter)(scope_id_opt)(symbol_id);
-        // self.reporter.report(Diag {
-        //     level: DiagLevel::Error,
-        //     kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-        //     location: Some(DiagLoc::new(loc)),
-        //     hint: None,
-        // });
-
         if sema_ty.count_const_layers() > 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -64,7 +81,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_ty.is_self_type() && self.current_self.is_none() {
+        if sema_ty.is_self_type() && self.ty_ctx.current_self.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -107,14 +124,14 @@ impl<'a> AnalysisContext<'a> {
         sema_ty: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let sema_ty = self.normalize_type(scope_id_opt, sema_ty, loc.clone())?;
+        let sema_ty = self.normalize_sema_type(scope_id_opt, sema_ty, loc.clone())?;
 
         self.check_sema_ty(scope_id_opt, sema_ty, loc.clone())
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
     // and recursively normalize children. Never returns UnresolvedSymbol.
-    pub fn normalize_type(
+    pub fn normalize_sema_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         ty: SemanticType,
@@ -145,7 +162,7 @@ impl<'a> AnalysisContext<'a> {
             .params
             .list
             .into_iter()
-            .filter_map(|param| self.normalize_type(scope_id_opt, param, func_type.loc.clone()))
+            .filter_map(|param| self.normalize_sema_type(scope_id_opt, param, func_type.loc.clone()))
             .collect();
 
         if params.len() != params_len {
@@ -161,7 +178,7 @@ impl<'a> AnalysisContext<'a> {
                     func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle));
                 }
                 TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    if let Some(normalized) = self.normalize_type(scope_id_opt, sema_ty, func_type.loc.clone()) {
+                    if let Some(normalized) = self.normalize_sema_type(scope_id_opt, sema_ty, func_type.loc.clone()) {
                         func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::Typed(normalized)));
                     } else {
                         return None;
@@ -170,7 +187,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let normalized_ret = self.normalize_type(scope_id_opt, *func_type.return_type, func_type.loc.clone())?;
+        let normalized_ret = self.normalize_sema_type(scope_id_opt, *func_type.return_type, func_type.loc.clone())?;
         func_type.return_type = Box::new(normalized_ret);
 
         Some(SemanticType::FuncType(func_type))
@@ -181,7 +198,7 @@ impl<'a> AnalysisContext<'a> {
         let type_list: Vec<_> = tuple_type
             .type_list
             .into_iter()
-            .filter_map(|sema_ty| self.normalize_type(scope_id_opt, sema_ty, tuple_type.loc.clone()))
+            .filter_map(|sema_ty| self.normalize_sema_type(scope_id_opt, sema_ty, tuple_type.loc.clone()))
             .collect();
 
         // if we lost any types, return None
@@ -231,7 +248,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone())?);
+        arr.element_type = Box::new(self.normalize_sema_type(scope_id_opt, *arr.element_type, loc.clone())?);
         Some(arr)
     }
 
@@ -251,7 +268,7 @@ impl<'a> AnalysisContext<'a> {
         inner: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let normalized = self.normalize_type(scope_id_opt, inner, loc.clone())?;
+        let normalized = self.normalize_sema_type(scope_id_opt, inner, loc.clone())?;
         Some(normalized.as_const())
     }
 
@@ -261,7 +278,7 @@ impl<'a> AnalysisContext<'a> {
         inner: SemanticType,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let normalized = self.normalize_type(scope_id_opt, inner, loc.clone())?;
+        let normalized = self.normalize_sema_type(scope_id_opt, inner, loc.clone())?;
         Some(SemanticType::Pointer(Box::new(normalized)))
     }
 
@@ -275,7 +292,7 @@ impl<'a> AnalysisContext<'a> {
         let global_var = symbol_entry.as_global_var()?;
 
         if let Some(ty) = &global_var.global_var_sig.ty {
-            self.normalize_type(scope_id_opt, ty.clone(), loc)
+            self.normalize_sema_type(scope_id_opt, ty.clone(), loc)
         } else {
             None
         }
@@ -293,14 +310,14 @@ impl<'a> AnalysisContext<'a> {
 
         // try to get type from annotation
         if let Some(ty) = &variable.typed_variable.ty {
-            return self.normalize_type(scope_id_opt, ty.clone(), loc);
+            return self.normalize_sema_type(scope_id_opt, ty.clone(), loc);
         }
 
         // try to infer from RHS
         if let Some(rhs) = &variable.typed_variable.rhs {
             let rhs_ty =
                 self.analyze_expr_non_terminal(scope_id_opt, &mut rhs.clone(), variable.typed_variable.ty.clone())?;
-            return self.normalize_type(scope_id_opt, rhs_ty, loc);
+            return self.normalize_sema_type(scope_id_opt, rhs_ty, loc);
         }
 
         None
@@ -351,12 +368,12 @@ impl<'a> AnalysisContext<'a> {
         self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 
         let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
-        self.normalize_type(scope_id_opt, resolved, loc)
+        self.normalize_sema_type(scope_id_opt, resolved, loc)
     }
 
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
         // try to resolve from current object operand context
-        if let Some(sema_ty) = &self.current_obj_operand_ty {
+        if let Some(sema_ty) = &self.ty_ctx.current_obj_operand_ty {
             if let Some(generic_type) = sema_ty.as_generic_type() {
                 mapping_ctx_arena!(self, mapping_ctx_arena, {
                     let mapping_ctx = generic_type.mapping_ctx.borrow();
@@ -372,7 +389,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
-        self.current_self.clone().or(Some(SemanticType::SelfType(self_type)))
+        self.ty_ctx
+            .current_self
+            .clone()
+            .or(Some(SemanticType::SelfType(self_type)))
     }
 
     fn normalize_generic_type(
@@ -552,7 +572,7 @@ impl<'a> AnalysisContext<'a> {
             sema_ty_opt = self.resolve_symbol_type_internal(scope_id_opt, local_or_global);
 
             if let Some(ty) = sema_ty_opt.clone() {
-                sema_ty_opt = self.normalize_type(scope_id_opt, ty, loc.clone());
+                sema_ty_opt = self.normalize_sema_type(scope_id_opt, ty, loc.clone());
             }
         } else {
             return None;
@@ -578,7 +598,8 @@ impl<'a> AnalysisContext<'a> {
                     let resolved_var = &mut resolved_variable.typed_variable;
 
                     if let Some(sema_ty) = &resolved_var.ty {
-                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), resolved_var.loc.clone())?;
+                        let sema_ty =
+                            self.normalize_sema_type(scope_id_opt, sema_ty.clone(), resolved_var.loc.clone())?;
 
                         return Some(if resolved_var.is_const {
                             sema_ty.as_const()
@@ -670,7 +691,8 @@ impl<'a> AnalysisContext<'a> {
                     let global_var_sig = &mut resolved_global_var.global_var_sig;
 
                     if let Some(sema_ty) = &global_var_sig.ty {
-                        let sema_ty = self.normalize_type(scope_id_opt, sema_ty.clone(), global_var_sig.loc.clone())?;
+                        let sema_ty =
+                            self.normalize_sema_type(scope_id_opt, sema_ty.clone(), global_var_sig.loc.clone())?;
 
                         return Some(if global_var_sig.is_const {
                             sema_ty.as_const()
@@ -734,5 +756,114 @@ impl<'a> AnalysisContext<'a> {
                 }
             },
         }
+    }
+
+    fn sema_ty_symbol_refs(&self, ty: &SemanticType) -> Vec<SymbolID> {
+        match ty {
+            SemanticType::ResolvedSymbol(res) => {
+                match res {
+                    ResolvedSymbol::Enum(id)
+                    | ResolvedSymbol::Union(id)
+                    | ResolvedSymbol::Typedef(id)
+                    | ResolvedSymbol::NamedStruct(id)
+                    | ResolvedSymbol::Interface(id) => vec![*id],
+
+                    // Usually not part of type cycles
+                    ResolvedSymbol::GlobalVar(_)
+                    | ResolvedSymbol::Variable(_)
+                    | ResolvedSymbol::Func(_)
+                    | ResolvedSymbol::Method(_) => vec![],
+                }
+            }
+
+            SemanticType::Array(array) => self.sema_ty_symbol_refs(&array.element_type),
+
+            SemanticType::Tuple(tuple) => {
+                let mut refs: Vec<SymbolID> = Vec::new();
+                for sema_ty in &tuple.type_list {
+                    refs.extend(self.sema_ty_symbol_refs(sema_ty));
+                }
+                refs
+            }
+
+            SemanticType::FuncType(func_type) => {
+                todo!();
+                // func_type.params.
+                // let mut ids = func.param_type_ids();
+                // ids.push(func.return_type_id());
+                // ids
+            }
+
+            SemanticType::GenericType(inner) => {
+                todo!();
+            }
+            SemanticType::UnnamedStruct(unnamed_struct_type) => {
+                let mut refs: Vec<SymbolID> = Vec::new();
+                for field in &unnamed_struct_type.fields {
+                    refs.extend(self.sema_ty_symbol_refs(&field.ty));
+                }
+                refs
+            }
+
+            SemanticType::DynamicType(_)
+            | SemanticType::Pointer(_)
+            | SemanticType::PlainType(_)
+            | SemanticType::GenericParam(_)
+            | SemanticType::SelfType(_)
+            | SemanticType::UnresolvedSymbol(_)
+            | SemanticType::Const(_) => vec![],
+        }
+    }
+
+    pub(crate) fn check_cyclic_typedef(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typedef_symbol_id: SymbolID,
+        ty: &SemanticType,
+        visited: &mut HashSet<SymbolID>,
+        visiting: &mut HashSet<SymbolID>,
+        loc: SourceLoc,
+    ) -> bool {
+        dbg!(ty.clone());
+        dbg!(self.sema_ty_symbol_refs(&ty.clone()));
+
+        for referenced in self.sema_ty_symbol_refs(ty) {
+            // cycle detected: we reached the typedef again
+            if referenced == typedef_symbol_id {
+                return true;
+            }
+
+            // already fully checked
+            if visited.contains(&referenced) {
+                continue;
+            }
+
+            // currently on stack → indirect cycle
+            if visiting.contains(&referenced) {
+                return true;
+            }
+
+            visiting.insert(referenced);
+
+            if let Some(next_ty) = self.resolve_symbol_type(scope_id_opt, referenced, loc.clone()) {
+                dbg!(next_ty.clone());
+
+                if self.check_cyclic_typedef(
+                    scope_id_opt,
+                    typedef_symbol_id,
+                    &next_ty,
+                    visited,
+                    visiting,
+                    loc.clone(),
+                ) {
+                    return true;
+                }
+            }
+
+            visiting.remove(&referenced);
+            visited.insert(referenced);
+        }
+
+        false
     }
 }

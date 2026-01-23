@@ -104,10 +104,10 @@ pub fn substitute_type(
                 .fields
                 .iter()
                 .map(|f| {
-                    let inner = substitute_type(mapping_ctx_arena, *f.field_ty.clone(), ctx.clone())?;
+                    let inner = substitute_type(mapping_ctx_arena, *f.ty.clone(), ctx.clone())?;
                     Some(TypedUnnamedStructTypeField {
-                        field_name: f.field_name.clone(),
-                        field_ty: Box::new(inner),
+                        name: f.name.clone(),
+                        ty: Box::new(inner),
                         loc: f.loc.clone(),
                     })
                 })
