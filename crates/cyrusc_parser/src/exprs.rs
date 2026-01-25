@@ -763,16 +763,28 @@ impl Parser {
             let field_loc = self.current_token().loc.clone();
 
             self.next_token(); // consume ident
-            self.expect_current(TokenKind::Colon)?;
 
-            let value = self.parse_expr(Precedence::Lowest)?.0;
-            self.next_token();
+            if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+                // syntax shorthand for `ident:ident`
+                let ident_expr = Expr::Ident(field_name.clone());
 
-            field_inits.push(FieldInit {
-                ident: field_name,
-                value,
-                loc: field_loc,
-            });
+                field_inits.push(FieldInit {
+                    ident: field_name,
+                    value: ident_expr,
+                    loc: field_loc,
+                });
+            } else {
+                self.expect_current(TokenKind::Colon)?;
+
+                let value = self.parse_expr(Precedence::Lowest)?.0;
+                self.next_token();
+
+                field_inits.push(FieldInit {
+                    ident: field_name,
+                    value,
+                    loc: field_loc,
+                });
+            }
 
             match self.current_token().kind {
                 TokenKind::EOF => {

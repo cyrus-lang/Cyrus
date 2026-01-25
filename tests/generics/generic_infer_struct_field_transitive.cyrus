@@ -1,0 +1,21 @@
+// @stdout: Cyrus!
+
+import std::libc{printf};
+
+struct Box<T> {
+    pub value: T;
+
+    pub fn new(value: T) Self {
+        return Self { value };
+    }
+}
+
+struct Container<T> {
+    pub box: Box<T>;
+}
+
+pub fn main() {
+    var container = Container { box: Box.new("Cyrus!") };
+
+    printf("%s\n", container.box.value);
+}

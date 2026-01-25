@@ -2068,7 +2068,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            param_type = match  self.normalize_and_check_sema_ty(scope_id_opt, param_type, param.loc()) {
+            param_type = match self.normalize_and_check_sema_ty(scope_id_opt, param_type, param.loc()) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
@@ -2082,9 +2082,6 @@ impl<'a> AnalysisContext<'a> {
             ) {
                 param_type = sema_ty;
             }
-
-            dbg!(param_type.clone());
-            
 
             // skip if param type not inferred yet
             if param_type.as_generic_param().is_none()
