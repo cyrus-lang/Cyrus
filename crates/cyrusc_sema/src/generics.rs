@@ -354,8 +354,8 @@ impl<'a> AnalysisContext<'a> {
                     expr_ty.clone(),
                 );
             }
-            (SemanticType::Pointer(target_inner), SemanticType::Pointer(expr_inner)) => {
-                self.unify_generic_types(scope_id_opt, mapping_ctx, &target_inner, &expr_inner);
+            (SemanticType::Pointer(target_pointer_inner), SemanticType::Pointer(expr_pointer_inner)) => {
+                self.unify_generic_types(scope_id_opt, mapping_ctx, &expr_pointer_inner, &target_pointer_inner);
             }
             (SemanticType::Tuple(target_tuple), SemanticType::Tuple(expr_tuple)) => {
                 if target_tuple.type_list.len() != expr_tuple.type_list.len() {
@@ -377,6 +377,7 @@ impl<'a> AnalysisContext<'a> {
                 ) {
                     self.unify_generic_types(scope_id_opt, mapping_ctx, &expr_variadic_type, &target_variadic_type);
                 }
+
                 self.unify_generic_types(
                     scope_id_opt,
                     mapping_ctx,
@@ -420,6 +421,14 @@ impl<'a> AnalysisContext<'a> {
                         mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_ty);
                     }
                 }
+            }
+            (SemanticType::Array(target_array_type), SemanticType::Array(expr_array_type)) => {
+                self.unify_generic_types(
+                    scope_id_opt,
+                    mapping_ctx,
+                    &expr_array_type.element_type,
+                    &target_array_type.element_type,
+                );
             }
             _ => return,
         }
