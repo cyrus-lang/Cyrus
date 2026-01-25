@@ -852,9 +852,7 @@ impl Resolver {
                     name: module_import.to_string(),
                 }),
             TypeSpecifier::Ident(ident) => {
-                let mut sema_ty_opt: Option<SemanticType>;
-
-                sema_ty_opt = self.resolve_generic_param_as_type(generic_params, ident);
+                let mut sema_ty_opt: Option<SemanticType> = self.resolve_generic_param_as_type(generic_params, ident);
 
                 if sema_ty_opt.is_none() {
                     sema_ty_opt = self
@@ -901,7 +899,9 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         typedef: &Typedef,
     ) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(module_id, &typedef.ident.value)?;
+        let symbol_id = self
+            .lookup_symbol_id(module_id, &typedef.ident.value)
+            .unwrap_or_else(|| generate_symbol_id());
 
         let generic_params = typedef
             .generic_params
