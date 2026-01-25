@@ -1,6 +1,6 @@
 // @stdout: 1 2
 
-import std::libc{printf, malloc, free};
+import std::libc{printf};
 
 fn make_2d<T>(x: T[2]) T[2] {
     return x;
