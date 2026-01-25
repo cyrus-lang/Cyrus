@@ -370,6 +370,7 @@ pub fn debug_generic_type<'a>(
     }
 
     if let Some(type_args) = &generic_type.type_args {
+        println!("");
         println!("Type Args: ");
 
         for type_arg in type_args {

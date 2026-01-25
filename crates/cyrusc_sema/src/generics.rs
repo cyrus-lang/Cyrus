@@ -21,7 +21,7 @@ use cyrusc_tast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
     generics::{
-        generic_type::{GenericType, debug_generic_type},
+        generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
         monomorph::{MonomorphKey, SpecializedFuncEntry},
         substitute::substitute_type,
@@ -30,7 +30,11 @@ use cyrusc_tast::{
     stmts::*,
     types::SemanticType,
 };
-use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    ops::RangeInclusive,
+    rc::Rc,
+};
 
 impl<'a> AnalysisContext<'a> {
     /// Extracts and merges generic parameters and mapping contexts from type information.
@@ -381,6 +385,18 @@ impl<'a> AnalysisContext<'a> {
                 );
             }
             (SemanticType::GenericType(target_generic_type), SemanticType::GenericType(expr_generic_type)) => {
+                // if both generic types have type arguments, unify them structurally
+                if let (Some(target_args), Some(expr_args)) =
+                    (&target_generic_type.type_args, &expr_generic_type.type_args)
+                {
+                    let len = std::cmp::min(target_args.len(), expr_args.len());
+
+                    for i in 0..len {
+                        self.unify_generic_types(scope_id_opt, mapping_ctx, expr_args[i].ty(), target_args[i].ty());
+                    }
+                }
+
+                // resolve from expression's mapping context
                 let expr_mapping_ctx = expr_generic_type.mapping_ctx.borrow();
 
                 if let Some(target_type_args) = &target_generic_type.type_args {
@@ -417,8 +433,6 @@ impl<'a> AnalysisContext<'a> {
         expr_ty: Option<SemanticType>,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let expr_ty = expr_ty?;
-
         macro_rules! check_type_mismatch {
             ($lhs:expr, $rhs:expr) => {
                 if !self.check_type_mismatch(scope_id_opt, $lhs.clone(), $rhs.clone(), loc.clone()) {
@@ -436,22 +450,26 @@ impl<'a> AnalysisContext<'a> {
             };
         }
 
+        let expr_ty = expr_ty?;
+
         let Some(generic_type) = generic_type_opt.clone() else {
             return None;
         };
 
+        let mut mapping_ctx_ref: RefMut<GenericMappingCtx>;
+
         {
-            let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
+            mapping_ctx_ref = generic_type.mapping_ctx.borrow_mut();
 
             // recursively unify expr_ty with target_ty
-            self.unify_generic_types(scope_id_opt, &mut mapping_ctx, &expr_ty, &target_ty);
+            self.unify_generic_types(scope_id_opt, &mut mapping_ctx_ref, &expr_ty, &target_ty);
 
             // reconcile with parent/linked contexts
-            let generic_entries: Vec<_> = mapping_ctx.named_mapping().keys().cloned().collect();
-            
+            let generic_entries: Vec<GenericMappingEntry> = mapping_ctx_ref.named_mapping().keys().cloned().collect();
+
             for entry in generic_entries {
                 // if a parent mapping has a value, use it
-                if let Some(parent_sema_ty) = mapping_ctx.parent_id().and_then(|parent_id| {
+                if let Some(parent_sema_ty) = mapping_ctx_ref.parent_id().and_then(|parent_id| {
                     let parent_mapping_ctx = {
                         let mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
                         mapping_ctx_arena.get(parent_id).unwrap().clone()
@@ -463,48 +481,72 @@ impl<'a> AnalysisContext<'a> {
                     let substituted_target = substitute_type(
                         self.mapping_ctx_arena.clone(),
                         target_ty.clone(),
-                        Rc::new(RefCell::new(mapping_ctx.clone())),
+                        Rc::new(RefCell::new(mapping_ctx_ref.clone())),
                     )
                     .unwrap();
 
                     check_type_mismatch!(expr_ty, substituted_target);
 
-                    mapping_ctx.insert_named(entry.clone(), parent_sema_ty);
+                    mapping_ctx_ref.insert_named(entry.clone(), parent_sema_ty);
                     continue;
                 }
 
                 // if a linked parent exists, resolve its type
-                let linked_parent_opt = mapping_ctx.resolve_linked_by_name(self.mapping_ctx_arena.clone(), &entry.name);
+                let linked_parent_opt =
+                    mapping_ctx_ref.resolve_linked_by_name(self.mapping_ctx_arena.clone(), &entry.name);
 
                 if let Some(parent_entry) = linked_parent_opt {
                     if let Some(linked_val) =
-                        mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &parent_entry.name)
+                        mapping_ctx_ref.resolve_with_name(self.mapping_ctx_arena.clone(), &parent_entry.name)
                     {
                         let substituted_target = substitute_type(
                             self.mapping_ctx_arena.clone(),
                             target_ty.clone(),
-                            Rc::new(RefCell::new(mapping_ctx.clone())),
+                            Rc::new(RefCell::new(mapping_ctx_ref.clone())),
                         )
                         .unwrap();
                         check_type_mismatch!(expr_ty, substituted_target);
 
-                        mapping_ctx.insert_named(entry.clone(), linked_val.clone());
-                        mapping_ctx.insert_linked(entry.clone(), parent_entry);
+                        mapping_ctx_ref.insert_named(entry.clone(), linked_val.clone());
+                        mapping_ctx_ref.insert_linked(entry.clone(), parent_entry);
                         continue;
                     }
                 }
             }
+        }
+
+        {
+            let mapping_ctx = Rc::new(RefCell::new(mapping_ctx_ref.clone()));
+
+            if let Some(type_args) = &generic_type.type_args {
+                self.substitute_generic_type_args_after_inference(mapping_ctx.clone(), type_args.clone());
+            }
 
             // substitute generics in target_ty for final type check
-            let substituted_target_ty = substitute_type(
-                self.mapping_ctx_arena.clone(),
-                target_ty.clone(),
-                Rc::new(RefCell::new(mapping_ctx.clone())),
-            )
-            .unwrap();
+            let substituted_target_ty =
+                substitute_type(self.mapping_ctx_arena.clone(), target_ty.clone(), mapping_ctx.clone()).unwrap();
 
-            Some(substituted_target_ty)
+            self.normalize_sema_type(scope_id_opt, substituted_target_ty, loc)
         }
+    }
+
+    fn substitute_generic_type_args_after_inference(
+        &self,
+        mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
+        mut type_args: TypedTypeArgs,
+    ) -> TypedTypeArgs {
+        for type_arg in &mut type_args {
+            match type_arg {
+                TypedTypeArg::Positional { ty, .. } => {
+                    *ty = substitute_type(self.mapping_ctx_arena.clone(), ty.clone(), mapping_ctx.clone()).unwrap();
+                }
+                TypedTypeArg::Named { ty, .. } => {
+                    *ty = substitute_type(self.mapping_ctx_arena.clone(), ty.clone(), mapping_ctx.clone()).unwrap();
+                }
+            }
+        }
+
+        type_args
     }
 
     pub(crate) fn merge_generic_operand_as_expected_type(
