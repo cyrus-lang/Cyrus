@@ -78,7 +78,7 @@ impl CIRTy {
         }
     }
 
-    pub fn as_fn(&self) -> Option<CIRFuncTy> {
+    pub fn as_func(&self) -> Option<CIRFuncTy> {
         match self.const_inner() {
             CIRTy::FuncType(fn_ty) => Some(fn_ty.clone()),
             _ => None,
@@ -137,6 +137,13 @@ impl CIRTy {
     pub fn is_func(&self) -> bool {
         match self.const_inner() {
             CIRTy::FuncType(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        match self {
+            CIRTy::Pointer(_) => true,
             _ => false,
         }
     }

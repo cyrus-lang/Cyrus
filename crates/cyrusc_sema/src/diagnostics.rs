@@ -20,6 +20,15 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Cannot infer dynamic interface type.")]
+    CannotInferDynamicInterfaceType,
+
+    #[error("Cannot apply 'dynamic' to an already dynamic value.")]
+    InvalidMultipleDynamicType,
+
+    #[error("Object '{symbol_name}' has no method to make it dynamic.")]
+    ObjectHasNotMethodsToMakeItDynamic { symbol_name: String },
+
     #[error("Cannot call instance method '{method_name}'.")]
     StaticMethodCallOnInstance { method_name: String },
 

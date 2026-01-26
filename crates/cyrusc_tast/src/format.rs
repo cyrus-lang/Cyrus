@@ -285,13 +285,7 @@ pub fn format_unnamed_struct_ty<'a>(
         &typed_unnamed_struct_type
             .fields
             .iter()
-            .map(|field| {
-                format!(
-                    "{}: {}",
-                    field.name,
-                    format_sema_ty(*field.ty.clone(), format_symbol)
-                )
-            })
+            .map(|field| format!("{}: {}", field.name, format_sema_ty(*field.ty.clone(), format_symbol)))
             .collect::<Vec<String>>()
             .join(", "),
     );
@@ -384,6 +378,7 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
         SemanticType::GenericType(generic_type) => generic_type.format(format_symbol),
         SemanticType::DynamicType(dynamic_type) => dynamic_type.name,
         SemanticType::SelfType(_) => "Self".to_string(),
+        SemanticType::Interface(interface_type) => format!("{}", interface_type.name),
     }
 }
 

@@ -47,7 +47,10 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     #[allow(unused)]
     pub(crate) fn emit_dynamic_ty(&self, dynamic_ty: &CIRDynamicTy) -> StructType<'ll> {
-        todo!();
+        let vtable_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
+        let data_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
+
+        self.llvmctx.struct_type(&[data_ptr, vtable_ptr], false)
     }
 
     pub(crate) fn emit_tys(&self, tys: &[CIRTy]) -> Vec<AnyTypeEnum<'ll>> {

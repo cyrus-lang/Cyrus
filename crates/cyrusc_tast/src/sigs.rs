@@ -30,7 +30,7 @@ use cyrusc_abi::{
 };
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::source_loc::SourceLoc;
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
 pub struct StructSig {
@@ -149,19 +149,12 @@ pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &Sema
     }
 }
 
-pub fn apply_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &SemanticType) {
+pub fn set_self_modifier_symbol_id_in_func_sig(func_sig: &mut FuncSig, symbol_id: SymbolID) {
     let first_param = func_sig.params.list.first_mut();
 
     if let Some(func_param_kind) = first_param {
         if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
-            match self_modifier.kind {
-                SelfModifierKind::Copied => {
-                    self_modifier.ty = Some(sema_ty.clone());
-                }
-                SelfModifierKind::Referenced => {
-                    self_modifier.ty = Some(SemanticType::Pointer(Box::new(sema_ty.clone())));
-                }
-            }
+            self_modifier.self_symbol_id = Some(symbol_id);
         }
     }
 }
@@ -281,5 +274,12 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
             },
             None => None,
         },
+    }
+}
+
+impl Hash for FuncSig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.module_id.hash(state);
+        self.symbol_id.hash(state);
     }
 }

@@ -85,6 +85,13 @@ pub enum CIRExprKind {
     Lambda(CIRLambda),
     FuncCall(CIRFuncCall),
     MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall),
+    Dynamic(CIRDynamicExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRDynamicExpr {
+    pub data_ptr: Box<CIRExpr>,
+    pub vtable_ptr: Box<CIRExpr>,
 }
 
 #[derive(Debug, Clone)]
