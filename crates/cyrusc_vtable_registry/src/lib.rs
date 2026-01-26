@@ -1,0 +1,166 @@
+use cyrusc_tast::{SymbolID, types::SemanticType};
+use std::collections::HashMap;
+
+/// Uniquely identifies a vtable by the pair:
+///   (concrete type, interface).
+///
+/// This key is created **during type checking**, after it has been
+/// proven that `concrete_type` implements `interface_symbol_id`.
+///
+/// IMPORTANT INVARIANT:
+/// - Two identical keys must always map to the same vtable.
+/// - A key must never be constructed during codegen.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VTableKey {
+    /// The fully resolved concrete type (after generic substitution).
+    ///
+    /// This must be a *concrete* semantic type — never an interface,
+    /// never `Self`, never an unresolved generic.
+    pub concrete_type: SemanticType,
+
+    /// The symbol ID of the interface being implemented.
+    pub interface_symbol_id: SymbolID,
+}
+
+/// Opaque identifier for a registered vtable.
+///
+/// VTableIDs are stable for the duration of compilation and are
+/// assigned sequentially.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VTableID(u32);
+
+/// Compile-time registry of all vtables required by the program.
+///
+/// This registry is populated **only during semantic analysis**
+/// (typically while validating `impl Interface for Type` blocks).
+///
+/// Codegen and CIR lowering must treat this registry as immutable.
+pub struct VTableRegistry {
+    /// Maps (ConcreteType, Interface) → VTableID
+    map: HashMap<VTableKey, VTableID>,
+
+    /// Dense storage of all registered vtables.
+    tables: Vec<VTableInfo>,
+}
+
+/// Compile-time description of a single vtable.
+///
+/// This structure contains *no runtime data*.
+/// It exists solely to allow later phases to:
+///   - emit the vtable as a global
+///   - reference it by symbol
+///   - compute stable slot indices
+pub struct VTableInfo {
+    /// The concrete type implementing the interface.
+    pub concrete_type: SemanticType,
+
+    /// The interface being implemented.
+    pub interface_symbol_id: SymbolID,
+
+    /// Ordered list of method symbols.
+    ///
+    /// The index into this vector is the **vtable slot index**.
+    /// This order must exactly match the interface method order.
+    pub methods: Vec<SymbolID>,
+
+    /// Global variable symbol representing the emitted vtable.
+    ///
+    /// Codegen will emit a single global definition for this symbol
+    /// and all dynamic dispatch sites will reference it by address.
+    pub global_var_id: SymbolID,
+}
+
+impl VTableRegistry {
+    /// Creates an empty vtable registry.
+    ///
+    /// Typically constructed once per module or compilation unit.
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+            tables: Vec::new(),
+        }
+    }
+
+    /// Registers a vtable for a (concrete type, interface) pair.
+    ///
+    /// This function must be called **only during type checking**,
+    /// after interface conformance has been fully validated.
+    ///
+    /// If the vtable was already registered, the existing `VTableID`
+    /// is returned.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `methods` is empty or if a duplicate registration
+    /// attempts to change the method layout.
+    pub fn register(
+        &mut self,
+        concrete_type: SemanticType,
+        interface_symbol_id: SymbolID,
+        methods: Vec<SymbolID>,
+        global_var_id: SymbolID,
+    ) -> VTableID {
+        assert!(!methods.is_empty(), "vtable must contain at least one method");
+
+        let key = VTableKey {
+            concrete_type: concrete_type.clone(),
+            interface_symbol_id,
+        };
+
+        if let Some(&existing_id) = self.map.get(&key) {
+            let existing = &self.tables[existing_id.0 as usize];
+
+            // Hard invariant: layout must be identical
+            assert_eq!(
+                existing.methods, methods,
+                "attempted to re-register vtable with different method layout"
+            );
+
+            return existing_id;
+        }
+
+        let id = VTableID(self.tables.len() as u32);
+
+        self.tables.push(VTableInfo {
+            concrete_type,
+            interface_symbol_id,
+            methods,
+            global_var_id,
+        });
+
+        self.map.insert(key, id);
+        id
+    }
+
+    /// Retrieves the VTableID for a concrete type implementing an interface.
+    ///
+    /// This is intended for use during CIR lowering and codegen.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the vtable was not registered during type checking.
+    pub fn get(&self, concrete_type: &SemanticType, interface_symbol_id: SymbolID) -> VTableID {
+        let key = VTableKey {
+            concrete_type: concrete_type.clone(),
+            interface_symbol_id,
+        };
+
+        *self
+            .map
+            .get(&key)
+            .expect("missing vtable: interface implementation was not registered during type checking")
+    }
+
+    /// Returns metadata for a previously registered vtable.
+    pub fn info(&self, id: VTableID) -> &VTableInfo {
+        &self.tables[id.0 as usize]
+    }
+
+    /// Returns an iterator over all registered vtables.
+    ///
+    /// This is typically used during global emission to emit
+    /// all vtable globals.
+    pub fn iter(&self) -> impl Iterator<Item = &VTableInfo> {
+        self.tables.iter()
+    }
+}
