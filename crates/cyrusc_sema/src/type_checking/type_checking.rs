@@ -34,10 +34,7 @@ use cyrusc_tast::{
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
-    sigs::{
-        FuncSig, UnionSig, apply_self_modifier_type_in_func_sig, set_self_modifier_type_in_func_sig,
-        typed_func_params_as_func_type_params,
-    },
+    sigs::{FuncSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
         TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
@@ -233,7 +230,9 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
-            TypedExprKind::Dynamic(typed_dynamic_expr) => self.analyze_dynamic_expr(scope_id_opt, typed_dynamic_expr),
+            TypedExprKind::Dynamic(typed_dynamic_expr) => {
+                self.analyze_dynamic_expr(scope_id_opt, typed_dynamic_expr, expected_type)
+            }
         };
 
         let normalized_type = self.normalize_sema_type(scope_id_opt, sema_ty.clone()?, typed_expr.loc.clone());
@@ -253,73 +252,55 @@ impl<'a> AnalysisContext<'a> {
         normalized_type
     }
 
-    // TODO Write comment
     #[allow(unused)]
     fn analyze_dynamic_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         dynamic_expr: &mut TypedDynamicExpr,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        unimplemented!();
-
         if dynamic_expr.operand.kind.is_dynamic_expr() {
-            // TODO
-            panic!("cannot dynamic an another dynamic expression.");
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InvalidMultipleDynamicType),
+                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
+                hint: None,
+            });
+            return None;
         }
 
         let local_scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
+        let Some(mut interface_type) = expected_type.and_then(|sema_ty| sema_ty.as_interface_type().cloned()) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CannotInferDynamicInterfaceType),
+                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
+                hint: None,
+            });
+            return None;
+        };
+
         let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
-        let Some(symbol_id) = operand_ty.maybe_generic_base_symbol_id() else {
-            // TODO
-            panic!("cannot make expression dynamic");
-        };
-        let Some(sym) = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
-        else {
-            // TODO
-            panic!("cannot make expression dynamic");
-        };
-
-        // TODO Find a way to verify that symbol implements interface!
-        // Store current symbol id in the type in the mismatch-check, check
-        // that this dynamic-type is implementing the interface.
-
-        let object_name = format!("dynamic {}", sym.symbol_name().unwrap());
-
-        let Some(methods) = sym.symbol_methods() else {
-            // TODO
-            panic!("symbol has not methods to make it dynamic");
-        };
 
         let mut method_sigs: Vec<FuncSig> = Vec::new();
 
-        for method_symbol_id in methods.values().cloned() {
-            let sym = self
-                .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), method_symbol_id)
-                .unwrap();
-            let resolved_method = sym.as_method().unwrap();
-
-            let func_sig: FuncSig;
+        for mut func_sig in &mut interface_type.method_sigs {
             if let Some(generic_type) = operand_ty.as_generic_type() {
-                func_sig = substitute_func_sig(
+                *func_sig = substitute_func_sig(
                     self.mapping_ctx_arena.clone(),
-                    &resolved_method.func_sig,
+                    &func_sig,
                     generic_type.mapping_ctx.clone(),
                 )
                 .unwrap();
-            } else {
-                func_sig = resolved_method.func_sig.clone();
             }
 
-            method_sigs.push(func_sig);
+            method_sigs.push(func_sig.clone());
         }
 
         Some(SemanticType::DynamicType(DynamicType {
-            name: object_name,
+            name: interface_type.name.clone(),
             method_sigs,
             loc: dynamic_expr.loc.clone(),
         }))
@@ -1455,14 +1436,11 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        typed_array.array_type = match self.normalize_sema_type(
-            scope_id_opt,
-            typed_array.array_type.clone().unwrap(),
-            typed_array.loc.clone(),
-        ) {
-            Some(sema_ty) => Some(sema_ty),
-            None => return None,
-        };
+        typed_array.array_type =
+            match self.normalize_sema_type(scope_id_opt, typed_array.array_type.clone()?, typed_array.loc.clone()) {
+                Some(sema_ty) => Some(sema_ty),
+                None => return None,
+            };
 
         for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
             let argument_type = {
@@ -1796,7 +1774,7 @@ impl<'a> AnalysisContext<'a> {
                 if let Some(sema_ty) = self.analyze_expr(scope_id_opt, &mut expr, None) {
                     generic_type_opt = sema_ty.as_generic_type().cloned();
 
-                    self.set_method_call_self_type(method_call, &sema_ty);
+                    self.set_ty_ctx_self_type(method_call, &sema_ty);
                     set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &sema_ty);
                 }
             }
@@ -1827,7 +1805,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // instance self type
-        self.set_method_call_self_type(method_call, &method_call_operand_ty);
+        self.set_ty_ctx_self_type(method_call, &method_call_operand_ty);
 
         resolved_method.func_sig.return_type = self.check_func_call(
             scope_id_opt,
@@ -1896,7 +1874,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if instance_method_call {
-            apply_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &method_call_operand_ty);
+            set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &method_call_operand_ty);
 
             let self_modifier = resolved_method
                 .func_sig
@@ -3332,7 +3310,7 @@ impl<'a> AnalysisContext<'a> {
     /// # Parameters
     /// - `method_call`: The method call AST node to annotate with self type.
     /// - `sema_ty`: The semantic type of the 'self' parameter (may include const/pointer qualifiers).
-    pub(crate) fn set_method_call_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
+    pub(crate) fn set_ty_ctx_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
         self.ty_ctx.current_obj_operand_ty = Some(sema_ty.const_inner().pointer_inner().const_inner().clone());
         self.ty_ctx.current_self = Some(sema_ty.clone());
         method_call.self_ty = Some(sema_ty.clone());

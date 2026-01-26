@@ -26,7 +26,10 @@ use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
-use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
+use cyrusc_tast::sigs::{
+    EnumSig, FuncSig, GlobalVarSig, UnionSig, set_self_modifier_symbol_id_in_func_sig,
+    set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig,
+};
 use cyrusc_tast::types::{PlainType, ResolvedSymbol};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
@@ -852,12 +855,16 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(scope_id_opt, lambda_expr),
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(scope_id_opt, tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(scope_id_opt, tuple_access_expr),
-            TypedExprKind::Dynamic(_typed_dynamic_expr) => todo!(),
+            TypedExprKind::Dynamic(dynamic_expr) => self.lower_dynamic_expr(scope_id_opt, dynamic_expr),
             // skipped
             TypedExprKind::SemanticType(..) => unreachable!(),
         };
 
         CIRExpr { kind, ty }
+    }
+
+    fn lower_dynamic_expr(&mut self, scope_id_opt: Option<ScopeID>, dynamic_expr: &TypedDynamicExpr) -> CIRExprKind {
+        todo!();
     }
 
     pub(crate) fn lower_load_symbol(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
@@ -1454,19 +1461,47 @@ impl<'resolver> CIRWalk<'resolver> {
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
             SemanticType::DynamicType(dynamic_type) => {
-                let mut method_sigs: Vec<CIRFuncTy> = Vec::new();
+                let lowered_method_sigs = self.lower_interface_methods(scope_id_opt, dynamic_type.method_sigs.clone());
 
-                for func_sig in &dynamic_type.method_sigs {
-                    let func_decl = self.lower_func_sig(scope_id_opt, func_sig.symbol_id.unwrap(), func_sig);
-                    let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
-                    method_sigs.push(cir_func_ty);
-                }
+                CIRTy::Dynamic(CIRDynamicTy {
+                    method_sigs: lowered_method_sigs,
+                })
+            }
+            SemanticType::Interface(interface_type) => {
+                let lowered_method_sigs =
+                    self.lower_interface_methods(scope_id_opt, interface_type.method_sigs.clone());
 
-                CIRTy::Dynamic(CIRDynamicTy { method_sigs })
+                CIRTy::Dynamic(CIRDynamicTy {
+                    method_sigs: lowered_method_sigs,
+                })
             }
         }
         .const_inner()
         .clone()
+    }
+
+    fn lower_interface_methods(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        mut method_sigs: Vec<FuncSig>,
+    ) -> Vec<CIRFuncTy> {
+        let mut lowered_method_sigs: Vec<CIRFuncTy> = Vec::new();
+
+        for func_sig in &mut method_sigs {
+            // NOTE: SelfType cannot be empty here but also it does not matter because it's always behind a
+            // pointer type: `Self*`. Hence we used `void*` as an alternative, the rest of the story handled in codegen.
+            set_self_modifier_type_in_func_sig(
+                func_sig,
+                &SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void))),
+            );
+            set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
+
+            let func_decl = self.lower_func_sig(scope_id_opt, func_sig.symbol_id.unwrap(), func_sig);
+            let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
+            lowered_method_sigs.push(cir_func_ty);
+        }
+
+        lowered_method_sigs
     }
 
     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {

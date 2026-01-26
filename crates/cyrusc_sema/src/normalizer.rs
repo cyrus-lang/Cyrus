@@ -30,8 +30,8 @@ use cyrusc_tast::{
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
-        DynamicType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedFuncType, TypedTupleType,
+        DynamicType, InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        TypedArrayType, TypedFuncType, TypedTupleType,
     },
 };
 use fx_hash::FxHashMap;
@@ -131,7 +131,10 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::FuncType(func_type) => self.normalize_func_type(scope_id_opt, func_type),
             SemanticType::Tuple(tuple_type) => self.normalize_tuple(scope_id_opt, tuple_type),
             SemanticType::SelfType(self_type) => self.normalize_self_type(self_type),
-            SemanticType::PlainType(_) | SemanticType::UnnamedStruct(_) | SemanticType::DynamicType(_) => Some(ty),
+            SemanticType::PlainType(_)
+            | SemanticType::UnnamedStruct(_)
+            | SemanticType::DynamicType(_)
+            | SemanticType::Interface(_) => Some(ty),
         }
     }
 
@@ -328,9 +331,7 @@ impl<'a> AnalysisContext<'a> {
             ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(scope_id_opt, symbol_id),
             ResolvedSymbol::Variable(symbol_id) => self.normalize_variable(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::GlobalVar(symbol_id) => self.normalize_global_var(scope_id_opt, symbol_id, loc),
-            ResolvedSymbol::Interface(symbol_id) => {
-                self.normalize_interface_as_dynamic_type(scope_id_opt, symbol_id, loc)
-            }
+            ResolvedSymbol::Interface(symbol_id) => self.normalize_interface_type(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::NamedStruct(_) | ResolvedSymbol::Enum(_) | ResolvedSymbol::Union(_) => {
                 Some(SemanticType::ResolvedSymbol(resolved))
             }
@@ -443,7 +444,35 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn normalize_interface_as_dynamic_type(
+    fn normalize_interface_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        interface_symbol_id: SymbolID,
+        loc: SourceLoc,
+    ) -> Option<SemanticType> {
+        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, interface_symbol_id)
+            .unwrap();
+
+        let resolved_interface = sym.as_interface()?;
+
+        let mut method_sigs: Vec<FuncSig> = Vec::new();
+
+        for func_decl in &resolved_interface.interface_sig.methods {
+            let func_sig = typed_func_decl_as_func_sig(func_decl);
+            method_sigs.push(func_sig);
+        }
+
+        Some(SemanticType::Interface(InterfaceType {
+            name: resolved_interface.interface_sig.name.clone(),
+            method_sigs,
+            loc,
+        }))
+    }
+
+    fn normalize_dynamic_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         interface_symbol_id: SymbolID,
@@ -665,7 +694,7 @@ impl<'a> AnalysisContext<'a> {
                 LocalSymbolKind::Union(resolved_union) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
                     resolved_union.symbol_id,
                 ))),
-                LocalSymbolKind::Interface(resolved_interface) => self.normalize_interface_as_dynamic_type(
+                LocalSymbolKind::Interface(resolved_interface) => self.normalize_interface_type(
                     scope_id_opt,
                     resolved_interface.symbol_id,
                     resolved_interface.interface_sig.loc.clone(),
@@ -758,7 +787,7 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Union(resolved_union) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
                     resolved_union.symbol_id,
                 ))),
-                SymbolEntryKind::Interface(resolved_interface) => self.normalize_interface_as_dynamic_type(
+                SymbolEntryKind::Interface(resolved_interface) => self.normalize_interface_type(
                     scope_id_opt,
                     resolved_interface.symbol_id,
                     resolved_interface.interface_sig.loc.clone(),

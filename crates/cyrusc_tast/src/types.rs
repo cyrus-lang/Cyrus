@@ -38,6 +38,7 @@ pub enum SemanticType {
     GenericParam(TypedGenericParam),
     SelfType(TypedSelfType),
     DynamicType(DynamicType),
+    Interface(InterfaceType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -128,6 +129,13 @@ impl SemanticType {
         match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
             SemanticType::GenericType(generic_type) => Some(generic_type.base),
+            _ => None,
+        }
+    }
+
+    pub fn as_interface_type(&self) -> Option<&InterfaceType> {
+        match self.const_inner() {
+            SemanticType::Interface(interface_type) => Some(interface_type),
             _ => None,
         }
     }
@@ -499,6 +507,13 @@ impl TryFrom<TokenKind> for SemanticType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterfaceType {
+    pub name: String,
+    pub method_sigs: Vec<FuncSig>,
+    pub loc: SourceLoc,
+}
+
 #[derive(Debug, Clone, Eq)]
 pub struct DynamicType {
     pub name: String,
@@ -537,6 +552,12 @@ pub enum TypedArrayCapacity {
 pub enum TypedArrayFixedCapacityValue {
     Expr(Box<TypedExprStmt>),
     Value(u64),
+}
+
+impl Hash for InterfaceType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.method_sigs.hash(state);
+    }
 }
 
 impl TypedArrayFixedCapacityValue {

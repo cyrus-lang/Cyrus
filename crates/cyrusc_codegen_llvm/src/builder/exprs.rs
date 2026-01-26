@@ -81,7 +81,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.emit_monomorph_func_instance_call(monomorph_func_instance_call)
             }
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
+            CIRExprKind::Dynamic(dynamic_expr) => self.emit_dynamic_expr(dynamic_expr),
         }
+    }
+
+    fn emit_dynamic_expr(&mut self, dynamic_expr: &CIRDynamicExpr) -> InternalValue<'ll> {
+        todo!();
     }
 
     pub(crate) fn emit_array_index_on_pointer(
@@ -448,7 +453,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_expr(&infix_expr.lhs);
         let rhs_lvalue = self.emit_expr(&infix_expr.rhs);
-        
+
         let mut lhs_rvalue = self.load_rvalue(lhs_lvalue.clone());
         let mut rhs_rvalue = self.load_rvalue(rhs_lvalue.clone());
 
@@ -1204,7 +1209,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         // check if it's a direct or indirect call
         if let Some(fn_value) = rvalue.as_func() {
             self.emit_direct_call(
-                &rvalue.ty.as_fn().unwrap(),
+                &rvalue.ty.as_func().unwrap(),
                 &func_call.args,
                 &func_call.ret_ty,
                 fn_value,
@@ -1251,7 +1256,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
-        let fn_ty = self.emit_func_ty(rvalue.ty.as_fn().unwrap());
+        let fn_ty = self.emit_func_ty(rvalue.ty.as_func().unwrap());
         let fn_ptr = rvalue.as_basic_value().into_pointer_value();
 
         let args: Vec<BasicMetadataValueEnum<'ll>> = func_call
