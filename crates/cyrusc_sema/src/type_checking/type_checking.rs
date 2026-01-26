@@ -299,6 +299,8 @@ impl<'a> AnalysisContext<'a> {
             method_sigs.push(func_sig.clone());
         }
 
+        // TODO: Register into vtable registry.
+
         Some(SemanticType::DynamicType(DynamicType {
             name: interface_type.name.clone(),
             method_sigs,

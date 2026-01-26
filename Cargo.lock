@@ -478,6 +478,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_vtable_registry"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_tast",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
