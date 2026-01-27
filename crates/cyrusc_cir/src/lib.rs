@@ -18,6 +18,7 @@ use crate::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy};
 use cyrusc_abi::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey, sigs::StructSig};
+use std::fmt::Debug;
 
 pub mod monomorph;
 pub mod types;
@@ -26,7 +27,6 @@ pub mod walk;
 pub type IRValueID = u32;
 pub type CIRBlockID = u32;
 
-#[derive(Debug)]
 pub struct CIRProgramTree {
     pub body: Vec<CIRStmt>,
     pub file_path: String,
@@ -84,14 +84,17 @@ pub enum CIRExprKind {
     UnionFieldAccess(CIRUnionFieldAccessExpr),
     Lambda(CIRLambda),
     FuncCall(CIRFuncCall),
-    MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall),
     Dynamic(CIRDynamicExpr),
+    MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall),
+    InterfaceMethodCall(CIRInterfaceMethodCall),
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRDynamicExpr {
     pub data_ptr: Box<CIRExpr>,
-    pub vtable_ptr: Box<CIRExpr>,
+    pub method_decls: Vec<CIRFuncDeclStmt>,
+    pub global_var_id: IRValueID,
+    pub vtable_abi_name: String
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +118,16 @@ pub struct CIRMonomorphFuncInstanceCall {
     pub monomorph_key: MonomorphKey,
     pub args: Vec<CIRExpr>,
     pub ret_ty: CIRTy,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRInterfaceMethodCall {
+    pub operand: Box<CIRExpr>,
+    pub args: Vec<CIRExpr>,
+    pub ret_ty: CIRTy,
+    pub func_type: CIRFuncTy,
+    pub method_idx: usize,
+    pub methods_len: usize
 }
 
 #[derive(Debug, Clone)]
@@ -460,5 +473,14 @@ pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
 pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
     CIRUnionTy {
         fields: union_stmt.fields.clone(),
+    }
+}
+
+impl Debug for CIRProgramTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CIRProgramTree")
+            .field("body", &self.body)
+            .field("file_path", &self.file_path)
+            .finish()
     }
 }

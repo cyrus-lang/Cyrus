@@ -30,8 +30,8 @@ use cyrusc_tast::{
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
-        DynamicType, InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedArrayType, TypedFuncType, TypedTupleType,
+        InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+        TypedFuncType, TypedTupleType,
     },
 };
 use fx_hash::FxHashMap;
@@ -458,44 +458,16 @@ impl<'a> AnalysisContext<'a> {
 
         let resolved_interface = sym.as_interface()?;
 
-        let mut method_sigs: Vec<FuncSig> = Vec::new();
-
-        for func_decl in &resolved_interface.interface_sig.methods {
-            let func_sig = typed_func_decl_as_func_sig(func_decl);
-            method_sigs.push(func_sig);
-        }
+        let methods: Vec<FuncSig> = resolved_interface
+            .interface_sig
+            .methods
+            .iter()
+            .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
+            .collect();
 
         Some(SemanticType::Interface(InterfaceType {
-            name: resolved_interface.interface_sig.name.clone(),
-            method_sigs,
-            loc,
-        }))
-    }
-
-    fn normalize_dynamic_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        interface_symbol_id: SymbolID,
-        loc: SourceLoc,
-    ) -> Option<SemanticType> {
-        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, interface_symbol_id)
-            .unwrap();
-
-        let resolved_interface = sym.as_interface()?;
-
-        let mut method_sigs: Vec<FuncSig> = Vec::new();
-
-        for func_decl in &resolved_interface.interface_sig.methods {
-            let func_sig = typed_func_decl_as_func_sig(func_decl);
-            method_sigs.push(func_sig);
-        }
-
-        Some(SemanticType::DynamicType(DynamicType {
-            name: resolved_interface.interface_sig.name.clone(),
-            method_sigs,
+            symbol_id: resolved_interface.symbol_id,
+            methods,
             loc,
         }))
     }

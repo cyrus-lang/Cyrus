@@ -22,6 +22,7 @@ use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_sema::analyze::AnalysisContext;
 use cyrusc_tast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
+use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     env,
     process::exit,
@@ -76,6 +77,8 @@ pub fn main() {
 
                 let resolved_program_trees = resolver.program_trees.lock().unwrap();
                 for program_tree_entry in &*resolved_program_trees {
+                    let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
+
                     let mut analyzer = AnalysisContext::new(
                         &resolver,
                         module_id,
@@ -83,6 +86,7 @@ pub fn main() {
                         entry_points.clone(),
                         monomorph_registry.clone(),
                         mapping_ctx_arena.clone(),
+                        vtable_registry,
                         true,
                     );
                     analyzer.analyze();

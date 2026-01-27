@@ -18,6 +18,7 @@ use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::sigs::FuncSig;
 use crate::stmts::{TypedFuncTypeParams, TypedGenericParam};
+use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::TokenKind;
@@ -187,6 +188,10 @@ impl SemanticType {
             self.const_inner(),
             SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(..))
         )
+    }
+
+    pub fn is_interface(&self) -> bool {
+        matches!(self.const_inner(), SemanticType::Interface(_))
     }
 
     pub fn is_bool(&self) -> bool {
@@ -509,15 +514,15 @@ impl TryFrom<TokenKind> for SemanticType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterfaceType {
-    pub name: String,
-    pub method_sigs: Vec<FuncSig>,
+    pub symbol_id: SymbolID,
+    pub methods: Vec<FuncSig>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct DynamicType {
-    pub name: String,
-    pub method_sigs: Vec<FuncSig>,
+    pub interface_symbol_id: SymbolID,
+    pub vtable_id: VTableID,
     pub loc: SourceLoc,
 }
 
@@ -530,9 +535,7 @@ pub struct TypedArrayType {
 
 impl Hash for DynamicType {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for func_sig in &self.method_sigs {
-            func_sig.name.hash(state);
-        }
+        self.vtable_id.hash(state);
     }
 }
 
@@ -556,7 +559,7 @@ pub enum TypedArrayFixedCapacityValue {
 
 impl Hash for InterfaceType {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.method_sigs.hash(state);
+        self.symbol_id.hash(state);
     }
 }
 
@@ -664,6 +667,6 @@ impl Eq for TypedFuncType {}
 
 impl PartialEq for DynamicType {
     fn eq(&self, other: &Self) -> bool {
-        self.method_sigs == other.method_sigs
+        self.interface_symbol_id == other.interface_symbol_id
     }
 }

@@ -23,6 +23,7 @@ pub mod sigs;
 pub mod stmts;
 mod tests;
 pub mod types;
+pub mod vtable;
 
 pub type ScopeID = u32;
 pub type SymbolID = u32;

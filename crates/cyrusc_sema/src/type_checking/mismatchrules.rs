@@ -147,7 +147,7 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
             (SemanticType::DynamicType(dynamic_type), SemanticType::Interface(interface_type)) => {
-                dynamic_type.method_sigs == interface_type.method_sigs
+                dynamic_type.interface_symbol_id == interface_type.symbol_id
             }
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(..)) => true,
             _ => false,

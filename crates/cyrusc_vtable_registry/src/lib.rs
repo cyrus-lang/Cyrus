@@ -1,5 +1,8 @@
-use cyrusc_tast::{SymbolID, types::SemanticType};
+use cyrusc_tast::{SymbolID, sigs::FuncSig, types::SemanticType, vtable::VTableID};
+use rand::Rng;
 use std::collections::HashMap;
+
+pub type GlobalVarID = u32;
 
 /// Uniquely identifies a vtable by the pair:
 ///   (concrete type, interface).
@@ -14,20 +17,13 @@ use std::collections::HashMap;
 pub struct VTableKey {
     /// The fully resolved concrete type (after generic substitution).
     ///
-    /// This must be a *concrete* semantic type — never an interface,
+    /// This must be a *concrete* semantic type, never an interface,
     /// never `Self`, never an unresolved generic.
     pub concrete_type: SemanticType,
 
     /// The symbol ID of the interface being implemented.
     pub interface_symbol_id: SymbolID,
 }
-
-/// Opaque identifier for a registered vtable.
-///
-/// VTableIDs are stable for the duration of compilation and are
-/// assigned sequentially.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct VTableID(u32);
 
 /// Compile-time registry of all vtables required by the program.
 ///
@@ -36,7 +32,7 @@ pub struct VTableID(u32);
 ///
 /// Codegen and CIR lowering must treat this registry as immutable.
 pub struct VTableRegistry {
-    /// Maps (ConcreteType, Interface) → VTableID
+    /// Maps (ConcreteType, Interface) to VTableID
     map: HashMap<VTableKey, VTableID>,
 
     /// Dense storage of all registered vtables.
@@ -50,18 +46,20 @@ pub struct VTableRegistry {
 ///   - emit the vtable as a global
 ///   - reference it by symbol
 ///   - compute stable slot indices
+#[derive(Debug, Clone)]
 pub struct VTableInfo {
     /// The concrete type implementing the interface.
     pub concrete_type: SemanticType,
 
     /// The interface being implemented.
     pub interface_symbol_id: SymbolID,
+    pub interface_name: String,
 
     /// Ordered list of method symbols.
     ///
     /// The index into this vector is the **vtable slot index**.
     /// This order must exactly match the interface method order.
-    pub methods: Vec<SymbolID>,
+    pub methods: Vec<FuncSig>,
 
     /// Global variable symbol representing the emitted vtable.
     ///
@@ -97,8 +95,8 @@ impl VTableRegistry {
         &mut self,
         concrete_type: SemanticType,
         interface_symbol_id: SymbolID,
-        methods: Vec<SymbolID>,
-        global_var_id: SymbolID,
+        interface_name: String,
+        methods: Vec<FuncSig>,
     ) -> VTableID {
         assert!(!methods.is_empty(), "vtable must contain at least one method");
 
@@ -119,17 +117,19 @@ impl VTableRegistry {
             return existing_id;
         }
 
-        let id = VTableID(self.tables.len() as u32);
+        let vtable_id = VTableID(self.tables.len() as u32);
+        let global_var_id = generate_global_var_id();
 
         self.tables.push(VTableInfo {
             concrete_type,
             interface_symbol_id,
+            interface_name,
             methods,
             global_var_id,
         });
 
-        self.map.insert(key, id);
-        id
+        self.map.insert(key, vtable_id);
+        vtable_id
     }
 
     /// Retrieves the VTableID for a concrete type implementing an interface.
@@ -163,4 +163,12 @@ impl VTableRegistry {
     pub fn iter(&self) -> impl Iterator<Item = &VTableInfo> {
         self.tables.iter()
     }
+}
+
+unsafe impl Sync for VTableRegistry {}
+unsafe impl Send for VTableRegistry {}
+
+fn generate_global_var_id() -> GlobalVarID {
+    let mut rng = rand::rng();
+    rng.random::<u32>()
 }

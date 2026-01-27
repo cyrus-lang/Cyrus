@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::CIREnumTyVariant;
-use cyrusc_tast::types::PlainType;
+use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone)]
 pub enum CIRTy {
@@ -38,7 +38,7 @@ pub struct CIRTupleTy {
 
 #[derive(Debug, Clone)]
 pub struct CIRDynamicTy {
-    pub method_sigs: Vec<CIRFuncTy>,
+    pub vtable_id: VTableID,
 }
 
 #[derive(Debug, Clone)]

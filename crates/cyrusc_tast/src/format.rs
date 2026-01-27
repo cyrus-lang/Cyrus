@@ -376,9 +376,11 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
             )
         }
         SemanticType::GenericType(generic_type) => generic_type.format(format_symbol),
-        SemanticType::DynamicType(dynamic_type) => dynamic_type.name,
+        SemanticType::DynamicType(dynamic_type) => {
+            format!("dynamic {}", format_symbol(dynamic_type.interface_symbol_id))
+        }
         SemanticType::SelfType(_) => "Self".to_string(),
-        SemanticType::Interface(interface_type) => format!("{}", interface_type.name),
+        SemanticType::Interface(interface_type) => format_symbol(interface_type.symbol_id),
     }
 }
 

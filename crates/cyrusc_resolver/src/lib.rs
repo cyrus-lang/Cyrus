@@ -2836,6 +2836,8 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Dynamic(TypedDynamicExpr {
                 operand: Box::new(operand),
+                vtable_id: None,
+                object_name: None,
                 loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
@@ -2997,7 +2999,8 @@ impl Resolver {
                 is_fat_arrow: method_call.is_fat_arrow,
                 monomorph_key: None,
                 self_ty: None,
-                is_enum_const: None,
+                enum_const: None,
+                method_call_on_interface: None,
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
                 args,
             }),
