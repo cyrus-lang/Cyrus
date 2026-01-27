@@ -361,6 +361,9 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
 
+    #[error("Instance methods must have self modifier.")]
+    InterfaceMethodsMustHaveSelfModifier,
+
     #[error("{0}")]
     UnescapeError(UnescapeError),
 }
