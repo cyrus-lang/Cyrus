@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -22,6 +22,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel, display_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
+use cyrusc_tokens::loc::Location;
 use std::{
     env,
     hash::{Hash, Hasher},
@@ -64,14 +65,14 @@ impl ModuleLoader {
         ModuleLoader { opts }
     }
 
-    pub fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, ModuleFSLoaderDiagKind>> {
-        let mut loaded_modules_list: Vec<Result<LoadedModule, ModuleFSLoaderDiagKind>> = Vec::new();
+    pub fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, (ModuleFSLoaderDiagKind, Location)>> {
+        let mut loaded_modules_list: Vec<Result<LoadedModule, (ModuleFSLoaderDiagKind, Location)>> = Vec::new();
 
         for sub_import in &import.paths {
             let mut module_file_path = match self.imported_module_path(sub_import.segments.clone()) {
                 Ok(path) => path,
-                Err(diag_kind) => {
-                    loaded_modules_list.push(Err(diag_kind));
+                Err(diag) => {
+                    loaded_modules_list.push(Err((diag, sub_import.loc.clone())));
                     continue;
                 }
             };
@@ -80,9 +81,12 @@ impl ModuleLoader {
             if path_buf.is_dir() {
                 let index_path = path_buf.join("index.cyrus");
                 if !index_path.exists() {
-                    loaded_modules_list.push(Err(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
-                        module_name: module_segments_as_string(sub_import.segments.clone()),
-                    }));
+                    loaded_modules_list.push(Err((
+                        ModuleFSLoaderDiagKind::ModuleIndexNotFound {
+                            module_name: module_segments_as_string(sub_import.segments.clone()),
+                        },
+                        sub_import.loc.clone(),
+                    )));
                     continue;
                 }
                 module_file_path = index_path.to_str().unwrap().to_string();
@@ -91,9 +95,12 @@ impl ModuleLoader {
             let file_content = match std::fs::read_to_string(&module_file_path) {
                 Ok(content) => content,
                 Err(_) => {
-                    loaded_modules_list.push(Err(ModuleFSLoaderDiagKind::ModuleNotFound {
-                        module_name: module_segments_as_string(sub_import.segments.clone()),
-                    }));
+                    loaded_modules_list.push(Err((
+                        ModuleFSLoaderDiagKind::ModuleNotFound {
+                            module_name: module_segments_as_string(sub_import.segments.clone()),
+                        },
+                        sub_import.loc.clone(),
+                    )));
                     continue;
                 }
             };

@@ -259,14 +259,11 @@ impl Resolver {
         for loaded_module in loaded_modules_list {
             let loaded_module = match loaded_module {
                 Ok(m) => m,
-                Err(diag_kind) => {
+                Err((diag, loc)) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(diag_kind),
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            import.loc.clone(),
-                            current_module_file_path.clone(),
-                        ))),
+                        kind: Box::new(diag),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, current_module_file_path.clone()))),
                         hint: None,
                     });
                     continue;

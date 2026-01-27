@@ -373,6 +373,7 @@ dependencies = [
  "cyrusc_fs_utils",
  "cyrusc_lexer",
  "cyrusc_parser",
+ "cyrusc_tokens",
  "thiserror",
  "thiserror-impl",
 ]

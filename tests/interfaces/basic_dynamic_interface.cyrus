@@ -1,0 +1,27 @@
+// @stdout: meow بعععع
+
+import std::libc{printf};
+
+interface Animal {
+	fn sound(&self) char*;
+}
+
+struct Cat : Animal {
+	pub fn sound(&self) char* {
+		return "meow";
+	}
+}
+
+struct Ship : Animal {
+    fn sound(&self) char* {
+		return "بعععع";
+	}   
+}
+
+pub fn main() {
+	const cat = Cat {};
+	const ship = Ship {};
+
+    const animals = Animal[2]{dynamic cat, dynamic ship};
+	printf("%s %s\n", animals[0].sound(), animals[1].sound());
+}
