@@ -130,9 +130,18 @@ impl Parser {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Vec::new());
+        }
+
         let mut group_stmts: Vec<Stmt> = Vec::new();
 
         loop {
+            let inner_modifiers = self.parse_unresolved_modifiers()?;
+            if inner_modifiers != UnresolvedModifiers::default() {
+                return Err(self.error_at_current(ParserDiagKind::GroupedModifiersCannotBeNested));
+            }
+
             let stmts = self.parse_stmt(grouped_modifiers.clone(), toplevel)?;
             group_stmts.extend(stmts);
 
