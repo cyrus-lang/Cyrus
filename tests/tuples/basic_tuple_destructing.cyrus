@@ -1,0 +1,8 @@
+// @stdout: 1, 2
+
+import std::libc{printf};
+
+pub fn main() {
+	const (x, y) = (1, 2);
+	printf("%d, %d\n", x, y);
+}
