@@ -17,7 +17,7 @@
 use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
-use cyrusc_abi::mangler::ABINameMangler;
+use cyrusc_abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
@@ -44,7 +44,6 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) struct CIRWalk<'resolver> {
     program: Box<TypedProgramTree>,
-    mangler: &'resolver dyn ABINameMangler,
     current_self_ty: Option<CIRTy>,
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'resolver Resolver,
@@ -61,7 +60,6 @@ impl<'resolver> CIRWalk<'resolver> {
         resolver: &'resolver Resolver,
         module_id: ModuleID,
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-        mangler: &'resolver dyn ABINameMangler,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
     ) -> Self {
@@ -70,7 +68,6 @@ impl<'resolver> CIRWalk<'resolver> {
             resolver,
             module_id,
             cir_monomorph_registry,
-            mangler,
             current_self_ty: None,
             current_obj_operand_ty: None,
             symbol_formatter: build_panic_symbol_formatter(),
@@ -194,8 +191,7 @@ impl<'resolver> CIRWalk<'resolver> {
         object_name: &String,
     ) -> Option<CIRStmt> {
         let mangled_name =
-            self.mangler
-                .method_name(&self.program.module_name, object_name, &resolved_method.func_sig.name);
+            DEFAULT_ABI.method_name(&self.program.module_name, object_name, &resolved_method.func_sig.name);
 
         // skip if has no body
         let func_body = resolved_method.func_body.clone()?;
@@ -666,9 +662,11 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .and_then(|expr| Some(self.lower_expr(scope_id_opt, &expr)));
 
-        let mangled_name = self
-            .mangler
-            .global_var_name(&self.program.module_name, &global_var.name);
+        let mangled_name = mangle_global_var(
+            &global_var.modifiers,
+            &self.module_name_by_module_id(global_var.module_id).unwrap(),
+            &global_var.name,
+        );
 
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
             irv_id: global_var.symbol_id,
@@ -785,7 +783,8 @@ impl<'resolver> CIRWalk<'resolver> {
         };
 
         if mangle_name {
-            cir_func_def.name = self.mangler.func_name(&self.program.module_name, &func_def.name, false);
+            let mangled_name = mangle_func(&cir_func_def.modifiers, &self.program.module_name, &cir_func_def.name);
+            cir_func_def.name = mangled_name;
         }
 
         CIRStmt::FuncDef(cir_func_def)
@@ -796,7 +795,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
 
         let func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name);
-        let mangled_name = self.mangler.func_name(&self.program.module_name, &func_name, true);
+        let mangled_name = mangle_func(&func_decl.modifiers, &self.program.module_name, &func_name);
 
         CIRFuncDeclStmt {
             irv_id: func_decl.symbol_id,
@@ -892,8 +891,8 @@ impl<'resolver> CIRWalk<'resolver> {
             .iter()
             .cloned()
             .map(|mut func_sig| {
-                // TODO: Maybe we found a better solution to address the method with symbol_id.
-                let mangled_name = self.mangler.method_name(
+                let mangled_name = mangle_method(
+                    &func_sig.modifiers,
                     &self.program.module_name,
                     &dynamic_expr.object_name.as_ref().unwrap(),
                     &func_sig.name,
@@ -904,7 +903,7 @@ impl<'resolver> CIRWalk<'resolver> {
             })
             .collect();
 
-        let vtable_abi_name = self.mangler.vtable_name(
+        let vtable_abi_name = DEFAULT_ABI.vtable_name(
             &dynamic_expr.object_name.clone().unwrap(),
             &dynamic_expr.vtable_id.unwrap().to_string(),
         );
@@ -928,10 +927,10 @@ impl<'resolver> CIRWalk<'resolver> {
         if let Some(resolved_func) = sym.as_func() {
             let mut func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
 
-            let mangled_name = self.mangler.func_name(
+            let mangled_name = mangle_func(
+                &func_decl.modifiers,
                 &self.module_name_by_module_id(resolved_func.module_id).unwrap(),
                 &resolved_func.func_sig.name,
-                resolved_func.func_sig.is_func_decl,
             );
 
             func_decl.name = mangled_name;
@@ -947,7 +946,8 @@ impl<'resolver> CIRWalk<'resolver> {
                 &resolved_global_var.global_var_sig,
             );
 
-            let mangled_name = self.mangler.global_var_name(
+            let mangled_name = mangle_global_var(
+                &resolved_global_var.global_var_sig.modifiers,
                 &self.module_name_by_module_id(resolved_global_var.module_id).unwrap(),
                 &resolved_global_var.global_var_sig.name,
             );
@@ -1696,7 +1696,6 @@ pub fn walk_program_trees_in_parallel(
     program_trees: Vec<Box<TypedProgramTree>>,
     resolver: &Resolver,
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-    mangler: &dyn ABINameMangler,
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
 ) -> Vec<Box<CIRProgramTree>> {
@@ -1721,7 +1720,6 @@ pub fn walk_program_trees_in_parallel(
                     resolver,
                     program_tree.module_id,
                     cir_monomorph_registry.clone(),
-                    mangler,
                     mapping_ctx_arena.clone(),
                     vtable_registry,
                 );

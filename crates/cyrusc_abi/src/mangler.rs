@@ -14,11 +14,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+use crate::modifiers::{FuncModifiers, GlobalVarModifiers};
+use once_cell::sync::Lazy;
+
+pub static CYRUS_ABI: Lazy<Cyrus_ABI_Impl> = Lazy::new(|| Cyrus_ABI_Impl::new());
+pub static C_ABI: Lazy<C_ABI_Impl> = Lazy::new(|| C_ABI_Impl::new());
+
+pub static DEFAULT_ABI: Lazy<Cyrus_ABI_Impl> = Lazy::new(Cyrus_ABI_Impl::new);
+
 /// Trait that defines how to generate ABI-safe names for the language.
 /// This allows multiple ABIs to coexist with different name mangling rules.
 pub trait ABINameMangler: Send + Sync {
     /// Function names
-    fn func_name(&self, module_name: &str, func_name: &str, exported: bool) -> String;
+    fn func_name(&self, module_name: &str, func_name: &str) -> String;
 
     /// Method names
     fn method_name(&self, module_name: &str, object_name: &str, method_name: &str) -> String;
@@ -44,9 +52,9 @@ pub trait ABINameMangler: Send + Sync {
 
 /// Default ABI mangler
 #[allow(non_camel_case_types)]
-pub struct Cyrus_ABI;
+pub struct Cyrus_ABI_Impl;
 
-impl Cyrus_ABI {
+impl Cyrus_ABI_Impl {
     pub fn new() -> Self {
         Self {}
     }
@@ -63,16 +71,12 @@ impl Cyrus_ABI {
     }
 }
 
-impl ABINameMangler for Cyrus_ABI {
-    fn func_name(&self, module_name: &str, func_name: &str, exported: bool) -> String {
+impl ABINameMangler for Cyrus_ABI_Impl {
+    fn func_name(&self, module_name: &str, func_name: &str) -> String {
         if func_name == "main" {
             func_name.to_string()
         } else {
-            if exported {
-                func_name.to_string()
-            } else {
-                format!("{}${}", Self::sanitize(module_name), Self::sanitize(func_name))
-            }
+            format!("{}${}", Self::sanitize(module_name), Self::sanitize(func_name))
         }
     }
 
@@ -116,9 +120,9 @@ impl ABINameMangler for Cyrus_ABI {
 }
 
 #[allow(non_camel_case_types)]
-pub struct C_ABI;
+pub struct C_ABI_Impl;
 
-impl C_ABI {
+impl C_ABI_Impl {
     pub fn new() -> Self {
         Self {}
     }
@@ -131,8 +135,8 @@ impl C_ABI {
     }
 }
 
-impl ABINameMangler for C_ABI {
-    fn func_name(&self, _module_name: &str, func_name: &str, _exported: bool) -> String {
+impl ABINameMangler for C_ABI_Impl {
+    fn func_name(&self, _module_name: &str, func_name: &str) -> String {
         Self::sanitize(func_name)
     }
 
@@ -162,5 +166,26 @@ impl ABINameMangler for C_ABI {
 
     fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String {
         format!("__vtable_{}_{}", interface_name, vtable_id)
+    }
+}
+
+pub fn mangle_global_var(modifiers: &GlobalVarModifiers, module_name: &str, var_name: &str) -> String {
+    match &modifiers.linkage {
+        Some(linkage) => linkage.abi_mangler().global_var_name(module_name, var_name),
+        None => CYRUS_ABI.global_var_name(module_name, var_name),
+    }
+}
+
+pub fn mangle_func(modifiers: &FuncModifiers, module_name: &str, name: &str) -> String {
+    match &modifiers.linkage {
+        Some(linkage) => linkage.abi_mangler().func_name(module_name, name),
+        None => CYRUS_ABI.func_name(module_name, name),
+    }
+}
+
+pub fn mangle_method(modifiers: &FuncModifiers, module_name: &str, object_name: &str, name: &str) -> String {
+    match &modifiers.linkage {
+        Some(linkage) => linkage.abi_mangler().method_name(module_name, object_name, name),
+        None => CYRUS_ABI.method_name(module_name, object_name, name),
     }
 }

@@ -17,9 +17,8 @@
 use crate::{
     context::CodeGenContext,
     linker::Linker,
-    options::{BuildDir, CodeGenABI, CodeGenOptions, LinkerOutputKind},
+    options::{BuildDir, CodeGenOptions, LinkerOutputKind},
 };
-use cyrusc_abi::mangler::{ABINameMangler, C_ABI, Cyrus_ABI};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
@@ -167,8 +166,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         exit(1);
     }
 
-    let mangler = name_mangler_impl(opts.abi.clone());
-
     // prepare trees for codegen
 
     let boxed_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
@@ -186,9 +183,8 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         boxed_trees,
         &resolver,
         cir_monomorph_registry.clone(),
-        &*mangler,
         mapping_ctx_arena.clone(),
-        &vtable_registries
+        &vtable_registries,
     );
 
     CodeGenContextBundle {
@@ -223,13 +219,6 @@ pub fn get_artifact_output_path(build_dir: BuildDir, output_path: Option<String>
             });
             temp_dir.to_string_lossy().to_string()
         }
-    }
-}
-
-fn name_mangler_impl(abi: Option<CodeGenABI>) -> Box<dyn ABINameMangler> {
-    match abi.unwrap_or_default() {
-        CodeGenABI::Cyrus => Box::new(Cyrus_ABI::new()),
-        CodeGenABI::C => Box::new(C_ABI::new()),
     }
 }
 

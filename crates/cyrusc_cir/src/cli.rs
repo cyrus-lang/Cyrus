@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_abi::mangler::Cyrus_ABI;
+use cyrusc_abi::mangler::Cyrus_ABI_Impl;
 use cyrusc_cir::{monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
@@ -111,8 +111,6 @@ pub fn main() {
             AnalysisContext::check_entry_points(entry_points);
             drop(resolved_program_trees);
 
-            let mangling = Cyrus_ABI::new();
-
             let cloned_program_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
                 .into_iter()
                 .map(|rc_refcell_tree| {
@@ -134,7 +132,6 @@ pub fn main() {
                 cloned_program_trees,
                 &resolver,
                 cir_monomorph_registry,
-                &mangling,
                 mapping_ctx_arena.clone(),
                 &vtable_registries,
             );
