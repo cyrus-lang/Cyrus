@@ -1,8 +1,10 @@
 import std::libc::abi;
 
-pub extern var stdout: abi::c_file;
-pub extern var stderr: abi::c_file;
-pub extern var stdin: abi::c_file;
+// extern "C" {
+//     pub var stdout: abi::c_file;
+//     pub var stderr: abi::c_file;
+//     pub var stdin: abi::c_file;
+// }
 
 pub extern fn printf(format: abi::c_char*, ...) abi::c_int;
 pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
