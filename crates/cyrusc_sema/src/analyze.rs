@@ -1901,6 +1901,15 @@ impl<'a> AnalysisContext<'a> {
         let interface_name = resolved_interface.as_interface().unwrap().interface_sig.name.clone();
 
         for method in &typed_interface.methods {
+            if !method.params.is_instance_method() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustHaveSelfModifier),
+                    location: Some(DiagLoc::new(method.loc.clone())),
+                    hint: None,
+                });
+            }
+
             if name_list.contains(&method.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

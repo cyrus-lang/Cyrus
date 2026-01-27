@@ -322,6 +322,16 @@ pub struct TypedFuncParams {
     pub variadic: Option<TypedFuncVariadicParams>,
 }
 
+impl TypedFuncParams {
+    pub fn is_instance_method(&self) -> bool {
+        if let Some(param) = self.list.first() {
+            param.as_self_modifier().is_some()
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,

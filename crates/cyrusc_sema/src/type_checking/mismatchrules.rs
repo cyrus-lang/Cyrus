@@ -149,6 +149,9 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::DynamicType(dynamic_type), SemanticType::Interface(interface_type)) => {
                 dynamic_type.interface_symbol_id == interface_type.symbol_id
             }
+            (SemanticType::Interface(interface_type1), SemanticType::Interface(interface_type2)) => {
+                interface_type1.symbol_id == interface_type2.symbol_id
+            }
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
