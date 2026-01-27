@@ -93,6 +93,12 @@ pub enum ParserDiagKind {
 
     #[error("Declared method must have a body.")]
     MethodMustHaveABody,
+
+    #[error("Cannot use grouped modifiers here.")]
+    InvalidGroupedModifiers,
+
+    #[error("Group modifiers cannot be nested.")]
+    GroupedModifiersCannotBeNested,
 }
 
 impl DiagKind for ParserDiagKind {}
