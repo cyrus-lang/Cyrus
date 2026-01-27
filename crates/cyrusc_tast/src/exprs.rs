@@ -20,6 +20,7 @@ use crate::{
     sigs::FuncSig,
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
     types::{SemanticType, TypedUnnamedStructType},
+    vtable::VTableID,
 };
 use cyrusc_ast::{
     AssignKind,
@@ -71,6 +72,8 @@ pub enum TypedExprKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedDynamicExpr {
     pub operand: Box<TypedExprStmt>,
+    pub object_name: Option<String>,
+    pub vtable_id: Option<VTableID>,
     pub loc: SourceLoc,
 }
 
@@ -177,14 +180,12 @@ impl TypedExprKind {
                 .fields
                 .iter()
                 .all(|field_init| field_init.value.kind.is_comptime_valid()),
-            TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
-                typed_unnamed_struct_value
-                    .fields
-                    .iter()
-                    .all(|typed_unnamed_struct_value_field| {
-                        typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
-                    })
-            }
+            TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => typed_unnamed_struct_value
+                .fields
+                .iter()
+                .all(|typed_unnamed_struct_value_field| {
+                    typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
+                }),
             TypedExprKind::Symbol(..)
             | TypedExprKind::ArrayIndex(_)
             | TypedExprKind::TupleAccess(_)
@@ -350,6 +351,13 @@ pub struct TypedFieldAccess {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TypedInterfaceMethodCallMetadata {
+    pub method_idx: usize,
+    pub methods_len: usize,
+    pub method_sig: FuncSig,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
     pub method_name: String,
@@ -358,12 +366,13 @@ pub struct TypedMethodCall {
     pub is_fat_arrow: bool,
 
     pub func_sig: Option<FuncSig>,
-    pub is_enum_const: Option<SymbolID>,
     pub self_ty: Option<SemanticType>,
+
+    pub enum_const: Option<SymbolID>,
+    pub method_call_on_interface: Option<TypedInterfaceMethodCallMetadata>,
 
     // only used when calling a generic method
     pub monomorph_key: Option<MonomorphKey>,
-
     pub loc: SourceLoc,
 }
 

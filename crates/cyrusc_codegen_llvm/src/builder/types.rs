@@ -17,7 +17,7 @@
 use crate::builder::builder::IRBuilderCtx;
 use cyrusc_cir::{
     CIREnumTyVariant,
-    types::{CIRArrayTy, CIRDynamicTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
+    types::{CIRArrayTy, CIREnumTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
 };
 use cyrusc_tast::types::PlainType;
 use inkwell::{
@@ -41,16 +41,36 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRTy::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
             CIRTy::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
             CIRTy::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRTy::Dynamic(dynamic_ty) => self.emit_dynamic_ty(&dynamic_ty).as_any_type_enum(),
+            CIRTy::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
         }
     }
 
+    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy) -> CIRTy {
+        CIRTy::Struct(CIRStructTy {
+            fields: vec![
+                CIRTy::Pointer(Box::new(data_ptr_inner_ty)),
+                CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+            ],
+            is_packed: false,
+        })
+    }
+
     #[allow(unused)]
-    pub(crate) fn emit_dynamic_ty(&self, dynamic_ty: &CIRDynamicTy) -> StructType<'ll> {
+    pub(crate) fn emit_dynamic_ty(&self) -> StructType<'ll> {
         let vtable_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
         let data_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
 
         self.llvmctx.struct_type(&[data_ptr, vtable_ptr], false)
+    }
+
+    #[allow(unused)]
+    pub(crate) fn emit_vtable_ty(&self, methods_len: usize) -> StructType<'ll> {
+        self.llvmctx.struct_type(
+            &(0..methods_len)
+                .map(|_| self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum())
+                .collect::<Vec<_>>(),
+            false,
+        )
     }
 
     pub(crate) fn emit_tys(&self, tys: &[CIRTy]) -> Vec<AnyTypeEnum<'ll>> {

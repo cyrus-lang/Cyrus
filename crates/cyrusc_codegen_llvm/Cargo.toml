@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 inkwell = { version = "0.7.0", features = ["llvm18-1"] }
 cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }
 cyrusc_cir = { path = "../cyrusc_cir", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_compiler = { path = "../cyrusc_compiler", version = "*" }

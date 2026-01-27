@@ -82,11 +82,70 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
             CIRExprKind::Dynamic(dynamic_expr) => self.emit_dynamic_expr(dynamic_expr),
+            CIRExprKind::InterfaceMethodCall(interface_method_call) => {
+                self.emit_interface_method_call(interface_method_call)
+            }
         }
     }
 
     fn emit_dynamic_expr(&mut self, dynamic_expr: &CIRDynamicExpr) -> InternalValue<'ll> {
-        todo!();
+        {
+            let data_ptr = self
+                .emit_expr(&dynamic_expr.data_ptr)
+                .as_basic_value()
+                .into_pointer_value();
+
+            let vtable_global_var_ptr = {
+                if let Some(local_ir_value) = {
+                    let irreg = self.irreg.borrow();
+                    irreg.get(dynamic_expr.global_var_id)
+                } {
+                    local_ir_value.as_global().unwrap().as_pointer_value()
+                } else {
+                    let methods: Vec<BasicValueEnum<'ll>> = dynamic_expr
+                        .method_decls
+                        .iter()
+                        .map(|func_decl| {
+                            let fn_value = self.emit_func_decl(func_decl);
+                            fn_value.as_global_value().as_pointer_value().as_basic_value_enum()
+                        })
+                        .collect();
+
+                    let vtable_type = self.emit_vtable_ty(methods.len());
+
+                    let llvmmodule = self.llvmmodule.borrow_mut();
+
+                    let global_value = llvmmodule.add_global(vtable_type, None, &dynamic_expr.vtable_abi_name);
+
+                    global_value.set_initializer(&vtable_type.const_named_struct(&methods));
+                    global_value.as_pointer_value()
+                }
+            };
+
+            let dynamic_struct_type = self.emit_dynamic_ty();
+
+            let mut dynamic_struct_value = dynamic_struct_type.get_undef();
+            dynamic_struct_value = self
+                .llvmbuilder
+                .build_insert_value(dynamic_struct_value, data_ptr.as_basic_value_enum(), 0, "insert")
+                .unwrap()
+                .into_struct_value();
+            dynamic_struct_value = self
+                .llvmbuilder
+                .build_insert_value(
+                    dynamic_struct_value,
+                    vtable_global_var_ptr.as_basic_value_enum(),
+                    1,
+                    "insert",
+                )
+                .unwrap()
+                .into_struct_value();
+
+            InternalValue::new(
+                self.cir_dynamic_ty(dynamic_expr.data_ptr.ty.clone()),
+                InternalValueKind::RValue(dynamic_struct_value.as_basic_value_enum()),
+            )
+        }
     }
 
     pub(crate) fn emit_array_index_on_pointer(
@@ -1200,6 +1259,83 @@ impl<'ll> IRBuilderCtx<'ll> {
             &monomorph_func_instance_call.ret_ty,
             &fn_value,
         )
+    }
+
+    fn emit_interface_method_call(&mut self, interface_method_call: &CIRInterfaceMethodCall) -> InternalValue<'ll> {
+        let dynamic_value = {
+            let lvalue = self.emit_expr(&interface_method_call.operand);
+            let rvalue = self.load_rvalue(lvalue);
+            rvalue.as_basic_value().into_struct_value()
+        };
+
+        let data_ptr = self
+            .llvmbuilder
+            .build_extract_value(dynamic_value, 0, "extract_data")
+            .unwrap()
+            .into_pointer_value();
+
+        let vtable_ptr = self
+            .llvmbuilder
+            .build_extract_value(dynamic_value, 1, "extract_vtable")
+            .unwrap()
+            .into_pointer_value();
+
+        let target_data = self.llvmtm.get_target_data();
+        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let ptr_size = self
+            .llvmctx
+            .i64_type()
+            .const_int(target_data.get_pointer_byte_size(None).into(), false);
+
+        let method_ptr = unsafe {
+            // calculate byte offset: method_idx * sizeof(ptr)
+            let offset = self
+                .llvmctx
+                .i64_type()
+                .const_int(interface_method_call.method_idx as u64, false);
+            let byte_offset = self.llvmbuilder.build_int_mul(offset, ptr_size, "byte_offset").unwrap();
+
+            // add offset to base pointer
+            let method_ptr = self
+                .llvmbuilder
+                .build_gep(ptr_type, vtable_ptr, &[byte_offset], "method_ptr")
+                .unwrap();
+
+            method_ptr
+        };
+
+        let vtable_function_pointer = self
+            .llvmbuilder
+            .build_load(ptr_type, method_ptr, "load")
+            .unwrap()
+            .into_pointer_value();
+
+        let vtable_function_type = self.emit_func_ty(interface_method_call.func_type.clone());
+
+        let mut args: Vec<BasicMetadataValueEnum<'ll>> = interface_method_call
+            .args
+            .iter()
+            .map(|expr| {
+                let lvalue = self.emit_expr(expr);
+                self.load_rvalue(lvalue).as_basic_value().into()
+            })
+            .collect();
+
+        args.insert(0, data_ptr.as_basic_value_enum().into());
+
+        let call_site = self
+            .llvmbuilder
+            .build_indirect_call(vtable_function_type, vtable_function_pointer, &args, "indirect_call")
+            .unwrap();
+
+        if let Some(basic_value) = call_site.try_as_basic_value().basic() {
+            InternalValue::new(
+                interface_method_call.ret_ty.clone(),
+                InternalValueKind::RValue(basic_value),
+            )
+        } else {
+            self.emit_null(interface_method_call.ret_ty.clone())
+        }
     }
 
     pub(crate) fn emit_func_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {

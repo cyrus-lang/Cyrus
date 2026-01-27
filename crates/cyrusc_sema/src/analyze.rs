@@ -42,6 +42,7 @@ use cyrusc_tast::{
     *,
 };
 use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -52,9 +53,10 @@ use std::{
 
 pub struct AnalysisContext<'a> {
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    pub program_tree: Rc<RefCell<TypedProgramTree>>,
-    pub reporter: DiagReporter,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
+    pub program_tree: Rc<RefCell<TypedProgramTree>>,
+    pub vtable_registry: Arc<Mutex<VTableRegistry>>,
+    pub reporter: DiagReporter,
 
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'a Resolver,
@@ -77,6 +79,7 @@ impl<'a> AnalysisContext<'a> {
         entry_points: Arc<Mutex<Vec<SourceLoc>>>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+        vtable_registry: Arc<Mutex<VTableRegistry>>,
         disable_warnings: bool,
     ) -> Self {
         let symbol_formatter = Self::build_symbol_formatter(resolver, module_id);
@@ -92,6 +95,7 @@ impl<'a> AnalysisContext<'a> {
             symbol_formatter,
             entry_points,
             disable_warnings,
+            vtable_registry,
             monomorph_registry,
             mapping_ctx_arena,
         }

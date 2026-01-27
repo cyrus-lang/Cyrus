@@ -27,6 +27,7 @@ use cyrusc_tast::{
     TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
+use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     cell::RefCell,
     env,
@@ -79,12 +80,17 @@ pub fn main() {
                 exit(1);
             }
 
+            let mut vtable_registries: Vec<Arc<Mutex<VTableRegistry>>> = Vec::new();
             let entry_points = Arc::new(Mutex::new(Vec::new()));
 
             let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
             let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
             for program_tree_entry in &*resolved_program_trees {
+                // vtable registry of module
+                let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
+                vtable_registries.push(vtable_registry.clone());
+
                 let mut analyzer = AnalysisContext::new(
                     &resolver,
                     program_tree_entry.module_id,
@@ -92,6 +98,7 @@ pub fn main() {
                     entry_points.clone(),
                     monomorph_registry.clone(),
                     mapping_ctx_arena.clone(),
+                    vtable_registry,
                     true,
                 );
 
@@ -129,6 +136,7 @@ pub fn main() {
                 cir_monomorph_registry,
                 &mangling,
                 mapping_ctx_arena.clone(),
+                &vtable_registries,
             );
 
             dbg!(cir_program_trees);

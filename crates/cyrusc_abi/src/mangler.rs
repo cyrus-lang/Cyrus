@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -37,6 +37,9 @@ pub trait ABINameMangler: Send + Sync {
 
     /// Enum variant names
     fn enum_variant_name(&self, module_name: &str, enum_name: &str, variant_name: &str) -> String;
+
+    /// VTable instances names
+    fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String;
 }
 
 /// Default ABI mangler
@@ -106,6 +109,10 @@ impl ABINameMangler for Cyrus_ABI {
             Self::sanitize(variant_name)
         )
     }
+
+    fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String {
+        format!("__vtable_{}_{}", interface_name, vtable_id)
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -151,5 +158,9 @@ impl ABINameMangler for C_ABI {
 
     fn enum_variant_name(&self, _module_name: &str, enum_name: &str, variant_name: &str) -> String {
         format!("{}__{}", Self::sanitize(enum_name), Self::sanitize(variant_name))
+    }
+
+    fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String {
+        format!("__vtable_{}_{}", interface_name, vtable_id)
     }
 }

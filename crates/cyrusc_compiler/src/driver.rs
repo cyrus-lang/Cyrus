@@ -37,6 +37,7 @@ use cyrusc_tast::{
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
 use cyrusc_tui_utils::tui_error;
+use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     cell::RefCell,
     env,
@@ -133,8 +134,12 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     let mut has_error = false;
     let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+    let mut vtable_registries: Vec<Arc<Mutex<VTableRegistry>>> = Vec::new();
 
     for program_tree_entry in &*resolved_program_trees {
+        let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
+        vtable_registries.push(vtable_registry.clone());
+
         let mut analyzer = AnalysisContext::new(
             &resolver,
             program_tree_entry.module_id,
@@ -142,6 +147,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
             entry_points.clone(),
             monomorph_registry.clone(),
             mapping_ctx_arena.clone(),
+            vtable_registry,
             true,
         );
 
@@ -182,6 +188,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         cir_monomorph_registry.clone(),
         &*mangler,
         mapping_ctx_arena.clone(),
+        &vtable_registries
     );
 
     CodeGenContextBundle {

@@ -26,10 +26,7 @@ use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
-use cyrusc_tast::sigs::{
-    EnumSig, FuncSig, GlobalVarSig, UnionSig, set_self_modifier_symbol_id_in_func_sig,
-    set_self_modifier_type_in_func_sig, typed_func_decl_from_func_sig,
-};
+use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
 use cyrusc_tast::types::{PlainType, ResolvedSymbol};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
@@ -39,6 +36,7 @@ use cyrusc_tast::{
     types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
+use cyrusc_vtable_registry::VTableRegistry;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -54,6 +52,7 @@ pub(crate) struct CIRWalk<'resolver> {
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
     pub(crate) symbol_formatter: Box<dyn Fn(SymbolID) -> String + 'resolver>,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    pub(crate) vtable_registry: Arc<Mutex<VTableRegistry>>,
 }
 
 impl<'resolver> CIRWalk<'resolver> {
@@ -64,6 +63,7 @@ impl<'resolver> CIRWalk<'resolver> {
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
         mangler: &'resolver dyn ABINameMangler,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+        vtable_registry: Arc<Mutex<VTableRegistry>>,
     ) -> Self {
         Self {
             program,
@@ -75,6 +75,7 @@ impl<'resolver> CIRWalk<'resolver> {
             current_obj_operand_ty: None,
             symbol_formatter: build_panic_symbol_formatter(),
             mapping_ctx_arena,
+            vtable_registry,
         }
     }
 
@@ -96,7 +97,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     if func_def_stmt.generic_params.is_some() {
                         continue; // skip lowering at this point
                     }
-                    self.lower_func_def(scope_id_opt, func_def_stmt)
+                    self.lower_func_def(scope_id_opt, func_def_stmt, true)
                 }
                 TypedStmt::FuncDecl(func_decl_stmt) => {
                     CIRStmt::FuncDecl(self.lower_func_decl(scope_id_opt, func_decl_stmt))
@@ -192,9 +193,9 @@ impl<'resolver> CIRWalk<'resolver> {
         resolved_method: &ResolvedMethod,
         object_name: &String,
     ) -> Option<CIRStmt> {
-        let mangled_name = self
-            .mangler
-            .method_name(&"", object_name, &resolved_method.func_sig.name);
+        let mangled_name =
+            self.mangler
+                .method_name(&self.program.module_name, object_name, &resolved_method.func_sig.name);
 
         // skip if has no body
         let func_body = resolved_method.func_body.clone()?;
@@ -211,7 +212,7 @@ impl<'resolver> CIRWalk<'resolver> {
             loc: resolved_method.func_sig.loc.clone(),
         };
 
-        Some(self.lower_func_def(scope_id_opt, &func_def))
+        Some(self.lower_func_def(scope_id_opt, &func_def, false))
     }
 
     fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
@@ -763,22 +764,31 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_func_def(&mut self, scope_id_opt: Option<ScopeID>, func_def: &TypedFuncDefStmt) -> CIRStmt {
+    fn lower_func_def(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_def: &TypedFuncDefStmt,
+        mangle_name: bool,
+    ) -> CIRStmt {
         let params = self.lower_func_params(scope_id_opt, &func_def.params);
 
         let body = self.lower_body(&func_def.body);
         let ret = self.lower_sema_ty(scope_id_opt, &func_def.return_type);
 
-        let mangled_name = self.mangler.func_name(&self.program.module_name, &func_def.name, false);
-
-        CIRStmt::FuncDef(CIRFuncDefStmt {
+        let mut cir_func_def = CIRFuncDefStmt {
             irv_id: func_def.symbol_id,
-            name: mangled_name,
+            name: func_def.name.clone(),
             params,
             body: Box::new(body),
             ret,
             modifiers: func_def.modifiers.clone(),
-        })
+        };
+
+        if mangle_name {
+            cir_func_def.name = self.mangler.func_name(&self.program.module_name, &func_def.name, false);
+        }
+
+        CIRStmt::FuncDef(cir_func_def)
     }
 
     fn lower_func_decl(&mut self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRFuncDeclStmt {
@@ -864,7 +874,47 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_dynamic_expr(&mut self, scope_id_opt: Option<ScopeID>, dynamic_expr: &TypedDynamicExpr) -> CIRExprKind {
-        todo!();
+        let operand = self.lower_expr(scope_id_opt, &dynamic_expr.operand);
+        let data_ptr = CIRExpr {
+            kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+                operand: Box::new(operand),
+            }),
+            ty: CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+        };
+
+        let vtable_info = {
+            let vtable_registry = self.vtable_registry.lock().unwrap();
+            vtable_registry.info(dynamic_expr.vtable_id.unwrap()).clone()
+        };
+
+        let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
+            .methods
+            .iter()
+            .cloned()
+            .map(|mut func_sig| {
+                // TODO: Maybe we found a better solution to address the method with symbol_id.
+                let mangled_name = self.mangler.method_name(
+                    &self.program.module_name,
+                    &dynamic_expr.object_name.as_ref().unwrap(),
+                    &func_sig.name,
+                );
+
+                func_sig.name = mangled_name;
+                self.lower_func_sig(scope_id_opt, func_sig.symbol_id.unwrap(), &func_sig)
+            })
+            .collect();
+
+        let vtable_abi_name = self.mangler.vtable_name(
+            &dynamic_expr.object_name.clone().unwrap(),
+            &dynamic_expr.vtable_id.unwrap().to_string(),
+        );
+
+        CIRExprKind::Dynamic(CIRDynamicExpr {
+            data_ptr: Box::new(data_ptr),
+            method_decls,
+            global_var_id: vtable_info.global_var_id,
+            vtable_abi_name,
+        })
     }
 
     pub(crate) fn lower_load_symbol(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
@@ -1012,11 +1062,51 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
+    fn lower_interface_method_call(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        method_call: &TypedMethodCall,
+    ) -> CIRExprKind {
+        let operand = self.lower_expr(scope_id_opt, &method_call.operand);
+
+        let args = method_call
+            .args
+            .iter()
+            .map(|arg| self.lower_expr(scope_id_opt, arg))
+            .collect::<Vec<CIRExpr>>();
+
+        let ret_ty = self.lower_sema_ty(
+            scope_id_opt,
+            &method_call.func_sig.as_ref().unwrap().return_type.clone(),
+        );
+
+        let interface_method_call_metadata = method_call.method_call_on_interface.as_ref().unwrap();
+
+        let cir_func_decl = self.lower_func_sig(
+            scope_id_opt,
+            interface_method_call_metadata.method_sig.symbol_id.unwrap(),
+            &interface_method_call_metadata.method_sig,
+        );
+
+        CIRExprKind::InterfaceMethodCall(CIRInterfaceMethodCall {
+            operand: Box::new(operand),
+            args,
+            ret_ty,
+            func_type: cir_func_decl_as_func_ty(&cir_func_decl),
+            method_idx: interface_method_call_metadata.method_idx,
+            methods_len: interface_method_call_metadata.methods_len,
+        })
+    }
+
     fn lower_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &TypedMethodCall,
     ) -> CIRExprKind {
+        if method_call.method_call_on_interface.is_some() {
+            return self.lower_interface_method_call(scope_id_opt, method_call);
+        }
+
         self.current_obj_operand_ty = Some(method_call.operand.sema_ty.clone().unwrap());
         self.current_self_ty = method_call
             .self_ty
@@ -1065,7 +1155,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let local_scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        if let Some(enum_symbol_id) = method_call.is_enum_const {
+        if let Some(enum_symbol_id) = method_call.enum_const {
             let sym = self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id)
@@ -1460,48 +1550,21 @@ impl<'resolver> CIRWalk<'resolver> {
 
                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
             }
-            SemanticType::DynamicType(dynamic_type) => {
-                let lowered_method_sigs = self.lower_interface_methods(scope_id_opt, dynamic_type.method_sigs.clone());
-
-                CIRTy::Dynamic(CIRDynamicTy {
-                    method_sigs: lowered_method_sigs,
-                })
-            }
-            SemanticType::Interface(interface_type) => {
-                let lowered_method_sigs =
-                    self.lower_interface_methods(scope_id_opt, interface_type.method_sigs.clone());
-
-                CIRTy::Dynamic(CIRDynamicTy {
-                    method_sigs: lowered_method_sigs,
+            SemanticType::DynamicType(dynamic_type) => CIRTy::Dynamic(CIRDynamicTy {
+                vtable_id: dynamic_type.vtable_id,
+            }),
+            SemanticType::Interface(_) => {
+                CIRTy::Struct(CIRStructTy {
+                    fields: vec![
+                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))), // data_ptr
+                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))), // vtable_ptr
+                    ],
+                    is_packed: false,
                 })
             }
         }
         .const_inner()
         .clone()
-    }
-
-    fn lower_interface_methods(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        mut method_sigs: Vec<FuncSig>,
-    ) -> Vec<CIRFuncTy> {
-        let mut lowered_method_sigs: Vec<CIRFuncTy> = Vec::new();
-
-        for func_sig in &mut method_sigs {
-            // NOTE: SelfType cannot be empty here but also it does not matter because it's always behind a
-            // pointer type: `Self*`. Hence we used `void*` as an alternative, the rest of the story handled in codegen.
-            set_self_modifier_type_in_func_sig(
-                func_sig,
-                &SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void))),
-            );
-            set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
-
-            let func_decl = self.lower_func_sig(scope_id_opt, func_sig.symbol_id.unwrap(), func_sig);
-            let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
-            lowered_method_sigs.push(cir_func_ty);
-        }
-
-        lowered_method_sigs
     }
 
     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
@@ -1635,6 +1698,7 @@ pub fn walk_program_trees_in_parallel(
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     mangler: &dyn ABINameMangler,
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
 ) -> Vec<Box<CIRProgramTree>> {
     use rayon::prelude::*;
 
@@ -1648,7 +1712,10 @@ pub fn walk_program_trees_in_parallel(
     pool.install(|| {
         program_trees
             .into_par_iter()
-            .map(|program_tree| {
+            .enumerate()
+            .map(|(idx, program_tree)| {
+                let vtable_registry = vtable_registries[idx].clone();
+
                 let mut cir_walk = CIRWalk::new(
                     program_tree.clone(),
                     resolver,
@@ -1656,6 +1723,7 @@ pub fn walk_program_trees_in_parallel(
                     cir_monomorph_registry.clone(),
                     mangler,
                     mapping_ctx_arena.clone(),
+                    vtable_registry,
                 );
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
                 Box::new(cir_program_tree)

@@ -26,9 +26,6 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot apply 'dynamic' to an already dynamic value.")]
     InvalidMultipleDynamicType,
 
-    #[error("Object '{symbol_name}' has no method to make it dynamic.")]
-    ObjectHasNotMethodsToMakeItDynamic { symbol_name: String },
-
     #[error("Cannot call instance method '{method_name}'.")]
     StaticMethodCallOnInstance { method_name: String },
 
@@ -176,8 +173,8 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid usage of the thin arrow.")]
     InvalidThinArrow,
 
-    #[error("Method '{method_name}' not defined for '{struct_name}'.")]
-    ObjectMethodNotDefined { struct_name: String, method_name: String },
+    #[error("Method '{method_name}' not defined for '{object_name}'.")]
+    ObjectMethodNotDefined { object_name: String, method_name: String },
 
     #[error("Rhs of the shift must be unsigned integer.")]
     RhsOfShiftMustBeUnsignedInteger,

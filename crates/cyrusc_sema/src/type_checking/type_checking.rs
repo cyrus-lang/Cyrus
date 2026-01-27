@@ -20,7 +20,7 @@ use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{
-        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
+        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion, SymbolEntry,
         SymbolEntryKind,
     },
     update_global_symbol,
@@ -34,7 +34,10 @@ use cyrusc_tast::{
         mapping_ctx::GenericMappingCtx,
         substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
     },
-    sigs::{FuncSig, UnionSig, set_self_modifier_type_in_func_sig, typed_func_params_as_func_type_params},
+    sigs::{
+        FuncSig, UnionSig, set_self_modifier_symbol_id_in_func_sig, set_self_modifier_type_in_func_sig,
+        typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
+    },
     stmts::{
         TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
         TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
@@ -252,13 +255,14 @@ impl<'a> AnalysisContext<'a> {
         normalized_type
     }
 
-    #[allow(unused)]
     fn analyze_dynamic_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         dynamic_expr: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None);
+
         if dynamic_expr.operand.kind.is_dynamic_expr() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -268,9 +272,6 @@ impl<'a> AnalysisContext<'a> {
             });
             return None;
         }
-
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let Some(mut interface_type) = expected_type.and_then(|sema_ty| sema_ty.as_interface_type().cloned()) else {
             self.reporter.report(Diag {
@@ -282,30 +283,35 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
+        let interface_name = (self.symbol_formatter)(scope_id_opt)(interface_type.symbol_id);
+
+        interface_type.methods.iter_mut().for_each(|func_sig| {
+            set_self_modifier_type_in_func_sig(func_sig, &dynamic_expr.operand.sema_ty.as_ref().unwrap());
+            set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
+        });
+
         let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
 
-        let mut method_sigs: Vec<FuncSig> = Vec::new();
+        {
+            let mut vtable_registry = self.vtable_registry.lock().unwrap();
+            let vtable_id = vtable_registry.register(
+                operand_ty,
+                interface_type.symbol_id,
+                interface_name,
+                interface_type.methods,
+            );
 
-        for mut func_sig in &mut interface_type.method_sigs {
-            if let Some(generic_type) = operand_ty.as_generic_type() {
-                *func_sig = substitute_func_sig(
-                    self.mapping_ctx_arena.clone(),
-                    &func_sig,
-                    generic_type.mapping_ctx.clone(),
-                )
-                .unwrap();
-            }
+            dynamic_expr.vtable_id = Some(vtable_id);
+            dynamic_expr.object_name = Some((self.symbol_formatter)(scope_id_opt)(
+                dynamic_expr.operand.sema_ty.as_ref().unwrap().symbol_id().unwrap(),
+            ));
 
-            method_sigs.push(func_sig.clone());
+            Some(SemanticType::DynamicType(DynamicType {
+                interface_symbol_id: interface_type.symbol_id,
+                vtable_id,
+                loc: dynamic_expr.loc.clone(),
+            }))
         }
-
-        // TODO: Register into vtable registry.
-
-        Some(SemanticType::DynamicType(DynamicType {
-            name: interface_type.name.clone(),
-            method_sigs,
-            loc: dynamic_expr.loc.clone(),
-        }))
     }
 
     /// Analyzes and infers the semantic type for a literal expression.
@@ -1222,6 +1228,7 @@ impl<'a> AnalysisContext<'a> {
                 .map(|sema_ty| sema_ty.const_inner().clone())?;
 
             match operand_ty {
+                SemanticType::Interface(interface_type) => interface_type.symbol_id,
                 SemanticType::GenericType(generic_type) => generic_type.base,
                 SemanticType::ResolvedSymbol(resolved_symbol) => resolved_symbol.symbol_id(),
                 SemanticType::Pointer(sema_ty) => {
@@ -1312,6 +1319,8 @@ impl<'a> AnalysisContext<'a> {
                         Some(object_id) => Some(object_id),
                         None => None,
                     }
+                } else if let Some(resolved_interface) = sym.as_interface() {
+                    Some(resolved_interface.interface_sig.symbol_id)
                 } else {
                     None
                 }
@@ -1321,11 +1330,9 @@ impl<'a> AnalysisContext<'a> {
         let object_id = match object_id_opt {
             Some(object_id) => object_id,
             None => {
-                let symbol_name = (self.symbol_formatter)(scope_id_opt)(object_symbol_id);
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
+                    kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
                     location: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: None,
                 });
@@ -1657,61 +1664,115 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let sym = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
-        let (object_name, object_methods) = {
-            match sym.kind {
+        let object_name: String;
+        let object_methods: Option<HashMap<String, SymbolID>>;
+
+        macro_rules! lookup_object_method {
+            () => {{
+                match object_methods.as_ref().unwrap().get(&method_call.method_name) {
+                    Some(method_symbol_id) => self
+                        .resolver
+                        .lookup_symbol_entry_with_id(*method_symbol_id)
+                        .and_then(|sym| Some(sym.as_method().unwrap().clone().func_sig)),
+                    None => None,
+                }
+            }};
+        }
+
+        let mut func_sig = {
+            match match sym.kind.clone() {
                 SymbolEntryKind::Struct(resolved_struct) => {
-                    (resolved_struct.struct_sig.name, resolved_struct.struct_sig.methods)
+                    object_name = resolved_struct.struct_sig.name;
+                    object_methods = Some(resolved_struct.struct_sig.methods);
+                    lookup_object_method!()
                 }
-                SymbolEntryKind::Enum(resolved_enum) => (resolved_enum.enum_sig.name, resolved_enum.enum_sig.methods),
+                SymbolEntryKind::Enum(resolved_enum) => {
+                    object_name = resolved_enum.enum_sig.name;
+                    object_methods = Some(resolved_enum.enum_sig.methods);
+                    lookup_object_method!()
+                }
                 SymbolEntryKind::Union(resolved_union) => {
-                    (resolved_union.union_sig.name, resolved_union.union_sig.methods)
+                    object_name = resolved_union.union_sig.name;
+                    object_methods = Some(resolved_union.union_sig.methods);
+                    lookup_object_method!()
                 }
-                _ => unreachable!(),
+                SymbolEntryKind::Interface(resolved_interface) => {
+                    object_name = resolved_interface.interface_sig.name.clone();
+                    object_methods = None;
+
+                    let Some(interface_method_idx) = resolved_interface
+                        .interface_sig
+                        .methods
+                        .iter()
+                        .position(|method| method.name == method_call.method_name.clone())
+                    else {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
+                                object_name: object_name.clone(),
+                                method_name: method_call.method_name.clone(),
+                            }),
+                            location: Some(DiagLoc::new(method_call.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    };
+
+                    let func_decl = &resolved_interface.interface_sig.methods[interface_method_idx];
+                    let mut func_sig = typed_func_decl_as_func_sig(func_decl);
+
+                    set_self_modifier_type_in_func_sig(
+                        &mut func_sig,
+                        &SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void))),
+                    );
+                    set_self_modifier_symbol_id_in_func_sig(&mut func_sig, 0);
+
+                    method_call.method_call_on_interface = Some(TypedInterfaceMethodCallMetadata {
+                        method_idx: interface_method_idx,
+                        methods_len: resolved_interface.interface_sig.methods.len(),
+                        method_sig: func_sig.clone(),
+                    });
+
+                    Some(func_sig)
+                }
+                _ => return None,
+            } {
+                Some(func_sig) => func_sig,
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
+                            object_name: object_name.clone(),
+                            method_name: method_call.method_name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(method_call.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
             }
-        };
-
-        let method_name = method_call.method_name.clone();
-        let method_symbol_id = match object_methods.get(&method_name) {
-            Some(symbol_id) => *symbol_id,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::ObjectMethodNotDefined {
-                        struct_name: object_name.clone(),
-                        method_name: method_name.clone(),
-                    }),
-                    location: Some(DiagLoc::new(method_call.loc.clone())),
-                    hint: None,
-                });
-
-                return None;
-            }
-        };
-
-        let mut method_symbol_entry = self.resolver.lookup_symbol_entry_with_id(method_symbol_id).unwrap();
-        let resolved_method = match &mut method_symbol_entry.kind {
-            SymbolEntryKind::Method(resolved_method) => resolved_method,
-            _ => unreachable!(),
         };
 
         if self.check_unexpected_type_args(
-            &resolved_method.func_sig.generic_params,
+            &func_sig.generic_params,
             &method_call.type_args,
             method_call.loc.clone(),
         ) {
             return None;
         }
 
-        let first_param_opt = resolved_method.func_sig.params.list.first();
+        let first_param_opt = func_sig.params.list.first();
 
-        let is_instance_method_sig = resolved_method.func_sig.is_instance_method();
+        let is_instance_method_sig = func_sig.is_instance_method();
 
         // invalid if static method called on instance
         let invalid_call = !is_instance_method_sig && is_instance_method_operand;
         if invalid_call {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance { method_name }),
+                kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance {
+                    method_name: method_call.method_name.clone(),
+                }),
                 location: Some(DiagLoc::new(method_call.loc.clone())),
                 hint: Some(format!(
                     "Call it on a value of type '{}', or declare it as a static function if no instance is required.",
@@ -1730,13 +1791,13 @@ impl<'a> AnalysisContext<'a> {
             first_param_opt,
             object_methods,
             object_name.clone(),
-            &resolved_method,
+            &func_sig,
             method_call.loc.clone(),
         ) {
             return None;
         }
 
-        self.ty_ctx.current_method_symbol_id = Some(resolved_method.symbol_id);
+        self.ty_ctx.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
 
         let instance_method_call = is_instance_method_sig && is_instance_method_operand;
         let mut generic_type_opt = method_call_operand_ty.pointer_inner().as_generic_type().cloned();
@@ -1749,10 +1810,10 @@ impl<'a> AnalysisContext<'a> {
         let (_, method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
             local_scope_opt.clone(),
-            resolved_method.symbol_id,
+            func_sig.symbol_id.unwrap(),
             &mut method_call.type_args,
             parent_mapping_ctx.clone(),
-            resolved_method.func_sig.generic_params.as_ref(),
+            func_sig.generic_params.as_ref(),
             false,
             method_call.loc.clone(),
         ) {
@@ -1777,20 +1838,14 @@ impl<'a> AnalysisContext<'a> {
                     generic_type_opt = sema_ty.as_generic_type().cloned();
 
                     self.set_ty_ctx_self_type(method_call, &sema_ty);
-                    set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &sema_ty);
+                    set_self_modifier_type_in_func_sig(&mut func_sig, &sema_ty);
                 }
             }
         }
 
         // infer generic params from arguments
         for (idx, arg) in method_call.args.iter_mut().enumerate() {
-            let target_type = match resolved_method
-                .func_sig
-                .params
-                .list
-                .get(idx)
-                .and_then(|param| param.param_type())
-            {
+            let target_type = match func_sig.params.list.get(idx).and_then(|param| param.param_type()) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
@@ -1809,9 +1864,9 @@ impl<'a> AnalysisContext<'a> {
         // instance self type
         self.set_ty_ctx_self_type(method_call, &method_call_operand_ty);
 
-        resolved_method.func_sig.return_type = self.check_func_call(
+        func_sig.return_type = self.check_func_call(
             scope_id_opt,
-            &mut resolved_method.func_sig,
+            &mut func_sig,
             &generic_type_opt,
             &mut method_call.args,
             method_call.loc.clone(),
@@ -1819,9 +1874,9 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         if let Some(generic_type) = &generic_type_opt {
-            resolved_method.func_sig.return_type = substitute_type(
+            func_sig.return_type = substitute_type(
                 self.mapping_ctx_arena.clone(),
-                resolved_method.func_sig.return_type.clone(),
+                func_sig.return_type.clone(),
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
@@ -1841,14 +1896,14 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            resolved_method.func_sig = substitute_func_sig(
+            func_sig = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
-                &resolved_method.func_sig,
+                &func_sig,
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
 
-            if let Some(generic_params) = resolved_method.func_sig.generic_params.clone() {
+            if let Some(generic_params) = func_sig.generic_params.clone() {
                 if let Err(diag) = generic_type.finalize(
                     self.mapping_ctx_arena.clone(),
                     generic_params,
@@ -1861,10 +1916,10 @@ impl<'a> AnalysisContext<'a> {
             }
 
             method_call.monomorph_key = self.register_specialized_generic_func(
-                &resolved_method.func_sig,
+                &func_sig,
                 &generic_type,
                 Some(method_call_operand_ty.clone()),
-                &resolved_method.func_sig.loc,
+                &func_sig.loc,
             );
 
             // substitutes the func type inside of the func_call operand
@@ -1876,29 +1931,24 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if instance_method_call {
-            set_self_modifier_type_in_func_sig(&mut resolved_method.func_sig, &method_call_operand_ty);
+            set_self_modifier_type_in_func_sig(&mut func_sig, &method_call_operand_ty);
 
-            let self_modifier = resolved_method
-                .func_sig
-                .params
-                .list
-                .first()
-                .unwrap()
-                .as_self_modifier()
-                .unwrap();
+            let self_modifier = func_sig.params.list.first().unwrap().as_self_modifier().unwrap();
 
-            method_call.args.insert(
-                0,
-                self.analyze_object_self_modifier_argument(
-                    &method_call.operand,
-                    method_call.is_fat_arrow,
-                    self_modifier,
-                ),
-            );
+            if method_call.method_call_on_interface.is_none() {
+                method_call.args.insert(
+                    0,
+                    self.analyze_object_self_modifier_argument(
+                        &method_call.operand,
+                        method_call.is_fat_arrow,
+                        self_modifier,
+                    ),
+                );
+            }
         }
 
-        method_call.func_sig = Some(resolved_method.func_sig.clone());
-        Some(resolved_method.func_sig.return_type.clone())
+        method_call.func_sig = Some(func_sig.clone());
+        Some(func_sig.return_type.clone())
     }
 
     /// Extracts the pure symbol ID from a type, normalizing it first.
@@ -2598,7 +2648,7 @@ impl<'a> AnalysisContext<'a> {
             return (false, None);
         };
 
-        method_call.is_enum_const = Some(resolved_enum.symbol_id);
+        method_call.enum_const = Some(resolved_enum.symbol_id);
 
         let enum_variant_opt = resolved_enum
             .enum_sig
@@ -3696,31 +3746,41 @@ impl<'a> AnalysisContext<'a> {
         method_call_operand_ty: SemanticType,
         is_fat_arrow: bool,
         first_param_opt: Option<&TypedFuncParamKind>,
-        object_methods: HashMap<String, SymbolID>,
+        object_methods_opt: Option<HashMap<String, SymbolID>>,
         object_name: String,
-        resolved_method: &ResolvedMethod,
+        func_sig: &FuncSig,
         loc: SourceLoc,
     ) -> bool {
         let mut result = true;
-        let method_vis = &resolved_method.func_sig.modifiers.vis;
+        let method_vis = &func_sig.modifiers.vis;
 
         let access_violation = if let Some(current_method_symbol_id) = self.ty_ctx.current_method_symbol_id {
-            let method_symbol_ids = object_methods.values().cloned().collect::<Vec<SymbolID>>();
+            let object_contains_method = {
+                if let Some(object_methods) = object_methods_opt {
+                    object_methods
+                        .values()
+                        .cloned()
+                        .collect::<Vec<SymbolID>>()
+                        .contains(&current_method_symbol_id)
+                } else {
+                    true
+                }
+            };
 
-            if method_symbol_ids.contains(&current_method_symbol_id) {
+            if object_contains_method {
                 false
             } else {
-                !method_vis.is_public()
+                !method_vis.is_public() && !method_call_operand_ty.is_interface()
             }
         } else {
-            !method_vis.is_public()
+            !method_vis.is_public() && !method_call_operand_ty.is_interface()
         };
 
         if access_violation {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
-                    method_name: resolved_method.func_sig.name.clone(),
+                    method_name: func_sig.name.clone(),
                     object_name,
                 }),
                 location: Some(DiagLoc::new(loc.clone())),
@@ -3732,7 +3792,8 @@ impl<'a> AnalysisContext<'a> {
         let is_pointer = method_call_operand_ty.const_inner().is_pointer();
         let is_operand_const = method_call_operand_ty.is_const();
         let is_object = method_call_operand_ty.const_inner().is_resolved_symbol()
-            || method_call_operand_ty.as_generic_type().is_some();
+            || method_call_operand_ty.as_generic_type().is_some()
+            || method_call_operand_ty.is_interface();
 
         if is_fat_arrow {
             if !is_pointer {
