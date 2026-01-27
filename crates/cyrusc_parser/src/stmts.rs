@@ -32,35 +32,47 @@ use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::loc::Span;
 
 impl Parser {
-    pub(crate) fn parse_statement(&mut self, toplevel: bool) -> Result<Stmt, Diag> {
-        let modifiers = self.parse_unresolved_modifiers()?;
+    pub(crate) fn parse_stmt(
+        &mut self,
+        grouped_modifiers: Option<UnresolvedModifiers>,
+        toplevel: bool,
+    ) -> Result<Vec<Stmt>, Diag> {
+        let modifiers = grouped_modifiers.clone().unwrap_or(self.parse_unresolved_modifiers()?);
         let loc = self.current_token().loc.clone();
+
+        if self.current_token_is(TokenKind::LeftBrace) {
+            if grouped_modifiers.is_some() {
+                return Err(self.error_at_current(ParserDiagKind::GroupedModifiersCannotBeNested));
+            }
+
+            return self.parse_grouped_modifiers(Some(modifiers), toplevel);
+        }
 
         if self.current_token_is(TokenKind::Function) {
             let func_modifiers = modifiers.into_func_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_func(func_modifiers);
+            return Ok(vec![self.parse_func(func_modifiers)?]);
         } else if self.current_token_is(TokenKind::Struct) {
             let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_struct(struct_modifiers, false);
+            return Ok(vec![self.parse_struct(struct_modifiers, false)?]);
         } else if self.current_token_is(TokenKind::Bits) {
             let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_struct(struct_modifiers, true);
+            return Ok(vec![self.parse_struct(struct_modifiers, true)?]);
         } else if self.current_token_is(TokenKind::Enum) {
             let enum_modifiers = modifiers.into_enum_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_enum(enum_modifiers);
+            return Ok(vec![self.parse_enum(enum_modifiers)?]);
         } else if self.current_token_is(TokenKind::Union) {
             let union_modifiers = modifiers.into_union_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_union(union_modifiers);
+            return Ok(vec![self.parse_union(union_modifiers)?]);
         } else if self.current_token_is(TokenKind::Typedef) {
             let typedef_modifiers =
                 modifiers.into_typedef_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_typedef(typedef_modifiers.vis);
+            return Ok(vec![self.parse_typedef(typedef_modifiers.vis)?]);
         } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
-            return self.parse_global_var(modifiers.clone());
+            return Ok(vec![self.parse_global_var(modifiers.clone())?]);
         } else if self.current_token_is(TokenKind::Interface) {
             let interface_modifiers =
                 modifiers.into_interface_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return self.parse_interface(interface_modifiers.vis);
+            return Ok(vec![self.parse_interface(interface_modifiers.vis)?]);
         }
 
         if !toplevel {
@@ -69,7 +81,7 @@ impl Parser {
                 return Err(self.error_invalid_token());
             }
 
-            match self.current_token().kind {
+            let stmt = match self.current_token().kind {
                 TokenKind::Var | TokenKind::Const => self.parse_variable(),
                 TokenKind::Defer => self.parse_defer_stmt(),
                 TokenKind::If => self.parse_if_stmt(),
@@ -89,20 +101,50 @@ impl Parser {
                     if matches!(self.current_token().kind, TokenKind::Ident { .. })
                         && self.peek_token_is(TokenKind::Colon)
                     {
-                        return self.parse_label_statement();
+                        return Ok(vec![self.parse_label_statement()?]);
                     }
 
                     self.parse_expr_stmt()
                 }
-            }
+            };
+
+            Ok(vec![stmt?])
         } else {
             match self.current_token().kind {
-                TokenKind::Import => self.parse_import(),
+                TokenKind::Import => Ok(vec![self.parse_import()?]),
                 _ => {
                     return Err(self.error_invalid_token());
                 }
             }
         }
+    }
+
+    fn parse_grouped_modifiers(
+        &mut self,
+        grouped_modifiers: Option<UnresolvedModifiers>,
+        toplevel: bool,
+    ) -> Result<Vec<Stmt>, Diag> {
+        if !toplevel {
+            return Err(self.error_at_current(ParserDiagKind::InvalidGroupedModifiers));
+        }
+
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut group_stmts: Vec<Stmt> = Vec::new();
+
+        loop {
+            let stmts = self.parse_stmt(grouped_modifiers.clone(), toplevel)?;
+            group_stmts.extend(stmts);
+
+            self.expect_semicolon()?;
+
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
+            }
+        }
+
+        self.must_be_right_brace()?;
+        Ok(group_stmts)
     }
 
     pub(crate) fn parse_goto(&mut self) -> Result<Stmt, Diag> {
@@ -144,12 +186,12 @@ impl Parser {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut block_statement: Vec<Stmt> = Vec::new();
+        let mut block_stmt: Vec<Stmt> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
             // detected empty block statement
             return Ok(BlockStmt {
-                exprs: block_statement,
+                exprs: block_stmt,
                 span: Span {
                     start,
                     end: self.current_token().span.end,
@@ -159,8 +201,8 @@ impl Parser {
         }
 
         loop {
-            let statement = self.parse_statement(false)?;
-            block_statement.push(statement);
+            let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
+            block_stmt.push(stmt);
 
             match self.peek_token().kind {
                 TokenKind::RightBrace => break,
@@ -174,7 +216,7 @@ impl Parser {
         let end = self.current_token().span.end;
 
         Ok(BlockStmt {
-            exprs: block_statement,
+            exprs: block_stmt,
             span: Span { start, end },
             loc,
         })
@@ -1683,7 +1725,7 @@ impl Parser {
         let loc = self.current_token().loc;
 
         self.next_token();
-        let stmt = self.parse_statement(false)?;
+        let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
 
         Ok(Stmt::Defer(Defer {
             operand: Box::new(stmt),

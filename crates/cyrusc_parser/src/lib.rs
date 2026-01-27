@@ -90,8 +90,8 @@ impl Parser {
         let mut body: Vec<Stmt> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
-            match self.parse_statement(true) {
-                Ok(statement) => body.push(statement),
+            match self.parse_stmt(None, true) {
+                Ok(stmts) => body.extend(stmts),
                 Err(error) => self.errors.push(error),
             }
             self.next_token();
