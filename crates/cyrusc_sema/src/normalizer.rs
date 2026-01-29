@@ -310,11 +310,11 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_typedef(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> Option<SemanticType> {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)?;
+            .resolve_local_or_global_symbol(scope_opt, symbol_id)?;
 
         let resolved_typedef = sym.as_typedef().or_else(|| None)?;
 
@@ -347,9 +347,9 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-        self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
+        self.resolver.resolve_local_or_global_symbol(scope_opt, symbol_id);
 
         let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
         self.normalize_sema_type(scope_id_opt, resolved, loc)
@@ -382,11 +382,11 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         mut generic_type: GenericType,
     ) -> Option<SemanticType> {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)?;
+            .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)?;
 
         if generic_type.generic_params.list.is_empty() {
             generic_type.generic_params = sym.symbol_generic_params().unwrap();
@@ -399,7 +399,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(typedef) = sym.as_typedef() {
             self.resolve_generic_typedef(
                 scope_id_opt,
-                local_scope_opt,
+                scope_opt,
                 typedef,
                 generic_type.type_args,
                 typedef.typedef_sig.loc.clone(),
@@ -450,10 +450,10 @@ impl<'a> AnalysisContext<'a> {
         interface_symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
+        let scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, interface_symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, interface_symbol_id)
             .unwrap();
 
         let resolved_interface = sym.as_interface()?;
@@ -476,7 +476,7 @@ impl<'a> AnalysisContext<'a> {
     fn resolve_generic_typedef(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         resolved_typedef: &ResolvedTypedef,
         mut type_args: Option<TypedTypeArgs>,
         loc: SourceLoc,
@@ -490,7 +490,7 @@ impl<'a> AnalysisContext<'a> {
             match self
                 .init_generic_type_with_symbol_id(
                     scope_id_opt,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     generic_type.base,
                     &mut type_args,
                     parent_mapping_ctx,
@@ -577,10 +577,10 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
+        let scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, symbol_id)
             .or_else(|| {
                 let symbol_entry = self.resolver.lookup_symbol_entry_with_id(symbol_id)?;
                 Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry))
@@ -766,11 +766,11 @@ impl<'a> AnalysisContext<'a> {
                 ),
                 SymbolEntryKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
                 SymbolEntryKind::ProxiedSymbol(_, symbol_id) => {
-                    let local_scope_opt =
+                    let scope_opt =
                         scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
                     let sym = self
                         .resolver
-                        .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+                        .resolve_local_or_global_symbol(scope_opt, symbol_id)
                         .unwrap();
                     self.resolve_symbol_type_internal(scope_id_opt, sym)
                 }

@@ -103,100 +103,100 @@ impl Resolver {
 
     pub fn resolve_variable_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedVariable> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_variable()
             .cloned()
     }
 
     pub fn resolve_method_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedMethod> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_method()
             .cloned()
     }
 
     pub fn resolve_func_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedFunction> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_func()
             .cloned()
     }
 
     pub fn resolve_typedef_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedTypedef> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_typedef()
             .cloned()
     }
 
     pub fn resolve_global_var_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedGlobalVar> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_global_var()
             .cloned()
     }
 
     pub fn resolve_interface_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedInterface> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_interface()
             .cloned()
     }
 
     pub fn resolve_union_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedUnion> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_union()
             .cloned()
     }
 
     pub fn resolve_enum_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedEnum> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_enum()
             .cloned()
     }
 
     pub fn resolve_struct_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<ResolvedStruct> {
-        self.resolve_local_or_global_symbol(local_scope_opt, symbol_id)?
+        self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_struct()
             .cloned()
     }
 
     pub fn resolve_local_or_global_symbol(
         &self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<LocalOrGlobalSymbol> {
-        if let Some(scope) = local_scope_opt {
+        if let Some(scope) = scope_opt {
             if let Some(local_symbol) = self.resolve_symbol_from_local_scope(scope, symbol_id) {
                 return Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol));
             }

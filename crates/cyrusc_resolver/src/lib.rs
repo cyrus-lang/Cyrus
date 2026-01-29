@@ -117,8 +117,8 @@ pub struct Visiting {
 }
 
 macro_rules! is_unscoped_expr {
-    ($self:expr, $local_scope_opt:expr, $loc:expr, $span_end:expr) => {{
-        if $local_scope_opt.is_none() {
+    ($self:expr, $scope_opt:expr, $loc:expr, $span_end:expr) => {{
+        if $scope_opt.is_none() {
             $self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::RequiresLocalScope),
@@ -127,7 +127,7 @@ macro_rules! is_unscoped_expr {
             });
         }
 
-        $local_scope_opt.is_none()
+        $scope_opt.is_none()
     }};
 }
 
@@ -513,7 +513,7 @@ impl Resolver {
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         type_args: &TypeArgs,
         loc: Location,
         span_end: usize,
@@ -525,7 +525,7 @@ impl Resolver {
                 TypeArg::Positional(type_specifier) => {
                     let ty = self.resolve_type(
                         generic_params,
-                        local_scope_opt.clone(),
+                        scope_opt.clone(),
                         module_id,
                         type_specifier.clone(),
                         loc.clone(),
@@ -541,7 +541,7 @@ impl Resolver {
                 TypeArg::Named { key, ty } => {
                     let ty = self.resolve_type(
                         generic_params,
-                        local_scope_opt.clone(),
+                        scope_opt.clone(),
                         module_id,
                         ty.clone(),
                         loc.clone(),
@@ -638,7 +638,7 @@ impl Resolver {
     fn resolve_type(
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         type_specifier: TypeSpecifier,
         loc: Location,
@@ -648,7 +648,7 @@ impl Resolver {
             TypeSpecifier::GenericInst(generic_inst) => {
                 let base = self.resolve_type(
                     generic_params,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     module_id,
                     *generic_inst.base.clone(),
                     loc.clone(),
@@ -660,7 +660,7 @@ impl Resolver {
                     let type_args = self.resolve_type_args(
                         generic_params,
                         module_id,
-                        local_scope_opt,
+                        scope_opt,
                         &generic_inst.type_args,
                         loc.clone(),
                         span_end,
@@ -688,7 +688,7 @@ impl Resolver {
                     .map(|elem| {
                         self.resolve_type(
                             generic_params,
-                            local_scope_opt.clone(),
+                            scope_opt.clone(),
                             module_id,
                             elem.clone(),
                             loc.clone(),
@@ -710,7 +710,7 @@ impl Resolver {
                     .map(|param| {
                         self.resolve_type(
                             generic_params,
-                            local_scope_opt.clone(),
+                            scope_opt.clone(),
                             module_id,
                             param.clone(),
                             loc.clone(),
@@ -726,7 +726,7 @@ impl Resolver {
                     Some(FuncTypeVariadicParams::Typed(spec)) => {
                         let ct = self.resolve_type(
                             generic_params,
-                            local_scope_opt.clone(),
+                            scope_opt.clone(),
                             module_id,
                             spec.clone(),
                             loc.clone(),
@@ -739,7 +739,7 @@ impl Resolver {
 
                 let return_type = self.resolve_type(
                     generic_params,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     module_id,
                     *func_type.return_type.clone(),
                     loc.clone(),
@@ -763,7 +763,7 @@ impl Resolver {
             TypeSpecifier::Const(inner) => {
                 let inner = self.resolve_type(
                     generic_params,
-                    local_scope_opt,
+                    scope_opt,
                     module_id,
                     *inner.clone(),
                     loc.clone(),
@@ -774,7 +774,7 @@ impl Resolver {
             TypeSpecifier::Deref(inner) => {
                 let inner = self.resolve_type(
                     generic_params,
-                    local_scope_opt,
+                    scope_opt,
                     module_id,
                     *inner.clone(),
                     loc.clone(),
@@ -785,7 +785,7 @@ impl Resolver {
             TypeSpecifier::Array(array_type) => {
                 let element_type = self.resolve_type(
                     generic_params,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     module_id,
                     *array_type.element_type.clone(),
                     loc.clone(),
@@ -794,7 +794,7 @@ impl Resolver {
 
                 let capacity = match &array_type.size {
                     ArrayCapacity::Fixed(expr) => {
-                        let typed_expr = self.resolve_expr(module_id, local_scope_opt.clone(), expr)?;
+                        let typed_expr = self.resolve_expr(module_id, scope_opt.clone(), expr)?;
                         if let TypedExprKind::Literal(lit) = &typed_expr.kind {
                             if let LiteralKind::Integer(value, ..) = &lit.kind {
                                 TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
@@ -822,7 +822,7 @@ impl Resolver {
                 for field in &struct_spec.fields {
                     if let Some(ty) = self.resolve_type(
                         generic_params,
-                        local_scope_opt.clone(),
+                        scope_opt.clone(),
                         module_id,
                         field.field_ty.clone(),
                         field.loc.clone(),
@@ -858,7 +858,7 @@ impl Resolver {
                 }
 
                 if sema_ty_opt.is_none() {
-                    sema_ty_opt = local_scope_opt
+                    sema_ty_opt = scope_opt
                         .and_then(|scope_rc| self.resolve_symbol_id_from_local_scope(scope_rc, &ident.value))
                         .map(SemanticType::UnresolvedSymbol);
                 }
@@ -893,7 +893,7 @@ impl Resolver {
     fn resolve_typedef_stmt(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         typedef: &Typedef,
     ) -> Option<TypedStmt> {
         let symbol_id = self
@@ -907,7 +907,7 @@ impl Resolver {
 
         let sema_ty = self.resolve_type(
             &generic_params,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             module_id,
             typedef.type_specifier.clone(),
             typedef.loc.clone(),
@@ -928,7 +928,7 @@ impl Resolver {
             typedef_sig: typedef_sig.clone(),
         };
 
-        if let Some(scope_rc) = &local_scope_opt {
+        if let Some(scope_rc) = &scope_opt {
             scope_rc.borrow_mut().insert(
                 typedef.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Typedef(resolved_typedef)),
@@ -1157,10 +1157,10 @@ impl Resolver {
     fn resolve_interface_stmt(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         interface: &Interface,
     ) -> Option<TypedStmt> {
-        let interface_symbol_id = local_scope_opt
+        let interface_symbol_id = scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.ident.value).unwrap());
@@ -1182,7 +1182,7 @@ impl Resolver {
                 }
 
                 let (return_type, typed_func_params, typed_variadic_param, generic_params) =
-                    self.resolve_func(module_id, local_scope_opt.clone(), func_decl)?;
+                    self.resolve_func(module_id, scope_opt.clone(), func_decl)?;
 
                 Some(TypedFuncDeclStmt {
                     module_id: self.current_module.unwrap(),
@@ -1214,7 +1214,7 @@ impl Resolver {
             },
         };
 
-        match local_scope_opt {
+        match scope_opt {
             Some(scope_rc) => {
                 scope_rc.borrow_mut().insert(
                     interface.ident.value.clone(),
@@ -1242,11 +1242,11 @@ impl Resolver {
     fn resolve_union_stmt(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         union_decl: &Union,
         is_local: Option<ScopeID>,
     ) -> Option<TypedStmt> {
-        let union_symbol_id = local_scope_opt
+        let union_symbol_id = scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &union_decl.ident.value).unwrap());
@@ -1265,7 +1265,7 @@ impl Resolver {
         for field in &union_decl.fields {
             match self.resolve_type(
                 &generic_params,
-                local_scope_opt.clone(),
+                scope_opt.clone(),
                 module_id,
                 field.ty.clone(),
                 field.loc.clone(),
@@ -1308,7 +1308,7 @@ impl Resolver {
             },
         };
 
-        if let Some(scope_rc) = &local_scope_opt {
+        if let Some(scope_rc) = &scope_opt {
             let mut scope = scope_rc.borrow_mut();
             scope.insert(
                 union_decl.ident.value.clone(),
@@ -1323,7 +1323,7 @@ impl Resolver {
             );
         }
 
-        let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &union_decl.impls);
+        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &union_decl.impls);
 
         Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id: union_symbol_id,
@@ -1342,11 +1342,11 @@ impl Resolver {
     fn resolve_enum_stmt(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         enum_decl: &Enum,
         is_local: Option<ScopeID>,
     ) -> Option<TypedStmt> {
-        let enum_symbol_id = local_scope_opt
+        let enum_symbol_id = scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &enum_decl.ident.value).unwrap());
@@ -1370,7 +1370,7 @@ impl Resolver {
                     for valued_field in enum_valued_fields {
                         let field_ty = match self.resolve_type(
                             &generic_params,
-                            local_scope_opt.clone(),
+                            scope_opt.clone(),
                             module_id,
                             valued_field.field_ty.clone(),
                             valued_field.loc.clone(),
@@ -1389,7 +1389,7 @@ impl Resolver {
                 }
                 EnumVariant::Valued(ident, expr) => match self.resolve_expr(
                     module_id,
-                    match &local_scope_opt {
+                    match &scope_opt {
                         Some(scope) => Some(Rc::clone(&scope)),
                         None => None,
                     },
@@ -1425,7 +1425,7 @@ impl Resolver {
             },
         };
 
-        if let Some(scope_rc) = &local_scope_opt {
+        if let Some(scope_rc) = &scope_opt {
             let mut scope = scope_rc.borrow_mut();
             scope.insert(
                 enum_decl.ident.value.clone(),
@@ -1440,7 +1440,7 @@ impl Resolver {
             );
         }
 
-        let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &enum_decl.impls);
+        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &enum_decl.impls);
 
         Some(TypedStmt::Enum(TypedEnumStmt {
             module_id,
@@ -1661,14 +1661,14 @@ impl Resolver {
 
     fn resolve_object_impls(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         impls: &Vec<ModuleImport>,
     ) -> Vec<TypedIdentifier> {
         let mut symbol_ids: Vec<TypedIdentifier> = Vec::new();
 
         for module_import in impls {
-            let Some(symbol_id) = self.resolve_local_module_import(local_scope_opt.clone(), module_id, module_import)
+            let Some(symbol_id) = self.resolve_local_module_import(scope_opt.clone(), module_id, module_import)
             else {
                 continue;
             };
@@ -1686,11 +1686,11 @@ impl Resolver {
     fn resolve_struct_stmt(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         struct_decl: &Struct,
         is_local: Option<ScopeID>,
     ) -> Option<TypedStmt> {
-        let struct_symbol_id = local_scope_opt
+        let struct_symbol_id = scope_opt
             .as_ref()
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &struct_decl.ident.value).unwrap());
@@ -1710,7 +1710,7 @@ impl Resolver {
             .filter_map(|field| {
                 self.resolve_type(
                     &generic_params,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     module_id,
                     field.ty.clone(),
                     field.loc.clone(),
@@ -1733,7 +1733,7 @@ impl Resolver {
             struct_symbol_id,
             generic_params.is_some(),
         )?;
-        let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &struct_decl.impls);
+        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &struct_decl.impls);
 
         let resolved_struct = ResolvedStruct {
             module_id,
@@ -1750,7 +1750,7 @@ impl Resolver {
             },
         };
 
-        if let Some(scope_rc) = local_scope_opt {
+        if let Some(scope_rc) = scope_opt {
             scope_rc.borrow_mut().insert(
                 struct_decl.ident.value.clone(),
                 LocalSymbol::new(LocalSymbolKind::Struct(resolved_struct)),
@@ -1781,7 +1781,7 @@ impl Resolver {
     fn resolve_func(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         func_decl: &FuncDecl,
     ) -> Option<(
         SemanticType,
@@ -1799,7 +1799,7 @@ impl Resolver {
 
         let return_type = self.resolve_type(
             &generic_params,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             module_id,
             return_type_specifier,
             func_decl.loc.clone(),
@@ -1807,7 +1807,7 @@ impl Resolver {
         )?;
 
         let (typed_func_params, typed_variadic_param) =
-            self.resolve_func_params(module_id, local_scope_opt.clone(), &generic_params, &func_decl.params)?;
+            self.resolve_func_params(module_id, scope_opt.clone(), &generic_params, &func_decl.params)?;
 
         Some((return_type, typed_func_params, typed_variadic_param, generic_params))
     }
@@ -1815,7 +1815,7 @@ impl Resolver {
     fn resolve_func_params(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         generic_params: &Option<TypedGenericParamsList>,
         params: &FuncParams,
     ) -> Option<(Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
@@ -1827,7 +1827,7 @@ impl Resolver {
                     let param_type = match &func_param.ty {
                         Some(type_specifier) => self.resolve_type(
                             generic_params,
-                            local_scope_opt.clone(),
+                            scope_opt.clone(),
                             module_id,
                             type_specifier.clone(),
                             func_param.loc.clone(),
@@ -1848,7 +1848,7 @@ impl Resolver {
                     };
 
                     let symbol_id = generate_symbol_id();
-                    if let Some(scope_rc) = &local_scope_opt {
+                    if let Some(scope_rc) = &scope_opt {
                         let mut scope = scope_rc.borrow_mut();
                         scope.insert(
                             func_param.ident.value.clone(),
@@ -1892,7 +1892,7 @@ impl Resolver {
             FuncVariadicParams::Typed(ident, type_specifier) => {
                 let variadic_type = self.resolve_type(
                     &None, // FIXME Generic Params
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     module_id,
                     type_specifier.clone(),
                     ident.loc.clone(),
@@ -1901,7 +1901,7 @@ impl Resolver {
 
                 let symbol_id = generate_symbol_id();
 
-                if let Some(scope_rc) = &local_scope_opt {
+                if let Some(scope_rc) = &scope_opt {
                     let mut scope = scope_rc.borrow_mut();
                     scope.insert(
                         ident.value.clone(),
@@ -2614,11 +2614,11 @@ impl Resolver {
 
     fn resolve_ident(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         ident: &Ident,
     ) -> Option<SymbolID> {
-        if let Some(scope_rc) = &local_scope_opt {
+        if let Some(scope_rc) = &scope_opt {
             let scope = scope_rc.borrow();
             if let Some(local_symbol) = scope.resolve(&ident.value) {
                 return Some(local_symbol.symbol_id());
@@ -2740,11 +2740,11 @@ impl Resolver {
 
     fn resolve_ident_expr(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         ident: &Ident,
     ) -> Option<TypedExprStmt> {
-        let symbol_id = self.resolve_ident(local_scope_opt, module_id, ident)?;
+        let symbol_id = self.resolve_ident(scope_opt, module_id, ident)?;
         let loc = SourceLoc::from_loc(ident.loc.clone(), self.current_file_path());
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(symbol_id, loc.clone()),
@@ -2757,11 +2757,11 @@ impl Resolver {
     fn resolve_module_import_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         module_import: &ModuleImport,
     ) -> Option<TypedExprStmt> {
         if let Some(ident) = module_import.as_identifier() {
-            self.resolve_ident_expr(local_scope_opt, module_id, &ident)
+            self.resolve_ident_expr(scope_opt, module_id, &ident)
         } else {
             self.resolve_module_import(module_id, module_import.clone())
                 .map(|symbol_id| TypedExprStmt {
@@ -2779,45 +2779,45 @@ impl Resolver {
     fn resolve_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         expr: &Expr,
     ) -> Option<TypedExprStmt> {
         match expr {
-            Expr::FieldAccess(field_access) => self.resolve_field_access(module_id, local_scope_opt, field_access),
-            Expr::MethodCall(method_call) => self.resolve_method_call(module_id, local_scope_opt, method_call),
-            Expr::StructInit(struct_init) => self.resolve_struct_init(module_id, local_scope_opt, struct_init),
+            Expr::FieldAccess(field_access) => self.resolve_field_access(module_id, scope_opt, field_access),
+            Expr::MethodCall(method_call) => self.resolve_method_call(module_id, scope_opt, method_call),
+            Expr::StructInit(struct_init) => self.resolve_struct_init(module_id, scope_opt, struct_init),
             Expr::ModuleImport(module_import) => {
-                self.resolve_module_import_expr(module_id, local_scope_opt, module_import)
+                self.resolve_module_import_expr(module_id, scope_opt, module_import)
             }
-            Expr::Ident(ident) => self.resolve_ident_expr(local_scope_opt, module_id, ident),
-            Expr::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
-            Expr::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
-            Expr::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
-            Expr::Prefix(prefix) => self.resolve_prefix_expr(module_id, local_scope_opt, prefix),
-            Expr::Cast(cast) => self.resolve_cast_expr(module_id, local_scope_opt, cast),
+            Expr::Ident(ident) => self.resolve_ident_expr(scope_opt, module_id, ident),
+            Expr::FuncCall(func_call) => self.resolve_func_call(module_id, scope_opt, func_call),
+            Expr::Array(arr) => self.resolve_array_expr(module_id, scope_opt, arr),
+            Expr::Infix(bin) => self.resolve_infix_expr(module_id, scope_opt, bin),
+            Expr::Prefix(prefix) => self.resolve_prefix_expr(module_id, scope_opt, prefix),
+            Expr::Cast(cast) => self.resolve_cast_expr(module_id, scope_opt, cast),
             Expr::TypeSpecifier(type_specifier) => {
-                self.resolve_type_specifier_expr(module_id, local_scope_opt, type_specifier)
+                self.resolve_type_specifier_expr(module_id, scope_opt, type_specifier)
             }
-            Expr::Assign(assignment) => self.resolve_assign_expr(module_id, local_scope_opt, assignment),
+            Expr::Assign(assignment) => self.resolve_assign_expr(module_id, scope_opt, assignment),
             Expr::Literal(literal) => self.resolve_literal_expr(literal),
-            Expr::Unary(unary) => self.resolve_unary_expr(module_id, local_scope_opt, unary),
-            Expr::ArrayIndex(array_index) => self.resolve_array_index_expr(module_id, local_scope_opt, array_index),
-            Expr::AddrOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
-            Expr::Deref(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
+            Expr::Unary(unary) => self.resolve_unary_expr(module_id, scope_opt, unary),
+            Expr::ArrayIndex(array_index) => self.resolve_array_index_expr(module_id, scope_opt, array_index),
+            Expr::AddrOf(address_of) => self.resolve_address_of_expr(module_id, scope_opt, address_of),
+            Expr::Deref(dereference) => self.resolve_deref_expr(module_id, scope_opt, dereference),
             Expr::UnnamedStructValue(unnamed_struct_value) => {
-                self.resolve_unnamed_struct_value(module_id, local_scope_opt, unnamed_struct_value)
+                self.resolve_unnamed_struct_value(module_id, scope_opt, unnamed_struct_value)
             }
             Expr::SizeOf(size_of_expression) => {
-                self.resolve_size_of_expr(module_id, local_scope_opt, size_of_expression)
+                self.resolve_size_of_expr(module_id, scope_opt, size_of_expression)
             }
             Expr::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
-            Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, local_scope_opt, tuple_value),
+            Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, scope_opt, tuple_value),
             Expr::TupleAccess(tuple_member_access) => {
-                self.resolve_tuple_member_access(module_id, local_scope_opt, tuple_member_access)
+                self.resolve_tuple_member_access(module_id, scope_opt, tuple_member_access)
             }
-            Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, local_scope_opt, dynamic_expr),
+            Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, scope_opt, dynamic_expr),
             Expr::UntypedArray(untyped_array) => {
-                self.resolve_untyped_array_expr(module_id, local_scope_opt, untyped_array)
+                self.resolve_untyped_array_expr(module_id, scope_opt, untyped_array)
             }
         }
     }
@@ -2825,10 +2825,10 @@ impl Resolver {
     fn resolve_dynamic_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         dynamic_expr: &Dynamic,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt, &dynamic_expr.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt, &dynamic_expr.operand)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Dynamic(TypedDynamicExpr {
@@ -2846,10 +2846,10 @@ impl Resolver {
     fn resolve_tuple_member_access(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         tuple_member_access: &TupleAccess,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &tuple_member_access.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt.clone(), &tuple_member_access.operand)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
@@ -2866,13 +2866,13 @@ impl Resolver {
     fn resolve_tuple_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         tuple_value: &TupleValue,
     ) -> Option<TypedExprStmt> {
         let mut expr_list: Vec<TypedExprStmt> = Vec::new();
 
         for expr in &tuple_value.expr_list {
-            match self.resolve_expr(module_id, local_scope_opt.clone(), expr) {
+            match self.resolve_expr(module_id, scope_opt.clone(), expr) {
                 Some(typed_expr) => expr_list.push(typed_expr),
                 None => continue,
             }
@@ -2929,16 +2929,16 @@ impl Resolver {
     fn resolve_field_access(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         field_access: &FieldAccess,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &field_access.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt.clone(), &field_access.operand)?;
 
         let type_args = field_access.type_args.clone().and_then(|type_args| {
             self.resolve_type_args(
                 &None,
                 module_id,
-                local_scope_opt,
+                scope_opt,
                 &type_args,
                 field_access.loc.clone(),
                 field_access.span.end,
@@ -2965,22 +2965,22 @@ impl Resolver {
     fn resolve_method_call(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         method_call: &MethodCall,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &method_call.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt.clone(), &method_call.operand)?;
 
         let args: Vec<TypedExprStmt> = method_call
             .args
             .iter()
-            .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
+            .filter_map(|arg| self.resolve_expr(module_id, scope_opt.clone(), arg))
             .collect();
 
         let type_args = method_call.type_args.clone().and_then(|type_args| {
             self.resolve_type_args(
                 &None,
                 module_id,
-                local_scope_opt,
+                scope_opt,
                 &type_args,
                 method_call.loc.clone(),
                 method_call.span.end,
@@ -3010,17 +3010,17 @@ impl Resolver {
     fn resolve_struct_init(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         struct_init: &StructInit,
     ) -> Option<TypedExprStmt> {
         let symbol_id =
-            self.resolve_local_module_import(local_scope_opt.clone(), module_id, &struct_init.struct_name)?;
+            self.resolve_local_module_import(scope_opt.clone(), module_id, &struct_init.struct_name)?;
 
         let field_inits: Vec<TypedStructFieldInit> = struct_init
             .field_inits
             .iter()
             .filter_map(|field_init| {
-                self.resolve_expr(module_id, local_scope_opt.clone(), &field_init.value)
+                self.resolve_expr(module_id, scope_opt.clone(), &field_init.value)
                     .map(|value| TypedStructFieldInit {
                         name: field_init.ident.value.clone(),
                         value,
@@ -3033,7 +3033,7 @@ impl Resolver {
             self.resolve_type_args(
                 &None,
                 module_id,
-                local_scope_opt,
+                scope_opt,
                 &type_args,
                 struct_init.loc.clone(),
                 struct_init.span.end,
@@ -3057,26 +3057,26 @@ impl Resolver {
     fn resolve_func_call(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         func_call: &FuncCall,
     ) -> Option<TypedExprStmt> {
-        if is_unscoped_expr!(self, local_scope_opt, func_call.loc.clone(), func_call.span.end) {
+        if is_unscoped_expr!(self, scope_opt, func_call.loc.clone(), func_call.span.end) {
             return None;
         }
 
-        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &func_call.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt.clone(), &func_call.operand)?;
 
         let typed_args: Vec<TypedExprStmt> = func_call
             .args
             .iter()
-            .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
+            .filter_map(|arg| self.resolve_expr(module_id, scope_opt.clone(), arg))
             .collect();
 
         let type_args = func_call.type_args.clone().and_then(|type_args| {
             self.resolve_type_args(
                 &None,
                 module_id,
-                local_scope_opt,
+                scope_opt,
                 &type_args,
                 func_call.loc.clone(),
                 func_call.span.end,
@@ -3101,13 +3101,13 @@ impl Resolver {
     fn resolve_untyped_array_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         untyped_array: &UntypedArray,
     ) -> Option<TypedExprStmt> {
         let typed_elements: Vec<TypedExprStmt> = untyped_array
             .elements
             .iter()
-            .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
+            .filter_map(|item| self.resolve_expr(module_id, scope_opt.clone(), item))
             .collect();
 
         Some(TypedExprStmt {
@@ -3125,12 +3125,12 @@ impl Resolver {
     fn resolve_array_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         arr: &Array,
     ) -> Option<TypedExprStmt> {
         let array_type = self.resolve_type(
             &None,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             module_id,
             arr.data_type.clone(),
             arr.loc.clone(),
@@ -3140,7 +3140,7 @@ impl Resolver {
         let typed_elements: Vec<TypedExprStmt> = arr
             .elements
             .iter()
-            .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
+            .filter_map(|item| self.resolve_expr(module_id, scope_opt.clone(), item))
             .collect();
 
         Some(TypedExprStmt {
@@ -3158,11 +3158,11 @@ impl Resolver {
     fn resolve_infix_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         bin: &InfixExpr,
     ) -> Option<TypedExprStmt> {
-        let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs)?;
-        let rhs = self.resolve_expr(module_id, local_scope_opt, &*bin.rhs)?;
+        let lhs = self.resolve_expr(module_id, scope_opt.clone(), &*bin.lhs)?;
+        let rhs = self.resolve_expr(module_id, scope_opt, &*bin.rhs)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Infix(TypedInfixExpr {
@@ -3180,10 +3180,10 @@ impl Resolver {
     fn resolve_prefix_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         prefix: &PrefixExpr,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt, &*prefix.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt, &*prefix.operand)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Prefix(TypedPrefixExpr {
@@ -3200,14 +3200,14 @@ impl Resolver {
     fn resolve_cast_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         cast: &Cast,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr)?;
+        let operand = self.resolve_expr(module_id, scope_opt.clone(), &*cast.expr)?;
 
         let target_type = self.resolve_type(
             &None,
-            local_scope_opt,
+            scope_opt,
             module_id,
             cast.target_type.clone(),
             cast.loc.clone(),
@@ -3229,20 +3229,20 @@ impl Resolver {
     fn resolve_type_specifier_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         type_specifier: &TypeSpecifier,
     ) -> Option<TypedExprStmt> {
         let (loc, span_end) = type_specifier.loc();
 
         let symbol_id = match type_specifier {
-            TypeSpecifier::Ident(ident) => self.resolve_ident(local_scope_opt, module_id, &ident)?,
+            TypeSpecifier::Ident(ident) => self.resolve_ident(scope_opt, module_id, &ident)?,
             TypeSpecifier::ModuleImport(module_import) => {
                 self.resolve_module_import(module_id, module_import.clone())?
             }
             _ => {
                 let sema_ty = self.resolve_type(
                     &None,
-                    local_scope_opt,
+                    scope_opt,
                     module_id,
                     type_specifier.clone(),
                     loc.clone(),
@@ -3271,11 +3271,11 @@ impl Resolver {
     fn resolve_assign_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         assignment: &Assign,
     ) -> Option<TypedExprStmt> {
-        let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs)?;
-        let rhs = self.resolve_expr(module_id, local_scope_opt, &assignment.rhs)?;
+        let lhs = self.resolve_expr(module_id, scope_opt.clone(), &assignment.lhs)?;
+        let rhs = self.resolve_expr(module_id, scope_opt, &assignment.rhs)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Assign(TypedAssignExpr {
@@ -3360,10 +3360,10 @@ impl Resolver {
     fn resolve_unary_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         unary: &UnaryExpr,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt, &*unary.operand)?;
+        let operand = self.resolve_expr(module_id, scope_opt, &*unary.operand)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Unary(TypedUnaryExpr {
@@ -3380,11 +3380,11 @@ impl Resolver {
     fn resolve_array_index_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         array_index: &ArrayIndex,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.operand)?;
-        let index = self.resolve_expr(module_id, local_scope_opt, &array_index.index)?;
+        let operand = self.resolve_expr(module_id, scope_opt.clone(), &array_index.operand)?;
+        let index = self.resolve_expr(module_id, scope_opt, &array_index.index)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::ArrayIndex(TypedArrayIndexExpr {
@@ -3401,10 +3401,10 @@ impl Resolver {
     fn resolve_address_of_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         address_of: &AddrOf,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt, &address_of.expr)?;
+        let operand = self.resolve_expr(module_id, scope_opt, &address_of.expr)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
@@ -3420,10 +3420,10 @@ impl Resolver {
     fn resolve_deref_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         dereference: &Deref,
     ) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(module_id, local_scope_opt, &dereference.expr)?;
+        let operand = self.resolve_expr(module_id, scope_opt, &dereference.expr)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Deref(TypedDerefExpr {
@@ -3439,7 +3439,7 @@ impl Resolver {
     fn resolve_unnamed_struct_value(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         unnamed_struct_value: &UnnamedStructValue,
     ) -> Option<TypedExprStmt> {
         let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
@@ -3448,7 +3448,7 @@ impl Resolver {
             let field_ty = if let Some(type_specifier) = &field.field_ty {
                 match self.resolve_type(
                     &None,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     module_id,
                     type_specifier.clone(),
                     field.loc.clone(),
@@ -3461,7 +3461,7 @@ impl Resolver {
                 None
             };
 
-            let field_value = match self.resolve_expr(module_id, local_scope_opt.clone(), &field.field_value) {
+            let field_value = match self.resolve_expr(module_id, scope_opt.clone(), &field.field_value) {
                 Some(typed_expr) => typed_expr,
                 None => continue,
             };
@@ -3491,10 +3491,10 @@ impl Resolver {
     fn resolve_size_of_expr(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         size_of_expression: &SizeOf,
     ) -> Option<TypedExprStmt> {
-        let typed_expr = self.resolve_expr(module_id, local_scope_opt, &size_of_expression.expr)?;
+        let typed_expr = self.resolve_expr(module_id, scope_opt, &size_of_expression.expr)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::SizeOf(TypedSizeOfExpr {
@@ -3561,12 +3561,12 @@ impl Resolver {
 
     fn resolve_local_module_import(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         module_import: &ModuleImport,
     ) -> Option<SymbolID> {
         if let Some(ident) = module_import.as_identifier() {
-            if let Some(scope_rc) = local_scope_opt {
+            if let Some(scope_rc) = scope_opt {
                 let scope = scope_rc.borrow();
                 if let Some(local_symbol) = scope.resolve(&ident.value) {
                     return Some(local_symbol.symbol_id());

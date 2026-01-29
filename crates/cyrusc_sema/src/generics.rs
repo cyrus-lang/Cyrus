@@ -279,7 +279,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn init_generic_type_with_symbol_id(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
         type_args: &mut Option<TypedTypeArgs>,
         parent_mapping_ctx: Option<Rc<GenericMappingCtx>>,
@@ -291,7 +291,7 @@ impl<'a> AnalysisContext<'a> {
 
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, symbol_id)
             .unwrap();
 
         // get genera params from symbol entry if not specified explicitly
