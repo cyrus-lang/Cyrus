@@ -34,8 +34,8 @@ jobs:
               rsync \
               libffi-devel \
               libxml2-devel \
-              llvm-18 \
-              llvm-18-devel \
+              llvm18 \
+              llvm18-devel \
               clang18 \
               clang18-devel \
               zip \
