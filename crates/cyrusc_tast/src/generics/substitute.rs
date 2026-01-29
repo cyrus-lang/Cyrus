@@ -35,7 +35,7 @@ use std::{
 pub fn substitute_type(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sema_ty: SemanticType,
-    ctx: Rc<RefCell<GenericMappingCtx>>,
+    mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<SemanticType> {
     fn sub<F>(inner: SemanticType, f: &F) -> Option<SemanticType>
     where
@@ -44,11 +44,12 @@ pub fn substitute_type(
         f(inner)
     }
 
-    let ctx_ref = ctx.borrow();
-
     match sema_ty {
         SemanticType::GenericParam(generic_param) => {
-            let mut sema_ty = ctx_ref.resolve_with_name(mapping_ctx_arena, &generic_param.param_name.name);
+            let mut sema_ty = {
+                let mapping_ctx_ref = mapping_ctx.borrow();
+                mapping_ctx_ref.resolve_with_name(mapping_ctx_arena, &generic_param.param_name.name)
+            };
 
             if let Some(SemanticType::GenericParam(generic_param)) = sema_ty {
                 sema_ty = generic_param.default.map(|sema_ty| *sema_ty);
@@ -56,59 +57,74 @@ pub fn substitute_type(
 
             sema_ty
         }
-        SemanticType::Pointer(inner) => sub(*inner, &|t| substitute_type(mapping_ctx_arena.clone(), t, ctx.clone()))
-            .map(|t| SemanticType::Pointer(Box::new(t))),
-        SemanticType::Array(inner) => sub(*inner.element_type, &|t| {
-            substitute_type(mapping_ctx_arena.clone(), t, ctx.clone())
+        SemanticType::GenericType(mut generic_type) => {
+            if let Some(type_args) = &mut generic_type.type_args {
+                for type_arg in type_args {
+                    *type_arg.ty_mut() =
+                        substitute_type(mapping_ctx_arena.clone(), type_arg.ty().clone(), mapping_ctx.clone())?;
+                }
+            }
+            Some(SemanticType::GenericType(generic_type))
+        }
+        SemanticType::Pointer(inner) => sub(*inner, &|t| {
+            substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone())
+        })
+        .map(|t| SemanticType::Pointer(Box::new(t))),
+        SemanticType::Array(array_type) => sub(*array_type.element_type, &|t| {
+            substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone())
         })
         .map(|elem_ty| {
             SemanticType::Array(TypedArrayType {
                 element_type: Box::new(elem_ty),
-                capacity: inner.capacity,
-                loc: inner.loc.clone(),
+                capacity: array_type.capacity,
+                loc: array_type.loc.clone(),
             })
         }),
         SemanticType::Const(inner) => sub(*inner, &|sema_ty| {
-            substitute_type(mapping_ctx_arena.clone(), sema_ty, ctx.clone())
+            substitute_type(mapping_ctx_arena.clone(), sema_ty, mapping_ctx.clone())
         })
         .map(|sema_ty| sema_ty.as_const()),
-        SemanticType::Tuple(tuple) => {
-            let list = tuple
+        SemanticType::Tuple(tuple_type) => {
+            let list = tuple_type
                 .type_list
                 .into_iter()
-                .map(|t| substitute_type(mapping_ctx_arena.clone(), t, ctx.clone()))
+                .map(|t| substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone()))
                 .collect::<Option<Vec<_>>>()?;
             Some(SemanticType::Tuple(TypedTupleType {
                 type_list: list,
-                loc: tuple.loc,
+                loc: tuple_type.loc,
             }))
         }
-        SemanticType::FuncType(func) => {
-            let params = func
+        SemanticType::FuncType(func_type) => {
+            let params = func_type
                 .params
                 .list
                 .into_iter()
-                .map(|p| substitute_type(mapping_ctx_arena.clone(), p, ctx.clone()))
+                .map(|p| substitute_type(mapping_ctx_arena.clone(), p, mapping_ctx.clone()))
                 .collect::<Option<Vec<_>>>()?;
-            let ret_ty = Box::new(substitute_type(mapping_ctx_arena, *func.return_type, ctx.clone())?);
+            let ret_ty = Box::new(substitute_type(
+                mapping_ctx_arena,
+                *func_type.return_type,
+                mapping_ctx.clone(),
+            )?);
             Some(SemanticType::FuncType(TypedFuncType {
-                symbol_id: func.symbol_id,
-                def_module_id: func.def_module_id,
+                symbol_id: func_type.symbol_id,
+                def_module_id: func_type.def_module_id,
                 params: TypedFuncTypeParams {
                     list: params,
-                    variadic: func.params.variadic,
+                    variadic: func_type.params.variadic,
                 },
-                is_public: func.is_public,
+                is_public: func_type.is_public,
                 return_type: ret_ty,
-                loc: func.loc,
+                loc: func_type.loc,
             }))
         }
-        SemanticType::UnnamedStruct(s) => {
-            let fields = s
+        SemanticType::UnnamedStruct(unnamed_struct_type) => {
+            let fields = unnamed_struct_type
                 .fields
                 .iter()
                 .map(|f| {
-                    let inner = substitute_type(mapping_ctx_arena.clone(), *f.ty.clone(), ctx.clone())?;
+                    let inner = substitute_type(mapping_ctx_arena.clone(), *f.ty.clone(), mapping_ctx.clone())?;
                     Some(TypedUnnamedStructTypeField {
                         name: f.name.clone(),
                         ty: Box::new(inner),
@@ -118,8 +134,8 @@ pub fn substitute_type(
                 .collect::<Option<Vec<_>>>()?;
             Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                 fields,
-                is_packed: s.is_packed,
-                loc: s.loc.clone(),
+                is_packed: unnamed_struct_type.is_packed,
+                loc: unnamed_struct_type.loc.clone(),
             }))
         }
         other => Some(other),

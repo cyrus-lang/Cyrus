@@ -20,7 +20,7 @@ use crate::{
     stmts::{
         TypedEnumStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams,
         TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList,
-        TypedSelfModifier, TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
+        TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
     },
     types::{SemanticType, TypedFuncType},
 };
