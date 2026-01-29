@@ -106,6 +106,13 @@ impl CIRTy {
         }
     }
 
+    pub fn is_array(&self) -> bool {
+        match self {
+            CIRTy::Array(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_bool(&self) -> bool {
         match self {
             CIRTy::PlainType(PlainType::Bool) => true,

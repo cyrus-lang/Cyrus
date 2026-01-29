@@ -167,7 +167,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_array_index(&mut self, array_index: &CIRArrayIndexExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&array_index.operand);
+        let lvalue = self.emit_lvalue_address(&array_index.operand);
 
         let index_lvalue = self.emit_expr(&array_index.index);
         let index_rvalue = self.load_rvalue(index_lvalue);
@@ -175,6 +175,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         if lvalue.ty.as_array_ty().is_some() {
             let arr_ty = lvalue.ty.as_array_ty().unwrap();
             let basic_value = lvalue.as_basic_value();
+
             if basic_value.is_pointer_value() {
                 self.emit_inbounds_checked_array_index(
                     lvalue.as_basic_value().into_pointer_value(),
@@ -185,7 +186,6 @@ impl<'ll> IRBuilderCtx<'ll> {
             } else if basic_value.is_array_value() {
                 let ptr = self.emit_temp_array_value_alloca(&basic_value.into_array_value());
 
-                // REVIEW Maybe it's possible to optimize this?
                 self.emit_inbounds_checked_array_index(
                     ptr, // use temp alloca instead
                     *arr_ty.ty.clone(),
