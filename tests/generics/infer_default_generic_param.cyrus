@@ -6,11 +6,8 @@ struct IOError<V, E = uint64> {
     pub value: V;
     pub error: E;
 
-    pub fn new(_value: V, _error: E) Self {
-        return Self {
-            value: _value,
-            error: _error,
-        };
+    pub fn new(value: V, error: E) Self {
+        return Self { value, error };
     }
 
     pub fn display_error(self) {
