@@ -1,0 +1,17 @@
+// @stdout: value(10 20) size(8) arr_element_size(4)
+
+import std::libc{printf, malloc, free};
+
+pub fn main() {
+    var ptr: int[2]* = malloc(sizeof(int[2]));
+	
+    (*ptr)[0] = 10;
+    (*ptr)[1] = 20;
+    
+	const arr = *ptr;
+	const arr_size = sizeof(arr);
+	const arr_element_size = sizeof(arr[0]);
+
+    printf("value(%d %d) size(%d) arr_element_size(%d)\n", (*ptr)[0], (*ptr)[1], arr_size, arr_element_size);
+    free(ptr);
+}
