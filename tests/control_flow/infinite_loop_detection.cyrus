@@ -1,4 +1,4 @@
-// @stdout: done
+// @stdout: 3
 
 import std::libc{printf};
 
@@ -12,5 +12,5 @@ pub fn main() {
         x = x + 1;
     }
 
-    printf("done");
+    printf("%d\n", x);
 }
