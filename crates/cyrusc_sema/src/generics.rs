@@ -191,7 +191,8 @@ impl<'a> AnalysisContext<'a> {
             self.mapping_ctx_arena.clone(),
             func_sig.return_type.clone(),
             Rc::new(RefCell::new(mapping_ctx.clone())),
-        ).unwrap();
+        )
+        .unwrap();
 
         if let Some(sema_ty) = self_modifier_ty {
             self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_ty);
@@ -358,6 +359,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         mapping_ctx: &mut GenericMappingCtx,
+        expr_mapping_ctx_opt: &Option<GenericMappingCtx>,
         expr_ty: &SemanticType,
         target_ty: &SemanticType,
     ) {
@@ -369,7 +371,13 @@ impl<'a> AnalysisContext<'a> {
                 );
             }
             (SemanticType::Pointer(target_pointer_inner), SemanticType::Pointer(expr_pointer_inner)) => {
-                self.unify_generic_types(scope_id_opt, mapping_ctx, &expr_pointer_inner, &target_pointer_inner);
+                self.unify_generic_types(
+                    scope_id_opt,
+                    mapping_ctx,
+                    expr_mapping_ctx_opt,
+                    &expr_pointer_inner,
+                    &target_pointer_inner,
+                );
             }
             (SemanticType::Tuple(target_tuple), SemanticType::Tuple(expr_tuple)) => {
                 if target_tuple.type_list.len() != expr_tuple.type_list.len() {
@@ -377,24 +385,31 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for (target_ty, expr_ty) in target_tuple.type_list.iter().zip(&expr_tuple.type_list) {
-                    self.unify_generic_types(scope_id_opt, mapping_ctx, &expr_ty, target_ty);
+                    self.unify_generic_types(scope_id_opt, mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
                 }
             }
             (SemanticType::FuncType(target_func_type), SemanticType::FuncType(expr_func_type)) => {
                 for (target_ty, expr_ty) in target_func_type.params.list.iter().zip(&expr_func_type.params.list) {
-                    self.unify_generic_types(scope_id_opt, mapping_ctx, &expr_ty, target_ty);
+                    self.unify_generic_types(scope_id_opt, mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
                 }
 
                 if let (Some(target_variadic_type), Some(expr_variadic_type)) = (
                     target_func_type.params.as_typed_variadic(),
                     expr_func_type.params.as_typed_variadic(),
                 ) {
-                    self.unify_generic_types(scope_id_opt, mapping_ctx, &expr_variadic_type, &target_variadic_type);
+                    self.unify_generic_types(
+                        scope_id_opt,
+                        mapping_ctx,
+                        expr_mapping_ctx_opt,
+                        &expr_variadic_type,
+                        &target_variadic_type,
+                    );
                 }
 
                 self.unify_generic_types(
                     scope_id_opt,
                     mapping_ctx,
+                    expr_mapping_ctx_opt,
                     &expr_func_type.return_type,
                     &target_func_type.return_type,
                 );
@@ -407,17 +422,22 @@ impl<'a> AnalysisContext<'a> {
                     let len = std::cmp::min(target_args.len(), expr_args.len());
 
                     for i in 0..len {
-                        self.unify_generic_types(scope_id_opt, mapping_ctx, expr_args[i].ty(), target_args[i].ty());
+                        self.unify_generic_types(
+                            scope_id_opt,
+                            mapping_ctx,
+                            expr_mapping_ctx_opt,
+                            expr_args[i].ty(),
+                            target_args[i].ty(),
+                        );
                     }
                 }
 
                 {
                     // resolve from expression's mapping context
 
-                    // FIXME: You cannot borrow expr_generic_type.mapping_ctx here,
-                    // because it's possible to be equal with mapping_ctx
-                    // and this leads to double mutable borrow!
-                    let expr_mapping_ctx = expr_generic_type.mapping_ctx.borrow();
+                    let Some(expr_mapping_ctx) = expr_mapping_ctx_opt else {
+                        return;
+                    };
 
                     if let Some(target_type_args) = &target_generic_type.type_args {
                         for target_type_arg in target_type_args.iter() {
@@ -450,6 +470,7 @@ impl<'a> AnalysisContext<'a> {
                 self.unify_generic_types(
                     scope_id_opt,
                     mapping_ctx,
+                    expr_mapping_ctx_opt,
                     &expr_array_type.element_type,
                     &target_array_type.element_type,
                 );
@@ -493,9 +514,18 @@ impl<'a> AnalysisContext<'a> {
 
         {
             mapping_ctx_ref = generic_type.mapping_ctx.borrow_mut();
+            let expr_mapping_ctx_opt = expr_ty
+                .as_generic_type()
+                .and_then(|generic_type| Some(generic_type.mapping_ctx.borrow().clone()));
 
             // recursively unify expr_ty with target_ty
-            self.unify_generic_types(scope_id_opt, &mut mapping_ctx_ref, &expr_ty, &target_ty);
+            self.unify_generic_types(
+                scope_id_opt,
+                &mut mapping_ctx_ref,
+                &expr_mapping_ctx_opt,
+                &expr_ty,
+                &target_ty,
+            );
 
             // reconcile with parent/linked contexts
             let generic_entries: Vec<GenericMappingEntry> = mapping_ctx_ref.named_mapping().keys().cloned().collect();
