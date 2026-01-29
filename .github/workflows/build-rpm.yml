@@ -35,6 +35,7 @@ jobs:
               libffi-devel \
               libxml2-devel \
               llvm18 \
+              lvm18-libs \
               llvm18-devel \
               clang18 \
               clang18-devel \
