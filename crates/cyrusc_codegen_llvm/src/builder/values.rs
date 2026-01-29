@@ -18,7 +18,7 @@ use crate::builder::builder::IRBuilderCtx;
 use cyrusc_cir::{CIRExpr, types::CIRTy};
 use inkwell::{
     types::BasicTypeEnum,
-    values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
+    values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 
 #[derive(Debug, Clone)]
@@ -163,8 +163,19 @@ impl<'ll> IRBuilderCtx<'ll> {
         match internal_value.kind {
             InternalValueKind::LValue(pointer_value) => {
                 let ty: BasicTypeEnum<'ll> = self.emit_ty(internal_value.ty.clone()).try_into().unwrap();
-                let loaded = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
-                InternalValue::new(internal_value.ty, InternalValueKind::RValue(loaded))
+                let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
+
+                if internal_value.ty.is_bool() {
+                    InternalValue::new(
+                        internal_value.ty,
+                        InternalValueKind::RValue(
+                            self.int_value_as_bool_i1(basic_value.into_int_value())
+                                .as_basic_value_enum(),
+                        ),
+                    )
+                } else {
+                    InternalValue::new(internal_value.ty, InternalValueKind::RValue(basic_value))
+                }
             }
             _ => internal_value,
         }
