@@ -42,6 +42,9 @@ jobs:
               zip \
               upx \
               libasan
+
+            echo "LLVM_CONFIG=$(which llvm-config)" >> $GITHUB_ENV
+            echo "CXX=$(which clang++)" >> $GITHUB_ENV
               
       - name: Checkout source
         uses: actions/checkout@v4
