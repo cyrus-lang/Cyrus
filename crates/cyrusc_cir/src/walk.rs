@@ -163,13 +163,13 @@ impl<'resolver> CIRWalk<'resolver> {
         methods: &HashMap<String, SymbolID>,
     ) -> Vec<CIRStmt> {
         let mut stmts: Vec<CIRStmt> = Vec::new();
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         for module_id in methods.values() {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), *module_id)
+                .resolve_local_or_global_symbol(scope_opt.clone(), *module_id)
                 .unwrap();
             let resolved_method = sym.as_method().unwrap();
 
@@ -496,7 +496,7 @@ impl<'resolver> CIRWalk<'resolver> {
         default: &Option<CIRBlockStmt>,
         switch_stmt: &TypedSwitchStmt,
     ) -> CIRStmt {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
 
@@ -504,7 +504,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .as_enum_symbol_id()
             .and_then(|symbol_id| {
                 self.resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
                     .unwrap()
                     .as_enum()
                     .cloned()
@@ -513,7 +513,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .or(operand_ty.as_generic_type().and_then(|generic_type| {
                 Some(
                     self.resolver
-                        .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
+                        .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)
                         .unwrap()
                         .as_enum()
                         .cloned()
@@ -855,7 +855,9 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::Deref(deref_expr) => self.lower_deref(scope_id_opt, deref_expr),
             TypedExprKind::Array(array_expr) => self.lower_array(scope_id_opt, array_expr),
             TypedExprKind::ArrayIndex(array_index_expr) => self.lower_array_index(scope_id_opt, array_index_expr),
-            TypedExprKind::UnnamedStructValue(ustruct_value) => self.lower_ustruct_value(scope_id_opt, ustruct_value),
+            TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
+                self.lower_unnamed_struct_value(scope_id_opt, unnamed_struct_value)
+            }
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access.clone()),
@@ -917,11 +919,11 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     pub(crate) fn lower_load_symbol(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, symbol_id)
             .unwrap();
 
         if let Some(resolved_func) = sym.as_func() {
@@ -983,11 +985,11 @@ impl<'resolver> CIRWalk<'resolver> {
         scope_id_opt: Option<ScopeID>,
         struct_init_expr: &TypedStructInitExpr,
     ) -> CIRExprKind {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, struct_init_expr.symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, struct_init_expr.symbol_id)
             .unwrap();
 
         if let Some(resolved_struct) = sym.as_struct() {
@@ -1152,13 +1154,13 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_method_call(&mut self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(enum_symbol_id) = method_call.enum_const {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id)
+                .resolve_local_or_global_symbol(scope_opt.clone(), enum_symbol_id)
                 .unwrap();
 
             if let Some(resolved_enum) = sym.as_enum() {
@@ -1218,7 +1220,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_field_access(&mut self, scope_id_opt: Option<ScopeID>, mut field_access: TypedFieldAccess) -> CIRExprKind {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if field_access.is_fat_arrow {
@@ -1245,7 +1247,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, field_access.object_symbol_id.unwrap())
+            .resolve_local_or_global_symbol(scope_opt, field_access.object_symbol_id.unwrap())
             .unwrap();
 
         if sym.as_struct().is_some() {
@@ -1311,12 +1313,12 @@ impl<'resolver> CIRWalk<'resolver> {
         if let Some(monomorph_key) = &func_call.monomorph_key {
             let monomorph_func_entry = self.resolve_monomorph_func_entry(monomorph_key).unwrap();
 
-            let local_scope_opt =
+            let scope_opt =
                 scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt, monomorph_func_entry.base_symbol)
+                .resolve_local_or_global_symbol(scope_opt, monomorph_func_entry.base_symbol)
                 .unwrap();
 
             let mut func_sig = sym
@@ -1345,18 +1347,18 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
-    fn lower_ustruct_value(
+    fn lower_unnamed_struct_value(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        ustruct_value: &TypedUnnamedStructValue,
+        unnamed_struct_value: &TypedUnnamedStructValue,
     ) -> CIRExprKind {
-        let fields: Vec<CIRExpr> = ustruct_value
+        let fields: Vec<CIRExpr> = unnamed_struct_value
             .fields
             .iter()
             .map(|field| self.lower_expr(scope_id_opt, &field.field_value))
             .collect();
 
-        let field_tys = ustruct_value
+        let field_tys = unnamed_struct_value
             .unnamed_struct_type
             .clone()
             .unwrap()
@@ -1367,7 +1369,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let struct_ty = CIRStructTy {
             fields: field_tys,
-            is_packed: ustruct_value.is_packed,
+            is_packed: unnamed_struct_value.is_packed,
         };
 
         CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
@@ -1568,11 +1570,11 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
+            .resolve_local_or_global_symbol(scope_opt, generic_type.base)
             .unwrap();
 
         if let Err(err) = generic_type.init(self.mapping_ctx_arena.clone(), &self.symbol_formatter) {
@@ -1664,11 +1666,11 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_resolved_symbol(&mut self, scope_id_opt: Option<ScopeID>, resolved_symbol: &ResolvedSymbol) -> CIRTy {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, resolved_symbol.symbol_id())
+            .resolve_local_or_global_symbol(scope_opt, resolved_symbol.symbol_id())
             .unwrap();
 
         if let Some(resolved_struct) = sym.as_struct() {

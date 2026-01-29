@@ -44,12 +44,12 @@ impl<'a> AnalysisContext<'a> {
 
     fn resolve_any_variable_expr(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<TypedExprStmt> {
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+            .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
             .unwrap();
 
         match match &sym {
@@ -82,11 +82,11 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_expr: &TypedExprStmt,
     ) -> Option<i128> {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let integer_result = match &typed_expr.kind {
-            TypedExprKind::Symbol(symbol_id, ..) => match self.resolve_any_variable_expr(local_scope_opt, *symbol_id) {
+            TypedExprKind::Symbol(symbol_id, ..) => match self.resolve_any_variable_expr(scope_opt, *symbol_id) {
                 Some(var_rhs_typed_expr) => {
                     if var_rhs_typed_expr.sema_ty.clone().unwrap().is_const() {
                         Some(self.const_expr_as_raw_integer(scope_id_opt, &var_rhs_typed_expr)?)

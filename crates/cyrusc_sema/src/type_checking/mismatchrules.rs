@@ -34,7 +34,7 @@ impl<'a> AnalysisContext<'a> {
         target_type: SemanticType,
         loc: SourceLoc,
     ) -> bool {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         match (value_type.const_inner().clone(), target_type.const_inner().clone()) {
@@ -71,7 +71,7 @@ impl<'a> AnalysisContext<'a> {
             ) => {
                 let named_struct = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, named_struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, named_struct_symbol_id)
                     .unwrap();
                 let resolved_struct = named_struct.as_struct().unwrap();
 
@@ -83,7 +83,7 @@ impl<'a> AnalysisContext<'a> {
             ) => {
                 let named_struct = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, named_struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, named_struct_symbol_id)
                     .unwrap();
                 let resolved_struct = named_struct.as_struct().unwrap();
 
@@ -92,7 +92,7 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::UnnamedStruct(unnamed_struct), SemanticType::GenericType(generic_type)) => {
                 let named_struct = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
                     .unwrap();
 
                 match named_struct.as_struct().cloned() {
@@ -115,7 +115,7 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedStruct(unnamed_struct)) => {
                 let named_struct = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, generic_type.base)
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
                     .unwrap();
 
                 match named_struct.as_struct().cloned() {

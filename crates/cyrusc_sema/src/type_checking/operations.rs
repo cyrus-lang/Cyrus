@@ -168,12 +168,12 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, symbol_id)
             .unwrap();
 
         if sym.as_global_var().is_some() || sym.as_variable().is_some() {
@@ -359,7 +359,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_compare_enums(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
     ) -> Option<SemanticType> {
@@ -368,12 +368,12 @@ impl<'a> AnalysisContext<'a> {
 
         let local_or_global_symbol1 = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id1)
+            .resolve_local_or_global_symbol(scope_opt.clone(), enum_symbol_id1)
             .unwrap();
 
         let local_or_global_symbol2 = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id2)
+            .resolve_local_or_global_symbol(scope_opt, enum_symbol_id2)
             .unwrap();
 
         let resolved_enum1 = local_or_global_symbol1.as_enum()?;
@@ -397,7 +397,7 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
@@ -411,7 +411,7 @@ impl<'a> AnalysisContext<'a> {
             let equal_base = generic_type1.base == generic_type2.base;
             let is_enum = self
                 .resolver
-                .resolve_enum_symbol(local_scope_opt.clone(), generic_type1.base)
+                .resolve_enum_symbol(scope_opt.clone(), generic_type1.base)
                 .is_some();
 
             if !(is_enum && equal_mapping_ctx && equal_base) {
@@ -435,7 +435,7 @@ impl<'a> AnalysisContext<'a> {
             let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
-            match self.analyze_compare_enums(local_scope_opt, lhs_type.clone(), rhs_type.clone()) {
+            match self.analyze_compare_enums(scope_opt, lhs_type.clone(), rhs_type.clone()) {
                 Some(sema_ty) => return Some(sema_ty),
                 None => {
                     self.reporter.report(Diag {

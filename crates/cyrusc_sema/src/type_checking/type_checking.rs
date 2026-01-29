@@ -91,12 +91,12 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         match &typed_expr.kind {
             TypedExprKind::Symbol(symbol_id, _) => {
-                let local_scope_opt =
+                let scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, *symbol_id)
                     .unwrap();
 
                 if !sym.is_kind_of_variable() && !sym.as_func().is_some() {
@@ -169,12 +169,12 @@ impl<'a> AnalysisContext<'a> {
 
         let sema_ty = match &mut typed_expr.kind {
             TypedExprKind::Symbol(symbol_id, loc) => {
-                let local_scope_opt =
+                let scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, *symbol_id)
                     .unwrap();
 
                 let sema_ty = self.resolve_symbol_type(scope_id_opt, sym.symbol_id(), loc.clone());
@@ -702,8 +702,7 @@ impl<'a> AnalysisContext<'a> {
             }};
         }
 
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         // check for enum variant
 
@@ -726,7 +725,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(symbol_id) = field_access_operand_ty.symbol_id() {
                 if let Some(sym) = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
                 {
                     if self.check_unexpected_type_args(
                         &sym.symbol_generic_params(),
@@ -748,7 +747,7 @@ impl<'a> AnalysisContext<'a> {
         {
             let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_field_access(
                 scope_id_opt,
-                local_scope_opt.clone(),
+                scope_opt.clone(),
                 field_access_operand_ty.clone(),
                 field_access,
                 expected_type.clone(),
@@ -770,7 +769,7 @@ impl<'a> AnalysisContext<'a> {
 
         let (return_sema_ty, is_generic) = match self.resolve_member_access_kind(
             scope_id_opt,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             &mut field_access.operand,
             expected_type.clone(),
             field_access.loc.clone(),
@@ -871,12 +870,11 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInitExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let mut sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), struct_init.symbol_id)
+            .resolve_local_or_global_symbol(scope_opt.clone(), struct_init.symbol_id)
             .unwrap();
 
         self.check_unexpected_type_args(
@@ -912,7 +910,7 @@ impl<'a> AnalysisContext<'a> {
 
         let generic_type_opt = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             pure_symbol_id,
             &mut struct_init.type_args,
             parent_mapping_ctx,
@@ -934,7 +932,7 @@ impl<'a> AnalysisContext<'a> {
             if pure_symbol_id != sym.symbol_id() {
                 sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), pure_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt.clone(), pure_symbol_id)
                     .unwrap();
             }
 
@@ -1004,12 +1002,12 @@ impl<'a> AnalysisContext<'a> {
             }
 
             if let Some(symbol_id) = func_type.symbol_id {
-                let local_scope_opt =
+                let scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
                     .unwrap();
 
                 func_sig = sym.as_func().unwrap().func_sig.clone();
@@ -1026,7 +1024,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let (_, inner_generic_type_opt) = match self.init_generic_type_with_symbol_id(
                     scope_id_opt,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     symbol_id,
                     &mut func_call.type_args,
                     expected_mapping_ctx,
@@ -1162,8 +1160,7 @@ impl<'a> AnalysisContext<'a> {
         method_call: &mut TypedMethodCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let loc = method_call.loc.clone();
 
         self.analyze_expr_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone());
@@ -1183,7 +1180,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(symbol_id) = unresolved_symbol_id {
             if let Some(sym) = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
             {
                 if sym.as_variable().is_some() || sym.as_global_var().is_some() {
                     is_instance_method_operand = true;
@@ -1200,7 +1197,7 @@ impl<'a> AnalysisContext<'a> {
         {
             let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_method_call(
                 scope_id_opt,
-                local_scope_opt.clone(),
+                scope_opt.clone(),
                 method_call_operand_ty.clone(),
                 method_call,
                 expected_type.clone(),
@@ -1217,7 +1214,7 @@ impl<'a> AnalysisContext<'a> {
                 .and_then(|symbol_id| {
                     self.analyze_var_or_global_var_type(
                         scope_id_opt,
-                        local_scope_opt.clone(),
+                        scope_opt.clone(),
                         symbol_id,
                         method_call.loc.clone(),
                     )
@@ -1255,12 +1252,11 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let sym = match self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), object_symbol_id)
+            .resolve_local_or_global_symbol(scope_opt.clone(), object_symbol_id)
         {
             Some(sym) => sym,
             None => {
@@ -1355,7 +1351,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_regular_method_call(
             scope_id_opt,
-            local_scope_opt,
+            scope_opt,
             method_call,
             object_id,
             method_call_operand_ty,
@@ -1597,13 +1593,12 @@ impl<'a> AnalysisContext<'a> {
         sema_ty: &SemanticType,
         loc: SourceLoc,
     ) {
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(symbol_id) = sema_ty.symbol_id() {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+                .resolve_local_or_global_symbol(scope_opt, symbol_id)
                 .unwrap();
 
             let is_generic_object = sym.symbol_generic_params().is_some();
@@ -1641,7 +1636,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis and symbol resolution.
-    /// - `local_scope_opt`: Local scope for symbol lookup.
+    /// - `scope_opt`: Local scope for symbol lookup.
     /// - `method_call`: The method call AST node to analyze.
     /// - `object_id`: Symbol ID of the object type (struct/enum/union).
     /// - `method_call_operand_ty`: Type of the operand the method is called on.
@@ -1654,7 +1649,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_regular_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         method_call: &mut TypedMethodCall,
         object_id: SymbolID,
         method_call_operand_ty: SemanticType,
@@ -1719,6 +1714,7 @@ impl<'a> AnalysisContext<'a> {
                     let func_decl = &resolved_interface.interface_sig.methods[interface_method_idx];
                     let mut func_sig = typed_func_decl_as_func_sig(func_decl);
 
+                    // NOTE: Interface is not sensitive to SelfType, that's why we can fake it with a `void*` type.
                     set_self_modifier_type_in_func_sig(
                         &mut func_sig,
                         &SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void))),
@@ -1807,7 +1803,7 @@ impl<'a> AnalysisContext<'a> {
 
         let (_, method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             func_sig.symbol_id.unwrap(),
             &mut method_call.type_args,
             parent_mapping_ctx.clone(),
@@ -1930,7 +1926,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if instance_method_call {
-            set_self_modifier_type_in_func_sig(&mut func_sig, &method_call_operand_ty);
+            let self_modifier_type = self_modifier_param_type(&func_sig.params, method_call_operand_ty).unwrap();
+            set_self_modifier_type_in_func_sig(&mut func_sig, &self_modifier_type);
 
             let self_modifier = func_sig.params.list.first().unwrap().as_self_modifier().unwrap();
 
@@ -2570,7 +2567,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis.
-    /// - `local_scope_opt`: Local scope for symbol resolution.
+    /// - `scope_opt`: Local scope for symbol resolution.
     /// - `operand_ty`: Type of the operand (should be an enum type).
     /// - `field_access`: The field access AST node to reinterpret.
     /// - `expected_type`: Optional type context for generic inference.
@@ -2583,7 +2580,7 @@ impl<'a> AnalysisContext<'a> {
     fn maybe_enum_variant_constructor_from_field_access(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
@@ -2592,7 +2589,7 @@ impl<'a> AnalysisContext<'a> {
             return (false, None);
         };
 
-        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), symbol_id) else {
+        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(scope_opt.clone(), symbol_id) else {
             return (false, None);
         };
 
@@ -2609,7 +2606,7 @@ impl<'a> AnalysisContext<'a> {
 
             let sema = self.analyze_enum_variant_no_field(
                 scope_id_opt,
-                local_scope_opt,
+                scope_opt,
                 &resolved_enum,
                 field_access,
                 generic_params.as_ref(),
@@ -2627,7 +2624,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis.
-    /// - `local_scope_opt`: Local scope for symbol resolution.
+    /// - `scope_opt`: Local scope for symbol resolution.
     /// - `operand_ty`: Type of the operand (should be an enum type).
     /// - `method_call`: The method call AST node to reinterpret.
     /// - `expected_type`: Optional type context for generic inference.
@@ -2640,7 +2637,7 @@ impl<'a> AnalysisContext<'a> {
     fn maybe_enum_variant_constructor_from_method_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         method_call: &mut TypedMethodCall,
         expected_type: Option<SemanticType>,
@@ -2649,7 +2646,7 @@ impl<'a> AnalysisContext<'a> {
             return (false, None);
         };
 
-        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(local_scope_opt.clone(), symbol_id) else {
+        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(scope_opt.clone(), symbol_id) else {
             return (false, None);
         };
 
@@ -2675,7 +2672,7 @@ impl<'a> AnalysisContext<'a> {
 
         let sema = self.analyze_enum_variant(
             scope_id_opt,
-            local_scope_opt,
+            scope_opt,
             enum_variant.clone(),
             method_call,
             &resolved_enum,
@@ -2922,7 +2919,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis and generic resolution.
-    /// - `local_scope_opt`: Local scope for symbol lookup.
+    /// - `scope_opt`: Local scope for symbol lookup.
     /// - `enum_variant`: The enum variant being constructed.
     /// - `method_call`: The method call AST node representing variant construction.
     /// - `resolved_enum`: The resolved enum type definition.
@@ -2936,7 +2933,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_enum_variant(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
@@ -2949,7 +2946,7 @@ impl<'a> AnalysisContext<'a> {
 
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             resolved_enum.symbol_id,
             &mut method_call.type_args,
             mapping_ctx,
@@ -3117,7 +3114,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis and generic resolution.
-    /// - `local_scope_opt`: Local scope for symbol lookup.
+    /// - `scope_opt`: Local scope for symbol lookup.
     /// - `resolved_enum`: The resolved enum type definition.
     /// - `field_access`: The field access AST node representing variant access.
     /// - `generic_params`: Generic parameters from context (if any).
@@ -3130,7 +3127,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_enum_variant_no_field(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
         generic_params: Option<&TypedGenericParamsList>,
@@ -3177,7 +3174,7 @@ impl<'a> AnalysisContext<'a> {
 
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
-            local_scope_opt.clone(),
+            scope_opt.clone(),
             resolved_enum.symbol_id,
             &mut field_access.type_args,
             mapping_ctx,
@@ -3228,7 +3225,7 @@ impl<'a> AnalysisContext<'a> {
     fn resolve_member_access_kind(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         operand: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
         loc: SourceLoc,
@@ -3237,7 +3234,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Symbol(instance_symbol_id, ..) => {
                 let resolved_var_type = match self.analyze_var_or_global_var_type(
                     scope_id_opt,
-                    local_scope_opt.clone(),
+                    scope_opt.clone(),
                     *instance_symbol_id,
                     loc.clone(),
                 ) {
@@ -3274,12 +3271,11 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        let local_scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let sym = match self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
+            .resolve_local_or_global_symbol(scope_opt, object_symbol_id)
         {
             Some(sym) => sym,
             None => return None,
@@ -3373,6 +3369,48 @@ impl<'a> AnalysisContext<'a> {
         method_call.self_ty = Some(sema_ty.clone());
     }
 
+    /// Analyzes and updates the type of 'self' modifier parameters in generic contexts.
+    ///
+    /// Processes the first parameter of a function when it is a 'self' modifier (copied
+    /// or referenced), updating its semantic type based on the resolved generic type.
+    /// This ensures that 'self' parameters in generic methods receive the correct
+    /// concrete type when the method is instantiated.
+    ///
+    /// # Behavior
+    /// - For `SelfModifierKind::Copied`: Sets the parameter type directly to `sema_ty`.
+    /// - For `SelfModifierKind::Referenced`: Sets the parameter type to a pointer to `sema_ty`.
+    ///
+    /// # Parameters
+    /// - `scope_id`: Scope containing the parameter symbols.
+    /// - `params`: Function parameters to analyze.
+    /// - `sema_ty`: The resolved semantic type to apply to the 'self' parameter.
+    ///
+    pub(crate) fn analyze_generic_self_modifier(
+        &self,
+        scope_id: ScopeID,
+        params: &TypedFuncParams,
+        sema_ty: SemanticType,
+    ) {
+        let scope_rc = self.resolver.resolve_local_scope(self.module_id, scope_id).unwrap();
+
+        if let Some(first_param) = params.list.first() {
+            if let Some(self_modifier) = first_param.as_self_modifier() {
+                let mut scope_ref = scope_rc.borrow_mut();
+
+                let new_self_modifier_ty = match self_modifier.kind {
+                    SelfModifierKind::Copied => sema_ty,
+                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
+                };
+
+                scope_ref.with_symbol_id_mut(self_modifier.self_symbol_id.unwrap(), |local_symbol| {
+                    let resolved_var = local_symbol.as_variable_mut().unwrap();
+                    resolved_var.typed_variable.ty = Some(new_self_modifier_ty);
+                });
+                drop(scope_ref);
+            }
+        }
+    }
+
     /// Analyzes and potentially transforms the 'self' argument for object method calls.
     ///
     /// Processes the operand passed to a method call based on the 'self' modifier kind
@@ -3454,48 +3492,6 @@ impl<'a> AnalysisContext<'a> {
         false
     }
 
-    /// Analyzes and updates the type of 'self' modifier parameters in generic contexts.
-    ///
-    /// Processes the first parameter of a function when it is a 'self' modifier (copied
-    /// or referenced), updating its semantic type based on the resolved generic type.
-    /// This ensures that 'self' parameters in generic methods receive the correct
-    /// concrete type when the method is instantiated.
-    ///
-    /// # Behavior
-    /// - For `SelfModifierKind::Copied`: Sets the parameter type directly to `sema_ty`.
-    /// - For `SelfModifierKind::Referenced`: Sets the parameter type to a pointer to `sema_ty`.
-    ///
-    /// # Parameters
-    /// - `scope_id`: Scope containing the parameter symbols.
-    /// - `params`: Function parameters to analyze.
-    /// - `sema_ty`: The resolved semantic type to apply to the 'self' parameter.
-    ///
-    pub(crate) fn analyze_generic_self_modifier(
-        &self,
-        scope_id: ScopeID,
-        params: &TypedFuncParams,
-        sema_ty: SemanticType,
-    ) {
-        let scope_rc = self.resolver.resolve_local_scope(self.module_id, scope_id).unwrap();
-
-        if let Some(first_param) = params.list.first() {
-            if let Some(self_modifier) = first_param.as_self_modifier() {
-                let mut scope_ref = scope_rc.borrow_mut();
-
-                let new_self_modifier_ty = match self_modifier.kind {
-                    SelfModifierKind::Copied => sema_ty,
-                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
-                };
-
-                scope_ref.with_symbol_id_mut(self_modifier.self_symbol_id.unwrap(), |local_symbol| {
-                    let resolved_var = local_symbol.as_variable_mut().unwrap();
-                    resolved_var.typed_variable.ty = Some(new_self_modifier_ty);
-                });
-                drop(scope_ref);
-            }
-        }
-    }
-
     /// Resolves and normalizes the semantic type of a variable or global variable.
     ///
     /// This function analyzes variable declarations (both local and global) to determine
@@ -3515,7 +3511,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - `scope_id_opt`: Optional scope ident for name resolution and type normalization.
-    /// - `local_scope_opt`: Optional reference to the local scope for symbol lookup.
+    /// - `scope_opt`: Optional reference to the local scope for symbol lookup.
     /// - `instance_symbol_id`: Ident of the variable symbol to analyze.
     /// - `loc`: Source location for error reporting during type normalization.
     ///
@@ -3529,13 +3525,13 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_var_or_global_var_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
+        scope_opt: Option<LocalScopeRef>,
         instance_symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         let sym = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
+            .resolve_local_or_global_symbol(scope_opt.clone(), instance_symbol_id)
             .unwrap();
 
         let sema_ty = match match &sym {
@@ -3883,6 +3879,18 @@ enum MemberAccessKind {
     UnnamedStruct(Box<TypedUnnamedStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
+}
+
+fn self_modifier_param_type(params: &TypedFuncParams, sema_ty: SemanticType) -> Option<SemanticType> {
+    if let Some(first_param) = params.list.first() {
+        if let Some(self_modifier) = first_param.as_self_modifier() {
+            return Some(match self_modifier.kind {
+                SelfModifierKind::Copied => sema_ty,
+                SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
+            });
+        }
+    }
+    None
 }
 
 fn infer_integer_type(

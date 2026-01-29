@@ -627,7 +627,7 @@ impl<'a> AnalysisContext<'a> {
             None => return FlowState::Reachable,
         };
 
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         match if let Some(enum_symbol_id) = operand_ty.const_inner().as_enum_symbol_id() {
@@ -635,7 +635,7 @@ impl<'a> AnalysisContext<'a> {
         } else if let Some(generic_type) = operand_ty.const_inner().as_generic_type() {
             match self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
+                .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)
                 .and_then(|sym| {
                     let resolved_enum = sym.as_enum();
                     resolved_enum.cloned()
@@ -661,7 +661,7 @@ impl<'a> AnalysisContext<'a> {
             Some((enum_symbol_id, generic_type_opt)) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, enum_symbol_id)
                     .unwrap();
 
                 let resolved_enum = sym.as_enum().unwrap();
@@ -1147,13 +1147,13 @@ impl<'a> AnalysisContext<'a> {
         impls: &Vec<TypedIdentifier>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         for ident in impls {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(local_scope_opt.clone(), ident.symbol_id)
+                .resolve_local_or_global_symbol(scope_opt.clone(), ident.symbol_id)
                 .unwrap();
 
             let resolved_interface = match sym.as_interface() {
@@ -1206,7 +1206,7 @@ impl<'a> AnalysisContext<'a> {
                 let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
                 let mut sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *object_method_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt.clone(), *object_method_symbol_id)
                     .unwrap();
 
                 let object_method = sym.as_method_mut().unwrap();
@@ -1936,7 +1936,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
-        let local_scope_opt =
+        let scope_opt =
             scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(sema_ty) = &typed_variable.ty {
@@ -1971,7 +1971,7 @@ impl<'a> AnalysisContext<'a> {
             );
         }
 
-        local_scope_opt.inspect(|scope| {
+        scope_opt.inspect(|scope| {
             let mut scope_ref = scope.borrow_mut();
             scope_ref.insert(
                 typed_variable.name.clone(),
