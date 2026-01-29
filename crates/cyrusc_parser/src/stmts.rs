@@ -40,7 +40,7 @@ impl Parser {
         let modifiers = grouped_modifiers.clone().unwrap_or(self.parse_unresolved_modifiers()?);
         let loc = self.current_token().loc.clone();
 
-        if self.current_token_is(TokenKind::LeftBrace) {
+        if toplevel && self.current_token_is(TokenKind::LeftBrace) {
             if grouped_modifiers.is_some() {
                 return Err(self.error_at_current(ParserDiagKind::GroupedModifiersCannotBeNested));
             }
