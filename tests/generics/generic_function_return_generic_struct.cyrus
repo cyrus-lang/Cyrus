@@ -1,0 +1,21 @@
+// @stdout: x: 10, y: 20
+
+import std::libc{printf};
+
+struct Point<T> {
+    pub x: T;
+    pub y: T;
+
+	pub fn display(&self) {
+		printf("x: %d, y: %d\n", self->x, self->y);
+	}
+}
+
+fn new_point<T>(x: T, y: T) Point<T> {
+	return Point { x, y };
+}
+
+pub fn main() {
+	const point = new_point(10, 20);
+	point.display();
+}
