@@ -82,11 +82,13 @@ impl<'a> AnalysisContext<'a> {
                     Some(old_ctx) => Rc::new(GenericMappingCtx::new_manual(
                         old_ctx.named_mapping().clone(),
                         old_ctx.links().clone(),
-                        Some(parent_generic_mapping_id),
+                        parent_generic_mapping_id,
                     )),
                     None => Rc::new({
                         let mut default_generic_mapping_ctx = GenericMappingCtx::default();
-                        default_generic_mapping_ctx.set_parent_id(parent_generic_mapping_id);
+                        if let Some(parent_id) = parent_generic_mapping_id {
+                            default_generic_mapping_ctx.set_parent_id(parent_id);
+                        }
                         default_generic_mapping_ctx
                     }),
                 });
@@ -330,13 +332,17 @@ impl<'a> AnalysisContext<'a> {
         let mapping_ctx = Rc::new(RefCell::new(
             parent_mapping_ctx
                 .as_ref()
-                .map(|parent_mapping_ctx| {
-                    let parent_id = {
+                .and_then(|parent_mapping_ctx| {
+                    let parent_id_opt = {
                         let mut mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
                         mapping_ctx_arena.insert(Rc::unwrap_or_clone(parent_mapping_ctx.clone()))
                     };
 
-                    GenericMappingCtx::new_child(parent_id)
+                    if let Some(parent_id) = parent_id_opt {
+                        Some(GenericMappingCtx::new_child(parent_id))
+                    } else {
+                        None
+                    }
                 })
                 .unwrap_or(GenericMappingCtx::new_root()),
         ));
@@ -626,7 +632,7 @@ impl<'a> AnalysisContext<'a> {
         let parent_id_opt = expected_type
             .as_ref()
             .and_then(|t| t.as_generic_type())
-            .map(|expected_generic| {
+            .and_then(|expected_generic| {
                 let mut mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
                 mapping_ctx_arena.insert(expected_generic.mapping_ctx.borrow().clone())
             });

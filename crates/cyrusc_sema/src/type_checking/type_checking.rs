@@ -1884,13 +1884,15 @@ impl<'a> AnalysisContext<'a> {
         if let Some(generic_type) = generic_type_opt {
             {
                 if let Some(method_generic_type) = method_generic_type_opt {
-                    let method_generic_mapping_ctx_id = {
+                    let method_generic_mapping_ctx_id_opt = {
                         let mut mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
                         mapping_ctx_arena.insert(method_generic_type.mapping_ctx.borrow().clone())
                     };
 
                     let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
-                    mapping_ctx.set_parent_id(method_generic_mapping_ctx_id);
+                    if let Some(parent_id) = method_generic_mapping_ctx_id_opt {
+                        mapping_ctx.set_parent_id(parent_id);
+                    }
                 }
             }
 
