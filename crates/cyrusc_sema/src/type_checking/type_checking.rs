@@ -1097,6 +1097,7 @@ impl<'a> AnalysisContext<'a> {
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
+            // substitution before body analysis
             func_sig = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
                 &func_sig,
@@ -1116,7 +1117,7 @@ impl<'a> AnalysisContext<'a> {
             if !func_sig.is_func_decl {
                 // only specialize function definition which necessarily includes the body block
                 func_call.monomorph_key =
-                    self.register_specialized_generic_func(&func_sig, &generic_type, None, &func_call.loc);
+                    self.register_specialized_generic_func(&mut func_sig, &generic_type, None, &func_call.loc);
             }
 
             // substitutes the func type inside of the func_call operand
@@ -1833,6 +1834,8 @@ impl<'a> AnalysisContext<'a> {
 
                     self.set_ty_ctx_self_type(method_call, &sema_ty);
                     set_self_modifier_type_in_func_sig(&mut func_sig, &sema_ty);
+
+                    dbg!(sema_ty.clone());
                 }
             }
         }
@@ -1910,11 +1913,12 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
+            let func_call_loc = func_sig.loc.clone();
             method_call.monomorph_key = self.register_specialized_generic_func(
-                &func_sig,
+                &mut func_sig,
                 &generic_type,
                 Some(method_call_operand_ty.clone()),
-                &func_sig.loc,
+                &func_call_loc,
             );
 
             // substitutes the func type inside of the func_call operand

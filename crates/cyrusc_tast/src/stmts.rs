@@ -568,6 +568,13 @@ impl TypedTypeArg {
             TypedTypeArg::Positional { ty, .. } => ty,
         }
     }
+
+    pub fn ty_mut(&mut self) -> &mut SemanticType {
+        match self {
+            TypedTypeArg::Named { ty, .. } => ty,
+            TypedTypeArg::Positional { ty, .. } => ty,
+        }
+    }
 }
 
 pub type TypedTypeArgs = Vec<TypedTypeArg>;
