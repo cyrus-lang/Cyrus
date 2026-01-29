@@ -6,9 +6,6 @@
   <a href="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-linux.yml/badge.svg">
     <img src="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-linux.yml/badge.svg" alt="Build Status">
   </a>
-  <a href="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-rpm.yml/badge.svg">
-    <img src="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-rpm.yml/badge.svg" alt="Build Status">
-  </a>
 </p>
 
 <h1 align="center" style="border-bottom: none;">Cyrus Programming Language</h1>
