@@ -15,15 +15,33 @@ permissions:
 jobs:
   build-linux-rpm:
     runs-on: ubuntu-latest
-    container: opensuse/tumbleweed
+    container: fedora:41
     steps:
       - name: Install build tools
         run: |
-          zypper --non-interactive refresh
-          zypper --non-interactive update
-          zypper --non-interactive install rpm-build rpmdevtools make gcc rust cargo rsync \
-              libffi-devel libxml2-devel llvm18 libLLVM18 llvm18-devel clang18 clang18-devel zip upx libasan8
-
+          # Update system first
+          dnf -y update
+          
+          # Install build tools
+          dnf -y install \
+              rpm-build \
+              rpmdevtools \
+              make \
+              gcc \
+              gcc-c++ \
+              rust \
+              cargo \
+              rsync \
+              libffi-devel \
+              libxml2-devel \
+              llvm-18 \
+              llvm-18-devel \
+              clang18 \
+              clang18-devel \
+              zip \
+              upx \
+              libasan
+              
       - name: Checkout source
         uses: actions/checkout@v4
 
