@@ -1,0 +1,13 @@
+// @stdout: msg: Cyrus The Great!, cap: 17, len: 16
+
+import std::libc{printf};
+import std::string{String};
+
+pub fn main() {
+    const greeting = String.new("unknown");
+
+    greeting.set("Cyrus The Great!");
+
+    printf("msg: %s, cap: %d, len: %d\n", greeting.const_str(), greeting.cap(), greeting.len());
+    greeting.free();
+}
