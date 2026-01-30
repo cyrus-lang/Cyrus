@@ -94,10 +94,7 @@ impl<'a> AnalysisContext<'a> {
                 let scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, *symbol_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(scope_opt, *symbol_id)?;
 
                 if !sym.is_kind_of_variable() && !sym.as_func().is_some() {
                     let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
@@ -1747,6 +1744,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         };
+
+        method_call.object_name = Some(object_name.clone());
 
         if self.check_unexpected_type_args(
             &func_sig.generic_params,

@@ -2985,6 +2985,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 func_sig: None,
                 type_args,
+                object_name: None,
                 method_name: method_call.method_name.value.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
                 monomorph_key: None,

@@ -97,7 +97,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     self.lower_func_def(scope_id_opt, func_def_stmt, true)
                 }
                 TypedStmt::FuncDecl(func_decl_stmt) => {
-                    CIRStmt::FuncDecl(self.lower_func_decl(scope_id_opt, func_decl_stmt))
+                    CIRStmt::FuncDecl(self.lower_func_decl(scope_id_opt, func_decl_stmt, true))
                 }
                 TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
                 TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
@@ -788,16 +788,24 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::FuncDef(cir_func_def)
     }
 
-    fn lower_func_decl(&mut self, scope_id_opt: Option<ScopeID>, func_decl: &TypedFuncDeclStmt) -> CIRFuncDeclStmt {
+    fn lower_func_decl(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_decl: &TypedFuncDeclStmt,
+        mangle_name: bool,
+    ) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(scope_id_opt, &func_decl.params);
         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
 
-        let func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name);
-        let mangled_name = mangle_func(&func_decl.modifiers, &self.program.module_name, &func_name);
+        let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
+
+        if mangle_name {
+            func_name = mangle_func(&func_decl.modifiers, &self.program.module_name, &func_name);
+        }
 
         CIRFuncDeclStmt {
             irv_id: func_decl.symbol_id,
-            name: mangled_name,
+            name: func_name,
             params,
             ret,
             modifiers: func_decl.modifiers.clone(),
@@ -892,8 +900,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .cloned()
             .map(|mut func_sig| {
                 let mangled_name = mangle_method(
-                    &func_sig.modifiers,
-                    &self.program.module_name,
+                    &self.module_name_by_module_id(func_sig.module_id).unwrap(),
                     &dynamic_expr.object_name.as_ref().unwrap(),
                     &func_sig.name,
                 );
@@ -1111,16 +1118,15 @@ impl<'resolver> CIRWalk<'resolver> {
             .clone()
             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty));
 
-        let func_sig = method_call.func_sig.as_ref().unwrap();
+        let mut func_sig = method_call.func_sig.as_ref().unwrap().clone();
 
-        // FIXME: Name Mangling Issues
-        // let mangled_name = mangle_method(
-        //     &func_sig.modifiers,
-        //     &self.module_name_by_module_id(func_sig.module_id).unwrap(),
-        //     &method_call.object_name.as_ref().unwrap(),
-        //     &func_sig.name,
-        // );
-        // func_sig.name = mangled_name;
+        let mangled_name = mangle_method(
+            &self.module_name_by_module_id(func_sig.module_id).unwrap(),
+            &method_call.object_name.as_ref().unwrap(),
+            &func_sig.name,
+        );
+
+        func_sig.name = mangled_name;
 
         let args = method_call
             .args
@@ -1141,7 +1147,7 @@ impl<'resolver> CIRWalk<'resolver> {
             })
         } else {
             let func_decl = typed_func_decl_from_func_sig(&func_sig);
-            let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl);
+            let cir_func_decl = self.lower_func_decl(scope_id_opt, &func_decl, false);
 
             let operand = Box::new(CIRExpr {
                 kind: CIRExprKind::Load(CIRValue {
