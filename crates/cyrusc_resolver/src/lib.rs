@@ -1668,8 +1668,7 @@ impl Resolver {
         let mut symbol_ids: Vec<TypedIdentifier> = Vec::new();
 
         for module_import in impls {
-            let Some(symbol_id) = self.resolve_local_module_import(scope_opt.clone(), module_id, module_import)
-            else {
+            let Some(symbol_id) = self.resolve_local_module_import(scope_opt.clone(), module_id, module_import) else {
                 continue;
             };
 
@@ -2786,9 +2785,7 @@ impl Resolver {
             Expr::FieldAccess(field_access) => self.resolve_field_access(module_id, scope_opt, field_access),
             Expr::MethodCall(method_call) => self.resolve_method_call(module_id, scope_opt, method_call),
             Expr::StructInit(struct_init) => self.resolve_struct_init(module_id, scope_opt, struct_init),
-            Expr::ModuleImport(module_import) => {
-                self.resolve_module_import_expr(module_id, scope_opt, module_import)
-            }
+            Expr::ModuleImport(module_import) => self.resolve_module_import_expr(module_id, scope_opt, module_import),
             Expr::Ident(ident) => self.resolve_ident_expr(scope_opt, module_id, ident),
             Expr::FuncCall(func_call) => self.resolve_func_call(module_id, scope_opt, func_call),
             Expr::Array(arr) => self.resolve_array_expr(module_id, scope_opt, arr),
@@ -2807,18 +2804,14 @@ impl Resolver {
             Expr::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(module_id, scope_opt, unnamed_struct_value)
             }
-            Expr::SizeOf(size_of_expression) => {
-                self.resolve_size_of_expr(module_id, scope_opt, size_of_expression)
-            }
+            Expr::SizeOf(size_of_expression) => self.resolve_size_of_expr(module_id, scope_opt, size_of_expression),
             Expr::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
             Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, scope_opt, tuple_value),
             Expr::TupleAccess(tuple_member_access) => {
                 self.resolve_tuple_member_access(module_id, scope_opt, tuple_member_access)
             }
             Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, scope_opt, dynamic_expr),
-            Expr::UntypedArray(untyped_array) => {
-                self.resolve_untyped_array_expr(module_id, scope_opt, untyped_array)
-            }
+            Expr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(module_id, scope_opt, untyped_array),
         }
     }
 
@@ -3013,8 +3006,7 @@ impl Resolver {
         scope_opt: Option<LocalScopeRef>,
         struct_init: &StructInit,
     ) -> Option<TypedExprStmt> {
-        let symbol_id =
-            self.resolve_local_module_import(scope_opt.clone(), module_id, &struct_init.struct_name)?;
+        let symbol_id = self.resolve_local_module_import(scope_opt.clone(), module_id, &struct_init.struct_name)?;
 
         let field_inits: Vec<TypedStructFieldInit> = struct_init
             .field_inits
