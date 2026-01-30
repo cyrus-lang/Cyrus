@@ -627,8 +627,7 @@ impl<'a> AnalysisContext<'a> {
             None => return FlowState::Reachable,
         };
 
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         match if let Some(enum_symbol_id) = operand_ty.const_inner().as_enum_symbol_id() {
             Some((enum_symbol_id, None))
@@ -1147,8 +1146,7 @@ impl<'a> AnalysisContext<'a> {
         impls: &Vec<TypedIdentifier>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         for ident in impls {
             let sym = self
@@ -1862,8 +1860,13 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDeclStmt) {
-        if let Some(generic_params) = &typed_func_decl.generic_params {
-            self.analyze_generics_params(generic_params);
+        if typed_func_decl.generic_params.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::GenericFunctionDeclaration),
+                location: Some(DiagLoc::new(typed_func_decl.loc.clone())),
+                hint: None,
+            });
         }
 
         self.check_duplicate_param_names(
@@ -1936,8 +1939,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVarStmt) {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(sema_ty) = &typed_variable.ty {
             typed_variable.ty = self.normalize_sema_type(scope_id_opt, sema_ty.clone(), typed_variable.loc.clone());

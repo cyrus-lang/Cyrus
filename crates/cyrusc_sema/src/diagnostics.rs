@@ -364,6 +364,9 @@ pub enum AnalyzerDiagKind {
     #[error("Instance methods must have self modifier.")]
     InterfaceMethodsMustHaveSelfModifier,
 
+    #[error("Function declarations cannot have generic parameters.")]
+    GenericFunctionDeclaration,
+
     #[error("{0}")]
     UnescapeError(UnescapeError),
 }
