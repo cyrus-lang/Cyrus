@@ -361,6 +361,7 @@ pub struct TypedInterfaceMethodCallMetadata {
 pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
     pub method_name: String,
+    pub object_name: Option<String>,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,

@@ -1,5 +1,5 @@
 import std::core{panic};
-import std::libc{strlen, malloc, memcpy, free};
+import std::libc{strlen, malloc, realloc, memcpy, free};
 
 pub struct String {
     pub data: char*;
@@ -7,20 +7,16 @@ pub struct String {
     pub capacity: usize;
 
     pub fn new(init: const char*) Self {
-        var inst: Self;
+        var inst: String;
+        inst.length = strlen(init);
+        inst.capacity = inst.length + 1;
 
-        var len = strlen(init);
-        var cap = len + 1;
-
-        inst.data = malloc(cap);
+        inst.data = malloc(inst.capacity);
         if (!inst.data) {
             panic("failed to allocate memory for string.");
         }
 
-        inst.length = len;
-        inst.capacity = cap;
-        memcpy(inst.data, init, len + 1);
-
+        memcpy(inst.data, init, inst.capacity);
         return inst;
     }
 
@@ -32,6 +28,36 @@ pub struct String {
     }
 
     pub fn const_str(&self) char* {
-        return cast(char*, self->data);
+        return self->data;
+    }
+
+    pub fn set(&self, const_str: char*) char* {
+        self->length = strlen(const_str);
+        const new_capacity = self->length + 1;
+
+        self->realloc_if_required(new_capacity);
+
+        memcpy(self->data, const_str, self->capacity);
+        return self->data;
+    }
+
+    pub fn cap(&self) usize {
+        return self->capacity;
+    }
+
+    pub fn len(&self) usize {
+        return self->length;
+    }
+
+    fn realloc_if_required(&self, new_capacity: usize) {
+        if (new_capacity > self->capacity) {
+            const new_data = realloc(self->data, new_capacity);
+            if (!new_data) {
+                panic("failed to reallocate memory for string.");
+            }
+            
+            self->data = new_data;
+            self->capacity = new_capacity;
+        }
     }
 }

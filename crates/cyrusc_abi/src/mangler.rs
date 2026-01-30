@@ -183,9 +183,6 @@ pub fn mangle_func(modifiers: &FuncModifiers, module_name: &str, name: &str) -> 
     }
 }
 
-pub fn mangle_method(modifiers: &FuncModifiers, module_name: &str, object_name: &str, name: &str) -> String {
-    match &modifiers.linkage {
-        Some(linkage) => linkage.abi_mangler().method_name(module_name, object_name, name),
-        None => CYRUS_ABI.method_name(module_name, object_name, name),
-    }
+pub fn mangle_method(module_name: &str, object_name: &str, name: &str) -> String {
+    CYRUS_ABI.method_name(module_name, object_name, name)
 }
