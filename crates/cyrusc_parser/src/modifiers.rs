@@ -165,7 +165,7 @@ impl Parser {
                 let token = self.current_token();
 
                 if matches!(token.kind, TokenKind::Ident { .. }) {
-                    let ident = self.parse_identifier()?;
+                    let ident = self.parse_ident()?;
                     let name = ident.as_string();
 
                     if name == "align" {
@@ -284,7 +284,7 @@ impl Parser {
             self.expect_current(TokenKind::Callconv)?;
             self.expect_current(TokenKind::LeftParen)?;
 
-            let callconv_str = self.parse_identifier()?;
+            let callconv_str = self.parse_ident()?;
             self.next_token();
 
             self.expect_current(TokenKind::RightParen)?;

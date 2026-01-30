@@ -1,25 +1,12 @@
-// @stdout: black
+// @stdout: Taha 18
 
 import std::libc{printf};
 
-enum Color {
-    Red, 
-    Purple,
-    Black
+fn new_person(name: char*, age: uint32) struct { name: char*, age: uint32 } {
+    return struct { name, age };
 }
 
 pub fn main() {
-    const color = Color.Black;
-
-    switch (color) {
-        case .Red => {
-            printf("red\n");
-        }
-        case .Purple => {
-            printf("purple\n");
-        }
-        case .Black => {
-            printf("black\n");
-        }
-    }
+    const person = new_person("Taha", 18);
+    printf("%s %d\n", person.name, person.age);
 }

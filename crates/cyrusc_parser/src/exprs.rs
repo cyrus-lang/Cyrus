@@ -181,14 +181,14 @@ impl Parser {
         let mut segments = Vec::new();
         let mut alias = None;
 
-        let ident = self.parse_identifier()?;
+        let ident = self.parse_ident()?;
         segments.push(ModuleSegment::SubModule(ident));
         self.next_token();
 
         while self.current_token_is(TokenKind::DoubleColon) {
             self.next_token(); // consume '::'
 
-            let ident = self.parse_identifier()?;
+            let ident = self.parse_ident()?;
             segments.push(ModuleSegment::SubModule(ident));
             self.next_token();
         }
@@ -197,7 +197,7 @@ impl Parser {
         if self.current_token_is(TokenKind::As) {
             self.next_token();
 
-            let alias_ident = self.parse_identifier()?;
+            let alias_ident = self.parse_ident()?;
             alias = Some(alias_ident.value);
             self.next_token(); // consume the alias identifier
         }
@@ -681,7 +681,7 @@ impl Parser {
         };
 
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
-            let ident = self.parse_identifier()?;
+            let ident = self.parse_ident()?;
 
             let mut type_args_opt: Option<Vec<TypeArg>> = None;
             if self.is_type_arg_start(operand.clone()).includes_type_args {
@@ -759,7 +759,7 @@ impl Parser {
         }
 
         loop {
-            let field_name = self.parse_identifier()?;
+            let field_name = self.parse_ident()?;
             let field_loc = self.current_token().loc.clone();
 
             self.next_token(); // consume ident
@@ -1052,43 +1052,47 @@ impl Parser {
                 TokenKind::EOF => {
                     return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
-                TokenKind::Ident(field_name) => {
+                TokenKind::Ident(_) => {
                     let start = self.current_token().span.start;
                     let loc = self.current_token().loc.clone();
+                    let ident = self.parse_ident()?;
 
                     self.next_token(); // consume ident
 
-                    let mut field_ty: Option<TypeSpecifier> = None;
-                    if self.current_token_is(TokenKind::Colon) {
+                    if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+                        // syntax shorthand for `ident:ident`
+                        let ident_expr = Expr::Ident(ident.clone());
+
+                        fields.push(UnnamedStructValueField {
+                            field_name: ident.clone(),
+                            field_ty: None,
+                            field_value: Box::new(ident_expr),
+                            loc,
+                            span: Span::new(start, self.current_token().span.end),
+                        });
+                    } else {
+                        let mut field_ty: Option<TypeSpecifier> = None;
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token();
+
+                            let type_specifier = self.parse_type_specifier()?;
+                            self.next_token();
+
+                            field_ty = Some(type_specifier);
+                        }
+
+                        self.expect_current(TokenKind::Assign)?;
+                        let field_value = self.parse_expr(Precedence::Lowest)?.0;
                         self.next_token();
 
-                        let type_specifier = self.parse_type_specifier()?;
-                        self.next_token();
-
-                        field_ty = Some(type_specifier);
+                        fields.push(UnnamedStructValueField {
+                            field_name: ident.clone(),
+                            field_ty,
+                            field_value: Box::new(field_value),
+                            loc,
+                            span: Span::new(start, self.current_token().span.end),
+                        });
                     }
-
-                    self.expect_current(TokenKind::Assign)?;
-                    let field_value = self.parse_expr(Precedence::Lowest)?.0;
-                    self.next_token();
-
-                    fields.push(UnnamedStructValueField {
-                        field_name: Ident {
-                            value: field_name.clone(),
-                            span: Span {
-                                start,
-                                end: self.current_token().span.end,
-                            },
-                            loc: loc.clone(),
-                        },
-                        field_ty,
-                        field_value: Box::new(field_value),
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
-                    });
 
                     if self.current_token_is(TokenKind::RightBrace) {
                         break;

@@ -5,6 +5,7 @@ import std::libc{printf};
 struct Wrapper<T> {
     pub value: T;
 }
+
 pub fn main() {
     // explicit type args
     const inst1 = Wrapper<Wrapper<uint>> {

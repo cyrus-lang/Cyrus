@@ -3,12 +3,12 @@
 import std::libc{printf};
 
 pub fn main() {
-    union U {
+    union Union {
         p: char*;
         i: int64;
     }
 
-    var inst = U { p: null };
+    var inst = Union { p: null };
 
     var iptr = &inst.i;
     *iptr = 2500;

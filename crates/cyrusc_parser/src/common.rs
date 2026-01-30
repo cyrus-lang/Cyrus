@@ -31,7 +31,7 @@ pub(crate) struct TypeArgStartDetail {
 }
 
 impl Parser {
-    pub(crate) fn parse_identifier(&mut self) -> Result<Ident, Diag> {
+    pub(crate) fn parse_ident(&mut self) -> Result<Ident, Diag> {
         let token = self.current_token();
 
         match token.kind {
@@ -117,7 +117,7 @@ impl Parser {
 
         loop {
             if matches!(self.current_token().kind, TokenKind::Ident { .. }) && self.peek_token_is(TokenKind::Assign) {
-                let key = self.parse_identifier()?;
+                let key = self.parse_ident()?;
                 self.next_token(); // consume ident
                 self.expect_current(TokenKind::Assign)?;
 
@@ -623,7 +623,7 @@ impl Parser {
                     let start = self.current_token().span.start;
                     let loc = self.current_token().loc.clone();
 
-                    let field_name = self.parse_identifier()?;
+                    let field_name = self.parse_ident()?;
                     self.next_token(); // consume ident
 
                     self.expect_current(TokenKind::Colon)?;
@@ -665,7 +665,7 @@ impl Parser {
         let mut list: Vec<Bound> = Vec::new();
 
         loop {
-            let symbol = self.parse_identifier()?;
+            let symbol = self.parse_ident()?;
             self.next_token();
 
             list.push(Bound {
@@ -686,7 +686,7 @@ impl Parser {
     }
 
     fn parse_generic_param(&mut self) -> Result<GenericParam, Diag> {
-        let param_name = self.parse_identifier()?;
+        let param_name = self.parse_ident()?;
         self.next_token();
 
         let bounds = if self.current_token_is(TokenKind::Colon) {

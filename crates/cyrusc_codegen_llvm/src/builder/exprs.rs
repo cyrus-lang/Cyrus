@@ -30,8 +30,8 @@ use inkwell::{
     module::Linkage,
     types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
-        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue,
-        StructValue,
+        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue,
+        PointerValue, StructValue,
     },
 };
 
@@ -55,11 +55,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let lvalue = self.emit_expr(&cast_expr.operand);
                 let rvalue = self.load_rvalue(lvalue);
                 let target_type = self.emit_ty(*cast_expr.ty.clone());
-                let casted = self.emit_cast(target_type, rvalue);
-                InternalValue::new(
-                    *cast_expr.ty.clone(),
-                    InternalValueKind::RValue(casted.try_into().unwrap()),
-                )
+                let casted_value: BasicValueEnum<'ll> = self.emit_cast(target_type, rvalue).try_into().unwrap();
+                InternalValue::new(*cast_expr.ty.clone(), InternalValueKind::RValue(casted_value))
             }
             CIRExprKind::AddrOf(addr_of_expr) => self.emit_addr_of(addr_of_expr),
             CIRExprKind::Deref(deref_expr) => self.emit_deref(deref_expr, DerefMode::Load),
@@ -166,7 +163,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(cir_elm_ty, InternalValueKind::LValue(element_ptr))
     }
 
-    pub(crate) fn emit_array_index(&mut self, array_index: &CIRArrayIndexExpr) -> InternalValue<'ll> {
+    fn emit_array_index(&mut self, array_index: &CIRArrayIndexExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_lvalue_address(&array_index.operand);
 
         let index_lvalue = self.emit_expr(&array_index.index);
@@ -214,7 +211,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         ptr
     }
 
-    pub(crate) fn emit_assign(&mut self, assign: &CIRAssignExpr) -> InternalValue<'ll> {
+    fn emit_assign(&mut self, assign: &CIRAssignExpr) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_lvalue_address(&assign.lhs);
 
         let rhs_lvalue = self.emit_expr(&assign.rhs);
@@ -323,7 +320,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_implicit_cast(&self, target_type: &CIRTy, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_implicit_cast(&self, target_type: &CIRTy, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let ty = self.emit_ty(target_type.clone());
         let casted = self.emit_cast(ty, rvalue);
         InternalValue::new(
@@ -332,7 +329,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
+    fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
         let cir_arr_ty = array.ty.as_array_ty().expect("Expected array type");
         let element_ty = cir_arr_ty.ty.clone();
 
@@ -394,7 +391,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(array.ty.clone(), InternalValueKind::RValue(array_value.into()))
     }
 
-    pub(crate) fn emit_addr_of(&mut self, addr_of: &CIRAddrOfExpr) -> InternalValue<'ll> {
+    fn emit_addr_of(&mut self, addr_of: &CIRAddrOfExpr) -> InternalValue<'ll> {
         let operand = self.emit_expr(&addr_of.operand);
         InternalValue::new(
             CIRTy::Pointer(Box::new(operand.ty.clone())),
@@ -436,7 +433,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
+    fn emit_deref(&mut self, deref: &CIRDerefExpr, mode: DerefMode) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&deref.operand);
         let rvalue = self.load_rvalue(lvalue.clone());
         let ptr = rvalue.as_basic_value().into_pointer_value();
@@ -456,13 +453,13 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_sizeof(&mut self, sizeof_expr: &CIRSizeOfExpr) -> InternalValue<'ll> {
+    fn emit_sizeof(&mut self, sizeof_expr: &CIRSizeOfExpr) -> InternalValue<'ll> {
         let ty = self.emit_ty(sizeof_expr.ty.clone());
         let size_value = ty.size_of().unwrap();
         InternalValue::new(sizeof_expr.ty.clone(), InternalValueKind::RValue(size_value.into()))
     }
 
-    pub(crate) fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
+    fn emit_unary_expr(&mut self, unary_expr: &CIRUnaryExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_lvalue_address(&unary_expr.operand);
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
         let rvalue = self.load_rvalue(lvalue);
@@ -509,7 +506,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
+    fn emit_infix_expr(&mut self, infix_expr: &CIRInfixExpr) -> InternalValue<'ll> {
         let lhs_lvalue = self.emit_expr(&infix_expr.lhs);
         let rhs_lvalue = self.emit_expr(&infix_expr.rhs);
 
@@ -569,11 +566,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_logical_or(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_logical_or(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let or_value = self.llvmbuilder.build_or(lhs, rhs, "lor").unwrap();
@@ -589,7 +582,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_null_coalescing_pointers(
+    fn emit_null_coalescing_pointers(
         &self,
         lhs: PointerValue<'ll>,
         rhs: PointerValue<'ll>,
@@ -610,11 +603,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(CIRTy::Pointer(Box::new(ty)), InternalValueKind::RValue(selected.into()))
     }
 
-    pub(crate) fn emit_logical_and(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_logical_and(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "land").unwrap();
@@ -627,11 +616,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_xor(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_xor(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_xor(lhs, rhs, "xor").unwrap();
@@ -644,11 +629,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_bitwise_and(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_bitwise_and(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
@@ -661,11 +642,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_bitwise_or(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_bitwise_or(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let and_value = self.llvmbuilder.build_or(lhs, rhs, "or").unwrap();
@@ -678,7 +655,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_bitwise_and_not(
+    fn emit_bitwise_and_not(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -701,11 +678,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_shift_left(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_shift_left(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let shift_value = self.llvmbuilder.build_left_shift(lhs, rhs, "lshift").unwrap();
@@ -718,11 +691,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_shift_right(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_shift_right(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let signed = rhs_rvalue.ty.as_plain().unwrap().is_signed();
@@ -737,11 +706,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_add(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_add(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_add(lhs, rhs, "add").unwrap());
@@ -756,11 +721,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_sub(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_sub(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_sub(lhs, rhs, "sub").unwrap());
@@ -775,11 +736,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_mul(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_mul(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_mul(lhs, rhs, "mul").unwrap());
@@ -794,11 +751,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_div(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_div(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let basic_value =
@@ -814,11 +767,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_rem(
-        &self,
-        lhs_rvalue: InternalValue<'ll>,
-        rhs_rvalue: InternalValue<'ll>,
-    ) -> InternalValue<'ll> {
+    fn emit_rem(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let basic_value =
@@ -834,7 +783,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_cmp(
+    fn emit_cmp(
         &self,
         lhs_rvalue: InternalValue<'ll>,
         rhs_rvalue: InternalValue<'ll>,
@@ -931,7 +880,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_prefix_expr(&mut self, prefix_expr: &CIRPrefixExpr) -> InternalValue<'ll> {
+    fn emit_prefix_expr(&mut self, prefix_expr: &CIRPrefixExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&prefix_expr.operand);
         let mut rvalue = self.load_rvalue(lvalue);
 
@@ -945,7 +894,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_bitwise_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_bitwise_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
@@ -955,7 +904,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_negate(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_negate(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_int_neg(int_value, "neg").unwrap());
@@ -970,7 +919,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_logical_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    fn emit_logical_not(&self, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         match rvalue.as_basic_value() {
             BasicValueEnum::IntValue(int_value) => {
                 let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
@@ -980,8 +929,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
-        let value = self.emit_expr(&field_access.operand);
+    fn emit_union_field_access(&mut self, field_access: &CIRUnionFieldAccessExpr) -> InternalValue<'ll> {
+        let value = self.emit_lvalue_address(&field_access.operand);
 
         let union_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
         let union_ptr = match value.kind {
@@ -1002,8 +951,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(field_ptr))
     }
 
-    pub(crate) fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
-        let operand = self.emit_expr(&field_access.operand);
+    fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
+        let operand = self.emit_lvalue_address(&field_access.operand);
 
         let struct_ty: BasicTypeEnum<'ll> = if let Some(inner) = field_access.operand.ty.pointer_inner() {
             self.emit_ty(inner.clone()).try_into().unwrap()
@@ -1034,7 +983,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_tuple_access(&mut self, tuple_access: &CIRTupleAccessExpr) -> InternalValue<'ll> {
+    fn emit_tuple_access(&mut self, tuple_access: &CIRTupleAccessExpr) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&tuple_access.operand);
         let rvalue = self.load_rvalue(lvalue);
         let struct_value = rvalue.as_basic_value().into_struct_value();
@@ -1047,7 +996,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(extracted_value))
     }
 
-    pub(crate) fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
+    fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
         let tys: Vec<CIRTy> = tuple.elms.iter().map(|elm| elm.ty.clone()).collect();
 
         let struct_value = self
@@ -1067,7 +1016,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
+    fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
         let enum_ty = &enum_init_expr.enum_ty;
 
         let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
@@ -1147,7 +1096,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
+    fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
         self.emit_expr(&union_init_expr.expr)
     }
 
@@ -1177,7 +1126,99 @@ impl<'ll> IRBuilderCtx<'ll> {
         fields.iter().any(|f| f.is_union())
     }
 
-    pub(crate) fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
+    pub(crate) fn extract_enum_idx(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
+        self.llvmbuilder
+            .build_extract_value(struct_value, 0, "extract")
+            .unwrap()
+            .into_int_value()
+    }
+
+    pub(crate) fn extract_enum_payload(&self, struct_value: StructValue<'ll>) -> ArrayValue<'ll> {
+        self.llvmbuilder
+            .build_extract_value(struct_value, 1, "extract")
+            .unwrap()
+            .into_array_value()
+    }
+
+    fn emit_compare_enum_variants(
+        &mut self,
+        lhs: InternalValue<'ll>,
+        rhs: InternalValue<'ll>,
+        cmp_eq: bool,
+    ) -> InternalValue<'ll> {
+        let struct_value1 = lhs.as_basic_value().into_struct_value();
+        let struct_value2 = rhs.as_basic_value().into_struct_value();
+
+        let tag1 = self.extract_enum_idx(struct_value1);
+        let tag2 = self.extract_enum_idx(struct_value2);
+
+        let tag_concrete_type = CIRTy::PlainType(PlainType::UInt32);
+        let tag_cmp_result = if cmp_eq {
+            self.emit_cmp_eq(
+                InternalValue::new(
+                    tag_concrete_type.clone(),
+                    InternalValueKind::RValue(tag1.as_basic_value_enum()),
+                ),
+                InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
+            )
+        } else {
+            self.emit_cmp_neq(
+                InternalValue::new(
+                    tag_concrete_type.clone(),
+                    InternalValueKind::RValue(tag1.as_basic_value_enum()),
+                ),
+                InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
+            )
+        };
+
+        let current_func = self.cur_fn.unwrap();
+        let payload_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.payload");
+        let exit_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.exit");
+
+        let entry_block = self.blockreg.cur_block.unwrap();
+
+        self.llvmbuilder
+            .build_conditional_branch(
+                tag_cmp_result.as_basic_value().into_int_value(),
+                payload_block,
+                exit_block,
+            )
+            .unwrap();
+
+        self.emit_block(payload_block);
+
+        let payload1 = self.extract_enum_payload(struct_value1);
+        let payload2 = self.extract_enum_payload(struct_value2);
+
+        let memcmp_result = self.intrinsic_array_memcmp(payload1, payload2);
+
+        let i32_zero = self.llvmctx.i32_type().const_zero();
+        let payload_eq = self
+            .llvmbuilder
+            .build_int_compare(inkwell::IntPredicate::EQ, memcmp_result, i32_zero, "payload_eq")
+            .unwrap();
+
+        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+
+        let payload_cmp_block = self.blockreg.cur_block.unwrap();
+
+        self.emit_block(exit_block);
+
+        let phi = self
+            .llvmbuilder
+            .build_phi(self.llvmctx.bool_type(), "enum_cmp_phi")
+            .unwrap();
+
+        phi.add_incoming(&[(&self.llvmctx.bool_type().const_zero(), entry_block)]);
+        phi.add_incoming(&[(&payload_eq, payload_cmp_block)]);
+
+        InternalValue::new(
+            CIRTy::PlainType(PlainType::Bool),
+            InternalValueKind::RValue(phi.as_basic_value()),
+        )
+    }
+
+    fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
         let field_types: Vec<BasicTypeEnum<'ll>> = struct_init
             .ty
             .fields
@@ -1247,7 +1288,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn emit_monomorph_func_instance_call(
+    fn emit_monomorph_func_instance_call(
         &mut self,
         monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
     ) -> InternalValue<'ll> {
@@ -1338,7 +1379,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_func_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
+    fn emit_func_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
@@ -1357,7 +1398,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_direct_call(
+    fn emit_direct_call(
         &mut self,
         fn_ty: &CIRFuncTy,
         args: &Vec<CIRExpr>,
@@ -1388,7 +1429,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_indirect_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
+    fn emit_indirect_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
@@ -1416,7 +1457,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_load(&mut self, value_ref: &CIRValue) -> InternalValue<'ll> {
+    fn emit_load(&mut self, value_ref: &CIRValue) -> InternalValue<'ll> {
         {
             let irreg = self.irreg.borrow();
             if let Some(value_ref) = irreg.get(value_ref.irv_id) {
@@ -1455,7 +1496,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {
+    fn emit_literal(&self, lit: &CIRLiteral) -> InternalValue<'ll> {
         let ty: BasicTypeEnum<'ll> = self.emit_ty(lit.ty.clone()).try_into().unwrap();
 
         let basic_value = match &lit.kind {
@@ -1479,7 +1520,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(lit.ty.clone(), InternalValueKind::RValue(basic_value))
     }
 
-    pub(crate) fn emit_null(&self, ty: CIRTy) -> InternalValue<'ll> {
+    fn emit_null(&self, ty: CIRTy) -> InternalValue<'ll> {
         let basic_value = BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
         InternalValue::new(ty, InternalValueKind::RValue(basic_value))
     }
@@ -1499,7 +1540,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         global_str.as_pointer_value().into()
     }
 
-    pub(crate) fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
+    fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
         self.llvmctx.const_string(value.as_bytes(), true).into()
     }
 }
