@@ -6,17 +6,21 @@ pub struct String {
     pub length: usize;
     pub capacity: usize;
 
-    pub fn new(init: const char*) String {
+    pub fn new(init: const char*) Self {
+        var inst: Self;
+
         var len = strlen(init);
         var cap = len + 1;
-        var inst: String;
+
         inst.data = malloc(cap);
         if (!inst.data) {
             panic("failed to allocate memory for string.");
         }
-        memcpy(inst.data, init, len + 1);
+
         inst.length = len;
         inst.capacity = cap;
+        memcpy(inst.data, init, len + 1);
+
         return inst;
     }
 
@@ -27,7 +31,7 @@ pub struct String {
         self->capacity = 0;
     }
 
-    pub fn c_str(&self) char* {
+    pub fn const_str(&self) char* {
         return cast(char*, self->data);
     }
 }

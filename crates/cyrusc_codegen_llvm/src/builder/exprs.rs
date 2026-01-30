@@ -847,9 +847,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                 InternalValue::new(CIRTy::PlainType(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
-                if lhs_rvalue.ty.pointer_inner().unwrap().is_char() && rhs_rvalue.ty.pointer_inner().unwrap().is_char()
+                // streq
+                if let (Some(lhs_ptr_inner), Some(rhs_ptr_inner)) =
+                    (lhs_rvalue.ty.pointer_inner(), rhs_rvalue.ty.pointer_inner())
                 {
-                    return self.emit_cmp_eq_const_strings(lhs_rvalue, rhs_rvalue);
+                    if lhs_ptr_inner.is_char() && rhs_ptr_inner.is_char() {
+                        return self.emit_cmp_eq_const_strings(lhs_rvalue, rhs_rvalue);
+                    }
                 }
 
                 let cmp = self
