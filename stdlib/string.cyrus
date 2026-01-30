@@ -20,6 +20,16 @@ pub struct String {
         return inst;
     }
 
+    pub fn set(&self, const_str: char*) char* {
+        self->length = strlen(const_str);
+        const new_capacity = self->length + 1;
+
+        self->realloc_if_required(new_capacity);
+
+        memcpy(self->data, const_str, self->capacity);
+        return self->data;
+    }
+
     pub fn free(&self) {
         free(self->data);
         self->data = null;
@@ -28,16 +38,6 @@ pub struct String {
     }
 
     pub fn const_str(&self) char* {
-        return self->data;
-    }
-
-    pub fn set(&self, const_str: char*) char* {
-        self->length = strlen(const_str);
-        const new_capacity = self->length + 1;
-
-        self->realloc_if_required(new_capacity);
-
-        memcpy(self->data, const_str, self->capacity);
         return self->data;
     }
 
