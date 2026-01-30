@@ -127,6 +127,13 @@ impl CIRTy {
         }
     }
 
+    pub fn is_char(&self) -> bool {
+        match self.const_inner() {
+            CIRTy::PlainType(plain_type) => plain_type.is_char(),
+            _ => false,
+        }
+    }
+
     pub fn is_enum(&self) -> bool {
         match self.const_inner() {
             CIRTy::Enum(..) => true,

@@ -385,6 +385,10 @@ impl PlainType {
         matches!(self, PlainType::Bool)
     }
 
+    pub fn is_char(&self) -> bool {
+        matches!(self, PlainType::Char)
+    }
+
     pub fn is_integer(&self) -> bool {
         matches!(
             self,

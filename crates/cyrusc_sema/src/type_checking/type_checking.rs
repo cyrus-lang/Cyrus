@@ -2340,7 +2340,7 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UnionInitWithInvalidFields),
                 location: Some(DiagLoc::new(struct_init.loc.clone())),
-                hint: Some("Union initialization must contain exactly one field".to_string()),
+                hint: None,
             });
             return None;
         }
