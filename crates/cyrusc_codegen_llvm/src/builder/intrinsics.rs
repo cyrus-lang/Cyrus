@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -18,10 +18,42 @@ use crate::builder::builder::IRBuilderCtx;
 use inkwell::{
     AddressSpace,
     types::{ArrayType, BasicType, StructType},
-    values::{ArrayValue, BasicValueEnum, IntValue, StructValue},
+    values::{ArrayValue, BasicValueEnum, IntValue, PointerValue, StructValue},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn intrinsic_strcmp(&self, lhs_ptr: PointerValue<'ll>, rhs_ptr: PointerValue<'ll>) -> IntValue<'ll> {
+        let i32_type = self.llvmctx.i32_type();
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+
+        let module = self.llvmmodule.borrow();
+
+        let strcmp_func = match module.get_function("strcmp") {
+            Some(func) => func,
+            None => {
+                let fn_type = i32_type.fn_type(
+                    &[
+                        i8_ptr_type.into(), // const char* lhs
+                        i8_ptr_type.into(), // const char* rhs
+                    ],
+                    false,
+                );
+                module.add_function("strcmp", fn_type, None)
+            }
+        };
+
+        let cmp_result = self
+            .llvmbuilder
+            .build_call(strcmp_func, &[lhs_ptr.into(), rhs_ptr.into()], "strcmp_call")
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap();
+
+        drop(module);
+        cmp_result.into_int_value()
+    }
+
     pub(crate) fn intrinsic_array_memcmp(&self, lhs_arr: ArrayValue<'ll>, rhs_arr: ArrayValue<'ll>) -> IntValue<'ll> {
         let i32_type = self.llvmctx.i32_type();
         let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
@@ -36,7 +68,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     &[
                         i8_ptr_type.into(),        // const void* lhs
                         i8_ptr_type.into(),        // const void* rhs
-                        ptr_sized_int_type.into(), // size_t len
+                        ptr_sized_int_type.into(), // usize len
                     ],
                     false,
                 );
@@ -153,7 +185,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let src_size = src_value.get_type().size_of().unwrap();
         builder.build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, src_size).unwrap();
 
-        // Load back the array
+        // load back the array
         builder
             .build_load(dest_array_type, array_alloca, "load")
             .unwrap()

@@ -1,0 +1,14 @@
+// @stdout: 1 0 
+
+import std::libc{printf};
+
+fn my_str() char* { return "Cyrus"; }
+
+pub fn main() {
+    const x = "Cyrus";
+    const y = my_str();
+
+    const z = "a" == "b";
+
+    printf("%d %d\n", x == y, z);
+}

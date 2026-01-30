@@ -137,7 +137,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    fn int_value_as_bool_i1(&self, int_value: IntValue<'ll>) -> IntValue<'ll> {
+    pub(crate) fn int_value_as_bool_i1(&self, int_value: IntValue<'ll>) -> IntValue<'ll> {
         let bit_width = int_value.get_type().get_bit_width();
         if bit_width == 1 {
             int_value

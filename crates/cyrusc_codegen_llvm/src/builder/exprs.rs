@@ -806,6 +806,26 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
+    fn emit_cmp_eq_const_strings(
+        &self,
+        lhs_rvalue: InternalValue<'ll>,
+        rhs_rvalue: InternalValue<'ll>,
+    ) -> InternalValue<'ll> {
+        let strcmp_result = self.intrinsic_strcmp(
+            lhs_rvalue.as_basic_value().into_pointer_value(),
+            rhs_rvalue.as_basic_value().into_pointer_value(),
+        );
+
+        let zero = strcmp_result.get_type().const_zero();
+
+        let cmp = self
+            .llvmbuilder
+            .build_int_compare(IntPredicate::EQ, strcmp_result, zero, "streq")
+            .unwrap();
+
+        InternalValue::new(CIRTy::PlainType(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
+    }
+
     pub(crate) fn emit_cmp_eq(
         &mut self,
         lhs_rvalue: InternalValue<'ll>,
@@ -827,6 +847,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                 InternalValue::new(CIRTy::PlainType(PlainType::Bool), InternalValueKind::RValue(cmp.into()))
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
+                if lhs_rvalue.ty.pointer_inner().unwrap().is_char() && rhs_rvalue.ty.pointer_inner().unwrap().is_char()
+                {
+                    return self.emit_cmp_eq_const_strings(lhs_rvalue, rhs_rvalue);
+                }
+
                 let cmp = self
                     .llvmbuilder
                     .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
