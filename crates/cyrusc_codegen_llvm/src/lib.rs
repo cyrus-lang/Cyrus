@@ -29,7 +29,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_scaffold_parser::OBJECTS_FILENAME;
+use cyrusc_scaffold_parser::OBJ_DIR_FILENAME;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -174,7 +174,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             .unwrap();
 
         let path = Path::new(&self.build_dir)
-            .join(OBJECTS_FILENAME)
+            .join(OBJ_DIR_FILENAME)
             .join(format!("{}.o", module_name));
 
         if let Some(dir) = path.parent() {

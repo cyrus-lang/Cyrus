@@ -18,11 +18,11 @@ use serde::Deserialize;
 use std::path::Path;
 use thiserror::Error;
 
-pub const SOURCES_DIR_PATH: &str = "sources";
-pub const OBJECTS_FILENAME: &str = "obj";
 pub const MANIFEST_FILENAME: &str = "manifest.json";
-pub const OUTPUT_FILENAME: &str = "output";
 pub const PROJECT_FILE_PATH: &str = "Project.toml";
+pub const SOURCES_DIR_PATH: &str = "sources";
+pub const OBJ_DIR_FILENAME: &str = "obj";
+pub const OUTPUT_DIR_FILENAME: &str = "output";
 pub const LLVM_IR_DIR_PATH: &str = "llvmir";
 
 #[derive(Debug, Error)]
