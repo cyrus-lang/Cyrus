@@ -14,7 +14,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_abi::mangler::Cyrus_ABI_Impl;
 use cyrusc_cir::{monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
@@ -73,6 +72,7 @@ pub fn main() {
                 mapping_ctx_arena.clone(),
                 file_path.clone(),
             );
+
             let module_id = generate_module_id();
             resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, file_path.clone());
             if resolver.reporter.has_errors() {
