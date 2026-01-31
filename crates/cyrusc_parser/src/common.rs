@@ -24,7 +24,7 @@ use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_tokens::loc::Span;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct TypeArgStartDetail {
     pub(crate) includes_type_args: bool,
     pub(crate) is_array_init: bool,
@@ -44,8 +44,8 @@ impl Parser {
         }
     }
 
-    pub(crate) fn is_type_token(&mut self, token_kind: TokenKind) -> bool {
-        if PRIMITIVE_TYPES.contains(&token_kind) {
+    pub(crate) fn is_type_token(&mut self, token_kind: &TokenKind) -> bool {
+        if PRIMITIVE_TYPES.contains(token_kind) {
             true
         } else if let TokenKind::Ident { .. } = token_kind {
             true
@@ -149,6 +149,8 @@ impl Parser {
     }
 
     pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: Expr) -> TypeArgStartDetail {
+        // do we even have a '<' token at the current position?
+        // if there's no '<', this can't possibly be the start of type arguments
         if !self.peek_token_is(TokenKind::LessThan) {
             return TypeArgStartDetail {
                 includes_type_args: false,
@@ -156,6 +158,10 @@ impl Parser {
             };
         }
 
+        // is the expression before the '<' path-like?
+        // type arguments can only appear after identifiers or path expressions.
+        // valid: `Record<T>`, `module::Symbol<int64>`
+        // invalid: `5 < T >` (5 is not path-like), `(a + b) < T >` (expression not path-like)
         if !self.current_expr_is_path_like(last_parsed_expr) {
             return TypeArgStartDetail {
                 includes_type_args: false,
@@ -163,39 +169,82 @@ impl Parser {
             };
         }
 
+        // now we need to determine if this is genuine type arguments
+        // or something that just looks like it (e.g., comparison operators).
         let mut i = 1;
         let mut depth = 0;
 
         while let Some(token) = self.peek_n_token(i) {
-            if self.token_disqualifies_type_arg(&token.kind) {
-                return TypeArgStartDetail {
-                    includes_type_args: false,
-                    is_array_init: false,
-                };
-            }
-
             match token.kind {
                 TokenKind::LessThan => {
+                    // nested generic opening: `A<B<C>>`
+                    // increment depth to track we're now inside another level
                     depth += 1;
                 }
                 TokenKind::GreaterThan => {
                     depth -= 1;
 
+                    // we've found the closing '>'. Now we need to examine what
+                    // comes after it to determine the exact syntactic construct.
                     if depth == 0 {
                         // distinguish array init and struct init when type args used
                         let after_greater = self.peek_n_token(i + 1);
 
                         if let Some(next_token) = after_greater {
+                            // `GenericType<T>[N]` - array of a generic type
+                            // this pattern occurs when we have a generic type followed by array initialization brackets.
+                            // example 1: `Vec<int>[5]` - creates an array of 5 Vec<int> elements
+                            // example 2: `Option<String>[10]` - array of 10 Option<String> elements
+                            // example 3: `Record<V=int[2]>[3]` - array of 3 Record<V=int[2]> instances
+                            // the array size `N` can be any constant expression.
                             if next_token.kind == TokenKind::LeftBracket {
+                                // we need to determine if this is genuinely an array initialization
+                                // or something else. For example:
+                                // - `Vec<int>[5]` is array init (creates array of size 5)
+                                // - `Type<T>[U]` could be generic with array type parameter
+                                // the `check_for_array_init_after_generic` method examines the tokens
+                                // after the `[` to make this determination.
                                 let is_array_init = self.check_for_array_init_after_generic(i + 1);
 
                                 return TypeArgStartDetail {
-                                    includes_type_args: true,
-                                    is_array_init,
+                                    includes_type_args: true, // Yes, there were type arguments
+                                    is_array_init,            // True if this is array initialization
                                 };
-                            } else if next_token.kind == TokenKind::LeftBrace {
+                            }
+                            // `Type<T> { ... }` - Struct/tuple initialization with generics
+                            // this pattern occurs when we have a generic type followed by a struct initializer.
+                            // example 1: `Record<V = int[2]> { key: 10, value: 20 }` - Record struct with generic V
+                            // example 2: `Point<f32> { x: 1.0, y: 2.0 }` - Point struct with f32 generic
+                            // example 3: `Option<String> { value: "hello" }` - Option enum variant initialization
+                            // the braces contain field initializers for the struct or enum variant.
+                            else if next_token.kind == TokenKind::LeftBrace {
                                 return TypeArgStartDetail {
-                                    includes_type_args: true,
+                                    includes_type_args: true, // yes, there were type arguments before the braces
+                                    is_array_init: false, // not an array initialization - it's struct initialization
+                                };
+                            }
+                            // `Type<T>(...)` - function call with generics
+                            // this pattern occurs when we have a generic type followed by parentheses.
+                            //
+                            // example: `parse<i32>("123")` - function call with explicit type parameter
+                            // example: `factory<String>()` - factory function returning generic type
+                            else if next_token.kind == TokenKind::LeftParen {
+                                return TypeArgStartDetail {
+                                    includes_type_args: true, // Yes, there were type arguments before the parens
+                                    is_array_init: false,     // Not an array initialization - it's either tuple
+                                                              // struct init or function call with generics
+                                };
+                            }
+
+                            // this is the key logic that distinguishes:
+                            // 1. Type arguments: `Record<V=int[2]>` followed by nothing or an identifier
+                            // 2. Comparison chain: `x < y > 5` where `5` disqualifies as type argument
+                            //
+                            // if the token after '>' would disqualify type arguments,
+                            // then this was actually a comparison expression, not generics.
+                            if self.token_disqualifies_type_arg(&next_token.kind) {
+                                return TypeArgStartDetail {
+                                    includes_type_args: false,
                                     is_array_init: false,
                                 };
                             }
@@ -361,7 +410,7 @@ impl Parser {
 
             TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf => true,
 
-            other => !self.is_type_token(other.clone()),
+            other => !self.is_type_token(other),
         }
     }
 
@@ -698,6 +747,7 @@ impl Parser {
 
         let default = if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
+            dbg!(self.current_token());
             let type_specifier = self.parse_type_specifier()?;
             self.next_token();
             Some(type_specifier)
