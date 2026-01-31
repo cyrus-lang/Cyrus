@@ -32,7 +32,7 @@ pub struct CodeGenOptions {
     pub cyrus_version: Option<String>,
     pub authors: Option<Vec<String>>,
     pub opt_level: Option<i32>,
-    pub library_path: Vec<String>,
+    pub library_paths: Vec<String>,
     pub libraries: Vec<String>,
     pub build_dir: BuildDir,
     pub quiet: bool,
@@ -95,7 +95,7 @@ impl Default for CodeGenOptions {
             project_name: None,
             authors: None,
             opt_level: None,
-            library_path: Vec::new(),
+            library_paths: Vec::new(),
             libraries: Vec::new(),
             build_dir: BuildDir::Default,
             cyrus_version: None,
@@ -125,7 +125,7 @@ impl CodeGenOptions {
         let mut options = CodeGenOptions::default();
 
         if let Some(deps) = &scaffold.dependencies {
-            options.library_path = deps.library_path.clone();
+            options.library_paths = deps.library_path.clone();
             options.libraries = deps.libraries.clone();
         }
 

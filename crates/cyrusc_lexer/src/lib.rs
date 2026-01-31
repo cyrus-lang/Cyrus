@@ -59,7 +59,7 @@ impl Lexer {
         let mut tokens: Vec<Token> = Vec::new();
 
         let mut token = self.next_token();
-        while token.kind != TokenKind::EOF {
+        while !token.kind.is_eof() {
             tokens.push(token.clone());
             token = self.next_token();
         }

@@ -22,15 +22,17 @@ use cyrusc_compiler::driver::{build_compilation_bundle, create_compiler_context}
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_fs_utils::{get_directory_of_file, read_file};
+use cyrusc_fs_utils::{ensure_output_dir, get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
+use cyrusc_scaffold_parser::LLVM_IR_DIR_PATH;
 use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArenaImpl;
 use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use std::io;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::exit;
 use std::rc::Rc;
@@ -96,6 +98,13 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     // build compilation bundle
     let bundle = build_compilation_bundle(&mut opts, file_path);
 
+    // FIXME
+    let llvm_ir_dir = output_path
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(&bundle.build_dir).join(LLVM_IR_DIR_PATH));
+
+    ensure_output_dir(llvm_ir_dir.to_str().unwrap().to_string());
+
     let context = Rc::new(create_compiler_context(
         opts.clone(),
         Some(bundle.entry_file.clone()),
@@ -115,7 +124,7 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     }
 
     let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
-    llvm_backend.save_modules_llvm_ir(&owned_modules, output_path);
+    llvm_backend.save_modules_llvm_ir(&owned_modules, &llvm_ir_dir);
 }
 
 #[allow(unused)]
@@ -237,26 +246,23 @@ pub(crate) fn command_dylib(opts: CodeGenOptions, file_path: Option<String>, out
     // context.compile_modules(program_trees, monomorph_registry);
 }
 
-// TODO: Consider to move it into `cyrusc_compiler` crate and make it consistent.
 #[allow(unused)]
 pub(crate) fn command_lex_only(file_path: String) {
-    todo!();
-    // let (file_content, file_name) = read_file(file_path.clone());
-    // let mut lexer = Lexer::new(file_content, file_name);
-    // loop {
-    //     let token = lexer.next_token();
-    //     if token.kind == TokenKind::EOF {
-    //         break;
-    //     }
+    let (file_content, file_name) = read_file(file_path.clone());
+    let mut lexer = Lexer::new(file_content, file_name);
+    loop {
+        let token = lexer.next_token();
+        if token.kind.is_eof() {
+            break;
+        }
 
-    //     println!(
-    //         "{:?} Span({}, {}) Line({}) Column({})",
-    //         token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
-    //     );
-    // }
+        println!(
+            "{:?} Span({}, {}) Line({}) Column({})",
+            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
+        );
+    }
 }
 
-// TODO: Consider to move it into `cyrusc_compiler` crate and make it consistent.
 pub(crate) fn command_parse_only(file_path: String) {
     let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name.clone());
