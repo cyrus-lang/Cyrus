@@ -19,7 +19,8 @@ use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
     build_compilation_bundle, build_semantic_bundle, create_compiler_context, get_assembly_dir_output_path,
-    get_bitcode_dir_output_path, get_executable_output_path, get_llvm_dir_output_path,
+    get_bitcode_dir_output_path, get_executable_output_path, get_llvm_dir_output_path, get_object_dir_output_path,
+    get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
@@ -188,47 +189,88 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
 
 #[allow(unused)]
 pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    // TODO
-    todo!();
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
-    //     prepare_compilation(&mut options, file_path);
+    let object_dir = get_object_dir_output_path(&bundle.build_dir, &output_path);
 
-    // let output_path = output_path.unwrap_or_else(|| {
-    //     display_single_custom_diag!("Output must be specified to generate object files.".to_string());
-    // });
+    let context = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
 
-    // ensure_output_dir(output_path.clone());
-    // let context = CodeGenContext::new(
-    //     final_build_dir,
-    //     opts,
-    //     OutputKind::ObjectFile(output_path),
-    //     resolver_rc,
-    //     file_path,
-    // );
-    // context.compile_modules(program_trees, monomorph_registry);
+    // build llvm codegen context
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+    )));
+
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    llvm_backend.save_modules_object(&owned_modules, &object_dir);
 }
 
 #[allow(unused)]
-pub(crate) fn command_dylib(opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    // TODO
-    todo!();
-    // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
-    //     prepare_compilation(&mut options, file_path);
+pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // let output_path = output_path.unwrap_or_else(|| {
-    //     display_single_custom_diag!("Output must be specified to generate object files.".to_string());
-    // });
+    let shared_lib_dir = get_shared_lib_dir_output_path(&bundle.build_dir, &output_path);
 
-    // ensure_output_dir(output_path.clone());
-    // let context = CodeGenContext::new(
-    //     final_build_dir,
-    //     opts,
-    //     OutputKind::Dylib(output_path),
-    //     resolver_rc,
-    //     file_path,
-    // );
-    // context.compile_modules(program_trees, monomorph_registry);
+    let context = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::SharedLib,
+    ));
+
+    // build llvm codegen context
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+    )));
+
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let object_files: Vec<ObjectFileInfo> = owned_modules
+        .iter()
+        .map(|owned_module| llvm_backend.save_object_file(owned_module))
+        .collect();
+
+    if let Err(err) = context.trigger_linker(object_files, &shared_lib_dir) {
+        display_single_custom_diag!(err);
+    }
+}
+
+#[allow(unused)]
+pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let bundle = build_compilation_bundle(&mut opts, file_path);
+
+    let static_lib_dir = get_static_lib_dir_output_path(&bundle.build_dir, &output_path);
+
+    let context = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::StaticLib,
+    ));
+
+    // build llvm codegen context
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+    )));
+
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let object_files: Vec<ObjectFileInfo> = owned_modules
+        .iter()
+        .map(|owned_module| llvm_backend.save_object_file(owned_module))
+        .collect();
+
+    if let Err(err) = context.trigger_linker(object_files, &static_lib_dir) {
+        display_single_custom_diag!(err);
+    }
 }
 
 #[allow(unused)]

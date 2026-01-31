@@ -20,12 +20,15 @@ use thiserror::Error;
 
 pub const MANIFEST_FILENAME: &str = "manifest.json";
 pub const PROJECT_FILE_PATH: &str = "Project.toml";
-pub const SOURCES_DIR_PATH: &str = "sources";
-pub const OBJ_DIR_FILENAME: &str = "obj";
+pub const SRC_CACHE_DIR_PATH: &str = "src-cache";
+pub const OBJECT_CACHE_DIR_FILENAME: &str = "obj-cache";
+pub const OBJECT_DIR_FILENAME: &str = "object";
 pub const OUTPUT_DIR_FILENAME: &str = "output";
 pub const LLVM_IR_DIR_PATH: &str = "llvm-ir";
 pub const BITCODE_DIR_PATH: &str = "bitcode";
 pub const ASSEMBLY_DIR_PATH: &str = "assembly";
+pub const SHARED_LIB_DIR_PATH: &str = "shared-lib";
+pub const STATIC_LIB_DIR_PATH: &str = "static-lib";
 
 #[derive(Debug, Error)]
 pub enum ScaffoldParseError {
@@ -81,6 +84,6 @@ pub fn parse_project_toml<P: AsRef<Path>>(path: P) -> Result<ScaffoldConfig, Sca
     let path = path.as_ref();
     let s = std::fs::read_to_string(path).map_err(|e| ScaffoldParseError::IO(path.to_string_lossy().to_string(), e))?;
     let scaffold_config: ScaffoldConfig = toml::from_str(&s)?;
-    
+
     Ok(scaffold_config)
 }
