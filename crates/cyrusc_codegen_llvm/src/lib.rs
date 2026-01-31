@@ -29,8 +29,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_fs_utils::ensure_output_dir;
-use cyrusc_scaffold_parser::{LLVM_IR_DIR_PATH, OBJECTS_FILENAME};
+use cyrusc_scaffold_parser::OBJECTS_FILENAME;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -133,16 +132,10 @@ impl CodeGenLLVM {
         }
     }
 
-    pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, output_path: Option<String>) {
-        let llvm_ir_dir = output_path
-            .map(PathBuf::from)
-            .unwrap_or_else(|| Path::new(&self.build_dir).join(LLVM_IR_DIR_PATH));
-
-        ensure_output_dir(llvm_ir_dir.to_str().unwrap().to_string());
-
+    pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, llvm_ir_dir_path: &PathBuf) {
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
-            let mut llvm_ir_path = llvm_ir_dir.join(module.get_name().to_str().unwrap());
+            let mut llvm_ir_path = llvm_ir_dir_path.join(module.get_name().to_str().unwrap());
             llvm_ir_path.set_extension("ll");
 
             if let Err(llvm_str) = module.print_to_file(llvm_ir_path) {

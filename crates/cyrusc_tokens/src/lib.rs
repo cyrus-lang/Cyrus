@@ -206,6 +206,13 @@ impl TokenKind {
             _ => false,
         }
     }
+
+    pub fn is_eof(&self) -> bool {
+        match self {
+            TokenKind::EOF => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for TokenKind {

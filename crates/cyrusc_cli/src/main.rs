@@ -312,7 +312,7 @@ impl CompilerOptions {
                 OptimizeLevel::O2 => Some(2),
                 OptimizeLevel::O3 => Some(3),
             },
-            library_path: self.library_path.clone(),
+            library_paths: self.library_path.clone(),
             libraries: self.libraries.clone(),
             source_dirs: self.source_dirs.clone(),
             project_name: None,
