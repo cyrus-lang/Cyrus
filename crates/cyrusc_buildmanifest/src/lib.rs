@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_scaffold_parser::{MANIFEST_FILENAME, SOURCES_DIR_PATH};
+use cyrusc_scaffold_parser::{MANIFEST_FILENAME, SRC_CACHE_DIR_PATH};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -27,8 +27,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildManifest {
-    /// Manifest schema version, for forward compatibility.
-    pub version: u32,
     /// Directory where build artifacts are stored.
     pub build_dir: PathBuf,
     /// Base project path, used to resolve relative files.
@@ -44,7 +42,6 @@ pub struct BuildManifest {
 impl BuildManifest {
     pub fn new(base_path: PathBuf, build_dir: PathBuf) -> Self {
         Self {
-            version: 1,
             build_dir,
             base_path,
             sources: HashMap::new(),
@@ -58,7 +55,7 @@ impl BuildManifest {
     }
 
     fn sources_dir(&self) -> PathBuf {
-        self.base_path.join(&self.build_dir).join(SOURCES_DIR_PATH)
+        self.base_path.join(&self.build_dir).join(SRC_CACHE_DIR_PATH)
     }
 
     pub fn hash_source_code<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {

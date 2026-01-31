@@ -407,7 +407,15 @@ enum Commands {
     },
 
     #[clap(about = "Generate a dynamic library (shared object)", display_order = 5)]
-    Dylib {
+    SharedLib {
+        file_path: Option<String>,
+        #[clap(long, short)]
+        output_path: Option<String>,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+    #[clap(about = "Generate a static library", display_order = 5)]
+    StaticLib {
         file_path: Option<String>,
         #[clap(long, short)]
         output_path: Option<String>,
@@ -614,7 +622,7 @@ pub fn main() {
 
             command_object(codegen_options, file_path, output_path);
         }
-        Commands::Dylib {
+        Commands::SharedLib {
             file_path,
             output_path,
             compiler_options,
@@ -627,7 +635,22 @@ pub fn main() {
             let mut codegen_options = compiler_options.as_codegen_options();
             merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
-            command_dylib(codegen_options, file_path, output_path);
+            command_shared_lib(codegen_options, file_path, output_path);
+        }
+        Commands::StaticLib {
+            file_path,
+            output_path,
+            compiler_options,
+        } => {
+            if file_path.is_none() && output_path.is_none() {
+                project_file_required();
+            }
+
+            let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
+            let mut codegen_options = compiler_options.as_codegen_options();
+            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+
+            command_static_lib(codegen_options, file_path, output_path);
         }
         Commands::SemanticOnly {
             compiler_options,

@@ -29,7 +29,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_scaffold_parser::OBJ_DIR_FILENAME;
+use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -169,6 +169,19 @@ impl CodeGenLLVM {
         }
     }
 
+    pub fn save_modules_object(&self, owned_modules: &Vec<OwnedModule>, object_dir_path: &PathBuf) {
+        for owned_module in owned_modules {
+            let module = owned_module.module.borrow();
+            let mut object_path = object_dir_path.join(module.get_name().to_str().unwrap());
+            object_path.set_extension("o");
+
+            if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Object, &object_path) {
+                display_single_custom_diag!(llvm_str.to_string());
+            }
+            drop(module);
+        }
+    }
+
     fn make_module_name(&self, file_path: Option<String>) -> Option<String> {
         file_path.clone().map(|file_path| {
             let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
@@ -198,7 +211,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             .unwrap();
 
         let path = Path::new(&self.build_dir)
-            .join(OBJ_DIR_FILENAME)
+            .join(OBJECT_CACHE_DIR_FILENAME)
             .join(format!("{}.o", module_name));
 
         if let Some(dir) = path.parent() {
