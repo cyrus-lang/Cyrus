@@ -1732,7 +1732,7 @@ pub fn walk_program_trees_in_parallel(
                     mapping_ctx_arena.clone(),
                     vtable_registry,
                 );
-                let cir_program_tree = cir_walk.run_pass(program_tree.file_path);
+                let cir_program_tree = cir_walk.run_pass(program_tree.file_path.to_string_lossy().to_string());
                 Box::new(cir_program_tree)
             })
             .collect()

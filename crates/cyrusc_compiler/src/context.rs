@@ -32,7 +32,7 @@ use std::{
 pub struct CodeGenContext {
     pub opts: CodeGenOptions,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
-    pub master_module_file_path: String,
+    pub master_module_file_path: PathBuf,
     pub linker_output_kind: LinkerOutputKind,
     pub linker: Linker,
 }
@@ -41,7 +41,7 @@ impl CodeGenContext {
     pub(crate) fn new(
         opts: CodeGenOptions,
         build_manifest: Arc<Mutex<BuildManifest>>,
-        master_module_file_path: String,
+        master_module_file_path: PathBuf,
         linker_output_kind: LinkerOutputKind,
         linker: Linker,
     ) -> Self {
@@ -87,23 +87,24 @@ impl CodeGenContext {
         backend.target_machine_info()
     }
 
-    pub fn trigger_linker(&self, object_files: Vec<ObjectFileInfo>, output_path: String) -> Result<(), String> {
+    pub fn trigger_linker(&self, object_files: Vec<ObjectFileInfo>, output_path: &PathBuf) -> Result<(), String> {
         let object_files = collect_objects_file_names(object_files);
 
         match self.linker_output_kind {
-            LinkerOutputKind::Executable => self.linker.link_executable(&object_files, &output_path),
+            LinkerOutputKind::Executable => {
+                let output_path_cow = output_path.to_string_lossy();
+                self.linker.link_executable(&object_files, &output_path_cow.to_string())
+            }
             LinkerOutputKind::SharedLib => {
-                let output_dir = PathBuf::from(&output_path);
                 let lib_name = self.opts.canonical_project_name();
                 self.linker
-                    .link_shared_library(&object_files, &output_dir, lib_name)
+                    .link_shared_library(&object_files, &output_path, lib_name)
                     .map(|_| ())
             }
             LinkerOutputKind::StaticLib => {
-                let output_dir = PathBuf::from(&output_path);
                 let lib_name = self.opts.canonical_project_name();
                 self.linker
-                    .link_static_library(&object_files, &output_dir, lib_name)
+                    .link_static_library(&object_files, &output_path, lib_name)
                     .map(|_| ())
             }
             LinkerOutputKind::ObjectFile => Ok(()),

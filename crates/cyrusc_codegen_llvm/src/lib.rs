@@ -51,7 +51,7 @@ mod llvm;
 pub struct CodeGenLLVM {
     ctx: Rc<CodeGenContext>,
     opts: CodeGenOptions,
-    build_dir: String,
+    build_dir: PathBuf,
     llvmtm: TargetMachine,
     monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
 }
@@ -60,7 +60,7 @@ impl CodeGenLLVM {
     pub fn new(
         ctx: Rc<CodeGenContext>,
         opts: CodeGenOptions,
-        build_dir: String,
+        build_dir: PathBuf,
         monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     ) -> Self {
         let llvmtm = create_target_machine(

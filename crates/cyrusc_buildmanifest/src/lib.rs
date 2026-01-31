@@ -32,7 +32,7 @@ pub struct BuildManifest {
     /// Directory where build artifacts are stored.
     pub build_dir: PathBuf,
     /// Base project path, used to resolve relative files.
-    pub base_path: Option<PathBuf>,
+    pub base_path: PathBuf,
     /// Maps source file paths to their stored hash file paths.
     pub sources: HashMap<PathBuf, PathBuf>,
     /// Maps object file names to their object file paths.
@@ -42,7 +42,7 @@ pub struct BuildManifest {
 }
 
 impl BuildManifest {
-    pub fn new(base_path: Option<PathBuf>, build_dir: PathBuf) -> Self {
+    pub fn new(base_path: PathBuf, build_dir: PathBuf) -> Self {
         Self {
             version: 1,
             build_dir,
@@ -54,21 +54,11 @@ impl BuildManifest {
     }
 
     fn manifest_path(&self) -> PathBuf {
-        self.base_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(&self.build_dir)
-            .join(MANIFEST_FILENAME)
+        self.base_path.join(&self.build_dir).join(MANIFEST_FILENAME)
     }
 
     fn sources_dir(&self) -> PathBuf {
-        self.base_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(&self.build_dir)
-            .join(SOURCES_DIR_PATH)
+        self.base_path.join(&self.build_dir).join(SOURCES_DIR_PATH)
     }
 
     pub fn hash_source_code<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {

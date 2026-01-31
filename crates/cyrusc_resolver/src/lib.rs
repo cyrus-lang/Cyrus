@@ -65,7 +65,7 @@ pub struct Resolver {
     pub program_trees: Arc<Mutex<Vec<Rc<ProgramTreeEntry>>>>,
 
     // Holds file path related to the module.
-    pub file_paths: Arc<Mutex<HashMap<ModuleID, String>>>,
+    pub file_paths: Arc<Mutex<HashMap<ModuleID, PathBuf>>>,
 
     // Diagnostic Reporter Instance.
     pub reporter: DiagReporter,
@@ -78,7 +78,7 @@ pub struct Resolver {
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 
     // Holds the file path of entry module.
-    master_module_file_path: String,
+    master_module_file_path: PathBuf,
 
     // Holds the imported modules by current module by their alias.
     module_aliases: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
@@ -98,7 +98,7 @@ pub struct Resolver {
 
 pub struct ProgramTreeEntry {
     pub module_name: String,
-    pub module_path: String,
+    pub module_path: PathBuf,
     pub module_id: ModuleID,
     pub program: Rc<RefCell<TypedProgramTree>>,
 }
@@ -106,14 +106,24 @@ pub struct ProgramTreeEntry {
 // Track previously imported module + alias
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ImportedModuleEntry {
-    module_file_path: String,
+    module_file_path: PathBuf,
     alias: ModuleAlias,
 }
 
 // Used to check import cycles.
 pub struct Visiting {
-    pub active: HashSet<String>, // stack of modules currently being resolved
-    pub done: HashSet<String>,   // modules fully resolved
+    pub active: HashSet<PathBuf>, // stack of modules currently being resolved
+    pub done: HashSet<PathBuf>,   // modules fully resolved
+}
+
+impl Visiting {
+    pub fn active_paths_str(&self) -> String {
+        self.active
+            .iter()
+            .map(|path_buf| path_buf.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 macro_rules! is_unscoped_expr {
@@ -136,7 +146,7 @@ impl Resolver {
         opts: ModuleLoaderOptions,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-        master_module_file_path: String,
+        master_module_file_path: PathBuf,
     ) -> Self {
         let file_paths = Arc::new(Mutex::new(HashMap::new()));
 
@@ -178,7 +188,7 @@ impl Resolver {
         ast: &ProgramTree,
         mut visiting: &mut Visiting,
         is_master: bool,
-        module_file_path: String,
+        module_file_path: PathBuf,
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.current_module = Some(module_id);
         self.init_imported_modules_for_module();
@@ -244,7 +254,7 @@ impl Resolver {
         Some(typed_program_tree.clone())
     }
 
-    fn skip_module_if_loaded_once(&self, file_path: String) -> bool {
+    fn skip_module_if_loaded_once(&self, file_path: PathBuf) -> bool {
         let file_paths = self.file_paths.lock().unwrap();
         let exists = file_paths.iter().find(|(_, fp)| **fp == file_path).is_some();
         drop(file_paths);
@@ -306,7 +316,7 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::ImportCycle {
-                        module_names: visiting.active.iter().cloned().collect(),
+                        module_names: visiting.active_paths_str(),
                     }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         import.loc.clone(),
@@ -375,9 +385,9 @@ impl Resolver {
 
                     program_trees.push(Rc::new(ProgramTreeEntry {
                         module_name,
-                        module_path: module_file_path,
                         module_id,
                         program: typed_program_tree,
+                        module_path: Path::new(&module_file_path).to_path_buf(),
                     }));
                     drop(program_trees);
 
@@ -3536,7 +3546,7 @@ impl Resolver {
         option
     }
 
-    fn resolve_module_id_by_file_path(&self, module_file_path: String) -> Option<ModuleID> {
+    fn resolve_module_id_by_file_path(&self, module_file_path: PathBuf) -> Option<ModuleID> {
         let file_paths = self.file_paths.lock().unwrap();
         let module_id_opt = match file_paths.iter().find(|(_, fp)| **fp == module_file_path) {
             Some((module_id, _)) => Some(*module_id),
@@ -3546,7 +3556,7 @@ impl Resolver {
         module_id_opt
     }
 
-    fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: String) {
+    fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: PathBuf) {
         let mut file_paths = self.file_paths.lock().unwrap();
         file_paths.insert(module_id, module_file_path);
         drop(file_paths);
@@ -3607,7 +3617,7 @@ impl Resolver {
             None => self.master_module_file_path.clone(),
         };
         drop(file_paths);
-        file_path
+        file_path.to_string_lossy().to_string()
     }
 
     pub fn resolve_module_file_path(&self, module_id: ModuleID) -> Option<String> {
@@ -3617,7 +3627,7 @@ impl Resolver {
             None => None,
         };
         drop(file_paths);
-        file_path
+        file_path.map(|path_buf| path_buf.to_string_lossy().to_string())
     }
 }
 

@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -55,7 +55,7 @@ pub fn read_file<P: AsRef<Path>>(file_path: P) -> (String, String) {
 /// - If the directory does not exist: attempts to create it.
 /// - If a non-directory file exists at that path: terminates with an error.
 /// - On failure to create directory: prints a TUI error and exits.
-pub fn ensure_output_dir<P: AsRef<Path>>(output_dir: P) {
+pub fn ensure_output_dir<P: AsRef<Path>>(output_dir: &P) {
     let path = output_dir.as_ref();
 
     if !path.exists() {
@@ -149,9 +149,15 @@ pub fn split_paths<P: AsRef<Path>>(path: P) -> (String, String) {
 
 /// Returns the file name without extension from a given file path.
 /// Example: "/home/user/foo.rs" -> "foo"
-pub fn file_name_without_extension(file_path: &str) -> Option<String> {
-    Path::new(file_path)
+pub fn file_name_without_extension(file_path: PathBuf) -> Option<String> {
+    file_path
         .file_stem()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_string())
+        .and_then(|os_str| os_str.to_str())
+        .map(|str| str.to_string())
+}
+
+/// Helper method to get canonicalized PathBuf for paths
+pub fn get_canonical_path(path_str: &str) -> Result<PathBuf, String> {
+    let path = Path::new(path_str);
+    fs::canonicalize(path).map_err(|e| format!("Failed to canonicalize path '{}': {}", path_str, e))
 }
