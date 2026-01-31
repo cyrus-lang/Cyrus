@@ -22,13 +22,13 @@ use crate::{
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
-use cyrusc_fs_utils::{ensure_output_dir, get_directory_of_file, read_file};
+use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_scaffold_parser::{
-    OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH, parse_project_toml,
+    OBJ_DIR_FILENAME, OUTPUT_DIR_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH, parse_project_toml,
 };
 use cyrusc_sema::analyze::AnalysisContext;
 use cyrusc_tast::{
@@ -47,11 +47,20 @@ use std::{
 };
 
 pub struct CodeGenContextBundle {
-    pub options: CodeGenOptions,
+    pub opts: CodeGenOptions,
     pub entry_file: String,
     pub build_dir: String,
     pub program_trees: Vec<Box<CIRProgramTree>>,
     pub monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+}
+
+pub struct CodeGenSemanticBundle {
+    pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
+    pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
+    pub mapping_ctx_arena: Arc<Mutex<GenericMappingCtxArenaImpl>>,
+    pub resolver: Box<Resolver>,
+    pub entry_file: String,
+    pub build_dir: String,
 }
 
 pub fn create_compiler_context(
@@ -79,7 +88,7 @@ pub fn create_compiler_context(
     CodeGenContext::new(opts, build_manifest, entry_module_file_path, linker_output_kind, linker)
 }
 
-pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
+pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> Box<CodeGenSemanticBundle> {
     // disable modulefs cache if compiling a single file
     if file_path.is_some() {
         opts.disable_modulefs_cache = true;
@@ -166,9 +175,23 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         exit(1);
     }
 
+    Box::new(CodeGenSemanticBundle {
+        resolver: Box::new(resolver),
+        analyzed_program_trees,
+        vtable_registries,
+        mapping_ctx_arena,
+        entry_file,
+        build_dir,
+    })
+}
+
+pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {
+    let codegen_semantic_bundle = build_semantic_bundle(opts, file_path);
+
     // prepare trees for codegen
 
-    let boxed_trees: Vec<Box<TypedProgramTree>> = analyzed_program_trees
+    let boxed_program_trees: Vec<Box<TypedProgramTree>> = codegen_semantic_bundle
+        .analyzed_program_trees
         .into_iter()
         .map(|rc_refcell_tree| match Rc::try_unwrap(rc_refcell_tree) {
             Ok(refcell_tree) => Box::new(refcell_tree.into_inner()),
@@ -180,46 +203,41 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     let cir_program_trees = walk_program_trees_in_parallel(
         opts.jobs,
-        boxed_trees,
-        &resolver,
+        boxed_program_trees,
+        &codegen_semantic_bundle.resolver,
         cir_monomorph_registry.clone(),
-        mapping_ctx_arena.clone(),
-        &vtable_registries,
+        codegen_semantic_bundle.mapping_ctx_arena.clone(),
+        &codegen_semantic_bundle.vtable_registries,
     );
 
     CodeGenContextBundle {
-        options: opts.clone(),
-        entry_file,
-        build_dir,
+        opts: opts.clone(),
         program_trees: cir_program_trees,
         monomorph_registry: cir_monomorph_registry,
+        entry_file: codegen_semantic_bundle.entry_file,
+        build_dir: codegen_semantic_bundle.build_dir,
     }
 }
 
-pub fn get_artifact_output_path(build_dir: BuildDir, output_path: Option<String>) -> String {
-    if let Some(output) = output_path {
-        return output;
+pub fn get_executable_output_path(
+    opts: &CodeGenOptions,
+    build_dir: &String,
+    entry_file_path: &String,
+    output_path_opt: Option<String>,
+) -> String {
+    if let Some(output_path) = output_path_opt {
+        return output_path;
     }
 
-    match build_dir {
-        BuildDir::Provided(ref path) => {
-            let path_buf = Path::new(path);
-            if !path_buf.exists() {
-                std::fs::create_dir_all(path_buf).unwrap_or_else(|err| {
-                    tui_error(format!("Failed to create build dir {}: {}", path, err));
-                });
-            }
-            path.clone()
-        }
-        BuildDir::Default => {
-            // if default build dir is not present, fallback to temp
-            let temp_dir = env::temp_dir();
-            std::fs::create_dir_all(&temp_dir).unwrap_or_else(|err| {
-                tui_error(format!("Failed to create temp dir {}: {}", temp_dir.display(), err));
-            });
-            temp_dir.to_string_lossy().to_string()
-        }
-    }
+    // use `build_dir/output` directory to store executable artifact.
+    let dir_path = Path::new(build_dir).join(OUTPUT_DIR_FILENAME);
+    let file_path = dir_path.join({
+        opts.project_name
+            .clone()
+            .unwrap_or(file_name_without_extension(entry_file_path).unwrap_or("unknown".to_string()))
+    });
+
+    return file_path.to_str().unwrap().to_string();
 }
 
 fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir) -> String {
@@ -257,6 +275,8 @@ fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir
     }
 }
 
+// TODO: Support for library-project-type and executable-project-type.
+// Lookup for `lib.cyrus` and `main.cyrus` subsequently.
 fn get_entry_module_file_path(base_path: Option<String>, input_file_path: Option<String>) -> String {
     input_file_path.unwrap_or_else(|| {
         let base = base_path.unwrap_or_default();
@@ -275,7 +295,7 @@ fn get_entry_module_file_path(base_path: Option<String>, input_file_path: Option
 
 fn ensure_build_dir_subs_exist(base_path: Option<String>, build_dir_path: String) {
     let base = base_path.unwrap_or_default();
-    let dirs = [SOURCES_DIR_PATH, OBJECTS_FILENAME, OUTPUT_FILENAME];
+    let dirs = [SOURCES_DIR_PATH, OBJ_DIR_FILENAME, OUTPUT_DIR_FILENAME];
 
     let base_build_dir = Path::new(&base).join(build_dir_path);
 

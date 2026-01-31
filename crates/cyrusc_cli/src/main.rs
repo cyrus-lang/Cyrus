@@ -506,7 +506,6 @@ pub fn main() {
             }
 
             let codegen_options = compiler_options.to_compiler_options();
-
             command_emit_llvm(codegen_options, file_path, output_path);
         }
         Commands::EmitASM {
@@ -519,7 +518,6 @@ pub fn main() {
             }
 
             let codegen_options = compiler_options.to_compiler_options();
-
             command_emit_asm(codegen_options, file_path, output_path);
         }
         Commands::EmitByteCode {
@@ -532,7 +530,6 @@ pub fn main() {
             }
 
             let codegen_options = compiler_options.to_compiler_options();
-
             command_emit_bytecode(codegen_options, file_path, output_path);
         }
         Commands::Build {
@@ -559,7 +556,6 @@ pub fn main() {
             }
 
             let codegen_options = compiler_options.to_compiler_options();
-
             command_object(codegen_options, file_path, output_path);
         }
         Commands::Dylib {
@@ -572,13 +568,15 @@ pub fn main() {
             }
 
             let codegen_options = compiler_options.to_compiler_options();
-
             command_dylib(codegen_options, file_path, output_path);
         }
         Commands::SemanticOnly {
             compiler_options,
             file_path,
-        } => command_semantic_only(compiler_options, file_path),
+        } => {
+            let codegen_options = compiler_options.to_compiler_options();
+            command_semantic_only(codegen_options, file_path)
+        }
         Commands::Version => {
             println!("Cyrus {}", version)
         }
