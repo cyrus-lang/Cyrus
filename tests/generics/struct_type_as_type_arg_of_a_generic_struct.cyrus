@@ -1,0 +1,23 @@
+// @stdout: id: 1, name: Taha, age: 18
+
+import std::libc{printf};
+
+struct Record<K, V> {
+    pub key: K;
+    pub value: V;
+}
+
+pub fn main() {
+    const record = Record<V = struct {
+        name: char*,
+        age: int,
+    }> {
+        key: 1,
+        value: struct {
+            name = "Taha",
+            age = 18
+        }
+    };
+
+    printf("id: %d, name: %s, age: %d\n", record.key, record.value.name, record.value.age);
+}
