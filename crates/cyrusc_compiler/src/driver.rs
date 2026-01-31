@@ -28,7 +28,7 @@ use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
 use cyrusc_scaffold_parser::{
-    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJ_DIR_FILENAME, OUTPUT_DIR_FILENAME, SOURCES_DIR_PATH
+    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJ_DIR_FILENAME, OUTPUT_DIR_FILENAME, SOURCES_DIR_PATH,
 };
 use cyrusc_sema::analyze::AnalysisContext;
 use cyrusc_tast::{
@@ -221,6 +221,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
 pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
     if let Some(output_path) = output_path_opt {
+        ensure_output_dir(output_path);
         return Path::new(&output_path).to_path_buf();
     }
 
@@ -231,6 +232,7 @@ pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<St
 
 pub fn get_bitcode_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
     if let Some(output_path) = output_path_opt {
+        ensure_output_dir(output_path);
         return Path::new(&output_path).to_path_buf();
     }
 
@@ -241,6 +243,7 @@ pub fn get_bitcode_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option
 
 pub fn get_assembly_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
     if let Some(output_path) = output_path_opt {
+        ensure_output_dir(output_path);
         return Path::new(&output_path).to_path_buf();
     }
 
