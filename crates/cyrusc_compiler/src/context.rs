@@ -60,6 +60,10 @@ impl CodeGenContext {
         B: CodeGenBackend<'cdg, M>,
         M: 'cdg,
     {
+        if self.opts.display_target_machine {
+            println!("{}", self.target_machine_info(backend));
+        }
+
         let modules = match self.opts.module_kind {
             Some(ModuleKind::Separate) => {
                 let separate_backend = backend

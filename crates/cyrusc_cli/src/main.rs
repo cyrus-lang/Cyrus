@@ -16,7 +16,8 @@
  */
 use std::{
     env,
-    path::{Path, PathBuf}, process::exit,
+    path::{Path, PathBuf},
+    process::exit,
 };
 
 use clap::{Parser, ValueEnum};
@@ -27,7 +28,6 @@ use cyrusc_compiler::options::{
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
-use cyrusc_tui_utils::tui_error;
 use serde::Deserialize;
 
 mod commands;
@@ -434,11 +434,11 @@ enum Commands {
     },
 
     #[clap(
-        name = "emit-bytecode",
-        about = "Emit bytecode as a .bc file per module.",
+        name = "emit-bitcode",
+        about = "Emit bitcode as a .bc file per module.",
         display_order = 8
     )]
-    EmitByteCode {
+    EmitBitcode {
         file_path: Option<String>,
         #[clap(long, short)]
         output_path: Option<String>,
@@ -508,7 +508,7 @@ pub fn merge_scaffold_config_with_codegen_options(
 
     let scaffold_codegen_options = CodeGenOptions::from_scaffold(scaffold_config);
     *opts = opts.merge(&scaffold_codegen_options);
-    
+
     if opts.validate_paths().is_err() {
         exit(1);
     }
@@ -567,7 +567,7 @@ pub fn main() {
 
             command_emit_asm(codegen_options, file_path, output_path);
         }
-        Commands::EmitByteCode {
+        Commands::EmitBitcode {
             file_path,
             output_path,
             compiler_options,
@@ -580,7 +580,7 @@ pub fn main() {
             let mut codegen_options = compiler_options.as_codegen_options();
             merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
-            command_emit_bytecode(codegen_options, file_path, output_path);
+            command_emit_bitcode(codegen_options, file_path, output_path);
         }
         Commands::Build {
             file_path,

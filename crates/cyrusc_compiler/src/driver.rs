@@ -22,12 +22,14 @@ use crate::{
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
-use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
+use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, read_file};
 use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, Visiting, generate_module_id};
-use cyrusc_scaffold_parser::{LLVM_IR_DIR_PATH, OBJ_DIR_FILENAME, OUTPUT_DIR_FILENAME, SOURCES_DIR_PATH};
+use cyrusc_scaffold_parser::{
+    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJ_DIR_FILENAME, OUTPUT_DIR_FILENAME, SOURCES_DIR_PATH
+};
 use cyrusc_sema::analyze::AnalysisContext;
 use cyrusc_tast::{
     TypedProgramTree,
@@ -224,7 +226,26 @@ pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<St
 
     let dir_path = build_dir.join(LLVM_IR_DIR_PATH);
     ensure_output_dir(&dir_path);
+    return dir_path;
+}
 
+pub fn get_bitcode_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
+    if let Some(output_path) = output_path_opt {
+        return Path::new(&output_path).to_path_buf();
+    }
+
+    let dir_path = build_dir.join(BITCODE_DIR_PATH);
+    ensure_output_dir(&dir_path);
+    return dir_path;
+}
+
+pub fn get_assembly_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
+    if let Some(output_path) = output_path_opt {
+        return Path::new(&output_path).to_path_buf();
+    }
+
+    let dir_path = build_dir.join(ASSEMBLY_DIR_PATH);
+    ensure_output_dir(&dir_path);
     return dir_path;
 }
 

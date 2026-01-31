@@ -24,6 +24,8 @@ pub const SOURCES_DIR_PATH: &str = "sources";
 pub const OBJ_DIR_FILENAME: &str = "obj";
 pub const OUTPUT_DIR_FILENAME: &str = "output";
 pub const LLVM_IR_DIR_PATH: &str = "llvm-ir";
+pub const BITCODE_DIR_PATH: &str = "bitcode";
+pub const ASSEMBLY_DIR_PATH: &str = "assembly";
 
 #[derive(Debug, Error)]
 pub enum ScaffoldParseError {
