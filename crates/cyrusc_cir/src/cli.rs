@@ -30,6 +30,7 @@ use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     cell::RefCell,
     env,
+    path::Path,
     process::exit,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -70,11 +71,17 @@ pub fn main() {
                 module_loader_opts,
                 monomorph_registry.clone(),
                 mapping_ctx_arena.clone(),
-                file_path.clone(),
+                Path::new(&file_path).to_path_buf(),
             );
 
             let module_id = generate_module_id();
-            resolver.resolve_module(module_id, &program_tree, &mut Visiting::new(), true, file_path.clone());
+            resolver.resolve_module(
+                module_id,
+                &program_tree,
+                &mut Visiting::new(),
+                true,
+                Path::new(&file_path).to_path_buf(),
+            );
             if resolver.reporter.has_errors() {
                 DiagReporter::display(&resolver.reporter);
                 exit(1);
