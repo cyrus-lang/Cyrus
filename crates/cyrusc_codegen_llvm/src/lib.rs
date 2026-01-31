@@ -343,7 +343,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
     fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
         let context = OwnedModule::create_context();
-        let mut owned_module = OwnedModule::create_owned_module(context, "unified_module");
+        let mut owned_module = OwnedModule::create_owned_module(context, "module");
 
         for cir_program_tree in cir_modules {
             owned_module.file_path = Some(cir_program_tree.file_path.clone());
