@@ -25,6 +25,7 @@ use cyrusc_tast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monom
 use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     env,
+    path::Path,
     process::exit,
     sync::{Arc, Mutex},
     vec,
@@ -64,12 +65,18 @@ pub fn main() {
                 module_loader_opts,
                 monomorph_registry.clone(),
                 mapping_ctx_arena.clone(),
-                file_path.clone(),
+                Path::new(&file_path).to_path_buf(),
             );
             let module_id = generate_module_id();
 
             // resolve entry module
-            resolver.resolve_module(module_id, &program, &mut Visiting::new(), true, file_path);
+            resolver.resolve_module(
+                module_id,
+                &program,
+                &mut Visiting::new(),
+                true,
+                Path::new(&file_path).to_path_buf(),
+            );
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
