@@ -18,8 +18,8 @@ use crate::temp_executable_builder::TempExecutableBuilder;
 use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
-    build_compilation_bundle, build_semantic_bundle, create_compiler_context, get_executable_output_path,
-    get_llvm_dir_output_path,
+    build_compilation_bundle, build_semantic_bundle, create_compiler_context, get_assembly_dir_output_path,
+    get_bitcode_dir_output_path, get_executable_output_path, get_llvm_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
@@ -48,10 +48,6 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
     )));
-
-    if opts.display_target_machine {
-        println!("{}", context.target_machine_info(llvm_backend));
-    }
 
     let temp_exe = TempExecutableBuilder::new()
         .project_name(opts.project_name.clone().unwrap_or_default())
@@ -90,7 +86,6 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
 }
 
 pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    // build compilation bundle
     let bundle = build_compilation_bundle(&mut opts, file_path);
 
     let llvm_ir_dir = get_llvm_dir_output_path(&bundle.build_dir, &output_path);
@@ -109,56 +104,56 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
         bundle.monomorph_registry.clone(),
     )));
 
-    if opts.display_target_machine {
-        println!("{}", context.target_machine_info(llvm_backend));
-    }
-
     let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
     llvm_backend.save_modules_llvm_ir(&owned_modules, &llvm_ir_dir);
 }
 
 #[allow(unused)]
-pub(crate) fn command_emit_bytecode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    // TODO
-    todo!();
-    
-    // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
-    //     prepare_compilation(&mut options, file_path);
+pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // let output_path = output_path.unwrap_or_else(|| {
-    //     display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
-    // });
+    let bitcode_dir = get_bitcode_dir_output_path(&bundle.build_dir, &output_path);
 
-    // ensure_output_dir(output_path.clone());
-    // let context = CodeGenContext::new(
-    //     final_build_dir,
-    //     opts,
-    //     OutputKind::ByteCode(output_path),
-    //     resolver_rc,
-    //     file_path,
-    // );
-    // context.compile_modules(program_trees, monomorph_registry);
+    let context = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
+
+    // build llvm codegen context
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+    )));
+
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    llvm_backend.save_modules_bitcode(&owned_modules, &bitcode_dir);
 }
 
 #[allow(unused)]
 pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    todo!();
-    // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
-    //     prepare_compilation(&mut options, file_path);
+    let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // let output_path = output_path.unwrap_or_else(|| {
-    //     display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
-    // });
+    let assembly_dir = get_assembly_dir_output_path(&bundle.build_dir, &output_path);
 
-    // ensure_output_dir(output_path.clone());
-    // let context = CodeGenContext::new(
-    //     final_build_dir,
-    //     opts,
-    //     OutputKind::Asm(output_path),
-    //     resolver_rc,
-    //     file_path,
-    // );
-    // context.compile_modules(program_trees, monomorph_registry);
+    let context = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
+
+    // build llvm codegen context
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        context.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+    )));
+
+    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    llvm_backend.save_modules_assembly(&owned_modules, &assembly_dir);
 }
 
 pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>, output_path_opt: Option<String>) {
@@ -179,10 +174,6 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
     )));
-
-    if opts.display_target_machine {
-        println!("{}", context.target_machine_info(llvm_backend));
-    }
 
     let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules

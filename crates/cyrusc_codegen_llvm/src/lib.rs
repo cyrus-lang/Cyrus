@@ -145,6 +145,30 @@ impl CodeGenLLVM {
         }
     }
 
+    pub fn save_modules_bitcode(&self, owned_modules: &Vec<OwnedModule>, bitcode_dir_path: &PathBuf) {
+        for owned_module in owned_modules {
+            let module = owned_module.module.borrow();
+            let mut bitcode_path = bitcode_dir_path.join(module.get_name().to_str().unwrap());
+            bitcode_path.set_extension("bc");
+
+            module.write_bitcode_to_path(bitcode_path);
+            drop(module);
+        }
+    }
+
+    pub fn save_modules_assembly(&self, owned_modules: &Vec<OwnedModule>, assembly_dir_path: &PathBuf) {
+        for owned_module in owned_modules {
+            let module = owned_module.module.borrow();
+            let mut assembly_path = assembly_dir_path.join(module.get_name().to_str().unwrap());
+            assembly_path.set_extension("asm");
+
+            if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Assembly, &assembly_path) {
+                display_single_custom_diag!(llvm_str.to_string());
+            }
+            drop(module);
+        }
+    }
+
     fn make_module_name(&self, file_path: Option<String>) -> Option<String> {
         file_path.clone().map(|file_path| {
             let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));

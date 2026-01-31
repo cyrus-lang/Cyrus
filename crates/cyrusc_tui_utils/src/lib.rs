@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -45,16 +45,16 @@ pub fn disable_ansi() {
 fn print_status(label: &str, file_name: Option<&str>, color: Option<Colors>) {
     let formatted_label = if is_ansi_enabled() {
         match color {
-            Some(c) => format!("\x1b[1m{}\x1b[0m", label.color(c)),
-            None => format!("\x1b[1m{}\x1b[0m", label),
+            Some(c) => format!("[{}]", label.color(c)),
+            None => format!("[{}]", label),
         }
     } else {
         label.to_string()
     };
 
     match file_name {
-        Some(name) => println!("    {} {}", formatted_label, name),
-        None => println!("    {}", formatted_label),
+        Some(name) => println!("{} {}", formatted_label, name),
+        None => println!("{}", formatted_label),
     }
 }
 
@@ -68,15 +68,15 @@ fn print_diag(label: &str, msg: &str, color: Option<Colors>) {
 }
 
 pub fn tui_compiled(file_name: String) {
-    print_status("Compiled", Some(&file_name), Some(Colors::GreenFg));
+    print_status("compiled", Some(&file_name), Some(Colors::GreenFg));
 }
 
 pub fn tui_skipped(file_name: String) {
-    print_status("Skipped", Some(&file_name), Some(Colors::BlueFg));
+    print_status("skipped", Some(&file_name), Some(Colors::BlueFg));
 }
 
 pub fn tui_compile_finished() {
-    print_status("Finished", None, Some(Colors::GreenFg));
+    print_status("finished", None, Some(Colors::GreenFg));
 }
 
 pub fn tui_error(msg: String) {
