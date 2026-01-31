@@ -19,16 +19,16 @@ use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
     build_compilation_bundle, build_semantic_bundle, create_compiler_context, get_executable_output_path,
+    get_llvm_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
 use cyrusc_diagcentral::display_single_custom_diag;
-use cyrusc_fs_utils::{ensure_output_dir, read_file};
+use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
-use cyrusc_scaffold_parser::LLVM_IR_DIR_PATH;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::process::exit;
 use std::rc::Rc;
@@ -38,7 +38,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
 
     let context = Rc::new(create_compiler_context(
         opts.clone(),
-        Some(bundle.entry_file.clone()),
+        &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
@@ -55,7 +55,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
 
     let temp_exe = TempExecutableBuilder::new()
         .project_name(opts.project_name.clone().unwrap_or_default())
-        .entry_file(bundle.entry_file.clone())
+        .entry_file(bundle.entry_file)
         .build()
         .expect("Failed to create temp executable path.");
 
@@ -65,7 +65,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    if let Err(err) = context.trigger_linker(object_files, temp_exe.path.to_string_lossy().to_string()) {
+    if let Err(err) = context.trigger_linker(object_files, &temp_exe.path) {
         display_single_custom_diag!(err);
     }
 
@@ -93,16 +93,11 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
     // build compilation bundle
     let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    // FIXME
-    let llvm_ir_dir = output_path
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(&bundle.build_dir).join(LLVM_IR_DIR_PATH));
-
-    ensure_output_dir(llvm_ir_dir.to_str().unwrap().to_string());
+    let llvm_ir_dir = get_llvm_dir_output_path(&bundle.build_dir, &output_path);
 
     let context = Rc::new(create_compiler_context(
         opts.clone(),
-        Some(bundle.entry_file.clone()),
+        &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
@@ -124,7 +119,9 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
 
 #[allow(unused)]
 pub(crate) fn command_emit_bytecode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    // TODO
     todo!();
+    
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 
@@ -164,14 +161,15 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
     // context.compile_modules(program_trees, monomorph_registry);
 }
 
-pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>, output_path_opt: Option<String>) {
     let bundle = build_compilation_bundle(&mut opts, file_path);
 
-    let output_path = get_executable_output_path(&opts, &bundle.build_dir, &bundle.entry_file, output_path);
+    let output_path_opt = output_path_opt.map(|path| Path::new(&path).to_path_buf());
+    let output_path = get_executable_output_path(&opts, &bundle.build_dir, &bundle.entry_file, output_path_opt);
 
     let context = Rc::new(create_compiler_context(
         opts.clone(),
-        Some(bundle.entry_file.clone()),
+        &Some(bundle.entry_file),
         LinkerOutputKind::Executable,
     ));
 
@@ -192,14 +190,16 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    if let Err(err) = context.trigger_linker(object_files, output_path) {
+    if let Err(err) = context.trigger_linker(object_files, &output_path) {
         display_single_custom_diag!(err);
     }
 }
 
 #[allow(unused)]
 pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    // TODO
     todo!();
+
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);
 
@@ -220,6 +220,7 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
 
 #[allow(unused)]
 pub(crate) fn command_dylib(opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    // TODO
     todo!();
     // let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
     //     prepare_compilation(&mut options, file_path);

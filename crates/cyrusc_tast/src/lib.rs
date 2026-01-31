@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::stmts::TypedStmt;
+use std::path::PathBuf;
 
 pub mod exprs;
 pub mod format;
@@ -33,7 +34,7 @@ pub type ModuleID = u64;
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
     pub body: Vec<TypedStmt>,
-    pub file_path: String,
+    pub file_path: PathBuf,
     pub module_id: ModuleID,
     pub module_name: String,
 }

@@ -54,7 +54,7 @@ pub struct ModuleLoader {
 pub struct LoadedModule {
     pub alias: ModuleAlias,
     pub path: ModulePath,
-    pub file_path: String,
+    pub file_path: PathBuf,
     pub program: Rc<ProgramTree>,
 }
 
@@ -126,8 +126,8 @@ impl ModuleLoader {
                     let loaded_module = LoadedModule {
                         alias: module_alias,
                         path: sub_import.clone(),
-                        file_path: module_file_path.clone(),
                         program: program_tree_rc,
+                        file_path: Path::new(&module_file_path).to_path_buf(),
                     };
 
                     loaded_modules_list.push(Ok(loaded_module));

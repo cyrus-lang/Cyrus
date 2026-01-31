@@ -167,6 +167,7 @@ dependencies = [
  "cyrusc_scaffold",
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
+ "cyrusc_tui_utils",
  "serde",
  "serde_json",
  "thiserror-impl",

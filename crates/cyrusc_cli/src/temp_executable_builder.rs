@@ -1,28 +1,30 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+use cyrusc_tui_utils::tui_warning;
 use std::env;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::io::Error;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 pub struct TempExecutableBuilder {
     project_name: Option<String>,
-    entry_file: Option<String>,
+    entry_file: Option<PathBuf>,
 }
 
 impl TempExecutableBuilder {
@@ -38,7 +40,7 @@ impl TempExecutableBuilder {
         self
     }
 
-    pub fn entry_file(mut self, path: impl Into<String>) -> Self {
+    pub fn entry_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.entry_file = Some(path.into());
         self
     }
@@ -54,11 +56,18 @@ impl TempExecutableBuilder {
             .or_else(|| {
                 self.entry_file
                     .as_ref()
-                    .and_then(|p| Path::new(p).file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
             })
             .unwrap_or_else(|| "main".to_string());
 
-        // Final executable file path
+        // add executable extension based on the platform
+        let exe_name = if cfg!(windows) && !exe_name.ends_with(".exe") {
+            format!("{}.exe", exe_name)
+        } else {
+            exe_name
+        };
+
+        // final executable file path
         let exe_path = unique_dir.join(&exe_name);
 
         Ok(TempExecutable {
@@ -75,16 +84,20 @@ pub struct TempExecutable {
 
 impl Drop for TempExecutable {
     fn drop(&mut self) {
+        let remove_temp_warning = |err: Error| {
+            tui_warning(format!("failed to remove temp file {}: {err}", self.path.display()));
+        };
+
         // remove both file and its temp directory
         if let Err(err) = fs::remove_file(&self.path) {
             if err.kind() != io::ErrorKind::NotFound {
-                eprintln!("Warning: failed to remove temp file {}: {err}", self.path.display());
+                remove_temp_warning(err);
             }
         }
 
         if let Err(err) = fs::remove_dir_all(&self.dir) {
             if err.kind() != io::ErrorKind::NotFound {
-                eprintln!("Warning: failed to remove temp directory {}: {err}", self.dir.display());
+                remove_temp_warning(err);
             }
         }
     }
