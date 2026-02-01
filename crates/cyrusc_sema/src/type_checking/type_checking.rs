@@ -1836,8 +1836,6 @@ impl<'a> AnalysisContext<'a> {
 
                     self.set_ty_ctx_self_type(method_call, &sema_ty);
                     set_self_modifier_type_in_func_sig(&mut func_sig, &sema_ty);
-
-                    dbg!(sema_ty.clone());
                 }
             }
         }
