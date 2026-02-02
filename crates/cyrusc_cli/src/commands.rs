@@ -35,19 +35,21 @@ use std::process::exit;
 use std::rc::Rc;
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
-    let context = Rc::new(create_compiler_context(
+    let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
+        ctx.clone(),
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file.clone(),
     )));
 
     let temp_exe = TempExecutableBuilder::new()
@@ -56,13 +58,15 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         .build()
         .expect("Failed to create temp executable path.");
 
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
         .iter()
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    if let Err(err) = context.trigger_linker(object_files, &temp_exe.path) {
+    ctx.save_context_build_cache();
+
+    if let Err(err) = ctx.trigger_linker(object_files, &temp_exe.path) {
         display_single_custom_diag!(err);
     }
 
@@ -86,194 +90,202 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
     }
 }
 
-pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
-
-    let llvm_ir_dir = get_llvm_dir_output_path(&bundle.build_dir, &output_path);
-
-    let context = Rc::new(create_compiler_context(
-        opts.clone(),
-        &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
-    ));
-
-    // build llvm codegen context
-    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
-        opts.clone(),
-        bundle.build_dir,
-        bundle.monomorph_registry.clone(),
-    )));
-
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
-    llvm_backend.save_modules_llvm_ir(&owned_modules, &llvm_ir_dir);
-}
-
-#[allow(unused)]
-pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
-
-    let bitcode_dir = get_bitcode_dir_output_path(&bundle.build_dir, &output_path);
-
-    let context = Rc::new(create_compiler_context(
-        opts.clone(),
-        &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
-    ));
-
-    // build llvm codegen context
-    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
-        opts.clone(),
-        bundle.build_dir,
-        bundle.monomorph_registry.clone(),
-    )));
-
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
-    llvm_backend.save_modules_bitcode(&owned_modules, &bitcode_dir);
-}
-
-#[allow(unused)]
-pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
-
-    let assembly_dir = get_assembly_dir_output_path(&bundle.build_dir, &output_path);
-
-    let context = Rc::new(create_compiler_context(
-        opts.clone(),
-        &Some(bundle.entry_file.clone()),
-        LinkerOutputKind::Executable,
-    ));
-
-    // build llvm codegen context
-    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
-        opts.clone(),
-        bundle.build_dir,
-        bundle.monomorph_registry.clone(),
-    )));
-
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
-    llvm_backend.save_modules_assembly(&owned_modules, &assembly_dir);
-}
-
 pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>, output_path_opt: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let output_path_opt = output_path_opt.map(|path| Path::new(&path).to_path_buf());
     let output_path = get_executable_output_path(&opts, &bundle.build_dir, &bundle.entry_file, output_path_opt);
 
-    let context = Rc::new(create_compiler_context(
+    let ctx = Rc::new(create_compiler_context(
         opts.clone(),
-        &Some(bundle.entry_file),
+        &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
+        ctx.clone(),
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
     )));
 
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
         .iter()
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    if let Err(err) = context.trigger_linker(object_files, &output_path) {
+    ctx.save_context_build_cache();
+
+    if let Err(err) = ctx.trigger_linker(object_files, &output_path) {
         display_single_custom_diag!(err);
     }
 }
 
-#[allow(unused)]
-pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
+pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
-    let object_dir = get_object_dir_output_path(&bundle.build_dir, &output_path);
+    let llvm_ir_dir = get_llvm_dir_output_path(&bundle.build_dir, &output_path);
 
-    let context = Rc::new(create_compiler_context(
+    let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
     ));
 
-    // build llvm codegen context
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
+        ctx.clone(),
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
     )));
 
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
-    llvm_backend.save_modules_object(&owned_modules, &object_dir);
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
+    llvm_backend.save_modules_as_llvm_ir(&owned_modules, &llvm_ir_dir);
 }
 
-#[allow(unused)]
+pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
+
+    let bitcode_dir = get_bitcode_dir_output_path(&bundle.build_dir, &output_path);
+
+    let ctx = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
+
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        ctx.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
+    )));
+
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
+    llvm_backend.save_modules_as_bitcode(&owned_modules, &bitcode_dir);
+}
+
+pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
+
+    let assembly_dir = get_assembly_dir_output_path(&bundle.build_dir, &output_path);
+
+    let ctx = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
+
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        ctx.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
+    )));
+
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
+    llvm_backend.save_modules_as_assembly(&owned_modules, &assembly_dir);
+}
+
+pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
+
+    let object_dir = get_object_dir_output_path(&bundle.build_dir, &output_path);
+
+    let ctx = Rc::new(create_compiler_context(
+        opts.clone(),
+        &Some(bundle.entry_file.clone()),
+        LinkerOutputKind::Executable,
+    ));
+
+    let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
+        ctx.clone(),
+        opts.clone(),
+        bundle.build_dir,
+        bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
+    )));
+
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
+    llvm_backend.save_modules_as_object(&owned_modules, &object_dir);
+}
+
 pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let shared_lib_dir = get_shared_lib_dir_output_path(&bundle.build_dir, &output_path);
 
-    let context = Rc::new(create_compiler_context(
+    let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::SharedLib,
     ));
 
-    // build llvm codegen context
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
+        ctx.clone(),
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
     )));
 
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
         .iter()
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    if let Err(err) = context.trigger_linker(object_files, &shared_lib_dir) {
+    ctx.save_context_build_cache();
+
+    if let Err(err) = ctx.trigger_linker(object_files, &shared_lib_dir) {
         display_single_custom_diag!(err);
     }
 }
 
-#[allow(unused)]
 pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let bundle = build_compilation_bundle(&mut opts, file_path);
+    let mut bundle = build_compilation_bundle(&mut opts, file_path);
 
     let static_lib_dir = get_static_lib_dir_output_path(&bundle.build_dir, &output_path);
 
-    let context = Rc::new(create_compiler_context(
+    let ctx = Rc::new(create_compiler_context(
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::StaticLib,
     ));
 
-    // build llvm codegen context
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
-        context.clone(),
+        ctx.clone(),
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
+        ctx.build_manifest.clone(),
+        bundle.entry_file,
     )));
 
-    let owned_modules = context.compile(llvm_backend, &bundle.program_trees);
+    let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
     let object_files: Vec<ObjectFileInfo> = owned_modules
         .iter()
         .map(|owned_module| llvm_backend.save_object_file(owned_module))
         .collect();
 
-    if let Err(err) = context.trigger_linker(object_files, &static_lib_dir) {
+    ctx.save_context_build_cache();
+
+    if let Err(err) = ctx.trigger_linker(object_files, &static_lib_dir) {
         display_single_custom_diag!(err);
     }
 }
 
-#[allow(unused)]
 pub(crate) fn command_lex_only(file_path: String) {
     let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name);

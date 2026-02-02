@@ -65,9 +65,10 @@ pub struct ProjectSection {
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct CompilerSection {
+    pub sources: Vec<String>,
     pub optimize: Option<String>, // e.g. "o1", "o2", "o3", "none"
     pub build_dir: Option<String>,
-    pub sources: Vec<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

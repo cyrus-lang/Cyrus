@@ -30,8 +30,11 @@ use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
 use serde::Deserialize;
 
+use crate::version::CYRUS_COMPILER_VERSION;
+
 mod commands;
 mod temp_executable_builder;
+mod version;
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {
@@ -517,13 +520,14 @@ pub fn merge_scaffold_config_with_codegen_options(
     let scaffold_codegen_options = CodeGenOptions::from_scaffold(scaffold_config);
     *opts = opts.merge(&scaffold_codegen_options);
 
+    CodeGenOptions::validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version);
+
     if opts.validate_paths().is_err() {
         exit(1);
     }
 }
 
 pub fn main() {
-    let version = env!("CARGO_PKG_VERSION");
     let args = Args::parse();
 
     match args.cmd {
@@ -663,7 +667,7 @@ pub fn main() {
             command_semantic_only(codegen_options, file_path)
         }
         Commands::Version => {
-            println!("Cyrus {}", version)
+            println!("Cyrus {}", CYRUS_COMPILER_VERSION)
         }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),

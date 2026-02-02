@@ -16,7 +16,6 @@
  */
 use crate::analyze::AnalysisContext;
 
-#[allow(unused)]
 #[derive(Debug)]
 pub(crate) enum ControlContext {
     Loop,
