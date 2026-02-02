@@ -15,11 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use core::fmt;
+use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::ScaffoldConfig;
 use cyrusc_tui_utils::tui_error;
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::exit,
 };
 
 #[derive(Debug, Clone)]
@@ -130,6 +132,59 @@ impl Default for CodeGenOptions {
 }
 
 impl CodeGenOptions {
+    /// Validates if the current compiler meets the requirements of the project/source.
+    ///
+    /// Principle:
+    /// 1. Major version must match exactly (Breaking changes).
+    /// 2. Current Minor/Patch must be >= Required Minor/Patch.
+    pub fn validate_compiler_version(compiler_version: &str, required_version_opt: Option<String>) {
+        let Some(required_raw) = required_version_opt else {
+            return; // No requirement specified, proceed.
+        };
+
+        let current = CodeGenOptions::parse_version(compiler_version);
+        let required = CodeGenOptions::parse_version(&required_raw);
+
+        match (current, required) {
+            (Some(cur), Some(req)) => {
+                // check Major version (breaking changes)
+                if cur.0 != req.0 {
+                    tui_error("Incompatible Major versions!".to_string());
+                    tui_error(format!(
+                        "Compiler: v{}, Project requires: v{}",
+                        compiler_version, required_raw
+                    ));
+                    exit(1);
+                }
+
+                // check if compiler is too old
+                if cur < req {
+                    tui_error(format!(
+                        "Compiler version too old. Current: v{}, Minimum Required: v{}",
+                        compiler_version, required_raw,
+                    ));
+                    exit(1);
+                }
+
+                // compiler is equal or newer within the same Major branch
+            }
+            _ => {
+                display_single_custom_diag!("Could not parse version strings for compatibility check.".to_string());
+            }
+        }
+    }
+
+    /// Simple helper to turn "1.2.3" into (1, 2, 3) for easy comparison
+    fn parse_version(v: &str) -> Option<(u32, u32, u32)> {
+        let parts: Vec<u32> = v.trim().split('.').filter_map(|s| s.parse().ok()).collect();
+
+        if parts.len() >= 3 {
+            Some((parts[0], parts[1], parts[2]))
+        } else {
+            None
+        }
+    }
+
     pub fn validate_paths(&mut self) -> Result<(), ()> {
         let mut errors = Vec::new();
 
@@ -396,6 +451,7 @@ impl CodeGenOptions {
         merge_option!(cpu);
         merge_option!(endianness);
         merge_option!(abi);
+        merge_option!(cyrus_version);
 
         merge_vec!(library_paths);
         merge_vec!(libraries);
@@ -479,6 +535,10 @@ impl CodeGenOptions {
                         }
                     }
                 }
+            }
+
+            if let Some(version) = &compiler.version {
+                opts.cyrus_version = Some(version.clone());
             }
 
             if let Some(build_dir) = &compiler.build_dir {

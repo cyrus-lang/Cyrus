@@ -55,7 +55,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         })
     }
 
-    #[allow(unused)]
     pub(crate) fn emit_dynamic_ty(&self) -> StructType<'ll> {
         let vtable_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
         let data_ptr = self.llvmctx.ptr_type(AddressSpace::default()).as_basic_type_enum();
@@ -63,7 +62,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmctx.struct_type(&[data_ptr, vtable_ptr], false)
     }
 
-    #[allow(unused)]
     pub(crate) fn emit_vtable_ty(&self, methods_len: usize) -> StructType<'ll> {
         self.llvmctx.struct_type(
             &(0..methods_len)

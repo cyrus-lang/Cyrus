@@ -23,7 +23,8 @@ use crate::{
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::CIRProgramTree;
-use cyrusc_tui_utils::tui_compile_finished;
+use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -55,7 +56,7 @@ impl CodeGenContext {
     }
 
     /// Orchestrates compilation and returns collected objects.
-    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &[Box<CIRProgramTree>]) -> Vec<M>
+    pub fn compile<'cdg, B, M>(&self, backend: &'cdg B, cir_modules: &mut Vec<Box<CIRProgramTree>>) -> Vec<M>
     where
         B: CodeGenBackend<'cdg, M>,
         M: 'cdg,
@@ -69,18 +70,59 @@ impl CodeGenContext {
                 let separate_backend = backend
                     .as_separate()
                     .expect("Backend does not support separate module compilation");
+
                 separate_backend.process_separately(cir_modules)
             }
             Some(ModuleKind::Unified) | None => {
                 let unified_backend = backend
                     .as_unified()
                     .expect("Backend does not support unified module compilation");
+
                 vec![unified_backend.process_unified(cir_modules)]
             }
         };
 
+        self.save_cir_modules_source_hash_in_build_manifest(cir_modules);
+
         tui_compile_finished();
         modules
+    }
+
+    pub fn save_context_build_cache(&self) {
+        let build_manifest = self.build_manifest.lock().unwrap();
+        if let Err(err) = build_manifest.save_manifest() {
+            display_single_custom_diag!(err.to_string());
+        }
+        drop(build_manifest);
+    }
+
+    fn save_cir_modules_source_hash_in_build_manifest(&self, cir_modules: &[Box<CIRProgramTree>]) {
+        {
+            let mut build_manifest = self.build_manifest.lock().unwrap();
+
+            for module in cir_modules {
+                let source_hash = match build_manifest.hash_source_code(&module.file_path) {
+                    Ok(source_hash) => source_hash,
+                    Err(err) => {
+                        tui_warning(format!(
+                            "Couldn't hash source code '{}' for this unknown reason: {}",
+                            module.file_path,
+                            err.to_string()
+                        ));
+                        continue;
+                    }
+                };
+
+                if let Err(err) = build_manifest.update_source_hash(&module.file_path, &source_hash) {
+                    tui_warning(format!(
+                        "Couldn't save source code hash '{}' for this unknown reason: {}",
+                        module.file_path,
+                        err.to_string()
+                    ));
+                    continue;
+                }
+            }
+        }
     }
 
     /// Fetch the target machine info from the backend
@@ -114,12 +156,4 @@ impl CodeGenContext {
             LinkerOutputKind::ObjectFile => Ok(()),
         }
     }
-}
-
-/// Decides whether to recompile a module.
-pub fn need_to_be_recompiled(ctx: &CodeGenContext, module_file_path: String) -> bool {
-    let build_manifest = ctx.build_manifest.lock().unwrap();
-    let is_source_changed = build_manifest.is_source_changed(module_file_path.clone()).unwrap();
-
-    is_source_changed || ctx.opts.disable_modulefs_cache || build_manifest.initial_build
 }

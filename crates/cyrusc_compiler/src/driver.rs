@@ -72,11 +72,10 @@ pub fn create_compiler_context(
 
     let entry_module_file_path = get_entry_module_file_path(&opts, &base_path, &file_path);
     let build_dir = get_final_build_directory_path(&opts.build_dir);
-    let build_dir_path = Path::new(&build_dir);
 
-    let build_manifest = Arc::new(Mutex::new(BuildManifest::new(
-        base_path.unwrap_or_default(),
-        build_dir_path.to_path_buf(),
+    let build_manifest = Arc::new(Mutex::new(BuildManifest::load_manifest_or_make_new(
+        &base_path.unwrap_or_default(),
+        &build_dir,
     )));
 
     let linker = match Linker::new(opts.clone()) {

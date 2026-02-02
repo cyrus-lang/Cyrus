@@ -20,16 +20,18 @@ use crate::{
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
 use cyrusc_abi::modulename::make_module_name_from_filepath;
+use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
-    context::{CodeGenContext, need_to_be_recompiled},
+    context::CodeGenContext,
     object_file_info::ObjectFileInfo,
     options::{CodeGenEndianness, CodeGenOptions},
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
+use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -54,6 +56,8 @@ pub struct CodeGenLLVM {
     build_dir: PathBuf,
     llvmtm: TargetMachine,
     monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    build_manifest: Arc<Mutex<BuildManifest>>,
+    entry_module_file_path: PathBuf,
 }
 
 impl CodeGenLLVM {
@@ -62,6 +66,8 @@ impl CodeGenLLVM {
         opts: CodeGenOptions,
         build_dir: PathBuf,
         monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        build_manifest: Arc<Mutex<BuildManifest>>,
+        entry_module_file_path: PathBuf,
     ) -> Self {
         let llvmtm = create_target_machine(
             opts.cpu.clone(),
@@ -77,6 +83,8 @@ impl CodeGenLLVM {
             build_dir,
             llvmtm,
             monomorph_registry,
+            build_manifest,
+            entry_module_file_path,
         }
     }
 
@@ -132,7 +140,7 @@ impl CodeGenLLVM {
         }
     }
 
-    pub fn save_modules_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, llvm_ir_dir_path: &PathBuf) {
+    pub fn save_modules_as_llvm_ir(&self, owned_modules: &Vec<OwnedModule>, llvm_ir_dir_path: &PathBuf) {
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
             let mut llvm_ir_path = llvm_ir_dir_path.join(module.get_name().to_str().unwrap());
@@ -145,7 +153,7 @@ impl CodeGenLLVM {
         }
     }
 
-    pub fn save_modules_bitcode(&self, owned_modules: &Vec<OwnedModule>, bitcode_dir_path: &PathBuf) {
+    pub fn save_modules_as_bitcode(&self, owned_modules: &Vec<OwnedModule>, bitcode_dir_path: &PathBuf) {
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
             let mut bitcode_path = bitcode_dir_path.join(module.get_name().to_str().unwrap());
@@ -156,7 +164,7 @@ impl CodeGenLLVM {
         }
     }
 
-    pub fn save_modules_assembly(&self, owned_modules: &Vec<OwnedModule>, assembly_dir_path: &PathBuf) {
+    pub fn save_modules_as_assembly(&self, owned_modules: &Vec<OwnedModule>, assembly_dir_path: &PathBuf) {
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
             let mut assembly_path = assembly_dir_path.join(module.get_name().to_str().unwrap());
@@ -169,7 +177,7 @@ impl CodeGenLLVM {
         }
     }
 
-    pub fn save_modules_object(&self, owned_modules: &Vec<OwnedModule>, object_dir_path: &PathBuf) {
+    pub fn save_modules_as_object(&self, owned_modules: &Vec<OwnedModule>, object_dir_path: &PathBuf) {
         for owned_module in owned_modules {
             let module = owned_module.module.borrow();
             let mut object_path = object_dir_path.join(module.get_name().to_str().unwrap());
@@ -182,12 +190,26 @@ impl CodeGenLLVM {
         }
     }
 
-    fn make_module_name(&self, file_path: Option<String>) -> Option<String> {
-        file_path.clone().map(|file_path| {
-            let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
-            let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
-            make_module_name_from_filepath(file_path, base_path, stdlib_path)
-        })
+    fn make_module_name<P: AsRef<Path> + ?Sized>(&self, file_path: &P) -> String {
+        let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
+        let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
+        make_module_name_from_filepath(file_path, base_path, stdlib_path)
+    }
+
+    fn store_object_file_cache(&self, module_name: &String, object_path: &PathBuf) {
+        {
+            let mut build_manifest = self.build_manifest.lock().unwrap();
+            if let Err(err) = build_manifest.insert_object(module_name, object_path) {
+                display_single_custom_diag!(err.to_string());
+            }
+        }
+    }
+
+    fn load_object_file_cache(&self, object_name: &String) -> Option<PathBuf> {
+        {
+            let build_manifest = self.build_manifest.lock().unwrap();
+            build_manifest.get_object(object_name).cloned()
+        }
     }
 }
 
@@ -195,45 +217,51 @@ impl CodeGenLLVM {
 pub struct OwnedModule {
     pub context: &'static Arc<Context>,
     pub module: Rc<RefCell<Module<'static>>>,
-    pub file_path: Option<String>,
+    pub module_name: String,
+    pub module_file_path: PathBuf,
+    pub module_merge_mode_is_unified: bool,
 }
 
 impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
     fn save_object_file(&self, owned_module: &OwnedModule) -> ObjectFileInfo {
-        let module_name = owned_module
-            .file_path
-            .clone()
-            .map(|file_path| {
-                let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
-                let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
-                make_module_name_from_filepath(file_path, base_path, stdlib_path)
-            })
-            .unwrap();
-
-        let path = Path::new(&self.build_dir)
-            .join(OBJECT_CACHE_DIR_FILENAME)
-            .join(format!("{}.o", module_name));
-
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).expect("Failed to create directories for object file");
-        }
-
-        let module = owned_module.module.borrow();
-
-        self.llvmtm
-            .write_to_file(&module, FileType::Object, &path)
-            .expect("Failed to write LLVM object file");
-
-        drop(module);
-
-        ObjectFileInfo {
-            path: path.to_str().unwrap().to_string(),
-            size: std::fs::metadata(&path)
+        let object_file_size = |object_path: &PathBuf| -> usize {
+            std::fs::metadata(&object_path)
                 .map(|m| m.len())
                 .unwrap_or_default()
                 .try_into()
-                .unwrap(),
+                .unwrap()
+        };
+
+        // use obj-cache
+        if !owned_module.module_merge_mode_is_unified
+            && !need_to_be_recompiled(&self.ctx, &owned_module.module_file_path)
+        {
+            if let Some(cached_object_path) = self.load_object_file_cache(&owned_module.module_name) {
+                return ObjectFileInfo::new(cached_object_path.clone(), object_file_size(&cached_object_path));
+            }
         }
+
+        let module_name = self.make_module_name(&owned_module.module_name);
+
+        let object_path = Path::new(&self.build_dir)
+            .join(OBJECT_CACHE_DIR_FILENAME)
+            .join(format!("{}.o", module_name));
+
+        if let Some(dir) = object_path.parent() {
+            std::fs::create_dir_all(dir).expect("Failed to create directories for object file");
+        }
+
+        {
+            let module = owned_module.module.borrow();
+
+            self.llvmtm
+                .write_to_file(&module, FileType::Object, &object_path)
+                .expect("Failed to write LLVM object file")
+        }
+
+        self.store_object_file_cache(&module_name, &object_path);
+
+        ObjectFileInfo::new(object_path.clone(), object_file_size(&object_path))
     }
 
     fn target_machine_info(&self) -> TargetMachineInfo {
@@ -327,25 +355,29 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
         let mut modules = Vec::with_capacity(cir_modules.len());
 
         for cir_program_tree in cir_modules {
-            if !need_to_be_recompiled(&self.ctx, cir_program_tree.file_path.clone()) {
-                continue; // skip recompilation
+            let context = OwnedModule::create_context();
+            let module_name = self.make_module_name(&cir_program_tree.file_path);
+            let owned_module =
+                OwnedModule::create_owned_module(context, &cir_program_tree.file_path, &module_name, false);
+
+            let recompile_forced =
+                need_to_be_recompiled(&self.ctx, &Path::new(&cir_program_tree.file_path).to_path_buf());
+
+            // skip emit module if recompilation is not forced
+            if !recompile_forced {
+                tui_skipped(cir_program_tree.file_path.clone());
+                modules.push(owned_module);
+                continue;
             }
 
-            let module_name = self.make_module_name(Some(cir_program_tree.file_path.clone())).unwrap();
-
-            let context = OwnedModule::create_context();
-            let mut owned_module = OwnedModule::create_owned_module(context, &module_name);
-            owned_module.file_path = Some(cir_program_tree.file_path.clone());
-
+            // emit llvm-ir module
             let builder = owned_module.create_builder();
-
             self.process_module_with_local_context(
                 &owned_module,
                 builder,
                 cir_program_tree,
                 self.monomorph_registry.clone(),
             );
-
             modules.push(owned_module);
         }
 
@@ -356,11 +388,11 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
     fn process_unified(&self, cir_modules: &[Box<CIRProgramTree>]) -> OwnedModule {
         let context = OwnedModule::create_context();
-        let mut owned_module = OwnedModule::create_owned_module(context, "module");
+        let owned_module = OwnedModule::create_owned_module(context, &self.entry_module_file_path, "module", true);
 
         for cir_program_tree in cir_modules {
-            owned_module.file_path = Some(cir_program_tree.file_path.clone());
             let builder = owned_module.create_builder();
+
             self.process_module_with_local_context(
                 &owned_module,
                 builder.clone(),
@@ -378,16 +410,32 @@ impl OwnedModule {
         Box::leak(Box::new(Arc::new(Context::create())))
     }
 
-    pub fn create_owned_module(context: &'static Arc<Context>, name: &str) -> Self {
+    pub fn create_owned_module<P: AsRef<Path> + ?Sized>(
+        context: &'static Arc<Context>,
+        file_path: &P,
+        name: &str,
+        module_merge_mode_is_unified: bool,
+    ) -> Self {
         let module: Rc<RefCell<Module<'_>>> = Rc::new(RefCell::new(context.create_module(name)));
+
         Self {
             context,
             module,
-            file_path: None,
+            module_name: name.to_string(),
+            module_file_path: file_path.as_ref().to_path_buf(),
+            module_merge_mode_is_unified,
         }
     }
 
     pub fn create_builder(&self) -> Rc<Builder<'_>> {
         Rc::new(self.context.create_builder())
     }
+}
+
+/// Decides whether to recompile a module.
+fn need_to_be_recompiled(ctx: &CodeGenContext, module_file_path: &PathBuf) -> bool {
+    let build_manifest = ctx.build_manifest.lock().unwrap();
+    let is_source_changed = build_manifest.is_source_changed(&module_file_path.clone()).unwrap();
+
+    is_source_changed || ctx.opts.disable_modulefs_cache || build_manifest.initial_build
 }

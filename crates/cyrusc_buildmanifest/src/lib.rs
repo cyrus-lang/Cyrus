@@ -25,14 +25,14 @@ use std::{
 };
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BuildManifest {
     /// Directory where build artifacts are stored.
-    pub build_dir: PathBuf,
+    build_dir: PathBuf,
     /// Base project path, used to resolve relative files.
-    pub base_path: PathBuf,
+    base_path: PathBuf,
     /// Maps source file paths to their stored hash file paths.
-    pub sources: HashMap<PathBuf, PathBuf>,
+    sources: HashMap<PathBuf, PathBuf>,
     /// Maps object file names to their object file paths.
     pub objects: HashMap<PathBuf, PathBuf>,
     /// Used to disable cache, if is initial build.
@@ -40,7 +40,7 @@ pub struct BuildManifest {
 }
 
 impl BuildManifest {
-    pub fn new(base_path: PathBuf, build_dir: PathBuf) -> Self {
+    fn new(base_path: PathBuf, build_dir: PathBuf) -> Self {
         Self {
             build_dir,
             base_path,
@@ -48,6 +48,40 @@ impl BuildManifest {
             objects: HashMap::new(),
             initial_build: true,
         }
+    }
+
+    pub fn mark_initial_build_complete(&mut self) {
+        self.initial_build = false;
+    }
+
+    pub fn initial_build(&mut self) {
+        self.initial_build = true;
+    }
+
+    pub fn get_object<P: AsRef<Path>>(&self, object_name: P) -> Option<&PathBuf> {
+        self.objects.get_key_value(object_name.as_ref()).map(|(_, path)| path)
+    }
+
+    pub fn insert_object<P: AsRef<Path> + ?Sized, Q: AsRef<Path> + ?Sized>(
+        &mut self,
+        object_name: &P,
+        object_path: &Q,
+    ) -> io::Result<()> {
+        let object_path = object_path.as_ref();
+
+        // ensure the object file exists
+        if !object_path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Object file not found: {}", object_path.display()),
+            ));
+        }
+
+        // canonicalize the path for consistency
+        let canonical_path = fs::canonicalize(object_path).unwrap_or_else(|_| object_path.to_path_buf());
+
+        self.objects.insert(object_name.as_ref().to_path_buf(), canonical_path);
+        Ok(())
     }
 
     fn manifest_path(&self) -> PathBuf {
@@ -58,7 +92,7 @@ impl BuildManifest {
         self.base_path.join(&self.build_dir).join(SRC_CACHE_DIR_PATH)
     }
 
-    pub fn hash_source_code<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
+    pub fn hash_source_code<P: AsRef<Path> + ?Sized>(&self, path: &P) -> io::Result<String> {
         let mut file = File::open(&path)?;
         let mut hasher = blake3::Hasher::new();
         let mut buf = [0u8; 8192];
@@ -77,12 +111,16 @@ impl BuildManifest {
         if let Some(hash_path) = self.sources.get_mut(path) {
             fs::write(hash_path, new_hash)?;
         } else {
-            self.add_source_code(path, new_hash)?;
+            self.insert_source_code(path, new_hash)?;
         }
         Ok(())
     }
 
-    pub fn add_source_code<P: AsRef<Path>>(&mut self, source_file_path: P, content_hash: &str) -> io::Result<()> {
+    fn insert_source_code<P: AsRef<Path> + ?Sized>(
+        &mut self,
+        source_file_path: &P,
+        content_hash: &str,
+    ) -> io::Result<()> {
         let unique_name = Uuid::new_v4().to_string();
         let hash_file_path = self.sources_dir().join(format!("{}.hash", unique_name));
 
@@ -98,9 +136,8 @@ impl BuildManifest {
         self.sources.contains_key(source_path.as_ref())
     }
 
-    pub fn is_source_changed<P: AsRef<Path>>(&self, source_path: P) -> io::Result<bool> {
-        let source_path = source_path.as_ref();
-        if let Some(hash_path) = self.sources.get(source_path) {
+    pub fn is_source_changed<P: AsRef<Path> + ?Sized>(&self, source_path: &P) -> io::Result<bool> {
+        if let Some(hash_path) = self.sources.get(source_path.as_ref()) {
             let old_hash = fs::read_to_string(hash_path).unwrap_or_default();
             let new_hash = self.hash_source_code(source_path)?;
             Ok(new_hash != old_hash)
@@ -114,34 +151,35 @@ impl BuildManifest {
         fs::create_dir_all(manifest_path.parent().unwrap())?;
 
         let file = File::create(&manifest_path)?;
-        serde_json::to_writer_pretty(file, &self)?;
+        if cfg!(debug_assertions) {
+            serde_json::to_writer_pretty(file, &self)?;
+        } else {
+            serde_json::to_writer(file, &self)?;
+        }
         Ok(())
     }
 
-    pub fn read_manifest(base_path: Option<PathBuf>, build_dir: PathBuf) -> Option<Self> {
-        let manifest_path = base_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(&build_dir)
-            .join(MANIFEST_FILENAME);
+    pub fn load_manifest_or_make_new(base_path: &PathBuf, build_dir: &PathBuf) -> BuildManifest {
+        let manifest_path = base_path.join(build_dir).join(MANIFEST_FILENAME);
 
-        let file_content = match fs::read_to_string(&manifest_path) {
-            Ok(c) => c,
-            Err(err) => {
-                if err.kind() != io::ErrorKind::NotFound {
-                    display_single_custom_diag!(format!("Failed to read '{}'.", MANIFEST_FILENAME));
+        match fs::read_to_string(&manifest_path) {
+            Ok(file_content) => match serde_json::from_str::<BuildManifest>(&file_content) {
+                Ok(mut build_manifest) => {
+                    build_manifest.mark_initial_build_complete();
+                    return build_manifest;
                 }
-                return None;
-            }
+                Err(err) => {
+                    let file_path = manifest_path.display().to_string();
+                    display_single_custom_diag!(format!("Failed to parse '{}': {}", file_path, err));
+                }
+            },
+            _ => {}
         };
 
-        match serde_json::from_str::<BuildManifest>(&file_content) {
-            Ok(manifest) => Some(manifest),
-            Err(err) => {
-                let file_path = manifest_path.display().to_string();
-                display_single_custom_diag!(format!("Failed to parse '{}': {}", file_path, err));
-            }
+        let initial_build_manifest = BuildManifest::new(base_path.clone(), build_dir.clone());
+        if let Err(err) = initial_build_manifest.save_manifest() {
+            display_single_custom_diag!(format!("Error while saving build manifest: {}", err.to_string()));
         }
+        return initial_build_manifest;
     }
 }

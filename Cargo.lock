@@ -293,6 +293,7 @@ dependencies = [
  "cyrusc_abi",
  "cyrusc_asan_wrapper",
  "cyrusc_ast",
+ "cyrusc_buildmanifest",
  "cyrusc_cir",
  "cyrusc_compiler",
  "cyrusc_diagcentral",
