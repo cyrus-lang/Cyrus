@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
@@ -26,7 +27,7 @@ use cyrusc_tast::{
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_type},
     sigs::{FuncSig, typed_func_decl_as_func_sig},
     stmts::{
-        TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
+        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
@@ -95,7 +96,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc.clone());
-
         Some(sema_ty)
     }
 
@@ -310,11 +310,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_typedef(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> Option<SemanticType> {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt, symbol_id)?;
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let sym = self.resolver.resolve_local_or_global_symbol(scope_opt, symbol_id)?;
 
         let resolved_typedef = sym.as_typedef().or_else(|| None)?;
 
@@ -347,8 +344,7 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         self.resolver.resolve_local_or_global_symbol(scope_opt, symbol_id);
 
         let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
@@ -382,8 +378,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         mut generic_type: GenericType,
     ) -> Option<SemanticType> {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let sym = self
             .resolver
             .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)?;
@@ -552,6 +547,84 @@ impl<'a> AnalysisContext<'a> {
             Some(SemanticType::GenericType(generic_type))
         } else {
             Some(inner_ty)
+        }
+    }
+
+    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: SourceLoc) {
+        // analyze static arguments
+        for param in params.list.iter_mut() {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    let normalized_type = self
+                        .normalize_sema_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
+                        .unwrap();
+
+                    typed_func_param.ty = normalized_type.clone();
+
+                    self.validate_param_type(None, &typed_func_param.ty, typed_func_param.loc.clone());
+                }
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                    let normalized_type = self
+                        .normalize_sema_type(
+                            None,
+                            SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
+                            typed_self_modifier.loc.clone(),
+                        )
+                        .unwrap();
+
+                    match typed_self_modifier.kind {
+                        SelfModifierKind::Copied => {
+                            typed_self_modifier.ty = Some(normalized_type);
+                        }
+                        SelfModifierKind::Referenced => {
+                            typed_self_modifier.ty = Some(SemanticType::Pointer(Box::new(normalized_type)));
+                        }
+                    }
+
+                    self.validate_param_type(
+                        None,
+                        &typed_self_modifier.ty.as_ref().unwrap(),
+                        typed_self_modifier.loc.clone(),
+                    );
+                }
+            }
+        }
+
+        if let Some(variadic_params) = &mut params.variadic {
+            if let TypedFuncVariadicParams::Typed(ident, sema_ty) = variadic_params {
+                let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
+                    Some(sema_ty) => sema_ty,
+                    None => return,
+                };
+
+                self.validate_param_type(None, &sema_ty, ident.loc.clone());
+                *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_ty);
+            }
+        }
+    }
+
+    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: SourceLoc) {
+        // analyze static arguments
+        for param in params.list.iter_mut() {
+            let sema_ty = self.normalize_sema_type(None, param.clone(), loc.clone()).unwrap();
+            *param = sema_ty.clone();
+
+            self.validate_param_type(None, &sema_ty, loc.clone());
+        }
+
+        if let Some(variadic_params) = &mut params.variadic {
+            match *variadic_params.clone() {
+                TypedFuncTypeVariadicParams::UntypedCStyle => {}
+                TypedFuncTypeVariadicParams::Typed(sema_ty) => {
+                    let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
+                        Some(sema_ty) => sema_ty,
+                        None => return,
+                    };
+
+                    self.validate_param_type(None, &sema_ty, loc.clone());
+                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty));
+                }
+            }
         }
     }
 
