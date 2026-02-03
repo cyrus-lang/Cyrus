@@ -34,7 +34,7 @@ pub struct BuildManifest {
     /// Maps source file paths to their stored hash file paths.
     sources: HashMap<PathBuf, PathBuf>,
     /// Maps object file names to their object file paths.
-    pub objects: HashMap<PathBuf, PathBuf>,
+    objects: HashMap<PathBuf, PathBuf>,
     /// Used to disable cache, if is initial build.
     pub initial_build: bool,
 }
