@@ -22,12 +22,12 @@ use crate::{
     },
     llvm::constness::is_basic_value_constant,
 };
+use cyrusc_abi::{linkage::Linkage, modifiers::GlobalVarModifiers};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    module::Linkage,
     types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
         AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue,
@@ -1513,15 +1513,21 @@ impl<'ll> IRBuilderCtx<'ll> {
                 InternalValue::new(CIRTy::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
             }
             CIRValueKind::GlobalVar(global_var) => {
-                let global_value = self.emit_global_var(global_var);
+                let mut global_var = *global_var.clone();
+
+                global_var.modifiers = GlobalVarModifiers {
+                    linkage: Some(Linkage::Extern(None)),
+                    ..global_var.modifiers
+                };
+
+                let global_value = self.emit_global_var(&global_var);
+
                 InternalValue::new(
                     global_var.ty.clone(),
                     InternalValueKind::LValue(global_value.as_pointer_value()),
                 )
             }
-            CIRValueKind::LocalVariable => {
-                unreachable!("Couldn't fetch local variable from local ir value registry.")
-            }
+            CIRValueKind::LocalVariable => unreachable!(),
         }
     }
 
@@ -1562,7 +1568,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         global_str.set_initializer(&const_str);
         global_str.set_constant(true);
         global_str.set_unnamed_addr(true);
-        global_str.set_linkage(Linkage::Private);
+        global_str.set_linkage(inkwell::module::Linkage::Private);
         global_str.set_alignment(1);
         drop(llvmmodule);
 
