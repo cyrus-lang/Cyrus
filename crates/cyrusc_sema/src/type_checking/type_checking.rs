@@ -716,7 +716,7 @@ impl<'a> AnalysisContext<'a> {
             field_access.loc.clone(),
         ) {
             Some(member_access_kind) => match member_access_kind {
-                MemberAccessKind::UnnamedStruct(unnamed_struct_type) => (
+                FieldAccessKind::UnnamedStruct(unnamed_struct_type) => (
                     self.analyze_unnamed_struct_field_access(
                         scope_id_opt,
                         &unnamed_struct_type,
@@ -725,7 +725,7 @@ impl<'a> AnalysisContext<'a> {
                     ),
                     false,
                 ),
-                MemberAccessKind::NamedStruct(resolved_struct) => {
+                FieldAccessKind::NamedStruct(resolved_struct) => {
                     let mut struct_sig = resolved_struct.struct_sig.clone();
                     if let Some(generic_type) = generic_type_opt {
                         struct_sig = substitute_struct_sig(
@@ -747,7 +747,7 @@ impl<'a> AnalysisContext<'a> {
                         struct_sig.generic_params.is_some(),
                     )
                 }
-                MemberAccessKind::Union(resolved_union) => {
+                FieldAccessKind::Union(resolved_union) => {
                     let mut union_sig = resolved_union.union_sig.clone();
                     if let Some(generic_type) = generic_type_opt {
                         union_sig = substitute_union_sig(
@@ -3301,7 +3301,7 @@ impl<'a> AnalysisContext<'a> {
         operand: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
         loc: SourceLoc,
-    ) -> Option<MemberAccessKind> {
+    ) -> Option<FieldAccessKind> {
         let operand_type = match &operand.kind {
             TypedExprKind::Symbol(instance_symbol_id, ..) => {
                 let resolved_var_type = match self.analyze_var_or_global_var_type(
@@ -3328,13 +3328,13 @@ impl<'a> AnalysisContext<'a> {
                 if sema_ty.is_void() {
                     return None;
                 } else if let Some(unnamed_struct_type) = sema_ty.as_unnamed_struct() {
-                    return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type)));
+                    return Some(FieldAccessKind::UnnamedStruct(Box::new(unnamed_struct_type)));
                 }
 
                 self.extract_object_symbol_id(scope_id_opt, *sema_ty.clone(), loc.clone())
             }
             SemanticType::UnnamedStruct(unnamed_struct_type) => {
-                return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));
+                return Some(FieldAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));
             }
             SemanticType::GenericType(generic_type) => Some(generic_type.base),
             _ => None,
@@ -3354,10 +3354,10 @@ impl<'a> AnalysisContext<'a> {
         };
 
         sym.as_struct()
-            .map(|resolved_struct| MemberAccessKind::NamedStruct(Box::new(resolved_struct.clone())))
+            .map(|resolved_struct| FieldAccessKind::NamedStruct(Box::new(resolved_struct.clone())))
             .or_else(|| {
                 sym.as_union()
-                    .map(|resolved_union| MemberAccessKind::Union(Box::new(resolved_union.clone())))
+                    .map(|resolved_union| FieldAccessKind::Union(Box::new(resolved_union.clone())))
             })
     }
 
@@ -3947,7 +3947,7 @@ impl<'a> AnalysisContext<'a> {
 }
 
 #[derive(Debug, Clone)]
-enum MemberAccessKind {
+enum FieldAccessKind {
     UnnamedStruct(Box<TypedUnnamedStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
