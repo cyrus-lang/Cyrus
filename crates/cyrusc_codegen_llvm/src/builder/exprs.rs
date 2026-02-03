@@ -22,7 +22,10 @@ use crate::{
     },
     llvm::constness::is_basic_value_constant,
 };
-use cyrusc_abi::{linkage::Linkage, modifiers::GlobalVarModifiers};
+use cyrusc_abi::{
+    linkage::Linkage,
+    modifiers::{FuncModifiers, GlobalVarModifiers},
+};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};
 use cyrusc_tast::types::PlainType;
@@ -1508,7 +1511,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         match &value_ref.kind {
             CIRValueKind::Func(func_decl) => {
-                let fn_value = self.emit_func_decl(func_decl);
+                let mut func_decl = *func_decl.clone();
+
+                func_decl.modifiers = FuncModifiers {
+                    linkage: Some(Linkage::Extern(None)),
+                    ..func_decl.modifiers
+                };
+
+                let fn_value = self.emit_func_decl(&func_decl);
                 let cir_fn_ty = cir_func_decl_as_func_ty(&func_decl);
                 InternalValue::new(CIRTy::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
             }
