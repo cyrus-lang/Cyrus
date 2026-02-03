@@ -252,65 +252,6 @@ impl<'a> AnalysisContext<'a> {
         normalized_type
     }
 
-    fn analyze_dynamic_expr(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        dynamic_expr: &mut TypedDynamicExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None);
-
-        if dynamic_expr.operand.kind.is_dynamic_expr() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InvalidMultipleDynamicType),
-                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
-                hint: None,
-            });
-            return None;
-        }
-
-        let Some(mut interface_type) = expected_type.and_then(|sema_ty| sema_ty.as_interface_type().cloned()) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::CannotInferDynamicInterfaceType),
-                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
-                hint: None,
-            });
-            return None;
-        };
-
-        let interface_name = (self.symbol_formatter)(scope_id_opt)(interface_type.symbol_id);
-
-        interface_type.methods.iter_mut().for_each(|func_sig| {
-            set_self_modifier_type_in_func_sig(func_sig, &dynamic_expr.operand.sema_ty.as_ref().unwrap());
-            set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
-        });
-
-        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
-
-        {
-            let mut vtable_registry = self.vtable_registry.lock().unwrap();
-            let vtable_id = vtable_registry.register(
-                operand_ty,
-                interface_type.symbol_id,
-                interface_name,
-                interface_type.methods,
-            );
-
-            dynamic_expr.vtable_id = Some(vtable_id);
-            dynamic_expr.object_name = Some((self.symbol_formatter)(scope_id_opt)(
-                dynamic_expr.operand.sema_ty.as_ref().unwrap().symbol_id().unwrap(),
-            ));
-
-            Some(SemanticType::DynamicType(DynamicType {
-                interface_symbol_id: interface_type.symbol_id,
-                vtable_id,
-                loc: dynamic_expr.loc.clone(),
-            }))
-        }
-    }
-
     /// Analyzes and infers the semantic type for a literal expression.
     ///
     /// This function processes literal expressions (integers, floats, booleans, characters,
@@ -1566,6 +1507,96 @@ impl<'a> AnalysisContext<'a> {
 
         Some(cast.target_type.clone())
     }
+
+    /// Analyzes dynamic expression operations (dynamic dispatch/interface implementation).
+    ///
+    /// Processes dynamic expressions that enable runtime polymorphism through interface types,
+    /// validating type compatibility, constructing virtual method tables (vtables), and
+    /// establishing dynamic dispatch capabilities. This function transforms static type
+    /// information into runtime-usable dynamic type information.
+    ///
+    /// # Key Responsibilities
+    /// 1. Operand Analysis: Ensures the operand expression is semantically valid.
+    /// 2. Nesting Prevention: Guards against invalid nested dynamic expressions.
+    /// 3. Interface Type Validation: Confirms the expected type is a valid interface.
+    /// 4. Method Adaptation: Adjusts interface method signatures for the concrete type.
+    /// 5. VTable Construction: Creates and registers runtime dispatch information.
+    ///
+    /// # Process
+    /// 1. Operand Validation: Analyzes the base expression for type correctness.
+    /// 2. Dynamic Nesting Check: Prevents invalid dynamic(dynamic(...)) patterns.
+    /// 3. Interface Extraction: Extracts interface type from expected type context.
+    /// 4. Method Signature Adaptation: Updates self parameters in interface methods.
+    /// 5. VTable Registration: Creates runtime dispatch table for concrete-to-interface mapping.
+    /// 6. Dynamic Type Creation: Produces the resulting dynamic semantic type.
+    ///
+    /// # Parameters
+    /// - scope_id_opt: Scope for type analysis and symbol resolution.
+    /// - dynamic_expr: The dynamic expression to analyze (modified in-place).
+    /// - expected_type: Optional expected semantic type (must be an interface type).
+    ///
+    /// # Returns
+    /// - Some(SemanticType): The resulting dynamic type encapsulating interface and vtable information.
+    /// - None: If analysis fails due to type errors or invalid expressions.
+    ///
+    fn analyze_dynamic_expr(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        dynamic_expr: &mut TypedDynamicExpr,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None);
+
+        if dynamic_expr.operand.kind.is_dynamic_expr() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InvalidMultipleDynamicType),
+                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
+
+        let Some(mut interface_type) = expected_type.and_then(|sema_ty| sema_ty.as_interface_type().cloned()) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CannotInferDynamicInterfaceType),
+                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
+                hint: None,
+            });
+            return None;
+        };
+
+        let interface_name = (self.symbol_formatter)(scope_id_opt)(interface_type.symbol_id);
+
+        interface_type.methods.iter_mut().for_each(|func_sig| {
+            set_self_modifier_type_in_func_sig(func_sig, &dynamic_expr.operand.sema_ty.as_ref().unwrap());
+            set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
+        });
+
+        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
+
+        {
+            let mut vtable_registry = self.vtable_registry.lock().unwrap();
+            let vtable_id = vtable_registry.register(
+                operand_ty,
+                interface_type.symbol_id,
+                interface_name,
+                interface_type.methods,
+            );
+
+            dynamic_expr.vtable_id = Some(vtable_id);
+            dynamic_expr.object_name = Some((self.symbol_formatter)(scope_id_opt)(
+                dynamic_expr.operand.sema_ty.as_ref().unwrap().symbol_id().unwrap(),
+            ));
+
+            Some(SemanticType::DynamicType(DynamicType {
+                interface_symbol_id: interface_type.symbol_id,
+                vtable_id,
+                loc: dynamic_expr.loc.clone(),
+            }))
+        }
+    }
 }
 
 // ============================================================
@@ -2043,47 +2074,7 @@ impl<'a> AnalysisContext<'a> {
 
         // handle variadic arguments
         if is_variadic {
-            let static_params_len = func_sig.params.list.len();
-            let variadic_args = &mut args[static_params_len..];
-
-            if let Some(var_param) = &func_sig.params.variadic {
-                match var_param.clone() {
-                    TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
-                        for (idx, arg) in variadic_args.iter_mut().enumerate() {
-                            if let Some(arg_type) = self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone()) {
-                                if !self.check_type_mismatch(
-                                    scope_id_opt,
-                                    arg_type.clone(),
-                                    variadic_param_type.clone(),
-                                    arg.loc.clone(),
-                                ) {
-                                    self.reporter.report(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                            param_type: format_sema_ty(
-                                                variadic_param_type.clone(),
-                                                &(self.symbol_formatter)(scope_id_opt),
-                                            ),
-                                            argument_type: format_sema_ty(
-                                                arg_type,
-                                                &(self.symbol_formatter)(scope_id_opt),
-                                            ),
-                                            argument_idx: (idx + static_params_len) as u32,
-                                        }),
-                                        location: Some(DiagLoc::new(loc.clone())),
-                                        hint: None,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    TypedFuncVariadicParams::UntypedCStyle => {
-                        for arg in variadic_args.iter_mut() {
-                            self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone());
-                        }
-                    }
-                }
-            }
+            self.check_func_variadic_arguments(scope_id_opt, &func_sig, args, loc.clone());
         }
 
         // analyze static arguments
@@ -2146,6 +2137,81 @@ impl<'a> AnalysisContext<'a> {
         );
 
         self.normalize_sema_type(scope_id_opt, func_sig.return_type.clone(), loc)
+    }
+
+    /// Validates variadic arguments in function calls, ensuring type compatibility and proper analysis.
+    ///
+    /// Performs type checking and semantic analysis for variadic arguments in function calls,
+    /// handling both typed variadic parameters (with explicit type requirements) and untyped
+    /// C-style variadic parameters. This function processes arguments beyond the static
+    /// parameter list according to the function's variadic specification.
+    ///
+    /// # Variadic Handling Modes
+    /// 1. Typed Variadic: Each variadic argument must match the specified variadic parameter type.
+    /// 2. Untyped C-style: Arguments are analyzed without type constraints (compatibility checks deferred).
+    ///
+    /// # Processing Steps
+    /// 1. Argument Extraction: Identifies the variadic portion of arguments (after static parameters).
+    /// 2. Mode Dispatch: Routes to appropriate handler based on variadic parameter type.
+    /// 3. Type Validation: For typed variadic, checks each argument against required type.
+    /// 4. Semantic Analysis: Ensures all arguments are properly analyzed in current scope.
+    ///
+    /// # Parameters
+    /// - scope_id_opt: Scope for type analysis and symbol resolution.
+    /// - func_sig: The function signature containing variadic parameter specification.
+    /// - args: The complete argument list (modified with updated semantic information).
+    /// - loc: Source location for error reporting and diagnostics.
+    ///
+    /// # Behavior
+    /// - Typed Variadic: Reports type mismatch errors for non-conforming arguments.
+    /// - Untyped C-style: Performs semantic analysis without type enforcement.
+    /// - No Variadic: No-op if function has no variadic parameters.
+    ///
+    fn check_func_variadic_arguments(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_sig: &FuncSig,
+        args: &mut Vec<TypedExprStmt>,
+        loc: SourceLoc,
+    ) {
+        let static_params_len = func_sig.params.list.len();
+        let variadic_args = &mut args[static_params_len..];
+
+        if let Some(var_param) = &func_sig.params.variadic {
+            match var_param.clone() {
+                TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
+                    for (idx, arg) in variadic_args.iter_mut().enumerate() {
+                        if let Some(arg_type) = self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone()) {
+                            if !self.check_type_mismatch(
+                                scope_id_opt,
+                                arg_type.clone(),
+                                variadic_param_type.clone(),
+                                arg.loc.clone(),
+                            ) {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
+                                        param_type: format_sema_ty(
+                                            variadic_param_type.clone(),
+                                            &(self.symbol_formatter)(scope_id_opt),
+                                        ),
+                                        argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                                        argument_idx: (idx + static_params_len) as u32,
+                                    }),
+                                    location: Some(DiagLoc::new(loc.clone())),
+                                    hint: None,
+                                });
+                            }
+                        }
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {
+                    for arg in variadic_args.iter_mut() {
+                        self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone());
+                    }
+                }
+            }
+        }
     }
 
     /// Validates calls to function type values (function pointers, lambdas).
