@@ -94,7 +94,7 @@ pub struct CIRDynamicExpr {
     pub data_ptr: Box<CIRExpr>,
     pub method_decls: Vec<CIRFuncDeclStmt>,
     pub global_var_id: IRValueID,
-    pub vtable_abi_name: String
+    pub vtable_abi_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +127,7 @@ pub struct CIRInterfaceMethodCall {
     pub ret_ty: CIRTy,
     pub func_type: CIRFuncTy,
     pub method_idx: usize,
-    pub methods_len: usize
+    pub methods_len: usize,
 }
 
 #[derive(Debug, Clone)]

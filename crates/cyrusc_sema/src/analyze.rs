@@ -1277,7 +1277,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_struct_duplicate_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_struct: &mut TypedStructStmt) {
+    fn analyze_struct_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_struct: &mut TypedStructStmt) {
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &mut typed_struct.fields {
@@ -1299,6 +1299,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
+            // FIXME: We need to move this logic to inside of validate_field_type.
             if field
                 .ty
                 .as_struct_symbol_id()
@@ -1354,10 +1355,10 @@ impl<'a> AnalysisContext<'a> {
 
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
 
-        self.analyze_struct_duplicate_fields(scope_id_opt, typed_struct);
+        self.analyze_struct_fields(scope_id_opt, typed_struct);
 
         if typed_struct.generic_params.is_none() {
-            self.analyze_methods(self.module_id, &typed_struct.methods);
+            self.analyze_non_generic_methods(self.module_id, &typed_struct.methods);
         }
 
         self.analyze_method_generic_params(&typed_struct.name, &typed_struct.methods, &typed_struct.generic_params);
@@ -1373,33 +1374,7 @@ impl<'a> AnalysisContext<'a> {
         update_struct_symbol_entry(self, &typed_struct);
     }
 
-    fn analyze_union(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt, is_local: bool) {
-        fn update_union_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_union: &TypedUnionStmt) {
-            if let Some(scope_id) = typed_union.is_local {
-                update_local_symbol!(this, scope_id, typed_union.symbol_id,
-                    LocalSymbolKind::Union(resolved_union) => resolved_union, {
-                        resolved_union.union_sig.fields = typed_union.fields.clone();
-                    }
-                )
-            } else {
-                update_global_symbol!(this, typed_union.module_id, typed_union.symbol_id,
-                    SymbolEntryKind::Union(resolved_union) => resolved_union, {
-                        resolved_union.union_sig.fields = typed_union.fields.clone();
-                    }
-                );
-            }
-        }
-
-        if let Some(generic_params) = &typed_union.generic_params {
-            self.analyze_generics_params(generic_params);
-        }
-
-        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
-            typed_union.symbol_id,
-        )));
-
-        self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
-
+    fn analyze_union_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt) {
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &mut typed_union.fields {
@@ -1443,9 +1418,40 @@ impl<'a> AnalysisContext<'a> {
 
             field_names.push(field.name.clone());
         }
+    }
+
+    fn analyze_union(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt, is_local: bool) {
+        #[inline]
+        fn update_union_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_union: &TypedUnionStmt) {
+            if let Some(scope_id) = typed_union.is_local {
+                update_local_symbol!(this, scope_id, typed_union.symbol_id,
+                    LocalSymbolKind::Union(resolved_union) => resolved_union, {
+                        resolved_union.union_sig.fields = typed_union.fields.clone();
+                    }
+                )
+            } else {
+                update_global_symbol!(this, typed_union.module_id, typed_union.symbol_id,
+                    SymbolEntryKind::Union(resolved_union) => resolved_union, {
+                        resolved_union.union_sig.fields = typed_union.fields.clone();
+                    }
+                );
+            }
+        }
+
+        if let Some(generic_params) = &typed_union.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
+
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+            typed_union.symbol_id,
+        )));
+
+        self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
+
+        self.analyze_union_fields(scope_id_opt, typed_union);
 
         if typed_union.generic_params.is_none() {
-            self.analyze_methods(self.module_id, &typed_union.methods);
+            self.analyze_non_generic_methods(self.module_id, &typed_union.methods);
         }
 
         self.analyze_method_generic_params(&typed_union.name, &typed_union.methods, &typed_union.generic_params);
@@ -1460,33 +1466,7 @@ impl<'a> AnalysisContext<'a> {
         update_union_symbol_entry(self, &typed_union);
     }
 
-    fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt, is_local: bool) {
-        fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnumStmt) {
-            if let Some(scope_id) = typed_enum.is_local {
-                update_local_symbol!(this, scope_id, typed_enum.symbol_id,
-                    LocalSymbolKind::Enum(resolved_enum) => resolved_enum, {
-                        resolved_enum.enum_sig.variants = typed_enum.variants.clone();
-                    }
-                )
-            } else {
-                update_global_symbol!(this, typed_enum.module_id, typed_enum.symbol_id,
-                    SymbolEntryKind::Enum(resolved_enum) => resolved_enum, {
-                        resolved_enum.enum_sig.variants = typed_enum.variants.clone();
-                    }
-                );
-            }
-        }
-
-        if let Some(generic_params) = &typed_enum.generic_params {
-            self.analyze_generics_params(generic_params);
-        }
-
-        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
-            typed_enum.symbol_id,
-        )));
-
-        self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
-
+    fn analyze_enum_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt) {
         let mut variant_names: Vec<String> = Vec::new();
 
         for variant in &mut typed_enum.variants {
@@ -1523,7 +1503,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         }
 
-                        self.validate_field_type(scope_id_opt,&field.ty, field.loc.clone());
+                        self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
                     }
                     ident
                 }
@@ -1547,9 +1527,40 @@ impl<'a> AnalysisContext<'a> {
 
             variant_names.push(variant_identifier.value.clone());
         }
+    }
+
+    fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt, is_local: bool) {
+        #[inline]
+        fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnumStmt) {
+            if let Some(scope_id) = typed_enum.is_local {
+                update_local_symbol!(this, scope_id, typed_enum.symbol_id,
+                    LocalSymbolKind::Enum(resolved_enum) => resolved_enum, {
+                        resolved_enum.enum_sig.variants = typed_enum.variants.clone();
+                    }
+                )
+            } else {
+                update_global_symbol!(this, typed_enum.module_id, typed_enum.symbol_id,
+                    SymbolEntryKind::Enum(resolved_enum) => resolved_enum, {
+                        resolved_enum.enum_sig.variants = typed_enum.variants.clone();
+                    }
+                );
+            }
+        }
+
+        if let Some(generic_params) = &typed_enum.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
+
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+            typed_enum.symbol_id,
+        )));
+
+        self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
+
+        self.analyze_enum_fields(scope_id_opt, typed_enum);
 
         if typed_enum.generic_params.is_none() {
-            self.analyze_methods(self.module_id, &typed_enum.methods);
+            self.analyze_non_generic_methods(self.module_id, &typed_enum.methods);
         }
 
         self.analyze_method_generic_params(&typed_enum.name, &typed_enum.methods, &typed_enum.generic_params);
@@ -1627,7 +1638,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+    fn analyze_non_generic_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
         let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
 
         // forward method declaration resolving
