@@ -22,7 +22,7 @@ use crate::{
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
-use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, read_file};
+use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
@@ -88,14 +88,18 @@ pub fn create_compiler_context(
     CodeGenContext::new(opts, build_manifest, entry_module_file_path, linker_output_kind, linker)
 }
 
-pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> Box<CodeGenSemanticBundle> {
+pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
     // disable modulefs cache if compiling a single file
-    if file_path.is_some() {
+    if let Some(file_path) = &file_path_opt {
         opts.disable_modulefs_cache = true;
+
+        // use the same directory as source directory
+        let dir_path = get_directory_of_file(file_path).unwrap();
+        opts.source_dirs.push(dir_path);
     }
 
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
-    let file_path = file_path.map(|path| Path::new(&path).to_path_buf());
+    let file_path = file_path_opt.map(|path| Path::new(&path).to_path_buf());
 
     // resolve entry module file path & build directory path
     let entry_file = get_entry_module_file_path(opts, &base_path, &file_path);
