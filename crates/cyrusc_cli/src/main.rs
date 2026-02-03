@@ -22,9 +22,12 @@ use std::{
 
 use clap::{Parser, ValueEnum};
 use commands::*;
-use cyrusc_compiler::options::{
-    BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions,
-    ModuleKind, RelocModeOptions,
+use cyrusc_compiler::{
+    compiler_version_compatibility::validate_compiler_version,
+    options::{
+        BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer,
+        CodeModelOptions, ModuleKind, RelocModeOptions,
+    },
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
@@ -526,7 +529,7 @@ pub fn merge_scaffold_config_with_codegen_options(
     let scaffold_codegen_options = CodeGenOptions::from_scaffold(scaffold_config);
     *opts = opts.merge(&scaffold_codegen_options);
 
-    CodeGenOptions::validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version);
+    validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version);
 
     if opts.validate_paths().is_err() {
         exit(1);
