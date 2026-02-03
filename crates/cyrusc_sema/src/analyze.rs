@@ -20,7 +20,7 @@ use crate::{
     normalizer::TypeResolutionCache,
     type_checking::context::TypeCheckContext,
 };
-use cyrusc_ast::{AssignKind, SelfModifierKind};
+use cyrusc_ast::AssignKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
 use cyrusc_resolver::{
     Resolver,
@@ -192,8 +192,8 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_stmt(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStmt) -> FlowState {
         match typed_stmt {
-            TypedStmt::ExportTuple(export_tuple_values) => {
-                self.analyze_export_tuple_values(Some(scope_id), export_tuple_values);
+            TypedStmt::Expr(typed_expr) => {
+                self.analyze_expr(Some(scope_id), typed_expr, typed_expr.sema_ty.clone());
                 FlowState::Reachable
             }
             TypedStmt::Variable(typed_variable) => {
@@ -201,34 +201,12 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
-            TypedStmt::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
-            TypedStmt::Return(typed_return) => self.analyze_return(scope_id, typed_return),
-            TypedStmt::Break(typed_break) => {
-                self.analyze_break(typed_break);
-                FlowState::Unreachable
-            }
-            TypedStmt::Continue(typed_continue) => {
-                self.analyze_continue(typed_continue);
-                FlowState::Unreachable
-            }
-            TypedStmt::Label(..) => FlowState::Reachable,
-            TypedStmt::Goto(typed_goto) => {
-                self.analyze_goto(scope_id, typed_goto);
-                FlowState::Reachable
-            }
-            TypedStmt::For(typed_for) => self.analyze_for_loop(Some(scope_id), typed_for),
-            TypedStmt::While(typed_while) => self.analyze_while_loop(Some(scope_id), typed_while),
-            TypedStmt::Switch(typed_switch) => self.analyze_switch(Some(scope_id), typed_switch),
             TypedStmt::Struct(typed_struct) => {
                 self.analyze_struct(Some(scope_id), typed_struct, true);
                 FlowState::Reachable
             }
             TypedStmt::Enum(typed_enum) => {
                 self.analyze_enum(Some(scope_id), typed_enum, true);
-                FlowState::Reachable
-            }
-            TypedStmt::Expr(typed_expr) => {
-                self.analyze_expr(Some(scope_id), typed_expr, typed_expr.sema_ty.clone());
                 FlowState::Reachable
             }
             TypedStmt::Interface(typed_interface) => {
@@ -248,6 +226,29 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_union(Some(scope_id), typed_union, true);
                 FlowState::Reachable
             }
+            TypedStmt::ExportTuple(typed_export_tuple_values) => {
+                self.analyze_export_tuple_values(Some(scope_id), typed_export_tuple_values);
+                FlowState::Reachable
+            }
+            TypedStmt::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
+            TypedStmt::Return(typed_return) => self.analyze_return(scope_id, typed_return),
+            TypedStmt::Break(typed_break) => {
+                self.analyze_break(typed_break);
+                FlowState::Unreachable
+            }
+            TypedStmt::Continue(typed_continue) => {
+                self.analyze_continue(typed_continue);
+                FlowState::Unreachable
+            }
+            TypedStmt::Goto(typed_goto) => {
+                self.analyze_goto(scope_id, typed_goto);
+                FlowState::Reachable
+            }
+            TypedStmt::For(typed_for) => self.analyze_for_loop(Some(scope_id), typed_for),
+            TypedStmt::While(typed_while) => self.analyze_while_loop(Some(scope_id), typed_while),
+            TypedStmt::Switch(typed_switch) => self.analyze_switch(Some(scope_id), typed_switch),
+            // Skipped
+            TypedStmt::Label(..) => FlowState::Reachable,
             // Invalid statements
             TypedStmt::Defer(..) | TypedStmt::FuncDef(_) | TypedStmt::FuncDecl(_) | TypedStmt::GlobalVar(_) => {
                 unreachable!()
@@ -1276,38 +1277,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_struct(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_struct: &mut TypedStructStmt,
-        is_local: bool,
-    ) {
-        fn update_struct_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_struct: &TypedStructStmt) {
-            if let Some(scope_id) = typed_struct.is_local {
-                update_local_symbol!(this, scope_id, typed_struct.symbol_id,
-                    LocalSymbolKind::Struct(resolved_struct) => resolved_struct, {
-                        resolved_struct.struct_sig.fields = typed_struct.fields.clone();
-                    }
-                )
-            } else {
-                update_global_symbol!(this, typed_struct.module_id, typed_struct.symbol_id,
-                    SymbolEntryKind::Struct(resolved_struct) => resolved_struct, {
-                        resolved_struct.struct_sig.fields = typed_struct.fields.clone();
-                    }
-                );
-            }
-        }
-
-        if let Some(generic_params) = &typed_struct.generic_params {
-            self.analyze_generics_params(generic_params);
-        }
-
-        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
-            typed_struct.symbol_id,
-        )));
-
-        self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
-
+    fn analyze_struct_duplicate_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_struct: &mut TypedStructStmt) {
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &mut typed_struct.fields {
@@ -1346,10 +1316,45 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            self.validate_field_type(&field.ty, field.loc.clone());
-
+            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
             field_names.push(field.name.clone());
         }
+    }
+
+    pub(crate) fn analyze_struct(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_struct: &mut TypedStructStmt,
+        is_local: bool,
+    ) {
+        #[inline]
+        fn update_struct_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_struct: &TypedStructStmt) {
+            if let Some(scope_id) = typed_struct.is_local {
+                update_local_symbol!(this, scope_id, typed_struct.symbol_id,
+                    LocalSymbolKind::Struct(resolved_struct) => resolved_struct, {
+                        resolved_struct.struct_sig.fields = typed_struct.fields.clone();
+                    }
+                )
+            } else {
+                update_global_symbol!(this, typed_struct.module_id, typed_struct.symbol_id,
+                    SymbolEntryKind::Struct(resolved_struct) => resolved_struct, {
+                        resolved_struct.struct_sig.fields = typed_struct.fields.clone();
+                    }
+                );
+            }
+        }
+
+        if let Some(generic_params) = &typed_struct.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
+
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
+            typed_struct.symbol_id,
+        )));
+
+        self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
+
+        self.analyze_struct_duplicate_fields(scope_id_opt, typed_struct);
 
         if typed_struct.generic_params.is_none() {
             self.analyze_methods(self.module_id, &typed_struct.methods);
@@ -1368,12 +1373,7 @@ impl<'a> AnalysisContext<'a> {
         update_struct_symbol_entry(self, &typed_struct);
     }
 
-    pub(crate) fn analyze_union(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_union: &mut TypedUnionStmt,
-        is_local: bool,
-    ) {
+    fn analyze_union(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt, is_local: bool) {
         fn update_union_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_union: &TypedUnionStmt) {
             if let Some(scope_id) = typed_union.is_local {
                 update_local_symbol!(this, scope_id, typed_union.symbol_id,
@@ -1439,7 +1439,7 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            self.validate_field_type(&field.ty, field.loc.clone());
+            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
 
             field_names.push(field.name.clone());
         }
@@ -1460,12 +1460,7 @@ impl<'a> AnalysisContext<'a> {
         update_union_symbol_entry(self, &typed_union);
     }
 
-    pub(crate) fn analyze_enum(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_enum: &mut TypedEnumStmt,
-        is_local: bool,
-    ) {
+    fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt, is_local: bool) {
         fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnumStmt) {
             if let Some(scope_id) = typed_enum.is_local {
                 update_local_symbol!(this, scope_id, typed_enum.symbol_id,
@@ -1528,7 +1523,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         }
 
-                        self.validate_field_type(&field.ty, field.loc.clone());
+                        self.validate_field_type(scope_id_opt,&field.ty, field.loc.clone());
                     }
                     ident
                 }
@@ -1569,7 +1564,7 @@ impl<'a> AnalysisContext<'a> {
         update_enum_symbol_entry(self, &typed_enum);
     }
 
-    pub(crate) fn check_duplicate_param_names(
+    fn check_duplicate_param_names(
         &mut self,
         params: &[TypedFuncParamKind],
         variadic: Option<&TypedFuncVariadicParams>,
@@ -1778,85 +1773,6 @@ impl<'a> AnalysisContext<'a> {
                 resolved_func.func_sig.return_type = typed_func_def.return_type.clone();
             }
         );
-    }
-
-    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: SourceLoc) {
-        // analyze static arguments
-        for param in params.list.iter_mut() {
-            match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    let normalized_type = self
-                        .normalize_sema_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
-                        .unwrap();
-
-                    typed_func_param.ty = normalized_type.clone();
-
-                    self.validate_param_type(&typed_func_param.ty, typed_func_param.loc.clone());
-                }
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    let normalized_type = self
-                        .normalize_sema_type(
-                            None,
-                            SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
-                            typed_self_modifier.loc.clone(),
-                        )
-                        .unwrap();
-
-                    match typed_self_modifier.kind {
-                        SelfModifierKind::Copied => {
-                            typed_self_modifier.ty = Some(normalized_type);
-                        }
-                        SelfModifierKind::Referenced => {
-                            typed_self_modifier.ty = Some(SemanticType::Pointer(Box::new(normalized_type)));
-                        }
-                    }
-
-                    self.validate_param_type(
-                        &typed_self_modifier.ty.as_ref().unwrap(),
-                        typed_self_modifier.loc.clone(),
-                    );
-                }
-            }
-        }
-
-        if let Some(variadic_params) = &mut params.variadic {
-            if let TypedFuncVariadicParams::Typed(ident, sema_ty) = variadic_params {
-                let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
-                    Some(sema_ty) => sema_ty,
-                    None => return,
-                };
-
-                self.validate_param_type(&sema_ty, ident.loc.clone());
-
-                *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_ty);
-            }
-        }
-    }
-
-    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: SourceLoc) {
-        // analyze static arguments
-        for param in params.list.iter_mut() {
-            let sema_ty = self.normalize_sema_type(None, param.clone(), loc.clone()).unwrap();
-            *param = sema_ty.clone();
-
-            self.validate_param_type(&sema_ty, loc.clone());
-        }
-
-        if let Some(variadic_params) = &mut params.variadic {
-            match *variadic_params.clone() {
-                TypedFuncTypeVariadicParams::UntypedCStyle => {}
-                TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
-                        Some(sema_ty) => sema_ty,
-                        None => return,
-                    };
-
-                    self.validate_param_type(&sema_ty, loc.clone());
-
-                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty));
-                }
-            }
-        }
     }
 
     fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDeclStmt) {
@@ -2080,7 +1996,12 @@ impl<'a> AnalysisContext<'a> {
         self.check_sema_ty(scope_id_opt, sema_ty.clone(), loc);
     }
 
-    pub(crate) fn validate_field_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {
+    pub(crate) fn validate_field_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sema_ty: &SemanticType,
+        loc: SourceLoc,
+    ) {
         let sema_ty = sema_ty.const_inner();
 
         if sema_ty.is_void() {
@@ -2100,9 +2021,16 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        self.check_sema_ty(scope_id_opt, sema_ty.clone(), loc);
     }
 
-    pub(crate) fn validate_param_type(&mut self, sema_ty: &SemanticType, loc: SourceLoc) {
+    pub(crate) fn validate_param_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sema_ty: &SemanticType,
+        loc: SourceLoc,
+    ) {
         let sema_ty = sema_ty.const_inner();
 
         if sema_ty.is_void() {
@@ -2122,5 +2050,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        self.check_sema_ty(scope_id_opt, sema_ty.clone(), loc);
     }
 }

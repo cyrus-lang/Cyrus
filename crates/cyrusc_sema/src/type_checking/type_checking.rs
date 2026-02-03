@@ -1848,7 +1848,6 @@ impl<'a> AnalysisContext<'a> {
             Ok(opt) => opt?,
             Err(diag) => {
                 self.reporter.report(diag);
-
                 return None;
             }
         };
@@ -1941,7 +1940,6 @@ impl<'a> AnalysisContext<'a> {
                     (self.symbol_formatter)(scope_id_opt),
                 ) {
                     self.reporter.report(diag);
-
                     return None;
                 }
             }
@@ -2128,13 +2126,6 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
         }
-
-        // check for duplicate parameter names
-        self.check_duplicate_param_names(
-            &func_sig.params.list,
-            func_sig.params.variadic.as_ref(),
-            DiagLoc::new(loc.clone()),
-        );
 
         self.normalize_sema_type(scope_id_opt, func_sig.return_type.clone(), loc)
     }
@@ -3294,6 +3285,43 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    /// Resolves the kind of member access operation based on operand type analysis.
+    ///
+    /// Determines whether a member access expression refers to a named struct, unnamed struct,
+    /// or union member by analyzing the operand's type and resolving the underlying symbol.
+    /// This function handles multiple type categories and extracts the appropriate access
+    /// context for subsequent field/member resolution.
+    ///
+    /// # Resolution Pipeline
+    /// 1. Operand Type Analysis: Determines the semantic type of the access operand.
+    /// 2. Symbol ID Extraction: Extracts the underlying symbol ID from the operand type.
+    /// 3. Symbol Resolution: Resolves the symbol to its declaration (struct/union).
+    /// 4. Access Kind Categorization: Classifies the access as named/unnamed struct or union.
+    ///
+    /// # Supported Operand Types
+    /// - Symbol References: Variables, parameters, or global symbols.
+    /// - General Expressions: Arbitrary expressions yielding structured types.
+    /// - Pointers: Pointer types to structs/unions (excluding void pointers).
+    /// - Unnamed Structs: Direct unnamed struct types.
+    /// - Generic Types: Generic type instances with struct/union bases.
+    ///
+    /// # Return Variants
+    /// - FieldAccessKind::NamedStruct: Access to a named struct type's members.
+    /// - FieldAccessKind::UnnamedStruct: Access to an anonymous struct's members.
+    /// - FieldAccessKind::Union: Access to a union type's members.
+    /// - None: Invalid access (unsupported type, resolution failure, or error).
+    ///
+    /// # Parameters
+    /// - scope_id_opt: Scope for type analysis and symbol resolution.
+    /// - scope_opt: Local scope reference for variable resolution.
+    /// - operand: The member access operand expression (may be modified during analysis).
+    /// - expected_type: Optional expected type context for expression analysis.
+    /// - loc: Source location for error reporting and diagnostics.
+    ///
+    /// # Returns
+    /// - Some(FieldAccessKind): The resolved access category with type information.
+    /// - None: If resolution fails due to invalid types, unresolved symbols, or errors.
+    ///
     fn resolve_member_access_kind(
         &mut self,
         scope_id_opt: Option<ScopeID>,
