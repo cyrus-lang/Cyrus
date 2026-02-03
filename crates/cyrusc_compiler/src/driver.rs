@@ -307,7 +307,7 @@ pub fn get_executable_output_path(
     return file_path;
 }
 
-fn get_final_build_directory_path(build_dir: &BuildDir) -> PathBuf {
+pub fn get_final_build_directory_path(build_dir: &BuildDir) -> PathBuf {
     fn temp_build_dir() -> PathBuf {
         let temp_dir = env::temp_dir();
         ensure_output_dir(&temp_dir);

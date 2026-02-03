@@ -19,8 +19,8 @@ use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
     build_compilation_bundle, build_semantic_bundle, create_compiler_context, get_assembly_dir_output_path,
-    get_bitcode_dir_output_path, get_executable_output_path, get_llvm_dir_output_path, get_object_dir_output_path,
-    get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
+    get_bitcode_dir_output_path, get_executable_output_path, get_final_build_directory_path, get_llvm_dir_output_path,
+    get_object_dir_output_path, get_shared_lib_dir_output_path, get_static_lib_dir_output_path,
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
@@ -28,6 +28,7 @@ use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
@@ -121,6 +122,16 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
 
     if let Err(err) = ctx.trigger_linker(object_files, &output_path) {
         display_single_custom_diag!(err);
+    }
+}
+
+pub(crate) fn command_clean(opts: CodeGenOptions) {
+    let build_dir = get_final_build_directory_path(&opts.build_dir);
+
+    if build_dir.exists() {
+        if let Err(err) = fs::remove_dir_all(build_dir) {
+            display_single_custom_diag!(format!("Error while cleaning build directory: {}", err.to_string()));
+        }
     }
 }
 

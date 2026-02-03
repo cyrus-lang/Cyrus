@@ -400,7 +400,13 @@ enum Commands {
         linker_options: LinkerCompilerOptions,
     },
 
-    #[clap(about = "Generate an object file", display_order = 4)]
+    #[clap(about = "Clean build directory", display_order = 4)]
+    Clean {
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+
+    #[clap(about = "Generate an object file", display_order = 5)]
     Object {
         file_path: Option<String>,
         #[clap(long, short)]
@@ -409,7 +415,7 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Generate a dynamic library (shared object)", display_order = 5)]
+    #[clap(about = "Generate a dynamic library (shared object)", display_order = 6)]
     SharedLib {
         file_path: Option<String>,
         #[clap(long, short)]
@@ -417,7 +423,7 @@ enum Commands {
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
-    #[clap(about = "Generate a static library", display_order = 5)]
+    #[clap(about = "Generate a static library", display_order = 7)]
     StaticLib {
         file_path: Option<String>,
         #[clap(long, short)]
@@ -426,7 +432,7 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Emit LLVM IR as a .ll file per module.", display_order = 6)]
+    #[clap(about = "Emit LLVM IR as a .ll file per module.", display_order = 8)]
     EmitLLVM {
         file_path: Option<String>,
         #[clap(long, short)]
@@ -435,7 +441,7 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Emit asm as a .s file per module.", display_order = 7)]
+    #[clap(about = "Emit asm as a .s file per module.", display_order = 9)]
     EmitASM {
         file_path: Option<String>,
         #[clap(long, short)]
@@ -447,7 +453,7 @@ enum Commands {
     #[clap(
         name = "emit-bitcode",
         about = "Emit bitcode as a .bc file per module.",
-        display_order = 8
+        display_order = 10
     )]
     EmitBitcode {
         file_path: Option<String>,
@@ -457,20 +463,20 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Lexical analysis only.", display_order = 9)]
+    #[clap(about = "Lexical analysis only.", display_order = 11)]
     LexOnly { file_path: String },
 
-    #[clap(about = "Display program tree.", display_order = 10)]
+    #[clap(about = "Display program tree.", display_order = 12)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness semantically.", display_order = 11)]
+    #[clap(about = "Check program correctness semantically.", display_order = 13)]
     SemanticOnly {
         file_path: String,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Print version information", display_order = 12)]
+    #[clap(about = "Print version information", display_order = 14)]
     Version,
 }
 
@@ -610,6 +616,13 @@ pub fn main() {
             merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_build(codegen_options, file_path, output_path);
+        }
+        Commands::Clean { compiler_options } => {
+            let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
+            let mut codegen_options = compiler_options.as_codegen_options();
+            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+
+            command_clean(codegen_options);
         }
         Commands::Object {
             file_path,
