@@ -20,6 +20,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Global variable requires explicit type annotation.")]
+    GlobalVarRequiresTypeAnnotation,
+
     #[error("Cannot infer dynamic interface type.")]
     CannotInferDynamicInterfaceType,
 

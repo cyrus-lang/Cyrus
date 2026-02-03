@@ -17,6 +17,7 @@
 use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
+use cyrusc_abi::linkage::Linkage;
 use cyrusc_abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
@@ -101,7 +102,9 @@ impl<'resolver> CIRWalk<'resolver> {
                 }
                 TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
                 TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
-                TypedStmt::GlobalVar(global_var_stmt) => self.lower_global_var(scope_id_opt, global_var_stmt),
+                TypedStmt::GlobalVar(global_var_stmt) => {
+                    self.lower_global_var(scope_id_opt, &mut global_var_stmt.clone())
+                }
                 TypedStmt::BlockStmt(block_stmt) => CIRStmt::Block(self.lower_body(block_stmt)),
                 TypedStmt::If(if_stmt) => self.lower_if(scope_id_opt, if_stmt),
                 TypedStmt::Return(return_stmt) => self.lower_return(scope_id_opt, return_stmt),
@@ -642,7 +645,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::Return(CIRReturnStmt { arg })
     }
 
-    fn lower_global_var(&mut self, scope_id_opt: Option<ScopeID>, global_var: &TypedGlobalVarStmt) -> CIRStmt {
+    fn lower_global_var(&mut self, scope_id_opt: Option<ScopeID>, global_var: &mut TypedGlobalVarStmt) -> CIRStmt {
         let ty = global_var
             .ty
             .as_ref()
@@ -665,6 +668,12 @@ impl<'resolver> CIRWalk<'resolver> {
             &self.module_name_by_module_id(global_var.module_id).unwrap(),
             &global_var.name,
         );
+
+        if global_var.modifiers.vis.is_public() {
+            if global_var.modifiers.linkage.is_none() {
+                global_var.modifiers.linkage = Some(Linkage::Extern(None));
+            }
+        }
 
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
             irv_id: global_var.symbol_id,

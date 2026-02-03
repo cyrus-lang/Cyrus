@@ -1038,7 +1038,18 @@ impl<'a> AnalysisContext<'a> {
 
         typed_global_var.ty = match &typed_global_var.ty {
             Some(sema_ty) => self.normalize_and_check_sema_ty(None, sema_ty.clone(), typed_global_var.loc.clone()),
-            None => Some(typed_global_var.expr.clone().unwrap().sema_ty.unwrap()),
+            None => match typed_global_var.expr.as_ref().and_then(|expr| expr.sema_ty.clone()) {
+                Some(sema_ty) => Some(sema_ty),
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::GlobalVarRequiresTypeAnnotation),
+                        location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                        hint: None,
+                    });
+                    return;
+                }
+            },
         };
 
         if let Some(sema_ty) = &typed_global_var.ty {
