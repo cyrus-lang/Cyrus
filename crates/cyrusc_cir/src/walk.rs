@@ -669,12 +669,6 @@ impl<'resolver> CIRWalk<'resolver> {
             &global_var.name,
         );
 
-        if global_var.modifiers.vis.is_public() {
-            if global_var.modifiers.linkage.is_none() {
-                global_var.modifiers.linkage = Some(Linkage::Extern(None));
-            }
-        }
-
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
             irv_id: global_var.symbol_id,
             name: mangled_name,
@@ -960,6 +954,12 @@ impl<'resolver> CIRWalk<'resolver> {
                 resolved_global_var.symbol_id,
                 &resolved_global_var.global_var_sig,
             );
+
+            if global_var_stmt.modifiers.vis.is_public() {
+                if global_var_stmt.modifiers.linkage.is_none() {
+                    global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
+                }
+            }
 
             let mangled_name = mangle_global_var(
                 &resolved_global_var.global_var_sig.modifiers,
