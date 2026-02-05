@@ -71,6 +71,9 @@ pub struct AnalysisContext<'a> {
     pub(crate) disable_warnings: bool,
 }
 
+// ============================================================
+// Analysis Context Public API
+// ============================================================
 impl<'a> AnalysisContext<'a> {
     pub fn new(
         resolver: &'a Resolver,
@@ -140,7 +143,15 @@ impl<'a> AnalysisContext<'a> {
 
         self.program_tree.borrow_mut().body = body;
     }
+}
 
+// ============================================================
+// Analysis Entry Points
+// ============================================================
+// These functions are the primary entry points for type checking different
+// expression categories. They handle top-level analysis and dispatch to
+// specialized helpers for detailed checking.
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_block_stmt(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {
         let mut flow_state = FlowState::Reachable;
         let mut terminated = false;
@@ -186,7 +197,6 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_stmt(block_stmt.scope_id, &mut defer.operand);
         }
 
-        self.analyze_local_unused_symbols(block_stmt.scope_id);
         flow_state
     }
 
@@ -404,29 +414,6 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
-        }
-    }
-
-    fn analyze_tuple_identifier_pattern(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        is_const: bool,
-        symbol_id: SymbolID,
-        sema_ty: &SemanticType,
-        rhs: &TypedExprStmt,
-    ) {
-        let mut ty = sema_ty.clone();
-        if is_const && !matches!(ty, SemanticType::Const(..)) {
-            ty = ty.as_const();
-        }
-
-        if let Some(scope_id) = scope_id_opt {
-            update_local_symbol!(self, scope_id, symbol_id,
-                LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                    resolved_variable.typed_variable.ty = Some(ty);
-                    resolved_variable.typed_variable.rhs = Some(rhs.clone());
-                }
-            );
         }
     }
 
@@ -993,7 +980,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVarStmt) {
+    fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
             let sema_ty = match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
                 Some(sema_ty) => sema_ty,
@@ -1103,242 +1090,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_local_unused_symbols(&mut self, scope_id: ScopeID) {
-        if let Some(scope_rc) = self.resolver.resolve_local_scope(self.module_id, scope_id) {
-            let scope = scope_rc.borrow();
-            let symbols_clone = scope.symbols.clone();
-            let symbols_iter = symbols_clone.values().into_iter();
-            drop(scope);
-
-            for local_symbol in symbols_iter {
-                if !local_symbol.used {
-                    let (symbol_name, loc) = match &local_symbol.kind {
-                        LocalSymbolKind::Variable(resolved_variable) => (
-                            resolved_variable.typed_variable.name.clone(),
-                            resolved_variable.typed_variable.loc.clone(),
-                        ),
-                        LocalSymbolKind::Struct(resolved_struct) => (
-                            resolved_struct.struct_sig.name.clone(),
-                            resolved_struct.struct_sig.loc.clone(),
-                        ),
-                        LocalSymbolKind::Enum(resolved_enum) => {
-                            (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
-                        }
-                        LocalSymbolKind::Typedef(resolved_typedef) => (
-                            resolved_typedef.typedef_sig.name.clone(),
-                            resolved_typedef.typedef_sig.loc.clone(),
-                        ),
-                        LocalSymbolKind::Interface(resolved_interface) => (
-                            resolved_interface.interface_sig.name.clone(),
-                            resolved_interface.interface_sig.loc.clone(),
-                        ),
-                        LocalSymbolKind::Union(resolved_union) => (
-                            resolved_union.union_sig.name.clone(),
-                            resolved_union.union_sig.loc.clone(),
-                        ),
-                    };
-
-                    if !self.disable_warnings {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Warning,
-                            kind: Box::new(AnalyzerDiagKind::UnusedSymbol { symbol_name }),
-                            location: Some(DiagLoc::new(loc)),
-                            hint: None,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    fn analyze_object_impls_interface(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        object_name: String,
-        impls: &Vec<TypedIdentifier>,
-        method_ids: &HashMap<String, SymbolID>,
-    ) {
-        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-
-        for ident in impls {
-            let sym = self
-                .resolver
-                .resolve_local_or_global_symbol(scope_opt.clone(), ident.symbol_id)
-                .unwrap();
-
-            let resolved_interface = match sym.as_interface() {
-                Some(resolved_interface) => resolved_interface,
-                None => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface {
-                            symbol_name: ident.name.clone(),
-                        }),
-                        location: Some(DiagLoc::new(ident.loc.clone())),
-                        hint: None,
-                    });
-                    continue;
-                }
-            };
-
-            if resolved_interface.interface_sig.vis.is_private()
-                && resolved_interface.interface_sig.module_id != self.module_id
-            {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InternalSymbolAccess {
-                        symbol_name: ident.name.clone(),
-                    }),
-                    location: Some(DiagLoc::new(ident.loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
-
-            let method_decls = &resolved_interface.interface_sig.methods;
-
-            for func_decl in method_decls.clone() {
-                if !method_ids.contains_key(&func_decl.name) {
-                    // method missing
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
-                            object_name: object_name.clone(),
-                            method_name: func_decl.name.clone(),
-                            interface_name: ident.name.clone(),
-                        }),
-                        location: Some(DiagLoc::new(ident.loc.clone())),
-                        hint: None,
-                    });
-                    continue;
-                }
-
-                let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
-                let mut sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt.clone(), *object_method_symbol_id)
-                    .unwrap();
-
-                let object_method = sym.as_method_mut().unwrap();
-
-                // check method signature mismatch
-                if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
-                            object_name: object_name.clone(),
-                            interface_name: ident.name.clone(),
-                            method_name: func_decl.name.clone(),
-                        }),
-                        location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),
-                        hint: None,
-                    });
-                }
-            }
-        }
-    }
-
-    fn analyze_method_generic_params(
-        &mut self,
-        object_name: &String,
-        methods: &HashMap<String, SymbolID>,
-        generic_params_opt: &Option<TypedGenericParamsList>,
-    ) {
-        if let Some(generic_params) = generic_params_opt {
-            for method_id in methods.values().cloned() {
-                let sym = self.resolver.resolve_local_or_global_symbol(None, method_id).unwrap();
-
-                if let Some(method_generic_params) = sym.symbol_method_generic_params() {
-                    for method_generic_param in &method_generic_params.list {
-                        if generic_params
-                            .lookup_named(&method_generic_param.param_name.name)
-                            .is_some()
-                        {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
-                                    param_name: method_generic_param.param_name.name.clone(),
-                                    object_name: object_name.clone(),
-                                }),
-                                location: Some(DiagLoc::new(method_generic_param.param_name.loc.clone())),
-                                hint: Some("Consider to rename the field to a different name.".to_string()),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn analyze_generics_params(&mut self, generic_params: &TypedGenericParamsList) {
-        let mut collected_names: Vec<String> = Vec::new();
-        for generic_param in &generic_params.list {
-            if collected_names.contains(&generic_param.param_name.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateGenericParam {
-                        param_name: generic_param.param_name.name.clone(),
-                    }),
-                    location: Some(DiagLoc::new(generic_param.param_name.loc.clone())),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-            }
-
-            collected_names.push(generic_param.param_name.name.clone());
-        }
-    }
-
-    fn analyze_struct_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_struct: &mut TypedStructStmt) {
-        let mut field_names: Vec<String> = Vec::new();
-
-        for field in &mut typed_struct.fields {
-            if field_names.contains(&field.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        object_name: typed_struct.name.clone(),
-                        field_name: field.name.clone(),
-                    }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-                continue;
-            }
-
-            field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
-                Some(sema_ty) => sema_ty,
-                None => continue,
-            };
-
-            // FIXME: We need to move this logic to inside of validate_field_type.
-            if field
-                .ty
-                .as_struct_symbol_id()
-                .map(|symbol_id| symbol_id == typed_struct.symbol_id)
-                == Some(true)
-            {
-                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_struct.symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
-
-            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
-            field_names.push(field.name.clone());
-        }
-    }
-
-    pub(crate) fn analyze_struct(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_struct: &mut TypedStructStmt,
-        is_local: bool,
-    ) {
+    fn analyze_struct(&mut self, scope_id_opt: Option<ScopeID>, typed_struct: &mut TypedStructStmt, is_local: bool) {
         #[inline]
         fn update_struct_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_struct: &TypedStructStmt) {
             if let Some(scope_id) = typed_struct.is_local {
@@ -1383,52 +1135,6 @@ impl<'a> AnalysisContext<'a> {
 
         // update symbol entry
         update_struct_symbol_entry(self, &typed_struct);
-    }
-
-    fn analyze_union_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt) {
-        let mut field_names: Vec<String> = Vec::new();
-
-        for field in &mut typed_union.fields {
-            if field_names.contains(&field.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        field_name: field.name.clone(),
-                        object_name: typed_union.name.clone(),
-                    }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-            }
-
-            match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
-                Some(sema_ty) => {
-                    field.ty = sema_ty;
-                }
-                None => continue,
-            }
-
-            if field
-                .ty
-                .as_union_symbol_id()
-                .map(|symbol_id| symbol_id == typed_union.symbol_id)
-                == Some(true)
-            {
-                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_union.symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
-
-            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
-
-            field_names.push(field.name.clone());
-        }
     }
 
     fn analyze_union(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt, is_local: bool) {
@@ -1477,69 +1183,6 @@ impl<'a> AnalysisContext<'a> {
         update_union_symbol_entry(self, &typed_union);
     }
 
-    fn analyze_enum_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt) {
-        let mut variant_names: Vec<String> = Vec::new();
-
-        for variant in &mut typed_enum.variants {
-            let variant_identifier = match variant {
-                TypedEnumVariant::Ident(ident) => ident,
-                TypedEnumVariant::Valued(ident, typed_expr) => {
-                    typed_expr.sema_ty = match self.analyze_expr(scope_id_opt, typed_expr, None) {
-                        Some(sema_ty) => Some(sema_ty),
-                        None => continue,
-                    };
-                    ident
-                }
-                TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
-                    for field in typed_enum_valued_fields {
-                        field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
-                            Some(sema_ty) => sema_ty,
-                            None => continue,
-                        };
-
-                        if field
-                            .ty
-                            .as_enum_symbol_id()
-                            .map(|symbol_id| symbol_id == typed_enum.symbol_id)
-                            == Some(true)
-                        {
-                            let type_name = (self.symbol_formatter)(scope_id_opt)(typed_enum.symbol_id);
-
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
-                                location: Some(DiagLoc::new(field.loc.clone())),
-                                hint: None,
-                            });
-                            continue;
-                        }
-
-                        self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
-                    }
-                    ident
-                }
-            };
-
-            if variant_names.contains(&variant_identifier.value) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
-                        enum_name: typed_enum.name.clone(),
-                        variant_name: variant_identifier.value.clone(),
-                    }),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        variant_identifier.loc.clone(),
-                        typed_enum.loc.file_path.clone(),
-                    ))),
-                    hint: Some("Consider to rename the variant to a different name.".to_string()),
-                });
-                continue;
-            }
-
-            variant_names.push(variant_identifier.value.clone());
-        }
-    }
-
     fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt, is_local: bool) {
         #[inline]
         fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnumStmt) {
@@ -1584,174 +1227,6 @@ impl<'a> AnalysisContext<'a> {
         );
 
         update_enum_symbol_entry(self, &typed_enum);
-    }
-
-    fn check_duplicate_param_names(
-        &mut self,
-        params: &[TypedFuncParamKind],
-        variadic: Option<&TypedFuncVariadicParams>,
-        location: DiagLoc,
-    ) {
-        let mut param_names: Vec<String> = Vec::new();
-
-        for (param_idx, param) in params.iter().enumerate() {
-            match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    if param_names.contains(&typed_func_param.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
-                                param_name: typed_func_param.name.clone(),
-                                param_idx: param_idx.try_into().unwrap(),
-                            }),
-                            location: Some(location.clone()),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                        continue;
-                    }
-
-                    param_names.push(typed_func_param.name.clone());
-                }
-                TypedFuncParamKind::SelfModifier(_) => {
-                    param_names.push("self".to_string());
-                }
-            }
-        }
-
-        if let Some(variadic_param) = variadic {
-            match variadic_param {
-                TypedFuncVariadicParams::Typed(ident, _) => {
-                    if param_names.contains(&ident.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
-                                param_name: ident.name.clone(),
-                            }),
-                            location: Some(location.clone()),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                    }
-                }
-                TypedFuncVariadicParams::UntypedCStyle => {}
-            }
-        }
-    }
-
-    pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, return_type: &SemanticType) {
-        let state = self.analyze_block_stmt(body);
-        if !return_type.is_void() && state != FlowState::Returns {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::MissingReturn),
-                location: Some(DiagLoc::new(body.loc.clone())),
-                hint: Some("Not all control paths return a value.".to_string()),
-            });
-        }
-    }
-
-    fn analyze_non_generic_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
-        let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
-
-        // forward method declaration resolving
-        for symbol_id in methods.values() {
-            let (mut func_sig, func_body_opt) = {
-                let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
-                let symbol_table = global_symbols.get_mut(&module_id).unwrap();
-                let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
-
-                match &mut symbol_entry.kind {
-                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take()),
-                    _ => unreachable!(),
-                }
-            };
-
-            self.ty_ctx.current_method_symbol_id = Some(*symbol_id);
-            self.ty_ctx.current_func = Some(TypedFuncType {
-                symbol_id: Some(*symbol_id),
-                def_module_id: Some(self.module_id),
-                params: typed_func_params_as_func_type_params(&func_sig.params),
-                return_type: Box::new(func_sig.return_type.clone()),
-                is_public: func_sig.modifiers.vis.is_public(),
-                loc: func_sig.loc.clone(),
-            });
-            self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
-
-            self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
-
-            func_sig.return_type =
-                match self.normalize_sema_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
-                    Some(sema_ty) => sema_ty,
-                    None => return,
-                };
-
-            if let Some(typed_func_param_kind) = func_sig.params.list.first() {
-                if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = typed_func_param_kind.clone() {
-                    func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
-                }
-            }
-
-            if let Some(func_body) = func_body_opt {
-                local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
-            }
-
-            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
-            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
-            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
-            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
-                m.func_sig = func_sig;
-            }
-        }
-
-        // analyze methods bodies
-        for (symbol_id, func_sig, mut func_body) in local_methods_list {
-            self.ty_ctx.current_method_symbol_id = Some(symbol_id);
-            self.ty_ctx.current_func = Some(TypedFuncType {
-                symbol_id: Some(symbol_id),
-                def_module_id: Some(self.module_id),
-                params: typed_func_params_as_func_type_params(&func_sig.params),
-                return_type: Box::new(func_sig.return_type.clone()),
-                is_public: func_sig.modifiers.vis.is_public(),
-                loc: func_sig.loc.clone(),
-            });
-            let state = self.analyze_block_stmt(&mut func_body);
-
-            if !func_sig.return_type.is_void() && state != FlowState::Returns {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::MissingReturn),
-                    location: Some(DiagLoc::new(func_sig.loc.clone())),
-                    hint: Some("Not all control paths return a value.".to_string()),
-                });
-            }
-
-            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
-            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
-            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
-            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
-                m.func_sig = func_sig;
-                m.func_body = Some(func_body);
-            }
-        }
-
-        self.ty_ctx.current_method_symbol_id = None;
-    }
-
-    fn analyze_entry_func(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
-        let is_public = typed_func_def.modifiers.vis.is_public();
-
-        if typed_func_def.name == "main" {
-            let mut entry_points = self.entry_points.lock().unwrap();
-            entry_points.push(typed_func_def.loc.clone());
-
-            if !is_public {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::PrivateEntryPoint),
-                    location: Some(DiagLoc::new(typed_func_def.loc.clone())),
-                    hint: Some("Declare it as 'pub' so the runtime and linker can reliably discover it.".to_string()),
-                });
-            }
-        }
     }
 
     fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
@@ -1978,6 +1453,493 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(assign.loc.clone())),
                 hint: None,
             });
+        }
+    }
+}
+
+// ============================================================
+// Helper Functions
+// ============================================================
+impl<'a> AnalysisContext<'a> {
+    fn analyze_object_impls_interface(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        object_name: String,
+        impls: &Vec<TypedIdentifier>,
+        method_ids: &HashMap<String, SymbolID>,
+    ) {
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+        for ident in impls {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(scope_opt.clone(), ident.symbol_id)
+                .unwrap();
+
+            let resolved_interface = match sym.as_interface() {
+                Some(resolved_interface) => resolved_interface,
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface {
+                            symbol_name: ident.name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(ident.loc.clone())),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            if resolved_interface.interface_sig.vis.is_private()
+                && resolved_interface.interface_sig.module_id != self.module_id
+            {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InternalSymbolAccess {
+                        symbol_name: ident.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(ident.loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
+            let method_decls = &resolved_interface.interface_sig.methods;
+
+            for func_decl in method_decls.clone() {
+                if !method_ids.contains_key(&func_decl.name) {
+                    // method missing
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
+                            object_name: object_name.clone(),
+                            method_name: func_decl.name.clone(),
+                            interface_name: ident.name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(ident.loc.clone())),
+                        hint: None,
+                    });
+                    continue;
+                }
+
+                let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
+                let mut sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt.clone(), *object_method_symbol_id)
+                    .unwrap();
+
+                let object_method = sym.as_method_mut().unwrap();
+
+                // check method signature mismatch
+                if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+                            object_name: object_name.clone(),
+                            interface_name: ident.name.clone(),
+                            method_name: func_decl.name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),
+                        hint: None,
+                    });
+                }
+            }
+        }
+    }
+
+    fn analyze_method_generic_params(
+        &mut self,
+        object_name: &String,
+        methods: &HashMap<String, SymbolID>,
+        generic_params_opt: &Option<TypedGenericParamsList>,
+    ) {
+        if let Some(generic_params) = generic_params_opt {
+            for method_id in methods.values().cloned() {
+                let sym = self.resolver.resolve_local_or_global_symbol(None, method_id).unwrap();
+
+                if let Some(method_generic_params) = sym.symbol_method_generic_params() {
+                    for method_generic_param in &method_generic_params.list {
+                        if generic_params
+                            .lookup_named(&method_generic_param.param_name.name)
+                            .is_some()
+                        {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
+                                    param_name: method_generic_param.param_name.name.clone(),
+                                    object_name: object_name.clone(),
+                                }),
+                                location: Some(DiagLoc::new(method_generic_param.param_name.loc.clone())),
+                                hint: Some("Consider to rename the field to a different name.".to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn analyze_generics_params(&mut self, generic_params: &TypedGenericParamsList) {
+        let mut collected_names: Vec<String> = Vec::new();
+        for generic_param in &generic_params.list {
+            if collected_names.contains(&generic_param.param_name.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateGenericParam {
+                        param_name: generic_param.param_name.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(generic_param.param_name.loc.clone())),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+            }
+
+            collected_names.push(generic_param.param_name.name.clone());
+        }
+    }
+
+    fn analyze_enum_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt) {
+        let mut variant_names: Vec<String> = Vec::new();
+
+        for variant in &mut typed_enum.variants {
+            let variant_identifier = match variant {
+                TypedEnumVariant::Ident(ident) => ident,
+                TypedEnumVariant::Valued(ident, typed_expr) => {
+                    typed_expr.sema_ty = match self.analyze_expr(scope_id_opt, typed_expr, None) {
+                        Some(sema_ty) => Some(sema_ty),
+                        None => continue,
+                    };
+                    ident
+                }
+                TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
+                    for field in typed_enum_valued_fields {
+                        field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                            Some(sema_ty) => sema_ty,
+                            None => continue,
+                        };
+
+                        if field
+                            .ty
+                            .as_enum_symbol_id()
+                            .map(|symbol_id| symbol_id == typed_enum.symbol_id)
+                            == Some(true)
+                        {
+                            let type_name = (self.symbol_formatter)(scope_id_opt)(typed_enum.symbol_id);
+
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
+                                location: Some(DiagLoc::new(field.loc.clone())),
+                                hint: None,
+                            });
+                            continue;
+                        }
+
+                        self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
+                    }
+                    ident
+                }
+            };
+
+            if variant_names.contains(&variant_identifier.value) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
+                        enum_name: typed_enum.name.clone(),
+                        variant_name: variant_identifier.value.clone(),
+                    }),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        variant_identifier.loc.clone(),
+                        typed_enum.loc.file_path.clone(),
+                    ))),
+                    hint: Some("Consider to rename the variant to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            variant_names.push(variant_identifier.value.clone());
+        }
+    }
+
+    fn analyze_struct_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_struct: &mut TypedStructStmt) {
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &mut typed_struct.fields {
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+                        object_name: typed_struct.name.clone(),
+                        field_name: field.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                Some(sema_ty) => sema_ty,
+                None => continue,
+            };
+
+            // FIXME: We need to move this logic to inside of validate_field_type.
+            if field
+                .ty
+                .as_struct_symbol_id()
+                .map(|symbol_id| symbol_id == typed_struct.symbol_id)
+                == Some(true)
+            {
+                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_struct.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
+            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
+            field_names.push(field.name.clone());
+        }
+    }
+
+    fn analyze_union_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &mut TypedUnionStmt) {
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &mut typed_union.fields {
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+                        field_name: field.name.clone(),
+                        object_name: typed_union.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+            }
+
+            match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                Some(sema_ty) => {
+                    field.ty = sema_ty;
+                }
+                None => continue,
+            }
+
+            if field
+                .ty
+                .as_union_symbol_id()
+                .map(|symbol_id| symbol_id == typed_union.symbol_id)
+                == Some(true)
+            {
+                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_union.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
+            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
+
+            field_names.push(field.name.clone());
+        }
+    }
+
+    fn analyze_tuple_identifier_pattern(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        is_const: bool,
+        symbol_id: SymbolID,
+        sema_ty: &SemanticType,
+        rhs: &TypedExprStmt,
+    ) {
+        let mut ty = sema_ty.clone();
+        if is_const && !matches!(ty, SemanticType::Const(..)) {
+            ty = ty.as_const();
+        }
+
+        if let Some(scope_id) = scope_id_opt {
+            update_local_symbol!(self, scope_id, symbol_id,
+                LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                    resolved_variable.typed_variable.ty = Some(ty);
+                    resolved_variable.typed_variable.rhs = Some(rhs.clone());
+                }
+            );
+        }
+    }
+
+    fn check_duplicate_param_names(
+        &mut self,
+        params: &[TypedFuncParamKind],
+        variadic: Option<&TypedFuncVariadicParams>,
+        location: DiagLoc,
+    ) {
+        let mut param_names: Vec<String> = Vec::new();
+
+        for (param_idx, param) in params.iter().enumerate() {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    if param_names.contains(&typed_func_param.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
+                                param_name: typed_func_param.name.clone(),
+                                param_idx: param_idx.try_into().unwrap(),
+                            }),
+                            location: Some(location.clone()),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                        continue;
+                    }
+
+                    param_names.push(typed_func_param.name.clone());
+                }
+                TypedFuncParamKind::SelfModifier(_) => {
+                    param_names.push("self".to_string());
+                }
+            }
+        }
+
+        if let Some(variadic_param) = variadic {
+            match variadic_param {
+                TypedFuncVariadicParams::Typed(ident, _) => {
+                    if param_names.contains(&ident.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
+                                param_name: ident.name.clone(),
+                            }),
+                            location: Some(location.clone()),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {}
+            }
+        }
+    }
+
+    pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, return_type: &SemanticType) {
+        let state = self.analyze_block_stmt(body);
+        if !return_type.is_void() && state != FlowState::Returns {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MissingReturn),
+                location: Some(DiagLoc::new(body.loc.clone())),
+                hint: Some("Not all control paths return a value.".to_string()),
+            });
+        }
+    }
+
+    fn analyze_non_generic_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+        let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
+
+        // forward method declaration resolving
+        for symbol_id in methods.values() {
+            let (mut func_sig, func_body_opt) = {
+                let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+                let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+                let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
+
+                match &mut symbol_entry.kind {
+                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take()),
+                    _ => unreachable!(),
+                }
+            };
+
+            self.ty_ctx.current_method_symbol_id = Some(*symbol_id);
+            self.ty_ctx.current_func = Some(TypedFuncType {
+                symbol_id: Some(*symbol_id),
+                def_module_id: Some(self.module_id),
+                params: typed_func_params_as_func_type_params(&func_sig.params),
+                return_type: Box::new(func_sig.return_type.clone()),
+                is_public: func_sig.modifiers.vis.is_public(),
+                loc: func_sig.loc.clone(),
+            });
+            self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
+
+            self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
+
+            func_sig.return_type =
+                match self.normalize_sema_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
+                    Some(sema_ty) => sema_ty,
+                    None => return,
+                };
+
+            if let Some(typed_func_param_kind) = func_sig.params.list.first() {
+                if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = typed_func_param_kind.clone() {
+                    func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
+                }
+            }
+
+            if let Some(func_body) = func_body_opt {
+                local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
+            }
+
+            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                m.func_sig = func_sig;
+            }
+        }
+
+        // analyze methods bodies
+        for (symbol_id, func_sig, mut func_body) in local_methods_list {
+            self.ty_ctx.current_method_symbol_id = Some(symbol_id);
+            self.ty_ctx.current_func = Some(TypedFuncType {
+                symbol_id: Some(symbol_id),
+                def_module_id: Some(self.module_id),
+                params: typed_func_params_as_func_type_params(&func_sig.params),
+                return_type: Box::new(func_sig.return_type.clone()),
+                is_public: func_sig.modifiers.vis.is_public(),
+                loc: func_sig.loc.clone(),
+            });
+            let state = self.analyze_block_stmt(&mut func_body);
+
+            if !func_sig.return_type.is_void() && state != FlowState::Returns {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MissingReturn),
+                    location: Some(DiagLoc::new(func_sig.loc.clone())),
+                    hint: Some("Not all control paths return a value.".to_string()),
+                });
+            }
+
+            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                m.func_sig = func_sig;
+                m.func_body = Some(func_body);
+            }
+        }
+
+        self.ty_ctx.current_method_symbol_id = None;
+    }
+
+    fn analyze_entry_func(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
+        let is_public = typed_func_def.modifiers.vis.is_public();
+
+        if typed_func_def.name == "main" {
+            let mut entry_points = self.entry_points.lock().unwrap();
+            entry_points.push(typed_func_def.loc.clone());
+
+            if !is_public {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::PrivateEntryPoint),
+                    location: Some(DiagLoc::new(typed_func_def.loc.clone())),
+                    hint: Some("Declare it as 'pub' so the runtime and linker can reliably discover it.".to_string()),
+                });
+            }
         }
     }
 

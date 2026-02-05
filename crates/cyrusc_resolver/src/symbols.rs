@@ -129,7 +129,6 @@ pub struct LocalScope {
 
 #[derive(Debug, Clone)]
 pub struct LocalSymbol {
-    pub used: bool,
     pub kind: LocalSymbolKind,
 }
 
@@ -370,7 +369,7 @@ impl LocalOrGlobalSymbol {
 
 impl LocalSymbol {
     pub fn new(kind: LocalSymbolKind) -> Self {
-        Self { used: false, kind }
+        Self { kind }
     }
 
     pub fn symbol_id(&self) -> SymbolID {
