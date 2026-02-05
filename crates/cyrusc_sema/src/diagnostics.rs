@@ -74,8 +74,8 @@ pub enum AnalyzerDiagKind {
     #[error("Unknown symbol '{symbol_name}'.")]
     UnknownSymbol { symbol_name: String },
 
-    #[error("Type '{type_name}' contains a field of its own type, causing infinite recursion.")]
-    InfiniteRecursiveType { type_name: String },
+    #[error("Recursive type '{type_name}' has infinite size.")]
+    InfiniteSizeRecursiveType { type_name: String },
 
     #[error(
         "Method '{method_name}' implemented in object '{object_name}' does not match the method from interface '{interface_name}'."

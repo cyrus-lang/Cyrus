@@ -1618,24 +1618,7 @@ impl<'a> AnalysisContext<'a> {
                             None => continue,
                         };
 
-                        if field
-                            .ty
-                            .as_enum_symbol_id()
-                            .map(|symbol_id| symbol_id == typed_enum.symbol_id)
-                            == Some(true)
-                        {
-                            let type_name = (self.symbol_formatter)(scope_id_opt)(typed_enum.symbol_id);
-
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
-                                location: Some(DiagLoc::new(field.loc.clone())),
-                                hint: None,
-                            });
-                            continue;
-                        }
-
-                        self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
+                        self.validate_field_type(scope_id_opt, typed_enum.symbol_id, &field.ty, field.loc.clone());
                     }
                     ident
                 }
@@ -1683,25 +1666,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            // FIXME: We need to move this logic to inside of validate_field_type.
-            if field
-                .ty
-                .as_struct_symbol_id()
-                .map(|symbol_id| symbol_id == typed_struct.symbol_id)
-                == Some(true)
-            {
-                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_struct.symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
-
-            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
+            self.validate_field_type(scope_id_opt, typed_struct.symbol_id, &field.ty, field.loc.clone());
             field_names.push(field.name.clone());
         }
     }
@@ -1729,24 +1694,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             }
 
-            if field
-                .ty
-                .as_union_symbol_id()
-                .map(|symbol_id| symbol_id == typed_union.symbol_id)
-                == Some(true)
-            {
-                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_union.symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InfiniteRecursiveType { type_name }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
-                    hint: None,
-                });
-                continue;
-            }
-
-            self.validate_field_type(scope_id_opt, &field.ty, field.loc.clone());
+            self.validate_field_type(scope_id_opt, typed_union.symbol_id, &field.ty, field.loc.clone());
 
             field_names.push(field.name.clone());
         }
@@ -1983,6 +1931,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn validate_field_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+        object_symbol_id: SymbolID,
         sema_ty: &SemanticType,
         loc: SourceLoc,
     ) {
@@ -2004,6 +1953,20 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
+        }
+
+        let sema_ty_as_symbol_id_opt = sema_ty.maybe_generic_base_symbol_id();
+
+        if sema_ty_as_symbol_id_opt.map(|symbol_id| symbol_id == object_symbol_id) == Some(true) {
+            let type_name = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InfiniteSizeRecursiveType { type_name }),
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+            return;
         }
 
         self.check_sema_ty(scope_id_opt, sema_ty.clone(), loc);
