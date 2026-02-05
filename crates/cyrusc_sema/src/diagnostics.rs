@@ -231,9 +231,6 @@ pub enum AnalyzerDiagKind {
         expected: String,
     },
 
-    #[error("'{symbol_name}' is declared but never used.")]
-    UnusedSymbol { symbol_name: String },
-
     #[error("Global variable expression is not valid at compile time.")]
     GlobalVariableExprNotComptimeValid,
 

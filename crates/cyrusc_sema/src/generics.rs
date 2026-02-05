@@ -200,6 +200,13 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_ty);
         }
 
+        let monomorph_key = {
+            let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
+            let (monomorph_key, _) =
+                monomorph_registry.register_func(base_symbol, generic_type.generic_params.clone(), mapping_ctx);
+            monomorph_key
+        };
+
         let mut analyzed_body = template_body.clone();
 
         self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
@@ -218,16 +225,13 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let monomorph_key = {
+        {
             let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let (monomorph_key, _) =
-                monomorph_registry.register_func(base_symbol, generic_type.generic_params.clone(), mapping_ctx);
             monomorph_registry.register_specialized_func_instance(
                 monomorph_key.clone(),
                 SpecializedFuncEntry { body: analyzed_body },
             );
-            monomorph_key
-        };
+        }
 
         Some(monomorph_key)
     }

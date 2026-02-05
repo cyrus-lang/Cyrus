@@ -1,0 +1,16 @@
+// @stdout: 2 3 4
+
+import std::libc{printf};
+
+fn recursive_generic<T>(x: T) {
+	printf("%d ", x);
+	x++;
+	
+	if (x < 5) {
+		recursive_generic(x);
+	}
+}
+
+pub fn main() {
+	recursive_generic(2);
+}
