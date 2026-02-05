@@ -32,7 +32,22 @@ pub struct CIRMonomorphFuncEntry {
     pub irv_id: IRValueID,
     pub func_ty: CIRFuncTy,
     pub func_params: CIRFuncParams,
-    pub func_body: Box<CIRBlockStmt>,
+    pub func_body: CIRMonomorphFuncBody,
+}
+
+#[derive(Debug, Clone)]
+pub enum CIRMonomorphFuncBody {
+    Placeholder,
+    Body(Box<CIRBlockStmt>),
+}
+
+impl CIRMonomorphFuncEntry {
+    pub fn body(&self) -> Option<&CIRBlockStmt> {
+        match &self.func_body {
+            CIRMonomorphFuncBody::Placeholder => None,
+            CIRMonomorphFuncBody::Body(body) => Some(body),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -45,8 +60,16 @@ impl CIRMonomorphRegistry {
         Self { map: HashMap::new() }
     }
 
+    pub fn contains_key(&self, key: &MonomorphKey) -> bool {
+        self.map.contains_key(key)
+    }
+
     pub fn get(&self, key: &MonomorphKey) -> Option<&CIRMonomorphEntry> {
         self.map.get(key)
+    }
+
+    pub fn get_mut(&mut self, key: &MonomorphKey) -> Option<&mut CIRMonomorphEntry> {
+        self.map.get_mut(key)
     }
 
     pub fn insert(&mut self, key: MonomorphKey, entry: CIRMonomorphEntry) {
@@ -71,6 +94,16 @@ impl<'resolver> CIRWalk<'resolver> {
         monomorph_key: &MonomorphKey,
         func_sig: &FuncSig,
     ) {
+        {
+            let cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
+            if cir_monomorph_registry.contains_key(monomorph_key) {
+                // if it's a Placeholder, we are already lowering it (recursion detected).
+                // if it's a body, we've already finished it.
+                // either way, STOP here to break the loop.
+                return;
+            }
+        }
+
         let monomorph_func_entry = self.resolve_monomorph_func_entry(monomorph_key).unwrap();
 
         let irv_id = monomorph_func_entry.id;
@@ -88,18 +121,34 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let cir_func_params = cir_func_decl.params.clone();
         let cir_func_ty = cir_func_decl_as_func_ty(&cir_func_decl);
+
+        {
+            // body placeholder to prevent infinite recursion during lowering
+
+            let mut cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
+            cir_monomorph_registry.insert(
+                monomorph_key.clone(),
+                CIRMonomorphEntry::Func(CIRMonomorphFuncEntry {
+                    irv_id,
+                    func_params: cir_func_params,
+                    func_ty: cir_func_ty,
+                    func_body: CIRMonomorphFuncBody::Placeholder,
+                }),
+            );
+        }
+
+        // lower body
         let cir_func_body = self.lower_body(&specialized_func_entry.body);
 
-        let mut cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
+        {
+            let mut cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
+            let monomorph_entry = cir_monomorph_registry.get_mut(&monomorph_key).unwrap();
 
-        cir_monomorph_registry.insert(
-            monomorph_key.clone(),
-            CIRMonomorphEntry::Func(CIRMonomorphFuncEntry {
-                irv_id,
-                func_params: cir_func_params,
-                func_ty: cir_func_ty,
-                func_body: Box::new(cir_func_body),
-            }),
-        );
+            match monomorph_entry {
+                CIRMonomorphEntry::Func(monomorph_func_entry) => {
+                    monomorph_func_entry.func_body = CIRMonomorphFuncBody::Body(Box::new(cir_func_body));
+                }
+            }
+        }
     }
 }

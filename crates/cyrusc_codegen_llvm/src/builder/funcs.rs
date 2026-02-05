@@ -80,7 +80,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 self.cur_fn = Some(fn_value);
 
-                self.emit_func_body(&monomorph_func_entry.func_params, &monomorph_func_entry.func_body);
+                self.emit_func_body(&monomorph_func_entry.func_params, &monomorph_func_entry.body().unwrap());
 
                 {
                     // back to parent state because we emitted a new function in the middle of an another function
