@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::options::{CodeGenOptions, RelocModeOptions};
+use std::env::consts::{FAMILY, OS};
 use std::path::PathBuf;
 use std::process::Command;
 use which::which;
@@ -27,6 +28,21 @@ pub struct Linker {
 
 /// Static mapping of platforms to default linkers
 const DEFAULT_LINKERS: &[(&str, &str)] = &[("linux", "gcc"), ("macos", "clang"), ("windows", "link.exe")];
+
+pub fn default_linker() -> &'static str {
+    // ty to find an exact OS match first
+    for (os, linker) in DEFAULT_LINKERS {
+        if *os == OS {
+            return linker;
+        }
+    }
+
+    match FAMILY {
+        "unix" => "gcc",
+        "windows" => "link.exe",
+        _ => "cc",
+    }
+}
 
 impl Linker {
     pub fn new(opts: CodeGenOptions) -> Result<Self, String> {

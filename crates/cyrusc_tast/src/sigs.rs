@@ -16,7 +16,7 @@
  */
 use crate::{
     ModuleID, SymbolID,
-    exprs::{TypedExprStmt, TypedIdentifier},
+    exprs::TypedExprStmt,
     stmts::{
         TypedEnumStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams,
         TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList,

@@ -23,11 +23,10 @@ use std::{
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::{
-    compiler_version_compatibility::validate_compiler_version,
-    options::{
+    compiler_version_compatibility::validate_compiler_version, linker::default_linker, options::{
         BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer,
         CodeModelOptions, ModuleKind, RelocModeOptions,
-    },
+    }
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
@@ -299,6 +298,8 @@ fn get_current_dir_as_base_path() -> String {
 
 impl CompilerOptions {
     pub fn as_codegen_options(&self) -> CodeGenOptions {
+        let linker = self.linker.clone().unwrap_or(default_linker().to_string());
+
         CodeGenOptions {
             abi: Some(self.abi.to_compiler_abi()),
             endianness: self.endianness.and_then(|endianness| match endianness {
@@ -315,7 +316,7 @@ impl CompilerOptions {
             sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
             linker_flags: self.linkerflags.clone(),
             linker_options: CodeGenLinkerOptions::default(),
-            linker: self.linker.clone(),
+            linker: Some(linker),
             disable_modulefs_cache: self.disable_modulefs_cache,
             base_path: Some(self.base_path.clone().or(Some(get_current_dir_as_base_path())).unwrap()),
             opt_level: match self.optimize {
