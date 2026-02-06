@@ -96,7 +96,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                 if data_value.is_pointer_value() {
                     data_value.into_pointer_value()
                 } else {
-                    let temp_ptr = self.llvmbuilder.build_alloca(data_value.get_type(), "dynamic.temp").unwrap();
+                    let temp_ptr = self
+                        .llvmbuilder
+                        .build_alloca(data_value.get_type(), "dynamic.temp")
+                        .unwrap();
                     self.llvmbuilder.build_store(temp_ptr, data_value).unwrap();
                     temp_ptr
                 }
@@ -1360,25 +1363,17 @@ impl<'ll> IRBuilderCtx<'ll> {
             .unwrap()
             .into_pointer_value();
 
-        let target_data = self.llvmtm.get_target_data();
         let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-        let ptr_size = self
-            .llvmctx
-            .i64_type()
-            .const_int(target_data.get_pointer_byte_size(None).into(), false);
 
         let method_ptr = unsafe {
-            // calculate byte offset: method_idx * sizeof(ptr)
             let offset = self
                 .llvmctx
                 .i64_type()
                 .const_int(interface_method_call.method_idx as u64, false);
-            let byte_offset = self.llvmbuilder.build_int_mul(offset, ptr_size, "byte_offset").unwrap();
 
-            // add offset to base pointer
             let method_ptr = self
                 .llvmbuilder
-                .build_gep(ptr_type, vtable_ptr, &[byte_offset], "method_ptr")
+                .build_gep(ptr_type, vtable_ptr, &[offset], "method_ptr")
                 .unwrap();
 
             method_ptr

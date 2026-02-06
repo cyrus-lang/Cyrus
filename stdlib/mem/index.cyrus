@@ -1,0 +1,16 @@
+import std::libc{malloc, free};
+
+pub interface Allocator {
+	fn alloc(&self, size: usize) void*;
+	fn free(&self, ptr: void*) void;
+}
+
+pub struct HeapAllocator : Allocator {
+	pub inline fn alloc(&self, size: usize) void* {
+		return malloc(size);
+	}
+
+	pub inline fn free(&self, ptr: void*) {
+		free(ptr);
+	}
+}

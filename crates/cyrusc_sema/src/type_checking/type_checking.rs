@@ -1026,7 +1026,6 @@ impl<'a> AnalysisContext<'a> {
             &mut func_call.args,
             func_call.loc.clone(),
             false,
-            false,
         )?;
 
         update_global_symbol!(self, func_sig.module_id, func_sig.symbol_id.unwrap(),
@@ -1827,7 +1826,9 @@ impl<'a> AnalysisContext<'a> {
 
         self.ty_ctx.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
 
-        let instance_method_call = is_instance_method_sig && is_instance_method_operand;
+        let instance_method_call =
+            (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
+            
         let mut generic_type_opt = method_call_operand_ty.pointer_inner().as_generic_type().cloned();
 
         // init method generic mapping ctx
@@ -1898,7 +1899,6 @@ impl<'a> AnalysisContext<'a> {
             &mut method_call.args,
             method_call.loc.clone(),
             instance_method_call,
-            method_call.method_call_on_interface.is_some(),
         )?;
 
         if let Some(generic_type) = &generic_type_opt {
@@ -2040,18 +2040,12 @@ impl<'a> AnalysisContext<'a> {
         args: &mut Vec<TypedExprStmt>,
         loc: SourceLoc,
         instance_method_call: bool,
-        is_interface_method_call: bool,
     ) -> Option<SemanticType> {
         let is_variadic = func_sig.params.variadic.is_some();
         let mut expected_args_len = func_sig.params.list.len();
 
         // if this is an instance method call, self modifier will be pushed later
         if instance_method_call && !func_sig.params.list.is_empty() {
-            expected_args_len = expected_args_len.saturating_sub(1);
-        }
-
-        // if this is an interface method call, self modifier will be pushed later
-        if is_interface_method_call && !func_sig.params.list.is_empty() {
             expected_args_len = expected_args_len.saturating_sub(1);
         }
 
@@ -2077,6 +2071,7 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze static arguments
         let start_idx = if instance_method_call { 1 } else { 0 };
+
         for (param_idx, (param, arg)) in func_sig
             .params
             .list
