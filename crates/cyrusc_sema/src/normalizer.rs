@@ -384,7 +384,7 @@ impl<'a> AnalysisContext<'a> {
             .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)?;
 
         if generic_type.generic_params.list.is_empty() {
-            generic_type.generic_params = sym.symbol_generic_params().unwrap();
+            generic_type.generic_params = sym.symbol_generic_params()?;
         }
 
         self.normalize_type_args(scope_id_opt, generic_type.type_args.as_mut());

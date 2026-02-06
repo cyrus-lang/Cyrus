@@ -641,16 +641,16 @@ impl Parser {
         }))
     }
 
-    fn parse_object_impls(&mut self) -> Result<Vec<ModuleImport>, Diag> {
-        let mut impls: Vec<ModuleImport> = Vec::new();
+    fn parse_object_impls(&mut self) -> Result<Vec<TypeSpecifier>, Diag> {
+        let mut impls: Vec<TypeSpecifier> = Vec::new();
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
 
             loop {
-                let module_import = self.parse_module_import()?;
+                let type_specifier = self.parse_type_specifier()?;
                 self.next_token();
 
-                impls.push(module_import);
+                impls.push(type_specifier);
 
                 if self.current_token_is(TokenKind::Comma) {
                     continue;
@@ -846,8 +846,16 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.next_token();
+
         let ident = self.parse_ident()?;
         self.next_token();
+
+        let generic_params = if self.current_token_is(TokenKind::LessThan) {
+            Some(self.parse_generic_params()?)
+        } else {
+            None
+        };
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut methods: Vec<FuncDecl> = Vec::new();
@@ -858,6 +866,7 @@ impl Parser {
                 methods,
                 loc,
                 vis,
+                generic_params,
                 span: Span::new(start, self.current_token().span.end),
             }));
         }
@@ -891,6 +900,7 @@ impl Parser {
             methods,
             loc,
             vis,
+            generic_params,
             span: Span::new(start, self.current_token().span.end),
         }))
     }

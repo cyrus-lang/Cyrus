@@ -91,7 +91,7 @@ pub enum CIRExprKind {
 
 #[derive(Debug, Clone)]
 pub struct CIRDynamicExpr {
-    pub data_ptr: Box<CIRExpr>,
+    pub data_expr: Box<CIRExpr>,
     pub method_decls: Vec<CIRFuncDeclStmt>,
     pub global_var_id: IRValueID,
     pub vtable_abi_name: String,

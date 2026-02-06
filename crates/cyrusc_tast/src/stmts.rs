@@ -127,6 +127,13 @@ pub struct TypedDeferStmt {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypedImplementInterface {
+    pub symbol_id: SymbolID,
+    pub type_args: Option<TypedTypeArgs>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedInterfaceStmt {
     pub name: String,
     pub symbol_id: SymbolID,
@@ -144,7 +151,7 @@ pub struct TypedEnumStmt {
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub impls: Vec<TypedIdentifier>,
+    pub impls: Vec<TypedImplementInterface>,
     pub modifiers: EnumModifiers,
     pub loc: SourceLoc,
 }
@@ -188,7 +195,7 @@ pub struct TypedStructStmt {
     pub fields: Vec<TypedStructField>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub impls: Vec<TypedIdentifier>,
+    pub impls: Vec<TypedImplementInterface>,
     pub modifiers: StructModifiers,
     pub is_packed: bool,
     pub loc: SourceLoc,
@@ -203,7 +210,7 @@ pub struct TypedUnionStmt {
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub impls: Vec<TypedIdentifier>,
+    pub impls: Vec<TypedImplementInterface>,
     pub modifiers: UnionModifiers,
     pub loc: SourceLoc,
 }
