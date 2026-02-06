@@ -1175,6 +1175,13 @@ impl Resolver {
             .map(|_| generate_symbol_id())
             .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.ident.value).unwrap());
 
+        let generic_params = interface
+            .generic_params
+            .clone()
+            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+
+        self.current_object_generic_params = generic_params.clone();
+
         let typed_methods: Vec<TypedFuncDeclStmt> = interface
             .methods
             .iter()
@@ -1333,7 +1340,7 @@ impl Resolver {
             );
         }
 
-        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &union_decl.impls);
+        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &union_decl.impls, union_decl.loc.clone());
 
         Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id: union_symbol_id,
@@ -1450,7 +1457,7 @@ impl Resolver {
             );
         }
 
-        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &enum_decl.impls);
+        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &enum_decl.impls, enum_decl.loc.clone());
 
         Some(TypedStmt::Enum(TypedEnumStmt {
             module_id,
@@ -1673,19 +1680,84 @@ impl Resolver {
         &mut self,
         scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
-        impls: &Vec<ModuleImport>,
-    ) -> Vec<TypedIdentifier> {
-        let mut symbol_ids: Vec<TypedIdentifier> = Vec::new();
+        impls: &Vec<TypeSpecifier>,
+        loc: Location
+    ) -> Vec<TypedImplementInterface> {
+        let mut symbol_ids: Vec<TypedImplementInterface> = Vec::new();
 
-        for module_import in impls {
-            let Some(symbol_id) = self.resolve_local_module_import(scope_opt.clone(), module_id, module_import) else {
-                continue;
+        for type_specifier in impls {
+            let (symbol_id, type_args) = match type_specifier {
+                TypeSpecifier::ModuleImport(module_import) => {
+                    let Some(symbol_id) = self.resolve_local_module_import(scope_opt.clone(), module_id, module_import)
+                    else {
+                        continue;
+                    };
+
+                    (symbol_id, None)
+                }
+                TypeSpecifier::Ident(ident) => {
+                    let Some(symbol_id) = self.resolve_ident(scope_opt.clone(), module_id, ident)
+                    else {
+                        continue;
+                    };
+
+                    (symbol_id, None)
+                }
+                TypeSpecifier::GenericInst(generic_inst) => {
+                    let (loc, span_end) = type_specifier.loc();
+
+                    let base_symbol_id = match self
+                        .resolve_type(
+                            &None,
+                            scope_opt.clone(),
+                            module_id,
+                            *generic_inst.base.clone(),
+                            loc,
+                            span_end,
+                        )
+                        .and_then(|sema_ty| sema_ty.as_unresolved_symbol())
+                    {
+                        Some(symbol_id) => symbol_id,
+                        None => {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(ResolverDiagKind::InvalidImplementInterface),
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.current_file_path()))),
+                                hint: None,
+                            });
+                            return symbol_ids;
+                        }
+                    };
+
+                    let type_args = self.resolve_type_args(
+                        &None,
+                        module_id,
+                        scope_opt.clone(),
+                        &generic_inst.type_args,
+                        loc,
+                        span_end,
+                    );
+
+                    (base_symbol_id, type_args)
+                }
+                _ => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(ResolverDiagKind::InvalidImplementInterface),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.current_file_path()))),
+                        hint: None,
+                    });
+                    return symbol_ids;
+                }
             };
 
-            symbol_ids.push(TypedIdentifier {
-                name: module_import.to_string(),
+            symbol_ids.push(TypedImplementInterface {
                 symbol_id,
-                loc: SourceLoc::from_loc(module_import.loc, self.resolve_module_file_path(module_id).unwrap()),
+                type_args,
+                loc: SourceLoc::from_loc(
+                    type_specifier.loc().0,
+                    self.resolve_module_file_path(module_id).unwrap(),
+                ),
             });
         }
 
@@ -1742,7 +1814,7 @@ impl Resolver {
             struct_symbol_id,
             generic_params.is_some(),
         )?;
-        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &struct_decl.impls);
+        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &struct_decl.impls, struct_decl.loc.clone());
 
         let resolved_struct = ResolvedStruct {
             module_id,

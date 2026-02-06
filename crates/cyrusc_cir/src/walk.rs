@@ -919,7 +919,7 @@ impl<'resolver> CIRWalk<'resolver> {
         );
 
         CIRExprKind::Dynamic(CIRDynamicExpr {
-            data_ptr: Box::new(data_ptr),
+            data_expr: Box::new(data_ptr),
             method_decls,
             global_var_id: vtable_info.global_var_id,
             vtable_abi_name,

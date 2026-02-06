@@ -28,10 +28,7 @@ use cyrusc_resolver::{
     update_global_symbol, update_local_symbol,
 };
 use cyrusc_tast::{
-    exprs::{
-        MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedIdentifier, TypedLiteralExpr,
-        TypedTupleAccessExpr,
-    },
+    exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedLiteralExpr, TypedTupleAccessExpr},
     format::format_sema_ty,
     generics::{
         mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry, substitute::substitute_enum_sig,
@@ -1465,16 +1462,18 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         object_name: String,
-        impls: &Vec<TypedIdentifier>,
+        impls: &Vec<TypedImplementInterface>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        for ident in impls {
+        for implement_interface in impls {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(scope_opt.clone(), ident.symbol_id)
+                .resolve_local_or_global_symbol(scope_opt.clone(), implement_interface.symbol_id)
                 .unwrap();
+
+            let interface_name = sym.symbol_name().unwrap_or("UNKNOWN".to_string());
 
             let resolved_interface = match sym.as_interface() {
                 Some(resolved_interface) => resolved_interface,
@@ -1482,9 +1481,9 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface {
-                            symbol_name: ident.name.clone(),
+                            symbol_name: interface_name,
                         }),
-                        location: Some(DiagLoc::new(ident.loc.clone())),
+                        location: Some(DiagLoc::new(implement_interface.loc.clone())),
                         hint: None,
                     });
                     continue;
@@ -1497,9 +1496,9 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InternalSymbolAccess {
-                        symbol_name: ident.name.clone(),
+                        symbol_name: interface_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(ident.loc.clone())),
+                    location: Some(DiagLoc::new(implement_interface.loc.clone())),
                     hint: None,
                 });
                 continue;
@@ -1515,9 +1514,9 @@ impl<'a> AnalysisContext<'a> {
                         kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
                             object_name: object_name.clone(),
                             method_name: func_decl.name.clone(),
-                            interface_name: ident.name.clone(),
+                            interface_name: interface_name.clone(),
                         }),
-                        location: Some(DiagLoc::new(ident.loc.clone())),
+                        location: Some(DiagLoc::new(implement_interface.loc.clone())),
                         hint: None,
                     });
                     continue;
@@ -1537,7 +1536,7 @@ impl<'a> AnalysisContext<'a> {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
                             object_name: object_name.clone(),
-                            interface_name: ident.name.clone(),
+                            interface_name: interface_name.clone(),
                             method_name: func_decl.name.clone(),
                         }),
                         location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),

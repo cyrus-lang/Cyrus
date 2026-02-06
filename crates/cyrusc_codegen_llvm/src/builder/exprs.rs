@@ -90,10 +90,17 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     fn emit_dynamic_expr(&mut self, dynamic_expr: &CIRDynamicExpr) -> InternalValue<'ll> {
         {
-            let data_ptr = self
-                .emit_expr(&dynamic_expr.data_ptr)
-                .as_basic_value()
-                .into_pointer_value();
+            let data_value = self.emit_lvalue_address(&dynamic_expr.data_expr).as_basic_value();
+
+            let data_ptr = {
+                if data_value.is_pointer_value() {
+                    data_value.into_pointer_value()
+                } else {
+                    let temp_ptr = self.llvmbuilder.build_alloca(data_value.get_type(), "dynamic.temp").unwrap();
+                    self.llvmbuilder.build_store(temp_ptr, data_value).unwrap();
+                    temp_ptr
+                }
+            };
 
             let vtable_global_var_ptr = {
                 if let Some(local_ir_value) = {
@@ -142,7 +149,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .into_struct_value();
 
             InternalValue::new(
-                self.cir_dynamic_ty(dynamic_expr.data_ptr.ty.clone()),
+                self.cir_dynamic_ty(dynamic_expr.data_expr.ty.clone()),
                 InternalValueKind::RValue(dynamic_struct_value.as_basic_value_enum()),
             )
         }

@@ -20,7 +20,7 @@ use crate::{
     stmts::{
         TypedEnumStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams,
         TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList,
-        TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
+        TypedImplementInterface, TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
     },
     types::{SemanticType, TypedFuncType},
 };
@@ -36,7 +36,7 @@ use std::{collections::HashMap, hash::Hash};
 pub struct StructSig {
     pub name: String,
     pub fields: Vec<TypedStructField>,
-    pub impls: Vec<TypedIdentifier>,
+    pub impls: Vec<TypedImplementInterface>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub is_packed: bool,
