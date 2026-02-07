@@ -680,9 +680,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(sema_ty) =
-            self.merge_generic_operand_as_expected_type(field_access_operand_ty.clone(), expected_type.clone())
+            self.merge_generic_operand_with_expected_type(field_access_operand_ty.clone(), expected_type.clone())
         {
-            field_access_operand_ty = sema_ty;
+            field_access_operand_ty = SemanticType::GenericType(sema_ty);
         }
 
         {
@@ -826,8 +826,9 @@ impl<'a> AnalysisContext<'a> {
 
         let mut sema_ty = self.resolve_symbol_type(scope_id_opt, sym.symbol_id(), struct_init.loc.clone())?;
 
-        if let Some(new_sema_ty) = self.merge_generic_operand_as_expected_type(sema_ty.clone(), expected_type.clone()) {
-            sema_ty = new_sema_ty;
+        if let Some(new_sema_ty) = self.merge_generic_operand_with_expected_type(sema_ty.clone(), expected_type.clone())
+        {
+            sema_ty = SemanticType::GenericType(new_sema_ty);
         }
 
         let Some(pure_symbol_id) = sema_ty.maybe_generic_base_symbol_id() else {
@@ -1129,11 +1130,12 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if let Some(sema_ty) =
-            self.merge_generic_operand_as_expected_type(method_call_operand_ty.clone(), expected_type.clone())
-        {
-            method_call_operand_ty = sema_ty;
-        }
+        // FIXME: Remove
+        // if let Some(sema_ty) =
+        //     self.merge_generic_operand_as_expected_type(method_call_operand_ty.clone(), expected_type.clone())
+        // {
+        //     method_call_operand_ty = sema_ty;
+        // }
 
         {
             let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_method_call(
@@ -1297,6 +1299,7 @@ impl<'a> AnalysisContext<'a> {
             object_id,
             method_call_operand_ty,
             is_instance_method_operand,
+            expected_type,
         )
     }
 
@@ -1683,8 +1686,9 @@ impl<'a> AnalysisContext<'a> {
         scope_opt: Option<LocalScopeRef>,
         method_call: &mut TypedMethodCall,
         object_id: SymbolID,
-        method_call_operand_ty: SemanticType,
+        operand_ty: SemanticType,
         is_instance_method_operand: bool,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let sym = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
@@ -1778,6 +1782,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
+        // NOTE: used in CIRWalk to make ABI Name
         method_call.object_name = Some(object_name.clone());
 
         if self.check_unexpected_type_args(
@@ -1788,9 +1793,8 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let first_param_opt = func_sig.params.list.first();
-
         let is_instance_method_sig = func_sig.is_instance_method();
+        let first_param_opt = func_sig.params.list.first();
 
         // invalid if static method called on instance
         let invalid_call = !is_instance_method_sig && is_instance_method_operand;
@@ -1803,7 +1807,7 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(method_call.loc.clone())),
                 hint: Some(format!(
                     "Call it on a value of type '{}', or declare it as a static function if no instance is required.",
-                    format_sema_ty(method_call_operand_ty, &(self.symbol_formatter)(scope_id_opt))
+                    format_sema_ty(operand_ty, &(self.symbol_formatter)(scope_id_opt))
                 )),
             });
             return None;
@@ -1813,7 +1817,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             object_id,
             &method_call.method_name,
-            method_call_operand_ty.clone(),
+            operand_ty.clone(),
             method_call.is_fat_arrow,
             first_param_opt,
             object_methods,
@@ -1828,20 +1832,17 @@ impl<'a> AnalysisContext<'a> {
 
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
-            
-        let mut generic_type_opt = method_call_operand_ty.pointer_inner().as_generic_type().cloned();
 
-        // init method generic mapping ctx
-        let parent_mapping_ctx = generic_type_opt
-            .clone()
-            .map(|generic_type| Rc::new(generic_type.mapping_ctx.borrow().clone()));
+        // ---------------- inference ----------------
 
-        let (_, method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
+        let mut operand_generic_type_opt = operand_ty.pointer_inner().as_generic_type().cloned();
+
+        let (_, mut method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
             scope_opt.clone(),
             func_sig.symbol_id.unwrap(),
             &mut method_call.type_args,
-            parent_mapping_ctx.clone(),
+            None,
             func_sig.generic_params.as_ref(),
             false,
             method_call.loc.clone(),
@@ -1853,9 +1854,106 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        // fallback
-        if parent_mapping_ctx.is_none() {
-            generic_type_opt = method_generic_type_opt.clone();
+        // NOTE: Generic methods requires param type inference
+        fn infer_generic_method_params(
+            this: &mut AnalysisContext,
+            generic_type_opt: Option<&GenericType>,
+            scope_id_opt: &Option<u32>,
+            func_sig_params_list: &Vec<TypedFuncParamKind>,
+            method_call_args: &mut Vec<TypedExprStmt>,
+        ) {
+            // infer generic params from arguments
+            for (idx, arg) in method_call_args.iter_mut().enumerate() {
+                let target_type = match func_sig_params_list.get(idx).and_then(|param| param.param_type()) {
+                    Some(sema_ty) => sema_ty,
+                    None => continue,
+                };
+
+                this.analyze_expr(*scope_id_opt, arg, None);
+
+                if let Some(sema_ty) = this.infer_generic_param(
+                    *scope_id_opt,
+                    generic_type_opt,
+                    target_type,
+                    arg.sema_ty.clone(),
+                    arg.loc.clone(),
+                ) {
+                    arg.sema_ty = Some(sema_ty);
+                }
+            }
+        }
+
+        // 1. Generic Method, Generic Operand
+        if let (Some(generic_method), Some(generic_operand)) = (&mut method_generic_type_opt, &operand_generic_type_opt)
+        {
+            let mut merged_generic_type = self.merge_generic_type(generic_method, generic_operand);
+
+            if let Err(diag) =
+                merged_generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+            {
+                self.reporter.report(diag);
+                return None;
+            }
+
+            infer_generic_method_params(
+                self,
+                Some(&merged_generic_type),
+                &scope_id_opt,
+                &func_sig.params.list,
+                &mut method_call.args,
+            );
+
+            method_generic_type_opt = Some(merged_generic_type);
+        }
+        // 2. Generic Method, Concrete Operand
+        else if let (Some(generic_method), None) = (&mut method_generic_type_opt, &operand_generic_type_opt) {
+            if let Err(diag) =
+                generic_method.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+            {
+                self.reporter.report(diag);
+                return None;
+            }
+
+            infer_generic_method_params(
+                self,
+                Some(generic_method),
+                &scope_id_opt,
+                &func_sig.params.list,
+                &mut method_call.args,
+            );
+
+            method_generic_type_opt = match generic_method.finalize(
+                self.mapping_ctx_arena.clone(),
+                func_sig.generic_params.clone().unwrap(),
+                &(self.symbol_formatter)(scope_id_opt),
+            ) {
+                Ok(generic_type) => Some(generic_type.clone()),
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
+                }
+            };
+        }
+        // 3. Concrete Method, Generic Operand
+        else if let (None, Some(generic_operand)) = (&method_generic_type_opt, &mut operand_generic_type_opt) {
+            if let Err(diag) =
+                generic_operand.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+            {
+                self.reporter.report(diag);
+                return None;
+            }
+
+            infer_generic_method_params(
+                self,
+                Some(generic_operand),
+                &scope_id_opt,
+                &func_sig.params.list,
+                &mut method_call.args,
+            );
+        }
+        // 4. Concrete Method, Concrete Operand (Non-Generic)
+        else {
+            // process non-generic method call
         }
 
         if !is_instance_method_operand && is_instance_method_sig {
@@ -1863,7 +1961,7 @@ impl<'a> AnalysisContext<'a> {
             // inferring self type from first argument type
             if let Some(mut expr) = method_call.args.first().cloned() {
                 if let Some(sema_ty) = self.analyze_expr(scope_id_opt, &mut expr, None) {
-                    generic_type_opt = sema_ty.as_generic_type().cloned();
+                    operand_generic_type_opt = sema_ty.as_generic_type().cloned();
 
                     self.set_ty_ctx_self_type(method_call, &sema_ty);
                     set_self_modifier_type_in_func_sig(&mut func_sig, &sema_ty);
@@ -1871,37 +1969,37 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // infer generic params from arguments
-        for (idx, arg) in method_call.args.iter_mut().enumerate() {
-            let target_type = match func_sig.params.list.get(idx).and_then(|param| param.param_type()) {
-                Some(sema_ty) => sema_ty,
-                None => continue,
-            };
+        // merge method_mapping_ctx + operand_mapping_ctx
+        let merged_generic_type_opt = {
+            let method_mapping_ctx_sema_ty =
+                method_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type));
 
-            if let Some(sema_ty) = self.infer_generic_param(
-                scope_id_opt,
-                &generic_type_opt,
-                target_type,
-                arg.sema_ty.clone(),
-                arg.loc.clone(),
-            ) {
-                arg.sema_ty = Some(sema_ty);
-            }
+            let generic_type_opt =
+                self.merge_generic_operand_with_expected_type(operand_ty.clone(), method_mapping_ctx_sema_ty.clone());
+
+            generic_type_opt
+        };
+
+        if let Some(generic_type) = &merged_generic_type_opt {
+            // infer remaining generic params from expected type
+            self.unify_generic_types_from_expected_type(scope_id_opt, &generic_type, expected_type);
         }
 
         // instance self type
-        self.set_ty_ctx_self_type(method_call, &method_call_operand_ty);
+        self.set_ty_ctx_self_type(method_call, &operand_ty);
+
+        // ---------------- inference complete ----------------
 
         func_sig.return_type = self.check_func_call(
             scope_id_opt,
             &mut func_sig,
-            &generic_type_opt,
+            &operand_generic_type_opt,
             &mut method_call.args,
             method_call.loc.clone(),
             instance_method_call,
         )?;
 
-        if let Some(generic_type) = &generic_type_opt {
+        if let Some(generic_type) = &merged_generic_type_opt {
             func_sig.return_type = substitute_type(
                 self.mapping_ctx_arena.clone(),
                 func_sig.return_type.clone(),
@@ -1911,21 +2009,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // validate generic type instantiation
-        if let Some(generic_type) = generic_type_opt {
-            {
-                if let Some(method_generic_type) = method_generic_type_opt {
-                    let method_generic_mapping_ctx_id_opt = {
-                        let mut mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
-                        mapping_ctx_arena.insert(method_generic_type.mapping_ctx.borrow().clone())
-                    };
-
-                    let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut();
-                    if let Some(parent_id) = method_generic_mapping_ctx_id_opt {
-                        mapping_ctx.set_parent_id(parent_id);
-                    }
-                }
-            }
-
+        if let Some(generic_type) = &merged_generic_type_opt {
             func_sig = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
                 &func_sig,
@@ -1948,7 +2032,7 @@ impl<'a> AnalysisContext<'a> {
             method_call.monomorph_key = self.register_specialized_generic_func(
                 &mut func_sig,
                 &generic_type,
-                Some(method_call_operand_ty.clone()),
+                Some(SemanticType::GenericType(merged_generic_type_opt.clone().unwrap())),
                 &func_call_loc,
             );
 
@@ -1956,12 +2040,13 @@ impl<'a> AnalysisContext<'a> {
             method_call.operand.sema_ty = substitute_type(
                 self.mapping_ctx_arena.clone(),
                 method_call.operand.sema_ty.clone().unwrap(),
-                generic_type.mapping_ctx,
+                generic_type.mapping_ctx.clone(),
             );
         }
 
         if instance_method_call {
-            let self_modifier_type = self_modifier_param_type(&func_sig.params, method_call_operand_ty).unwrap();
+            let self_modifier_type = self_modifier_param_type(&func_sig.params, operand_ty).unwrap();
+
             set_self_modifier_type_in_func_sig(&mut func_sig, &self_modifier_type);
 
             let self_modifier = func_sig.params.list.first().unwrap().as_self_modifier().unwrap();
@@ -2097,7 +2182,7 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
-                generic_type_opt,
+                generic_type_opt.as_ref(),
                 param_type.clone(),
                 Some(arg_type.clone()),
                 arg.loc.clone(),
@@ -2428,7 +2513,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(sema_ty) = self.infer_generic_param(
             scope_id_opt,
-            generic_type_opt,
+            generic_type_opt.as_ref(),
             field.ty.clone(),
             field_init.value.sema_ty.clone(),
             field_init.value.loc.clone(),
@@ -2554,7 +2639,7 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
-                generic_type_opt,
+                generic_type_opt.as_ref(),
                 field.ty.clone(),
                 field_value_ty.clone(),
                 field_init.loc.clone(),
@@ -3028,7 +3113,7 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
-                &generic_type_opt,
+                generic_type_opt.as_ref(),
                 enum_valued_field.ty.clone(),
                 typed_expr.sema_ty.clone(),
                 typed_expr.loc.clone(),

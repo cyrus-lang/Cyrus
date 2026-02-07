@@ -35,6 +35,9 @@ emit-llvm:
 run:
 	$(CARGO_RUN) -- run $(INPUT) --stdlib=$(STDLIB) $(COMMON_FLAGS)
 
+sanitizer:
+	$(CARGO_RUN) -- run $(INPUT) --sanitize=address --stdlib=$(STDLIB) $(COMMON_FLAGS)
+
 build:
 	$(CARGO_BUILD) $(ARGS)
 

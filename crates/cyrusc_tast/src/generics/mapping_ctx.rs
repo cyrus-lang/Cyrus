@@ -145,6 +145,13 @@ pub fn normalize_generic_mapping_ctx(
 }
 
 impl GenericMappingCtx {
+    pub fn merge(&self, other: &Self) -> Self {
+        let mut new_mapping_ctx = self.clone();
+        new_mapping_ctx.links.extend(other.links.clone());
+        new_mapping_ctx.named.extend(other.named.clone());
+        new_mapping_ctx
+    }
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.named.is_empty() && self.links.is_empty() && self.parent.is_none()
