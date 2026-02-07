@@ -1,0 +1,24 @@
+// @stdout: yes
+
+import std::libc{printf};
+
+interface IValidator<T> {
+    fn validate(&self, value: T) bool;
+}
+
+struct NumberValidator: IValidator<int> {
+	pub fn validate(&self, value: int) bool {
+		if (value > 5) { return true; }
+		else { return false; }
+	}
+}
+
+pub fn main() {
+	const validator: IValidator<int> = dynamic NumberValidator{};
+
+	if (validator.validate(10)) {
+		printf("yes\n");
+	} else {
+		printf("no\n");
+	}
+}

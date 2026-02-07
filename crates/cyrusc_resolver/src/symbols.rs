@@ -222,7 +222,9 @@ impl LocalOrGlobalSymbol {
                 LocalSymbolKind::Enum(resolved_enum) => resolved_enum.enum_sig.generic_params.clone(),
                 LocalSymbolKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.generic_params.clone(),
                 LocalSymbolKind::Union(resolved_union) => resolved_union.union_sig.generic_params.clone(),
-                LocalSymbolKind::Interface(..) => None,
+                LocalSymbolKind::Interface(resolved_interface) => {
+                    resolved_interface.interface_sig.generic_params.clone()
+                }
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
                 SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.generic_params.clone(),
@@ -230,7 +232,10 @@ impl LocalOrGlobalSymbol {
                 SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.generic_params.clone(),
                 SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.generic_params.clone(),
                 SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.generic_params.clone(),
-                SymbolEntryKind::GlobalVar(..) | SymbolEntryKind::Interface(..) => None,
+                SymbolEntryKind::Interface(resolved_interface) => {
+                    resolved_interface.interface_sig.generic_params.clone()
+                }
+                SymbolEntryKind::GlobalVar(..) => None,
                 SymbolEntryKind::Method(_) => None,
                 SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
             },

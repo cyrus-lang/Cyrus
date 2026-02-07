@@ -24,8 +24,12 @@ use cyrusc_resolver::{
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::TypedSelfType,
-    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::substitute_type},
-    sigs::{FuncSig, typed_func_decl_as_func_sig},
+    generics::{
+        generic_type::GenericType,
+        mapping_ctx::GenericMappingCtx,
+        substitute::{substitute_func_sig, substitute_type},
+    },
+    sigs::{FuncSig, InterfaceSig, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
@@ -384,7 +388,9 @@ impl<'a> AnalysisContext<'a> {
             .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)?;
 
         if generic_type.generic_params.list.is_empty() {
-            generic_type.generic_params = sym.symbol_generic_params()?;
+            if let Some(symbol_generic_params) = sym.symbol_generic_params() {
+                generic_type.generic_params = symbol_generic_params;
+            }
         }
 
         self.normalize_type_args(scope_id_opt, generic_type.type_args.as_mut());
@@ -399,10 +405,20 @@ impl<'a> AnalysisContext<'a> {
                 generic_type.type_args,
                 typedef.typedef_sig.loc.clone(),
             )
+        } else if let Some(resolved_interface) = sym.as_interface() {
+            if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+            {
+                self.reporter.report(diag);
+                return None;
+            }
+
+            self.normalize_generic_interface_type(&generic_type, &resolved_interface.interface_sig)
         } else {
-            generic_type
-                .init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
-                .ok()?;
+            if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+            {
+                self.reporter.report(diag);
+                return None;
+            }
 
             if generic_type.is_const {
                 Some(SemanticType::GenericType(generic_type).as_const())
@@ -464,6 +480,32 @@ impl<'a> AnalysisContext<'a> {
             symbol_id: resolved_interface.symbol_id,
             methods,
             loc,
+        }))
+    }
+
+    fn normalize_generic_interface_type(
+        &mut self,
+        generic_type: &GenericType,
+        interface_sig: &InterfaceSig,
+    ) -> Option<SemanticType> {
+        let mut methods: Vec<FuncSig> = Vec::new();
+
+        for func_decl in &interface_sig.methods {
+            let mut func_sig = typed_func_decl_as_func_sig(func_decl);
+            func_sig = substitute_func_sig(
+                self.mapping_ctx_arena.clone(),
+                &func_sig,
+                generic_type.mapping_ctx.clone(),
+            )
+            .unwrap();
+
+            methods.push(func_sig);
+        }
+
+        Some(SemanticType::Interface(InterfaceType {
+            symbol_id: generic_type.base,
+            methods,
+            loc: generic_type.loc.clone(),
         }))
     }
 

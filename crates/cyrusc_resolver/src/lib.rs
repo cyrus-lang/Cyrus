@@ -1226,6 +1226,7 @@ impl Resolver {
                 symbol_id: interface_symbol_id,
                 name: interface.ident.value.clone(),
                 methods: typed_methods.clone(),
+                generic_params: generic_params.clone(),
                 vis: interface.vis.clone(),
                 loc: SourceLoc::from_loc(interface.loc.clone(), self.current_file_path()),
             },
@@ -1251,6 +1252,7 @@ impl Resolver {
             name: interface.ident.value.clone(),
             symbol_id: interface_symbol_id,
             methods: typed_methods,
+            generic_params,
             vis: interface.vis.clone(),
             loc: SourceLoc::from_loc(interface.loc.clone(), self.current_file_path()),
         }))

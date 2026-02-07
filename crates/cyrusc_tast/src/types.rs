@@ -130,6 +130,7 @@ impl SemanticType {
         match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
             SemanticType::GenericType(generic_type) => Some(generic_type.base),
+            SemanticType::Interface(interface_type) => Some(interface_type.symbol_id),
             _ => None,
         }
     }

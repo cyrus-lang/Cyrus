@@ -31,7 +31,9 @@ use cyrusc_tast::{
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedLiteralExpr, TypedTupleAccessExpr},
     format::format_sema_ty,
     generics::{
-        mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry, substitute::substitute_enum_sig,
+        mapping_ctx_arena::GenericMappingCtxArena,
+        monomorph::MonomorphRegistry,
+        substitute::{substitute_enum_sig, substitute_func_sig},
     },
     sigs::{EnumSig, FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
     stmts::*,
@@ -1504,16 +1506,65 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            let method_decls = &resolved_interface.interface_sig.methods;
+            let interface_method_decls = &resolved_interface.interface_sig.methods;
+            let mut interface_method_sigs: Vec<FuncSig> = Vec::new();
 
-            for func_decl in method_decls.clone() {
-                if !method_ids.contains_key(&func_decl.name) {
+            if let Some(generic_params) = &resolved_interface.interface_sig.generic_params {
+                let Some(type_args) = &implement_interface.type_args else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::MissingTypeArgs {
+                            type_name: interface_name.clone(),
+                        }),
+                        location: Some(DiagLoc::new(implement_interface.loc.clone())),
+                        hint: None,
+                    });
+                    continue;
+                };
+
+                let generic_type_opt = match self.init_generic_type_with_symbol_id(
+                    scope_id_opt,
+                    scope_opt.clone(),
+                    implement_interface.symbol_id,
+                    &mut Some(type_args.clone()),
+                    None,
+                    Some(generic_params),
+                    false,
+                    implement_interface.loc.clone(),
+                ) {
+                    Ok(result) => match result {
+                        Some((_, generic_type)) => generic_type,
+                        None => unreachable!(),
+                    },
+                    Err(diag) => {
+                        self.reporter.report(diag);
+                        continue;
+                    }
+                };
+
+                if let Some(generic_type) = generic_type_opt {
+                    for func_decl in interface_method_decls {
+                        let mut func_sig = typed_func_decl_as_func_sig(func_decl);
+                        func_sig = substitute_func_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &func_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        interface_method_sigs.push(func_sig);
+                    }
+                }
+            }
+
+            for interface_method_sig in interface_method_sigs.clone() {
+                if !method_ids.contains_key(&interface_method_sig.name) {
                     // method missing
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
                             object_name: object_name.clone(),
-                            method_name: func_decl.name.clone(),
+                            method_name: interface_method_sig.name.clone(),
                             interface_name: interface_name.clone(),
                         }),
                         location: Some(DiagLoc::new(implement_interface.loc.clone())),
@@ -1522,7 +1573,7 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 }
 
-                let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
+                let object_method_symbol_id = method_ids.get(&interface_method_sig.name).unwrap();
                 let mut sym = self
                     .resolver
                     .resolve_local_or_global_symbol(scope_opt.clone(), *object_method_symbol_id)
@@ -1531,13 +1582,13 @@ impl<'a> AnalysisContext<'a> {
                 let object_method = sym.as_method_mut().unwrap();
 
                 // check method signature mismatch
-                if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {
+                if object_method.func_sig != interface_method_sig {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
                             object_name: object_name.clone(),
                             interface_name: interface_name.clone(),
-                            method_name: func_decl.name.clone(),
+                            method_name: interface_method_sig.name.clone(),
                         }),
                         location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),
                         hint: None,
