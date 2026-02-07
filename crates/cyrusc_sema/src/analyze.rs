@@ -1304,6 +1304,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_interface(&mut self, typed_interface: &TypedInterfaceStmt) {
+        if let Some(generic_params) = &typed_interface.generic_params {
+            self.analyze_generics_params(generic_params);
+        }
+
         self.check_interface_name(typed_interface.name.clone(), typed_interface.loc.clone(), false);
 
         let mut name_list: Vec<String> = Vec::new();
