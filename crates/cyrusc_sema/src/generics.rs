@@ -37,6 +37,33 @@ use std::{
 };
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn merge_generic_type(&self, generic_type1: &GenericType, generic_type2: &GenericType) -> GenericType {
+        let mut merged_generic_type = generic_type1.clone();
+
+        let params_in_type2_not_in_type1: Vec<_> = generic_type2
+            .generic_params
+            .list
+            .iter()
+            .filter(|param| !generic_type1.generic_params.list.contains(param))
+            .cloned()
+            .collect();
+
+        merged_generic_type
+            .generic_params
+            .list
+            .extend(params_in_type2_not_in_type1);
+
+        let merged_mapping_ctx = merged_generic_type
+            .mapping_ctx
+            .borrow_mut()
+            .merge(&generic_type2.mapping_ctx.borrow());
+
+        merged_generic_type.type_args = None;
+
+        *merged_generic_type.mapping_ctx.borrow_mut() = merged_mapping_ctx;
+        merged_generic_type
+    }
+
     /// Extracts and merges generic parameters and mapping contexts from type information.
     ///
     /// This function serves as a starting point for generic type operations by:
@@ -365,6 +392,31 @@ impl<'a> AnalysisContext<'a> {
         Ok(Some((sym.symbol_id(), Some(generic_type))))
     }
 
+    pub(crate) fn unify_generic_types_from_expected_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        generic_type: &GenericType,
+        expected_type_opt: Option<SemanticType>,
+    ) -> Option<()> {
+        let expected_type = expected_type_opt?;
+        let expected_generic_type = expected_type.as_generic_type()?;
+
+        // Store the mutated mapping_ctx
+        let mut mapping_ctx = generic_type.mapping_ctx.borrow_mut().clone();
+        let expected_mapping_ctx = expected_generic_type.mapping_ctx.borrow().clone();
+
+        self.unify_generic_types(
+            scope_id_opt,
+            &mut mapping_ctx,
+            &Some(expected_mapping_ctx),
+            &SemanticType::GenericType(generic_type.clone()),
+            &expected_type,
+        );
+
+        *generic_type.mapping_ctx.borrow_mut() = mapping_ctx;
+        None
+    }
+
     fn unify_generic_types(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -449,30 +501,20 @@ impl<'a> AnalysisContext<'a> {
                         return;
                     };
 
-                    if let Some(target_type_args) = &target_generic_type.type_args {
-                        for target_type_arg in target_type_args.iter() {
-                            let Some(generic_param) = target_type_arg.ty().as_generic_param() else {
-                                continue;
-                            };
+                    for generic_param in &target_generic_type.generic_params.list {
+                        let Some(mut sema_ty) = expr_mapping_ctx
+                            .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                        else {
+                            continue;
+                        };
 
-                            let Some(mut sema_ty) = expr_mapping_ctx
-                                .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
-                            else {
-                                continue;
-                            };
+                        sema_ty = match self.normalize_sema_type(scope_id_opt, sema_ty, target_generic_type.loc.clone())
+                        {
+                            Some(sema_ty) => sema_ty,
+                            None => continue,
+                        };
 
-                            sema_ty = match self.normalize_sema_type(
-                                scope_id_opt,
-                                sema_ty,
-                                target_generic_type.loc.clone(),
-                            ) {
-                                Some(sema_ty) => sema_ty,
-                                None => continue,
-                            };
-
-                            mapping_ctx
-                                .insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_ty);
-                        }
+                        mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_ty);
                     }
                 }
             }
@@ -492,7 +534,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn infer_generic_param(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        generic_type_opt: &Option<GenericType>,
+        generic_type_opt: Option<&GenericType>,
         target_ty: SemanticType,
         expr_ty: Option<SemanticType>,
         loc: SourceLoc,
@@ -626,12 +668,14 @@ impl<'a> AnalysisContext<'a> {
         type_args
     }
 
-    pub(crate) fn merge_generic_operand_as_expected_type(
+    pub(crate) fn merge_generic_operand_with_expected_type(
         &self,
         operand_ty: SemanticType,
         expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        let generic_type = operand_ty.as_generic_type()?;
+    ) -> Option<GenericType> {
+        let Some(generic_type) = operand_ty.as_generic_type() else {
+            return expected_type.and_then(|sema_ty| sema_ty.as_generic_type().cloned());
+        };
 
         let parent_id_opt = expected_type
             .as_ref()
@@ -646,7 +690,7 @@ impl<'a> AnalysisContext<'a> {
             ctx.set_parent_id(parent_id);
         }
 
-        Some(SemanticType::GenericType(generic_type.clone()))
+        Some(generic_type.clone())
     }
 
     pub(crate) fn export_expected_generic_mapping_ctx(

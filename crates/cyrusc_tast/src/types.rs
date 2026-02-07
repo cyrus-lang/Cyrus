@@ -169,6 +169,13 @@ impl SemanticType {
         }
     }
 
+    pub fn is_generic_type(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::GenericType(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
         match self.const_inner() {
             SemanticType::PlainType(basic) => basic.is_integer(),
