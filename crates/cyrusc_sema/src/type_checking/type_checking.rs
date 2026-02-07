@@ -1130,13 +1130,6 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // FIXME: Remove
-        // if let Some(sema_ty) =
-        //     self.merge_generic_operand_as_expected_type(method_call_operand_ty.clone(), expected_type.clone())
-        // {
-        //     method_call_operand_ty = sema_ty;
-        // }
-
         {
             let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_method_call(
                 scope_id_opt,
