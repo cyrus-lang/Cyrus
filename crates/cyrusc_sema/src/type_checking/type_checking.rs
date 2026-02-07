@@ -1114,22 +1114,16 @@ impl<'a> AnalysisContext<'a> {
             .map(|sema_ty| sema_ty.const_inner())
             .cloned()?;
 
-        // this only used to determine that, it's instance/static method call.
-        let unresolved_symbol_id = method_call.operand.kind.as_symbol_id();
+        method_call_operand_ty = self
+            .normalize_sema_type(scope_id_opt, method_call_operand_ty, method_call.loc.clone())
+            .unwrap();
 
-        let mut is_instance_method_operand = false;
-
-        if let Some(symbol_id) = unresolved_symbol_id {
-            if let Some(sym) = self
-                .resolver
-                .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
-            {
-                if sym.as_variable().is_some() || sym.as_global_var().is_some() {
-                    is_instance_method_operand = true;
-                }
-            }
+        // try as interface method call
+        if let Some(interface_type) = method_call_operand_ty.as_interface_type() {
+            return self.analyze_interface_method_call(scope_id_opt, method_call, interface_type);
         }
 
+        // try as enum variant constructor
         {
             let (detected_as_enum_variant, sema_ty) = self.maybe_enum_variant_constructor_from_method_call(
                 scope_id_opt,
@@ -1143,6 +1137,20 @@ impl<'a> AnalysisContext<'a> {
                 return sema_ty;
             }
         }
+
+        // method call analysis
+
+        // this only used to determine that, it's instance/static method call.
+        let unresolved_symbol_id = method_call.operand.kind.as_symbol_id();
+
+        let is_instance_method_operand = unresolved_symbol_id
+            .and_then(|symbol_id| {
+                self.resolver
+                    .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
+            })
+            .map_or(false, |sym| {
+                sym.as_variable().is_some() || sym.as_global_var().is_some()
+            });
 
         let object_symbol_id = {
             let operand_ty = method_call_operand_ty
@@ -1275,7 +1283,7 @@ impl<'a> AnalysisContext<'a> {
         // can never be inferred.
         if sym.symbol_generic_params().is_some() && method_call_operand_ty.pointer_inner().as_generic_type().is_none() {
             method_call_operand_ty = SemanticType::GenericType(GenericType {
-                base: method_call_operand_ty.symbol_id().unwrap(),
+                base: method_call_operand_ty.maybe_generic_base_symbol_id().unwrap(),
                 type_args: None,
                 mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
                 mapping_ctx_arena: self.mapping_ctx_arena.clone(),
@@ -1540,7 +1548,7 @@ impl<'a> AnalysisContext<'a> {
         dynamic_expr: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None);
+        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
 
         if dynamic_expr.operand.kind.is_dynamic_expr() {
             self.reporter.report(Diag {
@@ -1568,8 +1576,6 @@ impl<'a> AnalysisContext<'a> {
             set_self_modifier_type_in_func_sig(func_sig, &dynamic_expr.operand.sema_ty.as_ref().unwrap());
             set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
         });
-
-        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
 
         {
             let mut vtable_registry = self.vtable_registry.lock().unwrap();
@@ -1645,6 +1651,43 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_interface_method_call(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        method_call: &mut TypedMethodCall,
+        interface_type: &InterfaceType,
+    ) -> Option<SemanticType> {
+        let method_idx = interface_type
+            .methods
+            .iter()
+            .position(|method| method.name == method_call.method_name)?;
+
+        let mut func_sig = interface_type.methods[method_idx].clone();
+
+        // interface uses void* for SelfType
+        let self_type = SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void)));
+        set_self_modifier_type_in_func_sig(&mut func_sig, &self_type);
+        set_self_modifier_symbol_id_in_func_sig(&mut func_sig, 0);
+
+        method_call.method_call_on_interface = Some(TypedInterfaceMethodCallMetadata {
+            method_idx,
+            methods_len: interface_type.methods.len(),
+            method_sig: func_sig.clone(),
+        });
+
+        let return_type = self.check_func_call(
+            scope_id_opt,
+            &mut func_sig,
+            &None,
+            &mut method_call.args,
+            method_call.loc.clone(),
+            true, // always instance method call for interfaces
+        )?;
+
+        method_call.func_sig = Some(func_sig.clone());
+        Some(return_type)
+    }
+
     /// Analyzes regular method calls on objects (structs, enums, unions).
     ///
     /// Type-checks method calls on object instances, handling instance vs static
@@ -1683,10 +1726,37 @@ impl<'a> AnalysisContext<'a> {
         is_instance_method_operand: bool,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let sym = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
+        fn infer_generic_method_params(
+            this: &mut AnalysisContext,
+            generic_type_opt: Option<&GenericType>,
+            scope_id_opt: &Option<u32>,
+            func_sig_params_list: &Vec<TypedFuncParamKind>,
+            method_call_args: &mut Vec<TypedExprStmt>,
+        ) {
+            // infer generic params from arguments
+            for (idx, arg) in method_call_args.iter_mut().enumerate() {
+                let target_type = match func_sig_params_list.get(idx).and_then(|param| param.param_type()) {
+                    Some(sema_ty) => sema_ty,
+                    None => continue,
+                };
+
+                this.analyze_expr(*scope_id_opt, arg, None);
+
+                if let Some(sema_ty) = this.infer_generic_param(
+                    *scope_id_opt,
+                    generic_type_opt,
+                    target_type,
+                    arg.sema_ty.clone(),
+                    arg.loc.clone(),
+                ) {
+                    arg.sema_ty = Some(sema_ty);
+                }
+            }
+        }
 
         let object_name: String;
         let object_methods: Option<HashMap<String, SymbolID>>;
+        let sym = self.resolver.lookup_symbol_entry_with_id(object_id).unwrap();
 
         macro_rules! lookup_object_method {
             () => {{
@@ -1775,7 +1845,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        // NOTE: used in CIRWalk to make ABI Name
+        // object name used later to make mangled abi name
         method_call.object_name = Some(object_name.clone());
 
         if self.check_unexpected_type_args(
@@ -1791,6 +1861,7 @@ impl<'a> AnalysisContext<'a> {
 
         // invalid if static method called on instance
         let invalid_call = !is_instance_method_sig && is_instance_method_operand;
+
         if invalid_call {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1812,6 +1883,7 @@ impl<'a> AnalysisContext<'a> {
             &method_call.method_name,
             operand_ty.clone(),
             method_call.is_fat_arrow,
+            method_call.method_call_on_interface.is_some(),
             first_param_opt,
             object_methods,
             object_name.clone(),
@@ -1826,55 +1898,26 @@ impl<'a> AnalysisContext<'a> {
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
 
-        // ---------------- inference ----------------
+        let mut operand_generic_type_opt = { operand_ty.pointer_inner().as_generic_type().cloned() };
 
-        let mut operand_generic_type_opt = operand_ty.pointer_inner().as_generic_type().cloned();
-
-        let (_, mut method_generic_type_opt) = match self.init_generic_type_with_symbol_id(
-            scope_id_opt,
-            scope_opt.clone(),
-            func_sig.symbol_id.unwrap(),
-            &mut method_call.type_args,
-            None,
-            func_sig.generic_params.as_ref(),
-            false,
-            method_call.loc.clone(),
-        ) {
-            Ok(opt) => opt?,
-            Err(diag) => {
-                self.reporter.report(diag);
-                return None;
-            }
-        };
-
-        // NOTE: Generic methods requires param type inference
-        fn infer_generic_method_params(
-            this: &mut AnalysisContext,
-            generic_type_opt: Option<&GenericType>,
-            scope_id_opt: &Option<u32>,
-            func_sig_params_list: &Vec<TypedFuncParamKind>,
-            method_call_args: &mut Vec<TypedExprStmt>,
-        ) {
-            // infer generic params from arguments
-            for (idx, arg) in method_call_args.iter_mut().enumerate() {
-                let target_type = match func_sig_params_list.get(idx).and_then(|param| param.param_type()) {
-                    Some(sema_ty) => sema_ty,
-                    None => continue,
-                };
-
-                this.analyze_expr(*scope_id_opt, arg, None);
-
-                if let Some(sema_ty) = this.infer_generic_param(
-                    *scope_id_opt,
-                    generic_type_opt,
-                    target_type,
-                    arg.sema_ty.clone(),
-                    arg.loc.clone(),
-                ) {
-                    arg.sema_ty = Some(sema_ty);
+        let mut method_generic_type_opt = {
+            match self.init_generic_type_with_symbol_id(
+                scope_id_opt,
+                scope_opt.clone(),
+                func_sig.symbol_id.unwrap(),
+                &mut method_call.type_args,
+                None,
+                func_sig.generic_params.as_ref(),
+                false,
+                method_call.loc.clone(),
+            ) {
+                Ok(opt) => opt?.1,
+                Err(diag) => {
+                    self.reporter.report(diag);
+                    return None;
                 }
             }
-        }
+        };
 
         // 1. Generic Method, Generic Operand
         if let (Some(generic_method), Some(generic_operand)) = (&mut method_generic_type_opt, &operand_generic_type_opt)
@@ -1967,10 +2010,7 @@ impl<'a> AnalysisContext<'a> {
             let method_mapping_ctx_sema_ty =
                 method_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type));
 
-            let generic_type_opt =
-                self.merge_generic_operand_with_expected_type(operand_ty.clone(), method_mapping_ctx_sema_ty.clone());
-
-            generic_type_opt
+            self.merge_generic_operand_with_expected_type(operand_ty.clone(), method_mapping_ctx_sema_ty.clone())
         };
 
         if let Some(generic_type) = &merged_generic_type_opt {
@@ -1980,8 +2020,6 @@ impl<'a> AnalysisContext<'a> {
 
         // instance self type
         self.set_ty_ctx_self_type(method_call, &operand_ty);
-
-        // ---------------- inference complete ----------------
 
         func_sig.return_type = self.check_func_call(
             scope_id_opt,
@@ -3919,6 +3957,7 @@ impl<'a> AnalysisContext<'a> {
         method_name: &String,
         method_call_operand_ty: SemanticType,
         is_fat_arrow: bool,
+        method_call_on_interface: bool,
         first_param_opt: Option<&TypedFuncParamKind>,
         object_methods_opt: Option<HashMap<String, SymbolID>>,
         object_name: String,
@@ -3944,10 +3983,10 @@ impl<'a> AnalysisContext<'a> {
             if object_contains_method {
                 false
             } else {
-                !method_vis.is_public() && !method_call_operand_ty.is_interface()
+                !method_vis.is_public() && !method_call_on_interface
             }
         } else {
-            !method_vis.is_public() && !method_call_operand_ty.is_interface()
+            !method_vis.is_public() && !method_call_on_interface
         };
 
         if access_violation {
@@ -3967,7 +4006,7 @@ impl<'a> AnalysisContext<'a> {
         let is_operand_const = method_call_operand_ty.is_const();
         let is_object = method_call_operand_ty.const_inner().is_resolved_symbol()
             || method_call_operand_ty.as_generic_type().is_some()
-            || method_call_operand_ty.is_interface();
+            || method_call_on_interface;
 
         if is_fat_arrow {
             if !is_pointer {

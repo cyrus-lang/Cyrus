@@ -22,7 +22,7 @@ use crate::{
         TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList,
         TypedImplementInterface, TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
     },
-    types::{SemanticType, TypedFuncType},
+    types::{InterfaceType, SemanticType, TypedFuncType},
 };
 use cyrusc_abi::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
@@ -94,6 +94,7 @@ pub struct InterfaceSig {
     pub symbol_id: SymbolID,
     pub name: String,
     pub methods: Vec<TypedFuncDeclStmt>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
     pub loc: SourceLoc,
 }
@@ -129,6 +130,19 @@ impl FuncSig {
             },
             None => false,
         }
+    }
+}
+
+pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> InterfaceType {
+    InterfaceType {
+        symbol_id: interface_sig.symbol_id,
+        methods: interface_sig
+            .methods
+            .clone()
+            .iter()
+            .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
+            .collect(),
+        loc: interface_sig.loc.clone(),
     }
 }
 

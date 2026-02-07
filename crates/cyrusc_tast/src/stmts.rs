@@ -138,6 +138,7 @@ pub struct TypedInterfaceStmt {
     pub name: String,
     pub symbol_id: SymbolID,
     pub methods: Vec<TypedFuncDeclStmt>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
     pub loc: SourceLoc,
 }
