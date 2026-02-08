@@ -226,8 +226,8 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                     .iter()
                     .map(|field| {
                         let mut lfmt = String::new();
-                        lfmt.push_str(&field.field_name);
-                        if let Some(sema_ty) = &field.field_ty {
+                        lfmt.push_str(&field.name);
+                        if let Some(sema_ty) = &field.ty {
                             let type_fmt = format_sema_ty(sema_ty.clone(), format_symbol);
                             lfmt.push_str(": ");
                             lfmt.push_str(&type_fmt);

@@ -388,8 +388,8 @@ pub struct TypedUnnamedStructValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
-    pub field_name: String,
-    pub field_ty: Option<SemanticType>,
+    pub name: String,
+    pub ty: Option<SemanticType>,
     pub field_value: Box<TypedExprStmt>,
     pub loc: SourceLoc,
 }
