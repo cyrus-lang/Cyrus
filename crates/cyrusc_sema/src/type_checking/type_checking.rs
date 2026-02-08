@@ -14,7 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields};
+use crate::{
+    analyze::AnalysisContext,
+    diagnostics::AnalyzerDiagKind,
+    format::format_missing_fields,
+    inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
+};
 use cyrusc_abi::visibility::Visibility;
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
@@ -205,7 +210,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_func_call(scope_id_opt, typed_func_call, expected_type)
             }
             TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
-                self.analyze_unnamed_struct_value(scope_id_opt, typed_unnamed_struct_value)
+                self.analyze_unnamed_struct_value(scope_id_opt, typed_unnamed_struct_value, expected_type)
             }
             TypedExprKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
@@ -473,19 +478,44 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_value: &mut TypedUnnamedStructValue,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+        let infer_ctx = self.inference_ctx_from_struct_type(scope_opt, expected_type);
+
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
         for field in &mut unnamed_struct_value.fields {
-            let field_value_type = match self.analyze_expr(scope_id_opt, &mut field.field_value, field.field_ty.clone())
-            {
+            let field_expected_type = field.ty.clone().or(infer_ctx.get(&field.name).cloned());
+
+            let field_value_type = match self.analyze_expr(scope_id_opt, &mut field.field_value, field_expected_type) {
                 Some(sema_ty) => sema_ty,
                 None => continue,
             };
 
+            if let Some(explicit_field_ty) = &field.ty {
+                if !self.check_type_mismatch(
+                    scope_id_opt,
+                    field_value_type.clone(),
+                    explicit_field_ty.clone(),
+                    field.loc.clone(),
+                ) {
+                    let lhs_type = format_sema_ty(explicit_field_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+                    let rhs_type = format_sema_ty(field_value_type, &(self.symbol_formatter)(scope_id_opt));
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
+                        location: Some(DiagLoc::new(field.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+
             fields.push(TypedUnnamedStructTypeField {
-                name: field.field_name.clone(),
-                ty: Box::new(field.field_ty.clone().unwrap_or(field_value_type)),
+                name: field.name.clone(),
+                ty: Box::new(field.ty.clone().unwrap_or(field_value_type)),
                 loc: field.loc.clone(),
             });
         }
@@ -847,8 +877,11 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let (generic_params, parent_mapping_ctx) =
-            self.extract_and_merge_generic_context(&sema_ty, sym.symbol_generic_params().as_ref(), expected_type);
+        let (generic_params, parent_mapping_ctx) = self.extract_and_merge_generic_context(
+            &sema_ty,
+            sym.symbol_generic_params().as_ref(),
+            expected_type.clone(),
+        );
 
         let generic_type_opt = match self.init_generic_type_with_symbol_id(
             scope_id_opt,
@@ -881,7 +914,14 @@ impl<'a> AnalysisContext<'a> {
             if let Some(resolved_union) = sym.as_union() {
                 return self.analyze_regular_union_init(scope_id_opt, struct_init, resolved_union, &generic_type_opt);
             } else if let Some(resolved_struct) = sym.as_struct() {
-                return self.analyze_regular_struct_init(scope_id_opt, struct_init, resolved_struct, &generic_type_opt);
+                let infer_ctx = self.inference_ctx_from_struct_type(scope_opt, expected_type);
+                return self.analyze_regular_struct_init(
+                    scope_id_opt,
+                    struct_init,
+                    resolved_struct,
+                    &generic_type_opt,
+                    &infer_ctx,
+                );
             }
         }
 
@@ -2608,6 +2648,7 @@ impl<'a> AnalysisContext<'a> {
         struct_init: &mut TypedStructInitExpr,
         resolved_struct: &ResolvedStruct,
         generic_type_opt: &Option<GenericType>,
+        infer_ctx: &InferenceCtx,
     ) -> Option<SemanticType> {
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -2662,8 +2703,10 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
+            let infer_ctx_expected_type = infer_ctx.get(&field.name).cloned();
             let field_expected_type = self
                 .try_infer_generic_param_as_expected_type(field.ty.clone(), &generic_type_opt)
+                .or(infer_ctx_expected_type)
                 .unwrap_or(field.ty.clone());
 
             let field_value_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type));
@@ -4082,6 +4125,45 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(loc)),
                 hint: None,
             });
+        }
+    }
+
+    pub(crate) fn inference_ctx_from_struct_type(
+        &self,
+        scope_opt: Option<LocalScopeRef>,
+        expected_type: Option<SemanticType>,
+    ) -> InferenceCtx {
+        let Some(sema_ty) = expected_type else {
+            return InferenceCtx::default();
+        };
+
+        if let Some(unnamed_struct_type) = sema_ty.as_unnamed_struct() {
+            unnamed_struct_type_as_inference_ctx(&unnamed_struct_type)
+        } else if let Some(struct_symbol_id) = sema_ty.as_struct_symbol_id() {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                .unwrap();
+            let resolved_struct = sym.as_struct().unwrap();
+
+            struct_sig_as_inference_ctx(&resolved_struct.struct_sig)
+        } else if let Some(generic_type) = sema_ty.as_generic_type() {
+            let sym = self
+                .resolver
+                .resolve_local_or_global_symbol(scope_opt, generic_type.base)
+                .unwrap();
+            let resolved_struct = sym.as_struct().unwrap();
+
+            let struct_sig = substitute_struct_sig(
+                self.mapping_ctx_arena.clone(),
+                &resolved_struct.struct_sig,
+                generic_type.mapping_ctx.clone(),
+            )
+            .unwrap();
+
+            struct_sig_as_inference_ctx(&struct_sig)
+        } else {
+            InferenceCtx::default()
         }
     }
 }

@@ -1,0 +1,38 @@
+// @stdout: 1: Cyrus 2: The 3: Cyrus
+
+import std::libc{printf};
+
+struct Record<K, V> {
+	key: K;
+	value: V;
+
+	pub fn new(key: K, value: V) Self {
+		return Self{key, value};
+	}
+
+	pub inline fn key(&self) K {
+		return self->key;
+	}
+
+	pub inline fn value(&self) V {
+		return self->value;
+	}
+}
+
+pub fn main() {
+	var users: Record<uint64, char*>[3] = {
+		Record.new(1uint64, "Cyrus"),
+		Record.new(2uint64, "The"),
+		Record.new(3uint64, "?")
+	};
+
+	users[2] = struct {
+		key = 3,
+		value = "Cyrus"	
+	};
+
+	for (var i = 0; i < 3; i++) {
+		const user = users[i];
+		printf("%d: %s ", user.key(), user.value());
+	}
+}

@@ -3544,8 +3544,8 @@ impl Resolver {
             };
 
             fields.push(TypedUnnamedStructValueField {
-                field_name: field.field_name.value.clone(),
-                field_ty,
+                name: field.field_name.value.clone(),
+                ty: field_ty,
                 field_value: Box::new(field_value),
                 loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
             });
