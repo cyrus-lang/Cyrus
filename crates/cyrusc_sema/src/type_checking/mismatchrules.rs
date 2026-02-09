@@ -22,7 +22,7 @@ use cyrusc_tast::{
     sigs::StructSig,
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedUnnamedStructType,
+        TypedUnnamedEnumVariant, TypedUnnamedStructType,
     },
 };
 
@@ -34,8 +34,7 @@ impl<'a> AnalysisContext<'a> {
         target_type: SemanticType,
         loc: SourceLoc,
     ) -> bool {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         match (value_type.const_inner().clone(), target_type.const_inner().clone()) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
@@ -53,6 +52,31 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
                 (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
                     || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
+            }
+            (SemanticType::UnnamedEnum(unnamed_enum1), SemanticType::UnnamedEnum(unnamed_enum2)) => {
+                let mut variants = true;
+                for (variant1, variant2) in unnamed_enum1.variants.iter().zip(unnamed_enum2.variants) {
+                    let valid = match (variant1, variant2) {
+                        (TypedUnnamedEnumVariant::Ident(ident1), TypedUnnamedEnumVariant::Ident(ident2)) => {
+                            *ident1 == ident2
+                        }
+                        (
+                            TypedUnnamedEnumVariant::Valued(ident1, expr1),
+                            TypedUnnamedEnumVariant::Valued(ident2, expr2),
+                        ) => *ident1 == ident2 && *expr1 == expr2,
+                        (
+                            TypedUnnamedEnumVariant::Variant(ident1, enum_valued_fields1),
+                            TypedUnnamedEnumVariant::Variant(ident2, enum_valued_fields2),
+                        ) => *ident1 == ident2 && *enum_valued_fields1 == enum_valued_fields2,
+                        _ => false,
+                    };
+
+                    if !valid {
+                        variants = false;
+                        break;
+                    }
+                }
+                variants
             }
             (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
                 let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;

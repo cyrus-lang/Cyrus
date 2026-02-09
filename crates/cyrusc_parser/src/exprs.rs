@@ -217,6 +217,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
+            TokenKind::Dot => self.parse_unnamed_enum_value()?,
             TokenKind::Dynamic => self.parse_dynamic_expr()?,
             TokenKind::Inline => {
                 if self.peek_token_is(TokenKind::Function) {
@@ -376,6 +377,34 @@ impl Parser {
         }
     }
 
+    fn parse_unnamed_enum_value(&mut self) -> Result<Expr, Diag> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume dot
+
+        let ident = self.parse_ident()?;
+
+        if self.current_token_is(TokenKind::LeftParen) {
+            self.next_token(); // consume ident
+            let field_values = self.parse_expr_series(TokenKind::RightParen)?.0;
+
+            Ok(Expr::UnnamedEnumValue(UnnamedEnumValue {
+                ident,
+                kind: UnnamedEnumValueKind::Fielded(field_values),
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }))
+        } else {
+            Ok(Expr::UnnamedEnumValue(UnnamedEnumValue {
+                ident,
+                kind: UnnamedEnumValueKind::Plain,
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }))
+        }
+    }
+
     fn parse_dynamic_expr(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.end;
         let loc = self.current_token().loc.clone();
@@ -498,7 +527,7 @@ impl Parser {
         match self.peek_token().kind {
             TokenKind::Assign => {
                 self.next_token();
-                match self.parse_assignment(left, AssignKind::Default, left_start) {
+                match self.parse_assign(left, AssignKind::Default, left_start) {
                     Ok(expr) => Some(Ok(expr)),
                     Err(err) => Some(Err(err)),
                 }
@@ -535,7 +564,7 @@ impl Parser {
                         ));
                     };
 
-                    return Some(self.parse_assignment(left, assign_kind, left_start));
+                    return Some(self.parse_assign(left, assign_kind, left_start));
                 }
 
                 let precedence = token_precedence_of(operator_token.clone());
@@ -835,7 +864,7 @@ impl Parser {
         }
     }
 
-    fn parse_assignment(&mut self, lhs: Expr, kind: AssignKind, start: usize) -> Result<Expr, Diag> {
+    fn parse_assign(&mut self, lhs: Expr, kind: AssignKind, start: usize) -> Result<Expr, Diag> {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::Assign)?;

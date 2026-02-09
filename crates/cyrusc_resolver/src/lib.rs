@@ -826,6 +826,82 @@ impl Resolver {
                     loc: SourceLoc::from_loc(loc.clone(), self.current_file_path()),
                 }))
             }
+            TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
+                let mut fields = Vec::new();
+
+                for field in &unnamed_union_type.fields {
+                    if let Some(ty) = self.resolve_type(
+                        generic_params,
+                        scope_opt.clone(),
+                        module_id,
+                        field.field_ty.clone(),
+                        field.loc.clone(),
+                        field.span.end,
+                    ) {
+                        fields.push(TypedUnnamedUnionTypeField {
+                            name: field.field_name.value.clone(),
+                            ty: Box::new(ty),
+                            loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
+                        });
+                    }
+                }
+
+                Ok(SemanticType::UnnamedUnion(TypedUnnamedUnionType {
+                    fields,
+                    loc: SourceLoc::from_loc(unnamed_union_type.loc.clone(), self.current_file_path()),
+                }))
+            }
+            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
+                let mut variants = Vec::new();
+
+                for variant in &unnamed_enum_type.variants {
+                    match variant {
+                        UnnamedEnumVariant::Ident(ident) => {
+                            variants.push(TypedUnnamedEnumVariant::Ident(ident.clone()));
+                        }
+                        UnnamedEnumVariant::Valued(ident, expr) => {
+                            let typed_expr = match self.resolve_expr(module_id, scope_opt.clone(), expr) {
+                                Some(expr) => expr,
+                                None => continue,
+                            };
+
+                            variants.push(TypedUnnamedEnumVariant::Valued(ident.clone(), Box::new(typed_expr)));
+                        }
+                        UnnamedEnumVariant::Variant(ident, unnamed_enum_valued_fields) => {
+                            let mut valued_fields = Vec::new();
+
+                            for valued_field in unnamed_enum_valued_fields {
+                                match self.resolve_type(
+                                    &None,
+                                    scope_opt.clone(),
+                                    module_id,
+                                    valued_field.ty.clone(),
+                                    valued_field.loc.clone(),
+                                    valued_field.span.end,
+                                ) {
+                                    Some(ty) => {
+                                        valued_fields.push(TypedUnnamedEnumValuedField {
+                                            ty,
+                                            loc: SourceLoc::from_loc(
+                                                valued_field.loc.clone(),
+                                                self.current_file_path(),
+                                            ),
+                                        });
+                                    }
+                                    None => todo!(),
+                                }
+                            }
+
+                            variants.push(TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields));
+                        }
+                    }
+                }
+
+                Ok(SemanticType::UnnamedEnum(TypedUnnamedEnumType {
+                    variants,
+                    loc: SourceLoc::from_loc(unnamed_enum_type.loc.clone(), self.current_file_path()),
+                }))
+            }
             TypeSpecifier::UnnamedStruct(struct_spec) => {
                 let mut fields = Vec::new();
 
@@ -1391,7 +1467,7 @@ impl Resolver {
                             &generic_params,
                             scope_opt.clone(),
                             module_id,
-                            valued_field.field_ty.clone(),
+                            valued_field.ty.clone(),
                             valued_field.loc.clone(),
                             0,
                         ) {
@@ -1683,7 +1759,7 @@ impl Resolver {
         scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         impls: &Vec<TypeSpecifier>,
-        loc: Location
+        loc: Location,
     ) -> Vec<TypedImplementInterface> {
         let mut symbol_ids: Vec<TypedImplementInterface> = Vec::new();
 
@@ -1698,8 +1774,7 @@ impl Resolver {
                     (symbol_id, None)
                 }
                 TypeSpecifier::Ident(ident) => {
-                    let Some(symbol_id) = self.resolve_ident(scope_opt.clone(), module_id, ident)
-                    else {
+                    let Some(symbol_id) = self.resolve_ident(scope_opt.clone(), module_id, ident) else {
                         continue;
                     };
 
@@ -1816,7 +1891,12 @@ impl Resolver {
             struct_symbol_id,
             generic_params.is_some(),
         )?;
-        let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &struct_decl.impls, struct_decl.loc.clone());
+        let impls = self.resolve_object_impls(
+            scope_opt.clone(),
+            module_id,
+            &struct_decl.impls,
+            struct_decl.loc.clone(),
+        );
 
         let resolved_struct = ResolvedStruct {
             module_id,
@@ -2888,6 +2968,9 @@ impl Resolver {
             Expr::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(module_id, scope_opt, unnamed_struct_value)
             }
+            Expr::UnnamedEnumValue(unnamed_enum_value) => {
+                self.resolve_unnamed_enum_value(module_id, scope_opt, unnamed_enum_value)
+            }
             Expr::SizeOf(size_of_expression) => self.resolve_size_of_expr(module_id, scope_opt, size_of_expression),
             Expr::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
             Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, scope_opt, tuple_value),
@@ -2897,6 +2980,39 @@ impl Resolver {
             Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, scope_opt, dynamic_expr),
             Expr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(module_id, scope_opt, untyped_array),
         }
+    }
+
+    fn resolve_unnamed_enum_value(
+        &mut self,
+        module_id: ModuleID,
+        scope_opt: Option<LocalScopeRef>,
+        unnamed_enum_value: &UnnamedEnumValue,
+    ) -> Option<TypedExprStmt> {
+        let kind = match &unnamed_enum_value.kind {
+            UnnamedEnumValueKind::Plain => TypedUnnamedEnumValueKind::Plain,
+            UnnamedEnumValueKind::Fielded(exprs) => {
+                let mut typed_exprs: Vec<TypedExprStmt> = Vec::new();
+                for expr in exprs {
+                    match self.resolve_expr(module_id, scope_opt.clone(), expr) {
+                        Some(typed_expr) => typed_exprs.push(typed_expr),
+                        None => continue,
+                    }
+                }
+                TypedUnnamedEnumValueKind::Fielded(typed_exprs)
+            }
+        };
+
+        Some(TypedExprStmt {
+            kind: TypedExprKind::UnnamedEnumValue(TypedUnnamedEnumValue {
+                ident: unnamed_enum_value.ident.clone(),
+                kind,
+                enum_ty: None,
+                loc: SourceLoc::from_loc(unnamed_enum_value.loc.clone(), self.current_file_path()),
+            }),
+            mloc: MemoryLocation::RValue,
+            sema_ty: None,
+            loc: SourceLoc::from_loc(unnamed_enum_value.loc.clone(), self.current_file_path()),
+        })
     }
 
     fn resolve_dynamic_expr(

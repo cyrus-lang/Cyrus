@@ -558,9 +558,9 @@ impl Parser {
 
         match token.kind {
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(token)),
-            TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
-            TokenKind::Union => unimplemented!("Unnamed Union Type"),
-            TokenKind::Enum => unimplemented!("Unnamed Union Type"),
+            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_type(),
+            TokenKind::Union => self.parse_unnamed_union_type(),
+            TokenKind::Enum => self.parse_unnamed_enum_type(),
             TokenKind::LeftParen => self.parse_tuple(),
             TokenKind::Function => self.parse_func_type(),
             TokenKind::Const => {
@@ -641,7 +641,7 @@ impl Parser {
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
-    fn parse_struct_type(&mut self) -> Result<TypeSpecifier, Diag> {
+    fn parse_unnamed_struct_type(&mut self) -> Result<TypeSpecifier, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -703,6 +703,159 @@ impl Parser {
         Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
             fields,
             is_packed,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    fn parse_unnamed_union_type(&mut self) -> Result<TypeSpecifier, Diag> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume union 
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut fields: Vec<UnnamedUnionTypeField> = Vec::new();
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+                }
+                TokenKind::Ident { .. } => {
+                    let start = self.current_token().span.start;
+                    let loc = self.current_token().loc.clone();
+
+                    let field_name = self.parse_ident()?;
+                    self.next_token(); // consume ident
+
+                    self.expect_current(TokenKind::Colon)?;
+
+                    let field_type_specifier = self.parse_type_specifier()?;
+                    self.next_token();
+
+                    fields.push(UnnamedUnionTypeField {
+                        field_name,
+                        field_ty: field_type_specifier,
+                        loc,
+                        span: Span {
+                            start,
+                            end: self.current_token().span.end,
+                        },
+                    });
+
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        break;
+                    } else {
+                        self.expect_current(TokenKind::Comma)?;
+                    }
+                }
+                _ => return Err(self.error_invalid_token()),
+            }
+        }
+
+        Ok(TypeSpecifier::UnnamedUnion(UnnamedUnionType {
+            fields,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    fn parse_unnamed_enum_field(&mut self) -> Result<UnnamedEnumVariant, Diag> {
+        let variant_name = self.parse_ident()?;
+        self.next_token();
+
+        let mut variant_fields: Vec<UnnamedEnumValuedField> = Vec::new();
+
+        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+            return Ok(UnnamedEnumVariant::Ident(variant_name));
+        } else if self.current_token_is(TokenKind::Assign) {
+            self.next_token(); // consume assign
+            let value = self.parse_expr(Precedence::Lowest)?.0;
+            self.next_token(); // consume last token of the expression
+            return Ok(UnnamedEnumVariant::Valued(variant_name, Box::new(value)));
+        } else if self.current_token_is(TokenKind::LeftParen) {
+            self.next_token(); // consume left paren
+
+            loop {
+                if self.current_token_is(TokenKind::RightParen) {
+                    return Err(self.error_with_hint(
+                        &self.current_token(),
+                        ParserDiagKind::InvalidToken(self.current_token().kind),
+                        "Consider to add a field to enum variant or remove the parenthesis.",
+                    ));
+                }
+
+                let start = self.current_token().span.start;
+                let loc = self.current_token().loc.clone();
+                let field_ty = self.parse_type_specifier()?;
+                self.next_token();
+
+                variant_fields.push(UnnamedEnumValuedField {
+                    ty: field_ty,
+                    loc,
+                    span: Span::new(start, self.current_token().span.end),
+                });
+
+                if self.current_token_is(TokenKind::RightParen) {
+                    self.next_token();
+                    break;
+                } else {
+                    self.expect_current(TokenKind::Comma)?;
+                    continue;
+                }
+            }
+        }
+
+        if variant_fields.is_empty() {
+            Ok(UnnamedEnumVariant::Ident(variant_name))
+        } else {
+            Ok(UnnamedEnumVariant::Variant(variant_name, variant_fields))
+        }
+    }
+
+    fn parse_unnamed_enum_type(&mut self) -> Result<TypeSpecifier, Diag> {
+        let loc = self.current_token().loc.clone();
+        let start = self.current_token().span.start;
+
+        self.next_token(); // parse enum keyword
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut enum_fields: Vec<UnnamedEnumVariant> = Vec::new();
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
+                variants: enum_fields,
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }));
+        }
+
+        enum_fields.push(self.parse_unnamed_enum_field()?);
+
+        while self.current_token_is(TokenKind::Comma) {
+            self.expect_current(TokenKind::Comma)?;
+
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
+            }
+
+            enum_fields.push(self.parse_unnamed_enum_field()?);
+            if self.peek_token_is(TokenKind::RightBrace) {
+                break;
+            }
+        }
+
+        // consume optional comma at the end of the variant
+        if self.current_token_is(TokenKind::Comma) {
+            self.next_token();
+        }
+
+        Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
+            variants: enum_fields,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

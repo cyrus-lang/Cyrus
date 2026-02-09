@@ -136,6 +136,8 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::Tuple(tuple_type) => self.normalize_tuple(scope_id_opt, tuple_type),
             SemanticType::SelfType(self_type) => self.normalize_self_type(self_type),
             SemanticType::PlainType(_)
+            | SemanticType::UnnamedUnion(_)
+            | SemanticType::UnnamedEnum(_)
             | SemanticType::UnnamedStruct(_)
             | SemanticType::DynamicType(_)
             | SemanticType::Interface(_) => Some(ty),

@@ -129,6 +129,9 @@ pub enum AnalyzerDiagKind {
     #[error("Enum '{enum_name}' does not have a variant named '{variant_name}'.")]
     NoSuchEnumVariant { enum_name: String, variant_name: String },
 
+    #[error("Could not infer type of unnamed enum value '.{variant_name}'")]
+    UnnamedEnumValueInfering { variant_name: String },
+
     #[error("Only enum variants are allowed here.")]
     ExpressionPatternInAEnumSwitch,
 

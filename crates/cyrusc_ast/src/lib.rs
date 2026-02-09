@@ -84,12 +84,13 @@ pub enum Expr {
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
-    UnnamedStructValue(UnnamedStructValue),
     SizeOf(SizeOf),
     Lambda(Lambda),
     Tuple(TupleValue),
     TupleAccess(TupleAccess),
     Dynamic(Dynamic),
+    UnnamedStructValue(UnnamedStructValue),
+    UnnamedEnumValue(UnnamedEnumValue),
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +146,20 @@ pub struct UnnamedStructValue {
 }
 
 #[derive(Debug, Clone)]
+pub struct UnnamedEnumValue {
+    pub ident: Ident,
+    pub kind: UnnamedEnumValueKind,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum UnnamedEnumValueKind {
+    Plain,
+    Fielded(Vec<Expr>),
+}
+
+#[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
     pub field_name: Ident,
     pub field_ty: Option<TypeSpecifier>,
@@ -163,6 +178,21 @@ pub struct UnnamedStructType {
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
+    pub field_name: Ident,
+    pub field_ty: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnnamedUnionType {
+    pub fields: Vec<UnnamedUnionTypeField>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnnamedUnionTypeField {
     pub field_name: Ident,
     pub field_ty: TypeSpecifier,
     pub loc: Location,
@@ -202,6 +232,27 @@ pub struct Enum {
 }
 
 #[derive(Debug, Clone)]
+pub struct UnnamedEnumType {
+    pub variants: Vec<UnnamedEnumVariant>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum UnnamedEnumVariant {
+    Ident(Ident),
+    Variant(Ident, Vec<UnnamedEnumValuedField>),
+    Valued(Ident, Box<Expr>),
+}
+
+#[derive(Debug, Clone)]
+pub struct UnnamedEnumValuedField {
+    pub ty: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub enum EnumVariant {
     Ident(Ident),
     Variant(Ident, Vec<EnumValuedField>),
@@ -210,7 +261,7 @@ pub enum EnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct EnumValuedField {
-    pub field_ty: TypeSpecifier,
+    pub ty: TypeSpecifier,
     pub loc: Location,
 }
 
@@ -260,11 +311,17 @@ pub struct MethodCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Ident {
     pub value: String,
     pub span: Span,
     pub loc: Location,
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
 }
 
 impl Hash for Ident {
@@ -308,6 +365,8 @@ pub enum TypeSpecifier {
     ModuleImport(ModuleImport),
     Deref(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
+    UnnamedUnion(UnnamedUnionType),
+    UnnamedEnum(UnnamedEnumType),
     FuncType(Box<FuncType>),
     Tuple(TupleType),
     GenericInst(GenericInst),
@@ -339,7 +398,15 @@ impl TypeSpecifier {
             TypeSpecifier::Array(array) => array.element_type.loc(),
             TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
             TypeSpecifier::Deref(inner) => inner.loc(),
-            TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
+            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
+                (unnamed_struct_type.loc.clone(), unnamed_struct_type.span.end)
+            }
+            TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
+                (unnamed_union_type.loc.clone(), unnamed_union_type.span.end)
+            }
+            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
+                (unnamed_enum_type.loc.clone(), unnamed_enum_type.span.end)
+            }
             TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
             TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
             TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),

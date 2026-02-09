@@ -16,11 +16,11 @@
  */
 use crate::{
     SymbolID,
-    exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr},
+    exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
-        TypedUnnamedStructType,
+        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
 use cyrusc_ast::{AssignKind, operators::UnaryOperator};
@@ -241,6 +241,18 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             fmt.push_str(" }}");
             fmt
         }
+        TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => {
+            let mut fmt = format!(".{}", unnamed_enum_value.ident.as_string());
+
+            match &unnamed_enum_value.kind {
+                TypedUnnamedEnumValueKind::Plain => {}
+                TypedUnnamedEnumValueKind::Fielded(values) => {
+                    fmt.push_str(&format!("({})", format_typed_exprs(values, format_symbol)));
+                }
+            }
+
+            fmt
+        }
         TypedExprKind::SizeOf(typed_size_of_expr) => {
             let operand_fmt = &format_typed_expr(&typed_size_of_expr.operand, format_symbol);
             format!("sizeof({})", operand_fmt)
@@ -267,22 +279,16 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
     }
 }
 
-pub fn format_unnamed_struct_ty<'a>(
-    typed_unnamed_struct_type: &TypedUnnamedStructType,
+pub fn format_unnamed_union_ty<'a>(
+    unnamed_union_type: &TypedUnnamedUnionType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     let mut fmt = String::new();
 
-    if typed_unnamed_struct_type.is_packed {
-        fmt.push_str("bits");
-    } else {
-        fmt.push_str("struct");
-    };
-
-    fmt.push_str(" { ");
+    fmt.push_str("union { ");
 
     fmt.push_str(
-        &typed_unnamed_struct_type
+        &unnamed_union_type
             .fields
             .iter()
             .map(|field| format!("{}: {}", field.name, format_sema_ty(*field.ty.clone(), format_symbol)))
@@ -292,6 +298,65 @@ pub fn format_unnamed_struct_ty<'a>(
 
     fmt.push_str(" }");
 
+    fmt
+}
+
+pub fn format_unnamed_struct_ty<'a>(
+    unnamed_struct_type: &TypedUnnamedStructType,
+    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
+) -> String {
+    let mut fmt = String::new();
+
+    if unnamed_struct_type.is_packed {
+        fmt.push_str("bits");
+    } else {
+        fmt.push_str("struct");
+    };
+
+    fmt.push_str(" { ");
+
+    fmt.push_str(
+        &unnamed_struct_type
+            .fields
+            .iter()
+            .map(|field| format!("{}: {}", field.name, format_sema_ty(*field.ty.clone(), format_symbol)))
+            .collect::<Vec<String>>()
+            .join(", "),
+    );
+
+    fmt.push_str(" }");
+
+    fmt
+}
+
+pub fn format_unnamed_enum_ty<'a>(
+    unnamed_enum_type: &TypedUnnamedEnumType,
+    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
+) -> String {
+    let mut fmt = String::from("enum { ");
+
+    let variant_strings: Vec<String> = unnamed_enum_type
+        .variants
+        .iter()
+        .map(|variant| match variant {
+            TypedUnnamedEnumVariant::Ident(ident) => ident.as_string(),
+            TypedUnnamedEnumVariant::Valued(ident, expr) => {
+                format!("{} = {}", ident.as_string(), format_typed_expr(expr, format_symbol))
+            }
+            TypedUnnamedEnumVariant::Variant(ident, valued_fields) => {
+                let valued_fields_fmt = valued_fields
+                    .iter()
+                    .map(|field| format_sema_ty(field.ty.clone(), format_symbol))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                format!("{}({})", ident.as_string(), valued_fields_fmt)
+            }
+        })
+        .collect();
+
+    fmt.push_str(&variant_strings.join(", "));
+    fmt.push_str(" }");
     fmt
 }
 
@@ -363,6 +428,8 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
         SemanticType::UnnamedStruct(unnamed_struct_type) => {
             format_unnamed_struct_ty(&unnamed_struct_type, format_symbol)
         }
+        SemanticType::UnnamedUnion(unnamed_union_type) => format_unnamed_union_ty(&unnamed_union_type, format_symbol),
+        SemanticType::UnnamedEnum(unnamed_enum_type) => format_unnamed_enum_ty(&unnamed_enum_type, format_symbol),
         SemanticType::FuncType(func_type) => format_func_ty(&func_type, format_symbol),
         SemanticType::Tuple(tuple_type) => {
             format!(

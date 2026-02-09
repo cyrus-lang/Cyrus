@@ -17,13 +17,13 @@
 use crate::{
     SymbolID,
     generics::monomorph::MonomorphKey,
-    sigs::FuncSig,
+    sigs::{EnumSig, FuncSig},
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedUnnamedStructType},
+    types::{SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType},
     vtable::VTableID,
 };
 use cyrusc_ast::{
-    AssignKind,
+    AssignKind, Ident,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_diagcentral::source_loc::SourceLoc;
@@ -58,6 +58,7 @@ pub enum TypedExprKind {
     ArrayIndex(TypedArrayIndexExpr),
     StructInit(TypedStructInitExpr),
     UnnamedStructValue(TypedUnnamedStructValue),
+    UnnamedEnumValue(TypedUnnamedEnumValue),
     FuncCall(TypedFuncCall),
     MethodCall(TypedMethodCall),
     FieldAccess(TypedFieldAccess),
@@ -186,6 +187,10 @@ impl TypedExprKind {
                 .all(|typed_unnamed_struct_value_field| {
                     typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
                 }),
+            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => match &unnamed_enum_value.kind {
+                TypedUnnamedEnumValueKind::Plain => true,
+                TypedUnnamedEnumValueKind::Fielded(values) => values.iter().any(|expr| expr.kind.is_comptime_valid()),
+            },
             TypedExprKind::Symbol(..)
             | TypedExprKind::ArrayIndex(_)
             | TypedExprKind::TupleAccess(_)
@@ -212,6 +217,7 @@ impl TypedExprKind {
             TypedExprKind::FuncCall(_) => false,
             TypedExprKind::StructInit(_) => false,
             TypedExprKind::UnnamedStructValue(_) => false,
+            TypedExprKind::UnnamedEnumValue(_) => false,
             TypedExprKind::Literal(_) => false,
             TypedExprKind::Prefix(_) => false,
             TypedExprKind::Infix(_) => false,
@@ -384,6 +390,32 @@ pub struct TypedUnnamedStructValue {
     pub is_packed: bool,
     pub is_const: bool,
     pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnnamedEnumValue {
+    pub ident: Ident,
+    pub kind: TypedUnnamedEnumValueKind,
+    pub enum_ty: Option<TypedUnnamedEnumValueTy>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedUnnamedEnumValueTy {
+    EnumSig(EnumSig),
+    UnnamedEnum(TypedUnnamedEnumType),
+}
+
+impl PartialEq for TypedUnnamedEnumValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.kind == other.kind
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedUnnamedEnumValueKind {
+    Plain,
+    Fielded(Vec<TypedExprStmt>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
