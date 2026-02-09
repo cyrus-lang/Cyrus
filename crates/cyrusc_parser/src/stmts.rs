@@ -381,7 +381,7 @@ impl Parser {
                 let field_ty = self.parse_type_specifier()?;
                 self.next_token();
 
-                variant_fields.push(EnumValuedField { field_ty, loc });
+                variant_fields.push(EnumValuedField { ty: field_ty, loc });
 
                 if self.current_token_is(TokenKind::RightParen) {
                     self.next_token();

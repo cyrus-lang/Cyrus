@@ -127,6 +127,51 @@ impl fmt::Display for TypeSpecifier {
                 }
                 write!(f, "}}")
             }
+            TypeSpecifier::UnnamedUnion(unnamed_union) => {
+                write!(f, "union {{ ")?;
+                for (idx, field) in unnamed_union.fields.iter().enumerate() {
+                    write!(f, "{}: {}", field.field_name, field.field_ty)?;
+
+                    if idx == unnamed_union.fields.len() - 1 {
+                        write!(f, " ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
+            TypeSpecifier::UnnamedEnum(unnamed_enum) => {
+                write!(f, "enum {{ ")?;
+                for (idx, variant) in unnamed_enum.variants.iter().enumerate() {
+                    match variant {
+                        UnnamedEnumVariant::Ident(ident) => {
+                            write!(f, "{}", ident.as_string())?;
+                        }
+                        UnnamedEnumVariant::Valued(ident, expr) => {
+                            write!(f, "{} = {}", ident.as_string(), expr.to_string())?;
+                        }
+                        UnnamedEnumVariant::Variant(ident, enum_valued_fields) => {
+                            write!(
+                                f,
+                                "{} = ({})",
+                                ident.as_string(),
+                                enum_valued_fields
+                                    .iter()
+                                    .map(|valued_field| { valued_field.ty.to_string() })
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )?;
+                        }
+                    }
+
+                    if idx == unnamed_enum.variants.len() - 1 {
+                        write!(f, " ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
             TypeSpecifier::Tuple(tuple_type) => {
                 write!(
                     f,
@@ -326,6 +371,18 @@ impl fmt::Display for Expr {
                 write!(f, "{}.{}", tuple_member_access.operand, tuple_member_access.index)
             }
             Expr::Dynamic(dynamic) => write!(f, "dynamic {}", dynamic.operand),
+            Expr::UnnamedEnumValue(unnamed_enum_value) => {
+                write!(f, ".{}", unnamed_enum_value.ident.as_string())?;
+
+                match &unnamed_enum_value.kind {
+                    UnnamedEnumValueKind::Plain => todo!(),
+                    UnnamedEnumValueKind::Fielded(exprs) => {
+                        write!(f, "({})", format_exprs(exprs))?;
+                    }
+                }
+
+                Ok(())
+            }
         }
     }
 }

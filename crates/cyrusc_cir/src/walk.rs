@@ -867,6 +867,7 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
                 self.lower_unnamed_struct_value(scope_id_opt, unnamed_struct_value)
             }
+            TypedExprKind::UnnamedEnumValue(typed_unnamed_enum_value) => todo!(),
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access.clone()),
@@ -876,7 +877,6 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(scope_id_opt, tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(scope_id_opt, tuple_access_expr),
             TypedExprKind::Dynamic(dynamic_expr) => self.lower_dynamic_expr(scope_id_opt, dynamic_expr),
-            // skipped
             TypedExprKind::SemanticType(..) => unreachable!(),
         };
 
@@ -1582,6 +1582,8 @@ impl<'resolver> CIRWalk<'resolver> {
                     is_packed: false,
                 })
             }
+            SemanticType::UnnamedUnion(typed_unnamed_union_type) => todo!(),
+            SemanticType::UnnamedEnum(typed_unnamed_enum_type) => todo!(),
         }
         .const_inner()
         .clone()

@@ -30,14 +30,16 @@ use cyrusc_resolver::{
 use cyrusc_strescape::unescape_string;
 use cyrusc_tast::{
     exprs::*,
-    format::{format_func_ty, format_sema_ty, format_typed_expr},
+    format::{format_func_ty, format_sema_ty, format_typed_expr, format_unnamed_enum_ty},
     generics::{
         generic_type::GenericType,
         mapping_ctx::GenericMappingCtx,
-        substitute::{substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig},
+        substitute::{
+            substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig,
+        },
     },
     sigs::{
-        FuncSig, UnionSig, set_self_modifier_symbol_id_in_func_sig, set_self_modifier_type_in_func_sig,
+        EnumSig, FuncSig, UnionSig, set_self_modifier_symbol_id_in_func_sig, set_self_modifier_type_in_func_sig,
         typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
     },
     stmts::{
@@ -211,6 +213,9 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value(scope_id_opt, typed_unnamed_struct_value, expected_type)
+            }
+            TypedExprKind::UnnamedEnumValue(typed_unnamed_enum_value) => {
+                self.analyze_unnamed_enum_value(scope_id_opt, typed_unnamed_enum_value, expected_type)
             }
             TypedExprKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
@@ -458,6 +463,104 @@ impl<'a> AnalysisContext<'a> {
             type_list,
             loc: tuple_value.loc.clone(),
         }))
+    }
+
+    fn analyze_unnamed_enum_value(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_enum_value: &mut TypedUnnamedEnumValue,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+        let mut from_unnamed_enum_type = |unnamed_enum_type: &TypedUnnamedEnumType| -> Option<SemanticType> {
+            if unnamed_enum_type
+                .variants
+                .iter()
+                .find(|variant| *variant.ident() == unnamed_enum_value.ident)
+                .is_none()
+            {
+                let enum_name = format_unnamed_enum_ty(unnamed_enum_type, &(self.symbol_formatter)(scope_id_opt));
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
+                        enum_name,
+                        variant_name: unnamed_enum_value.ident.as_string(),
+                    }),
+                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+
+            unnamed_enum_value.enum_ty = Some(TypedUnnamedEnumValueTy::UnnamedEnum(unnamed_enum_type.clone()));
+            Some(SemanticType::UnnamedEnum(unnamed_enum_type.clone()))
+        };
+
+        let from_enum_sig = |enum_sig: &EnumSig| -> Option<SemanticType> {
+            todo!();
+        };
+
+        let enum_sig_opt: Option<EnumSig> = {
+            if let Some(sema_ty) = expected_type {
+                if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum() {
+                    return from_unnamed_enum_type(&unnamed_enum_type);
+                } else if let Some(enum_symbol_id) = sema_ty.as_enum_symbol_id() {
+                    let resolved_enum_opt =
+                        match self.resolver.resolve_local_or_global_symbol(scope_opt, enum_symbol_id) {
+                            Some(sym) => sym.as_enum().cloned(),
+                            None => None,
+                        };
+
+                    match resolved_enum_opt {
+                        Some(resolved_enum) => Some(resolved_enum.enum_sig),
+                        None => None,
+                    }
+                } else if let Some(generic_type) = sema_ty.as_generic_type() {
+                    let resolved_enum_opt = match self
+                        .resolver
+                        .resolve_local_or_global_symbol(scope_opt, generic_type.base)
+                    {
+                        Some(sym) => sym.as_enum().cloned(),
+                        None => None,
+                    };
+
+                    match resolved_enum_opt {
+                        Some(resolved_enum) => {
+                            let enum_sig = substitute_enum_sig(
+                                self.mapping_ctx_arena.clone(),
+                                &resolved_enum.enum_sig,
+                                generic_type.mapping_ctx.clone(),
+                            )
+                            .unwrap();
+
+                            Some(enum_sig)
+                        }
+                        None => None,
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        match enum_sig_opt {
+            Some(enum_sig) => return from_enum_sig(&enum_sig),
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UnnamedEnumValueInfering {
+                        variant_name: unnamed_enum_value.ident.as_string(),
+                    }),
+                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        }
     }
 
     /// Analyzes unnamed (anonymous) struct value expressions.
@@ -2887,7 +2990,7 @@ impl<'a> AnalysisContext<'a> {
             expected_type,
         );
 
-        let sema = self.analyze_enum_variant(
+        let sema_ty_opt = self.analyze_enum_variant(
             scope_id_opt,
             scope_opt,
             enum_variant.clone(),
@@ -2897,7 +3000,7 @@ impl<'a> AnalysisContext<'a> {
             mapping_ctx,
         );
 
-        (true, sema)
+        (true, sema_ty_opt)
     }
 
     /// Analyzes field access expressions on union types.

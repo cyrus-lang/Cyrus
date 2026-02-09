@@ -20,6 +20,7 @@ use crate::sigs::FuncSig;
 use crate::stmts::{TypedFuncTypeParams, TypedGenericParam};
 use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
+use cyrusc_ast::Ident;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::TokenKind;
 use std::hash::{Hash, Hasher};
@@ -33,6 +34,8 @@ pub enum SemanticType {
     Const(Box<SemanticType>),
     Pointer(Box<SemanticType>),
     UnnamedStruct(TypedUnnamedStructType),
+    UnnamedUnion(TypedUnnamedUnionType),
+    UnnamedEnum(TypedUnnamedEnumType),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
     GenericType(GenericType),
@@ -348,6 +351,20 @@ impl SemanticType {
         }
     }
 
+    pub fn as_unnamed_enum(&self) -> Option<TypedUnnamedEnumType> {
+        match self.const_inner() {
+            SemanticType::UnnamedEnum(unnamed_enum_type) => Some(unnamed_enum_type.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_unnamed_union(&self) -> Option<TypedUnnamedUnionType> {
+        match self.const_inner() {
+            SemanticType::UnnamedUnion(unnamed_union_type) => Some(unnamed_union_type.clone()),
+            _ => None,
+        }
+    }
+
     pub fn as_self_type(&self) -> Option<&TypedSelfType> {
         match self.const_inner() {
             SemanticType::SelfType(self_type) => Some(self_type),
@@ -598,9 +615,100 @@ pub struct TypedUnnamedStructType {
     pub loc: SourceLoc,
 }
 
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedUnionType {
+    pub fields: Vec<TypedUnnamedUnionTypeField>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedEnumType {
+    pub variants: Vec<TypedUnnamedEnumVariant>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedUnnamedEnumVariant {
+    Ident(Ident),
+    Valued(Ident, Box<TypedExprStmt>),
+    Variant(Ident, Vec<TypedUnnamedEnumValuedField>),
+}
+
+impl TypedUnnamedEnumVariant {
+    pub fn ident(&self) -> &Ident {
+        match self {
+            TypedUnnamedEnumVariant::Ident(ident) => ident,
+            TypedUnnamedEnumVariant::Valued(ident, _) => ident,
+            TypedUnnamedEnumVariant::Variant(ident, _) => ident,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedEnumValuedField {
+    pub ty: SemanticType,
+    pub loc: SourceLoc,
+}
+
+impl PartialEq for TypedUnnamedEnumValuedField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl Eq for TypedUnnamedEnumVariant {}
+
+impl Hash for TypedUnnamedEnumType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.variants.hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumType {
+    fn eq(&self, other: &Self) -> bool {
+        self.variants == other.variants
+    }
+}
+
+impl Hash for TypedUnnamedEnumVariant {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
+            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1 == expr2,
+            (Self::Variant(ident1, fields1), Self::Variant(ident2, fields2)) => {
+                if ident1 != ident2 {
+                    return false;
+                }
+                if fields1.len() != fields2.len() {
+                    return false;
+                }
+                fields1.iter().zip(fields2.iter()).all(|(f1, f2)| f1.ty == f2.ty)
+            }
+            _ => false,
+        }
+    }
+}
+impl PartialEq for TypedUnnamedUnionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
 impl PartialEq for TypedUnnamedStructType {
     fn eq(&self, other: &Self) -> bool {
         self.fields == other.fields && self.is_packed == other.is_packed
+    }
+}
+
+impl Hash for TypedUnnamedUnionType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
     }
 }
 
@@ -618,10 +726,30 @@ pub struct TypedUnnamedStructTypeField {
     pub loc: SourceLoc,
 }
 
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedUnionTypeField {
+    pub name: String,
+    pub ty: Box<SemanticType>,
+    pub loc: SourceLoc,
+}
+
+impl Hash for TypedUnnamedUnionTypeField {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.ty.hash(state);
+    }
+}
+
 impl Hash for TypedUnnamedStructTypeField {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.ty.hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedUnionTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
     }
 }
 
