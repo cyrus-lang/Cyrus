@@ -29,7 +29,9 @@ use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
-use cyrusc_tast::types::{PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant};
+use cyrusc_tast::types::{
+    PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant, enum_sig_as_unnamed_enum_ty,
+};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
     TypedProgramTree,
@@ -502,7 +504,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
 
-        let enum_sig = operand_ty
+        let unnamed_enum_type = operand_ty
             .as_enum_symbol_id()
             .and_then(|symbol_id| {
                 self.resolver
@@ -510,7 +512,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     .unwrap()
                     .as_enum()
                     .cloned()
-                    .map(|resolved_enum| resolved_enum.enum_sig)
+                    .map(|resolved_enum| enum_sig_as_unnamed_enum_ty(&resolved_enum.enum_sig, switch_stmt.loc.clone()))
             })
             .or(operand_ty.as_generic_type().and_then(|generic_type| {
                 Some(
@@ -520,16 +522,19 @@ impl<'resolver> CIRWalk<'resolver> {
                         .as_enum()
                         .cloned()
                         .map(|resolved_enum| {
-                            substitute_enum_sig(
+                            let enum_sig = substitute_enum_sig(
                                 self.mapping_ctx_arena.clone(),
                                 &resolved_enum.enum_sig,
                                 generic_type.mapping_ctx.clone(),
                             )
-                            .unwrap()
+                            .unwrap();
+
+                            enum_sig_as_unnamed_enum_ty(&enum_sig, switch_stmt.loc.clone())
                         })
                         .unwrap(),
                 )
             }))
+            .or(operand_ty.as_unnamed_enum())
             .unwrap();
 
         let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();
@@ -540,7 +545,7 @@ impl<'resolver> CIRWalk<'resolver> {
             for pattern in &case.patterns {
                 match pattern {
                     TypedSwitchCasePattern::Ident(ident, _) => {
-                        let variant_idx = enum_sig
+                        let variant_idx = unnamed_enum_type
                             .variants
                             .iter()
                             .position(|variant| variant.ident().as_string() == *ident)
@@ -548,16 +553,16 @@ impl<'resolver> CIRWalk<'resolver> {
                         lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(variant_idx));
                     }
                     TypedSwitchCasePattern::EnumVariant(ident, exported_fields, _) => {
-                        let variant_idx = enum_sig
+                        let variant_idx = unnamed_enum_type
                             .variants
                             .iter()
                             .position(|variant| variant.ident().as_string() == *ident)
                             .unwrap();
 
-                        let variant = &enum_sig.variants[variant_idx];
+                        let variant = &unnamed_enum_type.variants[variant_idx];
 
                         match variant {
-                            TypedEnumVariant::Valued(_, expr) => {
+                            TypedUnnamedEnumVariant::Valued(_, expr) => {
                                 let exported_field = exported_fields.first().unwrap();
 
                                 let lowered_expr = self.lower_expr(scope_id_opt, &expr);
@@ -566,7 +571,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                     (exported_field.clone(), lowered_expr),
                                 ));
                             }
-                            TypedEnumVariant::Variant(_, valued_fields) => {
+                            TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
                                 let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
                                     .iter()
                                     .enumerate()
@@ -579,7 +584,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                 lowered_patterns
                                     .push(CIRSwitchOnEnumPattern::ExportFields(variant_idx, typed_exported_fields));
                             }
-                            TypedEnumVariant::Ident(_) => unreachable!(),
+                            TypedUnnamedEnumVariant::Ident(_) => unreachable!(),
                         }
                     }
                     _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),

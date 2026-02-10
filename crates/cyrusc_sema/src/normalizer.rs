@@ -335,7 +335,7 @@ impl<'a> AnalysisContext<'a> {
             ResolvedSymbol::Variable(symbol_id) => self.normalize_variable(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::GlobalVar(symbol_id) => self.normalize_global_var(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::Interface(symbol_id) => self.normalize_interface_type(scope_id_opt, symbol_id, loc),
-            ResolvedSymbol::NamedStruct(_) | ResolvedSymbol::Enum(_) | ResolvedSymbol::Union(_) => {
+            ResolvedSymbol::Struct(_) | ResolvedSymbol::Enum(_) | ResolvedSymbol::Union(_) => {
                 Some(SemanticType::ResolvedSymbol(resolved))
             }
             ResolvedSymbol::Func(..) | ResolvedSymbol::Method(..) => {
@@ -775,7 +775,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 LocalSymbolKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::NamedStruct(resolved_struct.symbol_id),
+                    ResolvedSymbol::Struct(resolved_struct.symbol_id),
                 )),
                 LocalSymbolKind::Enum(resolved_enum) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                     resolved_enum.symbol_id,
@@ -868,7 +868,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 SymbolEntryKind::Struct(s) => {
-                    Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
+                    Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(s.symbol_id)))
                 }
                 SymbolEntryKind::Enum(resolved_enum) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                     resolved_enum.symbol_id,

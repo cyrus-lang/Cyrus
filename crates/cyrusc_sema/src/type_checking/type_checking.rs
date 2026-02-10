@@ -465,6 +465,23 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
+    /// Analyzes unnamed (anonymous) enum value expressions.
+    ///
+    /// Type-checks anonymous enum literals (variants) by validating variant existence,
+    /// checking field requirements, and determining the resulting enum type. Handles
+    /// three variant kinds:
+    /// - `Plain`: Simple variants without fields
+    /// - `Fielded`: Variants with field expressions
+    /// - `Valued`: Variants with associated values
+    ///
+    /// Supports type inference from expected types, including generic enum substitutions,
+    /// and provides detailed error reporting for mismatched variant usage.
+    ///
+    /// # Parameters
+    /// - `scope_id_opt`: Optional scope for name resolution and error formatting.
+    /// - `unnamed_enum_value`: The unnamed enum literal expression to analyze.
+    /// - `expected_type`: Optional expected type for inference and validation.
+    ///
     fn analyze_unnamed_enum_value(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -474,8 +491,8 @@ impl<'a> AnalysisContext<'a> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let from_unnamed_enum_type = |this: &mut AnalysisContext,
-                                          unnamed_enum_type: &TypedUnnamedEnumType,
-                                          unnamed_enum_value_kind: &mut TypedUnnamedEnumValueKind|
+                                      unnamed_enum_type: &TypedUnnamedEnumType,
+                                      unnamed_enum_value_kind: &mut TypedUnnamedEnumValueKind|
          -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
             let Some(variant) = unnamed_enum_type
                 .variants
@@ -557,10 +574,10 @@ impl<'a> AnalysisContext<'a> {
             ))
         };
 
-        let mut from_enum_sig = |this: &mut AnalysisContext,
-                                 generic_type_opt: &Option<GenericType>,
-                                 enum_sig: &EnumSig,
-                                 mut unnamed_enum_value_kind: &mut TypedUnnamedEnumValueKind|
+        let from_enum_sig = |this: &mut AnalysisContext,
+                             generic_type_opt: &Option<GenericType>,
+                             enum_sig: &EnumSig,
+                             mut unnamed_enum_value_kind: &mut TypedUnnamedEnumValueKind|
          -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
             let variant_opt = enum_sig
                 .variants
@@ -3016,10 +3033,10 @@ impl<'a> AnalysisContext<'a> {
         } else {
             if struct_init.is_const {
                 Some(SemanticType::Const(Box::new(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::NamedStruct(struct_init.symbol_id),
+                    ResolvedSymbol::Struct(struct_init.symbol_id),
                 ))))
             } else {
-                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+                Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(
                     struct_init.symbol_id,
                 )))
             }

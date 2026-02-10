@@ -29,7 +29,7 @@ use cyrusc_resolver::{
 };
 use cyrusc_tast::{
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedLiteralExpr, TypedTupleAccessExpr},
-    format::format_sema_ty,
+    format::{format_sema_ty, format_unnamed_enum_ty},
     generics::{
         mapping_ctx_arena::GenericMappingCtxArena,
         monomorph::MonomorphRegistry,
@@ -37,7 +37,10 @@ use cyrusc_tast::{
     },
     sigs::{EnumSig, FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
     stmts::*,
-    types::{PlainType, SemanticType, TypedFuncType},
+    types::{
+        PlainType, SemanticType, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
+        enum_sig_as_unnamed_enum_ty,
+    },
     *,
 };
 use cyrusc_tokens::literals::LiteralKind;
@@ -420,7 +423,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_switch: &mut TypedSwitchStmt,
-        enum_sig: &mut EnumSig,
+        unnamed_enum_type: &mut TypedUnnamedEnumType,
+        enum_name: &String,
     ) -> FlowState {
         let mut branch_states = Vec::new();
         let mut used_enum_variants: Vec<String> = Vec::new();
@@ -439,7 +443,7 @@ impl<'a> AnalysisContext<'a> {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
-                                        enum_name: enum_sig.name.clone(),
+                                        enum_name: enum_name.clone(),
                                         variant_name: valued_field.name.clone(),
                                     }),
                                     location: Some(DiagLoc::new(loc.clone())),
@@ -475,7 +479,7 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
 
-                let variant_opt = enum_sig
+                let variant_opt = unnamed_enum_type
                     .variants
                     .iter_mut()
                     .find(|variant| variant.ident().as_string() == *ident);
@@ -484,7 +488,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
-                            enum_name: enum_sig.name.clone(),
+                            enum_name: enum_name.clone(),
                             variant_name: ident.clone(),
                         }),
                         location: Some(DiagLoc::new(typed_switch.loc.clone())),
@@ -495,7 +499,7 @@ impl<'a> AnalysisContext<'a> {
 
                 if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
                     if let Some(variant) = variant_opt {
-                        if let TypedEnumVariant::Variant(ident, enum_valued_fields) = variant {
+                        if let TypedUnnamedEnumVariant::Variant(ident, enum_valued_fields) = variant {
                             let actual_enum_fields_len = enum_valued_fields.len();
 
                             if valued_fields.len() != actual_enum_fields_len {
@@ -519,7 +523,7 @@ impl<'a> AnalysisContext<'a> {
                                 enum_valued_field.ty = match self.normalize_sema_type(
                                     scope_id_opt,
                                     enum_valued_field.ty.clone(),
-                                    SourceLoc::from_loc(ident.loc.clone(), enum_sig.loc.file_path.clone()),
+                                    SourceLoc::from_loc(ident.loc.clone(), unnamed_enum_type.loc.file_path.clone()),
                                 ) {
                                     Some(sema_ty) => sema_ty,
                                     None => continue 'patterns,
@@ -536,7 +540,7 @@ impl<'a> AnalysisContext<'a> {
                                     );
                                 }
                             }
-                        } else if let TypedEnumVariant::Valued(ident, valued) = variant {
+                        } else if let TypedUnnamedEnumVariant::Valued(ident, valued) = variant {
                             if valued_fields.len() > 1 {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
@@ -587,7 +591,7 @@ impl<'a> AnalysisContext<'a> {
         // final merge
         let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
             FlowState::Returns
-        } else if used_enum_variants.len() == enum_sig.variants.len() {
+        } else if used_enum_variants.len() == unnamed_enum_type.variants.len() {
             FlowState::Returns
         } else {
             FlowState::Reachable
@@ -641,6 +645,9 @@ impl<'a> AnalysisContext<'a> {
                     return FlowState::Reachable;
                 }
             }
+        } else if let Some(mut unnamed_enum_type) = operand_ty.const_inner().as_unnamed_enum() {
+            let enum_name = format_unnamed_enum_ty(&unnamed_enum_type, &(self.symbol_formatter)(scope_id_opt));
+            return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut unnamed_enum_type, &enum_name);
         } else {
             None
         } {
@@ -662,7 +669,9 @@ impl<'a> AnalysisContext<'a> {
                     .unwrap()
                 }
 
-                return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);
+                let mut unnamed_enum_type = enum_sig_as_unnamed_enum_ty(&enum_sig, typed_switch.loc.clone());
+
+                return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut unnamed_enum_type, &enum_sig.name);
             }
             None => {}
         }
@@ -1111,7 +1120,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::NamedStruct(
+        self.ty_ctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
             typed_struct.symbol_id,
         )));
 
