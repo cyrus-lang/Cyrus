@@ -385,7 +385,7 @@ impl Parser {
 
         let ident = self.parse_ident()?;
 
-        if self.current_token_is(TokenKind::LeftParen) {
+        if self.peek_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume ident
             let field_values = self.parse_expr_series(TokenKind::RightParen)?.0;
 

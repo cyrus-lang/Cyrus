@@ -21,7 +21,7 @@ use crate::{
     inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
 };
 use cyrusc_abi::visibility::Visibility;
-use cyrusc_ast::SelfModifierKind;
+use cyrusc_ast::{SelfModifierKind, UnnamedEnumValueKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion, SymbolEntryKind},
@@ -473,16 +473,18 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        let mut from_unnamed_enum_type = |unnamed_enum_type: &TypedUnnamedEnumType| -> Option<SemanticType> {
-            if unnamed_enum_type
+        let from_unnamed_enum_type = |this: &mut AnalysisContext,
+                                          unnamed_enum_type: &TypedUnnamedEnumType,
+                                          unnamed_enum_value_kind: &mut TypedUnnamedEnumValueKind|
+         -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
+            let Some(variant) = unnamed_enum_type
                 .variants
                 .iter()
                 .find(|variant| *variant.ident() == unnamed_enum_value.ident)
-                .is_none()
-            {
-                let enum_name = format_unnamed_enum_ty(unnamed_enum_type, &(self.symbol_formatter)(scope_id_opt));
+            else {
+                let enum_name = format_unnamed_enum_ty(unnamed_enum_type, &(this.symbol_formatter)(scope_id_opt));
 
-                self.reporter.report(Diag {
+                this.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
                         enum_name,
@@ -492,20 +494,156 @@ impl<'a> AnalysisContext<'a> {
                     hint: None,
                 });
                 return None;
+            };
+
+            match unnamed_enum_value_kind {
+                TypedUnnamedEnumValueKind::Plain => {
+                    if !matches!(
+                        variant,
+                        TypedUnnamedEnumVariant::Ident(..) | TypedUnnamedEnumVariant::Valued(..)
+                    ) {
+                        let enum_name =
+                            format_unnamed_enum_ty(unnamed_enum_type, &(this.symbol_formatter)(scope_id_opt));
+
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
+                                enum_name,
+                                variant_name: unnamed_enum_value.ident.as_string(),
+                            }),
+                            location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                }
+                TypedUnnamedEnumValueKind::Fielded(values) => match variant {
+                    TypedUnnamedEnumVariant::Ident(_) | TypedUnnamedEnumVariant::Valued(_, _) => {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
+                                variant_name: unnamed_enum_value.ident.as_string(),
+                            }),
+                            location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                    TypedUnnamedEnumVariant::Variant(_, values_fields) => {
+                        if values_fields.len() != values.len() {
+                            this.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                    variant_name: unnamed_enum_value.ident.as_string(),
+                                    expected: values_fields.len() as u32,
+                                    provided: values_fields.len() as u32,
+                                }),
+                                location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                hint: None,
+                            });
+                            return None;
+                        }
+
+                        for (mut expr, field) in values.iter_mut().zip(values_fields) {
+                            this.analyze_expr(scope_id_opt, &mut expr, Some(field.ty.clone()));
+                        }
+                    }
+                },
             }
 
-            unnamed_enum_value.enum_ty = Some(TypedUnnamedEnumValueTy::UnnamedEnum(unnamed_enum_type.clone()));
-            Some(SemanticType::UnnamedEnum(unnamed_enum_type.clone()))
+            Some((
+                SemanticType::UnnamedEnum(unnamed_enum_type.clone()),
+                TypedUnnamedEnumValueTy::UnnamedEnum(unnamed_enum_type.clone()),
+            ))
         };
 
-        let from_enum_sig = |enum_sig: &EnumSig| -> Option<SemanticType> {
-            todo!();
+        let mut from_enum_sig = |this: &mut AnalysisContext,
+                                 generic_type_opt: &Option<GenericType>,
+                                 enum_sig: &EnumSig,
+                                 mut unnamed_enum_value_kind: &mut TypedUnnamedEnumValueKind|
+         -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
+            let variant_opt = enum_sig
+                .variants
+                .iter()
+                .find(|variant| *variant.ident() == unnamed_enum_value.ident);
+
+            match variant_opt {
+                Some(variant) => {
+                    match &mut unnamed_enum_value_kind {
+                        TypedUnnamedEnumValueKind::Plain => {
+                            if !matches!(variant, TypedEnumVariant::Ident(..) | TypedEnumVariant::Valued(..)) {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
+                                        enum_name: enum_sig.name.clone(),
+                                        variant_name: unnamed_enum_value.ident.as_string(),
+                                    }),
+                                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                    hint: None,
+                                });
+                                return None;
+                            }
+                        }
+                        TypedUnnamedEnumValueKind::Fielded(values) => match variant {
+                            TypedEnumVariant::Ident(_) | TypedEnumVariant::Valued(_, _) => {
+                                this.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
+                                        variant_name: unnamed_enum_value.ident.as_string(),
+                                    }),
+                                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                    hint: None,
+                                });
+                                return None;
+                            }
+                            TypedEnumVariant::Variant(_, values_fields) => {
+                                if values_fields.len() != values.len() {
+                                    this.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                            variant_name: unnamed_enum_value.ident.as_string(),
+                                            expected: values_fields.len() as u32,
+                                            provided: values_fields.len() as u32,
+                                        }),
+                                        location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                        hint: None,
+                                    });
+                                    return None;
+                                }
+
+                                for (mut expr, field) in values.iter_mut().zip(values_fields) {
+                                    this.analyze_expr(scope_id_opt, &mut expr, Some(field.ty.clone()));
+                                }
+                            }
+                        },
+                    }
+
+                    if let Some(generic_type) = generic_type_opt {
+                        Some((
+                            SemanticType::GenericType(generic_type.clone()),
+                            TypedUnnamedEnumValueTy::EnumSig(enum_sig.clone()),
+                        ))
+                    } else {
+                        Some((
+                            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_sig.symbol_id)),
+                            TypedUnnamedEnumValueTy::EnumSig(enum_sig.clone()),
+                        ))
+                    }
+                }
+                None => None,
+            }
         };
 
-        let enum_sig_opt: Option<EnumSig> = {
+        let (generic_type_opt, enum_sig_opt): (Option<GenericType>, Option<EnumSig>) = {
             if let Some(sema_ty) = expected_type {
                 if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum() {
-                    return from_unnamed_enum_type(&unnamed_enum_type);
+                    return match from_unnamed_enum_type(self, &unnamed_enum_type, &mut unnamed_enum_value.kind) {
+                        Some((sema_ty, enum_ty)) => {
+                            unnamed_enum_value.enum_ty = Some(enum_ty);
+                            Some(sema_ty)
+                        }
+                        None => None,
+                    };
                 } else if let Some(enum_symbol_id) = sema_ty.as_enum_symbol_id() {
                     let resolved_enum_opt =
                         match self.resolver.resolve_local_or_global_symbol(scope_opt, enum_symbol_id) {
@@ -514,8 +652,8 @@ impl<'a> AnalysisContext<'a> {
                         };
 
                     match resolved_enum_opt {
-                        Some(resolved_enum) => Some(resolved_enum.enum_sig),
-                        None => None,
+                        Some(resolved_enum) => (None, Some(resolved_enum.enum_sig)),
+                        None => (None, None),
                     }
                 } else if let Some(generic_type) = sema_ty.as_generic_type() {
                     let resolved_enum_opt = match self
@@ -535,20 +673,28 @@ impl<'a> AnalysisContext<'a> {
                             )
                             .unwrap();
 
-                            Some(enum_sig)
+                            (Some(generic_type.clone()), Some(enum_sig))
                         }
-                        None => None,
+                        None => (None, None),
                     }
                 } else {
-                    None
+                    (None, None)
                 }
             } else {
-                None
+                (None, None)
             }
         };
 
         match enum_sig_opt {
-            Some(enum_sig) => return from_enum_sig(&enum_sig),
+            Some(enum_sig) => {
+                return match from_enum_sig(self, &generic_type_opt, &enum_sig, &mut unnamed_enum_value.kind) {
+                    Some((sema_ty, enum_ty)) => {
+                        unnamed_enum_value.enum_ty = Some(enum_ty);
+                        Some(sema_ty)
+                    }
+                    None => None,
+                };
+            }
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

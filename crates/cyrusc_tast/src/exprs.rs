@@ -418,6 +418,15 @@ pub enum TypedUnnamedEnumValueKind {
     Fielded(Vec<TypedExprStmt>),
 }
 
+impl TypedUnnamedEnumValueKind {
+    pub fn as_fielded(&self) -> Option<&Vec<TypedExprStmt>> {
+        match self {
+            TypedUnnamedEnumValueKind::Plain => None,
+            TypedUnnamedEnumValueKind::Fielded(exprs) => Some(exprs),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
     pub name: String,

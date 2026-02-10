@@ -19,6 +19,7 @@ use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy,
 use crate::*;
 use cyrusc_abi::linkage::Linkage;
 use cyrusc_abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
+use cyrusc_ast::UnnamedEnumValue;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
@@ -28,7 +29,7 @@ use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
-use cyrusc_tast::types::{PlainType, ResolvedSymbol};
+use cyrusc_tast::types::{PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant};
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
     TypedProgramTree,
@@ -867,7 +868,9 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
                 self.lower_unnamed_struct_value(scope_id_opt, unnamed_struct_value)
             }
-            TypedExprKind::UnnamedEnumValue(typed_unnamed_enum_value) => todo!(),
+            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => {
+                self.lower_unnamed_enum_value(scope_id_opt, unnamed_enum_value)
+            }
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access.clone()),
@@ -881,6 +884,77 @@ impl<'resolver> CIRWalk<'resolver> {
         };
 
         CIRExpr { kind, ty }
+    }
+
+    fn lower_unnamed_enum_value(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_enum_value: &TypedUnnamedEnumValue,
+    ) -> CIRExprKind {
+        let enum_ty = unnamed_enum_value.enum_ty.clone().unwrap();
+
+        match enum_ty {
+            TypedUnnamedEnumValueTy::EnumSig(enum_sig) => {
+                let enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
+
+                let variant_idx = enum_sig
+                    .variants
+                    .iter()
+                    .position(|variant| *variant.ident() == unnamed_enum_value.ident)
+                    .unwrap();
+
+                let variant = enum_sig.variants.get(variant_idx).unwrap();
+
+                let cir_enum_variant = match variant {
+                    TypedEnumVariant::Ident(_) => CIREnumInitVariant::Ident,
+                    TypedEnumVariant::Valued(_, value) => {
+                        let expr = self.lower_expr(scope_id_opt, value);
+                        CIREnumInitVariant::Valued(Box::new(expr))
+                    }
+                    TypedEnumVariant::Variant(_, _) => {
+                        let values = unnamed_enum_value.kind.as_fielded().unwrap();
+                        let exprs = values.iter().map(|expr| self.lower_expr(scope_id_opt, expr)).collect();
+                        CIREnumInitVariant::Fielded(exprs)
+                    }
+                };
+
+                CIRExprKind::EnumInit(CIREnumInitExpr {
+                    tag: variant_idx,
+                    variant: cir_enum_variant,
+                    enum_ty,
+                })
+            }
+            TypedUnnamedEnumValueTy::UnnamedEnum(unnamed_enum_type) => {
+                let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, &unnamed_enum_type);
+
+                let variant_idx = unnamed_enum_type
+                    .variants
+                    .iter()
+                    .position(|variant| *variant.ident() == unnamed_enum_value.ident)
+                    .unwrap();
+
+                let variant = unnamed_enum_type.variants.get(variant_idx).unwrap();
+
+                let cir_enum_variant = match variant {
+                    TypedUnnamedEnumVariant::Ident(_) => CIREnumInitVariant::Ident,
+                    TypedUnnamedEnumVariant::Valued(_, value) => {
+                        let expr = self.lower_expr(scope_id_opt, value);
+                        CIREnumInitVariant::Valued(Box::new(expr))
+                    }
+                    TypedUnnamedEnumVariant::Variant(_, _) => {
+                        let values = unnamed_enum_value.kind.as_fielded().unwrap();
+                        let exprs = values.iter().map(|expr| self.lower_expr(scope_id_opt, expr)).collect();
+                        CIREnumInitVariant::Fielded(exprs)
+                    }
+                };
+
+                CIRExprKind::EnumInit(CIREnumInitExpr {
+                    tag: variant_idx,
+                    variant: cir_enum_variant,
+                    enum_ty,
+                })
+            }
+        }
     }
 
     fn lower_dynamic_expr(&mut self, scope_id_opt: Option<ScopeID>, dynamic_expr: &TypedDynamicExpr) -> CIRExprKind {
@@ -1582,11 +1656,47 @@ impl<'resolver> CIRWalk<'resolver> {
                     is_packed: false,
                 })
             }
-            SemanticType::UnnamedUnion(typed_unnamed_union_type) => todo!(),
-            SemanticType::UnnamedEnum(typed_unnamed_enum_type) => todo!(),
+            SemanticType::UnnamedUnion(unnamed_union_type) => todo!(),
+            SemanticType::UnnamedEnum(unnamed_enum_type) => {
+                CIRTy::Enum(self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, unnamed_enum_type))
+            }
         }
         .const_inner()
         .clone()
+    }
+
+    fn lower_unnamed_enum_type_as_cir_enum_ty(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_enum_type: &TypedUnnamedEnumType,
+    ) -> CIREnumTy {
+        let variants: Vec<CIREnumTyVariant> = unnamed_enum_type
+            .variants
+            .iter()
+            .map(|variant| self.lower_unnamed_enum_ty_variant(scope_id_opt, variant))
+            .collect();
+
+        CIREnumTy { variants }
+    }
+
+    fn lower_unnamed_enum_ty_variant(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        variant: &TypedUnnamedEnumVariant,
+    ) -> CIREnumTyVariant {
+        match variant {
+            TypedUnnamedEnumVariant::Ident(..) => CIREnumTyVariant::Ident,
+            TypedUnnamedEnumVariant::Valued(_, expr) => {
+                CIREnumTyVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
+            }
+            TypedUnnamedEnumVariant::Variant(_, fields) => {
+                let fields: Vec<CIRTy> = fields
+                    .iter()
+                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+                    .collect();
+                CIREnumTyVariant::Fielded(fields)
+            }
+        }
     }
 
     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
