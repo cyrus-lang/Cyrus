@@ -1,0 +1,27 @@
+// @stdout: none some(10)
+
+import std::libc{printf};
+
+enum Option<T> {
+	Some(T),
+	None
+}
+
+fn display_option<T>(opt: Option<T>) {
+	switch (opt) {
+		case .Some(value) => {
+			printf("some(%d) ", value);
+		}
+		case .None => {
+			printf("none ");
+		}
+	}
+}
+
+pub fn main() {
+	var opt: Option<int> = .None;
+	display_option(opt);
+	
+	opt = .Some(10);
+	display_option(opt);
+}
