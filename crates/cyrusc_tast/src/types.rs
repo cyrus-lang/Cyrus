@@ -16,8 +16,8 @@
  */
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
-use crate::sigs::FuncSig;
-use crate::stmts::{TypedFuncTypeParams, TypedGenericParam};
+use crate::sigs::{EnumSig, FuncSig};
+use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
 use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
 use cyrusc_ast::Ident;
@@ -78,7 +78,7 @@ pub enum ResolvedSymbol {
     Enum(SymbolID),
     Union(SymbolID),
     Typedef(SymbolID),
-    NamedStruct(SymbolID),
+    Struct(SymbolID),
     Interface(SymbolID),
     GlobalVar(SymbolID),
     Variable(SymbolID),
@@ -108,7 +108,7 @@ impl ResolvedSymbol {
             ResolvedSymbol::Union(symbol_id) => *symbol_id,
             ResolvedSymbol::Enum(symbol_id) => *symbol_id,
             ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
-            ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,
+            ResolvedSymbol::Struct(symbol_id) => *symbol_id,
             ResolvedSymbol::Interface(symbol_id) => *symbol_id,
             ResolvedSymbol::GlobalVar(symbol_id) => *symbol_id,
             ResolvedSymbol::Variable(symbol_id) => *symbol_id,
@@ -197,7 +197,7 @@ impl SemanticType {
     pub fn is_enum(&self) -> bool {
         matches!(
             self.const_inner(),
-            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(..))
+            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(..)) | SemanticType::UnnamedEnum(..)
         )
     }
 
@@ -317,7 +317,7 @@ impl SemanticType {
     pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
         match self.const_inner() {
             SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
-                ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
+                ResolvedSymbol::Struct(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
             _ => None,
@@ -809,4 +809,29 @@ impl PartialEq for DynamicType {
     fn eq(&self, other: &Self) -> bool {
         self.interface_symbol_id == other.interface_symbol_id
     }
+}
+
+pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedUnnamedEnumType {
+    let variants = enum_sig
+        .variants
+        .iter()
+        .map(|variant| match variant {
+            TypedEnumVariant::Ident(ident) => TypedUnnamedEnumVariant::Ident(ident.clone()),
+            TypedEnumVariant::Valued(ident, typed_expr_stmt) => {
+                TypedUnnamedEnumVariant::Valued(ident.clone(), typed_expr_stmt.clone())
+            }
+            TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
+                let valued_fields = typed_enum_valued_fields
+                    .iter()
+                    .map(|field| TypedUnnamedEnumValuedField {
+                        ty: field.ty.clone(),
+                        loc: field.loc.clone(),
+                    })
+                    .collect();
+                TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields)
+            }
+        })
+        .collect();
+
+    TypedUnnamedEnumType { variants, loc }
 }

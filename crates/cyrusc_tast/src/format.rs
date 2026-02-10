@@ -367,7 +367,7 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
         SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
             ResolvedSymbol::Enum(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Typedef(symbol_id) => format_symbol(symbol_id),
-            ResolvedSymbol::NamedStruct(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Struct(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Interface(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::GlobalVar(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Variable(symbol_id) => format_symbol(symbol_id),

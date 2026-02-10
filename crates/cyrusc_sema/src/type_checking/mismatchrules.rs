@@ -18,11 +18,15 @@ use crate::analyze::AnalysisContext;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     ScopeID,
-    generics::{mapping_ctx::mapping_ctx_eq_refcell, substitute::substitute_struct_sig},
-    sigs::StructSig,
+    generics::{
+        mapping_ctx::mapping_ctx_eq_refcell,
+        substitute::{substitute_enum_sig, substitute_struct_sig},
+    },
+    sigs::{EnumSig, StructSig},
+    stmts::TypedEnumVariant,
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedUnnamedEnumVariant, TypedUnnamedStructType,
+        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType,
     },
 };
 
@@ -78,6 +82,76 @@ impl<'a> AnalysisContext<'a> {
                 }
                 variants
             }
+            (
+                SemanticType::UnnamedEnum(unnamed_enum_type),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_symbol_id)),
+            ) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                    .unwrap();
+                let resolved_enum = sym.as_enum().unwrap();
+
+                self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
+            }
+            (
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_symbol_id)),
+                SemanticType::UnnamedEnum(unnamed_enum_type),
+            ) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                    .unwrap();
+                let resolved_enum = sym.as_enum().unwrap();
+
+                self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
+            }
+            (SemanticType::UnnamedEnum(unnamed_enum_type), SemanticType::GenericType(generic_type)) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
+                    .unwrap();
+
+                match sym.as_enum().cloned() {
+                    Some(mut resolved_enum) => {
+                        resolved_enum.enum_sig = substitute_enum_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_enum.enum_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        self.check_unnamed_enum_and_named_enum_type_mismatch(
+                            &unnamed_enum_type,
+                            &resolved_enum.enum_sig,
+                        )
+                    }
+                    None => false, // not compatible!
+                }
+            }
+            (SemanticType::GenericType(generic_type), SemanticType::UnnamedEnum(unnamed_enum_type)) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
+                    .unwrap();
+
+                match sym.as_enum().cloned() {
+                    Some(mut resolved_enum) => {
+                        resolved_enum.enum_sig = substitute_enum_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_enum.enum_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        self.check_unnamed_enum_and_named_enum_type_mismatch(
+                            &unnamed_enum_type,
+                            &resolved_enum.enum_sig,
+                        )
+                    }
+                    None => false, // not compatible!
+                }
+            }
             (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
                 let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
                 let mut fields = true;
@@ -90,36 +164,42 @@ impl<'a> AnalysisContext<'a> {
                 is_packed && fields
             }
             (
-                SemanticType::UnnamedStruct(unnamed_struct),
-                SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(named_struct_symbol_id)),
+                SemanticType::UnnamedStruct(unnamed_struct_type),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_symbol_id)),
             ) => {
-                let named_struct = self
+                let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, named_struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
                     .unwrap();
-                let resolved_struct = named_struct.as_struct().unwrap();
+                let resolved_struct = sym.as_struct().unwrap();
 
-                self.check_unnamed_struct_and_named_struct_type_mismatch(&unnamed_struct, &resolved_struct.struct_sig)
+                self.check_unnamed_struct_and_named_struct_type_mismatch(
+                    &unnamed_struct_type,
+                    &resolved_struct.struct_sig,
+                )
             }
             (
-                SemanticType::ResolvedSymbol(ResolvedSymbol::NamedStruct(named_struct_symbol_id)),
-                SemanticType::UnnamedStruct(unnamed_struct),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_symbol_id)),
+                SemanticType::UnnamedStruct(unnamed_struct_type),
             ) => {
-                let named_struct = self
+                let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, named_struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
                     .unwrap();
-                let resolved_struct = named_struct.as_struct().unwrap();
+                let resolved_struct = sym.as_struct().unwrap();
 
-                self.check_unnamed_struct_and_named_struct_type_mismatch(&unnamed_struct, &resolved_struct.struct_sig)
+                self.check_unnamed_struct_and_named_struct_type_mismatch(
+                    &unnamed_struct_type,
+                    &resolved_struct.struct_sig,
+                )
             }
-            (SemanticType::UnnamedStruct(unnamed_struct), SemanticType::GenericType(generic_type)) => {
-                let named_struct = self
+            (SemanticType::UnnamedStruct(unnamed_struct_type), SemanticType::GenericType(generic_type)) => {
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(scope_opt, generic_type.base)
                     .unwrap();
 
-                match named_struct.as_struct().cloned() {
+                match sym.as_struct().cloned() {
                     Some(mut resolved_struct) => {
                         resolved_struct.struct_sig = substitute_struct_sig(
                             self.mapping_ctx_arena.clone(),
@@ -129,7 +209,7 @@ impl<'a> AnalysisContext<'a> {
                         .unwrap();
 
                         self.check_unnamed_struct_and_named_struct_type_mismatch(
-                            &unnamed_struct,
+                            &unnamed_struct_type,
                             &resolved_struct.struct_sig,
                         )
                     }
@@ -137,12 +217,12 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedStruct(unnamed_struct)) => {
-                let named_struct = self
+                let sym = self
                     .resolver
                     .resolve_local_or_global_symbol(scope_opt, generic_type.base)
                     .unwrap();
 
-                match named_struct.as_struct().cloned() {
+                match sym.as_struct().cloned() {
                     Some(mut resolved_struct) => {
                         resolved_struct.struct_sig = substitute_struct_sig(
                             self.mapping_ctx_arena.clone(),
@@ -179,6 +259,37 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
+    }
+
+    fn check_unnamed_enum_and_named_enum_type_mismatch(
+        &self,
+        unnamed_enum_type: &TypedUnnamedEnumType,
+        enum_sig: &EnumSig,
+    ) -> bool {
+        enum_sig
+            .variants
+            .iter()
+            .zip(&unnamed_enum_type.variants)
+            .any(
+                |(named_variant, unnamed_variant)| match (named_variant, unnamed_variant) {
+                    (TypedEnumVariant::Ident(ident1), TypedUnnamedEnumVariant::Ident(ident2)) => ident1 == ident2,
+                    (TypedEnumVariant::Valued(ident1, expr1), TypedUnnamedEnumVariant::Valued(ident2, expr2)) => {
+                        ident1 == ident2 && expr1 == expr2
+                    }
+                    (
+                        TypedEnumVariant::Variant(ident1, valued_fields1),
+                        TypedUnnamedEnumVariant::Variant(ident2, valued_fields2),
+                    ) => {
+                        let valued_fields = valued_fields1
+                            .iter()
+                            .zip(valued_fields2)
+                            .any(|(field1, field2)| field1.ty == field2.ty);
+
+                        ident1 == ident2 && valued_fields
+                    }
+                    _ => false,
+                },
+            )
     }
 
     fn check_unnamed_struct_and_named_struct_type_mismatch(
