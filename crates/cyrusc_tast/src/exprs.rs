@@ -29,7 +29,7 @@ use cyrusc_ast::{
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::literals::LiteralKind;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypedExprStmt {
     pub kind: TypedExprKind,
     pub sema_ty: Option<SemanticType>,
@@ -240,14 +240,6 @@ pub struct TypedSelfType {
     pub loc: SourceLoc,
 }
 
-impl std::hash::Hash for TypedSelfType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // fixed discriminant
-        // all Self types collide intentionally
-        0xDEAD_BEEF_u64.hash(state);
-    }
-}
-
 #[derive(Debug, Clone, Eq)]
 pub struct TypedIdentifier {
     pub name: String,
@@ -406,16 +398,23 @@ pub enum TypedUnnamedEnumValueTy {
     UnnamedEnum(TypedUnnamedEnumType),
 }
 
-impl PartialEq for TypedUnnamedEnumValue {
-    fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident && self.kind == other.kind
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedUnnamedEnumValueKind {
     Plain,
     Fielded(Vec<TypedExprStmt>),
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedUnnamedStructValueField {
+    pub name: String,
+    pub ty: Option<SemanticType>,
+    pub field_value: Box<TypedExprStmt>,
+    pub loc: SourceLoc,
+}
+
+impl PartialEq for TypedUnnamedEnumValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.kind == other.kind
+    }
 }
 
 impl TypedUnnamedEnumValueKind {
@@ -427,10 +426,15 @@ impl TypedUnnamedEnumValueKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedUnnamedStructValueField {
-    pub name: String,
-    pub ty: Option<SemanticType>,
-    pub field_value: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+impl PartialEq for TypedExprStmt {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.sema_ty == other.sema_ty
+    }
+}
+
+impl std::hash::Hash for TypedSelfType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // fixed discriminant
+        0xDEAD_BEEF_u64.hash(state);
+    }
 }

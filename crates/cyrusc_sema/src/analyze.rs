@@ -35,7 +35,7 @@ use cyrusc_tast::{
         monomorph::MonomorphRegistry,
         substitute::{substitute_enum_sig, substitute_func_sig},
     },
-    sigs::{EnumSig, FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
+    sigs::{FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
     stmts::*,
     types::{
         PlainType, SemanticType, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,

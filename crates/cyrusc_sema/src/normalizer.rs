@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::SelfModifierKind;
+use cyrusc_ast::{SelfModifierKind, UnnamedEnumType};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
@@ -36,7 +36,7 @@ use cyrusc_tast::{
     },
     types::{
         InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedFuncType, TypedTupleType,
+        TypedFuncType, TypedTupleType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
     },
 };
 use fx_hash::FxHashMap;
@@ -99,6 +99,10 @@ impl<'a> AnalysisContext<'a> {
                 .ok()?;
         }
 
+        if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum() {
+            sema_ty = SemanticType::UnnamedEnum(self.normalize_unnamed_enum_ty(scope_id_opt, unnamed_enum_type));
+        }
+
         self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc.clone());
         Some(sema_ty)
     }
@@ -135,13 +139,40 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::FuncType(func_type) => self.normalize_func_type(scope_id_opt, func_type),
             SemanticType::Tuple(tuple_type) => self.normalize_tuple(scope_id_opt, tuple_type),
             SemanticType::SelfType(self_type) => self.normalize_self_type(self_type),
+            SemanticType::UnnamedEnum(unnamed_enum_type) => Some(SemanticType::UnnamedEnum(
+                self.normalize_unnamed_enum_ty(scope_id_opt, unnamed_enum_type),
+            )),
             SemanticType::PlainType(_)
             | SemanticType::UnnamedUnion(_)
-            | SemanticType::UnnamedEnum(_)
             | SemanticType::UnnamedStruct(_)
             | SemanticType::DynamicType(_)
             | SemanticType::Interface(_) => Some(ty),
         }
+    }
+
+    fn normalize_unnamed_enum_ty(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        mut unnamed_enum_type: TypedUnnamedEnumType,
+    ) -> TypedUnnamedEnumType {
+        for variant in &mut unnamed_enum_type.variants {
+            match variant {
+                TypedUnnamedEnumVariant::Ident(_) => continue,
+                TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
+                    for valued_field in valued_fields {
+                        match self.normalize_sema_type(scope_id_opt, valued_field.ty.clone(), valued_field.loc.clone())
+                        {
+                            Some(sema_ty) => valued_field.ty = sema_ty,
+                            None => continue,
+                        }
+                    }
+                }
+                TypedUnnamedEnumVariant::Valued(_, expr) => {
+                    self.analyze_expr(scope_id_opt, expr, None);
+                }
+            }
+        }
+        unnamed_enum_type
     }
 
     fn normalize_func_type(
@@ -774,9 +805,9 @@ impl<'a> AnalysisContext<'a> {
                         sema_ty_opt
                     }
                 }
-                LocalSymbolKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(
-                    ResolvedSymbol::Struct(resolved_struct.symbol_id),
-                )),
+                LocalSymbolKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(
+                    resolved_struct.symbol_id,
+                ))),
                 LocalSymbolKind::Enum(resolved_enum) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                     resolved_enum.symbol_id,
                 ))),
@@ -867,9 +898,7 @@ impl<'a> AnalysisContext<'a> {
                         sema_ty_opt
                     }
                 }
-                SymbolEntryKind::Struct(s) => {
-                    Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(s.symbol_id)))
-                }
+                SymbolEntryKind::Struct(s) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(s.symbol_id))),
                 SymbolEntryKind::Enum(resolved_enum) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
                     resolved_enum.symbol_id,
                 ))),

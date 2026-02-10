@@ -358,6 +358,13 @@ impl SemanticType {
         }
     }
 
+    pub fn as_unnamed_enum_mut(&mut self) -> Option<&mut TypedUnnamedEnumType> {
+        match self.const_inner_mut() {
+            SemanticType::UnnamedEnum(unnamed_enum_type) => Some(unnamed_enum_type),
+            _ => None,
+        }
+    }
+
     pub fn as_unnamed_union(&self) -> Option<TypedUnnamedUnionType> {
         match self.const_inner() {
             SemanticType::UnnamedUnion(unnamed_union_type) => Some(unnamed_union_type.clone()),

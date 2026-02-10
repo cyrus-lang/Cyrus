@@ -1,0 +1,27 @@
+// @stdout: Red | text(Cyrus!)
+
+import std::libc{printf};
+
+enum Color {
+	Red,
+	Blue
+}
+
+pub fn main() {
+	const x: enum { Int(int), Text(char*) } = .Text("Cyrus!");
+
+	const y: Color = .Red;
+
+	if (y == .Red) {
+		printf("Red | ");
+
+		switch (x) {
+			case .Int(int_value) => {
+				printf("int(%d)\n", int_value);
+			}
+			case .Text(text_value) => {
+				printf("text(%s)\n", text_value);
+			}
+		}
+	}
+}
