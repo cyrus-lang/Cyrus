@@ -1,0 +1,25 @@
+// @stdout: Blue
+
+import std::libc{printf};
+
+enum Color {
+	Red,
+	Blue
+}
+
+fn get_color_str(x: const enum { Red, Blue }) char* {
+	switch (x) {
+		case .Red => {
+			return "Red";
+		}
+		case .Blue => {
+			return "Blue";
+		}
+	}
+}
+
+pub fn main() {
+	const x: enum { Red, Blue } = Color.Blue;
+
+	printf("%s\n", get_color_str(x));
+}
