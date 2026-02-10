@@ -21,7 +21,7 @@ use crate::{
     inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
 };
 use cyrusc_abi::visibility::Visibility;
-use cyrusc_ast::{SelfModifierKind, UnnamedEnumValueKind};
+use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion, SymbolEntryKind},
@@ -657,7 +657,8 @@ impl<'a> AnalysisContext<'a> {
                     return match from_unnamed_enum_type(self, &unnamed_enum_type, &mut unnamed_enum_value.kind) {
                         Some((sema_ty, enum_ty)) => {
                             unnamed_enum_value.enum_ty = Some(enum_ty);
-                            Some(sema_ty)
+
+                            self.normalize_sema_type(scope_id_opt, sema_ty, unnamed_enum_value.loc.clone())
                         }
                         None => None,
                     };
@@ -707,7 +708,8 @@ impl<'a> AnalysisContext<'a> {
                 return match from_enum_sig(self, &generic_type_opt, &enum_sig, &mut unnamed_enum_value.kind) {
                     Some((sema_ty, enum_ty)) => {
                         unnamed_enum_value.enum_ty = Some(enum_ty);
-                        Some(sema_ty)
+
+                        self.normalize_sema_type(scope_id_opt, sema_ty, unnamed_enum_value.loc.clone())
                     }
                     None => None,
                 };

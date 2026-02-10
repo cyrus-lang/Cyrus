@@ -1,0 +1,24 @@
+// @stdout: 100
+
+import std::libc{printf};
+
+type Kind = const enum { Unknown = 0, Known = 1 };
+
+fn display_kind(value: Kind) {
+	switch (value) {
+		case .Unknown(x) => {
+			printf("%d", x);
+		}
+		case .Known(x) => {
+			printf("%d", x);
+		}
+	}
+}
+
+pub fn main() {
+	const x: Kind = .Unknown;
+
+	display_kind(.Known);
+	display_kind(.Unknown);
+	display_kind(x);
+}
