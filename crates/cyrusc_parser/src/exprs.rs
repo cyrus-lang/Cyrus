@@ -218,6 +218,8 @@ impl Parser {
 
         let expr = match &self.current_token().clone().kind {
             TokenKind::Dot => self.parse_unnamed_enum_value()?,
+            TokenKind::Union => self.parse_unnamed_union_value(false)?,
+            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
             TokenKind::Dynamic => self.parse_dynamic_expr()?,
             TokenKind::Inline => {
                 if self.peek_token_is(TokenKind::Function) {
@@ -230,7 +232,6 @@ impl Parser {
             TokenKind::Function => self.parse_lambda_expr(false)?,
             TokenKind::SizeOf => self.parse_sizeof_expr()?,
             TokenKind::Typecast => self.parse_cast_expr()?,
-            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
             TokenKind::Const => {
                 if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
                     self.next_token();
@@ -1143,5 +1144,45 @@ impl Parser {
             loc: self.current_token().loc.clone(),
             span: Span::new(struct_start, self.current_token().span.end),
         }))
+    }
+
+    fn parse_unnamed_union_value(&mut self, is_const: bool) -> Result<Expr, Diag> {
+        let union_start = self.current_token().span.start;
+
+        self.next_token(); // consume union
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let ident = self.parse_ident()?;
+
+        self.next_token(); // consume ident
+
+        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+            // syntax shorthand for `ident:ident`
+            let ident_expr = Expr::Ident(ident.clone());
+
+            self.must_be_right_brace()?;
+
+            return Ok(Expr::UnnamedUnionValue(UnnamedUnionValue {
+                field_name: ident,
+                field_value: Box::new(ident_expr),
+                is_const,
+                loc: self.current_token().loc.clone(),
+                span: Span::new(union_start, self.current_token().span.end),
+            }));
+        } else {
+            self.expect_current(TokenKind::Assign)?;
+            let field_value = self.parse_expr(Precedence::Lowest)?.0;
+            self.next_token();
+
+            self.must_be_right_brace()?;
+
+            return Ok(Expr::UnnamedUnionValue(UnnamedUnionValue {
+                field_name: ident,
+                field_value: Box::new(field_value),
+                is_const,
+                loc: self.current_token().loc.clone(),
+                span: Span::new(union_start, self.current_token().span.end),
+            }));
+        }
     }
 }

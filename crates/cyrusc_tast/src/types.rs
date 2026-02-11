@@ -16,7 +16,7 @@
  */
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
-use crate::sigs::{EnumSig, FuncSig};
+use crate::sigs::{EnumSig, FuncSig, UnionSig};
 use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
 use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
@@ -841,4 +841,15 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
         .collect();
 
     TypedUnnamedEnumType { variants, loc }
+}
+
+pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
+    let fields = union_sig.fields.iter().map(|field| {
+        TypedUnnamedUnionTypeField {
+            name: field.name.clone(),
+            ty: Box::new(field.ty.clone()),
+            loc: field.loc.clone(),
+        }
+    }).collect();
+    TypedUnnamedUnionType { fields, loc }
 }

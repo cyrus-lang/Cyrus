@@ -217,6 +217,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::UnnamedEnumValue(typed_unnamed_enum_value) => {
                 self.analyze_unnamed_enum_value(scope_id_opt, typed_unnamed_enum_value, expected_type)
             }
+            TypedExprKind::UnnamedUnionValue(typed_unnamed_union_value) => {
+                self.analyze_unnamed_union_value(scope_id_opt, typed_unnamed_union_value, expected_type)
+            }
             TypedExprKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
             }
@@ -463,6 +466,93 @@ impl<'a> AnalysisContext<'a> {
             type_list,
             loc: tuple_value.loc.clone(),
         }))
+    }
+
+    fn analyze_unnamed_union_value(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_union_value: &mut TypedUnnamedUnionValue,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+        let unnamed_union_type = match expected_type.as_ref().and_then(|sema_ty| {
+            if let Some(union_symbol_id) = sema_ty.as_union_symbol_id() {
+                let sym_opt = self.resolver.resolve_local_or_global_symbol(scope_opt, union_symbol_id);
+
+                if let Some(sym) = sym_opt {
+                    if let Some(resolved_union) = sym.as_union() {
+                        return Some(union_sig_as_unnamed_union_ty(
+                            &resolved_union.union_sig,
+                            unnamed_union_value.loc.clone(),
+                        ));
+                    }
+                }
+            } else if let Some(unnamed_union_type) = sema_ty.as_unnamed_union() {
+                return Some(unnamed_union_type);
+            } else if let Some(generic_type) = sema_ty.as_generic_type() {
+                let sym_opt = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base);
+
+                if let Some(sym) = sym_opt {
+                    if let Some(resolved_union) = sym.as_union() {
+                        let union_sig = substitute_union_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_union.union_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        return Some(union_sig_as_unnamed_union_ty(
+                            &union_sig,
+                            unnamed_union_value.loc.clone(),
+                        ));
+                    }
+                }
+            }
+
+            None
+        }) {
+            Some(unnamed_union_type) => unnamed_union_type,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UnnamedUnionValueInfering),
+                    location: Some(DiagLoc::new(unnamed_union_value.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let Some(field) = unnamed_union_type
+            .fields
+            .iter()
+            .find(|field| field.name == unnamed_union_value.field_name.as_string())
+        else {
+            let object_name = format_sema_ty(expected_type.unwrap(), &(self.symbol_formatter)(scope_id_opt));
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                    struct_name: object_name,
+                    field_name: unnamed_union_value.field_name.as_string(),
+                }),
+                location: Some(DiagLoc::new(unnamed_union_value.loc.clone())),
+                hint: None,
+            });
+            return None;
+        };
+
+        self.analyze_expr(
+            scope_id_opt,
+            &mut unnamed_union_value.field_value,
+            Some(*field.ty.clone()),
+        );
+
+        unnamed_union_value.union_ty = Some(unnamed_union_type.clone());
+        Some(SemanticType::UnnamedUnion(unnamed_union_type))
     }
 
     /// Analyzes unnamed (anonymous) enum value expressions.
@@ -1006,14 +1096,14 @@ impl<'a> AnalysisContext<'a> {
 
         let generic_type_opt = operand_ty.as_generic_type();
 
-        let (return_sema_ty, is_generic) = match self.resolve_member_access_kind(
+        let (return_sema_ty, is_generic) = match self.resolve_field_access_kind(
             scope_id_opt,
             scope_opt.clone(),
             &mut field_access.operand,
             expected_type.clone(),
             field_access.loc.clone(),
         ) {
-            Some(member_access_kind) => match member_access_kind {
+            Some(field_access_kind) => match field_access_kind {
                 FieldAccessKind::UnnamedStruct(unnamed_struct_type) => (
                     self.analyze_unnamed_struct_field_access(
                         scope_id_opt,
@@ -1060,6 +1150,15 @@ impl<'a> AnalysisContext<'a> {
                         union_sig.generic_params.is_some(),
                     )
                 }
+                FieldAccessKind::UnnamedUnion(unnamed_union_type) => (
+                    self.analyze_unnamed_union_field_access(
+                        scope_id_opt,
+                        &unnamed_union_type,
+                        field_access,
+                        expected_type,
+                    ),
+                    false,
+                ),
             },
             None => not_supports_fields!(self, field_access.loc.clone()),
         };
@@ -3242,6 +3341,55 @@ impl<'a> AnalysisContext<'a> {
         Some(field_ty)
     }
 
+    fn analyze_unnamed_union_field_access(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_union_type: &TypedUnnamedUnionType,
+        field_access: &mut TypedFieldAccess,
+        expected_type: Option<SemanticType>,
+    ) -> Option<SemanticType> {
+        let operand_type = match self.analyze_expr(scope_id_opt, &mut field_access.operand, expected_type) {
+            Some(sema_ty) => sema_ty,
+            None => return None,
+        };
+
+        field_access.operand.sema_ty = Some(operand_type.clone());
+
+        let field_idx = match unnamed_union_type
+            .fields
+            .iter()
+            .position(|field| *field.name == field_access.field_name.clone())
+        {
+            Some(union_field) => union_field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                        struct_name: format_sema_ty(
+                            SemanticType::UnnamedUnion(unnamed_union_type.clone()),
+                            &(self.symbol_formatter)(scope_id_opt),
+                        ),
+                        field_name: field_access.field_name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let field = &unnamed_union_type.fields[field_idx];
+        let field_ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field_access.loc.clone()) {
+            Some(sema_ty) => sema_ty,
+            None => return None,
+        };
+
+        field_access.field_index = Some(field_idx);
+        field_access.field_ty = Some(field_ty.clone());
+
+        Some(field_ty.clone())
+    }
+
     /// Analyzes field access expressions on unnamed (anonymous) struct types.
     ///
     /// Type-checks field accesses on instances of anonymous structs by locating the
@@ -3744,7 +3892,7 @@ impl<'a> AnalysisContext<'a> {
     /// - Some(FieldAccessKind): The resolved access category with type information.
     /// - None: If resolution fails due to invalid types, unresolved symbols, or errors.
     ///
-    fn resolve_member_access_kind(
+    fn resolve_field_access_kind(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         scope_opt: Option<LocalScopeRef>,
@@ -3785,6 +3933,9 @@ impl<'a> AnalysisContext<'a> {
             }
             SemanticType::UnnamedStruct(unnamed_struct_type) => {
                 return Some(FieldAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));
+            }
+            SemanticType::UnnamedUnion(unnamed_union_type) => {
+                return Some(FieldAccessKind::UnnamedUnion(Box::new(unnamed_union_type.clone())));
             }
             SemanticType::GenericType(generic_type) => Some(generic_type.base),
             _ => None,
@@ -4441,6 +4592,7 @@ enum FieldAccessKind {
     UnnamedStruct(Box<TypedUnnamedStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
+    UnnamedUnion(Box<TypedUnnamedUnionType>),
 }
 
 fn self_modifier_param_type(params: &TypedFuncParams, sema_ty: SemanticType) -> Option<SemanticType> {

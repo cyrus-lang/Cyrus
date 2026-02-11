@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::{SelfModifierKind, UnnamedEnumType};
+use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
