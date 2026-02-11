@@ -730,6 +730,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                     BasicValueEnum::FloatValue(self.llvmbuilder.build_float_add(lhs, rhs, "add").unwrap());
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
+            (BasicValueEnum::PointerValue(ptr), BasicValueEnum::IntValue(index)) => {
+                self.emit_pointer_add(ptr, index, lhs_rvalue.ty.clone())
+            }
+            (BasicValueEnum::IntValue(index), BasicValueEnum::PointerValue(ptr)) => {
+                self.emit_pointer_add(ptr, index, rhs_rvalue.ty.clone())
+            }
             _ => unreachable!(),
         }
     }
@@ -745,8 +751,91 @@ impl<'ll> IRBuilderCtx<'ll> {
                     BasicValueEnum::FloatValue(self.llvmbuilder.build_float_sub(lhs, rhs, "sub").unwrap());
                 InternalValue::new(lhs_rvalue.ty.clone(), InternalValueKind::RValue(basic_value))
             }
+            (BasicValueEnum::PointerValue(ptr), BasicValueEnum::IntValue(index)) => {
+                self.emit_pointer_sub(ptr, index, lhs_rvalue.ty.clone())
+            }
+            (BasicValueEnum::PointerValue(lhs_ptr), BasicValueEnum::PointerValue(rhs_ptr)) => {
+                let pointee_type: BasicTypeEnum<'ll> = self
+                    .emit_ty(lhs_rvalue.ty.pointer_inner().unwrap().clone())
+                    .try_into()
+                    .unwrap();
+                self.emit_pointer_diff(pointee_type, lhs_ptr, rhs_ptr)
+            }
             _ => unreachable!(),
         }
+    }
+
+    fn emit_pointer_add(&self, ptr: PointerValue<'ll>, index: IntValue<'ll>, result_type: CIRTy) -> InternalValue<'ll> {
+        let pointee_type: BasicTypeEnum<'ll> = self
+            .emit_ty(result_type.pointer_inner().unwrap().clone())
+            .try_into()
+            .unwrap();
+
+        let i64_type = self.llvmctx.i64_type();
+        let gep_index = if index.get_type() == i64_type {
+            index
+        } else {
+            self.llvmbuilder.build_int_cast(index, i64_type, "idx.cast").unwrap()
+        };
+
+        // Create GEP instruction
+        // LLVM automatically multiplies by sizeof(pointee)
+        let gep_ptr = unsafe {
+            self.llvmbuilder
+                .build_gep(pointee_type, ptr, &[gep_index], "ptr.add")
+                .unwrap()
+        };
+
+        let basic_value = BasicValueEnum::PointerValue(gep_ptr);
+        InternalValue::new(result_type, InternalValueKind::RValue(basic_value))
+    }
+
+    fn emit_pointer_sub(&self, ptr: PointerValue<'ll>, index: IntValue<'ll>, result_type: CIRTy) -> InternalValue<'ll> {
+        let pointee_type: BasicTypeEnum<'ll> = self
+            .emit_ty(result_type.pointer_inner().unwrap().clone())
+            .try_into()
+            .unwrap();
+
+        // negate the index for subtraction
+        let i64_type = self.llvmctx.i64_type();
+        let index_i64 = if index.get_type() == i64_type {
+            index
+        } else {
+            self.llvmbuilder.build_int_cast(index, i64_type, "idx.cast").unwrap()
+        };
+
+        let neg_index = self.llvmbuilder.build_int_neg(index_i64, "idx.neg").unwrap();
+
+        // Create GEP with negative index
+        let gep_ptr = unsafe {
+            self.llvmbuilder
+                .build_gep(pointee_type, ptr, &[neg_index], "ptr.sub")
+                .unwrap()
+        };
+
+        let basic_value = BasicValueEnum::PointerValue(gep_ptr);
+        InternalValue::new(result_type, InternalValueKind::RValue(basic_value))
+    }
+
+    fn emit_pointer_diff(
+        &self,
+        pointee_type: BasicTypeEnum<'ll>,
+        lhs_ptr: PointerValue<'ll>,
+        rhs_ptr: PointerValue<'ll>,
+    ) -> InternalValue<'ll> {
+        let diff_int_value = self
+            .llvmbuilder
+            .build_ptr_diff(pointee_type, lhs_ptr, rhs_ptr, "ptr.diff")
+            .unwrap();
+
+        let result_type = CIRTy::PlainType(PlainType::ISize);
+        let llvm_result_type: BasicTypeEnum<'ll> = self.emit_ty(result_type.clone()).try_into().unwrap();
+        let diff_casted = self
+            .llvmbuilder
+            .build_int_cast(diff_int_value, llvm_result_type.into_int_type(), "ptr.diff.cast")
+            .unwrap();
+
+        InternalValue::new(result_type, InternalValueKind::RValue(diff_casted.into()))
     }
 
     fn emit_mul(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {

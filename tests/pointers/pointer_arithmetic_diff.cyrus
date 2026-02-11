@@ -1,0 +1,13 @@
+// @stdout: diff(3)
+
+import std::libc{printf};
+
+pub fn main() {
+	const arr: int32[10];
+	const start: int32* = &arr[1];
+	const end: int32* = &arr[4];
+
+	const diff: isize = end - start;
+
+	printf("diff(%d)\n", diff);
+}

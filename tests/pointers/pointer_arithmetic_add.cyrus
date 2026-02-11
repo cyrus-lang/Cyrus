@@ -1,0 +1,12 @@
+// @stdout: value(99) equal=1
+
+import std::libc{printf};
+
+pub fn main() {
+	const arr: int32[10];
+	const ptr: int32* = &arr[0];
+	const ptr2: int32* = ptr + 5;
+
+	*ptr2 = 99;
+	printf("value(%d) equal=%d\n", arr[5], *ptr2 == arr[5]);
+}
