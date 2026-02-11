@@ -4547,7 +4547,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn inference_ctx_from_struct_type(
+    fn inference_ctx_from_struct_type(
         &self,
         scope_opt: Option<LocalScopeRef>,
         expected_type: Option<SemanticType>,
