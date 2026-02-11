@@ -26,3 +26,4 @@ pub mod placement;
 pub mod prologue;
 pub mod repr;
 pub mod visibility;
+pub mod target;
