@@ -1,0 +1,8 @@
+[package]
+name = "cyrusc_abi_targets"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_abi = { path = "../cyrusc_abi", version = "*" }

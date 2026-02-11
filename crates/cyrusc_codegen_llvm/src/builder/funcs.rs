@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -22,7 +22,7 @@ use crate::{
     },
     llvm::abi::modifiers::{apply_func_modifiers, apply_inlining_func},
 };
-use cyrusc_abi::{inline::Inlining, modifiers::FuncModifiers};
+use cyrusc_abi::{defs::Inlining, modifiers::FuncModifiers};
 use cyrusc_cir::{
     CIRBlockStmt, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
     monomorph::CIRMonomorphEntry,
@@ -138,7 +138,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_func_body(&lambda.params, &lambda.body);
 
         self.cur_fn = parent_fn;
-        self.blockreg = parent_blockreg ;
+        self.blockreg = parent_blockreg;
         if let Some(basic_block) = self.blockreg.cur_block {
             self.emit_block(basic_block);
         }

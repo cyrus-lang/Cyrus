@@ -15,28 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub trait TargetAbi {
-    /// Classifies how a return value should be passed
-    fn classify_return(&self, layout: &TypeLayout) -> ArgRequirement;
-
-    /// Classifies how a function argument should be passed
-    fn classify_arg(&self, layout: &TypeLayout) -> ArgRequirement;
-
-    /// Specific alignment requirements for the stack (e.g., 16-byte for x64)
-    fn stack_alignment(&self) -> u32;
-
-    /// Returns the name of the calling convention (e.g., "ccc", "win64", "sysv")
-    fn calling_convention(&self) -> &str;
-}
-
-pub enum ArgRequirement {
-    Direct { coerce_to: Option<String> }, // String represents LLVM type (e.g., "i64")
-    Extend { signed: bool },              // Sign/Zero extension for small ints
-    Indirect { by_val: bool },            // Pass by pointer
-    Expand,                               // Break struct into individual fields
-    Ignore,                               // For ZSTs like `void` or `struct {}`
-}
-
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arch {
     X86_64,
     Aarch64,
@@ -44,55 +23,124 @@ pub enum Arch {
     Wasm32,
 }
 
-pub struct Target {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OS {
+    Linux,
+    Windows,
+    MacOS,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectFormat {
+    Elf,
+    MachO,
+    Coff,
+}
+
+pub struct TargetInfo {
     pub arch: Arch,
-    pub triple: String,
-    pub data_layout: String, // LLVM DataLayout string
-    pub abi: Box<dyn TargetAbi>,
+    pub os: OS,
+    pub format: ObjectFormat,
+}
+
+impl TargetInfo {
+    /// Generates the triple string used by LLVM
+    pub fn triple(&self) -> String {
+        let arch_str = match self.arch {
+            Arch::X86_64 => "x86_64",
+            Arch::Aarch64 => "aarch64",
+            Arch::RiscV64 => "riscv64",
+            Arch::Wasm32 => "wasm32",
+        };
+
+        let os_str = match self.os {
+            OS::Linux => "unknown-linux-gnu",
+            OS::Windows => "pc-windows-msvc",
+            OS::MacOS => "apple-darwin",
+            OS::Unknown => "unknown-unknown",
+        };
+
+        format!("{}-{}", arch_str, os_str)
+    }
+
+    pub fn emit_llvm_data_layout(&self) -> &'static str {
+        use Arch::*;
+        use OS::*;
+        match (self.arch, self.os) {
+            (X86_64, Windows) => "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            (X86_64, MacOS) => "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            (X86_64, _) => "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            (Aarch64, MacOS) => "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
+            (Aarch64, Windows) => {
+                "e-m:w-p270:32:32-p271:32:32-p272:64:64-p:64:64-i32:32-i64:64-i128:128-n32:64-S128-Fn32"
+            }
+            (Wasm32, _) => "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-n32:64-S128-ni:1:10:20",
+            _ => panic!("Target combination not supported yet!"),
+        }
+    }
+
+    pub fn is_64bit(&self) -> bool {
+        matches!(self.arch, Arch::X86_64 | Arch::Aarch64 | Arch::RiscV64)
+    }
+}
+
+pub enum AbiArgInfo {
+    Direct { coerce_to: Option<String> },
+    Extend { signed: bool },
+    Indirect { by_val: bool },
+    Expand,
+    Ignore,
+}
+
+pub struct TypeLayout {
+    pub size: u64,
+    pub align: u64,
+    pub is_aggregate: bool,
+}
+
+impl TypeLayout {
+    pub fn new(size: u64, align: u64) -> Self {
+        Self {
+            size,
+            align,
+            is_aggregate: false,
+        }
+    }
+
+    pub fn aggregate(size: u64, align: u64) -> Self {
+        Self {
+            size,
+            align,
+            is_aggregate: true,
+        }
+    }
+}
+
+pub trait TargetAbi: Send + Sync {
+    /// Classify how a return value should be handled based on its physical layout
+    fn classify_return(&self, layout: &TypeLayout) -> AbiArgInfo;
+
+    /// Classify how a function argument should be handled
+    fn classify_arg(&self, layout: &TypeLayout) -> AbiArgInfo;
+
+    /// The stack alignment required by the ABI (usually 16 for modern 64-bit)
+    fn stack_alignment(&self) -> u32;
+}
+
+pub struct Target {
+    pub info: TargetInfo,
+    pub data_layout: String,
+    /// The dynamic ABI handler
+    pub target_abi: Box<dyn TargetAbi>,
 }
 
 impl Target {
-    pub fn new(triple_str: &str) -> Self {
-        let triple = triple_str.to_lowercase();
-
-        // Simple triple parsing logic
-        let arch = if triple.contains("x86_64") {
-            Arch::X86_64
-        } else if triple.contains("aarch64") {
-            Arch::Aarch64
-        } else if triple.contains("riscv64") {
-            Arch::RiscV64
-        } else if triple.contains("wasm32") {
-            Arch::Wasm32
-        } else {
-            panic!("Unsupported architecture in triple: {}", triple_str);
-        };
-
-        // Determine ABI based on OS/Arch combo
-        let abi: Box<dyn TargetAbi> = match arch {
-            Arch::X86_64 => {
-                if triple.contains("windows") || triple.contains("msvc") {
-                    Box::new(X86_64Win64Abi)
-                } else {
-                    Box::new(X86_64SysVAbi)
-                }
-            }
-            Arch::Aarch64 => Box::new(AArch64GenericAbi),
-            _ => todo!("Implement other ABIs"),
-        };
-
-        // Standard LLVM DataLayout strings
-        let data_layout = match arch {
-            Arch::X86_64 => "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128",
-            Arch::Aarch64 => "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
-            _ => "",
-        };
-
+    pub fn new(info: TargetInfo, target_abi: Box<dyn TargetAbi>) -> Self {
         Self {
-            arch,
-            triple: triple_str.to_string(),
-            data_layout: data_layout.to_string(),
-            abi,
+            data_layout: info.emit_llvm_data_layout().to_string(),
+            info,
+            target_abi,
         }
     }
 }

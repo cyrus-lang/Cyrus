@@ -20,8 +20,8 @@ use crate::{
     types::SemanticType,
 };
 use cyrusc_abi::{
+    defs::Visibility,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
-    visibility::Visibility,
 };
 use cyrusc_ast::{Ident, SelfModifierKind};
 use cyrusc_diagcentral::source_loc::SourceLoc;

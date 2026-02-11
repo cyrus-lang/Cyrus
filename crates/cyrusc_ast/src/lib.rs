@@ -16,8 +16,8 @@
  */
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_abi::{
+    defs::Visibility,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
-    visibility::Visibility,
 };
 use cyrusc_tokens::{
     Token,

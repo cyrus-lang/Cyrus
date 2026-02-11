@@ -23,8 +23,7 @@ use crate::{
     llvm::constness::is_basic_value_constant,
 };
 use cyrusc_abi::{
-    linkage::Linkage,
-    modifiers::{FuncModifiers, GlobalVarModifiers},
+    defs::Linkage, modifiers::{FuncModifiers, GlobalVarModifiers}
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};

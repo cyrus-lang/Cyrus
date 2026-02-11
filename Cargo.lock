@@ -239,6 +239,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_abi_targets"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_abi",
+ "cyrusc_tast",
+]
+
+[[package]]
 name = "cyrusc_asan_wrapper"
 version = "0.1.0"
 dependencies = [

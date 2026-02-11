@@ -17,7 +17,7 @@
 use crate::monomorph::CIRMonomorphRegistry;
 use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
 use crate::*;
-use cyrusc_abi::linkage::Linkage;
+use cyrusc_abi::defs::Linkage;
 use cyrusc_abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
