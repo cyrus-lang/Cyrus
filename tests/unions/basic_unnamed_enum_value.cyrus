@@ -1,0 +1,9 @@
+// @stdout: 3.800000
+
+import std::libc{printf};
+
+pub fn main() {
+	const layout: union { x: int, y: float64 } = union { y = 3.8 };
+
+	printf("%f\n", layout.y);
+}
