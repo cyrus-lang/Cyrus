@@ -209,19 +209,26 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             fmt.push_str(&typed_method_call.func_sig.clone().unwrap().name);
             fmt
         }
-        TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+        TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
+            format!(
+                "union {{ {} = {} }}",
+                unnamed_union_value.field_name.as_string(),
+                format_typed_expr(&unnamed_union_value.field_value, format_symbol)
+            )
+        }
+        TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
             let mut fmt = String::new();
-            if typed_unnamed_struct_value.is_const {
+            if unnamed_struct_value.is_const {
                 fmt.push_str("const ");
             }
-            if typed_unnamed_struct_value.is_packed {
+            if unnamed_struct_value.is_packed {
                 fmt.push_str("bits ");
             } else {
                 fmt.push_str("struct ");
             }
             fmt.push_str("{{ ");
             fmt.push_str(
-                &typed_unnamed_struct_value
+                &unnamed_struct_value
                     .fields
                     .iter()
                     .map(|field| {

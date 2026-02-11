@@ -2971,6 +2971,10 @@ impl Resolver {
             Expr::UnnamedEnumValue(unnamed_enum_value) => {
                 self.resolve_unnamed_enum_value(module_id, scope_opt, unnamed_enum_value)
             }
+            Expr::UnnamedUnionValue(unnamed_union_value) => {
+                self.resolve_unnamed_union_value(module_id, scope_opt, unnamed_union_value)
+            }
+
             Expr::SizeOf(size_of_expression) => self.resolve_size_of_expr(module_id, scope_opt, size_of_expression),
             Expr::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
             Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, scope_opt, tuple_value),
@@ -2980,6 +2984,30 @@ impl Resolver {
             Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, scope_opt, dynamic_expr),
             Expr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(module_id, scope_opt, untyped_array),
         }
+    }
+
+    fn resolve_unnamed_union_value(
+        &mut self,
+        module_id: ModuleID,
+        scope_opt: Option<LocalScopeRef>,
+        unnamed_union_value: &UnnamedUnionValue,
+    ) -> Option<TypedExprStmt> {
+        let field_value = self.resolve_expr(module_id, scope_opt, &unnamed_union_value.field_value)?;
+
+        let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
+            field_name: unnamed_union_value.field_name.clone(),
+            field_value: Box::new(field_value),
+            is_const: unnamed_union_value.is_const,
+            union_ty: None,
+            loc: SourceLoc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
+        });
+
+        Some(TypedExprStmt {
+            kind,
+            sema_ty: None,
+            mloc: MemoryLocation::RValue,
+            loc: SourceLoc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
+        })
     }
 
     fn resolve_unnamed_enum_value(

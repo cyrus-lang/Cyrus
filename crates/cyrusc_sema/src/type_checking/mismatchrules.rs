@@ -20,13 +20,13 @@ use cyrusc_tast::{
     ScopeID,
     generics::{
         mapping_ctx::mapping_ctx_eq_refcell,
-        substitute::{substitute_enum_sig, substitute_struct_sig},
+        substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig},
     },
-    sigs::{EnumSig, StructSig},
+    sigs::{EnumSig, StructSig, UnionSig},
     stmts::TypedEnumVariant,
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType,
+        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
 
@@ -152,6 +152,79 @@ impl<'a> AnalysisContext<'a> {
                     None => false, // not compatible!
                 }
             }
+            (SemanticType::UnnamedUnion(unnamed_union1), SemanticType::UnnamedUnion(unnamed_union2)) => {
+                unnamed_union1.fields == unnamed_union2.fields
+            }
+            (
+                SemanticType::UnnamedUnion(unnamed_union_type),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_symbol_id)),
+            ) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, union_symbol_id)
+                    .unwrap();
+                let resolved_union = sym.as_union().unwrap();
+
+                self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
+            }
+            (
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_symbol_id)),
+                SemanticType::UnnamedUnion(unnamed_union_type),
+            ) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, union_symbol_id)
+                    .unwrap();
+                let resolved_union = sym.as_union().unwrap();
+
+                self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
+            }
+            (SemanticType::UnnamedUnion(unnamed_union_type), SemanticType::GenericType(generic_type)) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
+                    .unwrap();
+
+                match sym.as_union().cloned() {
+                    Some(mut resolved_union) => {
+                        resolved_union.union_sig = substitute_union_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_union.union_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        self.check_unnamed_union_and_named_union_type_mismatch(
+                            &unnamed_union_type,
+                            &resolved_union.union_sig,
+                        )
+                    }
+                    None => false, // not compatible!
+                }
+            }
+            (SemanticType::GenericType(generic_type), SemanticType::UnnamedUnion(unnamed_union_type)) => {
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
+                    .unwrap();
+
+                match sym.as_union().cloned() {
+                    Some(mut resolved_union) => {
+                        resolved_union.union_sig = substitute_union_sig(
+                            self.mapping_ctx_arena.clone(),
+                            &resolved_union.union_sig,
+                            generic_type.mapping_ctx.clone(),
+                        )
+                        .unwrap();
+
+                        self.check_unnamed_union_and_named_union_type_mismatch(
+                            &unnamed_union_type,
+                            &resolved_union.union_sig,
+                        )
+                    }
+                    None => false, // not compatible!
+                }
+            }
             (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
                 let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
                 let mut fields = true;
@@ -259,6 +332,18 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
+    }
+
+    fn check_unnamed_union_and_named_union_type_mismatch(
+        &self,
+        unnamed_union_type: &TypedUnnamedUnionType,
+        union_sig: &UnionSig,
+    ) -> bool {
+        unnamed_union_type
+            .fields
+            .iter()
+            .zip(&union_sig.fields)
+            .any(|(field1, field2)| *field1.ty == field2.ty)
     }
 
     fn check_unnamed_enum_and_named_enum_type_mismatch(

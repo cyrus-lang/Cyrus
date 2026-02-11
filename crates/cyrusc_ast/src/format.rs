@@ -383,6 +383,14 @@ impl fmt::Display for Expr {
 
                 Ok(())
             }
+            Expr::UnnamedUnionValue(unnamed_union_value) => {
+                if unnamed_union_value.is_const {
+                    write!(f, "const ")?;
+                }
+                write!(f, "union {{ {}", unnamed_union_value.field_name.as_string())?;
+                write!(f, " = {} }}", unnamed_union_value.field_value)?;
+                Ok(())
+            }
         }
     }
 }

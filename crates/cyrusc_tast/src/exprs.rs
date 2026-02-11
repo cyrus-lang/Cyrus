@@ -19,7 +19,7 @@ use crate::{
     generics::monomorph::MonomorphKey,
     sigs::{EnumSig, FuncSig},
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType},
+    types::{SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedUnionType},
     vtable::VTableID,
 };
 use cyrusc_ast::{
@@ -59,6 +59,7 @@ pub enum TypedExprKind {
     StructInit(TypedStructInitExpr),
     UnnamedStructValue(TypedUnnamedStructValue),
     UnnamedEnumValue(TypedUnnamedEnumValue),
+    UnnamedUnionValue(TypedUnnamedUnionValue),
     FuncCall(TypedFuncCall),
     MethodCall(TypedMethodCall),
     FieldAccess(TypedFieldAccess),
@@ -191,6 +192,9 @@ impl TypedExprKind {
                 TypedUnnamedEnumValueKind::Plain => true,
                 TypedUnnamedEnumValueKind::Fielded(values) => values.iter().any(|expr| expr.kind.is_comptime_valid()),
             },
+            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
+                unnamed_union_value.field_value.kind.is_comptime_valid()
+            }
             TypedExprKind::Symbol(..)
             | TypedExprKind::ArrayIndex(_)
             | TypedExprKind::TupleAccess(_)
@@ -231,6 +235,7 @@ impl TypedExprKind {
             TypedExprKind::Lambda(_) => false,
             TypedExprKind::Tuple(_) => false,
             TypedExprKind::Dynamic(_) => false,
+            TypedExprKind::UnnamedUnionValue(_) => false,
         }
     }
 }
@@ -385,6 +390,15 @@ pub struct TypedUnnamedStructValue {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypedUnnamedUnionValue {
+    pub field_name: Ident,
+    pub field_value: Box<TypedExprStmt>,
+    pub is_const: bool,
+    pub union_ty: Option<TypedUnnamedUnionType>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedUnnamedEnumValue {
     pub ident: Ident,
     pub kind: TypedUnnamedEnumValueKind,
@@ -436,5 +450,11 @@ impl std::hash::Hash for TypedSelfType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // fixed discriminant
         0xDEAD_BEEF_u64.hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedUnionValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_value == other.field_value
     }
 }

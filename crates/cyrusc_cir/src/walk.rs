@@ -29,7 +29,8 @@ use cyrusc_tast::generics::substitute::{
 };
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
 use cyrusc_tast::types::{
-    PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant, enum_sig_as_unnamed_enum_ty,
+    PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedUnionType,
+    enum_sig_as_unnamed_enum_ty,
 };
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
@@ -875,6 +876,9 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => {
                 self.lower_unnamed_enum_value(scope_id_opt, unnamed_enum_value)
             }
+            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
+                self.lower_unnamed_union_value(scope_id_opt, unnamed_union_value)
+            }
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(scope_id_opt, func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(scope_id_opt, method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(scope_id_opt, field_access.clone()),
@@ -888,6 +892,25 @@ impl<'resolver> CIRWalk<'resolver> {
         };
 
         CIRExpr { kind, ty }
+    }
+
+    fn lower_unnamed_union_value(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_union_value: &TypedUnnamedUnionValue,
+    ) -> CIRExprKind {
+        let ty =
+            CIRTy::Union(self.lower_unnamed_union_type_as_cir_union_ty(
+                scope_id_opt,
+                &unnamed_union_value.union_ty.as_ref().unwrap(),
+            ));
+
+        let expr = self.lower_expr(scope_id_opt, &unnamed_union_value.field_value);
+
+        CIRExprKind::UnionInit(CIRUnionInitExpr {
+            expr: Box::new(expr),
+            ty,
+        })
     }
 
     fn lower_unnamed_enum_value(
@@ -1339,6 +1362,13 @@ impl<'resolver> CIRWalk<'resolver> {
                     field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
                 });
             }
+
+            if sema_ty.as_unnamed_union().is_some() {
+                return CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
+                    operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
+                    field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
+                });
+            }
         }
 
         let sym = self
@@ -1660,13 +1690,29 @@ impl<'resolver> CIRWalk<'resolver> {
                     is_packed: false,
                 })
             }
-            SemanticType::UnnamedUnion(unnamed_union_type) => todo!(),
+            SemanticType::UnnamedUnion(unnamed_union_type) => {
+                CIRTy::Union(self.lower_unnamed_union_type_as_cir_union_ty(scope_id_opt, unnamed_union_type))
+            }
             SemanticType::UnnamedEnum(unnamed_enum_type) => {
                 CIRTy::Enum(self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, unnamed_enum_type))
             }
         }
         .const_inner()
         .clone()
+    }
+
+    fn lower_unnamed_union_type_as_cir_union_ty(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_union_type: &TypedUnnamedUnionType,
+    ) -> CIRUnionTy {
+        CIRUnionTy {
+            fields: unnamed_union_type
+                .fields
+                .iter()
+                .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+                .collect(),
+        }
     }
 
     fn lower_unnamed_enum_type_as_cir_enum_ty(

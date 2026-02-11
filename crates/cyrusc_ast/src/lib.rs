@@ -90,6 +90,7 @@ pub enum Expr {
     TupleAccess(TupleAccess),
     Dynamic(Dynamic),
     UnnamedStructValue(UnnamedStructValue),
+    UnnamedUnionValue(UnnamedUnionValue),
     UnnamedEnumValue(UnnamedEnumValue),
 }
 
@@ -140,6 +141,15 @@ pub struct AddrOf {
 pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub is_packed: bool,
+    pub is_const: bool,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnnamedUnionValue {
+    pub field_name: Ident,
+    pub field_value: Box<Expr>,
     pub is_const: bool,
     pub loc: Location,
     pub span: Span,

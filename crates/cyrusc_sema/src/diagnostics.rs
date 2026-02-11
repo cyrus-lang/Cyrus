@@ -132,6 +132,9 @@ pub enum AnalyzerDiagKind {
     #[error("Could not infer type of unnamed enum value '.{variant_name}'")]
     UnnamedEnumValueInfering { variant_name: String },
 
+    #[error("Could not infer type of unnamed union value.")]
+    UnnamedUnionValueInfering,
+
     #[error("Only enum variants are allowed here.")]
     ExpressionPatternInAEnumSwitch,
 
