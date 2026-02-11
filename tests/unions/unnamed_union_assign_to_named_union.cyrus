@@ -1,0 +1,14 @@
+// @stdout: Cyrus!
+
+import std::libc{printf};
+
+union Payload {
+	i: int64;
+	s: char*;
+}
+
+pub fn main() {
+	const layout: Payload = union { s = "Cyrus!" };
+
+	printf("%s\n", layout.s);
+}
