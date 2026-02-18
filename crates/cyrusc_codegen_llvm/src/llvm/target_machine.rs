@@ -18,40 +18,32 @@ use cyrusc_compiler::options::{CodeModelOptions, RelocModeOptions};
 use cyrusc_tui_utils::tui_error;
 use inkwell::{
     OptimizationLevel,
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    targets::{CodeModel, InitializationConfig, RelocMode, Target as InkwellTarget, TargetMachine, TargetTriple},
 };
 use std::process::exit;
 
 /// Get an LLVM TargetMachine based on optional CPU, features, reloc, code model.
 /// Defaults to host if CPU/target_triple is None.
 pub(crate) fn create_target_machine(
+    target: &InkwellTarget,
+    target_triple: &TargetTriple,
     cpu: Option<String>,
-    target_triple: Option<String>,
     reloc: RelocMode,
     code_model: CodeModel,
     opt_level: OptimizationLevel,
 ) -> TargetMachine {
-    Target::initialize_all(&InitializationConfig::default());
-
-    let triple = match target_triple {
-        Some(t) => TargetTriple::create(&t),
-        None => TargetMachine::get_default_triple(),
-    };
-
-    let target = match Target::from_triple(&triple) {
-        Ok(target) => target,
-        Err(llvm_string) => {
-            tui_error(format!("LLVM Target Triple Error: {}", llvm_string.to_string()));
-            exit(1);
-        }
-    };
+    InkwellTarget::initialize_all(&InitializationConfig::default());
 
     let cpu_name = cpu.unwrap_or(TargetMachine::get_host_cpu_name().to_str().unwrap().to_string());
     let features = TargetMachine::get_host_cpu_features().to_str().unwrap().to_string();
 
-    target
-        .create_target_machine(&triple, &cpu_name, &features, opt_level, reloc, code_model)
-        .expect("Failed to create TargetMachine")
+    match target.create_target_machine(target_triple, &cpu_name, &features, opt_level, reloc, code_model) {
+        Some(target_machine) => target_machine,
+        None => {
+            tui_error("Failed to create LLVM Target Machine.".to_string());
+            exit(1);
+        }
+    }
 }
 
 pub(crate) fn llvm_reloc_mode(reloc_mode: RelocModeOptions) -> RelocMode {

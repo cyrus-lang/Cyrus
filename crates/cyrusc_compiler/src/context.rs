@@ -25,6 +25,7 @@ use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::CIRProgramTree;
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
+use inkwell::targets::{Target as InkwellTarget, TargetTriple};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -32,6 +33,8 @@ use std::{
 
 pub struct CodeGenContext {
     pub opts: CodeGenOptions,
+    pub target: InkwellTarget,
+    pub target_triple: TargetTriple,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
     pub master_module_file_path: PathBuf,
     pub linker_output_kind: LinkerOutputKind,
@@ -41,6 +44,8 @@ pub struct CodeGenContext {
 impl CodeGenContext {
     pub(crate) fn new(
         opts: CodeGenOptions,
+        target: InkwellTarget,
+        target_triple: TargetTriple,
         build_manifest: Arc<Mutex<BuildManifest>>,
         master_module_file_path: PathBuf,
         linker_output_kind: LinkerOutputKind,
@@ -48,6 +53,8 @@ impl CodeGenContext {
     ) -> Self {
         Self {
             opts,
+            target,
+            target_triple,
             build_manifest,
             master_module_file_path,
             linker_output_kind,

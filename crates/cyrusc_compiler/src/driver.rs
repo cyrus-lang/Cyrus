@@ -19,6 +19,7 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
+use cyrusc_abi::target::{TargetArch, TargetInfo, TargetOS, TargetObjectFormat};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
@@ -36,7 +37,9 @@ use cyrusc_tast::{
     TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
+use cyrusc_tui_utils::tui_error;
 use cyrusc_vtable_registry::VTableRegistry;
+use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetMachine, TargetTriple};
 use std::{
     cell::RefCell,
     env,
@@ -63,11 +66,27 @@ pub struct CodeGenSemanticBundle {
     pub build_dir: PathBuf,
 }
 
+fn create_compiler_context_target(target_info: &TargetInfo) -> (InkwellTarget, TargetTriple) {
+    InkwellTarget::initialize_all(&InitializationConfig::default());
+
+    let target_triple = TargetTriple::create(&target_info.triple());
+    match InkwellTarget::from_triple(&target_triple) {
+        Ok(target) => (target, target_triple),
+        Err(llvm_string) => {
+            tui_error(format!("LLVM Target Triple Error: {}", llvm_string.to_string()));
+            exit(1);
+        }
+    }
+}
+
 pub fn create_compiler_context(
     opts: CodeGenOptions,
     file_path: &Option<PathBuf>,
     linker_output_kind: LinkerOutputKind,
 ) -> CodeGenContext {
+    let target_info = resolve_target_info_from_opts(&opts);
+    let (target, target_triple) = create_compiler_context_target(&target_info);
+
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
     let entry_module_file_path = get_entry_module_file_path(&opts, &base_path, &file_path);
@@ -85,7 +104,7 @@ pub fn create_compiler_context(
         }
     };
 
-    CodeGenContext::new(opts, build_manifest, entry_module_file_path, linker_output_kind, linker)
+    CodeGenContext::new(opts, target, target_triple, build_manifest, entry_module_file_path, linker_output_kind, linker)
 }
 
 pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<String>) -> Box<CodeGenSemanticBundle> {
@@ -221,6 +240,65 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         entry_file: codegen_semantic_bundle.entry_file,
         build_dir: codegen_semantic_bundle.build_dir,
     }
+}
+
+pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
+    // determine target triple string
+    let triple_str = if let Some(t) = opts.target.as_ref() {
+        if t.is_empty() {
+            TargetMachine::get_default_triple()
+                .as_str()
+                .to_str()
+                .unwrap()
+                .to_string()
+        } else {
+            t.clone()
+        }
+    } else {
+        TargetMachine::get_default_triple()
+            .as_str()
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+
+    // parse triple components
+    let mut parts = triple_str.split('-');
+    let arch_part = parts.next().unwrap_or("");
+    let os_part = parts.next().unwrap_or("");
+
+    // resolve architecture
+    let arch = match arch_part {
+        "x86_64" => TargetArch::X86_64,
+        "aarch64" => TargetArch::Aarch64,
+        "riscv64" => TargetArch::RiscV64,
+        "wasm32" => TargetArch::Wasm32,
+        _ => {
+            tui_error(format!("Unsupported target architecture: {}", arch_part));
+            exit(1);
+        }
+    };
+
+    // Step 4: resolve OS
+    let os = match os_part {
+        "linux" => TargetOS::Linux,
+        "windows" => TargetOS::Windows,
+        "darwin" => TargetOS::MacOS,
+        "unknown" => TargetOS::Unknown,
+        _ => {
+            tui_error(format!("Unsupported target OS: {}", os_part));
+            exit(1);
+        }
+    };
+
+    // resolve object format (derived, not user-selected)
+    let format = match os {
+        TargetOS::Linux | TargetOS::Unknown => TargetObjectFormat::Elf,
+        TargetOS::MacOS => TargetObjectFormat::MachO,
+        TargetOS::Windows => TargetObjectFormat::Coff,
+    };
+
+    TargetInfo { arch, os, format }
 }
 
 pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {

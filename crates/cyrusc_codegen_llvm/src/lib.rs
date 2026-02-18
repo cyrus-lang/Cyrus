@@ -26,7 +26,7 @@ use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::CodeGenContext,
     object_file_info::ObjectFileInfo,
-    options::{CodeGenEndianness, CodeGenOptions},
+    options::CodeGenOptions,
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
@@ -36,7 +36,7 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{ByteOrdering, FileType, InitializationConfig, Target, TargetData, TargetMachine, TargetTriple},
+    targets::{ByteOrdering, FileType, InitializationConfig, Target as InkwellTarget, TargetMachine, TargetTriple},
 };
 use std::{
     any::Any,
@@ -63,6 +63,8 @@ pub struct CodeGenLLVM {
 impl CodeGenLLVM {
     pub fn new(
         ctx: Rc<CodeGenContext>,
+        target: &InkwellTarget,
+        target_triple: &TargetTriple,
         opts: CodeGenOptions,
         build_dir: PathBuf,
         monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
@@ -70,8 +72,9 @@ impl CodeGenLLVM {
         entry_module_file_path: PathBuf,
     ) -> Self {
         let llvmtm = create_target_machine(
+            target,
+            target_triple,
             opts.cpu.clone(),
-            opts.target_triple.clone(),
             llvm_reloc_mode(opts.reloc_mode.clone()),
             llvm_code_model(opts.code_model.clone()),
             llvm_opt_level(opts.opt_level.unwrap_or(0).try_into().unwrap()),
@@ -88,27 +91,6 @@ impl CodeGenLLVM {
         }
     }
 
-    fn set_endianness<'module>(&self, module: &Module<'module>) {
-        if let Some(endianness) = &self.opts.endianness {
-            let layout = self
-                .llvmtm
-                .get_target_data()
-                .get_data_layout()
-                .as_str()
-                .to_str()
-                .unwrap()
-                .to_string();
-
-            let new_layout_str = match endianness {
-                CodeGenEndianness::Little => layout.replacen(&layout[0..1], "e", 1),
-                CodeGenEndianness::Big => layout.replacen(&layout[0..1], "E", 1),
-            };
-
-            let new_layout = TargetData::create(&new_layout_str);
-            module.set_data_layout(&new_layout.get_data_layout());
-        }
-    }
-
     fn process_module_with_local_context<'ctx>(
         &self,
         owned_module: &'ctx OwnedModule,
@@ -120,7 +102,7 @@ impl CodeGenLLVM {
             let llvmmodule = owned_module.module.borrow();
             llvmmodule.set_triple(&self.llvmtm.get_triple());
             llvmmodule.set_data_layout(&self.llvmtm.get_target_data().get_data_layout());
-            self.set_endianness(&llvmmodule);
+
             enable_asan_for_owned_module(
                 &self.opts,
                 owned_module,
@@ -265,7 +247,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
     }
 
     fn target_machine_info(&self) -> TargetMachineInfo {
-        Target::initialize_all(&InitializationConfig::default());
+        InkwellTarget::initialize_all(&InitializationConfig::default());
 
         let cpu = if let Some(cpu) = &self.opts.cpu {
             cpu.clone()
@@ -274,13 +256,9 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         };
         let features = TargetMachine::get_host_cpu_features().to_string();
 
-        let target_triple = if let Some(target_triple_str) = &self.opts.target_triple {
-            TargetTriple::create(&target_triple_str)
-        } else {
-            TargetMachine::get_default_triple()
-        };
+        let target_triple = self.llvmtm.get_triple();
 
-        let target = Target::from_triple(&target_triple).unwrap();
+        let target = InkwellTarget::from_triple(&target_triple).unwrap();
         let target_machine = match target.create_target_machine(
             &target_triple,
             &cpu,
@@ -297,16 +275,9 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             }
         };
 
-        let native_endianness = match target_machine.get_target_data().get_byte_ordering() {
+        let endianness = match target_machine.get_target_data().get_byte_ordering() {
             ByteOrdering::LittleEndian => "Little".to_string(),
             ByteOrdering::BigEndian => "Big".to_string(),
-        };
-        let endianness = match &self.opts.endianness {
-            Some(codegen_endianness) => match codegen_endianness {
-                CodeGenEndianness::Little => "Little".to_string(),
-                CodeGenEndianness::Big => "Big".to_string(),
-            },
-            None => native_endianness,
         };
 
         TargetMachineInfo {

@@ -16,7 +16,7 @@
  */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Arch {
+pub enum TargetArch {
     X86_64,
     Aarch64,
     RiscV64,
@@ -24,7 +24,7 @@ pub enum Arch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OS {
+pub enum TargetOS {
     Linux,
     Windows,
     MacOS,
@@ -32,41 +32,41 @@ pub enum OS {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObjectFormat {
+pub enum TargetObjectFormat {
     Elf,
     MachO,
     Coff,
 }
 
 pub struct TargetInfo {
-    pub arch: Arch,
-    pub os: OS,
-    pub format: ObjectFormat,
+    pub arch: TargetArch,
+    pub os: TargetOS,
+    pub format: TargetObjectFormat,
 }
 
 impl TargetInfo {
     /// Generates the triple string used by LLVM
     pub fn triple(&self) -> String {
         let arch_str = match self.arch {
-            Arch::X86_64 => "x86_64",
-            Arch::Aarch64 => "aarch64",
-            Arch::RiscV64 => "riscv64",
-            Arch::Wasm32 => "wasm32",
+            TargetArch::X86_64 => "x86_64",
+            TargetArch::Aarch64 => "aarch64",
+            TargetArch::RiscV64 => "riscv64",
+            TargetArch::Wasm32 => "wasm32",
         };
 
         let os_str = match self.os {
-            OS::Linux => "unknown-linux-gnu",
-            OS::Windows => "pc-windows-msvc",
-            OS::MacOS => "apple-darwin",
-            OS::Unknown => "unknown-unknown",
+            TargetOS::Linux => "unknown-linux-gnu",
+            TargetOS::Windows => "pc-windows-msvc",
+            TargetOS::MacOS => "apple-darwin",
+            TargetOS::Unknown => "unknown-unknown",
         };
 
         format!("{}-{}", arch_str, os_str)
     }
 
-    pub fn emit_llvm_data_layout(&self) -> &'static str {
-        use Arch::*;
-        use OS::*;
+    pub fn emit_target_data_layout(&self) -> &'static str {
+        use TargetArch::*;
+        use TargetOS::*;
         match (self.arch, self.os) {
             (X86_64, Windows) => "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
             (X86_64, MacOS) => "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
@@ -81,7 +81,7 @@ impl TargetInfo {
     }
 
     pub fn is_64bit(&self) -> bool {
-        matches!(self.arch, Arch::X86_64 | Arch::Aarch64 | Arch::RiscV64)
+        matches!(self.arch, TargetArch::X86_64 | TargetArch::Aarch64 | TargetArch::RiscV64)
     }
 }
 
@@ -138,7 +138,7 @@ pub struct Target {
 impl Target {
     pub fn new(info: TargetInfo, target_abi: Box<dyn TargetAbi>) -> Self {
         Self {
-            data_layout: info.emit_llvm_data_layout().to_string(),
+            data_layout: info.emit_target_data_layout().to_string(),
             info,
             target_abi,
         }

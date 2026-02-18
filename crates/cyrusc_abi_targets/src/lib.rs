@@ -15,14 +15,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::x86_64_sysv::X86_64SysV;
-use cyrusc_abi::target::{Arch, TargetAbi, TargetInfo, TypeLayout};
+use cyrusc_abi::target::{TargetArch, TargetAbi, TargetInfo, TypeLayout};
 use cyrusc_tast::types::PlainType;
 
 pub mod x86_64_sysv;
 
 pub fn get_abi_handler(info: &TargetInfo) -> Box<dyn TargetAbi> {
     match (info.arch, info.os) {
-        (Arch::X86_64, _) => Box::new(X86_64SysV::new()),
+        (TargetArch::X86_64, _) => Box::new(X86_64SysV::new()),
         // (Arch::X86_64, OS::Windows) => Box::new(X86_64Win64::new()),
         // (Arch::Aarch64, _) => Box::new(AArch64Generic::new()),
         _ => panic!("No ABI implementation found for this target"),

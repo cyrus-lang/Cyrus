@@ -6,6 +6,7 @@ PROFILE  ?= debug
 INPUT    ?= ./tmp/main.cyrus
 STDLIB   ?= ./stdlib
 LLVM_OUT ?= ./tmp/llvmir
+ASM_OUT ?= ./tmp/asm
 ARGS     ?=
 
 TARGET_DIR = ./target/$(PROFILE)
@@ -31,6 +32,9 @@ cir sema resolver parser:
 
 emit-llvm:
 	$(CARGO_RUN) -- emit-llvm $(INPUT) -o $(LLVM_OUT) --stdlib=$(STDLIB) $(ARGS)
+
+emit-asm:
+	$(CARGO_RUN) -- emit-asm $(INPUT) -o $(ASM_OUT) --stdlib=$(STDLIB) $(ARGS)
 
 run:
 	$(CARGO_RUN) -- run $(INPUT) --stdlib=$(STDLIB) $(COMMON_FLAGS)

@@ -23,10 +23,12 @@ use std::{
 use clap::{Parser, ValueEnum};
 use commands::*;
 use cyrusc_compiler::{
-    compiler_version_compatibility::validate_compiler_version, linker::default_linker, options::{
+    compiler_version_compatibility::validate_compiler_version,
+    linker::default_linker,
+    options::{
         BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer,
         CodeModelOptions, ModuleKind, RelocModeOptions,
-    }
+    },
 };
 use cyrusc_diagcentral::display_single_custom_diag;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
@@ -80,10 +82,12 @@ struct LinkerCompilerOptions {
 
 #[derive(Parser, Debug, Clone)]
 struct CompilerOptions {
-    #[clap(long, default_value_t = String::new(),
-        help = "Specify the target triple (e.g., x86_64-pc-linux-gnu, aarch64-apple-darwin). Defaults to host triple if not specified."
+    #[clap(
+        long,
+        default_value_t = String::new(),
+        help = "Compile for a specific architecture and operating system target (e.g., x86_64-pc-linux-gnu). Defaults to the host target if not specified."
     )]
-    target_triple: String,
+    target: String,
 
     #[clap(long, default_value_t = String::new(),
         help = "Specify the target CPU name (e.g., skylake, broadwell, generic). Defaults to host CPU if not specified."
@@ -171,9 +175,6 @@ are represented in the generated output. For example, 'C' produces \
 C-compatible names, while 'Cyrus' uses the compiler's default mangling."
     )]
     abi: ABI,
-
-    #[clap(long, value_enum, help = "Set endianness (default uses target machine endianness).")]
-    pub endianness: Option<Endianness>,
 
     #[clap(long, help = "Number of threads to use for compilation.")]
     pub jobs: Option<usize>,
@@ -302,10 +303,6 @@ impl CompilerOptions {
 
         CodeGenOptions {
             abi: Some(self.abi.to_compiler_abi()),
-            endianness: self.endianness.and_then(|endianness| match endianness {
-                Endianness::Little => Some(CodeGenEndianness::Little),
-                Endianness::Big => Some(CodeGenEndianness::Big),
-            }),
             module_kind: self
                 .module_merge_mode
                 .and_then(|module_merge_mode| match module_merge_mode {
@@ -346,10 +343,10 @@ impl CompilerOptions {
             disable_warnings: self.disable_warnings,
             reloc_mode: self.reloc_mode.as_compiler_reloc_mode(),
             code_model: self.code_model.as_compiler_code_model(),
-            target_triple: if self.target_triple.trim().is_empty() {
+            target: if self.target.trim().is_empty() {
                 None
             } else {
-                Some(self.target_triple.clone())
+                Some(self.target.clone())
             },
             cpu: if self.cpu.trim().is_empty() {
                 None
