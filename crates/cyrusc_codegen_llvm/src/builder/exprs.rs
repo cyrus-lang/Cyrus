@@ -23,7 +23,8 @@ use crate::{
     llvm::constness::is_basic_value_constant,
 };
 use cyrusc_abi::{
-    defs::Linkage, modifiers::{FuncModifiers, GlobalVarModifiers}
+    defs::Linkage,
+    modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};
@@ -332,7 +333,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    fn emit_implicit_cast(&self, target_type: &CIRTy, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+    pub(crate) fn emit_implicit_cast(&self, target_type: &CIRTy, rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let ty = self.emit_ty(target_type.clone());
         let casted = self.emit_cast(ty, rvalue);
         InternalValue::new(
@@ -1475,14 +1476,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let vtable_function_type = self.emit_func_ty(interface_method_call.func_type.clone());
 
-        let mut args: Vec<BasicMetadataValueEnum<'ll>> = interface_method_call
-            .args
-            .iter()
-            .map(|expr| {
-                let lvalue = self.emit_expr(expr);
-                self.load_rvalue(lvalue).as_basic_value().into()
-            })
-            .collect();
+        let mut args = self.emit_func_args(&interface_method_call.args, &interface_method_call.func_type.clone());
 
         args.insert(0, data_ptr.as_basic_value_enum().into());
 
@@ -1527,20 +1521,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         ret_ty: &CIRTy,
         fn_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
-        let args: Vec<BasicMetadataValueEnum<'ll>> = args
-            .iter()
-            .enumerate()
-            .map(|(idx, expr)| {
-                let lvalue = self.emit_expr(expr);
-                let rvalue = self.load_rvalue(lvalue);
-
-                if let Some(cir_ty) = fn_ty.params.get(idx) {
-                    self.emit_implicit_cast(cir_ty, rvalue).as_basic_value().into()
-                } else {
-                    rvalue.as_basic_value().into()
-                }
-            })
-            .collect();
+        let args = self.emit_func_args(args, fn_ty);
 
         let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
 
@@ -1555,17 +1536,11 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
-        let fn_ty = self.emit_func_ty(rvalue.ty.as_func().unwrap());
-        let fn_ptr = rvalue.as_basic_value().into_pointer_value();
+        let cir_fn_ty = rvalue.ty.as_func().unwrap();
+        let args = self.emit_func_args(&func_call.args, &cir_fn_ty);
 
-        let args: Vec<BasicMetadataValueEnum<'ll>> = func_call
-            .args
-            .iter()
-            .map(|expr| {
-                let lvalue = self.emit_expr(expr);
-                self.load_rvalue(lvalue).as_basic_value().into()
-            })
-            .collect();
+        let fn_ty = self.emit_func_ty(cir_fn_ty);
+        let fn_ptr = rvalue.as_basic_value().into_pointer_value();
 
         let call_site = self
             .llvmbuilder

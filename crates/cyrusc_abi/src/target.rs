@@ -81,7 +81,28 @@ impl TargetInfo {
     }
 
     pub fn is_64bit(&self) -> bool {
-        matches!(self.arch, TargetArch::X86_64 | TargetArch::Aarch64 | TargetArch::RiscV64)
+        self.int_bit_width() == 64
+    }
+
+    pub fn int_bit_width(&self) -> u32 {
+        match self.arch {
+            TargetArch::X86_64 | TargetArch::Aarch64 | TargetArch::RiscV64 => 64,
+            TargetArch::Wasm32 => 32,
+        }
+    }
+
+    pub fn pointer_bit_width(&self) -> u32 {
+        match self.arch {
+            TargetArch::X86_64 | TargetArch::Aarch64 | TargetArch::RiscV64 => 64,
+            TargetArch::Wasm32 => 32,
+        }
+    }
+
+    pub fn pointer_size(&self) -> u32 {
+        match self.arch {
+            TargetArch::X86_64 | TargetArch::Aarch64 | TargetArch::RiscV64 => 8,
+            TargetArch::Wasm32 => 4,
+        }
     }
 }
 
@@ -94,13 +115,13 @@ pub enum AbiArgInfo {
 }
 
 pub struct TypeLayout {
-    pub size: u64,
-    pub align: u64,
+    pub size: u32,
+    pub align: u32,
     pub is_aggregate: bool,
 }
 
 impl TypeLayout {
-    pub fn new(size: u64, align: u64) -> Self {
+    pub fn normal(size: u32, align: u32) -> Self {
         Self {
             size,
             align,
@@ -108,7 +129,7 @@ impl TypeLayout {
         }
     }
 
-    pub fn aggregate(size: u64, align: u64) -> Self {
+    pub fn aggregate(size: u32, align: u32) -> Self {
         Self {
             size,
             align,

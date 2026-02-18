@@ -46,8 +46,8 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -107,8 +107,8 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -152,8 +152,8 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -178,8 +178,8 @@ pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<S
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -204,8 +204,8 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -230,8 +230,8 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -256,8 +256,8 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),
@@ -291,8 +291,8 @@ pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<Str
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
         ctx.clone(),
-        &ctx.target,
-        &ctx.target_triple,
+        &ctx.llvm_target,
+        &ctx.llvm_target_triple,
         opts.clone(),
         bundle.build_dir,
         bundle.monomorph_registry.clone(),

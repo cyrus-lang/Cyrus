@@ -27,14 +27,12 @@ impl X86_64SysV {
 impl TargetAbi for X86_64SysV {
     fn classify_arg(&self, layout: &TypeLayout) -> AbiArgInfo {
         if layout.is_aggregate {
-            // 1. If the size is greater than 16 bytes, it passes in memory.
+            // if the size is greater than 16 bytes, it passes in memory.
             if layout.size > 16 {
                 return AbiArgInfo::Indirect { by_val: true };
             }
 
-            // 2. If it fits in 16 bytes, System V tries to pack it into registers.
-            // For LLVM, the cleanest way to do this is to coerce the struct
-            // into an array of i64s or a specific integer.
+            // if it fits in 16 bytes, System V tries to pack it into registers
             match layout.size {
                 1..=8 => AbiArgInfo::Direct {
                     coerce_to: Some("i64".to_string()),
@@ -45,7 +43,6 @@ impl TargetAbi for X86_64SysV {
                 _ => AbiArgInfo::Ignore, // ZSTs
             }
         } else {
-            // Primitives like i32, i64, ptr pass directly in single registers.
             AbiArgInfo::Direct { coerce_to: None }
         }
     }

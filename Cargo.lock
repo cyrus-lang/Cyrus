@@ -243,7 +243,9 @@ name = "cyrusc_abi_targets"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
+ "cyrusc_cir",
  "cyrusc_tast",
+ "inkwell",
 ]
 
 [[package]]
@@ -299,6 +301,7 @@ name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
+ "cyrusc_abi_targets",
  "cyrusc_asan_wrapper",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
@@ -320,6 +323,7 @@ name = "cyrusc_compiler"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
+ "cyrusc_abi_targets",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
  "cyrusc_cir",

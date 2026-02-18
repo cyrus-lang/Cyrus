@@ -26,8 +26,8 @@ use cyrusc_compiler::{
     compiler_version_compatibility::validate_compiler_version,
     linker::default_linker,
     options::{
-        BuildDir, CodeGenABI, CodeGenEndianness, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer,
-        CodeModelOptions, ModuleKind, RelocModeOptions,
+        BuildDir, CodeGenABI, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, ModuleKind,
+        RelocModeOptions,
     },
 };
 use cyrusc_diagcentral::display_single_custom_diag;

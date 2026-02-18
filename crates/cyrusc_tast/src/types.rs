@@ -844,12 +844,14 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
 }
 
 pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
-    let fields = union_sig.fields.iter().map(|field| {
-        TypedUnnamedUnionTypeField {
+    let fields = union_sig
+        .fields
+        .iter()
+        .map(|field| TypedUnnamedUnionTypeField {
             name: field.name.clone(),
             ty: Box::new(field.ty.clone()),
             loc: field.loc.clone(),
-        }
-    }).collect();
+        })
+        .collect();
     TypedUnnamedUnionType { fields, loc }
 }

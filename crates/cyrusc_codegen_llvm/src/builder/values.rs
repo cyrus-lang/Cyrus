@@ -53,6 +53,13 @@ impl<'a> InternalValue<'a> {
             _ => None,
         }
     }
+
+    pub fn is_lvalue_address(&self) -> bool {
+        match &self.kind {
+            InternalValueKind::LValue(_) => true,
+            _ => false
+        }
+    }
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
@@ -85,6 +92,25 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         self.llvmbuilder.build_store(ptr, rvalue.as_basic_value()).unwrap();
+    }
+
+    pub(crate) fn widen_int_arg(&self, value: InternalValue<'ll>, signed: bool) -> InternalValue<'ll> {
+        let target_bit_width = self.target.info.int_bit_width();
+
+        let int_value = value.as_basic_value().into_int_value();
+        let target_ty = self.llvmctx.custom_width_int_type(target_bit_width);
+
+        let widened = if signed {
+            self.llvmbuilder
+                .build_int_s_extend(int_value, target_ty, "sext")
+                .unwrap()
+        } else {
+            self.llvmbuilder
+                .build_int_z_extend(int_value, target_ty, "zext")
+                .unwrap()
+        };
+
+        InternalValue::new(value.ty.clone(), InternalValueKind::RValue(widened.into()))
     }
 
     pub(crate) fn widen_int_pair(

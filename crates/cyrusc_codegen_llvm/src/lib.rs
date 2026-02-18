@@ -111,7 +111,13 @@ impl CodeGenLLVM {
             );
         }
 
-        let mut ir_builder_ctx = IRBuilderCtx::new(owned_module, &builder, &self.llvmtm, monomorph_registry);
+        let mut ir_builder_ctx = IRBuilderCtx::new(
+            owned_module,
+            &self.ctx.target,
+            &builder,
+            &self.llvmtm,
+            monomorph_registry,
+        );
         ir_builder_ctx.emit_program_tree(cir_program_tree);
 
         {
