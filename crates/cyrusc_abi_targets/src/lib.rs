@@ -14,9 +14,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::x86_64_sysv::X86_64SysV;
-use cyrusc_abi::target::{TargetAbi, TargetArch, TargetInfo, TargetOS, TargetObjectFormat, TypeLayout};
-use cyrusc_cir::types::CIRTy;
+use crate::x86_64_sysv::{X86_64SysV, classify_function_x86_64_sysv};
+use cyrusc_abi::target::{
+    ABIArgInfo, Target, TargetABI, TargetArch, TargetInfo, TargetOS, TargetObjectFormat, TypeLayout,
+};
+use cyrusc_cir::types::{CIRFuncTy, CIRTy};
 use cyrusc_tast::types::PlainType;
 use inkwell::llvm_sys::{
     core::{
@@ -28,8 +30,15 @@ use inkwell::llvm_sys::{
 
 pub mod x86_64_sysv;
 
+pub struct ABIFunctionInfo {
+    pub ret_info: ABIArgInfo,
+    pub params_infos: Vec<ABIArgInfo>,
+    pub params_types: Vec<CIRTy>,
+    pub has_sret: bool,
+}
+
 /// Factory function to create a TargetAbi instance
-pub fn create_target_abi(target_info: &TargetInfo) -> Result<Box<dyn TargetAbi>, String> {
+pub fn create_target_abi(target_info: &TargetInfo) -> Result<Box<dyn TargetABI>, String> {
     match (target_info.arch, target_info.os, target_info.format) {
         (TargetArch::X86_64, TargetOS::Linux, TargetObjectFormat::Elf) => Ok(Box::new(X86_64SysV::new())),
         (TargetArch::X86_64, TargetOS::MacOS, TargetObjectFormat::MachO) => {
@@ -85,7 +94,7 @@ pub fn type_layout(info: &TargetInfo, ty: &CIRTy) -> TypeLayout {
             TypeLayout::aggregate(total_size, max_align)
         }
         CIRTy::Enum(enum_ty) => todo!(),
-        CIRTy::FuncType(cirfunc_ty) => {
+        CIRTy::FuncType(_) => {
             let size = info.pointer_size();
             TypeLayout::normal(size, size)
         }
@@ -115,11 +124,6 @@ pub fn type_layout(info: &TargetInfo, ty: &CIRTy) -> TypeLayout {
             TypeLayout::normal(size, info.pointer_size())
         }
     }
-}
-
-/// Aligns offset to align-bytes
-fn align_to(offset: u32, align: u32) -> u32 {
-    (offset + align - 1) / align * align
 }
 
 fn plain_type_layout(info: &TargetInfo, plain_type: &PlainType) -> TypeLayout {
@@ -162,6 +166,15 @@ fn plain_type_layout(info: &TargetInfo, plain_type: &PlainType) -> TypeLayout {
             let size = info.pointer_size();
             TypeLayout::normal(size, size)
         }
+    }
+}
+
+pub fn classify_function(target: &Target, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+    match &target.info.arch {
+        TargetArch::X86_64 => classify_function_x86_64_sysv(target, fn_ty),
+        TargetArch::Aarch64 => unimplemented!(), // TODO: Classify function for TargetArch::Aarch64
+        TargetArch::RiscV64 => unimplemented!(), // TODO: Classify function for TargetArch::RiscV64
+        TargetArch::Wasm32 => unimplemented!(), // TODO: Classify function for TargetArch::Wasm32
     }
 }
 
@@ -212,4 +225,9 @@ pub fn llvm_type_from_coerce_str(ctx: LLVMContextRef, ty_str: &str) -> LLVMTypeR
 
         panic!("Unsupported type string: '{}'", ty_str);
     }
+}
+
+/// Aligns offset to align-bytes
+fn align_to(offset: u32, align: u32) -> u32 {
+    (offset + align - 1) / align * align
 }

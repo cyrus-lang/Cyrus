@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -22,8 +24,8 @@ use crate::{
     },
     llvm::abi::modifiers::{apply_func_modifiers, apply_inlining_func},
 };
-use cyrusc_abi::{defs::Inlining, modifiers::FuncModifiers, target::AbiArgInfo};
-use cyrusc_abi_targets::{llvm_type_from_coerce_str, type_layout};
+use cyrusc_abi::{defs::Inlining, modifiers::FuncModifiers, target::ABIArgInfo};
+use cyrusc_abi_targets::{ABIFunctionInfo, llvm_type_from_coerce_str, type_layout};
 use cyrusc_cir::{
     CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
     monomorph::CIRMonomorphEntry,
@@ -31,84 +33,153 @@ use cyrusc_cir::{
 };
 use cyrusc_tast::generics::monomorph::MonomorphKey;
 use inkwell::{
-    types::BasicTypeEnum,
-    values::{BasicMetadataValueEnum, FunctionValue},
+    context::AsContextRef,
+    llvm_sys::core::{
+        LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
+    },
+    types::{AsTypeRef, BasicTypeEnum},
+    values::{AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_direct_func_call_args_attributes(
+        &mut self,
+        fn_value: &FunctionValue,
+        abi_func_info: &ABIFunctionInfo,
+    ) {
+        let attr_name = CString::new("byval").unwrap();
+        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(attr_name.as_ptr(), 5) };
+
+        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+            if param_info.is_indirect_by_val() {
+                let param = fn_value.get_nth_param(idx as u32).unwrap();
+                let param_type = param.get_type();
+
+                let attr =
+                    unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, param_type.as_type_ref()) };
+
+                // LLVM parameter indices are 1-based; 0 is the return value
+                unsafe {
+                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), (idx as u32 + 1) as u32, attr);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn emit_indirect_func_call_args_attributes(
+        &mut self,
+        call_site: &CallSiteValue<'ll>,
+        abi_func_info: &ABIFunctionInfo,
+    ) {
+        let attr_name = CString::new("byval").unwrap();
+        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(attr_name.as_ptr(), 5) };
+
+        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+            if !param_info.is_indirect_by_val() {
+                continue;
+            }
+
+            let pointee_ty = self.emit_ty(abi_func_info.params_types.get(idx).unwrap().clone());
+
+            let attr =
+                unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, pointee_ty.as_type_ref()) };
+
+            // call-site attributes: index is 1-based, 0 is return
+            unsafe {
+                LLVMAddCallSiteAttribute(call_site.as_value_ref(), (idx as u32 + 1) as u32, attr);
+            }
+        }
+    }
+
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
+
         fn_ty: &CIRFuncTy,
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let abi = &self.target.target_abi;
 
-        args.iter()
-            .enumerate()
-            .map(|(idx, expr)| {
-                let lvalue = self.emit_expr(expr);
-                let rvalue = self.load_rvalue(lvalue);
+        let mut args_values: Vec<BasicMetadataValueEnum> = Vec::new();
 
-                let cir_ty = fn_ty.params.get(idx).unwrap_or(&rvalue.ty);
-                let layout = type_layout(&self.target.info, cir_ty);
+        for (idx, expr) in args.iter().enumerate() {
+            let lvalue = self.emit_expr(expr);
+            let rvalue = self.load_rvalue(lvalue);
 
-                match abi.classify_arg(&layout) {
-                    AbiArgInfo::Direct { coerce_to } => {
-                        if let Some(str) = coerce_to {
-                            // alter to coerced ty
-                            let coerce_type =
-                                unsafe { BasicTypeEnum::new(llvm_type_from_coerce_str(self.llvmctx.raw(), &str)) };
+            let cir_ty = fn_ty.params.get(idx).unwrap_or(&rvalue.ty);
+            let layout = type_layout(&self.target.info, cir_ty);
 
-                            let coerced_value = self
-                                .llvmbuilder
-                                .build_bit_cast(rvalue.as_basic_value(), coerce_type, "bitcast.coerce")
-                                .unwrap();
+            match abi.classify_arg(&layout) {
+                ABIArgInfo::Direct { coerce_to } => {
+                    if let Some(str) = coerce_to {
+                        // alter to coerced ty
+                        let coerce_type =
+                            unsafe { BasicTypeEnum::new(llvm_type_from_coerce_str(self.llvmctx.raw(), &str)) };
 
-                            coerced_value.into()
+                        let coerced_value = self
+                            .llvmbuilder
+                            .build_bit_cast(rvalue.as_basic_value(), coerce_type, "bitcast.coerce")
+                            .unwrap();
+
+                        args_values.push(coerced_value.into());
+                    } else {
+                        if let Some(cir_ty) = fn_ty.params.get(idx) {
+                            args_values.push(BasicMetadataValueEnum::from(
+                                self.emit_implicit_cast(cir_ty, rvalue).as_basic_value(),
+                            ));
                         } else {
-                            if let Some(cir_ty) = fn_ty.params.get(idx) {
-                                BasicMetadataValueEnum::from(self.emit_implicit_cast(cir_ty, rvalue).as_basic_value())
-                            } else {
-                                BasicMetadataValueEnum::from(rvalue.as_basic_value())
-                            }
+                            args_values.push(BasicMetadataValueEnum::from(rvalue.as_basic_value()));
                         }
-                    }
-                    AbiArgInfo::Extend { signed } => {
-                        // extend integer width if needed
-                        let int_value = cir_ty.as_plain().map(|p| p.is_integer()).unwrap_or(false);
-
-                        if int_value {
-                            BasicMetadataValueEnum::from(self.widen_int_arg(rvalue, signed).as_basic_value())
-                        } else {
-                            BasicMetadataValueEnum::from(rvalue.as_basic_value())
-                        }
-                    }
-                    AbiArgInfo::Indirect { by_val } => {
-                        if !by_val && rvalue.is_lvalue_address() {
-                            return BasicMetadataValueEnum::from(rvalue.as_basic_value());
-                        }
-
-                        let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_ty.clone()).try_into().unwrap();
-                        let alloca = self.llvmbuilder.build_alloca(ty, "indirect.arg").unwrap();
-
-                        self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
-
-                        BasicMetadataValueEnum::PointerValue(alloca)
-                    }
-                    AbiArgInfo::Expand => {
-                        // For aggregates that must be split into multiple registers
-                        // self.expand_aggregate(&rvalue)
-
-                        // TODO
-                        unimplemented!()
-                    }
-                    AbiArgInfo::Ignore => {
-                        // skip argument completely
-                        self.llvmctx.i8_type().const_zero().into()
                     }
                 }
-            })
-            .collect::<Vec<BasicMetadataValueEnum<'ll>>>()
+                ABIArgInfo::Extend { signed } => {
+                    // extend integer width if needed
+                    let int_value = cir_ty.as_plain().map(|p| p.is_integer()).unwrap_or(false);
+
+                    if int_value {
+                        args_values.push(BasicMetadataValueEnum::from(
+                            self.widen_int_arg(rvalue, signed).as_basic_value(),
+                        ));
+                    } else {
+                        args_values.push(BasicMetadataValueEnum::from(rvalue.as_basic_value()));
+                    }
+                }
+                ABIArgInfo::Indirect { by_val } => {
+                    if !by_val && rvalue.is_lvalue_address() {
+                        args_values.push(BasicMetadataValueEnum::from(rvalue.as_basic_value()));
+                        continue;
+                    }
+
+                    let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_ty.clone()).try_into().unwrap();
+                    let alloca = self.llvmbuilder.build_alloca(ty, "indirect.arg").unwrap();
+
+                    self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
+
+                    args_values.push(BasicMetadataValueEnum::PointerValue(alloca));
+                }
+                ABIArgInfo::Expand => {
+                    let struct_value = rvalue.as_basic_value().into_struct_value();
+                    let mut expanded_values: Vec<BasicMetadataValueEnum<'_>> = Vec::new();
+                    let num_fields = struct_value.count_fields();
+
+                    for i in 0..num_fields {
+                        let field_value = self
+                            .llvmbuilder
+                            .build_extract_value(struct_value, i, "extract")
+                            .unwrap();
+
+                        expanded_values.push(field_value.into());
+                    }
+
+                    args_values.extend(expanded_values);
+                }
+                ABIArgInfo::Ignore => {
+                    // skip argument completely
+                    args_values.push(self.llvmctx.i8_type().const_zero().into());
+                }
+            }
+        }
+
+        args_values
     }
 
     pub(crate) fn emit_monomorph_func_instance(
@@ -227,7 +298,9 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
-        let fn_type = self.emit_func_ty(cir_func_decl_as_func_ty(func_decl));
+        let cir_fn_ty = cir_func_decl_as_func_ty(func_decl);
+
+        let fn_type = self.emit_func_ty(cir_fn_ty);
 
         let func_name = &func_decl.name;
         let llvmmodule = self.llvmmodule.borrow();

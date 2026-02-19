@@ -40,7 +40,7 @@ use cyrusc_tast::{
 };
 use cyrusc_tui_utils::tui_error;
 use cyrusc_vtable_registry::VTableRegistry;
-use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetMachine, TargetTriple};
+use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
     env,
@@ -262,11 +262,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
 pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
     let triple_str = if let Some(t) = opts.target.as_ref() {
-        if !t.is_empty() {
-            t.clone()
-        } else {
-            "".to_string()
-        }
+        if !t.is_empty() { t.clone() } else { "".to_string() }
     } else {
         "".to_string()
     };
@@ -333,7 +329,6 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
 
     TargetInfo { arch, os, format }
 }
-
 
 pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
     if let Some(output_path) = output_path_opt {

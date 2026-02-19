@@ -413,6 +413,35 @@ pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType>
 }
 
 impl PlainType {
+    pub fn is_scalar(&self) -> bool {
+        match self {
+            PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => true,
+
+            PlainType::Int
+            | PlainType::Int8
+            | PlainType::Int16
+            | PlainType::Int32
+            | PlainType::Int64
+            | PlainType::Int128 => true,
+
+            PlainType::UInt
+            | PlainType::UInt8
+            | PlainType::UInt16
+            | PlainType::UInt32
+            | PlainType::UInt64
+            | PlainType::UInt128 => true,
+
+            // floating point numbers
+            PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128 => true,
+
+            // char and bool are scalars
+            PlainType::Char | PlainType::Bool => true,
+
+            // void and null are not scalars
+            PlainType::Void | PlainType::Null => false,
+        }
+    }
+
     pub fn is_bool(&self) -> bool {
         matches!(self, PlainType::Bool)
     }

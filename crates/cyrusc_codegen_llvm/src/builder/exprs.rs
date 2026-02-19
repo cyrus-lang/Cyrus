@@ -26,6 +26,7 @@ use cyrusc_abi::{
     defs::Linkage,
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
+use cyrusc_abi_targets::classify_function;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};
 use cyrusc_tast::types::PlainType;
@@ -33,8 +34,7 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
-        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue,
-        PointerValue, StructValue,
+        AnyValueEnum, ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
 
@@ -1521,7 +1521,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         ret_ty: &CIRTy,
         fn_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
+        let abi_func_info = classify_function(self.target, fn_ty);
         let args = self.emit_func_args(args, fn_ty);
+        self.emit_direct_func_call_args_attributes(fn_value, &abi_func_info);
 
         let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
 
@@ -1537,15 +1539,19 @@ impl<'ll> IRBuilderCtx<'ll> {
         let rvalue = self.load_rvalue(lvalue);
 
         let cir_fn_ty = rvalue.ty.as_func().unwrap();
+        let fn_ty = self.emit_func_ty(cir_fn_ty.clone());
+
+        let abi_func_info = classify_function(self.target, &cir_fn_ty);
         let args = self.emit_func_args(&func_call.args, &cir_fn_ty);
 
-        let fn_ty = self.emit_func_ty(cir_fn_ty);
         let fn_ptr = rvalue.as_basic_value().into_pointer_value();
 
         let call_site = self
             .llvmbuilder
             .build_indirect_call(fn_ty, fn_ptr, &args, "indirect_call")
             .unwrap();
+
+        self.emit_indirect_func_call_args_attributes(&call_site, &abi_func_info);
 
         if let Some(basic_value) = call_site.try_as_basic_value().basic() {
             InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))

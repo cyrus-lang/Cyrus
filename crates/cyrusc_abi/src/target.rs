@@ -106,7 +106,8 @@ impl TargetInfo {
     }
 }
 
-pub enum AbiArgInfo {
+#[derive(Debug, Clone)]
+pub enum ABIArgInfo {
     Direct { coerce_to: Option<String> },
     Extend { signed: bool },
     Indirect { by_val: bool },
@@ -138,12 +139,12 @@ impl TypeLayout {
     }
 }
 
-pub trait TargetAbi: Send + Sync {
+pub trait TargetABI: Send + Sync {
     /// Classify how a return value should be handled based on its physical layout
-    fn classify_return(&self, layout: &TypeLayout) -> AbiArgInfo;
+    fn classify_return(&self, layout: &TypeLayout) -> ABIArgInfo;
 
     /// Classify how a function argument should be handled
-    fn classify_arg(&self, layout: &TypeLayout) -> AbiArgInfo;
+    fn classify_arg(&self, layout: &TypeLayout) -> ABIArgInfo;
 
     /// The stack alignment required by the ABI (usually 16 for modern 64-bit)
     fn stack_alignment(&self) -> u32;
@@ -153,15 +154,24 @@ pub struct Target {
     pub info: TargetInfo,
     pub data_layout: String,
     /// The dynamic ABI handler
-    pub target_abi: Box<dyn TargetAbi>,
+    pub target_abi: Box<dyn TargetABI>,
 }
 
 impl Target {
-    pub fn new(info: TargetInfo, target_abi: Box<dyn TargetAbi>) -> Self {
+    pub fn new(info: TargetInfo, target_abi: Box<dyn TargetABI>) -> Self {
         Self {
             data_layout: info.emit_target_data_layout().to_string(),
             info,
             target_abi,
+        }
+    }
+}
+
+impl ABIArgInfo {
+    pub fn is_indirect_by_val(&self) -> bool {
+        match self {
+            ABIArgInfo::Indirect { by_val } => *by_val,
+            _ => false
         }
     }
 }

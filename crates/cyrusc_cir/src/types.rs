@@ -106,6 +106,29 @@ impl CIRTy {
         }
     }
 
+    pub fn is_scalar(&self) -> bool {
+        match self {
+            // plain types like int, float, bool, char, etc.
+            CIRTy::PlainType(plain_type) => plain_type.is_scalar(),
+
+            // const does not affect scalar-ness
+            CIRTy::Const(inner) => inner.is_scalar(),
+
+            // pointers are scalar regardless of pointee
+            CIRTy::Pointer(_) => true,
+
+            // enums are scalar if they lower to an integer
+            CIRTy::Enum(_) => true,
+
+            CIRTy::Struct(_) => false,
+            CIRTy::Union(_) => false,
+            CIRTy::Tuple(_) => false,
+            CIRTy::Array(_) => false,
+            CIRTy::Dynamic(_) => false,
+            CIRTy::FuncType(_) => false,
+        }
+    }
+
     pub fn is_array(&self) -> bool {
         match self {
             CIRTy::Array(_) => true,

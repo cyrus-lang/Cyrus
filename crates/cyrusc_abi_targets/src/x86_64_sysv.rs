@@ -14,7 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_abi::target::{AbiArgInfo, TargetAbi, TypeLayout};
+use cyrusc_abi::target::{ABIArgInfo, TargetABI, TypeLayout, Target};
+use cyrusc_cir::types::{CIRFuncTy, CIRTy};
+use crate::{ABIFunctionInfo, type_layout};
 
 pub struct X86_64SysV;
 
@@ -24,35 +26,81 @@ impl X86_64SysV {
     }
 }
 
-impl TargetAbi for X86_64SysV {
-    fn classify_arg(&self, layout: &TypeLayout) -> AbiArgInfo {
+impl TargetABI for X86_64SysV {
+    fn classify_arg(&self, layout: &TypeLayout) -> ABIArgInfo {
         if layout.is_aggregate {
             // if the size is greater than 16 bytes, it passes in memory.
             if layout.size > 16 {
-                return AbiArgInfo::Indirect { by_val: true };
+                return ABIArgInfo::Indirect { by_val: true };
             }
 
             // if it fits in 16 bytes, System V tries to pack it into registers
             match layout.size {
-                1..=8 => AbiArgInfo::Direct {
+                1..=8 => ABIArgInfo::Direct {
                     coerce_to: Some("i64".to_string()),
                 },
-                9..=16 => AbiArgInfo::Direct {
+                9..=16 => ABIArgInfo::Direct {
                     coerce_to: Some("{ i64, i64 }".to_string()),
                 },
-                _ => AbiArgInfo::Ignore, // ZSTs
+                _ => ABIArgInfo::Ignore, // ZSTs
             }
         } else {
-            AbiArgInfo::Direct { coerce_to: None }
+            ABIArgInfo::Direct { coerce_to: None }
         }
     }
 
-    fn classify_return(&self, layout: &TypeLayout) -> AbiArgInfo {
+    fn classify_return(&self, layout: &TypeLayout) -> ABIArgInfo {
         // System V return rules for structs are nearly identical to arguments.
         self.classify_arg(layout)
     }
 
     fn stack_alignment(&self) -> u32 {
         16
+    }
+}
+
+pub fn classify_function_x86_64_sysv(target: &Target, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+    let mut params_types = Vec::new();
+    let mut params_infos = Vec::new();
+    let mut has_sret = false;
+
+    // classify return type
+
+    let ret_layout = type_layout(&target.info, &fn_ty.ret);
+
+    let ret_info = if fn_ty.ret.is_scalar() {
+        ABIArgInfo::Direct { coerce_to: None }
+    } else if ret_layout.size <= 16 {
+        ABIArgInfo::Direct { coerce_to: None }
+    } else {
+        has_sret = true;
+        params_types.push(CIRTy::Pointer(fn_ty.ret.clone()));
+        ABIArgInfo::Indirect { by_val: false }
+    };
+
+    // classify static params
+
+    for param_ty in &fn_ty.params {
+        let param_layout = type_layout(&target.info, param_ty);
+
+        let arg_info = if param_ty.is_scalar() {
+            params_types.push(param_ty.clone());
+            ABIArgInfo::Direct { coerce_to: None }
+        } else if param_layout.size <= 16 {
+            params_types.push(param_ty.clone());
+            ABIArgInfo::Direct { coerce_to: None }
+        } else {
+            params_types.push(CIRTy::Pointer(Box::new(param_ty.clone())));
+            ABIArgInfo::Indirect { by_val: false }
+        };
+
+        params_infos.push(arg_info);
+    }
+
+    ABIFunctionInfo {
+        ret_info,
+        params_infos,
+        params_types,
+        has_sret,
     }
 }
