@@ -33,7 +33,7 @@ pub enum CIRTy {
 
 #[derive(Debug, Clone)]
 pub struct CIRTupleTy {
-    pub items: Vec<CIRTy>,
+    pub elements: Vec<CIRTy>,
 }
 
 #[derive(Debug, Clone)]

@@ -66,7 +66,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut offset = 0;
             let mut max_align = 0;
 
-            for ty in &tuple_ty.items {
+            for ty in &tuple_ty.elements {
                 let element_layout = type_layout(info, ty);
                 offset = align_offset(offset, element_layout.align);
                 offset += element_layout.size;

@@ -15,6 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_tast::types::PlainType;
+
 use crate::{ABIArgInfo, ABITargetInfo};
 use std::fmt::Debug;
 
@@ -23,7 +25,7 @@ use std::fmt::Debug;
 pub enum ABIType {
     Void,
     Integer(u32),
-    Float(FloatKind),
+    Float(ABIFloatKind),
     Pointer,
     Vector { element_ty: Box<ABIType>, lanes: u32 },
     Array { element_ty: Box<ABIType>, count: usize },
@@ -39,10 +41,10 @@ pub trait ABITargetDependentType: Debug + Send + Sync {
     fn clone_box(&self) -> Box<dyn ABITargetDependentType>;
 
     /// Get size in bytes for this target
-    fn size(&self, target: &ABITargetInfo) -> usize;
+    fn size(&self, target: &ABITargetInfo) -> u32;
 
     /// Get alignment for this target
-    fn align(&self, target: &ABITargetInfo) -> usize;
+    fn align(&self, target: &ABITargetInfo) -> u32;
 
     /// Get register class for this target
     fn register_class(&self, target: &ABITargetInfo) -> RegisterClass;
@@ -51,9 +53,20 @@ pub trait ABITargetDependentType: Debug + Send + Sync {
     fn classify(&self, _target: &ABITargetInfo) -> Option<ABIArgInfo>;
 }
 
+// Implementation of target-dependent types
+#[derive(Debug, Clone)]
+pub enum TargetDependentType {
+    IntPtr,
+    UIntPtr,
+    ISize,
+    USize,
+    Int,
+    UInt,
+}
+
 /// Simple floating point kinds
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FloatKind {
+pub enum ABIFloatKind {
     F16,
     F32,
     F64,
@@ -61,12 +74,81 @@ pub enum FloatKind {
 }
 
 /// Register class for argument passing
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Register classes for ABI classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RegisterClass {
     Integer,
-    Float,
-    Vector,
-    Memory,
+    SSE,
+    SSEUp,
+    X87,
+    X87Up,
+    ComplexX87,
+    MMX,
+    Mask,
+    Segment,
+    Control,
+    Debug,
+    Flags,
+    IntegerSSE, // For mixed integer/sse pairs
+    Memory,     // Passed on stack
+    NoClass,    // Padding/unused
+}
+
+impl From<&PlainType> for TargetDependentType {
+    fn from(plain_type: &PlainType) -> Self {
+        match plain_type {
+            PlainType::IntPtr => TargetDependentType::IntPtr,
+            PlainType::UIntPtr => TargetDependentType::UIntPtr,
+            PlainType::ISize => TargetDependentType::ISize,
+            PlainType::USize => TargetDependentType::USize,
+            PlainType::Int => TargetDependentType::Int,
+            PlainType::UInt => TargetDependentType::UInt,
+            _ => panic!("Not a target-dependent type: {:?}", plain_type),
+        }
+    }
+}
+
+impl ABITargetDependentType for TargetDependentType {
+    fn clone_box(&self) -> Box<dyn ABITargetDependentType> {
+        Box::new(self.clone())
+    }
+
+    fn size(&self, target: &ABITargetInfo) -> u32 {
+        match self {
+            TargetDependentType::IntPtr
+            | TargetDependentType::UIntPtr
+            | TargetDependentType::ISize
+            | TargetDependentType::USize
+            | TargetDependentType::Int
+            | TargetDependentType::UInt => target.pointer_size(),
+        }
+    }
+
+    fn align(&self, target: &ABITargetInfo) -> u32 {
+        match self {
+            TargetDependentType::IntPtr
+            | TargetDependentType::UIntPtr
+            | TargetDependentType::ISize
+            | TargetDependentType::USize
+            | TargetDependentType::Int
+            | TargetDependentType::UInt => target.pointer_align(),
+        }
+    }
+
+    fn register_class(&self, _: &ABITargetInfo) -> RegisterClass {
+        match self {
+            TargetDependentType::IntPtr | TargetDependentType::ISize | TargetDependentType::Int => {
+                RegisterClass::Integer
+            }
+            TargetDependentType::UIntPtr | TargetDependentType::USize | TargetDependentType::UInt => {
+                RegisterClass::Integer
+            }
+        }
+    }
+
+    fn classify(&self, _: &ABITargetInfo) -> Option<ABIArgInfo> {
+        None
+    }
 }
 
 impl Clone for ABIType {

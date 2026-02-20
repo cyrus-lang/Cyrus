@@ -1142,7 +1142,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .into_struct_value();
 
         InternalValue::new(
-            CIRTy::Tuple(CIRTupleTy { items: tys }),
+            CIRTy::Tuple(CIRTupleTy { elements: tys }),
             InternalValueKind::RValue(struct_value.into()),
         )
     }

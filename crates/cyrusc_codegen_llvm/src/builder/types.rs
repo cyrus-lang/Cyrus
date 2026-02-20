@@ -205,7 +205,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleTy) -> StructType<'ll> {
         let element_types = self
-            .emit_tys(&tuple_ty.items)
+            .emit_tys(&tuple_ty.elements)
             .iter()
             .map(|ty| (*ty).try_into().unwrap())
             .collect::<Vec<BasicTypeEnum<'ll>>>();

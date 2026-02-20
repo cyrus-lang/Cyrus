@@ -1649,7 +1649,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
                     .collect();
 
-                CIRTy::Tuple(CIRTupleTy { items })
+                CIRTy::Tuple(CIRTupleTy { elements: items })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
             SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),

@@ -16,13 +16,13 @@
  */
 
 use crate::{
-    targets::x86_64_sysv::{X86_64SysV, classify_func_x86_64_sysv},
+    targets::x86_64_sysv::target::{X86_64SysV, x86_64_sysv_classify_func},
     types::ABIType,
 };
 use cyrusc_cir::types::{CIRFuncTy, CIRTy};
 
 mod helpers;
-pub mod layouts;
+pub mod layout;
 mod targets;
 mod types;
 
@@ -35,16 +35,7 @@ pub trait TargetABI: Send + Sync {
 pub fn create_target_abi(target_info: &ABITargetInfo) -> Result<Box<dyn TargetABI>, String> {
     match (target_info.arch, target_info.os, target_info.format) {
         (ABITargetArch::X86_64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => Ok(Box::new(X86_64SysV::new())),
-        (ABITargetArch::X86_64, ABITargetOS::MacOS, ABITargetObjectFormat::MachO) => {
-            // TODO: implement X86_64 MacOS ABI
-            unimplemented!("X86_64 MacOS ABI not implemented yet")
-        }
-        (ABITargetArch::X86_64, ABITargetOS::Windows, ABITargetObjectFormat::Coff) => {
-            // TODO: implement Windows x64 ABI
-            unimplemented!("X86_64 Windows ABI not implemented yet")
-        }
         (ABITargetArch::Aarch64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
-            // TODO: implement AArch64 Linux ABI
             unimplemented!("AArch64 Linux ABI not implemented yet")
         }
         _ => Err(format!("Unsupported target: {}.", target_info.triple())),
@@ -53,7 +44,7 @@ pub fn create_target_abi(target_info: &ABITargetInfo) -> Result<Box<dyn TargetAB
 
 pub fn classify_func(target: &ABITarget, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
     match (target.info.os, target.info.arch) {
-        (ABITargetOS::Linux, ABITargetArch::X86_64) => classify_func_x86_64_sysv(target, fn_ty),
+        (ABITargetOS::Linux, ABITargetArch::X86_64) => x86_64_sysv_classify_func(target, fn_ty),
         _ => unimplemented!("Target not supported currently."),
     }
 }
@@ -76,7 +67,6 @@ pub struct ABITypeLayout {
 pub struct ABITarget {
     pub info: ABITargetInfo,
     pub data_layout: String,
-    /// The dynamic ABI handler
     pub target_abi: Box<dyn TargetABI>,
 }
 
@@ -110,10 +100,20 @@ pub struct ABITargetInfo {
 }
 
 pub struct ABIFunctionInfo {
-    pub ret_info: ABIArgInfo,
-    pub params_infos: Vec<ABIArgInfo>,
     pub params_types: Vec<CIRTy>,
-    pub has_sret: bool,
+    pub params_infos: Vec<ABIArgInfo>,
+    pub ret_info: ABIRetInfo,
+}
+
+pub struct ABIRetInfo {
+    pub ty: ABIType,
+    pub kind: ABIRetInfoKind,
+}
+
+pub enum ABIRetInfoKind {
+    Direct { coerce_to: Option<ABIType> },
+    Indirect { sret: bool },
+    Ignore,
 }
 
 impl ABITargetInfo {
@@ -171,6 +171,13 @@ impl ABITargetInfo {
     }
 
     pub fn pointer_size(&self) -> u32 {
+        match self.arch {
+            ABITargetArch::X86_64 | ABITargetArch::Aarch64 | ABITargetArch::RiscV64 => 8,
+            ABITargetArch::Wasm32 => 4,
+        }
+    }
+
+    pub fn pointer_align(&self) -> u32 {
         match self.arch {
             ABITargetArch::X86_64 | ABITargetArch::Aarch64 | ABITargetArch::RiscV64 => 8,
             ABITargetArch::Wasm32 => 4,

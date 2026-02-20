@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{ABIArgInfo, ABIFunctionInfo, ABITarget, ABITypeLayout, TargetABI, layouts::type_layout, types::ABIType};
+use crate::{ABIArgInfo, ABIFunctionInfo, ABITarget, ABITypeLayout, TargetABI, layout::type_layout, types::ABIType};
 use cyrusc_cir::types::{CIRFuncTy, CIRTy};
 
 pub struct X86_64SysV;
@@ -62,7 +62,11 @@ impl TargetABI for X86_64SysV {
     }
 }
 
-pub(crate) fn classify_func_x86_64_sysv(target: &ABITarget, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+fn x86_64_sysv_classify_return() {
+
+}
+
+pub(crate) fn x86_64_sysv_classify_func(target: &ABITarget, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
     let mut params_types = Vec::new();
     let mut params_infos = Vec::new();
     let mut has_sret = false;
@@ -105,9 +109,8 @@ pub(crate) fn classify_func_x86_64_sysv(target: &ABITarget, fn_ty: &CIRFuncTy) -
     }
 
     ABIFunctionInfo {
-        ret_info,
         params_infos,
         params_types,
-        has_sret,
+        ret_info,
     }
 }
