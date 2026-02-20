@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_abi_targets::classify_function;
+use cyrusc_abi_targets::classify_func;
 use cyrusc_cir::{
     CIREnumTyVariant,
     types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
@@ -221,7 +221,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_func_ty(&self, mut func_ty: CIRFuncTy) -> FunctionType<'ll> {
-        let abi_func_info = classify_function(&self.target, &func_ty);
+        let abi_func_info = classify_func(&self.target, &func_ty);
         func_ty.params = abi_func_info.params_types;
 
         let ret_ty = self.emit_ty(*func_ty.ret);

@@ -14,21 +14,100 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::x86_64_sysv::{X86_64SysV, classify_function_x86_64_sysv};
-use cyrusc_abi::target::{
-    ABIArgInfo, Target, TargetABI, TargetArch, TargetInfo, TargetOS, TargetObjectFormat, TypeLayout,
+
+use crate::{
+    targets::x86_64_sysv::{X86_64SysV, classify_func_x86_64_sysv},
+    types::ABIType,
 };
 use cyrusc_cir::types::{CIRFuncTy, CIRTy};
-use cyrusc_tast::types::PlainType;
-use inkwell::llvm_sys::{
-    core::{
-        LLVMArrayType2, LLVMDoubleTypeInContext, LLVMFP128TypeInContext, LLVMFloatTypeInContext, LLVMHalfTypeInContext,
-        LLVMIntTypeInContext, LLVMStructTypeInContext, LLVMX86FP80TypeInContext,
-    },
-    prelude::{LLVMContextRef, LLVMTypeRef},
-};
 
-pub mod x86_64_sysv;
+mod helpers;
+pub mod layouts;
+mod targets;
+mod types;
+
+pub trait TargetABI: Send + Sync {
+    fn classify_return(&self, layout: &ABITypeLayout) -> ABIArgInfo;
+    fn classify_arg(&self, layout: &ABITypeLayout) -> ABIArgInfo;
+    fn stack_alignment(&self) -> u32;
+}
+
+pub fn create_target_abi(target_info: &ABITargetInfo) -> Result<Box<dyn TargetABI>, String> {
+    match (target_info.arch, target_info.os, target_info.format) {
+        (ABITargetArch::X86_64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => Ok(Box::new(X86_64SysV::new())),
+        (ABITargetArch::X86_64, ABITargetOS::MacOS, ABITargetObjectFormat::MachO) => {
+            // TODO: implement X86_64 MacOS ABI
+            unimplemented!("X86_64 MacOS ABI not implemented yet")
+        }
+        (ABITargetArch::X86_64, ABITargetOS::Windows, ABITargetObjectFormat::Coff) => {
+            // TODO: implement Windows x64 ABI
+            unimplemented!("X86_64 Windows ABI not implemented yet")
+        }
+        (ABITargetArch::Aarch64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
+            // TODO: implement AArch64 Linux ABI
+            unimplemented!("AArch64 Linux ABI not implemented yet")
+        }
+        _ => Err(format!("Unsupported target: {}.", target_info.triple())),
+    }
+}
+
+pub fn classify_func(target: &ABITarget, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+    match (target.info.os, target.info.arch) {
+        (ABITargetOS::Linux, ABITargetArch::X86_64) => classify_func_x86_64_sysv(target, fn_ty),
+        _ => unimplemented!("Target not supported currently."),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ABIArgInfo {
+    Direct { coerce_to: Option<ABIType> },
+    Extend { signed: bool },
+    Indirect { by_val: bool },
+    Expand,
+    Ignore,
+}
+
+pub struct ABITypeLayout {
+    pub size: u32,
+    pub align: u32,
+    pub is_aggregate: bool,
+}
+
+pub struct ABITarget {
+    pub info: ABITargetInfo,
+    pub data_layout: String,
+    /// The dynamic ABI handler
+    pub target_abi: Box<dyn TargetABI>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ABITargetArch {
+    X86_64,
+    Aarch64,
+    RiscV64,
+    Wasm32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ABITargetOS {
+    Linux,
+    Windows,
+    MacOS,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ABITargetObjectFormat {
+    Elf,
+    MachO,
+    Coff,
+}
+
+pub struct ABITargetInfo {
+    pub arch: ABITargetArch,
+    pub os: ABITargetOS,
+    pub format: ABITargetObjectFormat,
+}
 
 pub struct ABIFunctionInfo {
     pub ret_info: ABIArgInfo,
@@ -37,197 +116,101 @@ pub struct ABIFunctionInfo {
     pub has_sret: bool,
 }
 
-/// Factory function to create a TargetAbi instance
-pub fn create_target_abi(target_info: &TargetInfo) -> Result<Box<dyn TargetABI>, String> {
-    match (target_info.arch, target_info.os, target_info.format) {
-        (TargetArch::X86_64, TargetOS::Linux, TargetObjectFormat::Elf) => Ok(Box::new(X86_64SysV::new())),
-        (TargetArch::X86_64, TargetOS::MacOS, TargetObjectFormat::MachO) => {
-            // TODO: implement X86_64 MacOS ABI
-            unimplemented!("X86_64 MacOS ABI not implemented yet")
-        }
-        (TargetArch::X86_64, TargetOS::Windows, TargetObjectFormat::Coff) => {
-            // TODO: implement Windows x64 ABI
-            unimplemented!("X86_64 Windows ABI not implemented yet")
-        }
-        (TargetArch::Aarch64, TargetOS::Linux, TargetObjectFormat::Elf) => {
-            // TODO: implement AArch64 Linux ABI
-            unimplemented!("AArch64 Linux ABI not implemented yet")
-        }
-        _ => Err(format!("Unsupported target: {}.", target_info.triple())),
+impl ABITargetInfo {
+    /// Generates the triple string used by LLVM
+    pub fn triple(&self) -> String {
+        let arch_str = match self.arch {
+            ABITargetArch::X86_64 => "x86_64",
+            ABITargetArch::Aarch64 => "aarch64",
+            ABITargetArch::RiscV64 => "riscv64",
+            ABITargetArch::Wasm32 => "wasm32",
+        };
+
+        let os_str = match self.os {
+            ABITargetOS::Linux => "unknown-linux-gnu",
+            ABITargetOS::Windows => "pc-windows-msvc",
+            ABITargetOS::MacOS => "apple-darwin",
+            ABITargetOS::Unknown => "unknown-unknown",
+        };
+
+        format!("{}-{}", arch_str, os_str)
     }
-}
 
-pub fn type_layout(info: &TargetInfo, ty: &CIRTy) -> TypeLayout {
-    match ty {
-        CIRTy::PlainType(plain_type) => plain_type_layout(info, plain_type),
-        CIRTy::Const(ty) => type_layout(info, ty.const_inner()),
-        CIRTy::Pointer(_) => {
-            let size = info.pointer_size();
-            TypeLayout::normal(size, size)
-        }
-        CIRTy::Struct(struct_ty) => {
-            let mut offset = 0;
-            let mut max_align = 1;
-
-            for ty in &struct_ty.fields {
-                let field_layout = type_layout(info, ty);
-                offset = align_to(offset, field_layout.align);
-                offset += field_layout.size;
-                max_align = max_align.max(field_layout.align);
+    pub fn emit_target_data_layout(&self) -> &'static str {
+        use ABITargetArch::*;
+        use ABITargetOS::*;
+        match (self.arch, self.os) {
+            (X86_64, Windows) => "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            (X86_64, MacOS) => "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            (X86_64, _) => "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+            (Aarch64, MacOS) => "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
+            (Aarch64, Windows) => {
+                "e-m:w-p270:32:32-p271:32:32-p272:64:64-p:64:64-i32:32-i64:64-i128:128-n32:64-S128-Fn32"
             }
-
-            let total_size = align_to(offset, max_align);
-            TypeLayout::aggregate(total_size, max_align)
+            (Wasm32, _) => "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-n32:64-S128-ni:1:10:20",
+            _ => panic!("Target combination not supported yet!"),
         }
-        CIRTy::Union(union_ty) => {
-            let mut max_size = 0;
-            let mut max_align = 1;
+    }
 
-            for ty in &union_ty.fields {
-                let field_layout = type_layout(info, ty);
+    pub fn is_64bit(&self) -> bool {
+        self.int_bit_width() == 64
+    }
 
-                max_size = max_size.max(field_layout.size);
-                max_align = max_size.max(field_layout.align);
-            }
-
-            let total_size = align_to(max_size, max_align);
-            TypeLayout::aggregate(total_size, max_align)
+    pub fn int_bit_width(&self) -> u32 {
+        match self.arch {
+            ABITargetArch::X86_64 | ABITargetArch::Aarch64 | ABITargetArch::RiscV64 => 64,
+            ABITargetArch::Wasm32 => 32,
         }
-        CIRTy::Enum(enum_ty) => todo!(),
-        CIRTy::FuncType(_) => {
-            let size = info.pointer_size();
-            TypeLayout::normal(size, size)
-        }
-        CIRTy::Tuple(tuple_ty) => {
-            // same layout as struct (lowered to struct in codegen)
+    }
 
-            let mut offset = 0;
-            let mut max_align = 0;
-
-            for ty in &tuple_ty.items {
-                let element_layout = type_layout(info, ty);
-                offset = align_to(offset, element_layout.align);
-                offset += element_layout.size;
-                max_align = max_align.max(element_layout.align);
-            }
-
-            let total_size = align_to(offset, max_align);
-            TypeLayout::aggregate(total_size, max_align)
+    pub fn pointer_bit_width(&self) -> u32 {
+        match self.arch {
+            ABITargetArch::X86_64 | ABITargetArch::Aarch64 | ABITargetArch::RiscV64 => 64,
+            ABITargetArch::Wasm32 => 32,
         }
-        CIRTy::Array(array_ty) => {
-            let element_layout = type_layout(info, &array_ty.ty);
-            let total_size = element_layout.size * array_ty.len as u32;
-            TypeLayout::aggregate(total_size, element_layout.align)
-        }
-        CIRTy::Dynamic(_) => {
-            let size = info.pointer_size() * 2; // data_ptr + vtable_ptr
-            TypeLayout::normal(size, info.pointer_size())
+    }
+
+    pub fn pointer_size(&self) -> u32 {
+        match self.arch {
+            ABITargetArch::X86_64 | ABITargetArch::Aarch64 | ABITargetArch::RiscV64 => 8,
+            ABITargetArch::Wasm32 => 4,
         }
     }
 }
 
-fn plain_type_layout(info: &TargetInfo, plain_type: &PlainType) -> TypeLayout {
-    use PlainType::*;
-
-    match plain_type {
-        UIntPtr | IntPtr | ISize | USize => {
-            let size = info.pointer_size();
-            TypeLayout::normal(size, size)
+impl ABITypeLayout {
+    pub fn normal(size: u32, align: u32) -> Self {
+        Self {
+            size,
+            align,
+            is_aggregate: false,
         }
+    }
 
-        Int8 | UInt8 | Bool => TypeLayout::normal(1, 1),
-        Int16 | UInt16 => TypeLayout::normal(2, 2),
-        Int32 | UInt32 | Int | UInt => TypeLayout::normal(4, 4),
-        Int64 | UInt64 => TypeLayout::normal(8, 8),
-        Int128 | UInt128 => {
-            let align = match info.arch {
-                TargetArch::X86_64 | TargetArch::Aarch64 => 16,
-                TargetArch::RiscV64 => 16,
-                TargetArch::Wasm32 => 8,
-            };
-            TypeLayout::normal(16, align)
-        }
-
-        Float16 => TypeLayout::normal(2, 2),
-        Float32 => TypeLayout::normal(4, 4),
-        Float64 => TypeLayout::normal(8, 8),
-        Float128 => {
-            let align = match info.arch {
-                TargetArch::X86_64 | TargetArch::Aarch64 => 16,
-                TargetArch::RiscV64 => 16,
-                TargetArch::Wasm32 => 8,
-            };
-            TypeLayout::normal(16, align)
-        }
-
-        Char => TypeLayout::normal(1, 1),
-        Void => TypeLayout::normal(0, 1),
-        Null => {
-            let size = info.pointer_size();
-            TypeLayout::normal(size, size)
+    pub fn aggregate(size: u32, align: u32) -> Self {
+        Self {
+            size,
+            align,
+            is_aggregate: true,
         }
     }
 }
 
-pub fn classify_function(target: &Target, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
-    match &target.info.arch {
-        TargetArch::X86_64 => classify_function_x86_64_sysv(target, fn_ty),
-        TargetArch::Aarch64 => unimplemented!(), // TODO: Classify function for TargetArch::Aarch64
-        TargetArch::RiscV64 => unimplemented!(), // TODO: Classify function for TargetArch::RiscV64
-        TargetArch::Wasm32 => unimplemented!(), // TODO: Classify function for TargetArch::Wasm32
+impl ABITarget {
+    pub fn new(info: ABITargetInfo, target_abi: Box<dyn TargetABI>) -> Self {
+        Self {
+            data_layout: info.emit_target_data_layout().to_string(),
+            info,
+            target_abi,
+        }
     }
 }
 
-pub fn llvm_type_from_coerce_str(ctx: LLVMContextRef, ty_str: &str) -> LLVMTypeRef {
-    unsafe {
-        let ty_str = ty_str.trim();
-
-        // integers
-        if ty_str.starts_with('i') {
-            let bits = &ty_str[1..];
-            if let Ok(n) = bits.parse::<u32>() {
-                return LLVMIntTypeInContext(ctx, n);
-            } else {
-                panic!("Invalid integer bits: {}", bits);
-            }
+impl ABIArgInfo {
+    pub fn is_indirect_by_val(&self) -> bool {
+        match self {
+            ABIArgInfo::Indirect { by_val } => *by_val,
+            _ => false,
         }
-
-        // floats
-        match ty_str {
-            "half" => return LLVMHalfTypeInContext(ctx),
-            "float" => return LLVMFloatTypeInContext(ctx),
-            "double" => return LLVMDoubleTypeInContext(ctx),
-            "fp128" => return LLVMFP128TypeInContext(ctx),
-            "x86_fp80" => return LLVMX86FP80TypeInContext(ctx),
-            _ => {}
-        }
-
-        // structs: { ... }
-        if ty_str.starts_with('{') && ty_str.ends_with('}') {
-            let inner = &ty_str[1..ty_str.len() - 1];
-            let types: Vec<LLVMTypeRef> = inner
-                .split(',')
-                .map(|x| llvm_type_from_coerce_str(ctx, x.trim()))
-                .collect();
-            return LLVMStructTypeInContext(ctx, types.as_ptr() as *mut LLVMTypeRef, types.len() as u32, 0);
-        }
-
-        // arrays [type x N]
-        if ty_str.starts_with('[') && ty_str.ends_with(']') {
-            let inner = &ty_str[1..ty_str.len() - 1]; // remove [ ]
-            let mut parts = inner.split('x').map(|x| x.trim());
-            let elem_str = parts.next().expect("Invalid array type");
-            let count_str = parts.next().expect("Invalid array type");
-            let elem_ty = llvm_type_from_coerce_str(ctx, elem_str);
-            let count = count_str.parse::<usize>().expect("Invalid array count");
-            return LLVMArrayType2(elem_ty, count as u64);
-        }
-
-        panic!("Unsupported type string: '{}'", ty_str);
     }
-}
-
-/// Aligns offset to align-bytes
-fn align_to(offset: u32, align: u32) -> u32 {
-    (offset + align - 1) / align * align
 }

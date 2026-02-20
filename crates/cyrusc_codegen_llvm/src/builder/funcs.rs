@@ -22,10 +22,13 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::abi::modifiers::{apply_func_modifiers, apply_inlining_func},
+    llvm::abi::{
+        llvm_type_from_coerce_str::llvm_type_from_coerce_str,
+        modifiers::{apply_func_modifiers, apply_inlining_func},
+    },
 };
-use cyrusc_abi::{defs::Inlining, modifiers::FuncModifiers, target::ABIArgInfo};
-use cyrusc_abi_targets::{ABIFunctionInfo, llvm_type_from_coerce_str, type_layout};
+use cyrusc_abi::{abi_ast_defs::Inlining, modifiers::FuncModifiers};
+use cyrusc_abi_targets::{ABIArgInfo, ABIFunctionInfo, layouts::type_layout};
 use cyrusc_cir::{
     CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
     monomorph::CIRMonomorphEntry,

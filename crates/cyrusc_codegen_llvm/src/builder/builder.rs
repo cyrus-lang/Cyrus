@@ -23,7 +23,7 @@ use crate::{
     },
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
-use cyrusc_abi::target::Target;
+use cyrusc_abi_targets::ABITarget;
 use cyrusc_cir::{
     CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
     cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, monomorph::CIRMonomorphRegistry,
@@ -47,7 +47,7 @@ use std::{
 };
 
 pub(crate) struct IRBuilderCtx<'ll> {
-    pub(crate) target: &'ll Target,
+    pub(crate) target: &'ll ABITarget,
     pub(crate) llvmctx: &'ll Context,
     pub(crate) llvmbuilder: &'ll Builder<'ll>,
     pub(crate) llvmmodule: Rc<RefCell<Module<'ll>>>,
@@ -71,7 +71,7 @@ pub(crate) struct BlockRegistry<'ll> {
 impl<'ll> IRBuilderCtx<'ll> {
     pub fn new(
         owned_module: &'ll OwnedModule,
-        target: &'ll Target,
+        target: &'ll ABITarget,
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
         monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,

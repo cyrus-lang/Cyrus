@@ -242,10 +242,8 @@ dependencies = [
 name = "cyrusc_abi_targets"
 version = "0.1.0"
 dependencies = [
- "cyrusc_abi",
  "cyrusc_cir",
  "cyrusc_tast",
- "inkwell",
 ]
 
 [[package]]

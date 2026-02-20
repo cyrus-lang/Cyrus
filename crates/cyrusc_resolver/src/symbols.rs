@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
-use cyrusc_abi::defs::Visibility;
+use cyrusc_abi::abi_ast_defs::Visibility;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     LabelID, ModuleID, ScopeID, SymbolID,

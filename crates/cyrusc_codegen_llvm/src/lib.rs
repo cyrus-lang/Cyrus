@@ -19,7 +19,7 @@ use crate::{
     builder::builder::IRBuilderCtx,
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
-use cyrusc_abi::modulename::make_module_name_from_filepath;
+use cyrusc_abi::mangler::make_module_name_from_filepath;
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_compiler::{

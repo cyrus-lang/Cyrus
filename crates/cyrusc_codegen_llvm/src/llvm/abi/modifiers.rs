@@ -16,7 +16,7 @@
  */
 use crate::llvm::abi::callconv::LLVMCallConv;
 use cyrusc_abi::{
-    defs::{ExportKind, Inlining, Linkage, OptionalFlag, Prologue},
+    abi_ast_defs::{ExportKind, Inlining, Linkage, OptionalFlag, Prologue},
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use inkwell::{

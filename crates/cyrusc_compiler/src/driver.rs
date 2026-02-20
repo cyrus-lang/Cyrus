@@ -19,8 +19,9 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
-use cyrusc_abi::target::{Target, TargetArch, TargetInfo, TargetOS, TargetObjectFormat};
-use cyrusc_abi_targets::create_target_abi;
+use cyrusc_abi_targets::{
+    ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi,
+};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
@@ -67,7 +68,7 @@ pub struct CodeGenSemanticBundle {
     pub build_dir: PathBuf,
 }
 
-fn create_compiler_context_target(target_info: &TargetInfo) -> (InkwellTarget, TargetTriple) {
+fn create_compiler_context_target(target_info: &ABITargetInfo) -> (InkwellTarget, TargetTriple) {
     InkwellTarget::initialize_all(&InitializationConfig::default());
 
     let target_triple = TargetTriple::create(&target_info.triple());
@@ -94,7 +95,7 @@ pub fn create_compiler_context(
         }
     };
     let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
-    let target = Target::new(target_info, target_abi);
+    let target = ABITarget::new(target_info, target_abi);
 
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
@@ -260,7 +261,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     }
 }
 
-pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
+pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> ABITargetInfo {
     let triple_str = if let Some(t) = opts.target.as_ref() {
         if !t.is_empty() { t.clone() } else { "".to_string() }
     } else {
@@ -269,10 +270,10 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
 
     let arch = if !triple_str.is_empty() {
         match triple_str.split('-').next().unwrap_or("") {
-            "x86_64" => TargetArch::X86_64,
-            "aarch64" => TargetArch::Aarch64,
-            "riscv64" => TargetArch::RiscV64,
-            "wasm32" => TargetArch::Wasm32,
+            "x86_64" => ABITargetArch::X86_64,
+            "aarch64" => ABITargetArch::Aarch64,
+            "riscv64" => ABITargetArch::RiscV64,
+            "wasm32" => ABITargetArch::Wasm32,
             other => {
                 tui_error(format!("Unsupported target architecture: {}", other));
                 exit(1);
@@ -281,10 +282,10 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
     } else {
         // fallback to host env
         match env::consts::ARCH {
-            "x86_64" => TargetArch::X86_64,
-            "aarch64" => TargetArch::Aarch64,
-            "riscv64" => TargetArch::RiscV64,
-            "wasm32" => TargetArch::Wasm32,
+            "x86_64" => ABITargetArch::X86_64,
+            "aarch64" => ABITargetArch::Aarch64,
+            "riscv64" => ABITargetArch::RiscV64,
+            "wasm32" => ABITargetArch::Wasm32,
             other => {
                 tui_error(format!("Unsupported host architecture: {}", other));
                 exit(1);
@@ -294,16 +295,16 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
 
     let os = if !triple_str.is_empty() {
         match triple_str.split('-').nth(1).unwrap_or("") {
-            "linux" => TargetOS::Linux,
-            "windows" => TargetOS::Windows,
-            "darwin" => TargetOS::MacOS,
+            "linux" => ABITargetOS::Linux,
+            "windows" => ABITargetOS::Windows,
+            "darwin" => ABITargetOS::MacOS,
             "unknown" | "" => {
                 // fallback to host OS
                 match env::consts::OS {
-                    "linux" => TargetOS::Linux,
-                    "windows" => TargetOS::Windows,
-                    "macos" => TargetOS::MacOS,
-                    _ => TargetOS::Unknown,
+                    "linux" => ABITargetOS::Linux,
+                    "windows" => ABITargetOS::Windows,
+                    "macos" => ABITargetOS::MacOS,
+                    _ => ABITargetOS::Unknown,
                 }
             }
             other => {
@@ -313,21 +314,21 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> TargetInfo {
         }
     } else {
         match env::consts::OS {
-            "linux" => TargetOS::Linux,
-            "windows" => TargetOS::Windows,
-            "macos" => TargetOS::MacOS,
-            _ => TargetOS::Unknown,
+            "linux" => ABITargetOS::Linux,
+            "windows" => ABITargetOS::Windows,
+            "macos" => ABITargetOS::MacOS,
+            _ => ABITargetOS::Unknown,
         }
     };
 
     // Step 4: resolve object format (derived, not user-selected)
     let format = match os {
-        TargetOS::Linux | TargetOS::Unknown => TargetObjectFormat::Elf,
-        TargetOS::MacOS => TargetObjectFormat::MachO,
-        TargetOS::Windows => TargetObjectFormat::Coff,
+        ABITargetOS::Linux | ABITargetOS::Unknown => ABITargetObjectFormat::Elf,
+        ABITargetOS::MacOS => ABITargetObjectFormat::MachO,
+        ABITargetOS::Windows => ABITargetObjectFormat::Coff,
     };
 
-    TargetInfo { arch, os, format }
+    ABITargetInfo { arch, os, format }
 }
 
 pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {

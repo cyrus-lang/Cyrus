@@ -15,6 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi_ast_defs;
-pub mod mangler;
-pub mod modifiers;
+pub(crate) fn align_offset(offset: u32, align: u32) -> u32 {
+    (offset + align - 1) / align * align
+}

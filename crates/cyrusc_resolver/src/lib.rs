@@ -20,8 +20,8 @@ use crate::{
     diagnostics::ResolverDiagKind,
     sigs::{FuncSig, TypedefSig},
 };
-use cyrusc_abi::defs::Visibility;
-use cyrusc_abi::modulename::make_module_name_from_filepath;
+use cyrusc_abi::abi_ast_defs::Visibility;
+use cyrusc_abi::mangler::make_module_name_from_filepath;
 use cyrusc_ast::format::module_segments_as_string;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::source_loc::SourceLoc;

@@ -16,3 +16,4 @@
  */
 pub mod callconv;
 pub mod modifiers;
+pub mod llvm_type_from_coerce_str;

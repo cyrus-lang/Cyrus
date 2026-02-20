@@ -25,7 +25,7 @@ use crate::{
     types::{InterfaceType, SemanticType, TypedFuncType},
 };
 use cyrusc_abi::{
-    defs::Visibility,
+    abi_ast_defs::Visibility,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_ast::SelfModifierKind;

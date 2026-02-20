@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     codegen_traits::CodeGenBackend,
     linker::Linker,
@@ -21,7 +22,7 @@ use crate::{
     options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
     tm_info::TargetMachineInfo,
 };
-use cyrusc_abi::target::Target;
+use cyrusc_abi_targets::ABITarget;
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_cir::CIRProgramTree;
 use cyrusc_diagcentral::display_single_custom_diag;
@@ -34,7 +35,7 @@ use std::{
 
 pub struct CodeGenContext {
     pub opts: CodeGenOptions,
-    pub target: Target,
+    pub target: ABITarget,
     pub llvm_target: LLVMTarget,
     pub llvm_target_triple: TargetTriple,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
@@ -46,7 +47,7 @@ pub struct CodeGenContext {
 impl CodeGenContext {
     pub(crate) fn new(
         opts: CodeGenOptions,
-        target: Target,
+        target: ABITarget,
         llvm_target: LLVMTarget,
         llvm_target_triple: TargetTriple,
         build_manifest: Arc<Mutex<BuildManifest>>,
