@@ -15,24 +15,39 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::types::{ABIFloatKind, ABIType, TargetDependentType};
+use crate::{
+    ABITargetArch, ABITargetInfo,
+    targets::x86_64_sysv::types::X86_64TargetDependentType,
+    types::{ABIFloatKind, ABIType, TargetIntegerType},
+};
 use cyrusc_cir::types::CIRTy;
 use cyrusc_tast::types::PlainType;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NeededRegisters {
+    pub int_regs: u32,
+    pub sse_regs: u32,
+}
 
 pub(crate) fn align_offset(offset: u32, align: u32) -> u32 {
     (offset + align - 1) / align * align
 }
 
-pub(crate) fn cir_type_to_abi_type(cir_type: &CIRTy) -> ABIType {
+pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
     use PlainType::*;
 
     match cir_type {
         CIRTy::PlainType(plain_type) => {
             match plain_type {
                 // Target-dependent types
-                UIntPtr | IntPtr | ISize | USize | Int | UInt => {
-                    ABIType::TargetDependent(Box::new(TargetDependentType::from(plain_type)))
-                }
+                UIntPtr | IntPtr | ISize | USize | Int | UInt => match info.arch {
+                    ABITargetArch::X86_64 => ABIType::TargetIntegerType(TargetIntegerType::X86_64(
+                        X86_64TargetDependentType::from(plain_type),
+                    )),
+                    ABITargetArch::Aarch64 => todo!(),
+                    ABITargetArch::RiscV64 => todo!(),
+                    ABITargetArch::Wasm32 => todo!(),
+                },
 
                 Int8 | UInt8 => ABIType::Integer(8),
                 Int16 | UInt16 => ABIType::Integer(16),
@@ -50,21 +65,21 @@ pub(crate) fn cir_type_to_abi_type(cir_type: &CIRTy) -> ABIType {
                 Null => ABIType::Pointer,
             }
         }
-        CIRTy::Const(ty) => cir_type_to_abi_type(ty),
+        CIRTy::Const(ty) => cir_type_to_abi_type(info, ty),
         CIRTy::Pointer(_) => ABIType::Pointer,
-        CIRTy::Struct(cirstruct_ty) => {
-            let fields = cirstruct_ty
+        CIRTy::Struct(struct_ty) => {
+            let fields = struct_ty
                 .fields
                 .iter()
-                .map(|field_ty| cir_type_to_abi_type(field_ty))
+                .map(|field_ty| cir_type_to_abi_type(info, field_ty))
                 .collect();
             ABIType::Struct(fields)
         }
-        CIRTy::Union(cirunion_ty) => {
-            let fields = cirunion_ty
+        CIRTy::Union(union_ty) => {
+            let fields = union_ty
                 .fields
                 .iter()
-                .map(|field_ty| cir_type_to_abi_type(field_ty))
+                .map(|field_ty| cir_type_to_abi_type(info, field_ty))
                 .collect();
             ABIType::Union(fields)
         }
@@ -73,12 +88,12 @@ pub(crate) fn cir_type_to_abi_type(cir_type: &CIRTy) -> ABIType {
             let elements = tuple_ty
                 .elements
                 .iter()
-                .map(|elem_ty| cir_type_to_abi_type(elem_ty))
+                .map(|elem_ty| cir_type_to_abi_type(info, elem_ty))
                 .collect();
             ABIType::Struct(elements)
         }
         CIRTy::Array(array_ty) => {
-            let element_ty = Box::new(cir_type_to_abi_type(&array_ty.ty));
+            let element_ty = Box::new(cir_type_to_abi_type(info, &array_ty.ty));
             ABIType::Array {
                 element_ty,
                 count: array_ty.len,

@@ -15,13 +15,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_tast::types::PlainType;
-
-use crate::{ABIArgInfo, ABITargetInfo};
+use crate::{ABITargetInfo, targets::x86_64_sysv::types::X86_64TargetDependentType};
 use std::fmt::Debug;
 
 /// Target-agnostic ABI type representation
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ABIType {
     Void,
     Integer(u32),
@@ -31,124 +29,21 @@ pub enum ABIType {
     Array { element_ty: Box<ABIType>, count: usize },
     Struct(Vec<ABIType>),
     Union(Vec<ABIType>),
-    TargetDependent(Box<dyn ABITargetDependentType>),
+    TargetIntegerType(TargetIntegerType),
     // Enum(...) // TODO
 }
 
-/// Trait for target-dependent ABI types
-pub trait ABITargetDependentType: Debug + Send + Sync {
-    /// Clone boxed trait object
-    fn clone_box(&self) -> Box<dyn ABITargetDependentType>;
-
-    /// Get size in bytes for this target
-    fn size(&self, target: &ABITargetInfo) -> u32;
-
-    /// Get alignment for this target
-    fn align(&self, target: &ABITargetInfo) -> u32;
-
-    /// Get register class for this target
-    fn register_class(&self, target: &ABITargetInfo) -> RegisterClass;
-
-    /// Provide target-specific classification
-    fn classify(&self, _target: &ABITargetInfo) -> Option<ABIArgInfo>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetIntegerType {
+    X86_64(X86_64TargetDependentType),
 }
 
-// Implementation of target-dependent types
-#[derive(Debug, Clone)]
-pub enum TargetDependentType {
-    IntPtr,
-    UIntPtr,
-    ISize,
-    USize,
-    Int,
-    UInt,
-}
-
-/// Simple floating point kinds
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ABIFloatKind {
     F16,
     F32,
     F64,
     F128,
-}
-
-/// Register class for argument passing
-/// Register classes for ABI classification
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RegisterClass {
-    Integer,
-    SSE,
-    SSEUp,
-    X87,
-    X87Up,
-    ComplexX87,
-    MMX,
-    Mask,
-    Segment,
-    Control,
-    Debug,
-    Flags,
-    IntegerSSE, // For mixed integer/sse pairs
-    Memory,     // Passed on stack
-    NoClass,    // Padding/unused
-}
-
-impl From<&PlainType> for TargetDependentType {
-    fn from(plain_type: &PlainType) -> Self {
-        match plain_type {
-            PlainType::IntPtr => TargetDependentType::IntPtr,
-            PlainType::UIntPtr => TargetDependentType::UIntPtr,
-            PlainType::ISize => TargetDependentType::ISize,
-            PlainType::USize => TargetDependentType::USize,
-            PlainType::Int => TargetDependentType::Int,
-            PlainType::UInt => TargetDependentType::UInt,
-            _ => panic!("Not a target-dependent type: {:?}", plain_type),
-        }
-    }
-}
-
-impl ABITargetDependentType for TargetDependentType {
-    fn clone_box(&self) -> Box<dyn ABITargetDependentType> {
-        Box::new(self.clone())
-    }
-
-    fn size(&self, target: &ABITargetInfo) -> u32 {
-        match self {
-            TargetDependentType::IntPtr
-            | TargetDependentType::UIntPtr
-            | TargetDependentType::ISize
-            | TargetDependentType::USize
-            | TargetDependentType::Int
-            | TargetDependentType::UInt => target.pointer_size(),
-        }
-    }
-
-    fn align(&self, target: &ABITargetInfo) -> u32 {
-        match self {
-            TargetDependentType::IntPtr
-            | TargetDependentType::UIntPtr
-            | TargetDependentType::ISize
-            | TargetDependentType::USize
-            | TargetDependentType::Int
-            | TargetDependentType::UInt => target.pointer_align(),
-        }
-    }
-
-    fn register_class(&self, _: &ABITargetInfo) -> RegisterClass {
-        match self {
-            TargetDependentType::IntPtr | TargetDependentType::ISize | TargetDependentType::Int => {
-                RegisterClass::Integer
-            }
-            TargetDependentType::UIntPtr | TargetDependentType::USize | TargetDependentType::UInt => {
-                RegisterClass::Integer
-            }
-        }
-    }
-
-    fn classify(&self, _: &ABITargetInfo) -> Option<ABIArgInfo> {
-        None
-    }
 }
 
 impl Clone for ABIType {
@@ -168,7 +63,37 @@ impl Clone for ABIType {
             },
             ABIType::Struct(types) => ABIType::Struct(types.clone()),
             ABIType::Union(types) => ABIType::Union(types.clone()),
-            ABIType::TargetDependent(t) => ABIType::TargetDependent(t.clone_box()),
+            ABIType::TargetIntegerType(target_integer_type) => ABIType::TargetIntegerType(target_integer_type.clone()),
+        }
+    }
+}
+
+impl ABIType {
+    pub fn as_integer_bits(&self, info: &ABITargetInfo) -> Option<u32> {
+        match self {
+            ABIType::Integer(bit_width) => Some(*bit_width),
+            ABIType::TargetIntegerType(target_integer_type) => Some(target_integer_type.bit_width(info)),
+            _ => None,
+        }
+    }
+}
+
+impl TargetIntegerType {
+    pub fn size(&self, info: &ABITargetInfo) -> u32 {
+        match self {
+            TargetIntegerType::X86_64(x86_64_target_dependent_type) => x86_64_target_dependent_type.size(info),
+        }
+    }
+
+    pub fn align(&self, target: &ABITargetInfo) -> u32 {
+        match self {
+            TargetIntegerType::X86_64(x86_64_target_dependent_type) => x86_64_target_dependent_type.align(target),
+        }
+    }
+
+    pub fn bit_width(&self, target: &ABITargetInfo) -> u32 {
+        match self {
+            TargetIntegerType::X86_64(x86_64_target_dependent_type) => x86_64_target_dependent_type.bit_width(target),
         }
     }
 }

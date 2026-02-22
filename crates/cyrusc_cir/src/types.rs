@@ -106,6 +106,20 @@ impl CIRTy {
         }
     }
 
+    pub fn as_struct(&self) -> Option<CIRStructTy> {
+        match self.const_inner() {
+            CIRTy::Struct(struct_ty) => Some(struct_ty.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_union(&self) -> Option<CIRUnionTy> {
+        match self.const_inner() {
+            CIRTy::Union(union_ty) => Some(union_ty.clone()),
+            _ => None,
+        }
+    }
+
     pub fn is_scalar(&self) -> bool {
         match self {
             // plain types like int, float, bool, char, etc.
@@ -148,6 +162,17 @@ impl CIRTy {
             CIRTy::PlainType(plain_type) => plain_type.is_integer(),
             _ => false,
         }
+    }
+
+    pub fn is_signed_integer(&self) -> bool {
+        match self.const_inner() {
+            CIRTy::PlainType(plain_type) => plain_type.is_integer() && plain_type.is_signed(),
+            _ => false,
+        }
+    }
+
+    pub fn is_integer_or_bool(&self) -> bool {
+        self.is_integer() || self.is_bool()
     }
 
     pub fn is_char(&self) -> bool {
@@ -198,4 +223,16 @@ impl CIRTy {
             other => other,
         }
     }
+}
+
+#[macro_export]
+macro_rules! is_integer_type {
+    ($self:expr, $($patterns:pat_param)|+ $(if $guard:expr)?) => {
+        match $self.const_inner() {
+            CIRTy::PlainType(_plain_type) => {
+                matches!(_plain_type, $($patterns)|+ $(if $guard)?)
+            }
+            _ => false,
+        }
+    };
 }

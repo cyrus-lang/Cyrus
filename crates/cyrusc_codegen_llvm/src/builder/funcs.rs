@@ -108,7 +108,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let cir_ty = fn_ty.params.get(idx).unwrap_or(&rvalue.ty);
             let layout = type_layout(&self.target.info, cir_ty);
 
-            match abi.classify_arg(&layout) {
+            match abi.classify_argument(&layout) {
                 ABIArgInfo::Direct { coerce_to } => {
                     if let Some(str) = coerce_to {
                         // alter to coerced ty
