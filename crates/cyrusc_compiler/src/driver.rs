@@ -87,13 +87,14 @@ pub fn create_compiler_context(
     linker_output_kind: LinkerOutputKind,
 ) -> CodeGenContext {
     let target_info = resolve_target_info_from_opts(&opts);
-    let target_abi = match create_target_abi(&target_info) {
+    let target_abi = match create_target_abi(target_info.clone()) {
         Ok(target_abi) => target_abi,
         Err(err) => {
             tui_error(err);
             exit(1)
         }
     };
+
     let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
     let target = ABITarget::new(target_info, target_abi);
 

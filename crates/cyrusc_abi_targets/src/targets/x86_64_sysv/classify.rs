@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    ABIArgAttrs, ABIArgInfo, ABITargetInfo, RegisterClass, TargetABI,
+    ABIArgAttrs, ABIArgInfo, ABIFunctionInfo, ABITargetInfo, RegisterClass, TargetABI,
     helpers::{NeededRegisters, cir_type_to_abi_type},
     layout::type_layout,
     types::{ABIFloatKind, ABIType},
@@ -27,12 +27,12 @@ use cyrusc_cir::{
 };
 use cyrusc_tast::types::PlainType;
 
-pub struct X86_64SysV<'a> {
-    info: &'a ABITargetInfo,
+pub struct X86_64SysV {
+    info: ABITargetInfo,
 }
 
-impl<'a> X86_64SysV<'a> {
-    pub fn new(info: &'a ABITargetInfo) -> Self {
+impl X86_64SysV {
+    pub fn new(info: ABITargetInfo) -> Self {
         Self { info }
     }
 
@@ -47,7 +47,7 @@ impl<'a> X86_64SysV<'a> {
                 | PlainType::Int64
                 | PlainType::UInt64 => {
                     if offset != 0 {
-                        return cir_type_to_abi_type(self.info, ty);
+                        return cir_type_to_abi_type(&self.info, ty);
                     }
                 }
 
@@ -64,10 +64,10 @@ impl<'a> X86_64SysV<'a> {
                     if offset != 0 {
                         // fallback
                     } else {
-                        let layout = type_layout(self.info, ty);
+                        let layout = type_layout(&self.info, ty);
 
                         if self.bits_contain_no_user_data(source_type, source_offset + layout.size, source_offset + 8) {
-                            return cir_type_to_abi_type(self.info, ty);
+                            return cir_type_to_abi_type(&self.info, ty);
                         }
                     }
                 }
@@ -87,7 +87,7 @@ impl<'a> X86_64SysV<'a> {
             }
             CIRTy::Pointer(_) | CIRTy::FuncType(_) => {
                 if offset == 0 {
-                    return cir_type_to_abi_type(self.info, ty);
+                    return cir_type_to_abi_type(&self.info, ty);
                 }
             }
             CIRTy::Tuple(_) | CIRTy::Struct(_) => {
@@ -97,7 +97,7 @@ impl<'a> X86_64SysV<'a> {
             }
             CIRTy::Array(array_ty) => {
                 let element_ty = &array_ty.ty;
-                let element_layout = type_layout(self.info, element_ty);
+                let element_layout = type_layout(&self.info, element_ty);
                 let element_offset = (offset / element_layout.size) * element_layout.size;
                 return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
             }
@@ -114,7 +114,7 @@ impl<'a> X86_64SysV<'a> {
             }
         }
 
-        let layout = type_layout(self.info, source_type);
+        let layout = type_layout(&self.info, source_type);
         assert!(layout.size != source_offset);
 
         let remaining_bytes = layout.size - source_offset;
@@ -131,7 +131,7 @@ impl<'a> X86_64SysV<'a> {
     fn get_member_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<(CIRTy, u32)> {
         let fields = ty.as_struct().unwrap().fields;
 
-        let layout = type_layout(self.info, ty);
+        let layout = type_layout(&self.info, ty);
 
         if layout.size < offset {
             return None;
@@ -140,7 +140,7 @@ impl<'a> X86_64SysV<'a> {
         let mut current_offset = 0;
 
         for field_ty in fields {
-            let field_layout = type_layout(self.info, &field_ty);
+            let field_layout = type_layout(&self.info, &field_ty);
             let align = field_layout.align;
 
             let padding = (align - (current_offset % align)) % align;
@@ -162,7 +162,7 @@ impl<'a> X86_64SysV<'a> {
 
     fn get_fp_type_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<ABIType> {
         if offset == 0 && ty.is_float() {
-            return Some(cir_type_to_abi_type(self.info, ty));
+            return Some(cir_type_to_abi_type(&self.info, ty));
         }
 
         if ty.is_struct() || ty.is_union() {
@@ -173,7 +173,7 @@ impl<'a> X86_64SysV<'a> {
 
         if let Some(array_ty) = ty.as_array() {
             let element_ty = &array_ty.ty;
-            let element_layout = type_layout(self.info, &element_ty);
+            let element_layout = type_layout(&self.info, &element_ty);
             let element_start = (offset / element_layout.size) * element_layout.size;
             let element_offset = offset - element_start;
             return self.get_fp_type_at_offset(&element_ty, element_offset);
@@ -200,7 +200,7 @@ impl<'a> X86_64SysV<'a> {
             return Some(ABIType::Float(ABIFloatKind::F64));
         }
 
-        let source_layout = type_layout(self.info, source_type);
+        let source_layout = type_layout(&self.info, source_type);
         let source_size = source_layout.size - source_offset;
         let float_size = self.float_size(&float_kind);
 
@@ -257,7 +257,7 @@ impl<'a> X86_64SysV<'a> {
             let mut current_offset = 0;
 
             for field in fields {
-                let field_layout = type_layout(self.info, field);
+                let field_layout = type_layout(&self.info, field);
                 let align = field_layout.align;
 
                 // add padding before field (for structs, unions don't have padding)
@@ -283,7 +283,7 @@ impl<'a> X86_64SysV<'a> {
 
             true
         };
-        let layout = type_layout(self.info, ty);
+        let layout = type_layout(&self.info, ty);
 
         // if the bytes being queried are off the end of the type, there is no user data
         if layout.size <= start {
@@ -292,7 +292,7 @@ impl<'a> X86_64SysV<'a> {
 
         if let Some(array_ty) = ty.as_array() {
             let element_ty = &array_ty.ty;
-            let element_layout = type_layout(self.info, element_ty);
+            let element_layout = type_layout(&self.info, element_ty);
             let element_size = element_layout.size;
 
             for i in 0..array_ty.len {
@@ -331,12 +331,12 @@ impl<'a> X86_64SysV<'a> {
     }
 }
 
-impl<'a> TargetABI for X86_64SysV<'a> {
+impl TargetABI for X86_64SysV {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
     fn classify_argument(&self, ty: &CIRTy, #[allow(unused)] is_named: bool) -> ABIArgInfo {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
-        classify(self.info, ty, 0, &mut lo_class, &mut hi_class);
+        classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
 
         assert!(
             hi_class != RegisterClass::Memory || lo_class == RegisterClass::Memory,
@@ -385,7 +385,7 @@ impl<'a> TargetABI for X86_64SysV<'a> {
                 }
             }
             RegisterClass::Memory => {
-                let abi_type = cir_type_to_abi_type(self.info, &ty);
+                let abi_type = cir_type_to_abi_type(&self.info, &ty);
                 return ABIArgInfo::indirect(abi_type, self.stack_alignment());
             }
             RegisterClass::SSE => {
@@ -420,13 +420,13 @@ impl<'a> TargetABI for X86_64SysV<'a> {
         }
 
         if let Some(result) = &result_type {
-            let abi_type = cir_type_to_abi_type(self.info, ty);
+            let abi_type = cir_type_to_abi_type(&self.info, ty);
 
             if *result == abi_type {
                 return ABIArgInfo::direct();
             }
 
-            if result.as_integer_bits(self.info) == abi_type.as_integer_bits(self.info) {
+            if result.as_integer_bits(&self.info) == abi_type.as_integer_bits(&self.info) {
                 return ABIArgInfo::direct();
             }
 
@@ -438,7 +438,7 @@ impl<'a> TargetABI for X86_64SysV<'a> {
     }
 
     // TODO
-    fn classify_func(&self, ty: &CIRFuncTy) -> ABIArgInfo {
+    fn classify_func(&self, ty: &CIRFuncTy) -> ABIFunctionInfo {
         todo!();
 
         // let mut params_types = Vec::new();

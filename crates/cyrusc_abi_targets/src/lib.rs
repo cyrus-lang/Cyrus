@@ -15,22 +15,25 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{targets::x86_64_sysv::classify::X86_64SysV, types::ABIType};
+use crate::{
+    targets::x86_64_sysv::classify::X86_64SysV,
+    types::{ABIFloatKind, ABIType},
+};
 use cyrusc_cir::types::{CIRFuncTy, CIRTy};
 
 mod helpers;
 pub mod layout;
 mod targets;
-mod types;
+pub mod types;
 
 pub trait TargetABI: Send + Sync {
     fn stack_alignment(&self) -> u32;
-    fn classify_func(&self, fn_ty: &CIRFuncTy) -> ABIArgInfo;
+    fn classify_func(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo;
     fn classify_return(&self, ty: &CIRTy) -> ABIArgInfo;
     fn classify_argument(&self, ty: &CIRTy, is_named: bool) -> ABIArgInfo;
 }
 
-pub fn create_target_abi<'a>(target_info: &'a ABITargetInfo) -> Result<Box<dyn TargetABI + 'a>, String> {
+pub fn create_target_abi<'a>(target_info: ABITargetInfo) -> Result<Box<dyn TargetABI + 'a>, String> {
     match (target_info.arch, target_info.os, target_info.format) {
         (ABITargetArch::X86_64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
             Ok(Box::new(X86_64SysV::new(target_info)))
@@ -47,9 +50,9 @@ pub struct ABIArgInfo {
     /// Parameter index range (for LLVM function arguments)
     pub param_index_start: u16,
     pub param_index_end: u16,
-    
+
     pub kind: ABIArgKind,
-    pub attributes: ABIArgAttrs,
+    pub attrs: ABIArgAttrs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +153,7 @@ pub enum ABITargetObjectFormat {
     Coff,
 }
 
+#[derive(Debug, Clone)]
 pub struct ABITargetInfo {
     pub arch: ABITargetArch,
     pub os: ABITargetOS,
@@ -215,6 +219,25 @@ impl ABITargetInfo {
             }
             (Wasm32, _) => "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-n32:64-S128-ni:1:10:20",
             _ => panic!("Target combination not supported yet!"),
+        }
+    }
+
+    pub fn abi_size_of(&self, abi_type: &ABIType) -> u64 {
+        match abi_type {
+            ABIType::Integer(bits) => (*bits as u64 + 7) / 8,
+            ABIType::Float(kind) => match kind {
+                ABIFloatKind::F16 => 2,
+                ABIFloatKind::F32 => 4,
+                ABIFloatKind::F64 => 8,
+                ABIFloatKind::F128 => 16,
+            },
+            ABIType::Pointer => 8, // 64-bit pointers
+            ABIType::Vector { element_ty, lanes } => self.abi_size_of(element_ty) * (*lanes as u64),
+            ABIType::Array { element_ty, count } => self.abi_size_of(element_ty) * (*count as u64),
+            ABIType::Struct(fields, _) => fields.iter().map(|ty| self.abi_size_of(ty)).sum(),
+            ABIType::Union(fields) => fields.iter().map(|ty| self.abi_size_of(ty)).max().unwrap_or(1),
+            ABIType::TargetIntegerType(target_int) => target_int.size(self).into(),
+            ABIType::Void => 0,
         }
     }
 
@@ -297,7 +320,7 @@ impl ABIArgInfo {
             param_index_start: 0,
             param_index_end: 0,
             kind: ABIArgKind::Direct { coerce_to: None },
-            attributes: ABIArgAttrs::default(),
+            attrs: ABIArgAttrs::default(),
         }
     }
 
@@ -306,7 +329,7 @@ impl ABIArgInfo {
             param_index_start: 0,
             param_index_end: 0,
             kind: ABIArgKind::DirectCoerce { ty },
-            attributes: ABIArgAttrs::default(),
+            attrs: ABIArgAttrs::default(),
         }
     }
 
@@ -315,7 +338,7 @@ impl ABIArgInfo {
             param_index_start: 0,
             param_index_end: 0,
             kind: ABIArgKind::DirectPair { lo, hi },
-            attributes: ABIArgAttrs::default(),
+            attrs: ABIArgAttrs::default(),
         }
     }
 
@@ -324,7 +347,7 @@ impl ABIArgInfo {
             param_index_start: 0,
             param_index_end: 0,
             kind: ABIArgKind::Indirect { ty, alignment },
-            attributes: ABIArgAttrs::default(),
+            attrs: ABIArgAttrs::default(),
         }
     }
 
@@ -333,7 +356,7 @@ impl ABIArgInfo {
             param_index_start: 0,
             param_index_end: 0,
             kind: ABIArgKind::Extend { signed },
-            attributes: ABIArgAttrs::default(),
+            attrs: ABIArgAttrs::default(),
         }
     }
 
@@ -342,12 +365,12 @@ impl ABIArgInfo {
             param_index_start: 0,
             param_index_end: 0,
             kind: ABIArgKind::Ignore,
-            attributes: ABIArgAttrs::default(),
+            attrs: ABIArgAttrs::default(),
         }
     }
 
     pub fn with_attrs(mut self, attrs: ABIArgAttrs) -> Self {
-        self.attributes = attrs;
+        self.attrs = attrs;
         self
     }
 
@@ -366,6 +389,10 @@ impl ABIArgInfo {
 
     pub fn is_indirect(&self) -> bool {
         matches!(self.kind, ABIArgKind::Indirect { .. })
+    }
+
+    pub fn is_indirect_by_val(&self) -> bool {
+        self.is_indirect() && self.attrs.by_val
     }
 
     pub fn is_ignore(&self) -> bool {

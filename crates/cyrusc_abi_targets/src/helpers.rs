@@ -73,7 +73,7 @@ pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> AB
                 .iter()
                 .map(|field_ty| cir_type_to_abi_type(info, field_ty))
                 .collect();
-            ABIType::Struct(fields)
+            ABIType::Struct(fields, struct_ty.is_packed)
         }
         CIRTy::Union(union_ty) => {
             let fields = union_ty
@@ -90,7 +90,7 @@ pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> AB
                 .iter()
                 .map(|elem_ty| cir_type_to_abi_type(info, elem_ty))
                 .collect();
-            ABIType::Struct(elements)
+            ABIType::Struct(elements, false)
         }
         CIRTy::Array(array_ty) => {
             let element_ty = Box::new(cir_type_to_abi_type(info, &array_ty.ty));
@@ -103,7 +103,7 @@ pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> AB
             ABIType::Struct(vec![
                 ABIType::Pointer, // data pointer
                 ABIType::Pointer, // vtable pointer
-            ])
+            ], false)
         }
         CIRTy::Enum(_) => {
             // Enums are typically represented as integers in ABIs

@@ -27,7 +27,7 @@ pub enum ABIType {
     Pointer,
     Vector { element_ty: Box<ABIType>, lanes: u32 },
     Array { element_ty: Box<ABIType>, count: usize },
-    Struct(Vec<ABIType>),
+    Struct(Vec<ABIType>, bool),
     Union(Vec<ABIType>),
     TargetIntegerType(TargetIntegerType),
     // Enum(...) // TODO
@@ -61,7 +61,7 @@ impl Clone for ABIType {
                 element_ty: element_ty.clone(),
                 count: *count,
             },
-            ABIType::Struct(types) => ABIType::Struct(types.clone()),
+            ABIType::Struct(types, is_packed) => ABIType::Struct(types.clone(), *is_packed),
             ABIType::Union(types) => ABIType::Union(types.clone()),
             ABIType::TargetIntegerType(target_integer_type) => ABIType::TargetIntegerType(target_integer_type.clone()),
         }

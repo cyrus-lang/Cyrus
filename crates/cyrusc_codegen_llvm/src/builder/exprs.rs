@@ -26,7 +26,6 @@ use cyrusc_abi::{
     abi_ast_defs::Linkage,
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
-use cyrusc_abi_targets::classify_func;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_cir::{types::*, *};
 use cyrusc_tast::types::PlainType;
@@ -1521,7 +1520,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         ret_ty: &CIRTy,
         fn_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
-        let abi_func_info = classify_func(self.target, fn_ty);
+        let abi_func_info = self.target.target_abi.classify_func(fn_ty);
         let args = self.emit_func_args(args, fn_ty);
         self.emit_direct_func_call_args_attributes(fn_value, &abi_func_info);
 
@@ -1541,7 +1540,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let cir_fn_ty = rvalue.ty.as_func().unwrap();
         let fn_ty = self.emit_func_ty(cir_fn_ty.clone());
 
-        let abi_func_info = classify_func(self.target, &cir_fn_ty);
+        let abi_func_info = self.target.target_abi.classify_func(&cir_fn_ty);
         let args = self.emit_func_args(&func_call.args, &cir_fn_ty);
 
         let fn_ptr = rvalue.as_basic_value().into_pointer_value();
