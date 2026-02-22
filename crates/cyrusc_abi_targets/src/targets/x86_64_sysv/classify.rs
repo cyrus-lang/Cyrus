@@ -19,7 +19,7 @@ use crate::{
     ABIArgAttrs, ABIArgInfo, ABITargetInfo, RegisterClass, TargetABI,
     helpers::{NeededRegisters, cir_type_to_abi_type},
     layout::type_layout,
-    types::{ABIFloatKind, ABIType},
+    types::ABIType,
 };
 use cyrusc_cir::{
     is_integer_type,
@@ -36,16 +36,135 @@ impl<'a> X86_64SysV<'a> {
         Self { info }
     }
 
-    // FIXME
-    fn get_int_type_at_offset(&self, ty: &CIRTy, offset: u32) -> ABIType {
-        // For now, just return i64 for any integer at offset
-        // In reality, you'd extract the actual type from the struct/union
-        ABIType::Integer(64)
+    fn get_int_type_at_offset(&self, ty: &CIRTy, offset: u32, source_type: &CIRTy, source_offset: u32) -> ABIType {
+        match ty {
+            CIRTy::PlainType(plain_type) => match plain_type {
+                PlainType::UIntPtr
+                | PlainType::IntPtr
+                | PlainType::ISize
+                | PlainType::USize
+                | PlainType::Int64
+                | PlainType::UInt64 => {
+                    if offset != 0 {
+                        return cir_type_to_abi_type(self.info, ty);
+                    }
+                }
+
+                PlainType::Bool
+                | PlainType::Char
+                | PlainType::UInt8
+                | PlainType::Int8
+                | PlainType::UInt16
+                | PlainType::Int16
+                | PlainType::UInt32
+                | PlainType::Int32
+                | PlainType::UInt
+                | PlainType::Int => {
+                    if offset != 0 {
+                        // fallback
+                    } else {
+                        let layout = type_layout(self.info, ty);
+
+                        if self.bits_contain_no_user_data(source_type, source_offset + layout.size, source_offset + 8) {
+                            return cir_type_to_abi_type(self.info, ty);
+                        }
+                    }
+                }
+
+                PlainType::UInt128 | PlainType::Int128 => {
+                    // fallback
+                }
+
+                PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128 => {
+                    // fallback
+                }
+
+                PlainType::Null | PlainType::Void => unreachable!(),
+            },
+            CIRTy::Const(ty) => {
+                return self.get_int_type_at_offset(ty, offset, source_type, source_offset);
+            }
+            CIRTy::Pointer(_) | CIRTy::FuncType(_) => {
+                if offset == 0 {
+                    return cir_type_to_abi_type(self.info, ty);
+                }
+            }
+            CIRTy::Tuple(_) | CIRTy::Struct(_) => {
+                if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
+                    return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
+                }
+            }
+            CIRTy::Array(array_ty) => {
+                let element_ty = &array_ty.ty;
+                let element_layout = type_layout(self.info, element_ty);
+                let element_offset = (offset / element_layout.size) * element_layout.size;
+                return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
+            }
+            CIRTy::Dynamic(_) => {
+                if offset < 8 {
+                    return ABIType::Pointer; // data_ptr (first 8 bytes)
+                }
+                if offset < 16 {
+                    return ABIType::Pointer; // vtable_ptr (next 8 bytes)
+                }
+            }
+            CIRTy::Union(_) | CIRTy::Enum(_) => {
+                // fallback
+            }
+        }
+
+        let layout = type_layout(self.info, source_type);
+        assert!(layout.size != source_offset);
+
+        let remaining_bytes = layout.size - source_offset;
+
+        if remaining_bytes > 8 {
+            // fits in eightbyte register
+            ABIType::Integer(64)
+        } else {
+            // span across multiple registers
+            ABIType::Integer((layout.size - source_offset) * 8)
+        }
     }
 
-    // FIXME
+    fn get_member_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<(CIRTy, u32)> {
+        let fields = ty.as_struct().unwrap().fields;
+
+        let layout = type_layout(self.info, ty);
+
+        if layout.size < offset {
+            return None;
+        }
+
+        let mut current_offset = 0;
+
+        for field_ty in fields {
+            let field_layout = type_layout(self.info, &field_ty);
+            let align = field_layout.align;
+
+            let padding = (align - (current_offset % align)) % align;
+            current_offset += padding;
+
+            if current_offset > offset {
+                break;
+            }
+
+            if current_offset <= offset && offset < current_offset + field_layout.size {
+                return Some((field_ty, current_offset));
+            }
+
+            current_offset += field_layout.size;
+        }
+
+        None
+    }
+
     fn get_sse_type_at_offset(&self, ty: &CIRTy, offset: u32) -> ABIType {
-        ABIType::Float(ABIFloatKind::F64)
+        todo!();
+    }
+
+    fn bits_contain_no_user_data(&self, source_type: &CIRTy, start: u32, end: u32) -> bool {
+        todo!();
     }
 }
 
@@ -76,7 +195,7 @@ impl<'a> TargetABI for X86_64SysV<'a> {
             }
             RegisterClass::Integer => {
                 needed_regs.int_regs += 1;
-                result_type = Some(self.get_int_type_at_offset(ty, 0));
+                result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
 
                 if hi_class == RegisterClass::NoClass && ty.is_integer_or_bool() {
                     let attrs: ABIArgAttrs;
@@ -119,7 +238,7 @@ impl<'a> TargetABI for X86_64SysV<'a> {
             RegisterClass::NoClass => {}
             RegisterClass::Integer => {
                 needed_regs.int_regs += 1;
-                high_part = Some(self.get_int_type_at_offset(ty, 8));
+                high_part = Some(self.get_int_type_at_offset(ty, 8, ty, 8));
 
                 assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
             }
