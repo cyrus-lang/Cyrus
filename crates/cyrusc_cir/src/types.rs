@@ -92,7 +92,7 @@ impl CIRTy {
         }
     }
 
-    pub fn as_array_ty(&self) -> Option<CIRArrayTy> {
+    pub fn as_array(&self) -> Option<CIRArrayTy> {
         match self.const_inner() {
             CIRTy::Array(arr_ty) => Some(arr_ty.clone()),
             _ => None,
@@ -157,6 +157,13 @@ impl CIRTy {
         }
     }
 
+    pub fn is_float(&self) -> bool {
+        match self.const_inner() {
+            CIRTy::PlainType(plain_type) => plain_type.is_float(),
+            _ => false,
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
         match self.const_inner() {
             CIRTy::PlainType(plain_type) => plain_type.is_integer(),
@@ -185,6 +192,13 @@ impl CIRTy {
     pub fn is_enum(&self) -> bool {
         match self.const_inner() {
             CIRTy::Enum(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_struct(&self) -> bool {
+        match self {
+            CIRTy::Struct(_) => true,
             _ => false,
         }
     }

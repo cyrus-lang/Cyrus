@@ -19,7 +19,7 @@ use crate::{
     ABIArgAttrs, ABIArgInfo, ABITargetInfo, RegisterClass, TargetABI,
     helpers::{NeededRegisters, cir_type_to_abi_type},
     layout::type_layout,
-    types::ABIType,
+    types::{ABIFloatKind, ABIType},
 };
 use cyrusc_cir::{
     is_integer_type,
@@ -36,6 +36,7 @@ impl<'a> X86_64SysV<'a> {
         Self { info }
     }
 
+    // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2486
     fn get_int_type_at_offset(&self, ty: &CIRTy, offset: u32, source_type: &CIRTy, source_offset: u32) -> ABIType {
         match ty {
             CIRTy::PlainType(plain_type) => match plain_type {
@@ -159,17 +160,179 @@ impl<'a> X86_64SysV<'a> {
         None
     }
 
-    fn get_sse_type_at_offset(&self, ty: &CIRTy, offset: u32) -> ABIType {
-        todo!();
+    fn get_fp_type_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<ABIType> {
+        if offset == 0 && ty.is_float() {
+            return Some(cir_type_to_abi_type(self.info, ty));
+        }
+
+        if ty.is_struct() || ty.is_union() {
+            if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
+                return self.get_fp_type_at_offset(&field_ty, field_offset);
+            }
+        }
+
+        if let Some(array_ty) = ty.as_array() {
+            let element_ty = &array_ty.ty;
+            let element_layout = type_layout(self.info, &element_ty);
+            let element_start = (offset / element_layout.size) * element_layout.size;
+            let element_offset = offset - element_start;
+            return self.get_fp_type_at_offset(&element_ty, element_offset);
+        }
+
+        None
     }
 
-    fn bits_contain_no_user_data(&self, source_type: &CIRTy, start: u32, end: u32) -> bool {
-        todo!();
+    fn get_sse_type_at_offset(
+        &self,
+        ty: &CIRTy,
+        offset: u32,
+        source_type: &CIRTy,
+        source_offset: u32,
+    ) -> Option<ABIType> {
+        let abi_float_type = self.get_fp_type_at_offset(ty, offset)?;
+
+        let float_kind = match abi_float_type {
+            ABIType::Float(kind) => kind,
+            _ => return Some(ABIType::Float(ABIFloatKind::F64)), // fallback
+        };
+
+        if float_kind == ABIFloatKind::F64 {
+            return Some(ABIType::Float(ABIFloatKind::F64));
+        }
+
+        let source_layout = type_layout(self.info, source_type);
+        let source_size = source_layout.size - source_offset;
+        let float_size = self.float_size(&float_kind);
+
+        let mut float_type2 = if source_size > float_size {
+            self.get_fp_type_at_offset(ty, offset + float_size)
+        } else {
+            None
+        };
+
+        if float_type2.is_none() {
+            if float_kind == ABIFloatKind::F16 && source_size > 4 {
+                float_type2 = self.get_fp_type_at_offset(ty, offset + 4);
+            }
+
+            if float_type2.is_none() {
+                return Some(ABIType::Float(float_kind));
+            }
+        }
+
+        let float_kind2 = match float_type2.unwrap() {
+            ABIType::Float(kind) => kind,
+            _ => return Some(ABIType::Float(ABIFloatKind::F64)),
+        };
+
+        if float_kind == ABIFloatKind::F32 && float_kind2 == ABIFloatKind::F32 {
+            return Some(ABIType::Vector {
+                element_ty: Box::new(ABIType::Float(ABIFloatKind::F32)),
+                lanes: 2,
+            });
+        }
+
+        if float_kind == ABIFloatKind::F16 && float_kind2 == ABIFloatKind::F16 {
+            let has_following_float = source_size > 4 && self.get_fp_type_at_offset(ty, offset + 4).is_some();
+
+            return Some(ABIType::Vector {
+                element_ty: Box::new(ABIType::Float(ABIFloatKind::F16)),
+                lanes: if has_following_float { 4 } else { 2 },
+            });
+        }
+
+        if float_kind == ABIFloatKind::F16 || float_kind2 == ABIFloatKind::F16 {
+            return Some(ABIType::Vector {
+                element_ty: Box::new(ABIType::Float(ABIFloatKind::F16)),
+                lanes: 4,
+            });
+        }
+
+        Some(ABIType::Float(ABIFloatKind::F64))
+    }
+
+    // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2321
+    fn bits_contain_no_user_data(&self, ty: &CIRTy, start: u32, end: u32) -> bool {
+        let check_for_struct_or_union = |fields: &Vec<CIRTy>, is_union: bool| {
+            let mut current_offset = 0;
+
+            for field in fields {
+                let field_layout = type_layout(self.info, field);
+                let align = field_layout.align;
+
+                // add padding before field (for structs, unions don't have padding)
+                if !is_union {
+                    let padding = (align - (current_offset % align)) % align;
+                    current_offset += padding;
+                }
+
+                let field_offset = current_offset;
+
+                if field_offset >= end {
+                    break;
+                }
+
+                let field_start = if field_offset < start { start - field_offset } else { 0 };
+
+                if !self.bits_contain_no_user_data(field, field_start, end - field_offset) {
+                    return false;
+                }
+
+                current_offset += field_layout.size;
+            }
+
+            true
+        };
+        let layout = type_layout(self.info, ty);
+
+        // if the bytes being queried are off the end of the type, there is no user data
+        if layout.size <= start {
+            return true;
+        }
+
+        if let Some(array_ty) = ty.as_array() {
+            let element_ty = &array_ty.ty;
+            let element_layout = type_layout(self.info, element_ty);
+            let element_size = element_layout.size;
+
+            for i in 0..array_ty.len {
+                let offset = (i as u32) * element_size;
+
+                // if the field is after the span we care about, then we're done
+                if offset >= end {
+                    break;
+                }
+
+                let element_start = if offset < start { start - offset } else { 0 };
+
+                if !self.bits_contain_no_user_data(element_ty, element_start, end - offset) {
+                    return false;
+                }
+            }
+
+            // no overlap found
+            true
+        } else if let Some(struct_ty) = ty.as_struct() {
+            check_for_struct_or_union(&struct_ty.fields, false)
+        } else if let Some(union_ty) = ty.as_union() {
+            check_for_struct_or_union(&union_ty.fields, true)
+        } else {
+            false
+        }
+    }
+
+    pub fn float_size(&self, float_kind: &ABIFloatKind) -> u32 {
+        match float_kind {
+            ABIFloatKind::F16 => 2,
+            ABIFloatKind::F32 => 4,
+            ABIFloatKind::F64 => 8,
+            ABIFloatKind::F128 => 16,
+        }
     }
 }
 
 impl<'a> TargetABI for X86_64SysV<'a> {
-    // https://github.com/llvm/llvm-project/blob/main/clang/lib/CodeGen/Targets/X86.cpp
+    // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
     fn classify_argument(&self, ty: &CIRTy, #[allow(unused)] is_named: bool) -> ABIArgInfo {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
@@ -227,7 +390,7 @@ impl<'a> TargetABI for X86_64SysV<'a> {
             }
             RegisterClass::SSE => {
                 needed_regs.sse_regs += 1;
-                result_type = Some(self.get_sse_type_at_offset(ty, 0));
+                result_type = Some(self.get_sse_type_at_offset(ty, 0, ty, 0).unwrap());
             }
             RegisterClass::SSEUP => unreachable!(),
         }
@@ -244,7 +407,7 @@ impl<'a> TargetABI for X86_64SysV<'a> {
             }
             RegisterClass::SSE => {
                 needed_regs.sse_regs += 1;
-                high_part = Some(self.get_sse_type_at_offset(ty, 8));
+                high_part = Some(self.get_sse_type_at_offset(ty, 8, ty, 8).unwrap());
                 assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
             }
             RegisterClass::SSEUP => {

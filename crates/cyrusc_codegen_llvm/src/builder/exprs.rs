@@ -182,8 +182,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let index_lvalue = self.emit_expr(&array_index.index);
         let index_rvalue = self.load_rvalue(index_lvalue);
 
-        if lvalue.ty.as_array_ty().is_some() {
-            let arr_ty = lvalue.ty.as_array_ty().unwrap();
+        if lvalue.ty.as_array().is_some() {
+            let arr_ty = lvalue.ty.as_array().unwrap();
             let basic_value = lvalue.as_basic_value();
 
             if basic_value.is_pointer_value() {
@@ -343,7 +343,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
-        let cir_arr_ty = array.ty.as_array_ty().expect("Expected array type");
+        let cir_arr_ty = array.ty.as_array().expect("Expected array type");
         let element_ty = cir_arr_ty.ty.clone();
 
         let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().expect("Expected ArrayType");
