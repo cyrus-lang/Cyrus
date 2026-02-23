@@ -20,7 +20,7 @@ use crate::{
     types::SemanticType,
 };
 use cyrusc_abi::{
-    abi_ast_defs::Visibility,
+    ast_defs::Visibility,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_ast::{Ident, SelfModifierKind};

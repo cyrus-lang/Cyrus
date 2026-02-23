@@ -16,112 +16,32 @@
  */
 
 use crate::{
-    targets::x86_64_sysv::classify::X86_64SysV,
-    types::{ABIFloatKind, ABIType},
+    abi::{
+        args::{ABIArgInfo, ABIFunctionInfo, ABIRetInfo},
+        helpers::Registers,
+        targets::x86_64::classify::X86_64,
+        types::{ABIFloatKind, ABIType},
+    },
+    cir::types::{CIRFuncTy, CIRTy},
 };
-use cyrusc_cir::types::{CIRFuncTy, CIRTy};
-
-mod helpers;
-pub mod layout;
-mod targets;
-pub mod types;
 
 pub trait TargetABI: Send + Sync {
     fn stack_alignment(&self) -> u32;
-    fn classify_func(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo;
-    fn classify_return(&self, ty: &CIRTy) -> ABIArgInfo;
-    fn classify_argument(&self, ty: &CIRTy, is_named: bool) -> ABIArgInfo;
+    fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo;
+    fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers);
+    fn classify_func(&self, fn_ty: &CIRFuncTy) -> Result<ABIFunctionInfo, String>;
 }
 
 pub fn create_target_abi<'a>(target_info: ABITargetInfo) -> Result<Box<dyn TargetABI + 'a>, String> {
     match (target_info.arch, target_info.os, target_info.format) {
         (ABITargetArch::X86_64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
-            Ok(Box::new(X86_64SysV::new(target_info)))
+            Ok(Box::new(X86_64::new(target_info)))
         }
         (ABITargetArch::Aarch64, ABITargetOS::Linux, ABITargetObjectFormat::Elf) => {
             unimplemented!("AArch64 Linux ABI not implemented yet")
         }
         _ => Err(format!("Unsupported target: {}.", target_info.triple())),
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ABIArgInfo {
-    /// Parameter index range (for LLVM function arguments)
-    pub param_index_start: u16,
-    pub param_index_end: u16,
-
-    pub kind: ABIArgKind,
-    pub attrs: ABIArgAttrs,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ABIArgAttrs {
-    /// Passed in register
-    pub by_reg: bool,
-    /// Zero extend (for bool/small ints)
-    pub zero_ext: bool,
-    /// Sign extend
-    pub sign_ext: bool,
-    /// Realign argument
-    pub realign: bool,
-    /// Pass by value (indirect)
-    pub by_val: bool,
-}
-
-#[derive(Debug, Clone)]
-pub enum ABIArgKind {
-    /// Direct register passing (maybe coerced)
-    Direct { coerce_to: Option<ABIType> },
-
-    /// Passed in a pair of registers (lo/hi)
-    DirectPair { lo: ABIType, hi: ABIType },
-
-    /// Coerced to a different type and passed directly
-    DirectCoerce { ty: ABIType },
-
-    /// Expanded into multiple arguments
-    Expand {
-        /// How to expand
-        kind: ExpandKind,
-    },
-
-    /// Integer extension
-    Extend { signed: bool },
-
-    /// Indirect passing (by pointer)
-    Indirect {
-        /// Required alignment
-        alignment: u32,
-        /// Type to pass indirectly
-        ty: ABIType,
-    },
-
-    /// Ignored argument
-    Ignore,
-}
-
-#[derive(Debug, Clone)]
-pub enum ExpandKind {
-    /// Simple expansion (default)
-    Simple,
-
-    /// Coerced expansion with offset info
-    Coerced {
-        offset_hi: u8,
-        packed: bool,
-        lo: ABIType,
-        hi: ABIType,
-    },
-
-    /// Struct expansion with field count
-    Struct { field_count: u8 },
-}
-
-pub struct ABITypeLayout {
-    pub size: u32,
-    pub align: u32,
-    pub is_aggregate: bool,
 }
 
 pub struct ABITarget {
@@ -158,23 +78,6 @@ pub struct ABITargetInfo {
     pub arch: ABITargetArch,
     pub os: ABITargetOS,
     pub format: ABITargetObjectFormat,
-}
-
-pub struct ABIFunctionInfo {
-    pub params_types: Vec<CIRTy>,
-    pub params_infos: Vec<ABIArgInfo>,
-    pub ret_info: ABIRetInfo,
-}
-
-pub struct ABIRetInfo {
-    pub ty: ABIType,
-    pub kind: ABIRetInfoKind,
-}
-
-pub enum ABIRetInfoKind {
-    Direct { coerce_to: Option<ABIType> },
-    Indirect { sret: bool },
-    Ignore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -274,24 +177,6 @@ impl ABITargetInfo {
     }
 }
 
-impl ABITypeLayout {
-    pub fn normal(size: u32, align: u32) -> Self {
-        Self {
-            size,
-            align,
-            is_aggregate: false,
-        }
-    }
-
-    pub fn aggregate(size: u32, align: u32) -> Self {
-        Self {
-            size,
-            align,
-            is_aggregate: true,
-        }
-    }
-}
-
 impl ABITarget {
     pub fn new(info: ABITargetInfo, target_abi: Box<dyn TargetABI>) -> Self {
         Self {
@@ -299,103 +184,5 @@ impl ABITarget {
             info,
             target_abi,
         }
-    }
-}
-
-impl Default for ABIArgAttrs {
-    fn default() -> Self {
-        Self {
-            by_reg: false,
-            zero_ext: false,
-            sign_ext: false,
-            realign: false,
-            by_val: false,
-        }
-    }
-}
-
-impl ABIArgInfo {
-    pub fn direct() -> Self {
-        Self {
-            param_index_start: 0,
-            param_index_end: 0,
-            kind: ABIArgKind::Direct { coerce_to: None },
-            attrs: ABIArgAttrs::default(),
-        }
-    }
-
-    pub fn direct_coerce(ty: ABIType) -> Self {
-        Self {
-            param_index_start: 0,
-            param_index_end: 0,
-            kind: ABIArgKind::DirectCoerce { ty },
-            attrs: ABIArgAttrs::default(),
-        }
-    }
-
-    pub fn direct_pair(lo: ABIType, hi: ABIType) -> Self {
-        Self {
-            param_index_start: 0,
-            param_index_end: 0,
-            kind: ABIArgKind::DirectPair { lo, hi },
-            attrs: ABIArgAttrs::default(),
-        }
-    }
-
-    pub fn indirect(ty: ABIType, alignment: u32) -> Self {
-        Self {
-            param_index_start: 0,
-            param_index_end: 0,
-            kind: ABIArgKind::Indirect { ty, alignment },
-            attrs: ABIArgAttrs::default(),
-        }
-    }
-
-    pub fn extend(signed: bool) -> Self {
-        Self {
-            param_index_start: 0,
-            param_index_end: 0,
-            kind: ABIArgKind::Extend { signed },
-            attrs: ABIArgAttrs::default(),
-        }
-    }
-
-    pub fn ignore() -> Self {
-        Self {
-            param_index_start: 0,
-            param_index_end: 0,
-            kind: ABIArgKind::Ignore,
-            attrs: ABIArgAttrs::default(),
-        }
-    }
-
-    pub fn with_attrs(mut self, attrs: ABIArgAttrs) -> Self {
-        self.attrs = attrs;
-        self
-    }
-
-    pub fn with_indices(mut self, start: u16, end: u16) -> Self {
-        self.param_index_start = start;
-        self.param_index_end = end;
-        self
-    }
-
-    pub fn is_direct(&self) -> bool {
-        matches!(
-            self.kind,
-            ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::DirectPair { .. }
-        )
-    }
-
-    pub fn is_indirect(&self) -> bool {
-        matches!(self.kind, ABIArgKind::Indirect { .. })
-    }
-
-    pub fn is_indirect_by_val(&self) -> bool {
-        self.is_indirect() && self.attrs.by_val
-    }
-
-    pub fn is_ignore(&self) -> bool {
-        matches!(self.kind, ABIArgKind::Ignore)
     }
 }

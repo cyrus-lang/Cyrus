@@ -25,9 +25,9 @@ CARGO_TEST  = cargo test -j$(JOBS) $(CARGO_PROFILE_FLAG)
 COMMON_FLAGS = --disable-warnings $(ARGS)
 
 .PHONY: run build test testsuite \
-        cir sema resolver parser emit-llvm
+        cir_walk sema resolver parser emit-llvm
 
-cir sema resolver parser:
+cir_walk sema resolver parser:
 	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
 emit-llvm:

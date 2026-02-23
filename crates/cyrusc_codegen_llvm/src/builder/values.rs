@@ -14,8 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_cir::{CIRExpr, types::CIRTy};
+use cyrusc_internal::cir::{cir::CIRExpr, types::CIRTy};
 use inkwell::{
     types::BasicTypeEnum,
     values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
@@ -51,13 +52,6 @@ impl<'a> InternalValue<'a> {
         match &self.kind {
             InternalValueKind::FuncValue(fn_value) => Some(fn_value),
             _ => None,
-        }
-    }
-
-    pub fn is_lvalue_address(&self) -> bool {
-        match &self.kind {
-            InternalValueKind::LValue(_) => true,
-            _ => false
         }
     }
 }

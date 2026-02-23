@@ -21,7 +21,6 @@ use crate::{
 };
 use cyrusc_abi::mangler::make_module_name_from_filepath;
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
     context::CodeGenContext,
@@ -30,6 +29,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_internal::cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{

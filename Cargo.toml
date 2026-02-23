@@ -9,7 +9,6 @@ members = [
     "crates/cyrusc_cli",
     "crates/cyrusc_sema",
     "crates/cyrusc_resolver",
-    "crates/cyrusc_cir",
     "crates/cyrusc_fs_utils",
     "crates/cyrusc_strescape",
     "crates/cyrusc_tui_utils",
@@ -20,7 +19,8 @@ members = [
     "crates/cyrusc_abi",
     "crates/cyrusc_asan_wrapper",
     "crates/cyrusc_tokens",
-    "crates/cyrusc_vtable_registry", "crates/cyrusc_abi_targets",
+    "crates/cyrusc_vtable_registry",
+    "crates/cyrusc_internal",
 ]
 
 default-members = ["crates/cyrusc_cli"]

@@ -442,6 +442,10 @@ impl PlainType {
         }
     }
 
+    pub fn is_void(&self) -> bool {
+        matches!(self, PlainType::Void)
+    }
+
     pub fn is_bool(&self) -> bool {
         matches!(self, PlainType::Bool)
     }

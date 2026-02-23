@@ -19,13 +19,13 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
-use cyrusc_abi_targets::{
-    ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi,
-};
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::{CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel};
 use cyrusc_diagcentral::{display_single_custom_diag, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
+use cyrusc_internal::{
+    abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
+    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel},
+};
 use cyrusc_lexer::Lexer;
 use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
@@ -57,6 +57,9 @@ pub struct CodeGenContextBundle {
     pub build_dir: PathBuf,
     pub program_trees: Vec<Box<CIRProgramTree>>,
     pub monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    pub target: ABITarget,
+    pub llvm_target: InkwellTarget,
+    pub llvm_target_triple: TargetTriple,
 }
 
 pub struct CodeGenSemanticBundle {
@@ -81,23 +84,16 @@ fn create_compiler_context_target(target_info: &ABITargetInfo) -> (InkwellTarget
     }
 }
 
+// REVIEW: Consider to refactor this to get reference to CodeGenContextBundle
+// it's much cleaner than getting it's fields one by one!
 pub fn create_compiler_context(
     opts: CodeGenOptions,
     file_path: &Option<PathBuf>,
     linker_output_kind: LinkerOutputKind,
+    target: ABITarget,
+    llvm_target: InkwellTarget,
+    llvm_target_triple: TargetTriple,
 ) -> CodeGenContext {
-    let target_info = resolve_target_info_from_opts(&opts);
-    let target_abi = match create_target_abi(target_info.clone()) {
-        Ok(target_abi) => target_abi,
-        Err(err) => {
-            tui_error(err);
-            exit(1)
-        }
-    };
-
-    let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
-    let target = ABITarget::new(target_info, target_abi);
-
     let base_path = opts.base_path.clone().map(|path| Path::new(&path).to_path_buf());
 
     let entry_module_file_path = get_entry_module_file_path(&opts, &base_path, &file_path);
@@ -244,6 +240,20 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
 
     let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
 
+    // target
+
+    let target_info = resolve_target_info_from_opts(&opts);
+    let target_abi = match create_target_abi(target_info.clone()) {
+        Ok(target_abi) => target_abi,
+        Err(err) => {
+            tui_error(err);
+            exit(1)
+        }
+    };
+
+    let (llvm_target, llvm_target_triple) = create_compiler_context_target(&target_info);
+    let target = ABITarget::new(target_info, target_abi);
+
     let cir_program_trees = walk_program_trees_in_parallel(
         opts.jobs,
         boxed_program_trees,
@@ -251,6 +261,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         cir_monomorph_registry.clone(),
         codegen_semantic_bundle.mapping_ctx_arena.clone(),
         &codegen_semantic_bundle.vtable_registries,
+        &target,
     );
 
     CodeGenContextBundle {
@@ -259,6 +270,9 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         monomorph_registry: cir_monomorph_registry,
         entry_file: codegen_semantic_bundle.entry_file,
         build_dir: codegen_semantic_bundle.build_dir,
+        llvm_target_triple,
+        llvm_target,
+        target,
     }
 }
 

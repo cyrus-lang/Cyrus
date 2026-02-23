@@ -81,6 +81,12 @@ define_call_convs! {
     System => "system",
 }
 
+impl Default for CallConv {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportKind {
     DllImport,

@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{ABITargetInfo, targets::x86_64_sysv::types::X86_64TargetDependentType};
+use crate::abi::{target::ABITargetInfo, targets::x86_64::types::X86_64TargetDependentType};
 use std::fmt::Debug;
 
 /// Target-agnostic ABI type representation

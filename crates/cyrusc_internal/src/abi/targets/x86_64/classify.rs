@@ -15,25 +15,114 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-    ABIArgAttrs, ABIArgInfo, ABIFunctionInfo, ABITargetInfo, RegisterClass, TargetABI,
-    helpers::{NeededRegisters, cir_type_to_abi_type},
-    layout::type_layout,
-    types::{ABIFloatKind, ABIType},
-};
-use cyrusc_cir::{
-    is_integer_type,
-    types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTy},
-};
+use cyrusc_abi::ast_defs::CallConv;
 use cyrusc_tast::types::PlainType;
 
-pub struct X86_64SysV {
+use crate::{
+    abi::{
+        args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
+        helpers::{Registers, cir_type_to_abi_type, is_cir_type_abi_aggregate},
+        layout::type_layout,
+        target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
+        types::{ABIFloatKind, ABIType},
+    },
+    cir::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTy},
+    is_integer_type,
+};
+
+pub struct X86_64 {
     info: ABITargetInfo,
 }
 
-impl X86_64SysV {
+impl X86_64 {
     pub fn new(info: ABITargetInfo) -> Self {
         Self { info }
+    }
+
+    fn classify_parameter(&self, ty: &CIRTy, available_regs: &mut Registers, is_named: bool) -> ABIArgInfo {
+        let (abi_arg_info, needed_regs) = self.classify_argument(ty, available_regs.int_regs, is_named);
+
+        if try_use_registers(available_regs, &needed_regs) {
+            abi_arg_info
+        } else {
+            self.abi_arg_info_indirect_result(ty, available_regs.int_regs)
+        }
+    }
+
+    fn abi_arg_info_indirect_result(&self, ty: &CIRTy, free_int_regs: u32) -> ABIArgInfo {
+        // if this is a scalar LLVM value then assume LLVM will pass it in the right place naturally
+        if !is_cir_type_abi_aggregate(ty) {
+            if ty.is_integer_or_bool() {
+                let abi_ty = cir_type_to_abi_type(&self.info, ty);
+                let is_signed = ty.is_signed_integer();
+
+                return ABIArgInfo {
+                    kind: ABIArgKind::DirectCoerce { ty: abi_ty },
+                    attrs: ABIArgAttrs {
+                        zero_ext: !is_signed,
+                        sign_ext: is_signed,
+                        ..Default::default()
+                    },
+                    param_index_start: 0,
+                    param_index_end: 0,
+                };
+            }
+            // No change, just put it on the stack
+            return ABIArgInfo::direct();
+        }
+
+        // byval alignment
+        let layout = type_layout(&self.info, ty);
+        let align = layout.align;
+        let size = layout.size;
+
+        // pass as arguments if there are no more free int regs
+        if free_int_regs == 0 {
+            if align <= 8 && size <= 8 {
+                return ABIArgInfo {
+                    kind: ABIArgKind::DirectCoerce {
+                        ty: ABIType::Integer(64),
+                    },
+                    attrs: ABIArgAttrs::default(),
+                    param_index_start: 0,
+                    param_index_end: 0,
+                };
+            }
+        }
+
+        if align < 8 {
+            // realigned indirect (with specified alignment)
+            let abi_type = cir_type_to_abi_type(&self.info, ty);
+
+            ABIArgInfo {
+                kind: ABIArgKind::Indirect {
+                    alignment: 8,
+                    ty: abi_type,
+                },
+                attrs: ABIArgAttrs {
+                    by_val: true,
+                    ..Default::default()
+                },
+                param_index_start: 0,
+                param_index_end: 0,
+            }
+        } else {
+            // regular byval indirect
+            let abi_type = cir_type_to_abi_type(&self.info, ty);
+
+            ABIArgInfo {
+                kind: ABIArgKind::Indirect {
+                    alignment: align,
+                    ty: abi_type,
+                },
+                attrs: ABIArgAttrs {
+                    by_val: true,
+                    ..Default::default()
+                },
+                param_index_start: 0,
+                param_index_end: 0,
+            }
+        }
     }
 
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2486
@@ -167,7 +256,8 @@ impl X86_64SysV {
 
         if ty.is_struct() || ty.is_union() {
             if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
-                return self.get_fp_type_at_offset(&field_ty, field_offset);
+                dbg!(&field_ty, field_offset);
+                return self.get_fp_type_at_offset(&field_ty, offset - field_offset);
             }
         }
 
@@ -321,7 +411,7 @@ impl X86_64SysV {
         }
     }
 
-    pub fn float_size(&self, float_kind: &ABIFloatKind) -> u32 {
+    fn float_size(&self, float_kind: &ABIFloatKind) -> u32 {
         match float_kind {
             ABIFloatKind::F16 => 2,
             ABIFloatKind::F32 => 4,
@@ -329,11 +419,151 @@ impl X86_64SysV {
             ABIFloatKind::F128 => 16,
         }
     }
+
+    fn param_types_from_arg_info(&self, abi_arg: &ABIArgInfo, param_ty: &CIRTy) -> Vec<ABIType> {
+        let mut types = Vec::new();
+
+        match &abi_arg.kind {
+            ABIArgKind::Direct { coerce_to } => {
+                if let Some(ty) = coerce_to {
+                    types.push(ty.clone());
+                } else {
+                    types.push(cir_type_to_abi_type(&self.info, param_ty));
+                }
+            }
+            ABIArgKind::DirectCoerce { ty } => {
+                types.push(ty.clone());
+            }
+            ABIArgKind::DirectPair { lo, hi } => {
+                types.push(lo.clone());
+                types.push(hi.clone());
+            }
+            ABIArgKind::Indirect { ty, .. } => {
+                types.push(ty.clone());
+            }
+            ABIArgKind::Extend { .. } => {
+                types.push(cir_type_to_abi_type(&self.info, param_ty));
+            }
+            ABIArgKind::Expand { kind } => match kind {
+                ExpandKind::Struct { field_count } => {
+                    assert!(param_ty.is_struct());
+
+                    for i in 0..*field_count {
+                        let eightbyte_offset = i as u32 * 8;
+                        let eightbyte_ty = self.get_eightbyte_type(param_ty, eightbyte_offset);
+
+                        types.push(eightbyte_ty);
+                    }
+                }
+                _ => return vec![cir_type_to_abi_type(&self.info, param_ty)],
+            },
+            ABIArgKind::Ignore => {
+                // skip
+            }
+        }
+
+        types
+    }
+
+    fn get_eightbyte_type(&self, ty: &CIRTy, offset: u32) -> ABIType {
+        if let Some((field_ty, _)) = self.get_member_at_offset(ty, offset) {
+            let field_layout = type_layout(&self.info, &field_ty);
+
+            // if the field occupies the entire eightbyte, use its type
+            if field_layout.size >= 8 {
+                if field_ty.is_float() {
+                    return cir_type_to_abi_type(&self.info, &field_ty);
+                } else if field_ty.is_integer() || field_ty.is_pointer() {
+                    return ABIType::Integer(64);
+                }
+            }
+
+            ABIType::Integer(64)
+        } else {
+            ABIType::Integer(64)
+        }
+    }
 }
 
-impl TargetABI for X86_64SysV {
+impl X86_64 {
+    fn classify_func_naked(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+        // naked functions just pass arguments as-is, no ABI transformations
+        let mut params_types = Vec::new();
+        let mut params_infos = Vec::new();
+
+        for param_ty in &fn_ty.params {
+            let abi_param_type = cir_type_to_abi_type(&self.info, param_ty);
+
+            params_types.push(abi_param_type);
+            params_infos.push(ABIArgInfo::direct());
+        }
+
+        let ret_abi_type = cir_type_to_abi_type(&self.info, &fn_ty.ret);
+
+        let ret_info = if fn_ty.ret.is_void() {
+            ABIRetInfo {
+                ty: ret_abi_type,
+                kind: ABIRetInfoKind::Ignore,
+            }
+        } else {
+            ABIRetInfo {
+                ty: ret_abi_type,
+                kind: ABIRetInfoKind::Direct { coerce_to: None },
+            }
+        };
+
+        ABIFunctionInfo {
+            params_infos,
+            params_types,
+            ret_info,
+        }
+    }
+
+    fn classify_func_sysv(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+        let mut available_regs = Registers {
+            int_regs: 6,
+            sse_regs: 8,
+        };
+
+        let mut params_types = Vec::new();
+        let mut params_infos = Vec::new();
+
+        let ret_info = self.classify_return(&fn_ty.ret);
+
+        if ret_info.kind.is_indirect() {
+            available_regs.int_regs -= 1;
+
+            // add sret parameter type
+            params_types.push(ABIType::Pointer);
+
+            // TODO: Set in context return_by_ref + sret
+            // and handle RetStmt
+            todo!();
+        }
+
+        for param_type in &fn_ty.params {
+            let abi_arg = self.classify_parameter(param_type, &mut available_regs, true);
+
+            params_types.extend(self.param_types_from_arg_info(&abi_arg, param_type));
+            params_infos.push(abi_arg);
+        }
+
+        ABIFunctionInfo {
+            params_infos,
+            params_types,
+            ret_info,
+        }
+    }
+}
+
+impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
-    fn classify_argument(&self, ty: &CIRTy, #[allow(unused)] is_named: bool) -> ABIArgInfo {
+    fn classify_argument(
+        &self,
+        ty: &CIRTy,
+        free_int_regs: u32,
+        #[allow(unused)] is_named: bool,
+    ) -> (ABIArgInfo, Registers) {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
         classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
@@ -349,12 +579,12 @@ impl TargetABI for X86_64SysV {
 
         #[allow(unused_assignments)]
         let mut result_type = None;
-        let mut needed_regs = NeededRegisters::default();
+        let mut needed_regs = Registers::default();
 
         match lo_class {
             RegisterClass::NoClass => {
                 assert!(hi_class == RegisterClass::NoClass);
-                return ABIArgInfo::ignore();
+                return (ABIArgInfo::ignore(), needed_regs);
             }
             RegisterClass::Integer => {
                 needed_regs.int_regs += 1;
@@ -381,12 +611,15 @@ impl TargetABI for X86_64SysV {
                         needed_regs.int_regs += 1;
                     }
 
-                    return ABIArgInfo::direct_coerce(result_type.unwrap()).with_attrs(attrs);
+                    return (
+                        ABIArgInfo::direct_coerce(result_type.unwrap()).with_attrs(attrs),
+                        needed_regs,
+                    );
                 }
             }
             RegisterClass::Memory => {
-                let abi_type = cir_type_to_abi_type(&self.info, &ty);
-                return ABIArgInfo::indirect(abi_type, self.stack_alignment());
+                // indirect uses 1 int reg for pointer
+                return (self.abi_arg_info_indirect_result(ty, free_int_regs), needed_regs);
             }
             RegisterClass::SSE => {
                 needed_regs.sse_regs += 1;
@@ -416,82 +649,186 @@ impl TargetABI for X86_64SysV {
         }
 
         if let (Some(lo), Some(hi)) = (&result_type, high_part) {
-            return ABIArgInfo::direct_pair(lo.clone(), hi);
+            return (ABIArgInfo::direct_pair(lo.clone(), hi), needed_regs);
         }
 
         if let Some(result) = &result_type {
             let abi_type = cir_type_to_abi_type(&self.info, ty);
 
             if *result == abi_type {
-                return ABIArgInfo::direct();
+                return (ABIArgInfo::direct(), needed_regs);
             }
 
             if result.as_integer_bits(&self.info) == abi_type.as_integer_bits(&self.info) {
-                return ABIArgInfo::direct();
+                return (ABIArgInfo::direct(), needed_regs);
             }
 
-            return ABIArgInfo::direct_coerce(result.clone());
+            return (ABIArgInfo::direct_coerce(result.clone()), needed_regs);
         }
 
         // fallback
-        ABIArgInfo::direct_coerce(ABIType::Integer(64))
+        (ABIArgInfo::direct_coerce(ABIType::Integer(64)), needed_regs)
     }
 
-    // TODO
-    fn classify_func(&self, ty: &CIRFuncTy) -> ABIFunctionInfo {
-        todo!();
+    fn classify_func(&self, fn_ty: &CIRFuncTy) -> Result<ABIFunctionInfo, String> {
+        match fn_ty.callconv {
+            // SysV64, explicit System V AMD64 ABI
+            CallConv::SysV64 => Ok(self.classify_func_sysv(fn_ty)),
 
-        // let mut params_types = Vec::new();
-        // let mut params_infos = Vec::new();
-        // let mut has_sret = false;
+            // C default convention, platform dependent
+            CallConv::System | CallConv::C => match self.info.os {
+                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
+                ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
+                ABITargetOS::Unknown => unreachable!(),
+            },
 
-        // // classify return type
+            // Win64, explicit Windows x64 ABI
+            CallConv::Win64 => unimplemented!("Windows ABI not implemented yet."),
 
-        // let ret_layout = type_layout(&target.info, &fn_ty.ret);
+            // Naked, no prologue/epilogue, just bare function
+            CallConv::Naked => Ok(self.classify_func_naked(fn_ty)),
 
-        // let ret_info = {
-        //     if fn_ty.ret.is_scalar() {
-        //         ABIArgInfo::Direct { coerce_to: None }
-        //     } else if ret_layout.size <= 16 {
-        //         ABIArgInfo::Direct { coerce_to: None }
-        //     } else {
-        //         has_sret = true;
-        //         params_types.push(CIRTy::Pointer(fn_ty.ret.clone()));
-        //         ABIArgInfo::Indirect { by_val: false }
-        //     }
-        // };
+            // Interrupt handler
+            CallConv::Interrupt => Err("Interrupt calling convention not supported yet.".to_string()),
 
-        // // classify static params
+            // Fast optimization hint, same as C convention
+            CallConv::Fast => match self.info.os {
+                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
+                ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
+                _ => unreachable!(),
+            },
 
-        // for param_ty in &fn_ty.params {
-        //     let param_layout = type_layout(&target.info, param_ty);
+            // Cold optimization hint, same as C convention
+            CallConv::Cold => match self.info.os {
+                ABITargetOS::Linux | ABITargetOS::MacOS => Ok(self.classify_func_sysv(fn_ty)),
+                ABITargetOS::Windows => unimplemented!("Windows ABI not implemented yet."),
+                _ => unreachable!(),
+            },
 
-        //     let arg_info = {
-        //         if param_ty.is_scalar() {
-        //             params_types.push(param_ty.clone());
-        //             ABIArgInfo::Direct { coerce_to: None }
-        //         } else if param_layout.size <= 16 {
-        //             params_types.push(param_ty.clone());
-        //             ABIArgInfo::Direct { coerce_to: None }
-        //         } else {
-        //             params_types.push(CIRTy::Pointer(Box::new(param_ty.clone())));
-        //             ABIArgInfo::Indirect { by_val: false }
-        //         }
-        //     };
+            // ARM convention on x86-64 - error
+            CallConv::Aapcs => Err("AAPCS is ARM-only and not supported on x86-64.".to_string()),
 
-        //     params_infos.push(arg_info);
-        // }
+            // 32-bit x86 conventions - not supported on x86-64
+            CallConv::Stdcall => Err("Stdcall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
+            CallConv::Fastcall => Err("Fastcall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
+            CallConv::Thiscall => Err("Thiscall is a 32-bit x86 convention, not supported on x86-64.".to_string()),
 
-        // ABIFunctionInfo {
-        //     params_infos,
-        //     params_types,
-        //     ret_info,
-        // }
+            // Vectorcall - available on both x86 and x86-64
+            CallConv::Vectorcall => {
+                // Vectorcall has its own rules - would need separate implementation
+                // For now, fallback to platform default
+                match self.info.os {
+                    ABITargetOS::Windows => unimplemented!("Vectorcall on Windows not implemented yet."),
+                    _ => Ok(self.classify_func_sysv(fn_ty)), // Vectorcall on non-Windows? Probably fallback
+                }
+            }
+        }
     }
 
-    // TODO
-    fn classify_return(&self, ty: &CIRTy) -> ABIArgInfo {
-        todo!();
+    // REVIEW: Maybe consider to use ABIArgInfo and remove ABIRetInfo entirely.
+    fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo {
+        let mut lo_class = RegisterClass::NoClass;
+        let mut hi_class = RegisterClass::NoClass;
+        classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
+
+        assert!(
+            hi_class != RegisterClass::Memory || lo_class == RegisterClass::Memory,
+            "Invalid memory classification."
+        );
+        assert!(
+            hi_class != RegisterClass::SSEUP || lo_class == RegisterClass::SSE,
+            "Invalid SSEUp classification."
+        );
+
+        let mut result_type = None;
+
+        match lo_class {
+            RegisterClass::NoClass => {
+                if hi_class == RegisterClass::NoClass {
+                    return ABIRetInfo {
+                        ty: cir_type_to_abi_type(&self.info, ty),
+                        kind: ABIRetInfoKind::Ignore,
+                    };
+                }
+
+                assert!(
+                    hi_class == RegisterClass::SSE || hi_class == RegisterClass::Integer,
+                    "Expected SSE or Integer for high class when low is NoClass"
+                );
+            }
+            RegisterClass::SSEUP => unreachable!(),
+            RegisterClass::Memory => {
+                return ABIRetInfo {
+                    ty: cir_type_to_abi_type(&self.info, ty),
+                    kind: ABIRetInfoKind::Indirect { sret: true },
+                };
+            }
+            RegisterClass::Integer => {
+                let result_type = self.get_int_type_at_offset(ty, 0, ty, 0);
+
+                if hi_class == RegisterClass::NoClass && ty.is_integer_or_bool() {
+                    return ABIRetInfo {
+                        ty: result_type.clone(),
+                        kind: ABIRetInfoKind::Direct {
+                            coerce_to: Some(result_type),
+                        },
+                    };
+                }
+            }
+            RegisterClass::SSE => {
+                result_type = Some(self.get_sse_type_at_offset(ty, 0, ty, 0).unwrap());
+            }
+        }
+
+        let mut high_part = None;
+        match hi_class {
+            RegisterClass::Memory | RegisterClass::NoClass => {}
+            RegisterClass::Integer => {
+                assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
+                high_part = Some(self.get_int_type_at_offset(ty, 8, ty, 8));
+            }
+            RegisterClass::SSE => {
+                assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
+                high_part = Some(self.get_sse_type_at_offset(ty, 8, ty, 8).unwrap());
+            }
+            RegisterClass::SSEUP => {
+                unreachable!() // NOTE: Vector type not supported already.
+            }
+        }
+
+        // if a high part was specified, return as direct pair
+        if let (Some(lo), Some(hi)) = (&result_type, high_part) {
+            // combine lo and hi into a struct type for direct pair return
+            let struct_ty = ABIType::Struct(vec![lo.clone(), hi.clone()], false);
+            return ABIRetInfo {
+                ty: struct_ty,
+                kind: ABIRetInfoKind::Direct { coerce_to: None },
+            };
+        }
+
+        if let Some(result) = result_type {
+            let abi_type = cir_type_to_abi_type(&self.info, ty);
+
+            if result == abi_type {
+                return ABIRetInfo {
+                    ty: result,
+                    kind: ABIRetInfoKind::Direct { coerce_to: None },
+                };
+            }
+
+            return ABIRetInfo {
+                ty: result.clone(),
+                kind: ABIRetInfoKind::Direct {
+                    coerce_to: Some(result),
+                },
+            };
+        }
+
+        // fallback
+        ABIRetInfo {
+            ty: ABIType::Integer(64),
+            kind: ABIRetInfoKind::Direct { coerce_to: None },
+        }
     }
 
     // REVIEW
@@ -639,16 +976,19 @@ fn classify_struct_or_union(
     hi_class: &mut RegisterClass,
 ) {
     let is_union = ty.is_union();
-    let struct_union_fields = ty
-        .as_struct()
-        .map(|struct_ty| struct_ty.fields)
-        .or(ty.as_union().map(|union_ty| union_ty.fields))
-        .unwrap();
+    let fields = if let Some(struct_ty) = ty.as_struct() {
+        struct_ty.fields.clone()
+    } else if let Some(union_ty) = ty.as_union() {
+        union_ty.fields.clone()
+    } else {
+        unreachable!()
+    };
 
     let layout = type_layout(info, ty);
 
+    // if size > 64 bytes, keep default memory class
     if layout.size > 64 {
-        return; // keep memory class
+        return;
     }
 
     // re-classify
@@ -658,28 +998,62 @@ fn classify_struct_or_union(
         *hi_class = RegisterClass::NoClass;
     }
 
-    for field_ty in &struct_union_fields {
+    // for unions, all fields share the same offset
+    if is_union {
+        let mut union_lo = RegisterClass::NoClass;
+        let mut union_hi = RegisterClass::NoClass;
+
+        for field_ty in &fields {
+            let mut field_lo = RegisterClass::NoClass;
+            let mut field_hi = RegisterClass::NoClass;
+            classify(info, field_ty, offset_base, &mut field_lo, &mut field_hi);
+
+            union_lo = classify_merge(union_lo, field_lo);
+            union_hi = classify_merge(union_hi, field_hi);
+
+            if union_lo == RegisterClass::Memory || union_hi == RegisterClass::Memory {
+                break;
+            }
+        }
+
+        *lo_class = union_lo;
+        *hi_class = union_hi;
+        classify_post_merge(layout.size, lo_class, hi_class);
+        return;
+    }
+
+    // for structs, we need the actual field offsets from the type
+    let field_offsets = layout.field_offsets;
+
+    for (idx, field_ty) in fields.iter().enumerate() {
+        let field_offset = field_offsets[idx];
+        let field_abs_offset = offset_base + field_offset;
+
+        // alignment check
         let field_layout = type_layout(info, field_ty);
-        let field_offset = offset_base + field_layout.align;
-
-        if layout.size > 16 && (!is_union && field_layout.size != layout.size) {
+        
+        if field_abs_offset % field_layout.align != 0 {
             *lo_class = RegisterClass::Memory;
             classify_post_merge(layout.size, lo_class, hi_class);
             return;
         }
 
-        // check alignment (not aligned?)
-        if field_offset % field_layout.align != 0 {
+        // vector size check
+        if layout.size > 16 && layout.size != field_layout.size {
             *lo_class = RegisterClass::Memory;
             classify_post_merge(layout.size, lo_class, hi_class);
             return;
         }
 
-        let mut field_lo_class = RegisterClass::NoClass;
-        let mut field_hi_class = RegisterClass::NoClass;
-        classify(info, field_ty, offset_base, &mut field_lo_class, &mut field_hi_class);
-        *lo_class = classify_merge(*lo_class, field_lo_class);
-        *hi_class = classify_merge(*hi_class, field_hi_class);
+        let mut field_lo = RegisterClass::NoClass;
+        let mut field_hi = RegisterClass::NoClass;
+
+        // classify the field at its absolute offset
+        classify(info, field_ty, field_abs_offset, &mut field_lo, &mut field_hi);
+
+        // merge field's classes into the overall struct classes
+        *lo_class = classify_merge(*lo_class, field_lo);
+        *hi_class = classify_merge(*hi_class, field_hi);
 
         if *lo_class == RegisterClass::Memory || *hi_class == RegisterClass::Memory {
             break;
@@ -789,7 +1163,7 @@ fn classify_post_merge(size: u32, lo_class: &mut RegisterClass, hi_class: &mut R
         return;
     }
 
-    // if size > 16 and lo isn't SSE or hi isn't SSEUP, default to Memory
+    // if size > 16 and lo isn't SSE or hi isn't SSEUP, default to memory
     if size > 16 && (*lo_class != RegisterClass::SSE || *hi_class != RegisterClass::SSEUP) {
         *lo_class = RegisterClass::Memory;
         return;
@@ -799,4 +1173,16 @@ fn classify_post_merge(size: u32, lo_class: &mut RegisterClass, hi_class: &mut R
     if *hi_class == RegisterClass::SSEUP && *lo_class != RegisterClass::SSE && *lo_class != RegisterClass::SSEUP {
         *hi_class = RegisterClass::SSE;
     }
+}
+
+fn try_use_registers(available_regs: &mut Registers, used: &Registers) -> bool {
+    if available_regs.sse_regs < used.sse_regs {
+        return false;
+    }
+    if available_regs.int_regs < used.int_regs {
+        return false;
+    }
+    available_regs.int_regs -= used.int_regs;
+    available_regs.sse_regs -= used.sse_regs;
+    true
 }

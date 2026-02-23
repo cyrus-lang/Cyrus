@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     OwnedModule,
     builder::{
@@ -23,11 +24,13 @@ use crate::{
     },
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
-use cyrusc_abi_targets::ABITarget;
-use cyrusc_cir::{
-    CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-    cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty, monomorph::CIRMonomorphRegistry,
-};
+use cyrusc_internal::{abi::target::ABITarget, cir::{
+    cir::{
+        CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
+        cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
+    },
+    monomorph::CIRMonomorphRegistry,
+}};
 use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{

@@ -14,20 +14,33 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     builder::{
         builder::IRBuilderCtx,
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::constness::is_basic_value_constant,
+    llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant},
 };
 use cyrusc_abi::{
-    abi_ast_defs::Linkage,
+    ast_defs::Linkage,
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_cir::{types::*, *};
+use cyrusc_internal::{
+    abi::types::ABIType,
+    cir::{
+        cir::{
+            CIRAddrOfExpr, CIRArrayExpr, CIRArrayIndexExpr, CIRAssignExpr, CIRDerefExpr, CIRDynamicExpr,
+            CIREnumInitExpr, CIREnumInitVariant, CIRExpr, CIRExprKind, CIRFuncCall, CIRInfixExpr,
+            CIRInterfaceMethodCall, CIRLiteral, CIRLiteralKind, CIRMonomorphFuncInstanceCall, CIRPrefixExpr,
+            CIRSizeOfExpr, CIRStructFieldAccessExpr, CIRStructInitExpr, CIRTupleAccessExpr, CIRTupleExpr, CIRUnaryExpr,
+            CIRUnionFieldAccessExpr, CIRUnionInitExpr, CIRValue, CIRValueKind, cir_func_decl_as_func_ty,
+        },
+        types::{CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
+    },
+};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
@@ -237,6 +250,94 @@ impl<'ll> IRBuilderCtx<'ll> {
             .unwrap();
 
         rhs_value
+    }
+
+    pub(crate) fn emit_cast_basic_value_to_target_abi_type(
+        &self,
+        value: BasicValueEnum<'ll>,
+        from_cir_type: &CIRTy,
+        target_type: ABIType,
+    ) -> BasicValueEnum<'ll> {
+        let from_type = value.get_type();
+        let target_basic_type: BasicTypeEnum<'ll> =
+            abi_type_to_llvm_type(self.llvmctx, &self.target.info, &target_type)
+                .try_into()
+                .unwrap();
+
+        if from_type == target_basic_type {
+            return value;
+        }
+
+        match (from_type, target_basic_type) {
+            (BasicTypeEnum::IntType(from_int), BasicTypeEnum::IntType(to_int)) => {
+                let from_width = from_int.get_bit_width();
+                let to_width = to_int.get_bit_width();
+
+                if from_width < to_width {
+                    if from_cir_type.is_signed_integer() {
+                        self.llvmbuilder
+                            .build_int_s_extend(value.into_int_value(), to_int, "sext")
+                            .unwrap()
+                            .into()
+                    } else {
+                        self.llvmbuilder
+                            .build_int_z_extend(value.into_int_value(), to_int, "zext")
+                            .unwrap()
+                            .into()
+                    }
+                } else if from_width > to_width {
+                    self.llvmbuilder
+                        .build_int_truncate(value.into_int_value(), to_int, "trunc")
+                        .unwrap()
+                        .into()
+                } else {
+                    self.llvmbuilder
+                        .build_bit_cast(value, target_basic_type, "bitcast")
+                        .unwrap()
+                }
+            }
+            (BasicTypeEnum::PointerType(_), BasicTypeEnum::IntType(to_int)) => self
+                .llvmbuilder
+                .build_ptr_to_int(value.into_pointer_value(), to_int, "ptrtoint")
+                .unwrap()
+                .into(),
+            (BasicTypeEnum::IntType(_), BasicTypeEnum::PointerType(to_ptr)) => self
+                .llvmbuilder
+                .build_int_to_ptr(value.into_int_value(), to_ptr, "inttoptr")
+                .unwrap()
+                .into(),
+            (BasicTypeEnum::FloatType(_), BasicTypeEnum::FloatType(to_float)) => self
+                .llvmbuilder
+                .build_float_cast(value.into_float_value(), to_float, "fpext")
+                .unwrap()
+                .into(),
+            (BasicTypeEnum::IntType(_), BasicTypeEnum::FloatType(to_float)) => {
+                if from_cir_type.is_signed_integer() {
+                    self.llvmbuilder
+                        .build_signed_int_to_float(value.into_int_value(), to_float, "sitofp")
+                        .unwrap()
+                        .into()
+                } else {
+                    self.llvmbuilder
+                        .build_unsigned_int_to_float(value.into_int_value(), to_float, "uitofp")
+                        .unwrap()
+                        .into()
+                }
+            }
+            (BasicTypeEnum::PointerType(_), BasicTypeEnum::PointerType(to_ptr)) => self
+                .llvmbuilder
+                .build_pointer_cast(value.into_pointer_value(), to_ptr, "ptrcast")
+                .unwrap()
+                .into(),
+            (BasicTypeEnum::VectorType(_), BasicTypeEnum::VectorType(_)) => self
+                .llvmbuilder
+                .build_bit_cast(value, target_basic_type, "bitcast")
+                .unwrap(),
+            _ => self
+                .llvmbuilder
+                .build_bit_cast(value, target_basic_type, "bitcast")
+                .unwrap(),
+        }
     }
 
     pub(crate) fn emit_cast(&self, target_type: AnyTypeEnum<'ll>, value: InternalValue<'ll>) -> AnyValueEnum<'ll> {
@@ -1520,7 +1621,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         ret_ty: &CIRTy,
         fn_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
-        let abi_func_info = self.target.target_abi.classify_func(fn_ty);
+        let abi_func_info = self.target.target_abi.classify_func(fn_ty).unwrap();
         let args = self.emit_func_args(args, fn_ty);
         self.emit_direct_func_call_args_attributes(fn_value, &abi_func_info);
 
@@ -1540,7 +1641,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let cir_fn_ty = rvalue.ty.as_func().unwrap();
         let fn_ty = self.emit_func_ty(cir_fn_ty.clone());
 
-        let abi_func_info = self.target.target_abi.classify_func(&cir_fn_ty);
+        let abi_func_info = self.target.target_abi.classify_func(&cir_fn_ty).unwrap();
         let args = self.emit_func_args(&func_call.args, &cir_fn_ty);
 
         let fn_ptr = rvalue.as_basic_value().into_pointer_value();

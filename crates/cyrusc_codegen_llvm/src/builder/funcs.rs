@@ -27,12 +27,17 @@ use crate::{
         modifiers::{apply_func_modifiers, apply_inlining_func},
     },
 };
-use cyrusc_abi::{abi_ast_defs::Inlining, modifiers::FuncModifiers};
-use cyrusc_abi_targets::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind, types::ABIType};
-use cyrusc_cir::{
-    CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty,
-    monomorph::CIRMonomorphEntry,
-    types::{CIRFuncTy, CIRTy},
+use cyrusc_abi::{ast_defs::Inlining, modifiers::FuncModifiers};
+use cyrusc_internal::{
+    abi::{
+        args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
+        types::ABIType,
+    },
+    cir::{
+        cir::{CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty},
+        monomorph::CIRMonomorphEntry,
+        types::{CIRFuncTy, CIRTy},
+    },
 };
 use cyrusc_tast::generics::monomorph::MonomorphKey;
 use inkwell::{
@@ -40,8 +45,8 @@ use inkwell::{
     llvm_sys::core::{
         LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
     },
-    types::{AsTypeRef, BasicType, BasicTypeEnum},
-    values::{AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue},
+    types::{AsTypeRef, BasicTypeEnum},
+    values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
@@ -55,13 +60,13 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if param_info.is_indirect_by_val() {
-                let param = fn_value.get_nth_param(idx as u32).unwrap();
-                let param_type = param.get_type();
+                let struct_type = &abi_func_info.params_types[idx];
+                let llvm_struct_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, struct_type);
 
-                let attr =
-                    unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, param_type.as_type_ref()) };
+                let attr = unsafe {
+                    LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, llvm_struct_type.as_type_ref())
+                };
 
-                // LLVM parameter indices are 1-based; 0 is the return value
                 unsafe {
                     LLVMAddAttributeAtIndex(fn_value.as_value_ref(), (idx as u32 + 1) as u32, attr);
                 }
@@ -82,10 +87,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                 continue;
             }
 
-            let pointee_ty = self.emit_ty(abi_func_info.params_types.get(idx).unwrap().clone());
+            let param_type = abi_func_info.params_types.get(idx).unwrap().clone();
+            let pointee_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &param_type);
 
             let attr =
-                unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, pointee_ty.as_type_ref()) };
+                unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, pointee_type.as_type_ref()) };
 
             // call-site attributes: index is 1-based, 0 is return
             unsafe {
@@ -97,10 +103,9 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
-
         fn_ty: &CIRFuncTy,
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
-        let abi = &self.target.target_abi;
+        let abi_func_info = fn_ty.abi_func_info.as_ref().unwrap();
 
         let mut args_values: Vec<BasicMetadataValueEnum> = Vec::new();
 
@@ -108,11 +113,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             let lvalue = self.emit_expr(expr);
             let rvalue = self.load_rvalue(lvalue);
 
-            let cir_ty = fn_ty.params.get(idx).unwrap_or(&rvalue.ty);
+            let abi_arg_info = &abi_func_info.params_infos[idx];
 
-            let abi_arg_info = abi.classify_argument(cir_ty, false);
-
-            match abi_arg_info.kind {
+            match abi_arg_info.kind.clone() {
                 ABIArgKind::Direct { coerce_to } => {
                     self.emit_direct_arg(&mut args_values, &rvalue, coerce_to);
                 }
@@ -123,7 +126,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
                 }
                 ABIArgKind::Expand { kind } => {
-                    self.emit_expand_arg(&mut args_values, &rvalue, kind);
+                    self.emit_expand_arg(&mut args_values, &rvalue, kind, &abi_func_info.params_types);
                 }
                 ABIArgKind::Extend { signed } => {
                     self.emit_extend_arg(&mut args_values, rvalue, signed);
@@ -147,13 +150,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         coerce_to: Option<ABIType>,
     ) {
         if let Some(target_ty) = coerce_to {
-            let llvm_target_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &target_ty)
+            let coerced: BasicValueEnum<'ll> = self
+                .emit_cast_basic_value_to_target_abi_type(rvalue.as_basic_value(), &rvalue.ty, target_ty.clone())
                 .try_into()
-                .unwrap();
-
-            let coerced = self
-                .llvmbuilder
-                .build_bit_cast(rvalue.as_basic_value(), llvm_target_ty, "coerce.direct")
                 .unwrap();
 
             args_values.push(coerced.into());
@@ -172,13 +171,19 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) {
         // value is split across two registers
         // need to extract lo and hi parts from the struct
-        let struct_val = rvalue.as_basic_value().into_struct_value();
+        let struct_value = rvalue.as_basic_value().into_struct_value();
 
         // extract low part (first 8 bytes)
-        let lo_val = self.llvmbuilder.build_extract_value(struct_val, 0, "lo.part").unwrap();
+        let lo_val = self
+            .llvmbuilder
+            .build_extract_value(struct_value, 0, "lo.part")
+            .unwrap();
 
         // extract high part (next 8 bytes)
-        let hi_val = self.llvmbuilder.build_extract_value(struct_val, 1, "hi.part").unwrap();
+        let hi_val = self
+            .llvmbuilder
+            .build_extract_value(struct_value, 1, "hi.part")
+            .unwrap();
 
         let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
             .try_into()
@@ -208,16 +213,11 @@ impl<'ll> IRBuilderCtx<'ll> {
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
-        ty: ABIType,
+        coerce_to: ABIType,
     ) {
-        // coerce to the specified type and pass directly
-        let llvm_target_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ty)
+        let coerced: BasicMetadataValueEnum<'ll> = self
+            .emit_cast_basic_value_to_target_abi_type(rvalue.as_basic_value(), &rvalue.ty, coerce_to)
             .try_into()
-            .unwrap();
-
-        let coerced = self
-            .llvmbuilder
-            .build_bit_cast(rvalue.as_basic_value(), llvm_target_ty, "coerce.direct")
             .unwrap();
 
         args_values.push(coerced.into());
@@ -228,79 +228,106 @@ impl<'ll> IRBuilderCtx<'ll> {
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
         kind: ExpandKind,
+        param_types: &Vec<ABIType>,
     ) {
+        let struct_value = rvalue.as_basic_value().into_struct_value();
+        let fields_cir_types = rvalue.ty.struct_or_union_fields().unwrap();
+
         match kind {
             ExpandKind::Simple => {
                 // simple expansion, extract all fields
-                let struct_val = rvalue.as_basic_value().into_struct_value();
-                let num_fields = struct_val.count_fields();
+                let num_fields = struct_value.count_fields();
 
                 for i in 0..num_fields {
-                    let field = self
+                    let field_value = self
                         .llvmbuilder
-                        .build_extract_value(struct_val, i, "expand.field")
+                        .build_extract_value(struct_value, i, "expand.field")
                         .unwrap();
 
-                    args_values.push(field.into());
+                    let field_cir_type = fields_cir_types.get(i as usize).unwrap();
+                    let param_type = &param_types[i as usize];
+
+                    let casted: BasicMetadataValueEnum<'ll> = self
+                        .emit_cast_basic_value_to_target_abi_type(field_value, field_cir_type, param_type.clone())
+                        .try_into()
+                        .unwrap();
+
+                    args_values.push(casted.into());
                 }
             }
-            ExpandKind::Coerced {
-                offset_hi,
-                packed,
-                lo,
-                hi,
-            } => {
-                let struct_val = rvalue.as_basic_value().into_struct_value();
+            ExpandKind::Coerced { offset_hi, lo, hi, .. } => {
+                let struct_value = rvalue.as_basic_value().into_struct_value();
 
                 // extract and coerce low part
-                let lo_val = self
+                let lo_value = self
                     .llvmbuilder
-                    .build_extract_value(struct_val, 0, "expand.lo")
+                    .build_extract_value(struct_value, 0, "expand.lo")
                     .unwrap();
 
                 let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
                     .try_into()
                     .unwrap();
 
-                let lo_coerced = if lo_llvm == lo_val.get_type() {
-                    lo_val
+                let lo_coerced = if lo_llvm == lo_value.get_type() {
+                    lo_value
                 } else {
-                    self.llvmbuilder
-                        .build_bit_cast(lo_val, lo_llvm, "coerce.expand.lo")
-                        .unwrap()
+                    let field_cir_type = fields_cir_types.get(0).unwrap();
+                    let param_type = &param_types[0 as usize];
+
+                    let casted: BasicValueEnum<'ll> = self
+                        .emit_cast_basic_value_to_target_abi_type(lo_value, field_cir_type, param_type.clone())
+                        .try_into()
+                        .unwrap();
+
+                    casted
                 };
 
                 args_values.push(lo_coerced.into());
 
                 // extract and coerce high part (may be at different index)
-                let hi_val = self
+                let hi_value = self
                     .llvmbuilder
-                    .build_extract_value(struct_val, offset_hi as u32, "expand.hi")
+                    .build_extract_value(struct_value, offset_hi as u32, "expand.hi")
                     .unwrap();
 
                 let hi_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
                     .try_into()
                     .unwrap();
 
-                let hi_coerced = if hi_llvm == hi_val.get_type() {
-                    hi_val
+                let hi_coerced = if hi_llvm == hi_value.get_type() {
+                    hi_value
                 } else {
-                    self.llvmbuilder
-                        .build_bit_cast(hi_val, hi_llvm, "coerce.expand.hi")
-                        .unwrap()
+                    let field_cir_type = fields_cir_types.get(offset_hi as usize).unwrap();
+                    let param_type = &param_types[offset_hi as usize];
+
+                    let casted: BasicValueEnum<'ll> = self
+                        .emit_cast_basic_value_to_target_abi_type(lo_value, field_cir_type, param_type.clone())
+                        .try_into()
+                        .unwrap();
+
+                    casted
                 };
 
                 args_values.push(hi_coerced.into());
             }
             ExpandKind::Struct { field_count } => {
-                let struct_val = rvalue.as_basic_value().into_struct_value();
+                let struct_value = rvalue.as_basic_value().into_struct_value();
 
                 for i in 0..field_count as u32 {
-                    let field = self
+                    let field_value = self
                         .llvmbuilder
-                        .build_extract_value(struct_val, i, "expand.struct")
+                        .build_extract_value(struct_value, i, "expand.struct")
                         .unwrap();
-                    args_values.push(field.into());
+
+                    let field_cir_type = fields_cir_types.get(i as usize).unwrap();
+                    let param_type = &param_types[i as usize];
+
+                    let casted: BasicValueEnum<'ll> = self
+                        .emit_cast_basic_value_to_target_abi_type(field_value, field_cir_type, param_type.clone())
+                        .try_into()
+                        .unwrap();
+
+                    args_values.push(casted.into());
                 }
             }
         }
@@ -443,15 +470,19 @@ impl<'ll> IRBuilderCtx<'ll> {
         let parent_blockreg = self.blockreg.clone();
 
         let lambda_name = self.increment_lambda_name();
-        let func_decl = CIRFuncDeclStmt {
+        let mut cir_func_decl = CIRFuncDeclStmt {
             irv_id: lambda.irv_id,
             name: lambda_name,
             params: lambda.params.clone(),
             ret: lambda.ret.clone(),
             modifiers: FuncModifiers::default(),
+            abi_func_info: None,
         };
 
-        let fn_value = self.emit_func_decl(&func_decl);
+        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+
+        let fn_value = self.emit_func_decl(&cir_func_decl);
         fn_value.set_linkage(inkwell::module::Linkage::Private);
         if lambda.inline {
             apply_inlining_func(self.llvmctx, &fn_value, Inlining::Inline);
@@ -466,7 +497,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(basic_block);
         }
 
-        let cir_fn_ty = cir_func_decl_as_func_ty(&func_decl);
+        let cir_fn_ty = cir_func_decl_as_func_ty(&cir_func_decl);
         InternalValue::new(CIRTy::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
     }
 

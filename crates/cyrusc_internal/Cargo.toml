@@ -1,0 +1,19 @@
+[package]
+name = "cyrusc_internal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
+cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
+cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
+cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
+cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }
+cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
+rayon = "1.11.0"
+num_cpus = "1.17.0"
+
+[lib]
+name = "cyrusc_internal"
+path = "./src/lib.rs"

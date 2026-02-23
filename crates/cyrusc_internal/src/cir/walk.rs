@@ -14,11 +14,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::monomorph::CIRMonomorphRegistry;
-use crate::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy};
-use crate::*;
-use cyrusc_abi::abi_ast_defs::Linkage;
+
+use crate::abi::target::ABITarget;
+use crate::cir::cir::*;
+use crate::cir::monomorph::CIRMonomorphRegistry;
+use crate::cir::types::*;
+use cyrusc_abi::ast_defs::{CallConv, Linkage};
 use cyrusc_abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
+use cyrusc_ast::operators::InfixOperator;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
 use cyrusc_resolver::symbols::{LocalScopeRef, ResolvedMethod, generate_symbol_id};
@@ -27,7 +30,7 @@ use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_tast::generics::substitute::{
     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 };
-use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, UnionSig, typed_func_decl_from_func_sig};
+use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, StructSig, UnionSig, typed_func_decl_from_func_sig};
 use cyrusc_tast::types::{
     PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedUnionType,
     enum_sig_as_unnamed_enum_ty,
@@ -56,6 +59,7 @@ pub(crate) struct CIRWalk<'resolver> {
     pub(crate) symbol_formatter: Box<dyn Fn(SymbolID) -> String + 'resolver>,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) vtable_registry: Arc<Mutex<VTableRegistry>>,
+    pub(crate) target: &'resolver ABITarget,
 }
 
 impl<'resolver> CIRWalk<'resolver> {
@@ -66,6 +70,7 @@ impl<'resolver> CIRWalk<'resolver> {
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
+        target: &'resolver ABITarget,
     ) -> Self {
         Self {
             program,
@@ -77,6 +82,7 @@ impl<'resolver> CIRWalk<'resolver> {
             symbol_formatter: build_panic_symbol_formatter(),
             mapping_ctx_arena,
             vtable_registry,
+            target,
         }
     }
 
@@ -787,7 +793,11 @@ impl<'resolver> CIRWalk<'resolver> {
             body: Box::new(body),
             ret,
             modifiers: func_def.modifiers.clone(),
+            abi_func_info: None,
         };
+
+        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_def_as_decl(&cir_func_def));
+        cir_func_def.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         if mangle_name {
             let mangled_name = mangle_func(&cir_func_def.modifiers, &self.program.module_name, &cir_func_def.name);
@@ -812,13 +822,18 @@ impl<'resolver> CIRWalk<'resolver> {
             func_name = mangle_func(&func_decl.modifiers, &self.program.module_name, &func_name);
         }
 
-        CIRFuncDeclStmt {
+        let mut cir_func_decl = CIRFuncDeclStmt {
             irv_id: func_decl.symbol_id,
             name: func_name,
             params,
             ret,
             modifiers: func_decl.modifiers.clone(),
-        }
+            abi_func_info: None,
+        };
+
+        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+        cir_func_decl
     }
 
     pub(crate) fn lower_func_sig(
@@ -830,13 +845,18 @@ impl<'resolver> CIRWalk<'resolver> {
         let params = self.lower_func_params(scope_id_opt, &func_sig.params);
         let ret = self.lower_sema_ty(scope_id_opt, &func_sig.return_type);
 
-        CIRFuncDeclStmt {
+        let mut cir_func_decl = CIRFuncDeclStmt {
             irv_id,
             name: func_sig.name.clone(),
             params,
             ret,
             modifiers: func_sig.modifiers.clone(),
-        }
+            abi_func_info: None,
+        };
+
+        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+        cir_func_decl
     }
 
     pub(crate) fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
@@ -1035,19 +1055,22 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         if let Some(resolved_func) = sym.as_func() {
-            let mut func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
+            let mut cir_func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
+
+            let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+            cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
             let mangled_name = mangle_func(
-                &func_decl.modifiers,
+                &cir_func_decl.modifiers,
                 &self.module_name_by_module_id(resolved_func.module_id).unwrap(),
                 &resolved_func.func_sig.name,
             );
 
-            func_decl.name = mangled_name;
+            cir_func_decl.name = mangled_name;
 
             CIRExprKind::Load(CIRValue {
                 irv_id: resolved_func.symbol_id,
-                kind: CIRValueKind::Func(Box::new(func_decl)),
+                kind: CIRValueKind::Func(Box::new(cir_func_decl)),
             })
         } else if let Some(resolved_global_var) = sym.as_global_var() {
             let mut global_var_stmt = self.lower_global_var_sig(
@@ -1168,12 +1191,23 @@ impl<'resolver> CIRWalk<'resolver> {
         let body = Box::new(self.lower_body(&lambda.body));
         let ret = self.lower_sema_ty(scope_id_opt, &lambda.return_type);
 
+        let cir_func_type = CIRFuncTy {
+            params: params.list.iter().map(|param| param.ty.clone()).collect(),
+            is_var: params.is_var,
+            ret: Box::new(ret.clone()),
+            callconv: CallConv::default(),
+            abi_func_info: None,
+        };
+
+        let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
+
         CIRExprKind::Lambda(CIRLambda {
             irv_id: generate_symbol_id(),
             params,
             inline: lambda.inline,
             ret,
             body,
+            abi_func_info,
         })
     }
 
@@ -1636,11 +1670,16 @@ impl<'resolver> CIRWalk<'resolver> {
                 let ret = Box::new(self.lower_sema_ty(scope_id_opt, &func_type.return_type));
                 let params = self.lower_func_type_params(scope_id_opt, &func_type.params);
 
-                CIRTy::FuncType(CIRFuncTy {
+                let mut cir_type = CIRFuncTy {
                     params: params,
                     is_var: func_type.params.variadic.is_some(),
                     ret,
-                })
+                    callconv: CallConv::default(),
+                    abi_func_info: None,
+                };
+
+                cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
+                CIRTy::FuncType(cir_type)
             }
             SemanticType::Tuple(tuple_type) => {
                 let items: Vec<CIRTy> = tuple_type
@@ -1878,6 +1917,7 @@ pub fn walk_program_trees_in_parallel(
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
+    target: &ABITarget,
 ) -> Vec<Box<CIRProgramTree>> {
     use rayon::prelude::*;
 
@@ -1902,6 +1942,7 @@ pub fn walk_program_trees_in_parallel(
                     cir_monomorph_registry.clone(),
                     mapping_ctx_arena.clone(),
                     vtable_registry,
+                    target,
                 );
                 let cir_program_tree = cir_walk.run_pass(program_tree.file_path.to_string_lossy().to_string());
                 Box::new(cir_program_tree)

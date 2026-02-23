@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{Parser, diagnostics::ParserDiagKind};
-use cyrusc_abi::abi_ast_defs::{
+use cyrusc_abi::ast_defs::{
     ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprAttrKind, SectionAttr, Visibility,
     validate_flags,
 };
 use cyrusc_abi::modifiers::{EnumModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
-use cyrusc_abi::{abi_ast_defs::CallConv, modifiers::FuncModifiers};
+use cyrusc_abi::{ast_defs::CallConv, modifiers::FuncModifiers};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_tokens::{Token, TokenKind};

@@ -16,15 +16,17 @@
  */
 
 use crate::{
-    ABITargetArch, ABITargetInfo,
-    targets::x86_64_sysv::types::X86_64TargetDependentType,
-    types::{ABIFloatKind, ABIType, TargetIntegerType},
+    abi::{
+        target::{ABITargetArch, ABITargetInfo},
+        targets::x86_64::types::X86_64TargetDependentType,
+        types::{ABIFloatKind, ABIType, TargetIntegerType},
+    },
+    cir::types::CIRTy,
 };
-use cyrusc_cir::types::CIRTy;
 use cyrusc_tast::types::PlainType;
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct NeededRegisters {
+pub struct Registers {
     pub int_regs: u32,
     pub sse_regs: u32,
 }
@@ -33,7 +35,7 @@ pub(crate) fn align_offset(offset: u32, align: u32) -> u32 {
     (offset + align - 1) / align * align
 }
 
-pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
+pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
     use PlainType::*;
 
     match cir_type {
@@ -100,10 +102,13 @@ pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> AB
             }
         }
         CIRTy::Dynamic(_) => {
-            ABIType::Struct(vec![
-                ABIType::Pointer, // data pointer
-                ABIType::Pointer, // vtable pointer
-            ], false)
+            ABIType::Struct(
+                vec![
+                    ABIType::Pointer, // data pointer
+                    ABIType::Pointer, // vtable pointer
+                ],
+                false,
+            )
         }
         CIRTy::Enum(_) => {
             // Enums are typically represented as integers in ABIs
@@ -115,5 +120,12 @@ pub(crate) fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> AB
             // TODO
             unimplemented!()
         }
+    }
+}
+
+pub(crate) fn is_cir_type_abi_aggregate(cir_type: &CIRTy) -> bool {
+    match cir_type {
+        CIRTy::Struct(_) | CIRTy::Enum(_) | CIRTy::Union(_) | CIRTy::Tuple(_) => true,
+        _ => false,
     }
 }

@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2026 The Cyrus Language
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
@@ -18,10 +18,9 @@ use crate::{
     builder::{builder::IRBuilderCtx, irreg::LocalIRValue},
     llvm::c_str::to_c_str,
 };
-use cyrusc_cir::{
-    CIRBlockStmt, CIRForStmt, CIRIfStmt, CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
-    types::CIRTy,
-};
+use cyrusc_internal::cir::{cir::{
+    CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt
+}, types::CIRTy};
 use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
@@ -76,7 +75,7 @@ impl<'ll> CFLoop<'ll> {
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_predefine_labels(&mut self, cir_block: &CIRBlockStmt) {
         for cir_stmt in &cir_block.stmts {
-            if let cyrusc_cir::CIRStmt::Label(label_stmt) = cir_stmt {
+            if let CIRStmt::Label(label_stmt) = cir_stmt {
                 let label_basic_block = self.new_basic_block(&format!("label.{}", label_stmt.name));
                 self.blockreg
                     .labels
@@ -92,7 +91,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_block(entry_block);
     }
 
-    pub(crate) fn emit_label(&mut self, label_stmt: &cyrusc_cir::CIRLabelStmt) {
+    pub(crate) fn emit_label(&mut self, label_stmt: &CIRLabelStmt) {
         if let Some(prev_block) = self.blockreg.cur_block {
             if prev_block.get_terminator().is_none() {
                 let label_block = self.blockreg.labels.get(&label_stmt.label_id).unwrap();
@@ -107,7 +106,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_goto(&mut self, goto_stmt: &cyrusc_cir::CIRGotoStmt) {
+    pub(crate) fn emit_goto(&mut self, goto_stmt: &CIRGotoStmt) {
         let target_block = self.blockreg.labels.get(&goto_stmt.label_id).cloned().unwrap();
 
         let cur_block = self.blockreg.cur_block.unwrap();

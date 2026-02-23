@@ -42,6 +42,9 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -103,6 +106,9 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -148,6 +154,9 @@ pub(crate) fn command_emit_llvm(mut opts: CodeGenOptions, file_path: Option<Stri
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -174,6 +183,9 @@ pub(crate) fn command_emit_bitcode(mut opts: CodeGenOptions, file_path: Option<S
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -200,6 +212,9 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -226,6 +241,9 @@ pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::Executable,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -252,6 +270,9 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::SharedLib,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(
@@ -287,6 +308,9 @@ pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<Str
         opts.clone(),
         &Some(bundle.entry_file.clone()),
         LinkerOutputKind::StaticLib,
+        bundle.target,
+        bundle.llvm_target,
+        bundle.llvm_target_triple,
     ));
 
     let llvm_backend: &'static CodeGenLLVM = Box::leak(Box::new(CodeGenLLVM::new(

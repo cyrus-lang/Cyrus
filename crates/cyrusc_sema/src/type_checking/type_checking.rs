@@ -20,7 +20,7 @@ use crate::{
     format::format_missing_fields,
     inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
 };
-use cyrusc_abi::abi_ast_defs::Visibility;
+use cyrusc_abi::ast_defs::Visibility;
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{

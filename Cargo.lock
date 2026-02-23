@@ -239,14 +239,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_abi_targets"
-version = "0.1.0"
-dependencies = [
- "cyrusc_cir",
- "cyrusc_tast",
-]
-
-[[package]]
 name = "cyrusc_asan_wrapper"
 version = "0.1.0"
 dependencies = [
@@ -275,38 +267,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_cir"
-version = "0.1.0"
-dependencies = [
- "cyrusc_abi",
- "cyrusc_ast",
- "cyrusc_diagcentral",
- "cyrusc_fs_utils",
- "cyrusc_lexer",
- "cyrusc_modulefsloader",
- "cyrusc_parser",
- "cyrusc_resolver",
- "cyrusc_sema",
- "cyrusc_tast",
- "cyrusc_tokens",
- "cyrusc_vtable_registry",
- "num_cpus",
- "rayon",
-]
-
-[[package]]
 name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
- "cyrusc_abi_targets",
  "cyrusc_asan_wrapper",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
- "cyrusc_cir",
  "cyrusc_compiler",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
+ "cyrusc_internal",
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
  "cyrusc_tast",
@@ -321,12 +292,11 @@ name = "cyrusc_compiler"
 version = "0.1.0"
 dependencies = [
  "cyrusc_abi",
- "cyrusc_abi_targets",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
- "cyrusc_cir",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
+ "cyrusc_internal",
  "cyrusc_lexer",
  "cyrusc_modulefsloader",
  "cyrusc_parser",
@@ -337,8 +307,6 @@ dependencies = [
  "cyrusc_tui_utils",
  "cyrusc_vtable_registry",
  "inkwell",
- "num_cpus",
- "rayon",
  "serde",
  "which",
 ]
@@ -359,6 +327,21 @@ name = "cyrusc_fs_utils"
 version = "0.1.0"
 dependencies = [
  "cyrusc_tui_utils",
+]
+
+[[package]]
+name = "cyrusc_internal"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_abi",
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_resolver",
+ "cyrusc_tast",
+ "cyrusc_tokens",
+ "cyrusc_vtable_registry",
+ "num_cpus",
+ "rayon",
 ]
 
 [[package]]

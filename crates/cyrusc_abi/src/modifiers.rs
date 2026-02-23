@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::abi_ast_defs::{CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility};
+use crate::ast_defs::{CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {

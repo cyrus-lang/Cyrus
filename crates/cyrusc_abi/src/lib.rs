@@ -15,6 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi_ast_defs;
+pub mod ast_defs;
 pub mod mangler;
 pub mod modifiers;

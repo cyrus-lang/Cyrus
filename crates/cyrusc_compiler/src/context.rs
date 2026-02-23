@@ -22,10 +22,9 @@ use crate::{
     options::{CodeGenOptions, LinkerOutputKind, ModuleKind},
     tm_info::TargetMachineInfo,
 };
-use cyrusc_abi_targets::ABITarget;
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_cir::CIRProgramTree;
 use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRProgramTree};
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
 use std::{

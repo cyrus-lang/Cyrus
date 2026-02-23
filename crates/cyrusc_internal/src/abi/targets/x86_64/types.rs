@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::ABITargetInfo;
+use crate::abi::target::ABITargetInfo;
 use cyrusc_tast::types::PlainType;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

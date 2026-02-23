@@ -19,7 +19,7 @@ use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::modifiers::UnresolvedModifiers;
 use crate::prec::Precedence;
-use cyrusc_abi::abi_ast_defs::Visibility;
+use cyrusc_abi::ast_defs::Visibility;
 use cyrusc_abi::modifiers::EnumModifiers;
 use cyrusc_abi::modifiers::FuncModifiers;
 use cyrusc_abi::modifiers::StructModifiers;

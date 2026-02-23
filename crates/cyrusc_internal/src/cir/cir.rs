@@ -14,15 +14,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy};
+
 use cyrusc_abi::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey, sigs::StructSig};
+use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey};
 use std::fmt::Debug;
 
-pub mod monomorph;
-pub mod types;
-pub mod walk;
+use crate::{
+    abi::args::ABIFunctionInfo,
+    cir::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy},
+};
 
 pub type IRValueID = u32;
 pub type CIRBlockID = u32;
@@ -104,6 +105,7 @@ pub struct CIRLambda {
     pub ret: CIRTy,
     pub inline: bool,
     pub body: Box<CIRBlockStmt>,
+    pub abi_func_info: ABIFunctionInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -286,6 +288,7 @@ pub struct CIRFuncDefStmt {
     pub body: Box<CIRBlockStmt>,
     pub ret: CIRTy,
     pub modifiers: FuncModifiers,
+    pub abi_func_info: Option<ABIFunctionInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -295,6 +298,7 @@ pub struct CIRFuncDeclStmt {
     pub params: CIRFuncParams,
     pub ret: CIRTy,
     pub modifiers: FuncModifiers,
+    pub abi_func_info: Option<ABIFunctionInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -446,6 +450,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         params: func_def.params.clone(),
         ret: func_def.ret.clone(),
         modifiers: func_def.modifiers.clone(),
+        abi_func_info: func_def.abi_func_info.clone(),
     }
 }
 
@@ -454,6 +459,8 @@ pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncTy {
         params: func_decl.params.list.iter().map(|param| param.ty.clone()).collect(),
         is_var: func_decl.params.is_var,
         ret: Box::new(func_decl.ret.clone()),
+        callconv: func_decl.modifiers.callconv.clone().unwrap_or_default(),
+        abi_func_info: func_decl.abi_func_info.clone(),
     }
 }
 

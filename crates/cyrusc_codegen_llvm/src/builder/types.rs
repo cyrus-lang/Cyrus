@@ -14,11 +14,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_cir::{
-    CIREnumTyVariant,
-    types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
-};
+use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
+use cyrusc_internal::cir::cir::CIREnumTyVariant;
+use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace,
@@ -71,7 +71,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn emit_tys(&self, tys: &[CIRTy]) -> Vec<AnyTypeEnum<'ll>> {
+    pub(crate) fn emit_types(&self, tys: &[CIRTy]) -> Vec<AnyTypeEnum<'ll>> {
         tys.iter().map(|ty| self.emit_ty(ty.clone())).collect()
     }
 
@@ -111,7 +111,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_struct_ty(&self, struct_ty: CIRStructTy) -> StructType<'ll> {
         let field_types = self
-            .emit_tys(&struct_ty.fields)
+            .emit_types(&struct_ty.fields)
             .iter()
             .map(|ty| (*ty).try_into().unwrap())
             .collect::<Vec<BasicTypeEnum<'ll>>>();
@@ -141,7 +141,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         (0, 1)
                     } else {
                         let llvm_fields: Vec<BasicTypeEnum<'ll>> = self
-                            .emit_tys(field_tys)
+                            .emit_types(field_tys)
                             .iter()
                             .map(|ty| (*ty).try_into().unwrap())
                             .collect();
@@ -204,7 +204,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleTy) -> StructType<'ll> {
         let element_types = self
-            .emit_tys(&tuple_ty.elements)
+            .emit_types(&tuple_ty.elements)
             .iter()
             .map(|ty| (*ty).try_into().unwrap())
             .collect::<Vec<BasicTypeEnum<'ll>>>();
@@ -219,23 +219,30 @@ impl<'ll> IRBuilderCtx<'ll> {
         elm_ty.array_type(array_ty.len as u32).as_any_type_enum()
     }
 
-    pub(crate) fn emit_func_ty(&self, mut func_ty: CIRFuncTy) -> FunctionType<'ll> {
-        let abi_func_info = self.target.target_abi.classify_func(&func_ty);
-        func_ty.params = abi_func_info.params_types;
+    pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncTy) -> FunctionType<'ll> {
+        let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 
-        let ret_ty = self.emit_ty(*func_ty.ret);
+        let ret_type = self.emit_ty(*func_ty.ret);
 
-        let mut param_tys = self
-            .emit_tys(&func_ty.params)
-            .iter()
-            .map(|ty| ty.as_type_ref())
-            .collect::<Vec<LLVMTypeRef>>();
+        let mut param_types = Vec::new();
+
+        for (idx, abi_type) in abi_func_info.params_types.iter().enumerate() {
+            let abi_arg_info = &abi_func_info.params_infos[idx];
+
+            let param_type_ref = if abi_arg_info.is_indirect_by_val() {
+                self.llvmctx.ptr_type(AddressSpace::default()).as_type_ref()
+            } else {
+                abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type).as_type_ref()
+            };
+
+            param_types.push(param_type_ref);
+        }
 
         let fn_ty = unsafe {
             LLVMFunctionType(
-                ret_ty.as_type_ref(),
-                param_tys.as_mut_ptr(),
-                param_tys.len().try_into().unwrap(),
+                ret_type.as_type_ref(),
+                param_types.as_mut_ptr(),
+                param_types.len().try_into().unwrap(),
                 func_ty.is_var as LLVMBool,
             )
         };

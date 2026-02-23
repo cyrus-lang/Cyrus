@@ -14,7 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::CIREnumTyVariant;
+
+use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumTyVariant};
+use cyrusc_abi::ast_defs::CallConv;
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone)]
@@ -52,6 +54,8 @@ pub struct CIRFuncTy {
     pub params: Vec<CIRTy>,
     pub is_var: bool,
     pub ret: Box<CIRTy>,
+    pub callconv: CallConv,
+    pub abi_func_info: Option<ABIFunctionInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +117,14 @@ impl CIRTy {
         }
     }
 
+    pub fn struct_or_union_fields(&self) -> Option<Vec<CIRTy>> {
+        match self.const_inner() {
+            CIRTy::Struct(struct_ty) => Some(struct_ty.fields.clone()),
+            CIRTy::Union(union_ty) => Some(union_ty.fields.clone()),
+            _ => None,
+        }
+    }
+
     pub fn as_union(&self) -> Option<CIRUnionTy> {
         match self.const_inner() {
             CIRTy::Union(union_ty) => Some(union_ty.clone()),
@@ -146,6 +158,13 @@ impl CIRTy {
     pub fn is_array(&self) -> bool {
         match self {
             CIRTy::Array(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_void(&self) -> bool {
+        match self.const_inner() {
+            CIRTy::PlainType(plain_type) => plain_type.is_void(),
             _ => false,
         }
     }
