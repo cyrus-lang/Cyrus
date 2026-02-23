@@ -96,7 +96,7 @@ impl X86_64 {
 
             ABIArgInfo {
                 kind: ABIArgKind::Indirect {
-                    alignment: 8,
+                    align: 8,
                     ty: abi_type,
                 },
                 attrs: ABIArgAttrs {
@@ -112,7 +112,7 @@ impl X86_64 {
 
             ABIArgInfo {
                 kind: ABIArgKind::Indirect {
-                    alignment: align,
+                    align,
                     ty: abi_type,
                 },
                 attrs: ABIArgAttrs {
@@ -420,7 +420,7 @@ impl X86_64 {
         }
     }
 
-    fn param_types_from_arg_info(&self, abi_arg: &ABIArgInfo, param_ty: &CIRTy) -> Vec<ABIType> {
+    fn param_types_from_arg_info(&self, abi_arg: &ABIArgInfo, param_type: &CIRTy) -> Vec<ABIType> {
         let mut types = Vec::new();
 
         match &abi_arg.kind {
@@ -428,7 +428,7 @@ impl X86_64 {
                 if let Some(ty) = coerce_to {
                     types.push(ty.clone());
                 } else {
-                    types.push(cir_type_to_abi_type(&self.info, param_ty));
+                    types.push(cir_type_to_abi_type(&self.info, param_type));
                 }
             }
             ABIArgKind::DirectCoerce { ty } => {
@@ -442,20 +442,18 @@ impl X86_64 {
                 types.push(ty.clone());
             }
             ABIArgKind::Extend { .. } => {
-                types.push(cir_type_to_abi_type(&self.info, param_ty));
+                types.push(cir_type_to_abi_type(&self.info, param_type));
             }
             ABIArgKind::Expand { kind } => match kind {
-                ExpandKind::Struct { field_count } => {
-                    assert!(param_ty.is_struct());
+                ExpandKind::Struct { .. } => {
+                    assert!(param_type.is_struct() || param_type.is_union());
+                    let fields = param_type.struct_or_union_fields().unwrap();
 
-                    for i in 0..*field_count {
-                        let eightbyte_offset = i as u32 * 8;
-                        let eightbyte_ty = self.get_eightbyte_type(param_ty, eightbyte_offset);
-
-                        types.push(eightbyte_ty);
+                    for field in fields {
+                        types.push(cir_type_to_abi_type(&self.info, &field));
                     }
                 }
-                _ => return vec![cir_type_to_abi_type(&self.info, param_ty)],
+                _ => return vec![cir_type_to_abi_type(&self.info, param_type)],
             },
             ABIArgKind::Ignore => {
                 // skip
@@ -465,24 +463,25 @@ impl X86_64 {
         types
     }
 
-    fn get_eightbyte_type(&self, ty: &CIRTy, offset: u32) -> ABIType {
-        if let Some((field_ty, _)) = self.get_member_at_offset(ty, offset) {
-            let field_layout = type_layout(&self.info, &field_ty);
+    // fn get_eightbyte_type(&self, ty: &CIRTy, offset: u32) -> ABIType {
+    //     if let Some((field_ty, _)) = self.get_member_at_offset(ty, offset) {
+    //         let field_layout = type_layout(&self.info, &field_ty);
 
-            // if the field occupies the entire eightbyte, use its type
-            if field_layout.size >= 8 {
-                if field_ty.is_float() {
-                    return cir_type_to_abi_type(&self.info, &field_ty);
-                } else if field_ty.is_integer() || field_ty.is_pointer() {
-                    return ABIType::Integer(64);
-                }
-            }
+    //         // if the field occupies the entire eightbyte, use its type
+    //         if field_layout.size >= 8 {
+    //             if field_ty.is_float() {
+    //                 return cir_type_to_abi_type(&self.info, &field_ty);
+    //             } else if field_ty.is_integer() || field_ty.is_pointer() {
+    //                 // return ABIType::Integer(64);
+    //                 return cir_type_to_abi_type(&self.info, &field_ty);
+    //             }
+    //         }
 
-            ABIType::Integer(64)
-        } else {
-            ABIType::Integer(64)
-        }
-    }
+    //         ABIType::Integer(64)
+    //     } else {
+    //         ABIType::Integer(64)
+    //     }
+    // }
 }
 
 impl X86_64 {
@@ -1031,7 +1030,7 @@ fn classify_struct_or_union(
 
         // alignment check
         let field_layout = type_layout(info, field_ty);
-        
+
         if field_abs_offset % field_layout.align != 0 {
             *lo_class = RegisterClass::Memory;
             classify_post_merge(layout.size, lo_class, hi_class);

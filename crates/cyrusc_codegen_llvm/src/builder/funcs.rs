@@ -131,8 +131,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                 ABIArgKind::Extend { signed } => {
                     self.emit_extend_arg(&mut args_values, rvalue, signed);
                 }
-                ABIArgKind::Indirect { alignment, ref ty } => {
-                    self.emit_indirect_arg(&mut args_values, &rvalue, alignment, ty.clone(), &abi_arg_info);
+                ABIArgKind::Indirect { align, ref ty } => {
+                    self.emit_indirect_arg(&mut args_values, &rvalue, align, ty.clone(), &abi_arg_info);
                 }
                 ABIArgKind::Ignore => {
                     // skip argument (zero-sized types)

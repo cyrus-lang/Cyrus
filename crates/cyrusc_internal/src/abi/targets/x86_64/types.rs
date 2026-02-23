@@ -34,9 +34,9 @@ impl X86_64TargetDependentType {
             X86_64TargetDependentType::IntPtr
             | X86_64TargetDependentType::UIntPtr
             | X86_64TargetDependentType::ISize
-            | X86_64TargetDependentType::USize
-            | X86_64TargetDependentType::Int
-            | X86_64TargetDependentType::UInt => target.pointer_size(),
+            | X86_64TargetDependentType::USize => target.pointer_size(),
+
+            X86_64TargetDependentType::Int | X86_64TargetDependentType::UInt => 4, // 32 bits on x86-64
         }
     }
 
@@ -45,9 +45,9 @@ impl X86_64TargetDependentType {
             X86_64TargetDependentType::IntPtr
             | X86_64TargetDependentType::UIntPtr
             | X86_64TargetDependentType::ISize
-            | X86_64TargetDependentType::USize
-            | X86_64TargetDependentType::Int
-            | X86_64TargetDependentType::UInt => target.pointer_align(),
+            | X86_64TargetDependentType::USize => target.pointer_align(),
+
+            X86_64TargetDependentType::Int | X86_64TargetDependentType::UInt => 4, // 4-byte alignment
         }
     }
 

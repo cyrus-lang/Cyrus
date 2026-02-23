@@ -84,7 +84,7 @@ pub enum ABIArgKind {
     /// Indirect passing (by pointer)
     Indirect {
         /// Required alignment
-        alignment: u32,
+        align: u32,
         /// Type to pass indirectly
         ty: ABIType,
     },
@@ -151,7 +151,7 @@ impl ABIArgInfo {
         Self {
             param_index_start: 0,
             param_index_end: 0,
-            kind: ABIArgKind::Indirect { ty, alignment },
+            kind: ABIArgKind::Indirect { ty, align: alignment },
             attrs: ABIArgAttrs::default(),
         }
     }
