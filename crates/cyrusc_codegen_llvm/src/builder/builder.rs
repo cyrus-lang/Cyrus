@@ -42,7 +42,7 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::TargetMachine,
-    types::{AnyType, BasicType, BasicTypeEnum},
+    types::{AnyType, BasicTypeEnum},
     values::{BasicValueEnum, FunctionValue, GlobalValue},
 };
 use std::{
