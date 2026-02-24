@@ -24,7 +24,7 @@ use crate::{
 };
 use cyrusc_tast::types::PlainType;
 
-pub(crate) struct ABITypeLayout {
+pub struct ABITypeLayout {
     pub size: u32,
     pub align: u32,
     pub field_offsets: Vec<u32>,
@@ -33,7 +33,7 @@ pub(crate) struct ABITypeLayout {
     pub is_aggregate: bool,
 }
 
-pub(crate) fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
+pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
     match ty {
         CIRTy::PlainType(plain_type) => plain_type_layout(info, plain_type),
         CIRTy::Const(ty) => type_layout(info, ty.const_inner()),

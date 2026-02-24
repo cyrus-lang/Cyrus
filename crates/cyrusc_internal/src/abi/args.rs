@@ -212,6 +212,13 @@ impl ABIRetInfoKind {
             _ => false,
         }
     }
+
+    pub fn is_indirect_sret(&self) -> bool {
+        match self {
+            ABIRetInfoKind::Indirect { sret } => *sret,
+            _ => false,
+        }
+    }
 }
 
 impl Default for ABIArgAttrs {

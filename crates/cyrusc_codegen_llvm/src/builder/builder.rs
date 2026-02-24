@@ -25,7 +25,7 @@ use crate::{
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
 use cyrusc_internal::{
-    abi::{args::ABIFunctionInfo, target::ABITarget},
+    abi::{args::ABIFunctionInfo, layout::type_layout, target::ABITarget},
     cir::{
         cir::{
             CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
@@ -42,7 +42,7 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::TargetMachine,
-    types::{AnyType, BasicTypeEnum},
+    types::{AnyType, BasicType, BasicTypeEnum},
     values::{BasicValueEnum, FunctionValue, GlobalValue},
 };
 use std::{
@@ -174,7 +174,43 @@ impl<'ll> IRBuilderCtx<'ll> {
             let rvalue = self.load_rvalue(lvalue);
 
             let ret_ty = cur_fn.get_type().get_return_type().unwrap();
-            let casted: BasicValueEnum<'ll> = self.emit_cast(ret_ty.as_any_type_enum(), rvalue).try_into().unwrap();
+            let casted: BasicValueEnum<'ll> = self
+                .emit_cast(ret_ty.as_any_type_enum(), rvalue.clone())
+                .try_into()
+                .unwrap();
+
+            // handle sret
+            if let Some(abi_func_info) = &self.cur_abi_func_info {
+                if abi_func_info.ret_info.kind.is_indirect_sret() {
+                    let sret_param = cur_fn.get_first_param().unwrap();
+                    let sret_ptr = sret_param.into_pointer_value();
+
+                    let struct_ty = rvalue.ty.clone();
+                    let struct_layout = type_layout(&self.target.info, &struct_ty);
+                    let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
+
+                    let src_ptr = if rvalue.as_basic_value().is_pointer_value() {
+                        rvalue.as_basic_value().into_pointer_value()
+                    } else {
+                        let temp_alloca = self.llvmbuilder.build_alloca(casted.get_type(), "sret.temp").unwrap();
+                        self.llvmbuilder.build_store(temp_alloca, casted).unwrap();
+                        temp_alloca
+                    };
+
+                    self.llvmbuilder
+                        .build_memcpy(
+                            sret_ptr,
+                            self.target.info.pointer_align(),
+                            src_ptr,
+                            self.target.info.pointer_align(),
+                            size_val,
+                        )
+                        .unwrap();
+
+                    self.llvmbuilder.build_return(None).unwrap();
+                    return;
+                }
+            }
 
             self.llvmbuilder.build_return(Some(&casted)).unwrap();
         } else {
