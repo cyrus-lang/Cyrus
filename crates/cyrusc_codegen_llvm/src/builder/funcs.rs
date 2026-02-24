@@ -377,14 +377,14 @@ impl<'ll> IRBuilderCtx<'ll> {
             if let Some(local_ir_value) = irreg.get(monomorph_func_entry.irv_id) {
                 // already exists in current module
                 let fn_value = local_ir_value.as_func().cloned().unwrap();
-                return (fn_value, monomorph_func_entry.func_ty.clone());
+                return (fn_value, monomorph_func_entry.func_type.clone());
             }
 
             drop(monomorph_registry);
             drop(irreg);
 
             // insert func to current module
-            let fn_ty = self.emit_func_ty(monomorph_func_entry.func_ty.clone());
+            let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
             {
                 let fn_value = {
                     let llvmmodule = self.llvmmodule.borrow_mut();
@@ -399,29 +399,33 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     irreg.insert(
                         monomorph_func_entry.irv_id,
-                        LocalIRValue::Func(fn_value, CIRTy::FuncType(monomorph_func_entry.func_ty.clone())),
+                        LocalIRValue::Func(fn_value, CIRTy::FuncType(monomorph_func_entry.func_type.clone())),
                     );
 
                     fn_value
                 };
 
-                let parent_cur_fn = self.cur_fn.clone();
+                let parent_cur_func = self.cur_func.clone();
+                let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
                 let parent_blockreg = self.blockreg.clone();
 
-                self.cur_fn = Some(fn_value);
+                self.set_current_func(fn_value, monomorph_func_entry.abi_func_info.clone());
 
                 self.emit_func_body(&monomorph_func_entry.func_params, &monomorph_func_entry.body().unwrap());
 
                 {
                     // back to parent state because we emitted a new function in the middle of an another function
-                    self.cur_fn = parent_cur_fn;
+                    if let Some(cur_func) = parent_cur_func {
+                        self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
+                    }
+
                     self.blockreg = parent_blockreg;
                     if let Some(cur_block) = self.blockreg.cur_block {
                         self.emit_block(cur_block);
                     }
                 }
 
-                return (fn_value, monomorph_func_entry.func_ty.clone());
+                return (fn_value, monomorph_func_entry.func_type.clone());
             }
         }
     }
@@ -429,7 +433,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_func_params(&self, func_params: &CIRFuncParams) {
         func_params.list.iter().enumerate().for_each(|(param_idx, param)| {
             let basic_value = self
-                .cur_fn
+                .cur_func
                 .unwrap()
                 .get_nth_param(param_idx.try_into().unwrap())
                 .unwrap();
@@ -446,7 +450,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {
-        let parent_fn = self.cur_fn.clone();
+        let parent_func = self.cur_func.clone();
+        let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
         let parent_blockreg = self.blockreg.clone();
 
         let lambda_name = self.increment_lambda_name();
@@ -468,10 +473,13 @@ impl<'ll> IRBuilderCtx<'ll> {
             apply_inlining_func(self.llvmctx, &fn_value, Inlining::Inline);
         }
 
-        self.cur_fn = Some(fn_value);
+        self.set_current_func(fn_value, lambda.abi_func_info.clone());
         self.emit_func_body(&lambda.params, &lambda.body);
 
-        self.cur_fn = parent_fn;
+        if let Some(cur_func) = parent_func {
+            self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
+        }
+        
         self.blockreg = parent_blockreg;
         if let Some(basic_block) = self.blockreg.cur_block {
             self.emit_block(basic_block);
@@ -508,7 +516,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_func_body(&mut self, func_params: &CIRFuncParams, cir_block: &CIRBlockStmt) {
-        debug_assert!(self.cur_fn.is_some());
+        debug_assert!(self.cur_func.is_some());
 
         self.ensure_entry_block();
         self.emit_func_params(func_params);
@@ -517,7 +525,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn ensure_void_fn_terminated(&self) {
-        let cur_fn = self.cur_fn.unwrap();
+        let cur_fn = self.cur_func.unwrap();
         if cur_fn.get_type().get_return_type().is_some() {
             return; // works only for void return type
         }

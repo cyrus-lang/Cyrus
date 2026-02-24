@@ -28,6 +28,8 @@ pub(crate) struct ABITypeLayout {
     pub size: u32,
     pub align: u32,
     pub field_offsets: Vec<u32>,
+
+    #[allow(unused)]
     pub is_aggregate: bool,
 }
 

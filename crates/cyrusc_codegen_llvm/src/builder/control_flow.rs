@@ -392,7 +392,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_while(&mut self, while_stmt: &CIRWhileStmt) {
-        let cur_fn = self.cur_fn.unwrap();
+        let cur_fn = self.cur_func.unwrap();
 
         let cond_block = self.llvmctx.append_basic_block(cur_fn, "while.cond");
         let body_block = self.llvmctx.append_basic_block(cur_fn, "while.body");
@@ -613,7 +613,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_block(&mut self, next_block: BasicBlock<'ll>) {
-        let cur_fn = self.cur_fn.unwrap();
+        let cur_fn = self.cur_func.unwrap();
         unsafe {
             if LLVMGetBasicBlockParent(next_block.as_mut_ptr()).is_null() {
                 LLVMAppendExistingBasicBlock(cur_fn.as_value_ref(), next_block.as_mut_ptr());

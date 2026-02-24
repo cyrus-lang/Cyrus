@@ -1403,7 +1403,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             )
         };
 
-        let current_func = self.cur_fn.unwrap();
+        let current_func = self.cur_func.unwrap();
         let payload_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.payload");
         let exit_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.exit");
 

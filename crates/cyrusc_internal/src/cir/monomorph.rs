@@ -15,10 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::cir::{
-    cir::{CIRBlockStmt, CIRFuncParams, IRValueID, cir_func_decl_as_func_ty},
-    types::CIRFuncTy,
-    walk::CIRWalk,
+use crate::{
+    abi::args::ABIFunctionInfo,
+    cir::{
+        cir::{CIRBlockStmt, CIRFuncParams, IRValueID, cir_func_decl_as_func_ty},
+        types::CIRFuncTy,
+        walk::CIRWalk,
+    },
 };
 use cyrusc_tast::{
     SymbolID,
@@ -35,9 +38,10 @@ pub struct CIRMonomorphRegistry {
 #[derive(Debug, Clone)]
 pub struct CIRMonomorphFuncEntry {
     pub irv_id: IRValueID,
-    pub func_ty: CIRFuncTy,
+    pub func_type: CIRFuncTy,
     pub func_params: CIRFuncParams,
     pub func_body: CIRMonomorphFuncBody,
+    pub abi_func_info: ABIFunctionInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +129,9 @@ impl<'resolver> CIRWalk<'resolver> {
         let cir_func_decl = self.lower_func_sig(scope_id_opt, irv_id, func_sig);
 
         let cir_func_params = cir_func_decl.params.clone();
-        let cir_func_ty = cir_func_decl_as_func_ty(&cir_func_decl);
+        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+
+        let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
         {
             // body placeholder to prevent infinite recursion during lowering
@@ -136,8 +142,9 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIRMonomorphEntry::Func(CIRMonomorphFuncEntry {
                     irv_id,
                     func_params: cir_func_params,
-                    func_ty: cir_func_ty,
+                    func_type: cir_func_type,
                     func_body: CIRMonomorphFuncBody::Placeholder,
+                    abi_func_info,
                 }),
             );
         }

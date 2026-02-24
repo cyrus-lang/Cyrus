@@ -72,7 +72,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
         }
 
-        let cur_fn = self.cur_fn.unwrap();
+        let cur_fn = self.cur_func.unwrap();
 
         let failure_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.failure");
         let success_block = self.llvmctx.append_basic_block(cur_fn, "inbounds_check.success");

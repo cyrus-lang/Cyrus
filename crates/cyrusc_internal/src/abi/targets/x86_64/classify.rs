@@ -30,6 +30,8 @@ use crate::{
     is_integer_type,
 };
 
+const MIN_ABI_STACK_ALIGN: u32 = 16;
+
 pub struct X86_64 {
     info: ABITargetInfo,
 }
@@ -460,7 +462,7 @@ impl X86_64 {
 
 impl X86_64 {
     fn classify_func_naked(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
-        // naked functions just pass arguments as-is, no ABI transformations
+        // naked functions just pass arguments as-is, NO ABI TRANSFORMATIONS
         let mut params_types = Vec::new();
         let mut params_infos = Vec::new();
 
@@ -509,9 +511,13 @@ impl X86_64 {
             // add sret parameter type
             params_types.push(ABIType::Pointer);
 
-            // TODO: Set in context return_by_ref + sret
-            // and handle RetStmt
-            todo!();
+            let sret_info = ABIArgInfo::indirect(cir_type_to_abi_type(&self.info, &fn_ty.ret), self.stack_alignment())
+                .with_attrs(ABIArgAttrs {
+                    by_val: true,
+                    ..Default::default()
+                });
+
+            params_infos.push(sret_info);
         }
 
         for param_type in &fn_ty.params {
@@ -752,7 +758,6 @@ impl TargetABI for X86_64 {
         }
     }
 
-    // REVIEW: Maybe consider to use ABIArgInfo and remove ABIRetInfo entirely.
     fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
@@ -858,9 +863,8 @@ impl TargetABI for X86_64 {
         }
     }
 
-    // REVIEW
     fn stack_alignment(&self) -> u32 {
-        16
+        MIN_ABI_STACK_ALIGN
     }
 }
 

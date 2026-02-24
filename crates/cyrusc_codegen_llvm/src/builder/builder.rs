@@ -24,13 +24,16 @@ use crate::{
     },
     llvm::abi::modifiers::apply_global_var_modifiers,
 };
-use cyrusc_internal::{abi::target::ABITarget, cir::{
+use cyrusc_internal::{
+    abi::{args::ABIFunctionInfo, target::ABITarget},
     cir::{
-        CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-        cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
+        cir::{
+            CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
+            cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
+        },
+        monomorph::CIRMonomorphRegistry,
     },
-    monomorph::CIRMonomorphRegistry,
-}};
+};
 use cyrusc_tast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
@@ -56,7 +59,8 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) llvmmodule: Rc<RefCell<Module<'ll>>>,
     pub(crate) llvmtm: &'ll TargetMachine,
     pub(crate) irreg: LocalIRValueRegistryRef<'ll>,
-    pub(crate) cur_fn: Option<FunctionValue<'ll>>,
+    pub(crate) cur_func: Option<FunctionValue<'ll>>,
+    pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     // lambda name (auto increment)
@@ -94,7 +98,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             llvmmodule,
             llvmtm,
             irreg,
-            cur_fn: None,
+            cur_func: None,
+            cur_abi_func_info: None,
             blockreg,
             monomorph_registry,
             lambda_id: 0,
@@ -118,7 +123,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
                 let fn_value = self.emit_func_decl(&func_decl);
-                self.cur_fn = Some(fn_value);
+                self.set_current_func(fn_value, func_def_stmt.abi_func_info.clone().unwrap());
                 self.emit_func_body(&func_decl.params, &func_def_stmt.body);
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
@@ -162,7 +167,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
-        let cur_fn = self.cur_fn.unwrap();
+        let cur_fn = self.cur_func.unwrap();
 
         if let Some(expr) = &return_stmt.arg {
             let lvalue = self.emit_expr(&expr);
@@ -237,6 +242,11 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(irreg);
 
         global_value
+    }
+
+    pub(crate) fn set_current_func(&mut self, fn_value: FunctionValue<'ll>, abi_func_info: ABIFunctionInfo) {
+        self.cur_func = Some(fn_value);
+        self.cur_abi_func_info = Some(abi_func_info);
     }
 }
 
