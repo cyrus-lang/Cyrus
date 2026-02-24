@@ -95,10 +95,7 @@ impl X86_64 {
             let abi_type = cir_type_to_abi_type(&self.info, ty);
 
             ABIArgInfo {
-                kind: ABIArgKind::Indirect {
-                    align: 8,
-                    ty: abi_type,
-                },
+                kind: ABIArgKind::Indirect { align: 8, ty: abi_type },
                 attrs: ABIArgAttrs {
                     by_val: true,
                     ..Default::default()
@@ -111,10 +108,7 @@ impl X86_64 {
             let abi_type = cir_type_to_abi_type(&self.info, ty);
 
             ABIArgInfo {
-                kind: ABIArgKind::Indirect {
-                    align,
-                    ty: abi_type,
-                },
+                kind: ABIArgKind::Indirect { align, ty: abi_type },
                 attrs: ABIArgAttrs {
                     by_val: true,
                     ..Default::default()
@@ -462,26 +456,6 @@ impl X86_64 {
 
         types
     }
-
-    // fn get_eightbyte_type(&self, ty: &CIRTy, offset: u32) -> ABIType {
-    //     if let Some((field_ty, _)) = self.get_member_at_offset(ty, offset) {
-    //         let field_layout = type_layout(&self.info, &field_ty);
-
-    //         // if the field occupies the entire eightbyte, use its type
-    //         if field_layout.size >= 8 {
-    //             if field_ty.is_float() {
-    //                 return cir_type_to_abi_type(&self.info, &field_ty);
-    //             } else if field_ty.is_integer() || field_ty.is_pointer() {
-    //                 // return ABIType::Integer(64);
-    //                 return cir_type_to_abi_type(&self.info, &field_ty);
-    //             }
-    //         }
-
-    //         ABIType::Integer(64)
-    //     } else {
-    //         ABIType::Integer(64)
-    //     }
-    // }
 }
 
 impl X86_64 {
@@ -557,12 +531,15 @@ impl X86_64 {
 
 impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
-    fn classify_argument(
-        &self,
-        ty: &CIRTy,
-        free_int_regs: u32,
-        #[allow(unused)] is_named: bool,
-    ) -> (ABIArgInfo, Registers) {
+    fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
+        let ty = {
+            if !is_named {
+                &self.apply_variadic_argument_promote(ty)
+            } else {
+                ty
+            }
+        };
+
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
         classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
@@ -721,6 +698,57 @@ impl TargetABI for X86_64 {
                     _ => Ok(self.classify_func_sysv(fn_ty)), // Vectorcall on non-Windows? Probably fallback
                 }
             }
+        }
+    }
+
+    fn apply_variadic_argument_promote(&self, ty: &CIRTy) -> CIRTy {
+        match ty {
+            CIRTy::Const(ty) => self.apply_variadic_argument_promote(ty),
+
+            CIRTy::PlainType(plain_type) => match plain_type {
+                // pointers and pointer-sized types remain as-is
+                PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => ty.clone(),
+
+                // integer types smaller than int (32-bit) get promoted to int
+                PlainType::Int8 | PlainType::Int16 => {
+                    if plain_type.is_signed() {
+                        CIRTy::PlainType(PlainType::Int)
+                    } else {
+                        CIRTy::PlainType(PlainType::UInt32)
+                    }
+                }
+                PlainType::UInt8 | PlainType::UInt16 => CIRTy::PlainType(PlainType::UInt32),
+
+                // int and int32 remain as-is (int-sized)
+                PlainType::Int | PlainType::Int32 => ty.clone(),
+                PlainType::UInt | PlainType::UInt32 => ty.clone(),
+
+                // larger integers remain as-is
+                PlainType::Int64 | PlainType::UInt64 => ty.clone(),
+                PlainType::Int128 | PlainType::UInt128 => ty.clone(),
+
+                // float16 promotes to double
+                PlainType::Float16 => CIRTy::PlainType(PlainType::Float64),
+
+                // float32 promotes to float64
+                PlainType::Float32 => CIRTy::PlainType(PlainType::Float64),
+
+                // float64 and float128 remain as-is
+                PlainType::Float64 | PlainType::Float128 => ty.clone(),
+
+                // char promotes to int
+                PlainType::Char => CIRTy::PlainType(PlainType::Int),
+
+                // bool promotes to int
+                PlainType::Bool => CIRTy::PlainType(PlainType::Int),
+
+                PlainType::Void | PlainType::Null => panic!("void or null type in varargs"),
+            },
+
+            CIRTy::Array(array_ty) => CIRTy::Pointer(array_ty.ty.clone()),
+
+            CIRTy::Pointer(_) | CIRTy::FuncType(_) => ty.clone(),
+            CIRTy::Struct(_) | CIRTy::Tuple(_) | CIRTy::Dynamic(_) | CIRTy::Enum(_) | CIRTy::Union(_) => ty.clone(),
         }
     }
 

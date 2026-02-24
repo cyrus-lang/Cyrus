@@ -22,10 +22,7 @@ use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy,
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace,
-    llvm_sys::{
-        core::LLVMFunctionType,
-        prelude::{LLVMBool, LLVMTypeRef},
-    },
+    llvm_sys::{core::LLVMFunctionType, prelude::LLVMBool},
     types::{AnyType, AnyTypeEnum, ArrayType, AsTypeRef, BasicType, BasicTypeEnum, FunctionType, StructType},
 };
 

@@ -1,5 +1,3 @@
-use std::ffi::CString;
-
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -16,12 +14,14 @@ use std::ffi::CString;
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     builder::{
         builder::IRBuilderCtx,
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
+    c,
     llvm::abi::{
         abi_type::abi_type_to_llvm_type,
         modifiers::{apply_func_modifiers, apply_inlining_func},
@@ -49,57 +49,12 @@ use inkwell::{
     values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
 
+pub(crate) enum FuncCallKind<'ll> {
+    Direct(FunctionValue<'ll>),
+    Indirect(CallSiteValue<'ll>),
+}
+
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_direct_func_call_args_attributes(
-        &mut self,
-        fn_value: &FunctionValue,
-        abi_func_info: &ABIFunctionInfo,
-    ) {
-        let attr_name = CString::new("byval").unwrap();
-        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(attr_name.as_ptr(), 5) };
-
-        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
-            if param_info.is_indirect_by_val() {
-                let struct_type = &abi_func_info.params_types[idx];
-                let llvm_struct_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, struct_type);
-
-                let attr = unsafe {
-                    LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, llvm_struct_type.as_type_ref())
-                };
-
-                unsafe {
-                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), (idx as u32 + 1) as u32, attr);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn emit_indirect_func_call_args_attributes(
-        &mut self,
-        call_site: &CallSiteValue<'ll>,
-        abi_func_info: &ABIFunctionInfo,
-    ) {
-        let attr_name = CString::new("byval").unwrap();
-        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(attr_name.as_ptr(), 5) };
-
-        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
-            if !param_info.is_indirect_by_val() {
-                continue;
-            }
-
-            let param_type = abi_func_info.params_types.get(idx).unwrap().clone();
-            let pointee_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &param_type);
-
-            let attr =
-                unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, pointee_type.as_type_ref()) };
-
-            // call-site attributes: index is 1-based, 0 is return
-            unsafe {
-                LLVMAddCallSiteAttribute(call_site.as_value_ref(), (idx as u32 + 1) as u32, attr);
-            }
-        }
-    }
-
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
@@ -111,31 +66,56 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for (idx, expr) in args.iter().enumerate() {
             let lvalue = self.emit_expr(expr);
-            let rvalue = self.load_rvalue(lvalue);
+            let mut rvalue = self.load_rvalue(lvalue);
 
-            let abi_arg_info = &abi_func_info.params_infos[idx];
+            if idx < abi_func_info.params_infos.len() {
+                let abi_arg_info = &abi_func_info.params_infos[idx];
 
-            match abi_arg_info.kind.clone() {
-                ABIArgKind::Direct { coerce_to } => {
-                    self.emit_direct_arg(&mut args_values, &rvalue, coerce_to);
+                match abi_arg_info.kind.clone() {
+                    ABIArgKind::Direct { coerce_to } => {
+                        self.emit_direct_arg(&mut args_values, &rvalue, coerce_to);
+                    }
+                    ABIArgKind::DirectPair { lo, hi } => {
+                        self.emit_direct_pair_arg(&mut args_values, &rvalue, lo, hi);
+                    }
+                    ABIArgKind::DirectCoerce { ty } => {
+                        self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
+                    }
+                    ABIArgKind::Expand { kind } => {
+                        self.emit_expand_arg(&mut args_values, &rvalue, kind, &abi_func_info.params_types);
+                    }
+                    ABIArgKind::Extend { signed } => {
+                        self.emit_extend_arg(&mut args_values, rvalue, signed);
+                    }
+                    ABIArgKind::Indirect { align, ref ty } => {
+                        self.emit_indirect_arg(&mut args_values, &rvalue, align, ty.clone(), &abi_arg_info);
+                    }
+                    ABIArgKind::Ignore => {
+                        // skip argument (zero-sized types)
+                    }
                 }
-                ABIArgKind::DirectPair { lo, hi } => {
-                    self.emit_direct_pair_arg(&mut args_values, &rvalue, lo, hi);
-                }
-                ABIArgKind::DirectCoerce { ty } => {
-                    self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
-                }
-                ABIArgKind::Expand { kind } => {
-                    self.emit_expand_arg(&mut args_values, &rvalue, kind, &abi_func_info.params_types);
-                }
-                ABIArgKind::Extend { signed } => {
-                    self.emit_extend_arg(&mut args_values, rvalue, signed);
-                }
-                ABIArgKind::Indirect { align, ref ty } => {
-                    self.emit_indirect_arg(&mut args_values, &rvalue, align, ty.clone(), &abi_arg_info);
-                }
-                ABIArgKind::Ignore => {
-                    // skip argument (zero-sized types)
+            } else {
+                // classify variadic argument value
+
+                let promoted_rvalue_ty = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);
+                let llvm_promoted_type = self.emit_ty(promoted_rvalue_ty.clone());
+                let promoted_value: BasicValueEnum<'ll> =
+                    self.emit_cast(llvm_promoted_type, rvalue).try_into().unwrap();
+                rvalue = InternalValue::new(promoted_rvalue_ty, InternalValueKind::RValue(promoted_value));
+
+                let (abi_arg_info, _) = self.target.target_abi.classify_argument(&rvalue.ty, 0, false);
+
+                match abi_arg_info.kind.clone() {
+                    ABIArgKind::Direct { coerce_to } => {
+                        self.emit_direct_arg(&mut args_values, &rvalue, coerce_to);
+                    }
+                    ABIArgKind::DirectPair { lo, hi } => {
+                        self.emit_direct_pair_arg(&mut args_values, &rvalue, lo, hi);
+                    }
+                    ABIArgKind::DirectCoerce { ty } => {
+                        self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
+                    }
+                    _ => args_values.push(rvalue.as_basic_value().into()),
                 }
             }
         }
@@ -557,6 +537,63 @@ impl<'ll> IRBuilderCtx<'ll> {
         let name = format!("lambda.{}", id);
         self.lambda_id += 1;
         name
+    }
+
+    pub(crate) fn emit_func_call_attributes(
+        &mut self,
+        abi_func_info: &ABIFunctionInfo,
+        func_call_kind: FuncCallKind<'ll>,
+    ) {
+        match func_call_kind {
+            FuncCallKind::Direct(fn_value) => self.emit_direct_func_call_args_attributes(&fn_value, abi_func_info),
+            FuncCallKind::Indirect(call_site) => {
+                self.emit_indirect_func_call_args_attributes(&call_site, abi_func_info)
+            }
+        }
+    }
+
+    fn emit_direct_func_call_args_attributes(&mut self, fn_value: &FunctionValue, abi_func_info: &ABIFunctionInfo) {
+        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+
+        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+            if param_info.is_indirect_by_val() {
+                let struct_type = &abi_func_info.params_types[idx];
+                let llvm_struct_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, struct_type);
+
+                let attr = unsafe {
+                    LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, llvm_struct_type.as_type_ref())
+                };
+
+                unsafe {
+                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), (idx as u32 + 1) as u32, attr);
+                }
+            }
+        }
+    }
+
+    fn emit_indirect_func_call_args_attributes(
+        &mut self,
+        call_site: &CallSiteValue<'ll>,
+        abi_func_info: &ABIFunctionInfo,
+    ) {
+        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+
+        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+            if !param_info.is_indirect_by_val() {
+                continue;
+            }
+
+            let param_type = abi_func_info.params_types.get(idx).unwrap().clone();
+            let pointee_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &param_type);
+
+            let attr =
+                unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, pointee_type.as_type_ref()) };
+
+            // call-site attributes: index is 1-based, 0 is return
+            unsafe {
+                LLVMAddCallSiteAttribute(call_site.as_value_ref(), (idx as u32 + 1) as u32, attr);
+            }
+        }
     }
 }
 

@@ -118,6 +118,7 @@ impl CodeGenLLVM {
             &self.llvmtm,
             monomorph_registry,
         );
+        
         ir_builder_ctx.emit_program_tree(cir_program_tree);
 
         {

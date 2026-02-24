@@ -16,11 +16,15 @@
  */
 use crate::{
     builder::{builder::IRBuilderCtx, irreg::LocalIRValue},
-    llvm::c_str::to_c_str,
+    c,
 };
-use cyrusc_internal::cir::{cir::{
-    CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt
-}, types::CIRTy};
+use cyrusc_internal::cir::{
+    cir::{
+        CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRSwitchOnEnumPattern,
+        CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
+    },
+    types::CIRTy,
+};
 use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
@@ -602,9 +606,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn new_basic_block(&mut self, name: &str) -> BasicBlock<'ll> {
-        let c_str = to_c_str(name);
         unsafe {
-            let llvm_bb = LLVMCreateBasicBlockInContext(self.llvmctx.as_ctx_ref(), c_str.as_ptr());
+            let llvm_bb = LLVMCreateBasicBlockInContext(self.llvmctx.as_ctx_ref(), c!(name).as_ptr());
             BasicBlock::new(llvm_bb).unwrap()
         }
     }

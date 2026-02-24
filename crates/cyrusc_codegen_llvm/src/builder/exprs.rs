@@ -18,6 +18,7 @@
 use crate::{
     builder::{
         builder::IRBuilderCtx,
+        funcs::FuncCallKind,
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
@@ -1623,7 +1624,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) -> InternalValue<'ll> {
         let abi_func_info = self.target.target_abi.classify_func(fn_ty).unwrap();
         let args = self.emit_func_args(args, fn_ty);
-        self.emit_direct_func_call_args_attributes(fn_value, &abi_func_info);
+
+        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(*fn_value));
 
         let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
 
@@ -1651,7 +1653,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .build_indirect_call(fn_ty, fn_ptr, &args, "indirect_call")
             .unwrap();
 
-        self.emit_indirect_func_call_args_attributes(&call_site, &abi_func_info);
+        self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 
         if let Some(basic_value) = call_site.try_as_basic_value().basic() {
             InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))

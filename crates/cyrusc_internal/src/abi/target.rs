@@ -30,6 +30,7 @@ pub trait TargetABI: Send + Sync {
     fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo;
     fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers);
     fn classify_func(&self, fn_ty: &CIRFuncTy) -> Result<ABIFunctionInfo, String>;
+    fn apply_variadic_argument_promote(&self, ty: &CIRTy) -> CIRTy;
 }
 
 pub fn create_target_abi<'a>(target_info: ABITargetInfo) -> Result<Box<dyn TargetABI + 'a>, String> {
