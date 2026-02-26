@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
-cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
 cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }

@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
-cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }

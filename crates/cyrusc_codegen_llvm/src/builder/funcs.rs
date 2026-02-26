@@ -27,7 +27,7 @@ use crate::{
         modifiers::{apply_func_modifiers, apply_inlining_func},
     },
 };
-use cyrusc_abi::{ast_defs::Inlining, modifiers::FuncModifiers};
+use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},

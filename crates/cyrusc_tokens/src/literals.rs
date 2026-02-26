@@ -20,7 +20,7 @@ use crate::{
 };
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Literal {
     pub kind: LiteralKind,
     pub loc: Location,
@@ -75,3 +75,11 @@ impl fmt::Display for Literal {
         }
     }
 }
+
+impl PartialEq for Literal {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl Eq for Literal {}

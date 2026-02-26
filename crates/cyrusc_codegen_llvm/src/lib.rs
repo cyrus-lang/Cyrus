@@ -19,7 +19,6 @@ use crate::{
     builder::builder::IRBuilderCtx,
     llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
 };
-use cyrusc_abi::mangler::make_module_name_from_filepath;
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_compiler::{
     codegen_traits::{CodeGenBackend, SeparateModuleSupport, UnifiedModuleSupport},
@@ -118,7 +117,7 @@ impl CodeGenLLVM {
             &self.llvmtm,
             monomorph_registry,
         );
-        
+
         ir_builder_ctx.emit_program_tree(cir_program_tree);
 
         {
@@ -179,12 +178,6 @@ impl CodeGenLLVM {
         }
     }
 
-    fn make_module_name<P: AsRef<Path> + ?Sized>(&self, file_path: &P) -> String {
-        let base_path = self.opts.base_path.as_ref().map(|p| Path::new(p));
-        let stdlib_path = self.opts.stdlib_path.as_ref().map(|p| Path::new(p));
-        make_module_name_from_filepath(file_path, base_path, stdlib_path)
-    }
-
     fn store_object_file_cache(&self, module_name: &String, object_path: &PathBuf) {
         {
             let mut build_manifest = self.build_manifest.lock().unwrap();
@@ -230,11 +223,9 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
             }
         }
 
-        let module_name = self.make_module_name(&owned_module.module_name);
-
         let object_path = Path::new(&self.build_dir)
             .join(OBJECT_CACHE_DIR_FILENAME)
-            .join(format!("{}.o", module_name));
+            .join(format!("{}.o", owned_module.module_name.clone()));
 
         if let Some(dir) = object_path.parent() {
             std::fs::create_dir_all(dir).expect("Failed to create directories for object file");
@@ -248,7 +239,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
                 .expect("Failed to write LLVM object file")
         }
 
-        self.store_object_file_cache(&module_name, &object_path);
+        self.store_object_file_cache(&owned_module.module_name.clone(), &object_path);
 
         ObjectFileInfo::new(object_path.clone(), object_file_size(&object_path))
     }
@@ -334,9 +325,12 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
         for cir_program_tree in cir_modules {
             let context = OwnedModule::create_context();
-            let module_name = self.make_module_name(&cir_program_tree.file_path);
-            let owned_module =
-                OwnedModule::create_owned_module(context, &cir_program_tree.file_path, &module_name, false);
+            let owned_module = OwnedModule::create_owned_module(
+                context,
+                &cir_program_tree.file_path,
+                &cir_program_tree.module_name,
+                false,
+            );
 
             let recompile_forced =
                 need_to_be_recompiled(&self.ctx, &Path::new(&cir_program_tree.file_path).to_path_buf());

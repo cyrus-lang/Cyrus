@@ -185,6 +185,31 @@ impl Parser {
         })
     }
 
+    /// Parses a list of trait bounds separated by `+`.
+    fn parse_bounds(&mut self) -> Result<Vec<Bound>, Diag> {
+        let mut list: Vec<Bound> = Vec::new();
+
+        loop {
+            let symbol = self.parse_ident()?;
+            self.next_token();
+
+            list.push(Bound {
+                symbol,
+                type_args: Vec::new(),
+            });
+
+            match self.current_token().kind {
+                TokenKind::Plus => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        Ok(list)
+    }
+
     /// Parses a list of type arguments inside `<...>` for generic instantiations.
     ///
     /// Supports both positional (`<T, U>`) and named (`<Key = T, Value = U>`) arguments.
@@ -654,7 +679,7 @@ impl Parser {
 
         // Parse consecutive array dimensions: `int[3][4]` -> dims = [3, 4]
         while self.current_token_is(TokenKind::LeftBracket) {
-            let array_capacity = self.parse_single_array_capacity()?;
+            let array_capacity = self.parse_array_capacity()?;
 
             // If another dimension follows `[3][4]`, consume the closing bracket
             // to position the parser at the next `[`. Without this, we'd be stuck at the `]`.
@@ -683,7 +708,7 @@ impl Parser {
         Ok(type_specifier)
     }
 
-    fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {
+    fn parse_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {
         self.expect_current(TokenKind::LeftBracket)?;
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
@@ -913,30 +938,9 @@ impl Parser {
         }))
     }
 
-    fn parse_bounds(&mut self) -> Result<Vec<Bound>, Diag> {
-        let mut list: Vec<Bound> = Vec::new();
-
-        loop {
-            let symbol = self.parse_ident()?;
-            self.next_token();
-
-            list.push(Bound {
-                symbol,
-                type_args: Vec::new(),
-            });
-
-            match self.current_token().kind {
-                TokenKind::Plus => {
-                    self.next_token();
-                    continue;
-                }
-                _ => break,
-            }
-        }
-
-        Ok(list)
-    }
-
+    /// Checks if the parsed expression is a path or symbol.
+    ///
+    /// Path-like expressions include identifiers and module-qualified paths like `foo` or `std::foo`.
     fn current_expr_is_path_like(&self, last_parsed_expr: Expr) -> bool {
         matches!(last_parsed_expr, Expr::Ident(..) | Expr::ModuleImport(..))
     }

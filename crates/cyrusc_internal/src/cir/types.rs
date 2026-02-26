@@ -16,7 +16,7 @@
  */
 
 use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumTyVariant};
-use cyrusc_abi::ast_defs::CallConv;
+use cyrusc_ast::abi::CallConv;
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone)]

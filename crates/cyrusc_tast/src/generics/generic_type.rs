@@ -302,27 +302,6 @@ impl PartialEq for GenericType {
     }
 }
 
-impl Hash for GenericType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.base.hash(state);
-    }
-}
-
-impl Debug for GenericType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GenericType")
-            .field("base", &self.base)
-            .field("type_args", &self.type_args)
-            .field("mapping_ctx", &self.mapping_ctx)
-            .field("generic_params", &self.generic_params)
-            .field("is_const", &self.is_const)
-            .field("loc", &self.loc)
-            .finish()
-    }
-}
-
-impl Eq for GenericType {}
-
 #[cfg(debug_assertions)]
 pub fn debug_generic_type<'a>(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
@@ -434,3 +413,24 @@ pub fn debug_generic_type<'a>(
     println!("-----------------------");
     println!("");
 }
+
+impl Hash for GenericType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.base.hash(state);
+    }
+}
+
+impl Debug for GenericType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GenericType")
+            .field("base", &self.base)
+            .field("type_args", &self.type_args)
+            .field("mapping_ctx", &self.mapping_ctx)
+            .field("generic_params", &self.generic_params)
+            .field("is_const", &self.is_const)
+            .field("loc", &self.loc)
+            .finish()
+    }
+}
+
+impl Eq for GenericType {}

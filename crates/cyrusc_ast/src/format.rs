@@ -360,7 +360,7 @@ impl fmt::Display for Expr {
                     f,
                     "({})",
                     tuple_value
-                        .expr_list
+                        .elements
                         .iter()
                         .map(|t| t.to_string())
                         .collect::<Vec<String>>()

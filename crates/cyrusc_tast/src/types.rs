@@ -102,6 +102,222 @@ pub struct TypedFuncType {
     pub loc: SourceLoc,
 }
 
+pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
+    Some(SemanticType::PlainType(match suffix {
+        TokenKind::UIntPtr => PlainType::UIntPtr,
+        TokenKind::IntPtr => PlainType::IntPtr,
+        TokenKind::USize => PlainType::USize,
+        TokenKind::ISize => PlainType::ISize,
+        TokenKind::Int => PlainType::Int,
+        TokenKind::Int8 => PlainType::Int8,
+        TokenKind::Int16 => PlainType::Int16,
+        TokenKind::Int32 => PlainType::Int32,
+        TokenKind::Int64 => PlainType::Int64,
+        TokenKind::Int128 => PlainType::Int128,
+        TokenKind::UInt => PlainType::UInt,
+        TokenKind::UInt8 => PlainType::UInt8,
+        TokenKind::UInt16 => PlainType::UInt16,
+        TokenKind::UInt32 => PlainType::UInt32,
+        TokenKind::UInt64 => PlainType::UInt64,
+        TokenKind::UInt128 => PlainType::UInt128,
+        _ => return None,
+    }))
+}
+
+pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
+    Some(SemanticType::PlainType(match suffix {
+        TokenKind::Float16 => PlainType::Float16,
+        TokenKind::Float32 => PlainType::Float32,
+        TokenKind::Float64 => PlainType::Float64,
+        TokenKind::Float128 => PlainType::Float128,
+        _ => return None,
+    }))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterfaceType {
+    pub symbol_id: SymbolID,
+    pub methods: Vec<FuncSig>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct DynamicType {
+    pub interface_symbol_id: SymbolID,
+    pub vtable_id: VTableID,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedArrayType {
+    pub element_type: Box<SemanticType>,
+    pub capacity: TypedArrayCapacity,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypedArrayCapacity {
+    Fixed(TypedArrayFixedCapacityValue),
+    Dynamic,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedArrayFixedCapacityValue {
+    Expr(Box<TypedExprStmt>),
+    Value(u64),
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedStructType {
+    pub fields: Vec<TypedUnnamedStructTypeField>,
+    pub is_packed: bool,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedUnionType {
+    pub fields: Vec<TypedUnnamedUnionTypeField>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedEnumType {
+    pub variants: Vec<TypedUnnamedEnumVariant>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedUnnamedEnumVariant {
+    Ident(Ident),
+    Valued(Ident, Box<TypedExprStmt>),
+    Variant(Ident, Vec<TypedUnnamedEnumValuedField>),
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedEnumValuedField {
+    pub ty: SemanticType,
+    pub loc: SourceLoc,
+}
+
+impl PartialEq for TypedUnnamedEnumValuedField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl Hash for TypedUnnamedEnumType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.variants.hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumType {
+    fn eq(&self, other: &Self) -> bool {
+        self.variants == other.variants
+    }
+}
+
+impl Hash for TypedUnnamedEnumVariant {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
+            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1 == expr2,
+            (Self::Variant(ident1, fields1), Self::Variant(ident2, fields2)) => {
+                if ident1 != ident2 {
+                    return false;
+                }
+                if fields1.len() != fields2.len() {
+                    return false;
+                }
+                fields1.iter().zip(fields2.iter()).all(|(f1, f2)| f1.ty == f2.ty)
+            }
+            _ => false,
+        }
+    }
+}
+impl PartialEq for TypedUnnamedUnionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
+impl PartialEq for TypedUnnamedStructType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.is_packed == other.is_packed
+    }
+}
+
+impl Hash for TypedUnnamedUnionType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedStructType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
+        self.is_packed.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedStructTypeField {
+    pub name: String,
+    pub ty: Box<SemanticType>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct TypedUnnamedUnionTypeField {
+    pub name: String,
+    pub ty: Box<SemanticType>,
+    pub loc: SourceLoc,
+}
+
+pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedUnnamedEnumType {
+    let variants = enum_sig
+        .variants
+        .iter()
+        .map(|variant| match variant {
+            TypedEnumVariant::Ident(ident) => TypedUnnamedEnumVariant::Ident(ident.clone()),
+            TypedEnumVariant::Valued(ident, typed_expr_stmt) => {
+                TypedUnnamedEnumVariant::Valued(ident.clone(), typed_expr_stmt.clone())
+            }
+            TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
+                let valued_fields = typed_enum_valued_fields
+                    .iter()
+                    .map(|field| TypedUnnamedEnumValuedField {
+                        ty: field.ty.clone(),
+                        loc: field.loc.clone(),
+                    })
+                    .collect();
+                TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields)
+            }
+        })
+        .collect();
+
+    TypedUnnamedEnumType { variants, loc }
+}
+
+pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
+    let fields = union_sig
+        .fields
+        .iter()
+        .map(|field| TypedUnnamedUnionTypeField {
+            name: field.name.clone(),
+            ty: Box::new(field.ty.clone()),
+            loc: field.loc.clone(),
+        })
+        .collect();
+    TypedUnnamedUnionType { fields, loc }
+}
+
 impl ResolvedSymbol {
     pub fn symbol_id(&self) -> SymbolID {
         match self {
@@ -380,38 +596,6 @@ impl SemanticType {
     }
 }
 
-pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::PlainType(match suffix {
-        TokenKind::UIntPtr => PlainType::UIntPtr,
-        TokenKind::IntPtr => PlainType::IntPtr,
-        TokenKind::USize => PlainType::USize,
-        TokenKind::ISize => PlainType::ISize,
-        TokenKind::Int => PlainType::Int,
-        TokenKind::Int8 => PlainType::Int8,
-        TokenKind::Int16 => PlainType::Int16,
-        TokenKind::Int32 => PlainType::Int32,
-        TokenKind::Int64 => PlainType::Int64,
-        TokenKind::Int128 => PlainType::Int128,
-        TokenKind::UInt => PlainType::UInt,
-        TokenKind::UInt8 => PlainType::UInt8,
-        TokenKind::UInt16 => PlainType::UInt16,
-        TokenKind::UInt32 => PlainType::UInt32,
-        TokenKind::UInt64 => PlainType::UInt64,
-        TokenKind::UInt128 => PlainType::UInt128,
-        _ => return None,
-    }))
-}
-
-pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::PlainType(match suffix {
-        TokenKind::Float16 => PlainType::Float16,
-        TokenKind::Float32 => PlainType::Float32,
-        TokenKind::Float64 => PlainType::Float64,
-        TokenKind::Float128 => PlainType::Float128,
-        _ => return None,
-    }))
-}
-
 impl PlainType {
     pub fn is_scalar(&self) -> bool {
         match self {
@@ -546,6 +730,125 @@ impl PlainType {
     }
 }
 
+impl TypedArrayFixedCapacityValue {
+    pub fn as_value(&self) -> Option<u64> {
+        match self {
+            TypedArrayFixedCapacityValue::Expr(..) => None,
+            TypedArrayFixedCapacityValue::Value(value) => Some(*value),
+        }
+    }
+
+    pub fn as_expr(&self) -> Option<Box<TypedExprStmt>> {
+        match self {
+            TypedArrayFixedCapacityValue::Expr(typed_expr) => Some(typed_expr.clone()),
+            TypedArrayFixedCapacityValue::Value(..) => None,
+        }
+    }
+}
+
+impl TypedUnnamedEnumVariant {
+    pub fn ident(&self) -> &Ident {
+        match self {
+            TypedUnnamedEnumVariant::Ident(ident) => ident,
+            TypedUnnamedEnumVariant::Valued(ident, _) => ident,
+            TypedUnnamedEnumVariant::Variant(ident, _) => ident,
+        }
+    }
+}
+
+impl Hash for DynamicType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.vtable_id.hash(state);
+    }
+}
+
+impl Hash for InterfaceType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.symbol_id.hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedUnionTypeField {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.ty.hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedStructTypeField {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.ty.hash(state);
+    }
+}
+
+impl Hash for TypedArrayFixedCapacityValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            TypedArrayFixedCapacityValue::Value(v) => v.hash(state),
+            TypedArrayFixedCapacityValue::Expr(_) => {
+                panic!("Requires a compile-time constant array size.");
+            }
+        }
+    }
+}
+
+impl Hash for TypedArrayType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.element_type.hash(state);
+        self.capacity.hash(state);
+    }
+}
+
+impl Hash for TypedFuncType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.params.hash(state);
+        self.return_type.hash(state);
+    }
+}
+
+impl Hash for TypedTupleType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.type_list.hash(state);
+    }
+}
+
+impl PartialEq for TypedArrayType {
+    fn eq(&self, other: &Self) -> bool {
+        self.element_type == other.element_type && self.capacity == other.capacity
+    }
+}
+
+impl PartialEq for DynamicType {
+    fn eq(&self, other: &Self) -> bool {
+        self.interface_symbol_id == other.interface_symbol_id
+    }
+}
+
+impl PartialEq for TypedUnnamedUnionTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl PartialEq for TypedUnnamedStructTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl PartialEq for TypedFuncType {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.return_type == other.return_type
+    }
+}
+
+impl PartialEq for TypedTupleType {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_list == other.type_list
+    }
+}
+
 impl TryFrom<TokenKind> for SemanticType {
     type Error = ();
 
@@ -581,310 +884,6 @@ impl TryFrom<TokenKind> for SemanticType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InterfaceType {
-    pub symbol_id: SymbolID,
-    pub methods: Vec<FuncSig>,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct DynamicType {
-    pub interface_symbol_id: SymbolID,
-    pub vtable_id: VTableID,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedArrayType {
-    pub element_type: Box<SemanticType>,
-    pub capacity: TypedArrayCapacity,
-    pub loc: SourceLoc,
-}
-
-impl Hash for DynamicType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.vtable_id.hash(state);
-    }
-}
-
-impl PartialEq for TypedArrayType {
-    fn eq(&self, other: &Self) -> bool {
-        self.element_type == other.element_type && self.capacity == other.capacity
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypedArrayCapacity {
-    Fixed(TypedArrayFixedCapacityValue),
-    Dynamic,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypedArrayFixedCapacityValue {
-    Expr(Box<TypedExprStmt>),
-    Value(u64),
-}
-
-impl Hash for InterfaceType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.symbol_id.hash(state);
-    }
-}
-
-impl TypedArrayFixedCapacityValue {
-    pub fn as_value(&self) -> Option<u64> {
-        match self {
-            TypedArrayFixedCapacityValue::Expr(..) => None,
-            TypedArrayFixedCapacityValue::Value(value) => Some(*value),
-        }
-    }
-
-    pub fn as_expr(&self) -> Option<Box<TypedExprStmt>> {
-        match self {
-            TypedArrayFixedCapacityValue::Expr(typed_expr) => Some(typed_expr.clone()),
-            TypedArrayFixedCapacityValue::Value(..) => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedStructType {
-    pub fields: Vec<TypedUnnamedStructTypeField>,
-    pub is_packed: bool,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedUnionType {
-    pub fields: Vec<TypedUnnamedUnionTypeField>,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedEnumType {
-    pub variants: Vec<TypedUnnamedEnumVariant>,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone)]
-pub enum TypedUnnamedEnumVariant {
-    Ident(Ident),
-    Valued(Ident, Box<TypedExprStmt>),
-    Variant(Ident, Vec<TypedUnnamedEnumValuedField>),
-}
-
-impl TypedUnnamedEnumVariant {
-    pub fn ident(&self) -> &Ident {
-        match self {
-            TypedUnnamedEnumVariant::Ident(ident) => ident,
-            TypedUnnamedEnumVariant::Valued(ident, _) => ident,
-            TypedUnnamedEnumVariant::Variant(ident, _) => ident,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedEnumValuedField {
-    pub ty: SemanticType,
-    pub loc: SourceLoc,
-}
-
-impl PartialEq for TypedUnnamedEnumValuedField {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty
-    }
-}
-
-impl Eq for TypedUnnamedEnumVariant {}
-
-impl Hash for TypedUnnamedEnumType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.variants.hash(state);
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumType {
-    fn eq(&self, other: &Self) -> bool {
-        self.variants == other.variants
-    }
-}
-
-impl Hash for TypedUnnamedEnumVariant {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumVariant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
-            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1 == expr2,
-            (Self::Variant(ident1, fields1), Self::Variant(ident2, fields2)) => {
-                if ident1 != ident2 {
-                    return false;
-                }
-                if fields1.len() != fields2.len() {
-                    return false;
-                }
-                fields1.iter().zip(fields2.iter()).all(|(f1, f2)| f1.ty == f2.ty)
-            }
-            _ => false,
-        }
-    }
-}
-impl PartialEq for TypedUnnamedUnionType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields
-    }
-}
-
-impl PartialEq for TypedUnnamedStructType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.is_packed == other.is_packed
-    }
-}
-
-impl Hash for TypedUnnamedUnionType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedStructType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-        self.is_packed.hash(state);
-    }
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedStructTypeField {
-    pub name: String,
-    pub ty: Box<SemanticType>,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedUnionTypeField {
-    pub name: String,
-    pub ty: Box<SemanticType>,
-    pub loc: SourceLoc,
-}
-
-impl Hash for TypedUnnamedUnionTypeField {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.ty.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedStructTypeField {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.ty.hash(state);
-    }
-}
-
-impl PartialEq for TypedUnnamedUnionTypeField {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.ty == other.ty
-    }
-}
-
-impl PartialEq for TypedUnnamedStructTypeField {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.ty == other.ty
-    }
-}
-
-impl PartialEq for TypedFuncType {
-    fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.return_type == other.return_type
-    }
-}
-
-impl PartialEq for TypedTupleType {
-    fn eq(&self, other: &Self) -> bool {
-        self.type_list == other.type_list
-    }
-}
-
-impl Hash for TypedArrayFixedCapacityValue {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            TypedArrayFixedCapacityValue::Value(v) => v.hash(state),
-            TypedArrayFixedCapacityValue::Expr(_) => {
-                panic!("Requires a compile-time constant array size.");
-            }
-        }
-    }
-}
-
-impl Hash for TypedArrayType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.element_type.hash(state);
-        self.capacity.hash(state);
-    }
-}
-
-impl Hash for TypedFuncType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.params.hash(state);
-        self.return_type.hash(state);
-    }
-}
-
-impl Hash for TypedTupleType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.type_list.hash(state);
-    }
-}
-
 impl Eq for TypedArrayFixedCapacityValue {}
+impl Eq for TypedUnnamedEnumVariant {}
 impl Eq for TypedFuncType {}
-
-impl PartialEq for DynamicType {
-    fn eq(&self, other: &Self) -> bool {
-        self.interface_symbol_id == other.interface_symbol_id
-    }
-}
-
-pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedUnnamedEnumType {
-    let variants = enum_sig
-        .variants
-        .iter()
-        .map(|variant| match variant {
-            TypedEnumVariant::Ident(ident) => TypedUnnamedEnumVariant::Ident(ident.clone()),
-            TypedEnumVariant::Valued(ident, typed_expr_stmt) => {
-                TypedUnnamedEnumVariant::Valued(ident.clone(), typed_expr_stmt.clone())
-            }
-            TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
-                let valued_fields = typed_enum_valued_fields
-                    .iter()
-                    .map(|field| TypedUnnamedEnumValuedField {
-                        ty: field.ty.clone(),
-                        loc: field.loc.clone(),
-                    })
-                    .collect();
-                TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields)
-            }
-        })
-        .collect();
-
-    TypedUnnamedEnumType { variants, loc }
-}
-
-pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
-    let fields = union_sig
-        .fields
-        .iter()
-        .map(|field| TypedUnnamedUnionTypeField {
-            name: field.name.clone(),
-            ty: Box::new(field.ty.clone()),
-            loc: field.loc.clone(),
-        })
-        .collect();
-    TypedUnnamedUnionType { fields, loc }
-}

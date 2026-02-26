@@ -14,16 +14,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     LabelID, ModuleID, ScopeID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
-use cyrusc_abi::{
-    ast_defs::Visibility,
-    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
-};
-use cyrusc_ast::{Ident, SelfModifierKind};
+use cyrusc_ast::{Ident, SelfModifierKind, abi::Visibility, modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers}};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use std::{collections::HashMap, hash::Hash};
 
@@ -53,35 +50,6 @@ pub enum TypedStmt {
     Goto(TypedGotoStmt),
 }
 
-impl TypedStmt {
-    pub fn loc(&self) -> SourceLoc {
-        match self {
-            TypedStmt::Variable(typed_variable) => typed_variable.loc.clone(),
-            TypedStmt::Typedef(typed_typedef) => typed_typedef.loc.clone(),
-            TypedStmt::GlobalVar(typed_global_variable) => typed_global_variable.loc.clone(),
-            TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
-            TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
-            TypedStmt::BlockStmt(typed_block_statement) => typed_block_statement.loc.clone(),
-            TypedStmt::If(typed_if) => typed_if.loc.clone(),
-            TypedStmt::Return(typed_return) => typed_return.loc.clone(),
-            TypedStmt::Break(typed_break) => typed_break.loc.clone(),
-            TypedStmt::Continue(typed_continue) => typed_continue.loc.clone(),
-            TypedStmt::For(typed_for) => typed_for.loc.clone(),
-            TypedStmt::Switch(typed_switch) => typed_switch.loc.clone(),
-            TypedStmt::Struct(typed_struct) => typed_struct.loc.clone(),
-            TypedStmt::Enum(typed_enum) => typed_enum.loc.clone(),
-            TypedStmt::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStmt::Expr(typed_expr) => typed_expr.loc.clone(),
-            TypedStmt::While(while_stmt) => while_stmt.loc.clone(),
-            TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
-            TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
-            TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
-            TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc.clone(),
-            TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TypedLabelStmt {
     pub name: String,
@@ -109,15 +77,6 @@ pub struct TypedExportTupleStmt {
 pub enum TypedExportPattern {
     Ident(SymbolID),
     Tuple(Vec<TypedExportPattern>),
-}
-
-impl TypedExportPattern {
-    pub fn into_tuple(&self) -> &Vec<TypedExportPattern> {
-        match self {
-            TypedExportPattern::Ident(_) => unreachable!(),
-            TypedExportPattern::Tuple(patterns) => patterns,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -162,23 +121,6 @@ pub enum TypedEnumVariant {
     Ident(Ident),
     Valued(Ident, Box<TypedExprStmt>),
     Variant(Ident, Vec<TypedEnumValuedField>),
-}
-
-impl TypedEnumVariant {
-    pub fn ident(&self) -> &Ident {
-        match self {
-            TypedEnumVariant::Ident(ident) => ident,
-            TypedEnumVariant::Valued(ident, ..) => ident,
-            TypedEnumVariant::Variant(ident, ..) => ident,
-        }
-    }
-
-    pub fn as_fielded_variant(&self) -> Option<&Vec<TypedEnumValuedField>> {
-        match self {
-            TypedEnumVariant::Variant(_, valued_fields) => Some(valued_fields),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -267,17 +209,6 @@ pub struct TypedBlockStmt {
     pub loc: SourceLoc,
 }
 
-impl TypedBlockStmt {
-    pub fn new_empty(scope_id: ScopeID, loc: SourceLoc) -> Self {
-        Self {
-            scope_id,
-            stmts: Vec::new(),
-            defers: Vec::new(),
-            loc,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TypedVarStmt {
     pub symbol_id: SymbolID,
@@ -330,16 +261,6 @@ pub struct TypedFuncParams {
     pub variadic: Option<TypedFuncVariadicParams>,
 }
 
-impl TypedFuncParams {
-    pub fn is_instance_method(&self) -> bool {
-        if let Some(param) = self.list.first() {
-            param.as_self_modifier().is_some()
-        } else {
-            false
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,
@@ -358,49 +279,10 @@ pub enum TypedFuncTypeVariadicParams {
     Typed(SemanticType),
 }
 
-impl TypedFuncTypeParams {
-    pub fn as_typed_variadic(&self) -> Option<SemanticType> {
-        self.variadic.clone().and_then(|variadic| match *variadic {
-            TypedFuncTypeVariadicParams::Typed(sema_ty) => Some(sema_ty),
-            TypedFuncTypeVariadicParams::UntypedCStyle => None,
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
     SelfModifier(TypedSelfModifier),
-}
-
-impl TypedFuncParamKind {
-    pub fn loc(&self) -> SourceLoc {
-        match self {
-            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc.clone(),
-            TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.loc.clone(),
-        }
-    }
-
-    pub fn param_type(&self) -> Option<SemanticType> {
-        match self {
-            TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
-            TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),
-        }
-    }
-
-    pub fn as_self_modifier(&self) -> Option<&TypedSelfModifier> {
-        match self {
-            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
-            TypedFuncParamKind::FuncParam(_) => None,
-        }
-    }
-
-    pub fn as_self_modifier_mut(&mut self) -> Option<&mut TypedSelfModifier> {
-        match self {
-            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
-            TypedFuncParamKind::FuncParam(_) => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -442,28 +324,6 @@ pub struct TypedSwitchStmt {
     pub cases: Vec<TypedSwitchCase>,
     pub default_case: Option<TypedBlockStmt>,
     pub loc: SourceLoc,
-}
-
-impl TypedSwitchStmt {
-    pub fn includes_any_range(&self) -> bool {
-        self.cases.iter().any(|case| {
-            case.patterns
-                .iter()
-                .any(|p| matches!(p, TypedSwitchCasePattern::Range(_)))
-        })
-    }
-
-    pub fn includes_only_integer(&self) -> bool {
-        self.cases.iter().any(|case| {
-            case.patterns.iter().any(|p| match p {
-                TypedSwitchCasePattern::Expr(expr, _) => {
-                    let sema_ty = expr.sema_ty.as_ref().unwrap();
-                    sema_ty.is_char() || sema_ty.is_integer()
-                }
-                _ => false,
-            })
-        })
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -511,6 +371,162 @@ pub struct TypedGenericParam {
     pub default: Option<Box<SemanticType>>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct TypedBound {
+    pub symbol: Ident,
+    pub type_args: TypedTypeArgs,
+}
+
+#[derive(Debug, Clone, Eq)]
+pub enum TypedTypeArg {
+    Positional {
+        idx: usize,
+        ty: SemanticType,
+        loc: SourceLoc,
+    },
+    Named {
+        key: String,
+        ty: SemanticType,
+        loc: SourceLoc,
+    },
+}
+
+impl TypedStmt {
+    pub fn loc(&self) -> SourceLoc {
+        match self {
+            TypedStmt::Variable(typed_variable) => typed_variable.loc.clone(),
+            TypedStmt::Typedef(typed_typedef) => typed_typedef.loc.clone(),
+            TypedStmt::GlobalVar(typed_global_variable) => typed_global_variable.loc.clone(),
+            TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
+            TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
+            TypedStmt::BlockStmt(typed_block_statement) => typed_block_statement.loc.clone(),
+            TypedStmt::If(typed_if) => typed_if.loc.clone(),
+            TypedStmt::Return(typed_return) => typed_return.loc.clone(),
+            TypedStmt::Break(typed_break) => typed_break.loc.clone(),
+            TypedStmt::Continue(typed_continue) => typed_continue.loc.clone(),
+            TypedStmt::For(typed_for) => typed_for.loc.clone(),
+            TypedStmt::Switch(typed_switch) => typed_switch.loc.clone(),
+            TypedStmt::Struct(typed_struct) => typed_struct.loc.clone(),
+            TypedStmt::Enum(typed_enum) => typed_enum.loc.clone(),
+            TypedStmt::Interface(typed_interface) => typed_interface.loc.clone(),
+            TypedStmt::Expr(typed_expr) => typed_expr.loc.clone(),
+            TypedStmt::While(while_stmt) => while_stmt.loc.clone(),
+            TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
+            TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
+            TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
+            TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc.clone(),
+            TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc.clone(),
+        }
+    }
+}
+
+impl TypedExportPattern {
+    pub fn into_tuple(&self) -> &Vec<TypedExportPattern> {
+        match self {
+            TypedExportPattern::Ident(_) => unreachable!(),
+            TypedExportPattern::Tuple(patterns) => patterns,
+        }
+    }
+}
+impl TypedEnumVariant {
+    pub fn ident(&self) -> &Ident {
+        match self {
+            TypedEnumVariant::Ident(ident) => ident,
+            TypedEnumVariant::Valued(ident, ..) => ident,
+            TypedEnumVariant::Variant(ident, ..) => ident,
+        }
+    }
+
+    pub fn as_fielded_variant(&self) -> Option<&Vec<TypedEnumValuedField>> {
+        match self {
+            TypedEnumVariant::Variant(_, valued_fields) => Some(valued_fields),
+            _ => None,
+        }
+    }
+}
+
+impl TypedBlockStmt {
+    pub fn new_empty(scope_id: ScopeID, loc: SourceLoc) -> Self {
+        Self {
+            scope_id,
+            stmts: Vec::new(),
+            defers: Vec::new(),
+            loc,
+        }
+    }
+}
+
+impl TypedFuncParams {
+    pub fn is_instance_method(&self) -> bool {
+        if let Some(param) = self.list.first() {
+            param.as_self_modifier().is_some()
+        } else {
+            false
+        }
+    }
+}
+
+impl TypedFuncTypeParams {
+    pub fn as_typed_variadic(&self) -> Option<SemanticType> {
+        self.variadic.clone().and_then(|variadic| match *variadic {
+            TypedFuncTypeVariadicParams::Typed(sema_ty) => Some(sema_ty),
+            TypedFuncTypeVariadicParams::UntypedCStyle => None,
+        })
+    }
+}
+
+impl TypedFuncParamKind {
+    pub fn loc(&self) -> SourceLoc {
+        match self {
+            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc.clone(),
+            TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.loc.clone(),
+        }
+    }
+
+    pub fn param_type(&self) -> Option<SemanticType> {
+        match self {
+            TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
+            TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),
+        }
+    }
+
+    pub fn as_self_modifier(&self) -> Option<&TypedSelfModifier> {
+        match self {
+            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
+            TypedFuncParamKind::FuncParam(_) => None,
+        }
+    }
+
+    pub fn as_self_modifier_mut(&mut self) -> Option<&mut TypedSelfModifier> {
+        match self {
+            TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
+            TypedFuncParamKind::FuncParam(_) => None,
+        }
+    }
+}
+
+impl TypedSwitchStmt {
+    pub fn includes_any_range(&self) -> bool {
+        self.cases.iter().any(|case| {
+            case.patterns
+                .iter()
+                .any(|p| matches!(p, TypedSwitchCasePattern::Range(_)))
+        })
+    }
+
+    pub fn includes_only_integer(&self) -> bool {
+        self.cases.iter().any(|case| {
+            case.patterns.iter().any(|p| match p {
+                TypedSwitchCasePattern::Expr(expr, _) => {
+                    let sema_ty = expr.sema_ty.as_ref().unwrap();
+                    sema_ty.is_char() || sema_ty.is_integer()
+                }
+                _ => false,
+            })
+        })
+    }
+}
+
 impl Hash for TypedGenericParam {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.param_name.hash(state);
@@ -540,26 +556,6 @@ impl TypedGenericParamsList {
     pub fn lookup_positional(&self, idx: usize) -> Option<&TypedGenericParam> {
         self.list.get(idx)
     }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TypedBound {
-    pub symbol: Ident,
-    pub type_args: TypedTypeArgs,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub enum TypedTypeArg {
-    Positional {
-        idx: usize,
-        ty: SemanticType,
-        loc: SourceLoc,
-    },
-    Named {
-        key: String,
-        ty: SemanticType,
-        loc: SourceLoc,
-    },
 }
 
 impl TypedTypeArg {

@@ -868,6 +868,7 @@ impl Lexer {
             "no_sanitize" => TokenKind::NoSanitize,
             "nounwind" => TokenKind::NoUnwind,
             "section" => TokenKind::Section,
+            "repr" => TokenKind::Repr,
             "uintptr" => TokenKind::UIntPtr,
             "intptr" => TokenKind::IntPtr,
             "isize" => TokenKind::ISize,

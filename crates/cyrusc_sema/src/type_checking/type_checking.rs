@@ -14,14 +14,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     analyze::AnalysisContext,
     diagnostics::AnalyzerDiagKind,
     format::format_missing_fields,
     inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
 };
-use cyrusc_abi::ast_defs::Visibility;
-use cyrusc_ast::SelfModifierKind;
+use cyrusc_ast::{SelfModifierKind, abi::Visibility};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion, SymbolEntryKind},

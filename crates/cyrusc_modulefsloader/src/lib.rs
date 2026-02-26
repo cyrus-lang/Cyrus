@@ -58,8 +58,7 @@ pub struct LoadedModule {
     pub program: Rc<ProgramTree>,
 }
 
-// TODO: Consider to accurately write comments for this section.
-
+// TODO: Consider to write comments for this section.
 impl ModuleLoader {
     pub fn new(opts: ModuleLoaderOptions) -> Self {
         ModuleLoader { opts }
@@ -241,6 +240,58 @@ impl ModuleLoader {
             },
         }
     }
+}
+
+pub fn make_module_name_from_filepath<P: AsRef<Path>>(
+    path: P,
+    base_path: Option<&Path>,
+    stdlib_path: Option<&Path>,
+) -> String {
+    let path_ref = path.as_ref();
+    let path = path_ref.canonicalize().unwrap_or_else(|_| PathBuf::from(path_ref));
+
+    // try to strip the base path if provided
+    let relative_path = if let Some(base) = base_path {
+        path.strip_prefix(base).unwrap_or(&path).to_path_buf()
+    } else {
+        path.clone()
+    };
+
+    let mut parts: Vec<String> = relative_path
+        .iter()
+        .filter_map(|c| {
+            let s = c.to_string_lossy();
+            if s.is_empty() { None } else { Some(s.to_string()) }
+        })
+        .collect();
+
+    // remove extension from last component
+    if let Some(last) = parts.last_mut() {
+        if let Some(stripped) = last.strip_suffix(".cyrus") {
+            *last = stripped.to_string();
+        }
+    }
+
+    // detect if path belongs to stdlib
+    let is_stdlib = stdlib_path.map(|s| path.starts_with(s)).unwrap_or(false);
+
+    let mut module_name = parts.join("_");
+
+    // avoid double `stdlib_stdlib` prefix
+    if module_name.starts_with("stdlib_") && is_stdlib {
+        // already prefixed
+    } else if is_stdlib {
+        module_name = format!("stdlib_{}", module_name);
+    }
+
+    // remove leading underscores
+    module_name = module_name.trim_start_matches('_').to_string();
+
+    // sanitize
+    module_name
+        .chars()
+        .map(|ch| if ch.is_alphanumeric() || ch == '_' { ch } else { '_' })
+        .collect()
 }
 
 impl Hash for ModuleAlias {

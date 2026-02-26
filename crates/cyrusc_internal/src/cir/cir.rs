@@ -15,11 +15,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_abi::{
-    ast_defs::{ReprAttr, ReprKind},
+use cyrusc_ast::{
+    abi::{ReprAttr, ReprKind},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey};
 use std::fmt::Debug;
 
@@ -34,6 +34,7 @@ pub type CIRBlockID = u32;
 pub struct CIRProgramTree {
     pub body: Vec<CIRStmt>,
     pub file_path: String,
+    pub module_name: String
 }
 
 #[derive(Debug, Clone)]
@@ -477,7 +478,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
 pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
     CIREnumTy {
         variants: enum_stmt.variants.clone(),
-        c_enum: is_c_enum(&enum_stmt.modifiers.repr),
+        c_enum: is_c_enum(&enum_stmt.modifiers.repr_attr),
     }
 }
 
@@ -503,6 +504,7 @@ pub fn is_c_enum(repr_attr_opt: &Option<ReprAttr>) -> bool {
                 ReprKind::C => true,
                 ReprKind::Cyrus => false,
                 ReprKind::Transparent => false,
+                ReprKind::DiscriminantType(_) => false,
             };
         }
     }

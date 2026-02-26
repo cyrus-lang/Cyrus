@@ -4,5 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cyrusc_abi = { path = "../cyrusc_abi", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }

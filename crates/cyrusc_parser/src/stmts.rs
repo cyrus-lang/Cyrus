@@ -14,16 +14,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::modifiers::UnresolvedModifiers;
 use crate::prec::Precedence;
-use cyrusc_abi::ast_defs::Visibility;
-use cyrusc_abi::modifiers::EnumModifiers;
-use cyrusc_abi::modifiers::FuncModifiers;
-use cyrusc_abi::modifiers::StructModifiers;
-use cyrusc_abi::modifiers::UnionModifiers;
+use cyrusc_ast::abi::Visibility;
+use cyrusc_ast::modifiers::EnumModifiers;
+use cyrusc_ast::modifiers::FuncModifiers;
+use cyrusc_ast::modifiers::StructModifiers;
+use cyrusc_ast::modifiers::UnionModifiers;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_diagcentral::DiagLoc;
@@ -433,8 +434,6 @@ impl Parser {
 
         self.expect_current(TokenKind::Union)?;
 
-        modifiers.repr = self.parse_repr()?;
-
         let ident = self.parse_ident()?;
         self.next_token();
 
@@ -523,8 +522,6 @@ impl Parser {
         let start = self.current_token().span.start;
 
         self.next_token(); // parse enum keyword
-
-        modifiers.repr = self.parse_repr()?;
 
         let enum_name = self.parse_ident()?;
         self.next_token(); // consume enum name
@@ -667,8 +664,6 @@ impl Parser {
         let struct_start = self.current_token().span.start.clone();
 
         self.next_token(); // consume struct/bits token
-
-        modifiers.repr = self.parse_repr()?;
 
         let struct_name = self.parse_ident()?;
         self.next_token(); // consume struct name

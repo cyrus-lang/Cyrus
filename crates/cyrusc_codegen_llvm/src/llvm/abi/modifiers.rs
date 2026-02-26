@@ -14,9 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::llvm::abi::callconv::LLVMCallConv;
-use cyrusc_abi::{
-    ast_defs::{ExportKind, Inlining, Linkage, OptionalFlag, Prologue},
+use cyrusc_ast::{
+    abi::{ExportKind, Inlining, Linkage, OptionalFlag, Prologue},
     modifiers::{FuncModifiers, GlobalVarModifiers},
 };
 use inkwell::{

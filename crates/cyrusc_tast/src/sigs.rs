@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     ModuleID, SymbolID,
     exprs::TypedExprStmt,
@@ -24,11 +25,7 @@ use crate::{
     },
     types::{InterfaceType, SemanticType, TypedFuncType},
 };
-use cyrusc_abi::{
-    ast_defs::Visibility,
-    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
-};
-use cyrusc_ast::SelfModifierKind;
+use cyrusc_ast::{SelfModifierKind, abi::Visibility, modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers}};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use std::{collections::HashMap, hash::Hash};
 
@@ -110,27 +107,6 @@ pub struct GlobalVarSig {
     pub analyzed: bool,
     pub modifiers: GlobalVarModifiers,
     pub loc: SourceLoc,
-}
-
-impl PartialEq for FuncSig {
-    fn eq(&self, other: &Self) -> bool {
-        let self_params = self.params.list.iter().collect::<Vec<_>>();
-        let other_params = other.params.list.iter().collect::<Vec<_>>();
-
-        self.name == other.name && self_params == other_params && self.return_type == other.return_type
-    }
-}
-
-impl FuncSig {
-    pub fn is_instance_method(&self) -> bool {
-        match self.params.list.first() {
-            Some(typed_func_param_kind) => match typed_func_param_kind {
-                TypedFuncParamKind::FuncParam(..) => false,
-                TypedFuncParamKind::SelfModifier(..) => true,
-            },
-            None => false,
-        }
-    }
 }
 
 pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> InterfaceType {
@@ -291,9 +267,30 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
     }
 }
 
+impl FuncSig {
+    pub fn is_instance_method(&self) -> bool {
+        match self.params.list.first() {
+            Some(typed_func_param_kind) => match typed_func_param_kind {
+                TypedFuncParamKind::FuncParam(..) => false,
+                TypedFuncParamKind::SelfModifier(..) => true,
+            },
+            None => false,
+        }
+    }
+}
+
 impl Hash for FuncSig {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.module_id.hash(state);
         self.symbol_id.hash(state);
+    }
+}
+
+impl PartialEq for FuncSig {
+    fn eq(&self, other: &Self) -> bool {
+        let self_params = self.params.list.iter().collect::<Vec<_>>();
+        let other_params = other.params.list.iter().collect::<Vec<_>>();
+
+        self.name == other.name && self_params == other_params && self.return_type == other.return_type
     }
 }

@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::mangler::{ABINameMangler, C_ABI, CYRUS_ABI};
+use crate::TypeSpecifier;
 use std::collections::HashSet;
 
 macro_rules! define_call_convs {
@@ -30,7 +30,7 @@ macro_rules! define_call_convs {
 
         impl std::fmt::Display for ParseCallConvError {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Invalid call convention: '{}'.", self.0)
+                write!(f, "Invalid call convention '{}'.", self.0)
             }
         }
 
@@ -115,7 +115,7 @@ pub fn validate_flags(flags: &[OptionalFlag]) -> Result<Vec<OptionalFlag>, Strin
         match flag {
             OptionalFlag::NoSanitize(name) => {
                 if !seen.insert(OptionalFlag::NoSanitize(name.clone())) {
-                    return Err(format!("Duplicate nosanitize flag: '{}'.", name));
+                    return Err(format!("Duplicate nosanitize flag '{}'.", name));
                 }
             }
             OptionalFlag::OptSize => {
@@ -174,32 +174,6 @@ pub enum Linkage {
     LinkOnce,
 }
 
-impl Linkage {
-    pub fn abi_mangler(&self) -> &'static dyn ABINameMangler {
-        match self {
-            Linkage::Extern(call_conv_opt) => match call_conv_opt {
-                Some(call_conv) => match call_conv {
-                    CallConv::C
-                    | CallConv::Stdcall
-                    | CallConv::Fastcall
-                    | CallConv::Thiscall
-                    | CallConv::Vectorcall
-                    | CallConv::SysV64
-                    | CallConv::Win64
-                    | CallConv::System => &*C_ABI,
-
-                    CallConv::Naked | CallConv::Interrupt | CallConv::Fast | CallConv::Cold | CallConv::Aapcs => {
-                        &*CYRUS_ABI
-                    }
-                },
-                None => &*C_ABI,
-            },
-            Linkage::Weak => &*CYRUS_ABI,
-            Linkage::LinkOnce => &*CYRUS_ABI,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SectionAttr(pub String);
 
@@ -208,15 +182,17 @@ pub enum ReprKind {
     C,
     Cyrus,
     Transparent,
+    DiscriminantType(TypeSpecifier),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReprAttrKind {
     Kind(ReprKind),
     Align(u32),
+    Packed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReprAttr {
     pub items: Vec<ReprAttrKind>,
 }
@@ -226,8 +202,49 @@ impl ReprAttr {
         Self { items: Vec::new() }
     }
 
-    pub fn push(&mut self, item: ReprAttrKind) {
-        self.items.push(item);
+    pub fn add(&mut self, item: ReprAttrKind) -> Result<(), String> {
+        // check for duplicate kind
+        if let ReprAttrKind::Kind(_) = &item {
+            if let Some(_) = self.kind() {
+                return Err("Multiple repr kinds specified.".into());
+            }
+        }
+
+        // check for duplicate align
+        if let ReprAttrKind::Align(new_align) = item {
+            if let Some(existing) = self.align() {
+                return Err(format!(
+                    "Duplicate align('{}') conflicts with existing align({}).",
+                    new_align, existing
+                ));
+            }
+            self.items.push(ReprAttrKind::Align(new_align));
+            return Ok(());
+        }
+
+        // check for duplicate packed
+        if let ReprAttrKind::Packed = item {
+            if self.is_packed() {
+                return Err("Duplicate packed modifier.".into());
+            }
+            self.items.push(ReprAttrKind::Packed);
+            return Ok(());
+        }
+
+        if let ReprAttrKind::Kind(kind) = item {
+            self.items.push(ReprAttrKind::Kind(kind));
+        }
+
+        Ok(())
+    }
+
+    pub fn is_packed(&self) -> bool {
+        for item in &self.items {
+            if let ReprAttrKind::Packed = item {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn try_kind_from_str(s: &str) -> Result<ReprKind, String> {

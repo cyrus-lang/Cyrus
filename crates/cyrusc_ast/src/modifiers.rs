@@ -14,9 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::ast_defs::{
-    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility,
-};
+
+use crate::abi::{CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
@@ -80,8 +79,7 @@ pub struct StructModifiers {
     pub vis: Visibility,
     pub linkage: Option<Linkage>,
     pub export: Option<ExportKind>,
-    pub repr: Option<ReprAttr>,
-    pub packed: bool,
+    pub repr_attr: Option<ReprAttr>,
     pub section: Option<SectionAttr>,
     pub optional_flags: Vec<OptionalFlag>,
 }
@@ -92,8 +90,7 @@ impl Default for StructModifiers {
             vis: Visibility::default(),
             linkage: None,
             export: None,
-            repr: None,
-            packed: false,
+            repr_attr: None,
             section: None,
             optional_flags: Vec::new(),
         }
@@ -104,7 +101,7 @@ impl Default for StructModifiers {
 pub struct EnumModifiers {
     pub vis: Visibility,
     pub export: Option<ExportKind>,
-    pub repr: Option<ReprAttr>,
+    pub repr_attr: Option<ReprAttr>,
     pub section: Option<SectionAttr>,
     pub optional_flags: Vec<OptionalFlag>,
 }
@@ -114,7 +111,7 @@ impl Default for EnumModifiers {
         Self {
             vis: Visibility::default(),
             export: None,
-            repr: None,
+            repr_attr: None,
             section: None,
             optional_flags: Vec::new(),
         }

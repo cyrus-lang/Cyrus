@@ -24,11 +24,11 @@ use crate::{
     },
     llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant},
 };
-use cyrusc_abi::{
-    ast_defs::Linkage,
+use cyrusc_ast::{
+    abi::Linkage,
     modifiers::{FuncModifiers, GlobalVarModifiers},
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_internal::{
     abi::types::ABIType,
     cir::{

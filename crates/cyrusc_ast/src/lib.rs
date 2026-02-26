@@ -14,11 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
+use crate::abi::Visibility;
+use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_abi::{
-    ast_defs::Visibility,
-    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
-};
 use cyrusc_tokens::{
     Token,
     literals::Literal,
@@ -29,7 +28,9 @@ use std::{
     rc::Rc,
 };
 
+pub mod abi;
 pub mod format;
+pub mod modifiers;
 pub mod operators;
 
 #[derive(Debug)]
@@ -37,34 +38,7 @@ pub struct ProgramTree {
     pub body: Rc<Vec<Stmt>>,
 }
 
-impl Default for ProgramTree {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ProgramTree {
-    pub fn new() -> Self {
-        Self {
-            body: Rc::new(Vec::new()),
-        }
-    }
-
-    pub fn import_stmts(&self) -> Vec<Import> {
-        let mut imports: Vec<Import> = Vec::new();
-
-        self.body.iter().for_each(|stmt| match stmt {
-            Stmt::Import(import) => {
-                imports.push(import.clone());
-            }
-            _ => {}
-        });
-
-        imports
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Cast(Cast),
     Ident(Ident),
@@ -111,7 +85,7 @@ pub struct TupleAccess {
 
 #[derive(Debug, Clone)]
 pub struct TupleValue {
-    pub expr_list: Vec<Expr>,
+    pub elements: Vec<Expr>,
     pub loc: Location,
     pub span: Span,
 }
@@ -248,7 +222,7 @@ pub struct UnnamedEnumType {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnnamedEnumVariant {
     Ident(Ident),
     Variant(Ident, Vec<UnnamedEnumValuedField>),
@@ -275,7 +249,7 @@ pub struct EnumValuedField {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cast {
     pub expr: Box<Expr>,
     pub target_type: TypeSpecifier,
@@ -283,7 +257,7 @@ pub struct Cast {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrefixExpr {
     pub operand: Box<Expr>,
     pub op: PrefixOperator,
@@ -291,7 +265,7 @@ pub struct PrefixExpr {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncCall {
     pub operand: Box<Expr>,
     pub args: Vec<Expr>,
@@ -300,7 +274,7 @@ pub struct FuncCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldAccess {
     pub is_fat_arrow: bool,
     pub operand: Box<Expr>,
@@ -310,7 +284,7 @@ pub struct FieldAccess {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MethodCall {
     pub is_fat_arrow: bool,
     pub operand: Box<Expr>,
@@ -328,24 +302,6 @@ pub struct Ident {
     pub loc: Location,
 }
 
-impl PartialEq for Ident {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl Hash for Ident {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
-    }
-}
-
-impl Ident {
-    pub fn as_string(&self) -> String {
-        self.value.clone()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ModuleImport {
     pub segments: Vec<ModuleSegment>,
@@ -353,20 +309,7 @@ pub struct ModuleImport {
     pub loc: Location,
 }
 
-impl ModuleImport {
-    pub fn as_identifier(&self) -> Option<Ident> {
-        if self.segments.len() == 1 {
-            match self.segments.last()? {
-                ModuleSegment::SubModule(ident) => Some(ident.clone()),
-                ModuleSegment::Single(_) => None,
-            }
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpecifier {
     TypeToken(Token),
     Ident(Ident),
@@ -381,48 +324,6 @@ pub enum TypeSpecifier {
     Tuple(TupleType),
     GenericInst(GenericInst),
     SelfType(SelfType),
-}
-
-impl TypeSpecifier {
-    pub fn is_const(&self) -> bool {
-        matches!(self, Self::Const(..))
-    }
-
-    pub fn as_module_import(&self) -> Option<ModuleImport> {
-        match self {
-            TypeSpecifier::Ident(ident) => Some(ModuleImport {
-                segments: vec![ModuleSegment::SubModule(ident.clone())],
-                loc: ident.loc,
-                span: ident.span,
-            }),
-            TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn loc(&self) -> (Location, usize) {
-        match self {
-            TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
-            TypeSpecifier::Ident(ident) => (ident.loc.clone(), ident.span.end),
-            TypeSpecifier::Const(inner) => inner.loc(),
-            TypeSpecifier::Array(array) => array.element_type.loc(),
-            TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
-            TypeSpecifier::Deref(inner) => inner.loc(),
-            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
-                (unnamed_struct_type.loc.clone(), unnamed_struct_type.span.end)
-            }
-            TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
-                (unnamed_union_type.loc.clone(), unnamed_union_type.span.end)
-            }
-            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
-                (unnamed_enum_type.loc.clone(), unnamed_enum_type.span.end)
-            }
-            TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
-            TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
-            TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),
-            TypeSpecifier::SelfType(self_type) => (self_type.loc.clone(), self_type.span.end),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -446,13 +347,13 @@ pub struct TupleType {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrayTypeSpecifier {
     pub size: ArrayCapacity,
     pub element_type: Box<TypeSpecifier>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArrayCapacity {
     Fixed(Box<Expr>),
     Dynamic,
@@ -475,13 +376,13 @@ pub struct FuncType {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncTypeParams {
     pub list: Vec<TypeSpecifier>,
     pub variadic: Option<FuncTypeVariadicParams>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FuncTypeVariadicParams {
     UntypedCStyle,
     Typed(TypeSpecifier),
@@ -618,32 +519,16 @@ pub struct Return {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleSegmentSingle {
     pub ident: Ident,
     pub renamed: Option<Ident>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleSegment {
     SubModule(Ident),
     Single(Vec<ModuleSegmentSingle>),
-}
-
-impl Hash for ModuleSegmentSingle {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ident.hash(state);
-        self.renamed.hash(state);
-    }
-}
-
-impl ModuleSegment {
-    pub fn as_identifier_opt(&self) -> Option<Ident> {
-        match self {
-            ModuleSegment::SubModule(ident) => Some(ident.clone()),
-            ModuleSegment::Single(_) => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -652,58 +537,6 @@ pub struct ModulePath {
     pub segments: Vec<ModuleSegment>,
     pub loc: Location,
     pub span: Span,
-}
-
-impl Hash for ModulePath {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        for segment in &self.segments {
-            if let ModuleSegment::SubModule(ident) = segment {
-                ident.value.hash(state);
-            }
-        }
-    }
-}
-
-impl Eq for ModulePath {}
-
-impl PartialEq for ModulePath {
-    fn eq(&self, other: &Self) -> bool {
-        let self_submodules: Vec<&String> = self
-            .segments
-            .iter()
-            .filter_map(|segment| {
-                if let ModuleSegment::SubModule(ident) = segment {
-                    Some(&ident.value)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        let other_submodules: Vec<&String> = other
-            .segments
-            .iter()
-            .filter_map(|segment| {
-                if let ModuleSegment::SubModule(ident) = segment {
-                    Some(&ident.value)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        self_submodules == other_submodules
-    }
-}
-
-impl ModulePath {
-    pub fn as_module_import(&self) -> ModuleImport {
-        ModuleImport {
-            segments: self.segments.clone(),
-            span: self.span,
-            loc: self.loc.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -848,31 +681,6 @@ pub struct FuncDecl {
     pub loc: Location,
 }
 
-impl FuncDef {
-    pub fn as_func_decl(&self) -> FuncDecl {
-        FuncDecl {
-            ident: self.ident.clone(),
-            generic_params: self.generic_params.clone(),
-            params: self.params.clone(),
-            return_type: self.return_type.clone(),
-            modifiers: self.modifiers.clone(),
-            renamed_as: None,
-            span: self.span,
-            loc: self.loc.clone(),
-        }
-    }
-}
-
-impl FuncDecl {
-    /// Returns the function's effective name, preferring the renamed version if available.
-    pub fn usable_name(&self) -> String {
-        match &self.renamed_as {
-            Some(ident) => ident.value.clone(),
-            None => self.ident.value.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct BlockStmt {
     pub exprs: Vec<Stmt>,
@@ -996,6 +804,102 @@ pub struct If {
     pub span: Span,
     pub loc: Location,
 }
+pub type GenericParamsList = Vec<GenericParam>;
+
+#[derive(Debug, Clone)]
+pub struct GenericParam {
+    pub param_name: Ident,
+    pub bounds: Option<Vec<Bound>>,
+    pub default: Option<TypeSpecifier>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Bound {
+    pub symbol: Ident,
+    pub type_args: Vec<TypeArg>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeArg {
+    Positional(TypeSpecifier),
+    Named { key: Ident, ty: TypeSpecifier },
+}
+
+pub type TypeArgs = Vec<TypeArg>;
+
+impl ModuleSegment {
+    pub fn as_identifier_opt(&self) -> Option<Ident> {
+        match self {
+            ModuleSegment::SubModule(ident) => Some(ident.clone()),
+            ModuleSegment::Single(_) => None,
+        }
+    }
+}
+
+impl PartialEq for ModulePath {
+    fn eq(&self, other: &Self) -> bool {
+        let self_submodules: Vec<&String> = self
+            .segments
+            .iter()
+            .filter_map(|segment| {
+                if let ModuleSegment::SubModule(ident) = segment {
+                    Some(&ident.value)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let other_submodules: Vec<&String> = other
+            .segments
+            .iter()
+            .filter_map(|segment| {
+                if let ModuleSegment::SubModule(ident) = segment {
+                    Some(&ident.value)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        self_submodules == other_submodules
+    }
+}
+
+impl ModulePath {
+    pub fn as_module_import(&self) -> ModuleImport {
+        ModuleImport {
+            segments: self.segments.clone(),
+            span: self.span,
+            loc: self.loc.clone(),
+        }
+    }
+}
+
+impl FuncDef {
+    pub fn as_func_decl(&self) -> FuncDecl {
+        FuncDecl {
+            ident: self.ident.clone(),
+            generic_params: self.generic_params.clone(),
+            params: self.params.clone(),
+            return_type: self.return_type.clone(),
+            modifiers: self.modifiers.clone(),
+            renamed_as: None,
+            span: self.span,
+            loc: self.loc.clone(),
+        }
+    }
+}
+
+impl FuncDecl {
+    /// Returns the function's effective name, preferring the renamed version if available.
+    pub fn usable_name(&self) -> String {
+        match &self.renamed_as {
+            Some(ident) => ident.value.clone(),
+            None => self.ident.value.clone(),
+        }
+    }
+}
 
 impl Stmt {
     pub fn loc(&self) -> Location {
@@ -1028,25 +932,385 @@ impl Stmt {
     }
 }
 
-pub type GenericParamsList = Vec<GenericParam>;
-
-#[derive(Debug, Clone)]
-pub struct GenericParam {
-    pub param_name: Ident,
-    pub bounds: Option<Vec<Bound>>,
-    pub default: Option<TypeSpecifier>,
+impl Default for ProgramTree {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct Bound {
-    pub symbol: Ident,
-    pub type_args: Vec<TypeArg>,
+impl ProgramTree {
+    pub fn new() -> Self {
+        Self {
+            body: Rc::new(Vec::new()),
+        }
+    }
+
+    pub fn import_stmts(&self) -> Vec<Import> {
+        let mut imports: Vec<Import> = Vec::new();
+
+        self.body.iter().for_each(|stmt| match stmt {
+            Stmt::Import(import) => {
+                imports.push(import.clone());
+            }
+            _ => {}
+        });
+
+        imports
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum TypeArg {
-    Positional(TypeSpecifier),
-    Named { key: Ident, ty: TypeSpecifier },
+impl Ident {
+    pub fn as_string(&self) -> String {
+        self.value.clone()
+    }
 }
 
-pub type TypeArgs = Vec<TypeArg>;
+impl ModuleImport {
+    pub fn as_identifier(&self) -> Option<Ident> {
+        if self.segments.len() == 1 {
+            match self.segments.last()? {
+                ModuleSegment::SubModule(ident) => Some(ident.clone()),
+                ModuleSegment::Single(_) => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl TypeSpecifier {
+    pub fn is_const(&self) -> bool {
+        matches!(self, Self::Const(..))
+    }
+
+    pub fn as_module_import(&self) -> Option<ModuleImport> {
+        match self {
+            TypeSpecifier::Ident(ident) => Some(ModuleImport {
+                segments: vec![ModuleSegment::SubModule(ident.clone())],
+                loc: ident.loc,
+                span: ident.span,
+            }),
+            TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn loc(&self) -> (Location, usize) {
+        match self {
+            TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
+            TypeSpecifier::Ident(ident) => (ident.loc.clone(), ident.span.end),
+            TypeSpecifier::Const(inner) => inner.loc(),
+            TypeSpecifier::Array(array) => array.element_type.loc(),
+            TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
+            TypeSpecifier::Deref(inner) => inner.loc(),
+            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
+                (unnamed_struct_type.loc.clone(), unnamed_struct_type.span.end)
+            }
+            TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
+                (unnamed_union_type.loc.clone(), unnamed_union_type.span.end)
+            }
+            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
+                (unnamed_enum_type.loc.clone(), unnamed_enum_type.span.end)
+            }
+            TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
+            TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
+            TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),
+            TypeSpecifier::SelfType(self_type) => (self_type.loc.clone(), self_type.span.end),
+        }
+    }
+}
+
+impl Hash for ModuleSegmentSingle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+        self.renamed.hash(state);
+    }
+}
+
+impl Hash for ModulePath {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for segment in &self.segments {
+            if let ModuleSegment::SubModule(ident) = segment {
+                ident.value.hash(state);
+            }
+        }
+    }
+}
+
+impl Hash for Ident {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl PartialEq for ModuleImport {
+    fn eq(&self, other: &Self) -> bool {
+        self.segments == other.segments
+    }
+}
+
+impl PartialEq for UnnamedStructType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.is_packed == other.is_packed
+    }
+}
+
+impl PartialEq for UnnamedStructTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_ty == other.field_ty
+    }
+}
+
+impl PartialEq for UnnamedUnionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
+impl PartialEq for UnnamedUnionTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_ty == other.field_ty
+    }
+}
+
+impl PartialEq for FuncType {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.return_type == other.return_type
+    }
+}
+
+impl PartialEq for TupleType {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_list == other.type_list
+    }
+}
+
+impl PartialEq for UnnamedEnumType {
+    fn eq(&self, other: &Self) -> bool {
+        self.variants == other.variants
+    }
+}
+
+impl PartialEq for UnnamedEnumValuedField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl PartialEq for GenericInst {
+    fn eq(&self, other: &Self) -> bool {
+        self.base == other.base && self.type_args == other.type_args
+    }
+}
+
+impl PartialEq for SelfType {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl PartialEq for Assign {
+    fn eq(&self, other: &Self) -> bool {
+        self.lhs == other.lhs && self.rhs == other.rhs && self.kind == other.kind
+    }
+}
+
+impl PartialEq for InfixExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.op == other.op && self.lhs == other.lhs && self.rhs == other.rhs
+    }
+}
+
+impl PartialEq for UnaryExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.op == other.op
+    }
+}
+
+impl PartialEq for Array {
+    fn eq(&self, other: &Self) -> bool {
+        self.data_type == other.data_type && self.elements == other.elements
+    }
+}
+
+impl PartialEq for UntypedArray {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements == other.elements
+    }
+}
+
+impl PartialEq for ArrayIndex {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.index == other.index
+    }
+}
+
+impl PartialEq for AddrOf {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+
+impl PartialEq for Deref {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+
+impl PartialEq for StructInit {
+    fn eq(&self, other: &Self) -> bool {
+        self.struct_name == other.struct_name
+            && self.field_inits == other.field_inits
+            && self.type_args == other.type_args
+            && self.is_const == other.is_const
+    }
+}
+
+impl PartialEq for FieldInit {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.value == other.value
+    }
+}
+
+impl PartialEq for SizeOf {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+
+impl PartialEq for TupleValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements == other.elements
+    }
+}
+
+impl PartialEq for TupleAccess {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.index == other.index
+    }
+}
+
+impl PartialEq for Dynamic {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand
+    }
+}
+
+impl PartialEq for UnnamedStructValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.is_packed == other.is_packed && self.is_const == other.is_const
+    }
+}
+
+impl PartialEq for UnnamedUnionValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_value == other.field_value && self.is_const == other.is_const
+    }
+}
+
+impl PartialEq for UnnamedStructValueField {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_ty == other.field_ty && self.field_value == other.field_value
+    }
+}
+
+impl PartialEq for UnnamedEnumValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.kind == other.kind
+    }
+}
+
+impl PartialEq for UnnamedEnumValueKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (UnnamedEnumValueKind::Plain, UnnamedEnumValueKind::Plain) => true,
+            (UnnamedEnumValueKind::Fielded(exprs1), UnnamedEnumValueKind::Fielded(exprs2)) => exprs1 == exprs2,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for Lambda {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.return_type == other.return_type && self.inline == other.inline
+    }
+}
+
+impl PartialEq for FuncParam {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.ty == other.ty && self.span == other.span && self.loc == other.loc
+    }
+}
+
+impl PartialEq for FuncParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.list == other.list && self.variadic == other.variadic
+    }
+}
+
+impl PartialEq for FuncParamKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::FuncParam(func_param1), Self::FuncParam(func_param2)) => func_param1 == func_param2,
+            (Self::SelfModifier(self_modifier1), Self::SelfModifier(self_modifier2)) => {
+                self_modifier1 == self_modifier2
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for SelfModifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl PartialEq for FuncVariadicParams {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (FuncVariadicParams::UntypedCStyle, FuncVariadicParams::UntypedCStyle) => true,
+            (
+                FuncVariadicParams::Typed(ident1, type_specifier1),
+                FuncVariadicParams::Typed(ident2, type_specifier2),
+            ) => ident1 == ident2 && type_specifier1 == type_specifier2,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Array {}
+impl Eq for UntypedArray {}
+impl Eq for ArrayIndex {}
+impl Eq for AddrOf {}
+impl Eq for Deref {}
+impl Eq for StructInit {}
+impl Eq for SizeOf {}
+impl Eq for Lambda {}
+impl Eq for TupleValue {}
+impl Eq for TupleAccess {}
+impl Eq for Dynamic {}
+impl Eq for UnnamedStructValue {}
+impl Eq for UnnamedUnionValue {}
+impl Eq for UnnamedEnumValue {}
+impl Eq for UnaryExpr {}
+impl Eq for InfixExpr {}
+impl Eq for Assign {}
+impl Eq for ModuleImport {}
+impl Eq for ModulePath {}
+impl Eq for UnnamedStructType {}
+impl Eq for UnnamedStructTypeField {}
+impl Eq for UnnamedUnionType {}
+impl Eq for UnnamedUnionTypeField {}
+impl Eq for FuncType {}
+impl Eq for TupleType {}
+impl Eq for UnnamedEnumType {}
+impl Eq for UnnamedEnumValuedField {}
+impl Eq for GenericInst {}
+impl Eq for SelfType {}

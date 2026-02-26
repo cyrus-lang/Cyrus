@@ -444,7 +444,7 @@ impl Parser {
         self.must_be_right_paren()?;
 
         Ok(Expr::Tuple(TupleValue {
-            expr_list,
+            elements: expr_list,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

@@ -14,13 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{Parser, diagnostics::ParserDiagKind};
-use cyrusc_abi::ast_defs::{
-    ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprAttrKind, SectionAttr, Visibility,
-    validate_flags,
+use cyrusc_ast::abi::{
+    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprAttrKind, ReprKind, SectionAttr, Visibility, validate_flags
 };
-use cyrusc_abi::modifiers::{EnumModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
-use cyrusc_abi::{ast_defs::CallConv, modifiers::FuncModifiers};
+use cyrusc_ast::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
 use cyrusc_tokens::{Token, TokenKind};
@@ -35,6 +34,7 @@ pub(crate) struct UnresolvedModifiers {
     pub callconv: Option<CallConv>,
     pub optional_flags: Vec<OptionalFlag>,
     pub placement: Vec<SectionAttr>,
+    pub repr_attr: Option<ReprAttr>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +61,7 @@ impl Parser {
             prologue: None,
             export: None,
             callconv: None,
+            repr_attr: None,
             optional_flags: Vec::new(),
             placement: Vec::new(),
         };
@@ -108,6 +109,7 @@ impl Parser {
             try_set_once!(export, parse_export_kind, "Export kind already specified.");
             try_set_once_result!(linkage, parse_linkage, "Linkage modifier already specified.");
             try_set_once_result!(callconv, parse_callconv, "Call convention already specified.");
+            try_set_once_result!(repr_attr, parse_repr, "Repr already specified.");
 
             match self.parse_optional_flag(token.clone()) {
                 Ok(optional_flag) => {
@@ -148,80 +150,55 @@ impl Parser {
         Ok(mods)
     }
 
-    pub(crate) fn parse_repr(&mut self) -> Result<Option<ReprAttr>, Diag> {
-        if self.current_token_is(TokenKind::LeftParen) {
-            self.expect_current(TokenKind::LeftParen)?;
+    pub(crate) fn parse_enum_repr_discriminant_type(&mut self, repr_attr: &mut ReprAttr) {
+        todo!();
+    }
+
+    pub(crate) fn parse_repr_align(&mut self, repr_attr: &mut ReprAttr) {
+        todo!();
+    }
+
+    pub(crate) fn parse_repr(&mut self, token: Token) -> Result<Option<ReprAttr>, Diag> {
+        if token.kind != TokenKind::Repr {
+            return Ok(None);
+        }
+
+        self.next_token(); // consume repr
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let mut repr_attr = ReprAttr::new();
+
+        loop {
+            let repr_str = self.parse_ident()?;
             self.next_token();
 
-            let mut repr_attr = ReprAttr::new();
-            let mut has_kind = false;
-            let mut has_align = false;
-
-            while !self.current_token_is(TokenKind::RightParen) {
-                let token = self.current_token();
-
-                if matches!(token.kind, TokenKind::Ident { .. }) {
-                    let ident = self.parse_ident()?;
-                    let name = ident.as_string();
-
-                    if name == "align" {
-                        if has_align {
-                            return Err(self.error_at_token(
-                                &token,
-                                ParserDiagKind::InvalidModifier(
-                                    "Duplicate align modifier in repr attribute.".to_string(),
-                                ),
-                            ));
-                        }
-
-                        if !has_kind && !repr_attr.items.is_empty() {
-                            return Err(self.error_at_token(
-                                &token,
-                                ParserDiagKind::InvalidModifier("Align must appear after repr kind.".to_string()),
-                            ));
-                        }
-
-                        self.next_token(); // consume align
-                        self.expect_current(TokenKind::LeftParen)?;
-                        let align_value = self.parse_integer_without_suffix()?;
-                        self.next_token(); // consume integer
-                        self.expect_current(TokenKind::RightParen)?;
-
-                        has_align = true;
-                        repr_attr.push(ReprAttrKind::Align(align_value.try_into().unwrap()));
-                    } else {
-                        // repr kind
-                        let kind = match ReprAttr::try_kind_from_str(&name) {
-                            Ok(k) => k,
-                            Err(err) => {
-                                return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err)));
-                            }
-                        };
-
-                        if has_kind {
-                            return Err(self.error_at_token(
-                                &token,
-                                ParserDiagKind::InvalidModifier("Duplicate repr kind in repr attribute.".to_string()),
-                            ));
-                        }
-
-                        has_kind = true;
-                        repr_attr.push(ReprAttrKind::Kind(kind));
-                    }
+            if repr_str.value == "packed" {
+                if let Err(err) = repr_attr.add(ReprAttrKind::Packed) {
+                    return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err.to_string())));
                 }
-
-                if self.current_token_is(TokenKind::Comma) {
-                    self.next_token();
-                } else {
-                    break;
+            } else {
+                match ReprAttr::try_kind_from_str(&repr_str.value) {
+                    Ok(repr_kind) => {
+                        if let Err(err) = repr_attr.add(ReprAttrKind::Kind(repr_kind)) {
+                            return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err.to_string())));
+                        }
+                    }
+                    Err(err) => {
+                        return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err.to_string())));
+                    }
                 }
             }
 
-            self.expect_current(TokenKind::RightParen)?;
-            Ok(Some(repr_attr))
-        } else {
-            Ok(None)
+            if !self.current_token_is(TokenKind::Comma) {
+                break;
+            } else {
+                self.next_token();
+                continue;
+            }
         }
+
+        self.next_token();
+        Ok(Some(repr_attr))
     }
 
     pub(crate) fn parse_placement(&mut self, token: Token) -> Result<Option<String>, Diag> {
@@ -386,7 +363,7 @@ impl UnresolvedModifiers {
 
         let section = self.placement.get(0).cloned();
 
-        let mods = FuncModifiers {
+        let func_modifiers = FuncModifiers {
             vis,
             linkage: self.linkage,
             inline: self.inline,
@@ -398,7 +375,7 @@ impl UnresolvedModifiers {
             section,
         };
 
-        if mods.export.is_some() && matches!(mods.inline, Some(Inlining::AlwaysInline)) {
+        if func_modifiers.export.is_some() && matches!(func_modifiers.inline, Some(Inlining::AlwaysInline)) {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
                     "Function cannot be both exported and always inlined.".to_string(),
@@ -409,7 +386,18 @@ impl UnresolvedModifiers {
             });
         }
 
-        Ok(mods)
+        if self.repr_attr.is_some() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Attribute 'repr' cannot be applied to functions.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc)),
+                hint: Some("only data types like structs and enums can have a 'repr' attribute.".to_string()),
+            });
+        }
+
+        Ok(func_modifiers)
     }
 
     pub(crate) fn into_struct_modifiers(self, loc: SourceLoc) -> Result<StructModifiers, Diag> {
@@ -437,14 +425,49 @@ impl UnresolvedModifiers {
             });
         }
 
+        if let Some(repr_attr) = &self.repr_attr {
+            if let Some(kind) = repr_attr.kind() {
+                match kind {
+                    ReprKind::DiscriminantType(_) => {
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::InvalidModifier(
+                                "Discriminant type cannot be applied to structs.".to_string(),
+                            )),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(loc)),
+                            hint: None,
+                        });
+                    }
+                    ReprKind::C | ReprKind::Cyrus => { /* valid */ }
+                    ReprKind::Transparent => { /* valid */ }
+                }
+            }
+
+            // Validate alignment if present
+            if let Some(align) = repr_attr.align() {
+                if !align.is_power_of_two() {
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidModifier(format!(
+                            "Alignment must be a power of two, got {}",
+                            align
+                        ))),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(loc)),
+                        hint: Some("valid alignments are 1, 2, 4, 8, 16, etc.".to_string()),
+                    });
+                }
+            }
+
+            // Packed is always valid for structs, no extra validation needed
+        }
+
         let section = self.placement.get(0).cloned();
 
         Ok(StructModifiers {
             vis,
             linkage: self.linkage,
             export: self.export,
-            repr: None, // handled by struct-level attribute like `repr(C)`
-            packed: false,
+            repr_attr: self.repr_attr.clone(),
             section,
             optional_flags: self.optional_flags,
         })
@@ -484,7 +507,7 @@ impl UnresolvedModifiers {
         Ok(EnumModifiers {
             vis,
             export: self.export,
-            repr: None, // handled by attribute
+            repr_attr: None, // handled by attribute
             section,
             optional_flags: self.optional_flags,
         })

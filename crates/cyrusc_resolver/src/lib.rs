@@ -14,19 +14,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::sigs::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::symbols::*;
 use crate::{
     diagnostics::ResolverDiagKind,
     sigs::{FuncSig, TypedefSig},
 };
-use cyrusc_abi::ast_defs::Visibility;
-use cyrusc_abi::mangler::make_module_name_from_filepath;
+use cyrusc_ast::abi::Visibility;
 use cyrusc_ast::format::module_segments_as_string;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_diagcentral::{reporter::DiagReporter, *};
-use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions};
+use cyrusc_modulefsloader::{ModuleAlias, ModuleLoader, ModuleLoaderOptions, make_module_name_from_filepath};
 use cyrusc_tast::exprs::*;
 use cyrusc_tast::generics::generic_type::GenericType;
 use cyrusc_tast::generics::mapping_ctx::GenericMappingCtx;
@@ -3092,7 +3092,7 @@ impl Resolver {
     ) -> Option<TypedExprStmt> {
         let mut expr_list: Vec<TypedExprStmt> = Vec::new();
 
-        for expr in &tuple_value.expr_list {
+        for expr in &tuple_value.elements {
             match self.resolve_expr(module_id, scope_opt.clone(), expr) {
                 Some(typed_expr) => expr_list.push(typed_expr),
                 None => continue,

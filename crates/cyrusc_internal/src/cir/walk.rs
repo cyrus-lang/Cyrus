@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
 use crate::abi::target::ABITarget;
 use crate::cir::cir::*;
 use crate::cir::monomorph::CIRMonomorphRegistry;
 use crate::cir::types::*;
-use cyrusc_abi::ast_defs::{CallConv, Linkage};
-use cyrusc_abi::mangler::{ABINameMangler, DEFAULT_ABI, mangle_func, mangle_global_var, mangle_method};
+use cyrusc_ast::abi::{CallConv, Linkage};
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_resolver::Resolver;
@@ -50,7 +50,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CIRWalk<'resolver> {
-    program: Box<TypedProgramTree>,
+    program_tree: Box<TypedProgramTree>,
     current_self_ty: Option<CIRTy>,
     pub(crate) module_id: ModuleID,
     pub(crate) resolver: &'resolver Resolver,
@@ -73,7 +73,7 @@ impl<'resolver> CIRWalk<'resolver> {
         target: &'resolver ABITarget,
     ) -> Self {
         Self {
-            program,
+            program_tree: program,
             resolver,
             module_id,
             cir_monomorph_registry,
@@ -87,11 +87,12 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     pub fn run_pass(&mut self, file_path: String) -> CIRProgramTree {
-        let stmts = std::mem::take(&mut self.program.body);
+        let stmts = std::mem::take(&mut self.program_tree.body);
         let lowered_stmts = self.lower_stmts(None, &stmts);
         CIRProgramTree {
             body: lowered_stmts,
             file_path,
+            module_name: self.program_tree.module_name.clone(),
         }
     }
 
@@ -201,8 +202,11 @@ impl<'resolver> CIRWalk<'resolver> {
         resolved_method: &ResolvedMethod,
         object_name: &String,
     ) -> Option<CIRStmt> {
-        let mangled_name =
-            DEFAULT_ABI.method_name(&self.program.module_name, object_name, &resolved_method.func_sig.name);
+        let mangled_name = DEFAULT_ABI.method_name(
+            &self.program_tree.module_name,
+            object_name,
+            &resolved_method.func_sig.name,
+        );
 
         // skip if has no body
         let func_body = resolved_method.func_body.clone()?;
@@ -800,7 +804,11 @@ impl<'resolver> CIRWalk<'resolver> {
         cir_func_def.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         if mangle_name {
-            let mangled_name = mangle_func(&cir_func_def.modifiers, &self.program.module_name, &cir_func_def.name);
+            let mangled_name = mangle_func(
+                &cir_func_def.modifiers,
+                &self.program_tree.module_name,
+                &cir_func_def.name,
+            );
             cir_func_def.name = mangled_name;
         }
 
@@ -819,7 +827,7 @@ impl<'resolver> CIRWalk<'resolver> {
         let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
 
         if mangle_name {
-            func_name = mangle_func(&func_decl.modifiers, &self.program.module_name, &func_name);
+            func_name = mangle_func(&func_decl.modifiers, &self.program_tree.module_name, &func_name);
         }
 
         let mut cir_func_decl = CIRFuncDeclStmt {
@@ -1875,7 +1883,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
             .collect();
 
-        let c_enum = is_c_enum(&enum_sig.modifiers.repr);
+        let c_enum = is_c_enum(&enum_sig.modifiers.repr_attr);
 
         CIREnumTy { variants, c_enum }
     }
