@@ -481,7 +481,7 @@ impl Parser {
         self.next_token(); // consume left paren
 
         let expr = if let Some(token) = self.peek_n_token(1) {
-            if self.is_type_token(&self.current_token().kind) && self.is_type_token(&token.kind) {
+            if self.is_type_specifier_base_token(&self.current_token().kind) && self.is_type_specifier_base_token(&token.kind) {
                 let type_specifier = self.parse_type_specifier()?;
                 Expr::TypeSpecifier(type_specifier)
             } else {

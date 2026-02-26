@@ -35,29 +35,31 @@ impl Parser {
     pub(crate) fn parse_ident(&mut self) -> Result<Ident, Diag> {
         let token = self.current_token();
 
-        match token.kind {
-            TokenKind::Ident(ident) => Ok(Ident {
+        if let TokenKind::Ident(ident) = token.kind {
+            Ok(Ident {
                 value: ident,
                 span: token.span,
                 loc: token.loc,
-            }),
-            _ => Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier)),
+            })
+        } else {
+            Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier))
         }
     }
 
-    pub(crate) fn is_type_token(&mut self, token_kind: &TokenKind) -> bool {
+    /// Determines whether a token can begin a type specifier in the grammar.
+    pub(crate) fn is_type_specifier_base_token(&mut self, token_kind: &TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(token_kind) {
             true
         } else if let TokenKind::Ident { .. } = token_kind {
             true
         } else {
-            matches!(
-                token_kind,
-                TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::Const
-            )
+            matches!(token_kind, TokenKind::Const)
         }
     }
 
+    /// Parses a complete type specifier, handling pointers, arrays, and generic types.
+    ///
+    /// This is the heart of parsing types in our language.
     pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, Diag> {
         let mut base_type = self.parse_base_type_token()?;
 
@@ -90,6 +92,9 @@ impl Parser {
         Ok(base_type)
     }
 
+    /// Parses generic parameters enclosed in `<...>`.
+    ///
+    /// Used in declarations like structs, enums, unions, typedefs, and functions.
     pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
@@ -111,6 +116,9 @@ impl Parser {
         Ok(generic_params)
     }
 
+    /// Parses a list of type arguments inside `<...>` for generic instantiations.
+    ///
+    /// Supports both positional (`<T, U>`) and named (`<Key = T, Value = U>`) arguments.
     pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
@@ -149,6 +157,10 @@ impl Parser {
         Ok(args)
     }
 
+    /// Determines if the current position starts a type argument list.
+    ///
+    /// This function resolves the ambiguity between `<` as a generic opener vs. a comparison operator.
+    /// It's crucial for correctly parsing expressions like `x < y > z` (comparison) vs `T<U>` (generics).
     pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: Expr) -> TypeArgStartDetail {
         // do we even have a '<' token at the current position?
         // if there's no '<', this can't possibly be the start of type arguments
@@ -274,6 +286,11 @@ impl Parser {
         };
     }
 
+    /// Determines if a generic type followed by brackets is an array initialization.
+    ///
+    /// Checks whether `GenericType<T>[N]` is an array of generics (true) or
+    /// a generic with an array type parameter (false). Looks for `{` after brackets
+    /// to identify struct initialization.
     fn check_for_array_init_after_generic(&mut self, start_idx: usize) -> bool {
         let mut i = start_idx;
         let mut bracket_depth = 0;
@@ -411,7 +428,7 @@ impl Parser {
 
             TokenKind::Typedef | TokenKind::Typecast | TokenKind::SizeOf => true,
 
-            other => !self.is_type_token(other),
+            other => !self.is_type_specifier_base_token(other),
         }
     }
 
