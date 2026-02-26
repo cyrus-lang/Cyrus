@@ -481,7 +481,9 @@ impl Parser {
         self.next_token(); // consume left paren
 
         let expr = if let Some(token) = self.peek_n_token(1) {
-            if self.is_type_specifier_base_token(&self.current_token().kind) && self.is_type_specifier_base_token(&token.kind) {
+            if self.is_type_specifier_base_token(&self.current_token().kind)
+                && self.is_type_specifier_base_token(&token.kind)
+            {
                 let type_specifier = self.parse_type_specifier()?;
                 Expr::TypeSpecifier(type_specifier)
             } else {
@@ -735,7 +737,7 @@ impl Parser {
                 }))
             }
         } else {
-            let index = self.parse_never_suffixed_integer()?;
+            let index = self.parse_integer_without_suffix()?;
 
             Ok(Expr::TupleAccess(TupleAccess {
                 operand: Box::new(operand),
@@ -878,6 +880,18 @@ impl Parser {
             span: Span { start, end },
             loc,
         })))
+    }
+
+    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expr, Diag> {
+        self.expect_current(TokenKind::LeftBracket)?;
+
+        if self.current_token_is(TokenKind::RightBracket) {
+            return Err(self.error_invalid_token());
+        }
+
+        let index = self.parse_expr(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::RightBracket)?;
+        Ok(index)
     }
 
     fn parse_array_index(&mut self, expr: Expr) -> Result<Expr, Diag> {

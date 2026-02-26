@@ -183,7 +183,7 @@ impl Parser {
 
                         self.next_token(); // consume align
                         self.expect_current(TokenKind::LeftParen)?;
-                        let align_value = self.parse_never_suffixed_integer()?;
+                        let align_value = self.parse_integer_without_suffix()?;
                         self.next_token(); // consume integer
                         self.expect_current(TokenKind::RightParen)?;
 
@@ -228,7 +228,7 @@ impl Parser {
         if matches!(token.kind, TokenKind::Section) {
             self.next_token();
             self.expect_current(TokenKind::LeftParen)?;
-            let section_name = self.parse_never_prefixed_string()?;
+            let section_name = self.parse_string_without_prefix()?;
             self.next_token();
             self.expect_current(TokenKind::RightParen)?;
             Ok(Some(section_name))
@@ -266,7 +266,7 @@ impl Parser {
             TokenKind::NoSanitize => {
                 self.next_token();
                 self.expect_current(TokenKind::LeftParen)?;
-                let arg = self.parse_never_prefixed_string()?;
+                let arg = self.parse_string_without_prefix()?;
                 self.next_token();
                 self.expect_current(TokenKind::RightParen)?;
                 Ok(Some(OptionalFlag::NoSanitize(arg)))
@@ -337,7 +337,7 @@ impl Parser {
             self.next_token();
 
             if matches!(self.current_token().kind, TokenKind::Literal(..)) {
-                let extern_abi = self.parse_never_prefixed_string()?;
+                let extern_abi = self.parse_string_without_prefix()?;
                 self.next_token();
 
                 let Ok(callconv) = CallConv::try_from(extern_abi.clone()) else {

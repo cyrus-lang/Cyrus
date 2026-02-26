@@ -32,6 +32,7 @@ pub(crate) struct TypeArgStartDetail {
 }
 
 impl Parser {
+    /// Parses an identifier token.
     pub(crate) fn parse_ident(&mut self) -> Result<Ident, Diag> {
         let token = self.current_token();
 
@@ -44,6 +45,40 @@ impl Parser {
         } else {
             Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier))
         }
+    }
+
+    /// Parses an integer literal that must not have a suffix.
+    ///
+    /// Used in contexts where type suffixes on integers are forbidden.
+    pub(crate) fn parse_integer_without_suffix(&self) -> Result<i128, Diag> {
+        let token = self.current_token();
+
+        if let TokenKind::Literal(literal) = &token.kind {
+            if let LiteralKind::Integer(value, suffix) = &literal.kind {
+                if suffix.is_none() {
+                    return Ok(*value);
+                }
+            }
+        }
+
+        Err(self.error_at_current(ParserDiagKind::IntegerSuffixNotAllowed))
+    }
+
+    /// Parses a string literal that must not have a prefix.
+    ///
+    /// Used in contexts where string prefixes like `c"..."` or `b"..."` are forbidden.
+    pub(crate) fn parse_string_without_prefix(&mut self) -> Result<String, Diag> {
+        let token = self.current_token();
+
+        if let TokenKind::Literal(literal) = &token.kind {
+            if let LiteralKind::String(value, prefix) = &literal.kind {
+                if prefix.is_none() {
+                    return Ok(value.clone());
+                }
+            }
+        }
+
+        Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed))
     }
 
     /// Determines whether a token can begin a type specifier in the grammar.
@@ -114,6 +149,40 @@ impl Parser {
 
         self.expect_current(TokenKind::GreaterThan)?;
         Ok(generic_params)
+    }
+
+    /// Parses a single generic parameter with optional bounds and default type.
+    ///
+    /// Examples:
+    /// - `T` (simple)
+    /// - `T: Display` (with bound)
+    /// - `T = int32` (with default type)
+    /// - `T: Debug = int32` (with both bound and default)
+    fn parse_generic_param(&mut self) -> Result<GenericParam, Diag> {
+        let param_name = self.parse_ident()?;
+        self.next_token();
+
+        let bounds = if self.current_token_is(TokenKind::Colon) {
+            self.next_token(); // consume colon
+            Some(self.parse_bounds()?)
+        } else {
+            None
+        };
+
+        let default = if self.current_token_is(TokenKind::Assign) {
+            self.next_token(); // consume assign
+            let type_specifier = self.parse_type_specifier()?;
+            self.next_token();
+            Some(type_specifier)
+        } else {
+            None
+        };
+
+        Ok(GenericParam {
+            param_name,
+            bounds,
+            default,
+        })
     }
 
     /// Parses a list of type arguments inside `<...>` for generic instantiations.
@@ -329,6 +398,10 @@ impl Parser {
         false
     }
 
+    /// Determines if a token after `>` would invalidate type arguments.
+    ///
+    /// Used to distinguish generics from comparison expressions.
+    /// Returns true if the token cannot follow a type argument list.
     fn token_disqualifies_type_arg(&mut self, kind: &TokenKind) -> bool {
         match kind {
             // allowed tokens
@@ -432,46 +505,7 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_single_array_index(&mut self) -> Result<Expr, Diag> {
-        self.expect_current(TokenKind::LeftBracket)?;
-
-        if self.current_token_is(TokenKind::RightBracket) {
-            return Err(self.error_invalid_token());
-        }
-
-        let index = self.parse_expr(Precedence::Lowest)?.0;
-        self.expect_peek(TokenKind::RightBracket)?;
-        Ok(index)
-    }
-
-    pub(crate) fn parse_never_suffixed_integer(&self) -> Result<i128, Diag> {
-        let token = self.current_token();
-
-        if let TokenKind::Literal(literal) = &token.kind {
-            if let LiteralKind::Integer(value, suffix) = &literal.kind {
-                if suffix.is_none() {
-                    return Ok(*value);
-                }
-            }
-        }
-
-        Err(self.error_at_current(ParserDiagKind::IntegerSuffixNotAllowed))
-    }
-
-    pub(crate) fn parse_never_prefixed_string(&mut self) -> Result<String, Diag> {
-        let token = self.current_token();
-
-        if let TokenKind::Literal(literal) = &token.kind {
-            if let LiteralKind::String(value, prefix) = &literal.kind {
-                if prefix.is_none() {
-                    return Ok(value.clone());
-                }
-            }
-        }
-
-        Err(self.error_at_token(&token, ParserDiagKind::StringPrefixNotAllowed))
-    }
-
+    /// Parses function type parameters inside `(...)`.
     fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, Diag> {
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -880,8 +914,6 @@ impl Parser {
     }
 
     fn parse_bounds(&mut self) -> Result<Vec<Bound>, Diag> {
-        self.expect_current(TokenKind::Colon)?;
-
         let mut list: Vec<Bound> = Vec::new();
 
         loop {
@@ -903,33 +935,6 @@ impl Parser {
         }
 
         Ok(list)
-    }
-
-    fn parse_generic_param(&mut self) -> Result<GenericParam, Diag> {
-        let param_name = self.parse_ident()?;
-        self.next_token();
-
-        let bounds = if self.current_token_is(TokenKind::Colon) {
-            self.next_token(); // consume ident
-            Some(self.parse_bounds()?)
-        } else {
-            None
-        };
-
-        let default = if self.current_token_is(TokenKind::Assign) {
-            self.next_token(); // consume assign
-            let type_specifier = self.parse_type_specifier()?;
-            self.next_token();
-            Some(type_specifier)
-        } else {
-            None
-        };
-
-        Ok(GenericParam {
-            param_name,
-            bounds,
-            default,
-        })
     }
 
     fn current_expr_is_path_like(&self, last_parsed_expr: Expr) -> bool {
