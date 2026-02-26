@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
@@ -900,7 +901,6 @@ impl Parser {
 
         let default = if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
-            dbg!(self.current_token());
             let type_specifier = self.parse_type_specifier()?;
             self.next_token();
             Some(type_specifier)

@@ -15,7 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_abi::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
+use cyrusc_abi::{
+    ast_defs::{ReprAttr, ReprKind},
+    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey};
 use std::fmt::Debug;
@@ -474,6 +477,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
 pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
     CIREnumTy {
         variants: enum_stmt.variants.clone(),
+        c_enum: is_c_enum(&enum_stmt.modifiers.repr),
     }
 }
 
@@ -490,4 +494,17 @@ impl Debug for CIRProgramTree {
             .field("file_path", &self.file_path)
             .finish()
     }
+}
+
+pub fn is_c_enum(repr_attr_opt: &Option<ReprAttr>) -> bool {
+    if let Some(repr) = repr_attr_opt {
+        if let Some(kind) = repr.kind() {
+            return match kind {
+                ReprKind::C => true,
+                ReprKind::Cyrus => false,
+                ReprKind::Transparent => false,
+            };
+        }
+    }
+    false
 }

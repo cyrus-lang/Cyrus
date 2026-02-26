@@ -213,31 +213,6 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
-            TypedStmt::Struct(typed_struct) => {
-                self.analyze_struct(Some(scope_id), typed_struct, true);
-                FlowState::Reachable
-            }
-            TypedStmt::Enum(typed_enum) => {
-                self.analyze_enum(Some(scope_id), typed_enum, true);
-                FlowState::Reachable
-            }
-            TypedStmt::Interface(typed_interface) => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InternalInterfaceIsNotValid),
-                    location: Some(DiagLoc::new(typed_interface.loc.clone())),
-                    hint: None,
-                });
-                FlowState::Reachable
-            }
-            TypedStmt::Typedef(typed_typedef) => {
-                self.analyze_typedef(Some(scope_id), typed_typedef);
-                FlowState::Reachable
-            }
-            TypedStmt::Union(typed_union) => {
-                self.analyze_union(Some(scope_id), typed_union, true);
-                FlowState::Reachable
-            }
             TypedStmt::ExportTuple(typed_export_tuple_values) => {
                 self.analyze_export_tuple_values(Some(scope_id), typed_export_tuple_values);
                 FlowState::Reachable
@@ -262,8 +237,14 @@ impl<'a> AnalysisContext<'a> {
             // Skipped
             TypedStmt::Label(..) => FlowState::Reachable,
             // Invalid statements
-            TypedStmt::Defer(..) | TypedStmt::FuncDef(_) | TypedStmt::FuncDecl(_) | TypedStmt::GlobalVar(_) => {
-                unreachable!()
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::InvalidStatement),
+                    location: Some(DiagLoc::new(typed_stmt.loc())),
+                    hint: None,
+                });
+                return FlowState::Reachable;
             }
         }
     }

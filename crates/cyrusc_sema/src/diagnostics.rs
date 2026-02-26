@@ -224,11 +224,11 @@ pub enum AnalyzerDiagKind {
     #[error("Invalid usage of the break statement. It must be inside a loop/switch statement.")]
     InvalidBreakStatement,
 
+    #[error("Top-level statements cannot be used within a block scope; only at compilation unit level.")]
+    InvalidStatement,
+
     #[error("Condition expression must be of type 'bool'.")]
     ConditionExprMustBeOfTypeBool,
-
-    #[error("Interfaces must be declared globally.")]
-    InternalInterfaceIsNotValid,
 
     #[error("{kind} '{name}' does not follow {expected} naming convention.")]
     NamingConv {

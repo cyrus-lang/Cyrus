@@ -17,11 +17,12 @@
 
 use crate::{
     abi::{
+        layout::type_layout,
         target::{ABITargetArch, ABITargetInfo},
         targets::x86_64::types::X86_64TargetDependentType,
         types::{ABIFloatKind, ABIType, TargetIntegerType},
     },
-    cir::types::CIRTy,
+    cir::{cir::CIREnumTyVariant, types::CIRTy},
 };
 use cyrusc_tast::types::PlainType;
 
@@ -110,15 +111,64 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
                 false,
             )
         }
-        CIRTy::Enum(_) => {
-            // Enums are typically represented as integers in ABIs
-            // The size depends on the discriminant type
-            // match &cirenum_ty.discriminant_type {
-            //     Some(disc_ty) => cir_type_to_abi_type(disc_ty),
-            //     None => ABIType::Integer(32), // Default enum size
-            // }
-            // TODO
-            unimplemented!()
+        CIRTy::Enum(enum_ty) => {
+            // enums are represented as a struct with tag and payload
+            // first, determine if this is a simple C-style enum (no payload)
+            if !enum_ty.includes_payload() {
+                // c-style enum without payload
+                ABIType::Integer(32)
+            } else {
+                // enum with payload is struct { i32, [i8; N] }
+                // need to compute max payload size to determine the byte array size
+                let mut max_payload_size = 0;
+
+                for variant in &enum_ty.variants {
+                    match variant {
+                        CIREnumTyVariant::Ident => {
+                            // no payload
+                        }
+                        CIREnumTyVariant::Valued(expr) => {
+                            let layout = type_layout(info, &expr.ty);
+                            max_payload_size = max_payload_size.max(layout.size);
+                        }
+                        CIREnumTyVariant::Fielded(fields) => {
+                            let mut total_size = 0;
+                            let mut max_align = 1;
+
+                            for field_ty in fields {
+                                let layout = type_layout(info, field_ty);
+                                let field_align = layout.align;
+                                let field_size = layout.size;
+
+                                let padding = (field_align - (total_size % field_align)) % field_align;
+                                total_size += padding + field_size;
+                                max_align = max_align.max(field_align);
+                            }
+
+                            total_size = ((total_size + max_align - 1) / max_align) * max_align;
+                            max_payload_size = max_payload_size.max(total_size);
+                        }
+                    }
+                }
+
+                // round payload size to at least 1 if there are any payload variants
+                if max_payload_size == 0 && enum_ty.includes_payload() {
+                    max_payload_size = 1;
+                }
+
+                let payload_array = ABIType::Array {
+                    element_ty: Box::new(ABIType::Integer(8)),
+                    count: max_payload_size as usize,
+                };
+
+                ABIType::Struct(
+                    vec![
+                        ABIType::Integer(32), // tag
+                        payload_array,        // payload
+                    ],
+                    false, // not packed
+                )
+            }
         }
     }
 }

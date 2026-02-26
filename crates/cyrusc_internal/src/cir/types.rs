@@ -72,6 +72,14 @@ pub struct CIRUnionTy {
 #[derive(Debug, Clone)]
 pub struct CIREnumTy {
     pub variants: Vec<CIREnumTyVariant>,
+    pub c_enum: bool,
+}
+
+impl CIREnumTy {
+    #[inline]
+    pub fn includes_payload(&self) -> bool {
+        self.variants.iter().any(|v| !matches!(v, CIREnumTyVariant::Ident))
+    }
 }
 
 impl CIRTy {

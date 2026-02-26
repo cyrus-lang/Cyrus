@@ -158,8 +158,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         if max_payload_size == 0 {
-            max_payload_size = 1;
-            max_payload_align = 1;
+            if enum_ty.includes_payload() {
+                max_payload_size = 1;
+                max_payload_align = 1;
+            } else {
+                // simple enum
+                max_payload_size = 0;
+                max_payload_align = 1;
+            }
         }
 
         // round up size to alignment boundary
@@ -170,10 +176,16 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> StructType<'ll> {
-        let tag_type = self.llvmctx.i32_type();
-        let (payload_ty, _) = self.enum_payload_ty(&enum_ty);
-        self.llvmctx
-            .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
+        if enum_ty.c_enum {
+            // c-compatible enum
+            todo!();
+        } else {
+            // cyrus special enum
+            let tag_type = self.llvmctx.i32_type();
+            let (payload_ty, _) = self.enum_payload_ty(&enum_ty);
+            self.llvmctx
+                .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
+        }
     }
 
     pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionTy) -> StructType<'ll> {

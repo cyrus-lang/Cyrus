@@ -32,14 +32,8 @@ use cyrusc_ast::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_internal::{
     abi::types::ABIType,
     cir::{
-        cir::{
-            CIRAddrOfExpr, CIRArrayExpr, CIRArrayIndexExpr, CIRAssignExpr, CIRDerefExpr, CIRDynamicExpr,
-            CIREnumInitExpr, CIREnumInitVariant, CIRExpr, CIRExprKind, CIRFuncCall, CIRInfixExpr,
-            CIRInterfaceMethodCall, CIRLiteral, CIRLiteralKind, CIRMonomorphFuncInstanceCall, CIRPrefixExpr,
-            CIRSizeOfExpr, CIRStructFieldAccessExpr, CIRStructInitExpr, CIRTupleAccessExpr, CIRTupleExpr, CIRUnaryExpr,
-            CIRUnionFieldAccessExpr, CIRUnionInitExpr, CIRValue, CIRValueKind, cir_func_decl_as_func_ty,
-        },
-        types::{CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
+        cir::*,
+        types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
     },
 };
 use cyrusc_tast::types::PlainType;
@@ -253,7 +247,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         rhs_value
     }
 
-    pub(crate) fn emit_cast_basic_value_to_target_abi_type(
+    pub(crate) fn emit_cast_func_arg(
         &self,
         value: BasicValueEnum<'ll>,
         from_cir_type: &CIRTy,
@@ -267,6 +261,15 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         if from_type == target_basic_type {
             return value;
+        }
+
+        if let CIRTy::Enum(enum_ty) = from_cir_type {
+            if !enum_ty.includes_payload() {
+                if let BasicValueEnum::StructValue(struct_value) = value {
+                    let tag = self.extract_enum_tag(struct_value);
+                    return self.emit_cast_func_arg(tag.into(), &CIRTy::PlainType(PlainType::Int32), target_type);
+                }
+            }
         }
 
         match (from_type, target_basic_type) {
@@ -1248,8 +1251,18 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
+    fn emit_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumTy) -> InternalValue<'ll> {
+        dbg!(enum_ty.clone());
+        todo!();
+    }
+
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
         let enum_ty = &enum_init_expr.enum_ty;
+
+        // handle c-compatible enum init
+        if enum_ty.c_enum {
+            return self.emit_c_enum_init(enum_init_expr, enum_ty);
+        }
 
         let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
         let (payload_ty, _) = self.enum_payload_ty(enum_ty);
@@ -1358,7 +1371,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         fields.iter().any(|f| f.is_union())
     }
 
-    pub(crate) fn extract_enum_idx(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
+    pub(crate) fn extract_enum_tag(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
         self.llvmbuilder
             .build_extract_value(struct_value, 0, "extract")
             .unwrap()
@@ -1381,8 +1394,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let struct_value1 = lhs.as_basic_value().into_struct_value();
         let struct_value2 = rhs.as_basic_value().into_struct_value();
 
-        let tag1 = self.extract_enum_idx(struct_value1);
-        let tag2 = self.extract_enum_idx(struct_value2);
+        let tag1 = self.extract_enum_tag(struct_value1);
+        let tag2 = self.extract_enum_tag(struct_value2);
 
         let tag_concrete_type = CIRTy::PlainType(PlainType::UInt32);
         let tag_cmp_result = if cmp_eq {

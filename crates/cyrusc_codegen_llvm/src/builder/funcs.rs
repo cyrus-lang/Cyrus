@@ -131,7 +131,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) {
         if let Some(target_ty) = coerce_to {
             let coerced: BasicValueEnum<'ll> = self
-                .emit_cast_basic_value_to_target_abi_type(rvalue.as_basic_value(), &rvalue.ty, target_ty.clone())
+                .emit_cast_func_arg(rvalue.as_basic_value(), &rvalue.ty, target_ty.clone())
                 .try_into()
                 .unwrap();
 
@@ -196,7 +196,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         coerce_to: ABIType,
     ) {
         let coerced: BasicMetadataValueEnum<'ll> = self
-            .emit_cast_basic_value_to_target_abi_type(rvalue.as_basic_value(), &rvalue.ty, coerce_to)
+            .emit_cast_func_arg(rvalue.as_basic_value(), &rvalue.ty, coerce_to)
             .try_into()
             .unwrap();
 
@@ -228,7 +228,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let param_type = &param_types[i as usize];
 
                     let casted: BasicMetadataValueEnum<'ll> = self
-                        .emit_cast_basic_value_to_target_abi_type(field_value, field_cir_type, param_type.clone())
+                        .emit_cast_func_arg(field_value, field_cir_type, param_type.clone())
                         .try_into()
                         .unwrap();
 
@@ -255,7 +255,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let param_type = &param_types[0 as usize];
 
                     let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_basic_value_to_target_abi_type(lo_value, field_cir_type, param_type.clone())
+                        .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
                         .try_into()
                         .unwrap();
 
@@ -281,7 +281,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let param_type = &param_types[offset_hi as usize];
 
                     let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_basic_value_to_target_abi_type(lo_value, field_cir_type, param_type.clone())
+                        .emit_cast_func_arg(lo_value, field_cir_type, param_type.clone())
                         .try_into()
                         .unwrap();
 
@@ -303,7 +303,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let param_type = &param_types[i as usize];
 
                     let casted: BasicValueEnum<'ll> = self
-                        .emit_cast_basic_value_to_target_abi_type(field_value, field_cir_type, param_type.clone())
+                        .emit_cast_func_arg(field_value, field_cir_type, param_type.clone())
                         .try_into()
                         .unwrap();
 

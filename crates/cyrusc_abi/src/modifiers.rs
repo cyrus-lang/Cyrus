@@ -14,7 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::ast_defs::{CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility};
+use crate::ast_defs::{
+    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
@@ -98,15 +100,6 @@ impl Default for StructModifiers {
     }
 }
 
-impl StructModifiers {
-    pub fn validate(&self) -> Result<(), String> {
-        if self.repr.is_some() && self.packed {
-            // this is allowed in most languages, but let's keep it open for custom validation
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct EnumModifiers {
     pub vis: Visibility,
@@ -125,12 +118,6 @@ impl Default for EnumModifiers {
             section: None,
             optional_flags: Vec::new(),
         }
-    }
-}
-
-impl EnumModifiers {
-    pub fn validate(&self) -> Result<(), String> {
-        Ok(())
     }
 }
 
@@ -157,12 +144,6 @@ impl Default for UnionModifiers {
     }
 }
 
-impl UnionModifiers {
-    pub fn validate(&self) -> Result<(), String> {
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct GlobalVarModifiers {
     pub vis: Visibility,
@@ -185,14 +166,5 @@ impl Default for GlobalVarModifiers {
             weak: false,
             optional_flags: Vec::new(),
         }
-    }
-}
-
-impl GlobalVarModifiers {
-    pub fn validate(&self) -> Result<(), String> {
-        if self.weak && self.linkage == None {
-            return Err("Global variable cannot be both weak and internal.".into());
-        }
-        Ok(())
     }
 }

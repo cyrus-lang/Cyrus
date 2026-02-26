@@ -453,7 +453,7 @@ impl UnresolvedModifiers {
     pub(crate) fn into_enum_modifiers(self, loc: SourceLoc) -> Result<EnumModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
-        if self.linkage.is_some() || self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
+        if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
                     "Invalid modifier for enum declaration.".to_string(),
@@ -476,6 +476,10 @@ impl UnresolvedModifiers {
         }
 
         let section = self.placement.get(0).cloned();
+
+        if let Some(linkage) = self.linkage {
+            dbg!(linkage.clone());
+        }
 
         Ok(EnumModifiers {
             vis,

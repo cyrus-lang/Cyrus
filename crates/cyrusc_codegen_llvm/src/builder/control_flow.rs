@@ -153,7 +153,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let enum_ty = rvalue.ty.as_enum().unwrap();
         let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
-        let enum_idx_int_value = self.extract_enum_idx(enum_struct_value);
+        let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
 
         let parent_block = self.blockreg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");

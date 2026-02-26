@@ -20,7 +20,7 @@ use crate::{
         helpers::align_offset,
         target::{ABITargetArch, ABITargetInfo},
     },
-    cir::types::CIRTy,
+    cir::{cir::CIREnumTyVariant, types::CIRTy},
 };
 use cyrusc_tast::types::PlainType;
 
@@ -80,7 +80,60 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let total_size = align_offset(max_size, max_align);
             ABITypeLayout::aggregate(total_size, max_align, field_offsets)
         }
-        CIRTy::Enum(_enum_ty) => todo!(),
+        CIRTy::Enum(enum_ty) => {
+            let tag_size = 4;
+            let tag_align = 4;
+
+            let mut max_payload_size = 0;
+            let mut max_payload_align = 1;
+
+            for variant in &enum_ty.variants {
+                let (variant_size, variant_align) = match variant {
+                    CIREnumTyVariant::Ident => (0, 1),
+                    CIREnumTyVariant::Valued(expr) => {
+                        let layout = type_layout(info, &expr.ty);
+                        (layout.size, layout.align)
+                    }
+                    CIREnumTyVariant::Fielded(field_tys) => {
+                        // Calculate struct layout for this variant
+                        let mut offset = 0;
+                        let mut align = 1;
+                        for field_ty in field_tys {
+                            let field_layout = type_layout(info, field_ty);
+                            let padding = (field_layout.align - (offset % field_layout.align)) % field_layout.align;
+                            offset += padding;
+                            offset += field_layout.size;
+                            align = align.max(field_layout.align);
+                        }
+                        let size = align_offset(offset, align);
+                        (size, align)
+                    }
+                };
+
+                max_payload_size = max_payload_size.max(variant_size);
+                max_payload_align = max_payload_align.max(variant_align);
+            }
+
+            if max_payload_size == 0 {
+                if enum_ty.includes_payload() {
+                    max_payload_size = 1;
+                    max_payload_align = 1;
+                } else {
+                    // simple enum
+                    max_payload_size = 0;
+                    max_payload_align = 1;
+                }
+            }
+
+            let aligned_payload_size =
+                ((max_payload_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
+
+            // total size = tag + aligned payload
+            let total_size = tag_size + aligned_payload_size;
+            let total_align = tag_align.max(max_payload_align);
+
+            ABITypeLayout::aggregate(total_size, total_align, vec![0, tag_size])
+        }
         CIRTy::FuncType(_) => {
             let size = info.pointer_size();
             ABITypeLayout::normal(size, size, Vec::new())

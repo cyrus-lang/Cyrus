@@ -15,9 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_abi::ast_defs::CallConv;
-use cyrusc_tast::types::PlainType;
-
 use crate::{
     abi::{
         args::{ABIArgAttrs, ABIArgInfo, ABIArgKind, ABIFunctionInfo, ABIRetInfo, ABIRetInfoKind, ExpandKind},
@@ -29,6 +26,8 @@ use crate::{
     cir::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTy},
     is_integer_type,
 };
+use cyrusc_abi::ast_defs::CallConv;
+use cyrusc_tast::types::PlainType;
 
 const MIN_ABI_STACK_ALIGN: u32 = 16;
 
@@ -901,7 +900,7 @@ fn classify(
         }
         CIRTy::Array(array_ty) => classify_array(info, array_ty, offset_base, lo_class, hi_class),
         CIRTy::Dynamic(_) => classify_dynamic(info, offset_base, lo_class, hi_class),
-        CIRTy::Enum(_) => todo!(),
+        CIRTy::Enum(_) => classify_enum(info, ty, offset_base, lo_class, hi_class),
     }
 }
 
@@ -994,6 +993,68 @@ fn classify_array(
         if *lo_class == RegisterClass::Memory || *hi_class == RegisterClass::Memory {
             break;
         }
+    }
+
+    classify_post_merge(layout.size, lo_class, hi_class);
+}
+
+fn classify_enum(
+    info: &ABITargetInfo,
+    ty: &CIRTy,
+    offset_base: u32,
+    lo_class: &mut RegisterClass,
+    hi_class: &mut RegisterClass,
+) {
+    let layout = type_layout(info, ty);
+
+    // if size > 64 bytes, keep default memory class
+    if layout.size > 64 {
+        return;
+    }
+
+    // re-classify
+    if offset_base < 8 {
+        *lo_class = RegisterClass::NoClass;
+    } else {
+        *hi_class = RegisterClass::NoClass;
+    }
+
+    // enums is as struct { i32 tag, [i8; N] payload } in codegen_llvm
+
+    // first, classify the tag field (i32) at offset 0
+    let tag_ty = CIRTy::PlainType(PlainType::Int32);
+    let tag_offset = offset_base;
+
+    let mut tag_lo = RegisterClass::NoClass;
+    let mut tag_hi = RegisterClass::NoClass;
+    classify(info, &tag_ty, tag_offset, &mut tag_lo, &mut tag_hi);
+
+    *lo_class = classify_merge(*lo_class, tag_lo);
+    *hi_class = classify_merge(*hi_class, tag_hi);
+
+    if *lo_class == RegisterClass::Memory || *hi_class == RegisterClass::Memory {
+        classify_post_merge(layout.size, lo_class, hi_class);
+        return;
+    }
+
+    // classify the payload
+    // byte-arrays are treated as NoClass/Integer depending on size
+    let payload_size = layout.size - 4; // total size minus tag
+    let payload_offset = offset_base + 4; // tag is 4 bytes
+
+    if payload_size > 0 {
+        // payload is a byte array, classify based on its size
+        let payload_ty = CIRTy::Array(CIRArrayTy {
+            ty: Box::new(CIRTy::PlainType(PlainType::UInt8)),
+            len: payload_size as usize,
+        });
+
+        let mut payload_lo = RegisterClass::NoClass;
+        let mut payload_hi = RegisterClass::NoClass;
+        classify(info, &payload_ty, payload_offset, &mut payload_lo, &mut payload_hi);
+
+        *lo_class = classify_merge(*lo_class, payload_lo);
+        *hi_class = classify_merge(*hi_class, payload_hi);
     }
 
     classify_post_merge(layout.size, lo_class, hi_class);
