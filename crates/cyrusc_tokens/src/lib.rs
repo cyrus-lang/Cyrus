@@ -104,7 +104,6 @@ pub enum TokenKind {
     Break,
     Continue,
     Struct,
-    Bits,
     Import,
     SizeOf,
     Macro,
@@ -162,6 +161,7 @@ pub enum TokenKind {
     NoUnwind,
     Section,
     Repr,
+    Align,
 }
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
@@ -262,7 +262,6 @@ impl fmt::Display for TokenKind {
             TokenKind::Case => write!(f, "case"),
             TokenKind::Default => write!(f, "default"),
             TokenKind::Struct => write!(f, "struct"),
-            TokenKind::Bits => write!(f, "bits"),
             TokenKind::Import => write!(f, "import"),
             TokenKind::If => write!(f, "if"),
             TokenKind::Else => write!(f, "else"),
@@ -337,6 +336,7 @@ impl fmt::Display for TokenKind {
             TokenKind::While => write!(f, "while"),
             TokenKind::NoInline => write!(f, "noinline"),
             TokenKind::AlwaysInline => write!(f, "alwaysinline"),
+            TokenKind::Align => write!(f, "align"),
             TokenKind::Literal(literal) => write!(f, "{}", literal),
         }
     }

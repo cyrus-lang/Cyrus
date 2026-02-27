@@ -93,11 +93,7 @@ impl Resolver {
     }
 
     /// Resolves a symbol from a specific local scope. Simplified to be a single, expressive statement.
-    pub fn resolve_symbol_from_local_scope(
-        &self,
-        scope_rc: LocalScopeRef,
-        symbol_id: SymbolID,
-    ) -> Option<LocalSymbol> {
+    pub fn resolve_symbol_from_local_scope(&self, scope_rc: LocalScopeRef, symbol_id: SymbolID) -> Option<LocalSymbol> {
         scope_rc.borrow().with_symbol_id(symbol_id, |sym| sym.clone())
     }
 
@@ -161,21 +157,13 @@ impl Resolver {
             .cloned()
     }
 
-    pub fn resolve_union_symbol(
-        &self,
-        scope_opt: Option<LocalScopeRef>,
-        symbol_id: SymbolID,
-    ) -> Option<ResolvedUnion> {
+    pub fn resolve_union_symbol(&self, scope_opt: Option<LocalScopeRef>, symbol_id: SymbolID) -> Option<ResolvedUnion> {
         self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_union()
             .cloned()
     }
 
-    pub fn resolve_enum_symbol(
-        &self,
-        scope_opt: Option<LocalScopeRef>,
-        symbol_id: SymbolID,
-    ) -> Option<ResolvedEnum> {
+    pub fn resolve_enum_symbol(&self, scope_opt: Option<LocalScopeRef>, symbol_id: SymbolID) -> Option<ResolvedEnum> {
         self.resolve_local_or_global_symbol(scope_opt, symbol_id)?
             .as_enum()
             .cloned()

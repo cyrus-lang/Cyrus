@@ -1260,7 +1260,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let enum_ty = &enum_init_expr.enum_ty;
 
         // handle c-compatible enum init
-        if enum_ty.c_enum {
+        if enum_ty.is_repr_c() {
             return self.emit_c_enum_init(enum_init_expr, enum_ty);
         }
 

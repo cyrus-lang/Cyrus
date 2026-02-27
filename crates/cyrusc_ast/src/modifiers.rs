@@ -15,7 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::abi::{CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, SectionAttr, Visibility};
+use crate::abi::{
+    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprKind, SectionAttr, Visibility,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
@@ -118,12 +120,33 @@ impl Default for EnumModifiers {
     }
 }
 
+impl EnumModifiers {
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(repr_attr) = &self.repr_attr {
+            if let Some(kind) = repr_attr.kind() {
+                match kind {
+                    ReprKind::C | ReprKind::Cyrus => {
+                        if repr_attr.is_packed() {
+                            return Err("Cannot combine 'packed' with enum layout.".into());
+                        }
+                    }
+                    ReprKind::Transparent => {
+                        return Err("Repr 'transparent' cannot be applied to enums.".into());
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UnionModifiers {
     pub vis: Visibility,
     pub linkage: Option<Linkage>,
     pub export: Option<ExportKind>,
-    pub repr: Option<ReprAttr>,
+    pub repr_attr: Option<ReprAttr>,
     pub section: Option<SectionAttr>,
     pub optional_flags: Vec<OptionalFlag>,
 }
@@ -134,7 +157,7 @@ impl Default for UnionModifiers {
             vis: Visibility::default(),
             linkage: None,
             export: None,
-            repr: None,
+            repr_attr: None,
             section: None,
             optional_flags: Vec::new(),
         }

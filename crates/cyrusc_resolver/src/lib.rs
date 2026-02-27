@@ -1537,6 +1537,19 @@ impl Resolver {
 
         let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &enum_decl.impls, enum_decl.loc.clone());
 
+        let discriminant_type = if let Some(type_specifier) = &enum_decl.discriminant_type {
+            self.resolve_type(
+                &None,
+                scope_opt,
+                module_id,
+                type_specifier.clone(),
+                enum_decl.loc,
+                enum_decl.span.end,
+            )
+        } else {
+            None
+        };
+
         Some(TypedStmt::Enum(TypedEnumStmt {
             module_id,
             symbol_id: enum_symbol_id,
@@ -1545,6 +1558,7 @@ impl Resolver {
             methods,
             generic_params,
             impls,
+            discriminant_type,
             modifiers: enum_decl.modifiers.clone(),
             loc: SourceLoc::from_loc(enum_decl.ident.loc.clone(), self.current_file_path()),
             is_local,

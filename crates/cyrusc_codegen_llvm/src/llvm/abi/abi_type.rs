@@ -15,7 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_internal::abi::{target::ABITargetInfo, types::{ABIFloatKind, ABIType}};
+use cyrusc_internal::abi::{
+    target::ABITargetInfo,
+    types::{ABIFloatKind, ABIType},
+};
 use inkwell::{
     AddressSpace,
     context::Context,

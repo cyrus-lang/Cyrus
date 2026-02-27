@@ -22,7 +22,8 @@ use cyrusc_ast::{
 use cyrusc_tast::{
     ScopeID,
     exprs::{
-        TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr, MemoryLocation,
+        MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr,
+        TypedPrefixExpr,
     },
     types::{PlainType, SemanticType},
 };
@@ -44,11 +45,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Prefix(prefix_expr) => {
                 match prefix_expr.op {
                     PrefixOperator::Bang => {
-                        if let Some(lowered_typed_expr) = self.deduce_prefix_not_pointer(
-                            scope_id_opt,
-                            expected_type.clone(),
-                            prefix_expr,
-                        ) {
+                        if let Some(lowered_typed_expr) =
+                            self.deduce_prefix_not_pointer(scope_id_opt, expected_type.clone(), prefix_expr)
+                        {
                             *typed_expr = lowered_typed_expr;
                         }
                     }

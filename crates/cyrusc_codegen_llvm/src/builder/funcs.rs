@@ -479,7 +479,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         if let Some(cur_func) = parent_func {
             self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
         }
-        
+
         self.blockreg = parent_blockreg;
         if let Some(basic_block) = self.blockreg.cur_block {
             self.emit_block(basic_block);

@@ -219,7 +219,7 @@ impl Parser {
         let expr = match &self.current_token().clone().kind {
             TokenKind::Dot => self.parse_unnamed_enum_value()?,
             TokenKind::Union => self.parse_unnamed_union_value(false)?,
-            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
+            TokenKind::Struct => self.parse_unnamed_struct_value(false)?,
             TokenKind::Dynamic => self.parse_dynamic_expr()?,
             TokenKind::Inline => {
                 if self.peek_token_is(TokenKind::Function) {
@@ -233,7 +233,7 @@ impl Parser {
             TokenKind::SizeOf => self.parse_sizeof_expr()?,
             TokenKind::Typecast => self.parse_cast_expr()?,
             TokenKind::Const => {
-                if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
+                if self.peek_token_is(TokenKind::Struct) {
                     self.next_token();
                     self.parse_unnamed_struct_value(true)?
                 } else if let TokenKind::Ident { .. } = self.peek_token().kind {
@@ -1078,9 +1078,6 @@ impl Parser {
             if self.current_token_is(TokenKind::Struct) {
                 self.next_token(); // consume struct
                 false
-            } else if self.current_token_is(TokenKind::Bits) {
-                self.next_token(); // consume bits
-                true
             } else {
                 return Err(self.error_invalid_token());
             }

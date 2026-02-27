@@ -19,6 +19,7 @@ use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
+use cyrusc_ast::abi::ReprAttr;
 use cyrusc_ast::*;
 use cyrusc_tokens::PRIMITIVE_TYPES;
 use cyrusc_tokens::TokenKind;
@@ -514,7 +515,7 @@ impl Parser {
             | TokenKind::DoubleDot
             | TokenKind::TripleDot => true,
 
-            TokenKind::Struct | TokenKind::Union | TokenKind::Enum | TokenKind::Interface | TokenKind::Bits => true,
+            TokenKind::Struct | TokenKind::Union | TokenKind::Enum | TokenKind::Interface => true,
 
             TokenKind::True | TokenKind::False | TokenKind::Null => true,
 
@@ -635,9 +636,22 @@ impl Parser {
 
         match token.kind {
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(token)),
-            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_type(),
-            TokenKind::Union => self.parse_unnamed_union_type(),
-            TokenKind::Enum => self.parse_unnamed_enum_type(),
+            TokenKind::Repr => {
+                let repr_attr = self.parse_repr_attr(token)?.unwrap();
+
+                if self.current_token_is(TokenKind::Struct) {
+                    self.parse_unnamed_struct_type(Some(repr_attr))
+                } else if self.current_token_is(TokenKind::Union) {
+                    self.parse_unnamed_union_type(Some(repr_attr))
+                } else if self.current_token_is(TokenKind::Enum) {
+                    self.parse_unnamed_enum_type(Some(repr_attr))
+                } else {
+                    todo!();
+                }
+            }
+            TokenKind::Struct => self.parse_unnamed_struct_type(None),
+            TokenKind::Union => self.parse_unnamed_union_type(None),
+            TokenKind::Enum => self.parse_unnamed_enum_type(None),
             TokenKind::LeftParen => self.parse_tuple(),
             TokenKind::Function => self.parse_func_type(),
             TokenKind::Const => {
@@ -718,21 +732,11 @@ impl Parser {
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
-    fn parse_unnamed_struct_type(&mut self) -> Result<TypeSpecifier, Diag> {
+    fn parse_unnamed_struct_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let is_packed = {
-            if self.current_token_is(TokenKind::Bits) {
-                self.next_token();
-                true
-            } else if self.current_token_is(TokenKind::Struct) {
-                self.next_token();
-                false
-            } else {
-                return Err(self.error_invalid_token());
-            }
-        };
+        self.next_token(); // consume struct 
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
@@ -779,13 +783,13 @@ impl Parser {
 
         Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
             fields,
-            is_packed,
+            repr_attr,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_unnamed_union_type(&mut self) -> Result<TypeSpecifier, Diag> {
+    fn parse_unnamed_union_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -836,6 +840,7 @@ impl Parser {
 
         Ok(TypeSpecifier::UnnamedUnion(UnnamedUnionType {
             fields,
+            repr_attr,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
@@ -894,7 +899,7 @@ impl Parser {
         }
     }
 
-    fn parse_unnamed_enum_type(&mut self) -> Result<TypeSpecifier, Diag> {
+    fn parse_unnamed_enum_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -906,6 +911,7 @@ impl Parser {
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
                 variants: enum_fields,
+                repr_attr,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }));
@@ -933,6 +939,7 @@ impl Parser {
 
         Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
             variants: enum_fields,
+            repr_attr,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

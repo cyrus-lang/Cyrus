@@ -1773,12 +1773,12 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|variant| self.lower_unnamed_enum_ty_variant(scope_id_opt, variant))
             .collect();
 
-        // unnamed-enum is cyrus special enum
-        // and it's not c-compatible
-        CIREnumTy {
-            variants,
-            c_enum: false,
-        }
+        // CIREnumTy {
+        //     variants,
+        //     c_enum: false,
+        // }
+        // FIXME
+        todo!();
     }
 
     fn lower_unnamed_enum_ty_variant(
@@ -1877,15 +1877,17 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_enum_sig_as_enum_ty(&mut self, scope_id_opt: Option<ScopeID>, enum_sig: &EnumSig) -> CIREnumTy {
-        let variants: Vec<CIREnumTyVariant> = enum_sig
-            .variants
-            .iter()
-            .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
-            .collect();
+        // let variants: Vec<CIREnumTyVariant> = enum_sig
+        //     .variants
+        //     .iter()
+        //     .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
+        //     .collect();
 
-        let c_enum = is_c_enum(&enum_sig.modifiers.repr_attr);
+        // let c_enum = is_c_enum(&enum_sig.modifiers.repr_attr);
 
-        CIREnumTy { variants, c_enum }
+        // CIREnumTy { variants, c_enum }
+        // FIXME
+        todo!();
     }
 
     fn lower_union_sig_as_union_ty(&mut self, scope_id_opt: Option<ScopeID>, union_sig: &UnionSig) -> CIRUnionTy {

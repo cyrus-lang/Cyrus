@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::TypeSpecifier;
+use core::fmt;
 use std::collections::HashSet;
 
 macro_rules! define_call_convs {
@@ -79,12 +79,6 @@ define_call_convs! {
     SysV64 => "sysv64",
     Win64 => "win64",
     System => "system",
-}
-
-impl Default for CallConv {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,26 +171,41 @@ pub enum Linkage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SectionAttr(pub String);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReprKind {
     C,
     Cyrus,
     Transparent,
-    DiscriminantType(TypeSpecifier),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReprAttrKind {
     Kind(ReprKind),
     Align(u32),
     Packed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReprAttr {
     pub items: Vec<ReprAttrKind>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prologue {
+    Naked,
+}
+
+impl Default for CallConv {
+    fn default() -> Self {
+        Self::System
+    }
+}
 impl ReprAttr {
     pub fn new() -> Self {
         Self { items: Vec::new() }
@@ -273,10 +282,38 @@ impl ReprAttr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Visibility {
-    Public,
-    Private,
+impl fmt::Display for ReprAttr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let items_fmt = self
+            .items
+            .iter()
+            .filter(|item| !matches!(item, ReprAttrKind::Align(_)))
+            .map(|item| item.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        write!(f, "repr({})", items_fmt)
+    }
+}
+
+impl fmt::Display for ReprAttrKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReprAttrKind::Align(_) => write!(f, ""),
+            ReprAttrKind::Packed => write!(f, "packed"),
+            ReprAttrKind::Kind(repr_kind) => repr_kind.fmt(f),
+        }
+    }
+}
+
+impl fmt::Display for ReprKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReprKind::C => write!(f, "c"),
+            ReprKind::Cyrus => write!(f, "cyrus"),
+            ReprKind::Transparent => write!(f, "transparent"),
+        }
+    }
 }
 
 impl Default for Visibility {
@@ -294,12 +331,6 @@ impl Visibility {
         matches!(self, Visibility::Public)
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Prologue {
-    Naked,
-}
-
 impl Prologue {
     pub fn conflicts_with_inline(&self) -> bool {
         matches!(self, Prologue::Naked)

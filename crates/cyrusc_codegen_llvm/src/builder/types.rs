@@ -176,7 +176,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> StructType<'ll> {
-        if enum_ty.c_enum {
+        if enum_ty.is_repr_c() {
             // c-compatible enum
             todo!();
         } else {

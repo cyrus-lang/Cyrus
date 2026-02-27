@@ -82,8 +82,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_expr: &TypedExprStmt,
     ) -> Option<i128> {
-        let scope_opt =
-            scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let integer_result = match &typed_expr.kind {
             TypedExprKind::Symbol(symbol_id, ..) => match self.resolve_any_variable_expr(scope_opt, *symbol_id) {

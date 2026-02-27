@@ -25,7 +25,11 @@ use crate::{
     },
     types::{InterfaceType, SemanticType, TypedFuncType},
 };
-use cyrusc_ast::{SelfModifierKind, abi::Visibility, modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers}};
+use cyrusc_ast::{
+    SelfModifierKind,
+    abi::Visibility,
+    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use std::{collections::HashMap, hash::Hash};
 

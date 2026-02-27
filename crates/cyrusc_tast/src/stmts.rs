@@ -20,7 +20,11 @@ use crate::{
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
-use cyrusc_ast::{Ident, SelfModifierKind, abi::Visibility, modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers}};
+use cyrusc_ast::{
+    Ident, SelfModifierKind,
+    abi::Visibility,
+    modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
+};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use std::{collections::HashMap, hash::Hash};
 
@@ -113,6 +117,7 @@ pub struct TypedEnumStmt {
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: EnumModifiers,
+    pub discriminant_type: Option<SemanticType>,
     pub loc: SourceLoc,
 }
 

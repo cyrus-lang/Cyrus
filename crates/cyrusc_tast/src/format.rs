@@ -314,11 +314,12 @@ pub fn format_unnamed_struct_ty<'a>(
 ) -> String {
     let mut fmt = String::new();
 
-    if unnamed_struct_type.is_packed {
-        fmt.push_str("bits");
-    } else {
-        fmt.push_str("struct");
-    };
+    if let Some(repr_attr) = &unnamed_struct_type.repr_attr {
+        fmt.push_str(&repr_attr.to_string());
+        fmt.push_str(" ");
+    }
+    
+    fmt.push_str("struct");
 
     fmt.push_str(" { ");
 

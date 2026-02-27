@@ -134,7 +134,7 @@ pub fn substitute_type(
                 .collect::<Option<Vec<_>>>()?;
             Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                 fields,
-                is_packed: unnamed_struct_type.is_packed,
+                repr_attr: unnamed_struct_type.repr_attr.clone(),
                 loc: unnamed_struct_type.loc.clone(),
             }))
         }

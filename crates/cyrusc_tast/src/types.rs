@@ -21,6 +21,7 @@ use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
 use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
 use cyrusc_ast::Ident;
+use cyrusc_ast::abi::ReprAttr;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::TokenKind;
 use std::hash::{Hash, Hasher};
@@ -170,19 +171,21 @@ pub enum TypedArrayFixedCapacityValue {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
-    pub is_packed: bool,
+    pub repr_attr: Option<ReprAttr>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedUnionType {
     pub fields: Vec<TypedUnnamedUnionTypeField>,
+    pub repr_attr: Option<ReprAttr>,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedEnumType {
     pub variants: Vec<TypedUnnamedEnumVariant>,
+    pub repr_attr: Option<ReprAttr>,
     pub loc: SourceLoc,
 }
 
@@ -249,7 +252,7 @@ impl PartialEq for TypedUnnamedUnionType {
 
 impl PartialEq for TypedUnnamedStructType {
     fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.is_packed == other.is_packed
+        self.fields == other.fields && self.repr_attr == other.repr_attr
     }
 }
 
@@ -262,7 +265,7 @@ impl Hash for TypedUnnamedUnionType {
 impl Hash for TypedUnnamedStructType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.fields.hash(state);
-        self.is_packed.hash(state);
+        self.repr_attr.hash(state);
     }
 }
 
@@ -302,7 +305,11 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
         })
         .collect();
 
-    TypedUnnamedEnumType { variants, loc }
+    TypedUnnamedEnumType {
+        variants,
+        repr_attr: enum_sig.modifiers.repr_attr.clone(),
+        loc,
+    }
 }
 
 pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
@@ -315,7 +322,12 @@ pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> Ty
             loc: field.loc.clone(),
         })
         .collect();
-    TypedUnnamedUnionType { fields, loc }
+    
+    TypedUnnamedUnionType {
+        fields,
+        repr_attr: union_sig.modifiers.repr_attr.clone(),
+        loc,
+    }
 }
 
 impl ResolvedSymbol {

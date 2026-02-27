@@ -16,7 +16,7 @@
  */
 
 use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumTyVariant};
-use cyrusc_ast::abi::CallConv;
+use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone)]
@@ -72,7 +72,8 @@ pub struct CIRUnionTy {
 #[derive(Debug, Clone)]
 pub struct CIREnumTy {
     pub variants: Vec<CIREnumTyVariant>,
-    pub c_enum: bool,
+    pub repr_attr: Option<ReprAttr>,
+    pub discriminant_type: Option<Box<CIRTy>>,
 }
 
 impl CIREnumTy {

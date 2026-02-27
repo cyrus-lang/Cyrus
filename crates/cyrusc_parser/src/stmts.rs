@@ -55,9 +55,6 @@ impl Parser {
         } else if self.current_token_is(TokenKind::Struct) {
             let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
             return Ok(vec![self.parse_struct(struct_modifiers, false)?]);
-        } else if self.current_token_is(TokenKind::Bits) {
-            let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-            return Ok(vec![self.parse_struct(struct_modifiers, true)?]);
         } else if self.current_token_is(TokenKind::Enum) {
             let enum_modifiers = modifiers.into_enum_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
             return Ok(vec![self.parse_enum(enum_modifiers)?]);
@@ -437,6 +434,8 @@ impl Parser {
         let ident = self.parse_ident()?;
         self.next_token();
 
+        self.parse_repr_align(&mut modifiers.repr_attr)?;
+
         let generic_params;
         if self.current_token_is(TokenKind::LessThan) {
             generic_params = Some(self.parse_generic_params()?);
@@ -526,6 +525,9 @@ impl Parser {
         let enum_name = self.parse_ident()?;
         self.next_token(); // consume enum name
 
+        let discriminant_type = self.parse_enum_discriminant_type()?;
+        self.parse_repr_align(&mut modifiers.repr_attr)?;
+
         let generic_params;
         if self.current_token_is(TokenKind::LessThan) {
             generic_params = Some(self.parse_generic_params()?);
@@ -543,6 +545,7 @@ impl Parser {
             return Ok(Stmt::Enum(Enum {
                 ident: enum_name,
                 variants: enum_fields,
+                discriminant_type,
                 generic_params,
                 methods: Vec::new(),
                 modifiers,
@@ -629,6 +632,7 @@ impl Parser {
         Ok(Stmt::Enum(Enum {
             ident: enum_name,
             variants: enum_fields,
+            discriminant_type,
             generic_params,
             methods,
             modifiers,
@@ -667,6 +671,8 @@ impl Parser {
 
         let struct_name = self.parse_ident()?;
         self.next_token(); // consume struct name
+
+        self.parse_repr_align(&mut modifiers.repr_attr)?;
 
         let generic_params;
         if self.current_token_is(TokenKind::LessThan) {

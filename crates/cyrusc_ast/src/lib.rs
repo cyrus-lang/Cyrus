@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::abi::Visibility;
+use crate::abi::{ReprAttr, Visibility};
 use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_tokens::{
@@ -155,7 +155,7 @@ pub struct UnnamedStructValueField {
 #[derive(Debug, Clone)]
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
-    pub is_packed: bool,
+    pub repr_attr: Option<ReprAttr>,
     pub loc: Location,
     pub span: Span,
 }
@@ -171,6 +171,7 @@ pub struct UnnamedStructTypeField {
 #[derive(Debug, Clone)]
 pub struct UnnamedUnionType {
     pub fields: Vec<UnnamedUnionTypeField>,
+    pub repr_attr: Option<ReprAttr>,
     pub loc: Location,
     pub span: Span,
 }
@@ -211,6 +212,7 @@ pub struct Enum {
     pub methods: Vec<FuncDef>,
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: EnumModifiers,
+    pub discriminant_type: Option<TypeSpecifier>,
     pub loc: Location,
     pub span: Span,
 }
@@ -218,6 +220,7 @@ pub struct Enum {
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumType {
     pub variants: Vec<UnnamedEnumVariant>,
+    pub repr_attr: Option<ReprAttr>,
     pub loc: Location,
     pub span: Span,
 }
@@ -979,6 +982,13 @@ impl ModuleImport {
 }
 
 impl TypeSpecifier {
+    pub fn as_type_token(&self) -> Option<&Token> {
+        match self {
+            TypeSpecifier::TypeToken(token) => Some(token),
+            _ => None,
+        }
+    }
+
     pub fn is_const(&self) -> bool {
         matches!(self, Self::Const(..))
     }
@@ -1057,7 +1067,7 @@ impl PartialEq for ModuleImport {
 
 impl PartialEq for UnnamedStructType {
     fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.is_packed == other.is_packed
+        self.fields == other.fields && self.repr_attr == other.repr_attr
     }
 }
 

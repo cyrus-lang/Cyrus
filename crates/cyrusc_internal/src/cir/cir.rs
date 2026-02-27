@@ -34,7 +34,7 @@ pub type CIRBlockID = u32;
 pub struct CIRProgramTree {
     pub body: Vec<CIRStmt>,
     pub file_path: String,
-    pub module_name: String
+    pub module_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -476,10 +476,11 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
 }
 
 pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
-    CIREnumTy {
-        variants: enum_stmt.variants.clone(),
-        c_enum: is_c_enum(&enum_stmt.modifiers.repr_attr),
-    }
+    // CIREnumTy {
+    //     variants: enum_stmt.variants.clone(),
+    // }
+    // FIXME
+    todo!();
 }
 
 pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
@@ -497,16 +498,17 @@ impl Debug for CIRProgramTree {
     }
 }
 
-pub fn is_c_enum(repr_attr_opt: &Option<ReprAttr>) -> bool {
-    if let Some(repr) = repr_attr_opt {
-        if let Some(kind) = repr.kind() {
-            return match kind {
-                ReprKind::C => true,
-                ReprKind::Cyrus => false,
-                ReprKind::Transparent => false,
-                ReprKind::DiscriminantType(_) => false,
-            };
+impl CIREnumTy {
+    pub fn is_repr_c(&self) -> bool {
+        if let Some(repr_attr) = &self.repr_attr {
+            if let Some(kind) = repr_attr.kind() {
+                return match kind {
+                    ReprKind::C => true,
+                    ReprKind::Cyrus => false,
+                    ReprKind::Transparent => false,
+                };
+            }
         }
+        false
     }
-    false
 }

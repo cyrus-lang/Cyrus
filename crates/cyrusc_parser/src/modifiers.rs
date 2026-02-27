@@ -16,8 +16,10 @@
  */
 
 use crate::{Parser, diagnostics::ParserDiagKind};
+use cyrusc_ast::TypeSpecifier;
 use cyrusc_ast::abi::{
-    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprAttrKind, ReprKind, SectionAttr, Visibility, validate_flags
+    CallConv, ExportKind, Inlining, Linkage, OptionalFlag, Prologue, ReprAttr, ReprAttrKind, ReprKind, SectionAttr,
+    Visibility, validate_flags,
 };
 use cyrusc_ast::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use cyrusc_diagcentral::source_loc::SourceLoc;
@@ -109,7 +111,7 @@ impl Parser {
             try_set_once!(export, parse_export_kind, "Export kind already specified.");
             try_set_once_result!(linkage, parse_linkage, "Linkage modifier already specified.");
             try_set_once_result!(callconv, parse_callconv, "Call convention already specified.");
-            try_set_once_result!(repr_attr, parse_repr, "Repr already specified.");
+            try_set_once_result!(repr_attr, parse_repr_attr, "Repr already specified.");
 
             match self.parse_optional_flag(token.clone()) {
                 Ok(optional_flag) => {
@@ -150,15 +152,49 @@ impl Parser {
         Ok(mods)
     }
 
-    pub(crate) fn parse_enum_repr_discriminant_type(&mut self, repr_attr: &mut ReprAttr) {
-        todo!();
+    pub(crate) fn parse_enum_discriminant_type(&mut self) -> Result<Option<TypeSpecifier>, Diag> {
+        if !self.current_token_is(TokenKind::LeftParen) {
+            return Ok(None);
+        }
+
+        self.next_token(); // consume left paren
+        let discriminant_type = self.parse_type_specifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+
+        Ok(Some(discriminant_type))
     }
 
-    pub(crate) fn parse_repr_align(&mut self, repr_attr: &mut ReprAttr) {
-        todo!();
+    pub(crate) fn parse_repr_align(&mut self, repr_attr: &mut Option<ReprAttr>) -> Result<(), Diag> {
+        if repr_attr.is_none() {
+            *repr_attr = Some(ReprAttr::new());
+        }
+
+        let repr_attr = match repr_attr {
+            Some(repr_attr) => repr_attr,
+            None => unreachable!(),
+        };
+
+        let start_token = self.current_token();
+
+        if !self.current_token_is(TokenKind::Align) {
+            return Ok(());
+        }
+
+        self.next_token(); // consume align
+        self.expect_current(TokenKind::LeftParen)?;
+        let align_to = self.parse_integer_without_suffix()?;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+
+        if let Err(err) = repr_attr.add(ReprAttrKind::Align(align_to.try_into().unwrap())) {
+            return Err(self.error_at_token(&start_token, ParserDiagKind::InvalidModifier(err.to_string())));
+        }
+
+        Ok(())
     }
 
-    pub(crate) fn parse_repr(&mut self, token: Token) -> Result<Option<ReprAttr>, Diag> {
+    pub(crate) fn parse_repr_attr(&mut self, token: Token) -> Result<Option<ReprAttr>, Diag> {
         if token.kind != TokenKind::Repr {
             return Ok(None);
         }
@@ -426,39 +462,7 @@ impl UnresolvedModifiers {
         }
 
         if let Some(repr_attr) = &self.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
-                match kind {
-                    ReprKind::DiscriminantType(_) => {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::InvalidModifier(
-                                "Discriminant type cannot be applied to structs.".to_string(),
-                            )),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(loc)),
-                            hint: None,
-                        });
-                    }
-                    ReprKind::C | ReprKind::Cyrus => { /* valid */ }
-                    ReprKind::Transparent => { /* valid */ }
-                }
-            }
-
-            // Validate alignment if present
-            if let Some(align) = repr_attr.align() {
-                if !align.is_power_of_two() {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(format!(
-                            "Alignment must be a power of two, got {}",
-                            align
-                        ))),
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(loc)),
-                        hint: Some("valid alignments are 1, 2, 4, 8, 16, etc.".to_string()),
-                    });
-                }
-            }
-
-            // Packed is always valid for structs, no extra validation needed
+            validate_align(repr_attr.align(), loc)?;
         }
 
         let section = self.placement.get(0).cloned();
@@ -500,15 +504,53 @@ impl UnresolvedModifiers {
 
         let section = self.placement.get(0).cloned();
 
-        if let Some(linkage) = self.linkage {
-            dbg!(linkage.clone());
+        if let Some(repr_attr) = &self.repr_attr {
+            if repr_attr.is_packed() {
+                return Err(Diag {
+                    kind: Box::new(ParserDiagKind::InvalidModifier(
+                        "Repr 'packed' is not supported for enums".to_string(),
+                    )),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(loc)),
+                    hint: Some("If you need packed enum-like behavior, consider using a manually packed struct with a tag field".to_string()),
+                });
+            }
+
+            if let Some(kind) = repr_attr.kind() {
+                match kind {
+                    ReprKind::C | ReprKind::Cyrus => {
+                        if repr_attr.align().is_some() {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                                    "Cannot specify alignment with 'C' or 'Cyrus' enum layout. Alignment is determined by the target ABI.".to_string(),
+                                )),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(loc)),
+                                hint: Some("Remove the alignment specifier.".to_string()),
+                            });
+                        }
+                    }
+                    ReprKind::Transparent => {
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::InvalidModifier(
+                                "Repr 'transparent' cannot be applied to enums. Enums only support 'C' and 'Cyrus' layouts.".to_string(),
+                            )),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(loc)),
+                            hint: None,
+                        });
+                    }
+                }
+            }
+
+            validate_align(repr_attr.align(), loc)?;
         }
 
         Ok(EnumModifiers {
             vis,
-            export: self.export,
-            repr_attr: None, // handled by attribute
             section,
+            export: self.export,
+            repr_attr: self.repr_attr,
             optional_flags: self.optional_flags,
         })
     }
@@ -538,14 +580,62 @@ impl UnresolvedModifiers {
             });
         }
 
+        if let Some(repr_attr) = &self.repr_attr {
+            if repr_attr.is_packed() {
+                return Err(Diag {
+                    kind: Box::new(ParserDiagKind::InvalidModifier(
+                        "Packed layout is not supported for unions. Packed unions would cause unaligned accesses to fields.".to_string(),
+                    )),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(loc)),
+                    hint: Some("If you need explicit control over union layout, Consider using 'repr(C)' with manual padding or a packed struct wrapper.".to_string()),
+                });
+            }
+
+            if let Some(kind) = repr_attr.kind() {
+                match kind {
+                    ReprKind::C | ReprKind::Cyrus => {
+                        if let Some(align) = repr_attr.align() {
+                            validate_align(Some(align), loc.clone())?;
+                        }
+                    }
+                    ReprKind::Transparent => {
+                        if repr_attr.is_packed() {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                                    "Repr 'packed' cannot be combined with 'transparent' on unions.".to_string(),
+                                )),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(loc)),
+                                hint: Some("Remove either packed or transparent.".to_string()),
+                            });
+                        }
+
+                        if repr_attr.align().is_some() {
+                            return Err(Diag {
+                                kind: Box::new(ParserDiagKind::InvalidModifier(
+                                    "Cannot specify alignment with repr 'transparent'.".to_string(),
+                                )),
+                                level: DiagLevel::Error,
+                                location: Some(DiagLoc::new(loc)),
+                                hint: None,
+                            });
+                        }
+                    }
+                }
+            }
+
+            validate_align(repr_attr.align(), loc)?;
+        }
+
         let section = self.placement.get(0).cloned();
 
         Ok(UnionModifiers {
             vis,
+            section,
             linkage: self.linkage,
             export: self.export,
-            repr: None,
-            section,
+            repr_attr: self.repr_attr,
             optional_flags: self.optional_flags,
         })
     }
@@ -575,6 +665,17 @@ impl UnresolvedModifiers {
             });
         }
 
+        if self.repr_attr.is_some() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Global variables cannot have repr.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc)),
+                hint: Some("Use 'align(n)' instead if you need alignment.".to_string()),
+            });
+        }
+
         let section = self.placement.get(0).cloned();
 
         Ok(GlobalVarModifiers {
@@ -596,12 +697,13 @@ impl UnresolvedModifiers {
             || self.prologue.is_some()
             || self.export.is_some()
             || self.callconv.is_some()
+            || self.repr_attr.is_some()
             || !self.optional_flags.is_empty()
             || !self.placement.is_empty()
         {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Invalid modifier for interface declaration.".to_string(),
+                    "Interfaces can only have visibility modifiers.".to_string(),
                 )),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(loc)),
@@ -619,13 +721,14 @@ impl UnresolvedModifiers {
             || self.inline.is_some()
             || self.prologue.is_some()
             || self.export.is_some()
+            || self.repr_attr.is_some()
             || self.callconv.is_some()
             || !self.optional_flags.is_empty()
             || !self.placement.is_empty()
         {
             return Err(Diag {
                 kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Invalid modifier for typedef declaration.".to_string(),
+                    "Typedefs can only have visibility modifiers.".to_string(),
                 )),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(loc)),
@@ -673,6 +776,7 @@ impl UnresolvedModifiers {
             || self.export.is_some()
             || self.callconv.is_some()
             || self.prologue.is_some()
+            || self.repr_attr.is_some()
             || !self.optional_flags.is_empty()
             || !self.placement.is_empty()
         {
@@ -688,4 +792,21 @@ impl UnresolvedModifiers {
 
         Ok(FieldModifiers { vis })
     }
+}
+
+fn validate_align(align: Option<u32>, loc: SourceLoc) -> Result<(), Diag> {
+    if let Some(align) = align {
+        if !align.is_power_of_two() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(format!(
+                    "Alignment must be a power of two, got {}.",
+                    align
+                ))),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc)),
+                hint: Some("Valid alignments are 1, 2, 4, 8, 16, etc.".to_string()),
+            });
+        }
+    }
+    Ok(())
 }
