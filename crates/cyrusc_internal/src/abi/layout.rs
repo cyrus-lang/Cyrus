@@ -20,17 +20,26 @@ use crate::{
         helpers::align_offset,
         target::{ABITargetArch, ABITargetInfo},
     },
-    cir::{cir::CIREnumTyVariant, types::CIRTy},
+    cir::{
+        cir::CIREnumTyVariant,
+        types::{CIRStructTy, CIRTy},
+    },
 };
 use cyrusc_tast::types::PlainType;
 
 pub struct ABITypeLayout {
     pub size: u32,
     pub align: u32,
-    pub field_offsets: Vec<u32>,
+    pub field_offsets: Vec<ABIFieldOffsetInfo>,
 
     #[allow(unused)]
     pub is_aggregate: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum ABIFieldOffsetInfo {
+    Normal { offset: u32, original_index: usize },
+    Padding { offset: u32, size: u32 },
 }
 
 pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
@@ -45,21 +54,46 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut offset = 0;
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
+            let is_packed = struct_ty.is_packed();
 
-            for ty in &struct_ty.fields {
+            for (i, ty) in struct_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
-                // add padding before field
-                let padding = (field_layout.align - (offset % field_layout.align)) % field_layout.align;
-                offset += padding;
+                let effective_field_align = if is_packed { 1 } else { field_layout.align };
 
-                field_offsets.push(offset);
+                // add padding before field (if not packed)
+                if !is_packed {
+                    let padding = (effective_field_align - (offset % effective_field_align)) % effective_field_align;
 
+                    if padding > 0 {
+                        // add padding field before real field
+                        field_offsets.push(ABIFieldOffsetInfo::padding(offset, padding));
+                        offset += padding;
+                    }
+                }
+
+                // add the actual field
+                field_offsets.push(ABIFieldOffsetInfo::normal(offset, i));
                 offset += field_layout.size;
+
                 max_align = max_align.max(field_layout.align);
             }
 
+            if let Some(explicit_align) = struct_ty.align {
+                max_align = max_align.max(explicit_align.try_into().unwrap());
+            }
+
+            if is_packed {
+                max_align = 1;
+            }
+
             let total_size = align_offset(offset, max_align);
+
+            // add trailing padding if needed
+            if total_size > offset {
+                field_offsets.push(ABIFieldOffsetInfo::padding(offset, total_size - offset));
+            }
+
             ABITypeLayout::aggregate(total_size, max_align, field_offsets)
         }
         CIRTy::Union(union_ty) => {
@@ -67,14 +101,14 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
 
-            for ty in &union_ty.fields {
+            for (i, ty) in union_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 max_size = max_size.max(field_layout.size);
                 max_align = max_align.max(field_layout.align);
 
-                // Unions: all fields start at offset 0
-                field_offsets.push(0);
+                // all fields start at offset 0
+                field_offsets.push(ABIFieldOffsetInfo::normal(0, i));
             }
 
             let total_size = align_offset(max_size, max_align);
@@ -94,19 +128,15 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                         let layout = type_layout(info, &expr.ty);
                         (layout.size, layout.align)
                     }
-                    CIREnumTyVariant::Fielded(field_tys) => {
-                        // Calculate struct layout for this variant
-                        let mut offset = 0;
-                        let mut align = 1;
-                        for field_ty in field_tys {
-                            let field_layout = type_layout(info, field_ty);
-                            let padding = (field_layout.align - (offset % field_layout.align)) % field_layout.align;
-                            offset += padding;
-                            offset += field_layout.size;
-                            align = align.max(field_layout.align);
-                        }
-                        let size = align_offset(offset, align);
-                        (size, align)
+                    CIREnumTyVariant::Fielded(field_types) => {
+                        let struct_ty = CIRStructTy {
+                            fields: field_types.clone(),
+                            repr_attr: None,
+                            align: None,
+                        };
+
+                        let layout = type_layout(info, &CIRTy::Struct(struct_ty));
+                        (layout.size, layout.align)
                     }
                 };
 
@@ -119,45 +149,40 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                     max_payload_size = 1;
                     max_payload_align = 1;
                 } else {
-                    // simple enum
+                    // C-ABI Compatible Enum
                     max_payload_size = 0;
                     max_payload_align = 1;
                 }
             }
 
+            // explicit payload alignment
+            if let Some(align) = enum_ty.align {
+                max_payload_align = max_payload_align.max(align as u32);
+            }
+
             let aligned_payload_size =
                 ((max_payload_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
 
-            // total size = tag + aligned payload
             let total_size = tag_size + aligned_payload_size;
-            let total_align = tag_align.max(max_payload_align);
+            let mut total_align = tag_align.max(max_payload_align);
+            if let Some(align) = enum_ty.align {
+                total_align = total_align.max(align as u32);
+            }
 
-            ABITypeLayout::aggregate(total_size, total_align, vec![0, tag_size])
+            ABITypeLayout::aggregate(total_size, total_align, Vec::new())
         }
         CIRTy::FuncType(_) => {
             let size = info.pointer_size();
             ABITypeLayout::normal(size, size, Vec::new())
         }
         CIRTy::Tuple(tuple_ty) => {
-            let mut offset = 0;
-            let mut max_align = 0;
-            let mut field_offsets = Vec::new();
-
-            for ty in &tuple_ty.elements {
-                let element_layout = type_layout(info, ty);
-
-                // add padding before element
-                let padding = (element_layout.align - (offset % element_layout.align)) % element_layout.align;
-                offset += padding;
-
-                field_offsets.push(offset);
-
-                offset += element_layout.size;
-                max_align = max_align.max(element_layout.align);
-            }
-
-            let total_size = align_offset(offset, max_align);
-            ABITypeLayout::aggregate(total_size, max_align, field_offsets)
+            // tuple lowered as struct in codegen
+            let struct_ty = CIRStructTy {
+                fields: tuple_ty.elements.clone(),
+                repr_attr: None,
+                align: None,
+            };
+            type_layout(info, &CIRTy::Struct(struct_ty))
         }
         CIRTy::Array(array_ty) => {
             let element_layout = type_layout(info, &array_ty.ty);
@@ -168,7 +193,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                 field_offsets.push(i as u32 * element_layout.size);
             }
 
-            ABITypeLayout::aggregate(total_size, element_layout.align, field_offsets)
+            ABITypeLayout::aggregate(total_size, element_layout.align, Vec::new())
         }
         CIRTy::Dynamic(_) => {
             let size = info.pointer_size() * 2; // data_ptr + vtable_ptr
@@ -221,7 +246,7 @@ fn plain_type_layout(info: &ABITargetInfo, plain_type: &PlainType) -> ABITypeLay
 }
 
 impl ABITypeLayout {
-    pub fn normal(size: u32, align: u32, field_offsets: Vec<u32>) -> Self {
+    pub fn normal(size: u32, align: u32, field_offsets: Vec<ABIFieldOffsetInfo>) -> Self {
         Self {
             size,
             align,
@@ -230,12 +255,40 @@ impl ABITypeLayout {
         }
     }
 
-    pub fn aggregate(size: u32, align: u32, field_offsets: Vec<u32>) -> Self {
+    pub fn aggregate(size: u32, align: u32, field_offsets: Vec<ABIFieldOffsetInfo>) -> Self {
         Self {
             size,
             align,
             field_offsets,
             is_aggregate: true,
+        }
+    }
+}
+
+impl ABIFieldOffsetInfo {
+    pub fn normal(offset: u32, original_index: usize) -> Self {
+        ABIFieldOffsetInfo::Normal { offset, original_index }
+    }
+
+    pub fn padding(offset: u32, size: u32) -> Self {
+        ABIFieldOffsetInfo::Padding { offset, size }
+    }
+
+    pub fn offset(&self) -> u32 {
+        match self {
+            ABIFieldOffsetInfo::Normal { offset, .. } => *offset,
+            ABIFieldOffsetInfo::Padding { offset, .. } => *offset,
+        }
+    }
+
+    pub fn is_padding(&self) -> bool {
+        matches!(self, ABIFieldOffsetInfo::Padding { .. })
+    }
+
+    pub fn size(&self) -> Option<u32> {
+        match self {
+            ABIFieldOffsetInfo::Normal { .. } => None,
+            ABIFieldOffsetInfo::Padding { size, .. } => Some(*size),
         }
     }
 }

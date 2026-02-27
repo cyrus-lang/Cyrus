@@ -1119,8 +1119,8 @@ fn classify_struct_or_union(
     let field_offsets = layout.field_offsets;
 
     for (idx, field_ty) in fields.iter().enumerate() {
-        let field_offset = field_offsets[idx];
-        let field_abs_offset = offset_base + field_offset;
+        let field_offset = &field_offsets[idx];
+        let field_abs_offset = offset_base + field_offset.offset();
 
         // alignment check
         let field_layout = type_layout(info, field_ty);

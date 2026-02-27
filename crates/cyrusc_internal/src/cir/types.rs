@@ -284,6 +284,7 @@ macro_rules! is_integer_type {
 }
 
 impl CIRStructTy {
+    #[inline]
     pub fn is_packed(&self) -> bool {
         match &self.repr_attr {
             Some(repr_attr) => repr_attr.is_packed(),

@@ -30,10 +30,13 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_internal::{
-    abi::types::ABIType,
+    abi::{
+        layout::{ABIFieldOffsetInfo, type_layout},
+        types::ABIType,
+    },
     cir::{
         cir::*,
-        types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
+        types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
     },
 };
 use cyrusc_tast::types::PlainType;
@@ -1467,30 +1470,65 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
+        let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_init.ty.clone()));
         let struct_type = self.emit_struct_ty(struct_init.ty.clone());
 
         let mut all_const = true;
+        let mut values: Vec<InternalValue<'ll>> = Vec::new();
 
-        let values: Vec<InternalValue<'ll>> = struct_init
-            .fields
-            .iter()
-            .enumerate()
-            .map(|(idx, expr)| {
-                let lvalue = self.emit_expr(expr);
-                let mut rvalue = self.load_rvalue(lvalue);
+        for (idx, field_offset) in layout.field_offsets.iter().enumerate() {
+            match field_offset {
+                ABIFieldOffsetInfo::Normal { original_index, .. } => {
+                    let expr = &struct_init.fields[*original_index];
+                    let lvalue = self.emit_expr(expr);
+                    let mut rvalue = self.load_rvalue(lvalue);
 
-                let target_type = struct_init.ty.fields.get(idx).unwrap();
+                    let target_type = struct_init.ty.fields.get(idx).unwrap();
 
-                if !self.llvmbuilder.get_insert_block().is_none() {
-                    rvalue = self.emit_implicit_cast(target_type, rvalue);
+                    if !self.llvmbuilder.get_insert_block().is_none() {
+                        rvalue = self.emit_implicit_cast(target_type, rvalue);
+                    }
+
+                    if !is_basic_value_constant(rvalue.as_basic_value()) {
+                        all_const = false;
+                    }
+
+                    values.push(rvalue);
                 }
-
-                if !is_basic_value_constant(rvalue.as_basic_value()) {
-                    all_const = false;
+                ABIFieldOffsetInfo::Padding { size, .. } => {
+                    let cir_array_type = CIRTy::Array(CIRArrayTy {
+                        ty: Box::new(CIRTy::PlainType(PlainType::Int8)),
+                        len: *size as usize,
+                    });
+                    let padding_array_value = self.llvmctx.i8_type().array_type(*size).const_zero();
+                    values.push(InternalValue::new(
+                        cir_array_type,
+                        InternalValueKind::RValue(padding_array_value.as_basic_value_enum()),
+                    ));
                 }
-                rvalue
-            })
-            .collect();
+            }
+        }
+
+        // let values: Vec<InternalValue<'ll>> = struct_init
+        //     .fields
+        //     .iter()
+        //     .enumerate()
+        //     .map(|(idx, expr)| {
+        //         let lvalue = self.emit_expr(expr);
+        //         let mut rvalue = self.load_rvalue(lvalue);
+
+        //         let target_type = struct_init.ty.fields.get(idx).unwrap();
+
+        //         if !self.llvmbuilder.get_insert_block().is_none() {
+        //             rvalue = self.emit_implicit_cast(target_type, rvalue);
+        //         }
+
+        //         if !is_basic_value_constant(rvalue.as_basic_value()) {
+        //             all_const = false;
+        //         }
+        //         rvalue
+        //     })
+        //     .collect();
 
         let mut struct_value: StructValue<'ll>;
 

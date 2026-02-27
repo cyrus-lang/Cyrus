@@ -17,6 +17,7 @@
 
 use crate::builder::builder::IRBuilderCtx;
 use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
+use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
 use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
 use cyrusc_tast::types::PlainType;
@@ -108,15 +109,39 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_struct_ty(&self, struct_ty: CIRStructTy) -> StructType<'ll> {
-        let field_types = self
-            .emit_types(&struct_ty.fields)
-            .iter()
-            .map(|ty| (*ty).try_into().unwrap())
-            .collect::<Vec<BasicTypeEnum<'ll>>>();
+        let is_packed = struct_ty.is_packed();
+        let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_ty.clone()));
 
-        self.llvmctx.struct_type(&field_types, struct_ty.is_packed())
+        let mut llvm_field_types: Vec<BasicTypeEnum<'ll>> = Vec::new();
+        let mut next_field_index = 0;
+
+        for field_offset in &layout.field_offsets {
+            match field_offset {
+                ABIFieldOffsetInfo::Normal { .. } => {
+                    // Get the next actual field from the struct
+                    let field_ty = &struct_ty.fields[next_field_index];
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(field_ty.clone()).try_into().unwrap();
+                    llvm_field_types.push(llvm_ty);
+                    next_field_index += 1;
+                }
+                ABIFieldOffsetInfo::Padding { size, .. } => {
+                    // create padding array
+                    let padding_array = self.llvmctx.i8_type().array_type(*size);
+                    llvm_field_types.push(padding_array.as_basic_type_enum());
+                }
+            }
+        }
+
+        assert_eq!(
+            next_field_index,
+            struct_ty.fields.len(),
+            "mismatch between layout fields and struct fields"
+        );
+
+        self.llvmctx.struct_type(&llvm_field_types, is_packed)
     }
 
+    // ANCHOR
     pub(crate) fn enum_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
         let mut max_payload_size: u64 = 0;
@@ -176,6 +201,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         (payload_buffer_ty, aligned_size)
     }
 
+    // ANCHOR
     pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> StructType<'ll> {
         if enum_ty.is_repr_c() {
             // c-compatible enum
