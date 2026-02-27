@@ -118,7 +118,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         for field_offset in &layout.field_offsets {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { .. } => {
-                    // Get the next actual field from the struct
+                    // get the next actual field from the struct
                     let field_ty = &struct_ty.fields[next_field_index];
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(field_ty.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);

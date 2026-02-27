@@ -149,7 +149,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                     max_payload_size = 1;
                     max_payload_align = 1;
                 } else {
-                    // C-ABI Compatible Enum
+                    // c-abi compatible enum
                     max_payload_size = 0;
                     max_payload_align = 1;
                 }

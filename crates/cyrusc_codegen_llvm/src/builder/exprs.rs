@@ -1509,27 +1509,6 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
         }
 
-        // let values: Vec<InternalValue<'ll>> = struct_init
-        //     .fields
-        //     .iter()
-        //     .enumerate()
-        //     .map(|(idx, expr)| {
-        //         let lvalue = self.emit_expr(expr);
-        //         let mut rvalue = self.load_rvalue(lvalue);
-
-        //         let target_type = struct_init.ty.fields.get(idx).unwrap();
-
-        //         if !self.llvmbuilder.get_insert_block().is_none() {
-        //             rvalue = self.emit_implicit_cast(target_type, rvalue);
-        //         }
-
-        //         if !is_basic_value_constant(rvalue.as_basic_value()) {
-        //             all_const = false;
-        //         }
-        //         rvalue
-        //     })
-        //     .collect();
-
         let mut struct_value: StructValue<'ll>;
 
         if self.must_init_via_memcpy(&struct_init.ty.fields) {
