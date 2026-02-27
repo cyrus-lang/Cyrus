@@ -744,20 +744,3 @@ impl UnresolvedModifiers {
         Ok(FieldModifiers { vis })
     }
 }
-
-fn validate_align(align: Option<u32>, loc: SourceLoc) -> Result<(), Diag> {
-    if let Some(align) = align {
-        if !align.is_power_of_two() {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(format!(
-                    "Alignment must be a power of two, got {}.",
-                    align
-                ))),
-                level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
-                hint: Some("Valid alignments are 1, 2, 4, 8, 16, etc.".to_string()),
-            });
-        }
-    }
-    Ok(())
-}

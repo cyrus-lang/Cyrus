@@ -20,6 +20,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("{err}")]
+    InvalidReprAttr { err: String },
+
+    #[error("Alignment must be a power of two, got {value}.")]
+    InvalidAlign { value: usize },
+
     #[error("Global variable requires explicit type annotation.")]
     GlobalVarRequiresTypeAnnotation,
 

@@ -114,7 +114,8 @@ pub struct AddrOf {
 #[derive(Debug, Clone)]
 pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
-    pub is_packed: bool,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub is_const: bool,
     pub loc: Location,
     pub span: Span,
@@ -1221,7 +1222,10 @@ impl PartialEq for Dynamic {
 
 impl PartialEq for UnnamedStructValue {
     fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.is_packed == other.is_packed && self.is_const == other.is_const
+        self.fields == other.fields
+            && self.repr_attr == other.repr_attr
+            && self.align == other.align
+            && self.is_const == other.is_const
     }
 }
 

@@ -20,7 +20,10 @@ use crate::{
     normalizer::TypeResolutionCache,
     type_checking::context::TypeCheckContext,
 };
-use cyrusc_ast::AssignKind;
+use cyrusc_ast::{
+    AssignKind,
+    abi::{ReprAttr, ReprKind},
+};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
 use cyrusc_resolver::{
     Resolver,
@@ -1097,6 +1100,13 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        self.validate_struct_repr_attr(
+            &typed_struct.modifiers.repr_attr,
+            typed_struct.fields.len(),
+            &typed_struct.loc,
+        );
+        self.validate_align(&typed_struct.align, &typed_struct.loc);
+
         if let Some(generic_params) = &typed_struct.generic_params {
             self.analyze_generics_params(generic_params);
         }
@@ -1144,6 +1154,13 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        self.validate_union_repr_attr(
+            &typed_union.modifiers.repr_attr,
+            typed_union.fields.len(),
+            &typed_union.loc,
+        );
+        self.validate_align(&typed_union.align, &typed_union.loc);
+
         if let Some(generic_params) = &typed_union.generic_params {
             self.analyze_generics_params(generic_params);
         }
@@ -1189,6 +1206,13 @@ impl<'a> AnalysisContext<'a> {
                 );
             }
         }
+
+        self.validate_enum_repr_attr(
+            &typed_enum.modifiers.repr_attr,
+            typed_enum.align.is_some(),
+            &typed_enum.loc,
+        );
+        self.validate_align(&typed_enum.align, &typed_enum.loc);
 
         if let Some(generic_params) = &typed_enum.generic_params {
             self.analyze_generics_params(generic_params);
@@ -2043,5 +2067,157 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.check_sema_ty(scope_id_opt, sema_ty.clone(), loc);
+    }
+
+    pub(crate) fn validate_struct_repr_attr(
+        &mut self,
+        repr_attr: &Option<ReprAttr>,
+        fields_count: usize,
+        loc: &SourceLoc,
+    ) {
+        let Some(repr_attr) = repr_attr else {
+            return;
+        };
+
+        if let Some(kind) = repr_attr.kind() {
+            match kind {
+                ReprKind::C | ReprKind::Cyrus => { /* valid */ }
+                ReprKind::Transparent => {
+                    // transparent is allowed on structs and requires exactly one field
+                    if fields_count != 1 {
+                        self.reporter.report(Diag {
+                            kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                                err: "Repr 'transparent' structs must have exactly one field.".to_string(),
+                            }),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: Some(
+                                "Add or remove fields to have exactly one field, or remove the 'transparent' attribute."
+                                    .to_string(),
+                            ),
+                        });
+                    }
+
+                    if repr_attr.is_packed() {
+                        self.reporter.report(Diag {
+                            kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                                err: "Cannot combine 'packed' with repr 'transparent' on structs.".to_string(),
+                            }),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: Some("Remove either 'packed' or 'transparent'.".to_string()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn validate_union_repr_attr(
+        &mut self,
+        repr_attr: &Option<ReprAttr>,
+        fields_count: usize,
+        loc: &SourceLoc,
+    ) {
+        let Some(repr_attr) = repr_attr else {
+            return;
+        };
+
+        // packed is not allowed on unions
+        if repr_attr.is_packed() {
+            self.reporter.report(Diag {
+                kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                    err: "Packed layout is not supported for unions.".to_string(),
+                }),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: Some("If you need explicit control over union layout, consider using 'repr(C)' with manual padding or a packed struct wrapper.".to_string()),
+            });
+            return;
+        }
+
+        if let Some(kind) = repr_attr.kind() {
+            match kind {
+                ReprKind::C | ReprKind::Cyrus => { /* valid */ }
+                ReprKind::Transparent => {
+                    // transparent unions require exactly one field
+                    if fields_count != 1 {
+                        self.reporter.report(Diag {
+                            kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                                err: "Repr 'transparent' unions must have exactly one field.".to_string(),
+                            }),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: Some("Add or remove fields to have exactly one field, or remove the 'transparent' attribute.".to_string()),
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn validate_enum_repr_attr(&mut self, repr_attr: &Option<ReprAttr>, has_align: bool, loc: &SourceLoc) {
+        let Some(repr_attr) = repr_attr else {
+            return;
+        };
+
+        // packed is not allowed on enums
+        if repr_attr.is_packed() {
+            self.reporter.report(Diag {
+                kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                    err: "Packed layout is not supported for enums.".to_string(),
+                }),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: Some(
+                    "If you need packed enum-like behavior, consider using a manually packed struct with a tag field."
+                        .to_string(),
+                ),
+            });
+            return;
+        }
+
+        if let Some(kind) = repr_attr.kind() {
+            match kind {
+                ReprKind::C | ReprKind::Cyrus => {
+                    if has_align {
+                        self.reporter.report(Diag {
+                            kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                                err: "Cannot specify alignment with 'C' or 'Cyrus' enum layout. Alignment is determined by the target ABI.".to_string(),
+                            }),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: Some("Remove the alignment specifier.".to_string()),
+                        });
+                        return;
+                    }
+                }
+                ReprKind::Transparent => {
+                    self.reporter.report(Diag {
+                        kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                            err: "Repr 'transparent' cannot be applied to enums. Enums only support 'C' and 'Cyrus' layouts.".to_string(),
+                        }),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
+                    return;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn validate_align(&mut self, align: &Option<usize>, loc: &SourceLoc) {
+        if let Some(align) = align {
+            if !align.is_power_of_two() {
+                self.reporter.report(Diag {
+                    kind: Box::new(AnalyzerDiagKind::InvalidAlign { value: *align }),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: Some("Valid alignments are 1, 2, 4, 8, 16, etc.".to_string()),
+                });
+            }
+        }
     }
 }

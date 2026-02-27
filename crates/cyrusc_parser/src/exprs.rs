@@ -18,10 +18,14 @@ use crate::Diag;
 use crate::Parser;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::*;
+use cyrusc_ast::abi::ReprAttr;
 use cyrusc_ast::operators::InfixOperator;
 use cyrusc_ast::operators::PrefixOperator;
 use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_ast::*;
+use cyrusc_diagcentral::DiagLevel;
+use cyrusc_diagcentral::DiagLoc;
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::Literal;
@@ -217,9 +221,39 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
-            TokenKind::Dot => self.parse_unnamed_enum_value()?,
+            TokenKind::Repr => {
+                let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();
+
+                let is_const = if self.current_token_is(TokenKind::Const) {
+                    self.next_token();
+                    true
+                } else {
+                    false
+                };
+
+                if self.current_token_is(TokenKind::Struct) {
+                    self.parse_unnamed_struct_value(Some(repr_attr), is_const)?
+                } else if self.current_token_is(TokenKind::Union) {
+                    let token = self.current_token();
+
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidModifier(
+                            "Repr attribute cannot be applied to unnamed union values.".to_string(),
+                        )),
+                        level: DiagLevel::Error,
+                        location: Some(
+                            DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
+                                .span(token.span),
+                        ),
+                        hint: None,
+                    });
+                } else {
+                    return Err(self.error_invalid_token());
+                }
+            }
+            TokenKind::Struct => self.parse_unnamed_struct_value(None, false)?,
             TokenKind::Union => self.parse_unnamed_union_value(false)?,
-            TokenKind::Struct => self.parse_unnamed_struct_value(false)?,
+            TokenKind::Dot => self.parse_unnamed_enum_value()?,
             TokenKind::Dynamic => self.parse_dynamic_expr()?,
             TokenKind::Inline => {
                 if self.peek_token_is(TokenKind::Function) {
@@ -235,7 +269,35 @@ impl Parser {
             TokenKind::Const => {
                 if self.peek_token_is(TokenKind::Struct) {
                     self.next_token();
-                    self.parse_unnamed_struct_value(true)?
+                    self.parse_unnamed_struct_value(None, true)?
+                } else if self.peek_token_is(TokenKind::Union) {
+                    let token = self.peek_token();
+
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidModifier(
+                            "Const cannot be applied to unnamed union values.".to_string(),
+                        )),
+                        level: DiagLevel::Error,
+                        location: Some(
+                            DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
+                                .span(token.span),
+                        ),
+                        hint: Some("Consider to remove 'const' qualifier.".to_string()),
+                    });
+                } else if self.peek_token_is(TokenKind::Dot) {
+                    let token = self.peek_token();
+
+                    return Err(Diag {
+                        kind: Box::new(ParserDiagKind::InvalidModifier(
+                            "Const cannot be applied to unnamed enum values.".to_string(),
+                        )),
+                        level: DiagLevel::Error,
+                        location: Some(
+                            DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
+                                .span(token.span),
+                        ),
+                        hint: Some("Consider to remove 'const' qualifier.".to_string()),
+                    });
                 } else if let TokenKind::Ident { .. } = self.peek_token().kind {
                     self.next_token(); // consume const
                     let module_import = self.parse_module_import()?;
@@ -1071,17 +1133,13 @@ impl Parser {
         }))
     }
 
-    fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expr, Diag> {
+    fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>, is_const: bool) -> Result<Expr, Diag> {
         let struct_start = self.current_token().span.start;
 
-        let is_packed = {
-            if self.current_token_is(TokenKind::Struct) {
-                self.next_token(); // consume struct
-                false
-            } else {
-                return Err(self.error_invalid_token());
-            }
-        };
+        self.next_token(); // consume struct
+
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedStructValueField> = Vec::new();
@@ -1150,7 +1208,8 @@ impl Parser {
 
         Ok(Expr::UnnamedStructValue(UnnamedStructValue {
             fields,
-            is_packed,
+            repr_attr,
+            align,
             is_const,
             loc: self.current_token().loc.clone(),
             span: Span::new(struct_start, self.current_token().span.end),
@@ -1161,6 +1220,7 @@ impl Parser {
         let union_start = self.current_token().span.start;
 
         self.next_token(); // consume union
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let ident = self.parse_ident()?;

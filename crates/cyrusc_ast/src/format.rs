@@ -420,20 +420,33 @@ impl fmt::Display for ModuleImport {
 
 impl fmt::Display for UnnamedStructValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.is_packed {
-            write!(f, "bits")?;
-        } else {
-            write!(f, "struct")?;
+        if let Some(repr_attr) = &self.repr_attr {
+            write!(f, "{} ", repr_attr)?;
         }
+
+        write!(f, "struct")?;
+
+        if let Some(align) = self.align {
+            write!(f, " align({})", align)?;
+        }
+
         write!(f, " {{ ")?;
-        for field in self.fields.clone() {
+
+        let mut field_iter = self.fields.iter().peekable();
+        while let Some(field) = field_iter.next() {
             write!(f, "{}", field.field_name.value)?;
-            if let Some(field_ty) = field.field_ty {
+
+            if let Some(field_ty) = &field.field_ty {
                 write!(f, ": {}", field_ty)?;
             }
 
             write!(f, " = {}", *field.field_value)?;
+
+            if field_iter.peek().is_some() {
+                write!(f, ", ")?;
+            }
         }
+
         write!(f, " }}")
     }
 }

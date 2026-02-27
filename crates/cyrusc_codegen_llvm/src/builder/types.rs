@@ -48,7 +48,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                 CIRTy::Pointer(Box::new(data_ptr_inner_ty)),
                 CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
             ],
-            is_packed: false,
+            align: None,
+            repr_attr: None,
         })
     }
 
@@ -113,7 +114,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .map(|ty| (*ty).try_into().unwrap())
             .collect::<Vec<BasicTypeEnum<'ll>>>();
 
-        self.llvmctx.struct_type(&field_types, struct_ty.is_packed)
+        self.llvmctx.struct_type(&field_types, struct_ty.is_packed())
     }
 
     pub(crate) fn enum_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {

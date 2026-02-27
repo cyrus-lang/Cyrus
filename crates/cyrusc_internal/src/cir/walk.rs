@@ -1525,23 +1525,22 @@ impl<'resolver> CIRWalk<'resolver> {
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_value: &TypedUnnamedStructValue,
     ) -> CIRExprKind {
+        let unnamed_struct_type = unnamed_struct_value.as_unnamed_struct_type();
+
         let fields: Vec<CIRExpr> = unnamed_struct_value
             .fields
             .iter()
             .map(|field| self.lower_expr(scope_id_opt, &field.field_value))
             .collect();
 
-        let field_tys = unnamed_struct_value
-            .unnamed_struct_type
-            .clone()
-            .unwrap()
+        let field_types = unnamed_struct_type
             .fields
             .iter()
             .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
             .collect();
 
         let struct_ty = CIRStructTy {
-            fields: field_tys,
+            fields: field_types,
             repr_attr: unnamed_struct_value.repr_attr.clone(),
             align: unnamed_struct_value.align.clone(),
         };
@@ -1784,12 +1783,17 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|variant| self.lower_unnamed_enum_ty_variant(scope_id_opt, variant))
             .collect();
 
-        // CIREnumTy {
-        //     variants,
-        //     c_enum: false,
-        // }
-        // FIXME
-        todo!();
+        let discriminant_type = unnamed_enum_type
+            .discriminant_type
+            .clone()
+            .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
+
+        CIREnumTy {
+            variants,
+            discriminant_type,
+            repr_attr: unnamed_enum_type.repr_attr.clone(),
+            align: unnamed_enum_type.align.clone(),
+        }
     }
 
     fn lower_unnamed_enum_ty_variant(
@@ -1889,17 +1893,23 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_enum_sig_as_enum_ty(&mut self, scope_id_opt: Option<ScopeID>, enum_sig: &EnumSig) -> CIREnumTy {
-        // let variants: Vec<CIREnumTyVariant> = enum_sig
-        //     .variants
-        //     .iter()
-        //     .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
-        //     .collect();
+        let variants: Vec<CIREnumTyVariant> = enum_sig
+            .variants
+            .iter()
+            .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
+            .collect();
 
-        // let c_enum = is_c_enum(&enum_sig.modifiers.repr_attr);
+        let discriminant_type = enum_sig
+            .discriminant_type
+            .clone()
+            .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
 
-        // CIREnumTy { variants, c_enum }
-        // FIXME
-        todo!();
+        CIREnumTy {
+            variants,
+            discriminant_type,
+            repr_attr: enum_sig.modifiers.repr_attr.clone(),
+            align: enum_sig.align.clone(),
+        }
     }
 
     fn lower_union_sig_as_union_ty(&mut self, scope_id_opt: Option<ScopeID>, union_sig: &UnionSig) -> CIRUnionTy {

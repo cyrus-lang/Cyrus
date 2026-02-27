@@ -188,6 +188,7 @@ pub struct TypedUnnamedUnionType {
 pub struct TypedUnnamedEnumType {
     pub variants: Vec<TypedUnnamedEnumVariant>,
     pub repr_attr: Option<ReprAttr>,
+    pub discriminant_type: Option<Box<SemanticType>>,
     pub align: Option<usize>,
     pub loc: SourceLoc,
 }
@@ -310,6 +311,7 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
 
     TypedUnnamedEnumType {
         variants,
+        discriminant_type: enum_sig.discriminant_type.clone().map(Box::new),
         repr_attr: enum_sig.modifiers.repr_attr.clone(),
         align: enum_sig.align.clone(),
         loc,
@@ -326,7 +328,7 @@ pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> Ty
             loc: field.loc.clone(),
         })
         .collect();
-    
+
     TypedUnnamedUnionType {
         fields,
         repr_attr: union_sig.modifiers.repr_attr.clone(),

@@ -899,8 +899,22 @@ impl Resolver {
                     }
                 }
 
+                let discriminant_type = if let Some(type_specifier) = &unnamed_enum_type.discriminant_type {
+                    Some(Box::new(self.resolve_type(
+                        &None,
+                        scope_opt,
+                        module_id,
+                        *type_specifier.clone(),
+                        unnamed_enum_type.loc.clone(),
+                        unnamed_enum_type.span.end,
+                    )?))
+                } else {
+                    None
+                };
+
                 Ok(SemanticType::UnnamedEnum(TypedUnnamedEnumType {
                     variants,
+                    discriminant_type,
                     repr_attr: unnamed_enum_type.repr_attr.clone(),
                     align: unnamed_enum_type.align.clone(),
                     loc: SourceLoc::from_loc(unnamed_enum_type.loc.clone(), self.current_file_path()),
@@ -1513,6 +1527,19 @@ impl Resolver {
                 None => return None,
             };
 
+        let discriminant_type = if let Some(type_specifier) = enum_decl.discriminant_type.clone() {
+            self.resolve_type(
+                &None,
+                scope_opt.clone(),
+                module_id,
+                type_specifier,
+                enum_decl.loc.clone(),
+                enum_decl.span.end,
+            )
+        } else {
+            None
+        };
+
         let resolved_enum = ResolvedEnum {
             module_id,
             symbol_id: enum_symbol_id,
@@ -1522,6 +1549,7 @@ impl Resolver {
                 methods: methods.clone(),
                 variants: variants.clone(),
                 generic_params: generic_params.clone(),
+                discriminant_type,
                 modifiers: enum_decl.modifiers.clone(),
                 align: enum_decl.align.clone(),
                 loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.current_file_path()),
@@ -3021,8 +3049,8 @@ impl Resolver {
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
             field_name: unnamed_union_value.field_name.clone(),
             field_value: Box::new(field_value),
-            is_const: unnamed_union_value.is_const,
             union_ty: None,
+            is_const: unnamed_union_value.is_const,
             loc: SourceLoc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
         });
 
@@ -3722,8 +3750,8 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::UnnamedStructValue(TypedUnnamedStructValue {
                 fields,
-                unnamed_struct_type: None,
-                is_packed: unnamed_struct_value.is_packed,
+                repr_attr: unnamed_struct_value.repr_attr.clone(),
+                align: unnamed_struct_value.align.clone(),
                 is_const: unnamed_struct_value.is_const,
                 loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
             }),

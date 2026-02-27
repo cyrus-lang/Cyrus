@@ -838,6 +838,13 @@ impl<'a> AnalysisContext<'a> {
         unnamed_struct_value: &mut TypedUnnamedStructValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        self.validate_struct_repr_attr(
+            &unnamed_struct_value.repr_attr,
+            unnamed_struct_value.fields.len(),
+            &unnamed_struct_value.loc,
+        );
+        self.validate_align(&unnamed_struct_value.align, &unnamed_struct_value.loc);
+
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let infer_ctx = self.inference_ctx_from_struct_type(scope_opt, expected_type);
@@ -884,8 +891,6 @@ impl<'a> AnalysisContext<'a> {
             align: unnamed_struct_value.align.clone(),
             loc: unnamed_struct_value.loc.clone(),
         };
-
-        unnamed_struct_value.unnamed_struct_type = Some(unnamed_struct_type.clone());
 
         if unnamed_struct_value.is_const {
             Some(SemanticType::Const(Box::new(SemanticType::UnnamedStruct(

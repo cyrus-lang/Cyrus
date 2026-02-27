@@ -20,7 +20,9 @@ use crate::{
     generics::monomorph::MonomorphKey,
     sigs::{EnumSig, FuncSig},
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedUnnamedEnumType},
+    types::{
+        SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedStructTypeField, TypedUnnamedUnionType,
+    },
     vtable::VTableID,
 };
 use cyrusc_ast::{
@@ -395,8 +397,7 @@ pub struct TypedUnnamedStructValue {
 pub struct TypedUnnamedUnionValue {
     pub field_name: Ident,
     pub field_value: Box<TypedExprStmt>,
-    pub repr_attr: Option<ReprAttr>,
-    pub align: Option<usize>,
+    pub union_ty: Option<TypedUnnamedUnionType>,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
@@ -428,9 +429,26 @@ pub struct TypedUnnamedStructValueField {
     pub loc: SourceLoc,
 }
 
-impl PartialEq for TypedUnnamedEnumValue {
-    fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident && self.kind == other.kind
+impl TypedUnnamedStructValue {
+    pub fn as_unnamed_struct_type(&self) -> TypedUnnamedStructType {
+        let fields = self
+            .fields
+            .iter()
+            .map(|field| -> _ {
+                TypedUnnamedStructTypeField {
+                    name: field.name.clone(),
+                    ty: Box::new(field.ty.clone().or(field.field_value.sema_ty.clone()).unwrap()),
+                    loc: field.loc.clone(),
+                }
+            })
+            .collect();
+
+        TypedUnnamedStructType {
+            fields,
+            repr_attr: self.repr_attr.clone(),
+            align: self.align.clone(),
+            loc: self.loc.clone(),
+        }
     }
 }
 
@@ -440,6 +458,12 @@ impl TypedUnnamedEnumValueKind {
             TypedUnnamedEnumValueKind::Plain => None,
             TypedUnnamedEnumValueKind::Fielded(exprs) => Some(exprs),
         }
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.kind == other.kind
     }
 }
 

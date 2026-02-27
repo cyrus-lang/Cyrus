@@ -1232,13 +1232,14 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
-        let tys: Vec<CIRTy> = tuple.elms.iter().map(|elm| elm.ty.clone()).collect();
+        let element_types: Vec<CIRTy> = tuple.elms.iter().map(|elm| elm.ty.clone()).collect();
 
         let struct_value = self
             .emit_struct_init(&CIRStructInitExpr {
                 ty: CIRStructTy {
-                    fields: tys.clone(),
-                    is_packed: false,
+                    fields: element_types.clone(),
+                    repr_attr: None,
+                    align: None,
                 },
                 fields: tuple.elms.clone(),
             })
@@ -1246,7 +1247,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             .into_struct_value();
 
         InternalValue::new(
-            CIRTy::Tuple(CIRTupleTy { elements: tys }),
+            CIRTy::Tuple(CIRTupleTy {
+                elements: element_types,
+            }),
             InternalValueKind::RValue(struct_value.into()),
         )
     }
@@ -1464,14 +1467,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_struct_init(&mut self, struct_init: &CIRStructInitExpr) -> InternalValue<'ll> {
-        let field_types: Vec<BasicTypeEnum<'ll>> = struct_init
-            .ty
-            .fields
-            .iter()
-            .map(|ty| self.emit_ty(ty.clone()).try_into().unwrap())
-            .collect();
-
-        let struct_type = self.llvmctx.struct_type(&field_types, struct_init.ty.is_packed);
+        let struct_type = self.emit_struct_ty(struct_init.ty.clone());
 
         let mut all_const = true;
 

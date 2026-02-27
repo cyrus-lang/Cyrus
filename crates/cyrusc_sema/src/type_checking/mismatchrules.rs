@@ -226,7 +226,9 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             (SemanticType::UnnamedStruct(unnamed_struct1), SemanticType::UnnamedStruct(unnamed_struct2)) => {
-                let is_packed = unnamed_struct1.is_packed == unnamed_struct2.is_packed;
+                let is_packed = unnamed_struct1.repr_attr == unnamed_struct2.repr_attr;
+                let is_aligned = unnamed_struct1.align == unnamed_struct2.align;
+
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
                     if !self.check_type_mismatch(scope_id_opt, *field1.ty.clone(), *field2.ty.clone(), loc.clone()) {
@@ -234,7 +236,7 @@ impl<'a> AnalysisContext<'a> {
                         break;
                     }
                 }
-                is_packed && fields
+                is_packed && is_aligned && fields
             }
             (
                 SemanticType::UnnamedStruct(unnamed_struct_type),
@@ -339,11 +341,15 @@ impl<'a> AnalysisContext<'a> {
         unnamed_union_type: &TypedUnnamedUnionType,
         union_sig: &UnionSig,
     ) -> bool {
-        unnamed_union_type
+        let fields = unnamed_union_type
             .fields
             .iter()
             .zip(&union_sig.fields)
-            .any(|(field1, field2)| *field1.ty == field2.ty)
+            .any(|(field1, field2)| *field1.ty == field2.ty);
+
+        unnamed_union_type.repr_attr == union_sig.modifiers.repr_attr
+            && unnamed_union_type.align == union_sig.align
+            && fields
     }
 
     fn check_unnamed_enum_and_named_enum_type_mismatch(
@@ -394,7 +400,9 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| field.ty.clone())
             .collect::<Vec<_>>();
 
-        unnamed_struct.is_packed == struct_sig.is_packed && unnamed_struct_fields == named_struct_fields
+        unnamed_struct.repr_attr == struct_sig.modifiers.repr_attr
+            && unnamed_struct.align == struct_sig.align
+            && unnamed_struct_fields == named_struct_fields
     }
 
     pub(crate) fn check_plain_type_mismatch(&self, value_type: PlainType, target_type: PlainType) -> bool {
