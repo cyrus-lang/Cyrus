@@ -156,6 +156,7 @@ pub struct UnnamedStructValueField {
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub loc: Location,
     pub span: Span,
 }
@@ -172,6 +173,7 @@ pub struct UnnamedStructTypeField {
 pub struct UnnamedUnionType {
     pub fields: Vec<UnnamedUnionTypeField>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub loc: Location,
     pub span: Span,
 }
@@ -192,6 +194,7 @@ pub struct Union {
     pub methods: Vec<FuncDef>,
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: UnionModifiers,
+    pub align: Option<usize>,
     pub loc: Location,
     pub span: Span,
 }
@@ -213,6 +216,7 @@ pub struct Enum {
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: EnumModifiers,
     pub discriminant_type: Option<TypeSpecifier>,
+    pub align: Option<usize>,
     pub loc: Location,
     pub span: Span,
 }
@@ -221,6 +225,7 @@ pub struct Enum {
 pub struct UnnamedEnumType {
     pub variants: Vec<UnnamedEnumVariant>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub loc: Location,
     pub span: Span,
 }
@@ -557,6 +562,7 @@ pub struct Struct {
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
     pub modifiers: StructModifiers,
+    pub align: Option<usize>,
     pub is_packed: bool,
     pub loc: Location,
     pub span: Span,

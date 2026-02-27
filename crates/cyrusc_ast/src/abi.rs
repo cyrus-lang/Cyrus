@@ -181,7 +181,6 @@ pub enum ReprKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReprAttrKind {
     Kind(ReprKind),
-    Align(u32),
     Packed,
 }
 
@@ -219,18 +218,6 @@ impl ReprAttr {
             }
         }
 
-        // check for duplicate align
-        if let ReprAttrKind::Align(new_align) = item {
-            if let Some(existing) = self.align() {
-                return Err(format!(
-                    "Duplicate align('{}') conflicts with existing align({}).",
-                    new_align, existing
-                ));
-            }
-            self.items.push(ReprAttrKind::Align(new_align));
-            return Ok(());
-        }
-
         // check for duplicate packed
         if let ReprAttrKind::Packed = item {
             if self.is_packed() {
@@ -265,12 +252,6 @@ impl ReprAttr {
         }
     }
 
-    pub fn align(&self) -> Option<u32> {
-        self.items
-            .iter()
-            .find_map(|i| if let ReprAttrKind::Align(v) = i { Some(*v) } else { None })
-    }
-
     pub fn kind(&self) -> Option<ReprKind> {
         self.items.iter().find_map(|i| {
             if let ReprAttrKind::Kind(k) = i {
@@ -287,7 +268,6 @@ impl fmt::Display for ReprAttr {
         let items_fmt = self
             .items
             .iter()
-            .filter(|item| !matches!(item, ReprAttrKind::Align(_)))
             .map(|item| item.to_string())
             .collect::<Vec<String>>()
             .join(", ");
@@ -299,7 +279,6 @@ impl fmt::Display for ReprAttr {
 impl fmt::Display for ReprAttrKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReprAttrKind::Align(_) => write!(f, ""),
             ReprAttrKind::Packed => write!(f, "packed"),
             ReprAttrKind::Kind(repr_kind) => repr_kind.fmt(f),
         }

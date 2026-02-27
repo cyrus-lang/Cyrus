@@ -292,7 +292,18 @@ pub fn format_unnamed_union_ty<'a>(
 ) -> String {
     let mut fmt = String::new();
 
-    fmt.push_str("union { ");
+    if let Some(repr_attr) = &unnamed_union_type.repr_attr {
+        fmt.push_str(&repr_attr.to_string());
+        fmt.push_str(" ");
+    }
+
+    fmt.push_str("union");
+
+    if let Some(align) = unnamed_union_type.align {
+        fmt.push_str(&format!(" align({})", align));
+    }
+
+    fmt.push_str(" { ");
 
     fmt.push_str(
         &unnamed_union_type
@@ -304,7 +315,6 @@ pub fn format_unnamed_union_ty<'a>(
     );
 
     fmt.push_str(" }");
-
     fmt
 }
 
@@ -318,8 +328,12 @@ pub fn format_unnamed_struct_ty<'a>(
         fmt.push_str(&repr_attr.to_string());
         fmt.push_str(" ");
     }
-    
+
     fmt.push_str("struct");
+
+    if let Some(align) = unnamed_struct_type.align {
+        fmt.push_str(&format!(" align({})", align));
+    }
 
     fmt.push_str(" { ");
 
@@ -333,7 +347,6 @@ pub fn format_unnamed_struct_ty<'a>(
     );
 
     fmt.push_str(" }");
-
     fmt
 }
 
@@ -341,7 +354,20 @@ pub fn format_unnamed_enum_ty<'a>(
     unnamed_enum_type: &TypedUnnamedEnumType,
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
-    let mut fmt = String::from("enum { ");
+    let mut fmt = String::new();
+
+    if let Some(repr_attr) = &unnamed_enum_type.repr_attr {
+        fmt.push_str(&repr_attr.to_string());
+        fmt.push_str(" ");
+    }
+
+    fmt.push_str("enum");
+
+    if let Some(align) = unnamed_enum_type.align {
+        fmt.push_str(&format!(" align({})", align));
+    }
+
+    fmt.push_str(" { ");
 
     let variant_strings: Vec<String> = unnamed_enum_type
         .variants

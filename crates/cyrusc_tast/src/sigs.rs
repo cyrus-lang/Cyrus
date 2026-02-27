@@ -42,6 +42,7 @@ pub struct StructSig {
     pub generic_params: Option<TypedGenericParamsList>,
     pub is_packed: bool,
     pub modifiers: StructModifiers,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -53,6 +54,7 @@ pub struct UnionSig {
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub modifiers: UnionModifiers,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -77,6 +79,7 @@ pub struct EnumSig {
     pub variants: Vec<TypedEnumVariant>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub modifiers: EnumModifiers,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -215,6 +218,7 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
         generic_params: typed_struct.generic_params.clone(),
         is_packed: typed_struct.is_packed,
         modifiers: typed_struct.modifiers.clone(),
+        align: typed_struct.align.clone(),
         loc: typed_struct.loc.clone(),
     }
 }
@@ -227,6 +231,7 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
         variants: typed_enum.variants.clone(),
         generic_params: typed_enum.generic_params.clone(),
         modifiers: typed_enum.modifiers.clone(),
+        align: typed_enum.align.clone(),
         loc: typed_enum.loc.clone(),
     }
 }
@@ -239,6 +244,7 @@ pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
         methods: typed_union.methods.clone(),
         generic_params: typed_union.generic_params.clone(),
         modifiers: typed_union.modifiers.clone(),
+        align: typed_union.align.clone(),
         loc: typed_union.loc.clone(),
     }
 }

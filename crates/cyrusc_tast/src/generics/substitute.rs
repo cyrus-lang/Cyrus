@@ -132,9 +132,11 @@ pub fn substitute_type(
                     })
                 })
                 .collect::<Option<Vec<_>>>()?;
+
             Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                 fields,
                 repr_attr: unnamed_struct_type.repr_attr.clone(),
+                align: unnamed_struct_type.align.clone(),
                 loc: unnamed_struct_type.loc.clone(),
             }))
         }
@@ -225,6 +227,7 @@ pub fn substitute_struct_sig(
         generic_params: sig.generic_params.clone(),
         is_packed: sig.is_packed,
         modifiers: sig.modifiers.clone(),
+        align: sig.align.clone(),
         loc: sig.loc.clone(),
     })
 }
@@ -252,6 +255,7 @@ pub fn substitute_union_sig(
         methods: sig.methods.clone(),
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),
+        align: sig.align.clone(),
         loc: sig.loc.clone(),
     })
 }
@@ -296,6 +300,7 @@ pub fn substitute_enum_sig(
         variants: new_variants,
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),
+        align: sig.align.clone(),
         loc: sig.loc.clone(),
     })
 }

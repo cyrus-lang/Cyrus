@@ -425,7 +425,7 @@ impl Parser {
         Ok(field)
     }
 
-    fn parse_union(&mut self, mut modifiers: UnionModifiers) -> Result<Stmt, Diag> {
+    fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<Stmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -434,7 +434,7 @@ impl Parser {
         let ident = self.parse_ident()?;
         self.next_token();
 
-        self.parse_repr_align(&mut modifiers.repr_attr)?;
+        let align = self.parse_align_specifier()?;
 
         let generic_params;
         if self.current_token_is(TokenKind::LessThan) {
@@ -453,6 +453,7 @@ impl Parser {
                 methods: Vec::new(),
                 fields: Vec::new(),
                 generic_params,
+                align,
                 impls,
                 modifiers,
                 loc,
@@ -510,13 +511,14 @@ impl Parser {
             fields,
             generic_params,
             modifiers,
+            align,
             impls,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
     }
 
-    fn parse_enum(&mut self, mut modifiers: EnumModifiers) -> Result<Stmt, Diag> {
+    fn parse_enum(&mut self, modifiers: EnumModifiers) -> Result<Stmt, Diag> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -526,7 +528,7 @@ impl Parser {
         self.next_token(); // consume enum name
 
         let discriminant_type = self.parse_enum_discriminant_type()?;
-        self.parse_repr_align(&mut modifiers.repr_attr)?;
+        let align = self.parse_align_specifier()?;
 
         let generic_params;
         if self.current_token_is(TokenKind::LessThan) {
@@ -548,6 +550,7 @@ impl Parser {
                 discriminant_type,
                 generic_params,
                 methods: Vec::new(),
+                align,
                 modifiers,
                 impls,
                 loc,
@@ -636,6 +639,7 @@ impl Parser {
             generic_params,
             methods,
             modifiers,
+            align,
             impls,
             loc,
             span: Span::new(start, self.current_token().span.end),
@@ -663,7 +667,7 @@ impl Parser {
         Ok(impls)
     }
 
-    fn parse_struct(&mut self, mut modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
+    fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
         let loc = self.current_token().loc.clone();
         let struct_start = self.current_token().span.start.clone();
 
@@ -672,7 +676,7 @@ impl Parser {
         let struct_name = self.parse_ident()?;
         self.next_token(); // consume struct name
 
-        self.parse_repr_align(&mut modifiers.repr_attr)?;
+        let align = self.parse_align_specifier()?;
 
         let generic_params;
         if self.current_token_is(TokenKind::LessThan) {
@@ -740,6 +744,7 @@ impl Parser {
             modifiers,
             fields,
             methods,
+            align,
             is_packed,
             loc,
             span: Span {

@@ -848,6 +848,7 @@ impl Resolver {
 
                 Ok(SemanticType::UnnamedUnion(TypedUnnamedUnionType {
                     fields,
+                    repr_attr: unnamed_union_type.repr_attr.clone(),
                     loc: SourceLoc::from_loc(unnamed_union_type.loc.clone(), self.current_file_path()),
                 }))
             }
@@ -899,13 +900,15 @@ impl Resolver {
 
                 Ok(SemanticType::UnnamedEnum(TypedUnnamedEnumType {
                     variants,
+                    repr_attr: unnamed_enum_type.repr_attr.clone(),
+                    align: unnamed_enum_type.align.clone(),
                     loc: SourceLoc::from_loc(unnamed_enum_type.loc.clone(), self.current_file_path()),
                 }))
             }
-            TypeSpecifier::UnnamedStruct(struct_spec) => {
+            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
                 let mut fields = Vec::new();
 
-                for field in &struct_spec.fields {
+                for field in &unnamed_struct_type.fields {
                     if let Some(ty) = self.resolve_type(
                         generic_params,
                         scope_opt.clone(),
@@ -924,8 +927,9 @@ impl Resolver {
 
                 Ok(SemanticType::UnnamedStruct(TypedUnnamedStructType {
                     fields,
-                    is_packed: struct_spec.is_packed,
-                    loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.current_file_path()),
+                    repr_attr: unnamed_struct_type.repr_attr.clone(),
+                    align: unnamed_struct_type.align.clone(),
+                    loc: SourceLoc::from_loc(unnamed_struct_type.loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::ModuleImport(module_import) => self
@@ -1399,6 +1403,7 @@ impl Resolver {
                 methods: methods.clone(),
                 generic_params: generic_params.clone(),
                 modifiers: union_decl.modifiers.clone(),
+                align: union_decl.align.clone(),
                 loc: SourceLoc::from_loc(union_decl.loc.clone(), self.current_file_path()),
             },
         };
@@ -1430,6 +1435,7 @@ impl Resolver {
             modifiers: union_decl.modifiers.clone(),
             impls,
             loc: SourceLoc::from_loc(union_decl.ident.loc.clone(), self.current_file_path()),
+            align: union_decl.align.clone(),
             is_local: is_local,
         }))
     }
@@ -1516,6 +1522,7 @@ impl Resolver {
                 variants: variants.clone(),
                 generic_params: generic_params.clone(),
                 modifiers: enum_decl.modifiers.clone(),
+                align: enum_decl.align.clone(),
                 loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.current_file_path()),
             },
         };
@@ -1560,6 +1567,7 @@ impl Resolver {
             impls,
             discriminant_type,
             modifiers: enum_decl.modifiers.clone(),
+            align: enum_decl.align.clone(),
             loc: SourceLoc::from_loc(enum_decl.ident.loc.clone(), self.current_file_path()),
             is_local,
         }))
@@ -1923,6 +1931,7 @@ impl Resolver {
                 is_packed: struct_decl.is_packed,
                 methods: methods.clone(),
                 modifiers: struct_decl.modifiers.clone(),
+                align: struct_decl.align.clone(),
                 loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
             },
         };
@@ -1947,8 +1956,9 @@ impl Resolver {
             fields: typed_struct_fields,
             methods,
             generic_params,
-            modifiers: struct_decl.modifiers.clone(),
             impls,
+            modifiers: struct_decl.modifiers.clone(),
+            align: struct_decl.align.clone(),
             is_packed: struct_decl.is_packed,
             loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
             is_local,

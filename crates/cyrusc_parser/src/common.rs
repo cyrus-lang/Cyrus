@@ -737,6 +737,9 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.next_token(); // consume struct 
+
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
@@ -784,6 +787,7 @@ impl Parser {
         Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
             fields,
             repr_attr,
+            align,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
@@ -794,6 +798,9 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.next_token(); // consume union 
+
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedUnionTypeField> = Vec::new();
@@ -841,6 +848,7 @@ impl Parser {
         Ok(TypeSpecifier::UnnamedUnion(UnnamedUnionType {
             fields,
             repr_attr,
+            align,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))
@@ -904,6 +912,9 @@ impl Parser {
         let start = self.current_token().span.start;
 
         self.next_token(); // parse enum keyword
+
+        let align = self.parse_align_specifier()?;
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut enum_fields: Vec<UnnamedEnumVariant> = Vec::new();
@@ -912,6 +923,7 @@ impl Parser {
             return Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
                 variants: enum_fields,
                 repr_attr,
+                align,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
             }));
@@ -940,6 +952,7 @@ impl Parser {
         Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
             variants: enum_fields,
             repr_attr,
+            align,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

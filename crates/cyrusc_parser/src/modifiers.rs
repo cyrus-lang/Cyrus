@@ -165,33 +165,18 @@ impl Parser {
         Ok(Some(discriminant_type))
     }
 
-    pub(crate) fn parse_repr_align(&mut self, repr_attr: &mut Option<ReprAttr>) -> Result<(), Diag> {
-        if repr_attr.is_none() {
-            *repr_attr = Some(ReprAttr::new());
-        }
-
-        let repr_attr = match repr_attr {
-            Some(repr_attr) => repr_attr,
-            None => unreachable!(),
-        };
-
-        let start_token = self.current_token();
-
+    pub(crate) fn parse_align_specifier(&mut self) -> Result<Option<usize>, Diag> {
         if !self.current_token_is(TokenKind::Align) {
-            return Ok(());
+            return Ok(None);
         }
 
         self.next_token(); // consume align
         self.expect_current(TokenKind::LeftParen)?;
-        let align_to = self.parse_integer_without_suffix()?;
+        let align = self.parse_integer_without_suffix()?;
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
 
-        if let Err(err) = repr_attr.add(ReprAttrKind::Align(align_to.try_into().unwrap())) {
-            return Err(self.error_at_token(&start_token, ParserDiagKind::InvalidModifier(err.to_string())));
-        }
-
-        Ok(())
+        Ok(Some(align.try_into().unwrap()))
     }
 
     pub(crate) fn parse_repr_attr(&mut self, token: Token) -> Result<Option<ReprAttr>, Diag> {
@@ -461,10 +446,6 @@ impl UnresolvedModifiers {
             });
         }
 
-        if let Some(repr_attr) = &self.repr_attr {
-            validate_align(repr_attr.align(), loc)?;
-        }
-
         let section = self.placement.get(0).cloned();
 
         Ok(StructModifiers {
@@ -518,18 +499,7 @@ impl UnresolvedModifiers {
 
             if let Some(kind) = repr_attr.kind() {
                 match kind {
-                    ReprKind::C | ReprKind::Cyrus => {
-                        if repr_attr.align().is_some() {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(
-                                    "Cannot specify alignment with 'C' or 'Cyrus' enum layout. Alignment is determined by the target ABI.".to_string(),
-                                )),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(loc)),
-                                hint: Some("Remove the alignment specifier.".to_string()),
-                            });
-                        }
-                    }
+                    ReprKind::C | ReprKind::Cyrus => { /* valid */ }
                     ReprKind::Transparent => {
                         return Err(Diag {
                             kind: Box::new(ParserDiagKind::InvalidModifier(
@@ -542,8 +512,6 @@ impl UnresolvedModifiers {
                     }
                 }
             }
-
-            validate_align(repr_attr.align(), loc)?;
         }
 
         Ok(EnumModifiers {
@@ -594,11 +562,7 @@ impl UnresolvedModifiers {
 
             if let Some(kind) = repr_attr.kind() {
                 match kind {
-                    ReprKind::C | ReprKind::Cyrus => {
-                        if let Some(align) = repr_attr.align() {
-                            validate_align(Some(align), loc.clone())?;
-                        }
-                    }
+                    ReprKind::C | ReprKind::Cyrus => { /* valid */ }
                     ReprKind::Transparent => {
                         if repr_attr.is_packed() {
                             return Err(Diag {
@@ -610,22 +574,9 @@ impl UnresolvedModifiers {
                                 hint: Some("Remove either packed or transparent.".to_string()),
                             });
                         }
-
-                        if repr_attr.align().is_some() {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(
-                                    "Cannot specify alignment with repr 'transparent'.".to_string(),
-                                )),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(loc)),
-                                hint: None,
-                            });
-                        }
                     }
                 }
             }
-
-            validate_align(repr_attr.align(), loc)?;
         }
 
         let section = self.placement.get(0).cloned();

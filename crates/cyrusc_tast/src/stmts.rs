@@ -118,6 +118,7 @@ pub struct TypedEnumStmt {
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: EnumModifiers,
     pub discriminant_type: Option<SemanticType>,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -145,6 +146,7 @@ pub struct TypedStructStmt {
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: StructModifiers,
+    pub align: Option<usize>,
     pub is_packed: bool,
     pub loc: SourceLoc,
 }
@@ -159,6 +161,7 @@ pub struct TypedUnionStmt {
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedImplementInterface>,
+    pub align: Option<usize>,
     pub modifiers: UnionModifiers,
     pub loc: SourceLoc,
 }

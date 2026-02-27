@@ -172,6 +172,7 @@ pub enum TypedArrayFixedCapacityValue {
 pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -179,6 +180,7 @@ pub struct TypedUnnamedStructType {
 pub struct TypedUnnamedUnionType {
     pub fields: Vec<TypedUnnamedUnionTypeField>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -186,6 +188,7 @@ pub struct TypedUnnamedUnionType {
 pub struct TypedUnnamedEnumType {
     pub variants: Vec<TypedUnnamedEnumVariant>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub loc: SourceLoc,
 }
 
@@ -308,6 +311,7 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
     TypedUnnamedEnumType {
         variants,
         repr_attr: enum_sig.modifiers.repr_attr.clone(),
+        align: enum_sig.align.clone(),
         loc,
     }
 }
@@ -326,6 +330,7 @@ pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> Ty
     TypedUnnamedUnionType {
         fields,
         repr_attr: union_sig.modifiers.repr_attr.clone(),
+        align: union_sig.align.clone(),
         loc,
     }
 }
