@@ -61,18 +61,22 @@ pub struct CIRFuncTy {
 #[derive(Debug, Clone)]
 pub struct CIRStructTy {
     pub fields: Vec<CIRTy>,
-    pub is_packed: bool,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRUnionTy {
     pub fields: Vec<CIRTy>,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIREnumTy {
     pub variants: Vec<CIREnumTyVariant>,
     pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub discriminant_type: Option<Box<CIRTy>>,
 }
 
@@ -277,4 +281,13 @@ macro_rules! is_integer_type {
             _ => false,
         }
     };
+}
+
+impl CIRStructTy {
+    pub fn is_packed(&self) -> bool {
+        match &self.repr_attr {
+            Some(repr_attr) => repr_attr.is_packed(),
+            None => false,
+        }
+    }
 }

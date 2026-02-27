@@ -913,6 +913,7 @@ impl Parser {
 
         self.next_token(); // parse enum keyword
 
+        let discriminant_type = self.parse_enum_discriminant_type()?.map(Box::new);
         let align = self.parse_align_specifier()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
@@ -923,6 +924,7 @@ impl Parser {
             return Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
                 variants: enum_fields,
                 repr_attr,
+                discriminant_type,
                 align,
                 loc,
                 span: Span::new(start, self.current_token().span.end),
@@ -951,6 +953,7 @@ impl Parser {
 
         Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
             variants: enum_fields,
+            discriminant_type,
             repr_attr,
             align,
             loc,

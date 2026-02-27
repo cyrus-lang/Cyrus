@@ -894,7 +894,8 @@ fn classify(
             // tuple lowered as struct in codegen
             let struct_ty = CIRStructTy {
                 fields: tuple_ty.elements.clone(),
-                is_packed: false,
+                repr_attr: None,
+                align: None,
             };
             classify_struct_or_union(info, &CIRTy::Struct(struct_ty), offset_base, lo_class, hi_class)
         }

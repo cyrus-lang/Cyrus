@@ -14,16 +14,18 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     SymbolID,
     generics::monomorph::MonomorphKey,
     sigs::{EnumSig, FuncSig},
     stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedUnionType},
+    types::{SemanticType, TypedUnnamedEnumType},
     vtable::VTableID,
 };
 use cyrusc_ast::{
     AssignKind, Ident,
+    abi::ReprAttr,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_diagcentral::source_loc::SourceLoc;
@@ -383,8 +385,8 @@ pub struct TypedMethodCall {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
-    pub unnamed_struct_type: Option<TypedUnnamedStructType>,
-    pub is_packed: bool,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub is_const: bool,
     pub loc: SourceLoc,
 }
@@ -393,8 +395,9 @@ pub struct TypedUnnamedStructValue {
 pub struct TypedUnnamedUnionValue {
     pub field_name: Ident,
     pub field_value: Box<TypedExprStmt>,
+    pub repr_attr: Option<ReprAttr>,
+    pub align: Option<usize>,
     pub is_const: bool,
-    pub union_ty: Option<TypedUnnamedUnionType>,
     pub loc: SourceLoc,
 }
 

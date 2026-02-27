@@ -16,7 +16,7 @@
  */
 
 use cyrusc_ast::{
-    abi::{ReprAttr, ReprKind},
+    abi::ReprKind,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
@@ -395,7 +395,7 @@ pub struct CIRReturnStmt {
 pub struct CIRStructStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
-    pub is_packed: bool,
+    pub align: Option<usize>,
     pub modifiers: StructModifiers,
 }
 
@@ -403,6 +403,8 @@ pub struct CIRStructStmt {
 pub struct CIREnumStmt {
     pub name: String,
     pub variants: Vec<CIREnumTyVariant>,
+    pub align: Option<usize>,
+    pub discriminant_type: Option<Box<CIRTy>>,
     pub modifiers: EnumModifiers,
 }
 
@@ -433,6 +435,7 @@ pub enum CIREnumInitVariant {
 pub struct CIRUnionStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
+    pub align: Option<usize>,
     pub modifiers: UnionModifiers,
 }
 
@@ -471,21 +474,25 @@ pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncTy {
 pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
     CIRStructTy {
         fields: struct_stmt.fields.clone(),
-        is_packed: struct_stmt.is_packed,
+        repr_attr: struct_stmt.modifiers.repr_attr.clone(),
+        align: struct_stmt.align.clone(),
     }
 }
 
 pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
-    // CIREnumTy {
-    //     variants: enum_stmt.variants.clone(),
-    // }
-    // FIXME
-    todo!();
+    CIREnumTy {
+        variants: enum_stmt.variants.clone(),
+        discriminant_type: enum_stmt.discriminant_type.clone(),
+        repr_attr: enum_stmt.modifiers.repr_attr.clone(),
+        align: enum_stmt.align.clone(),
+    }
 }
 
 pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
     CIRUnionTy {
         fields: union_stmt.fields.clone(),
+        repr_attr: union_stmt.modifiers.repr_attr.clone(),
+        align: union_stmt.align.clone(),
     }
 }
 

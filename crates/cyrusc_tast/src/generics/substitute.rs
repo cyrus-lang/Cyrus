@@ -225,7 +225,6 @@ pub fn substitute_struct_sig(
         impls: sig.impls.clone(),
         methods: sig.methods.clone(),
         generic_params: sig.generic_params.clone(),
-        is_packed: sig.is_packed,
         modifiers: sig.modifiers.clone(),
         align: sig.align.clone(),
         loc: sig.loc.clone(),

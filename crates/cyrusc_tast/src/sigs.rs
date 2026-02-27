@@ -40,7 +40,6 @@ pub struct StructSig {
     pub impls: Vec<TypedImplementInterface>,
     pub methods: HashMap<String, SymbolID>,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub is_packed: bool,
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
     pub loc: SourceLoc,
@@ -216,7 +215,6 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
         impls: typed_struct.impls.clone(),
         methods: typed_struct.methods.clone(),
         generic_params: typed_struct.generic_params.clone(),
-        is_packed: typed_struct.is_packed,
         modifiers: typed_struct.modifiers.clone(),
         align: typed_struct.align.clone(),
         loc: typed_struct.loc.clone(),
@@ -284,6 +282,15 @@ impl FuncSig {
                 TypedFuncParamKind::FuncParam(..) => false,
                 TypedFuncParamKind::SelfModifier(..) => true,
             },
+            None => false,
+        }
+    }
+}
+
+impl StructSig {
+    pub fn is_packed(&self) -> bool {
+        match &self.modifiers.repr_attr {
+            Some(repr_attr) => repr_attr.is_packed(),
             None => false,
         }
     }

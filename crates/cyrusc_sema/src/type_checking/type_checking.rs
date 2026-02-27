@@ -880,7 +880,8 @@ impl<'a> AnalysisContext<'a> {
 
         let unnamed_struct_type = TypedUnnamedStructType {
             fields,
-            is_packed: unnamed_struct_value.is_packed,
+            repr_attr: unnamed_struct_value.repr_attr.clone(),
+            align: unnamed_struct_value.align.clone(),
             loc: unnamed_struct_value.loc.clone(),
         };
 

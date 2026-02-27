@@ -224,6 +224,7 @@ pub struct Enum {
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumType {
     pub variants: Vec<UnnamedEnumVariant>,
+    pub discriminant_type: Option<Box<TypeSpecifier>>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: Location,

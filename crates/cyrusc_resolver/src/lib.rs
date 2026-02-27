@@ -849,6 +849,7 @@ impl Resolver {
                 Ok(SemanticType::UnnamedUnion(TypedUnnamedUnionType {
                     fields,
                     repr_attr: unnamed_union_type.repr_attr.clone(),
+                    align: unnamed_union_type.align.clone(),
                     loc: SourceLoc::from_loc(unnamed_union_type.loc.clone(), self.current_file_path()),
                 }))
             }
@@ -1928,7 +1929,6 @@ impl Resolver {
                 fields: typed_struct_fields.clone(),
                 generic_params: generic_params.clone(),
                 impls: impls.clone(),
-                is_packed: struct_decl.is_packed,
                 methods: methods.clone(),
                 modifiers: struct_decl.modifiers.clone(),
                 align: struct_decl.align.clone(),

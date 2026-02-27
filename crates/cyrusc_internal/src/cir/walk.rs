@@ -1144,8 +1144,9 @@ impl<'resolver> CIRWalk<'resolver> {
                 .collect();
 
             let struct_ty = CIRStructTy {
+                repr_attr: resolved_struct.struct_sig.modifiers.repr_attr.clone(),
+                align: resolved_struct.struct_sig.align.clone(),
                 fields: fields_tys,
-                is_packed: resolved_struct.struct_sig.is_packed,
             };
 
             let fields: Vec<CIRExpr> = struct_init_expr
@@ -1155,14 +1156,18 @@ impl<'resolver> CIRWalk<'resolver> {
                 .collect();
 
             CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
-        } else if let Some(_) = sym.as_union() {
+        } else if let Some(resolved_union) = sym.as_union() {
             let fields_tys: Vec<CIRTy> = struct_init_expr
                 .fields
                 .iter()
                 .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
                 .collect();
 
-            let union_ty = CIRTy::Union(CIRUnionTy { fields: fields_tys });
+            let union_ty = CIRTy::Union(CIRUnionTy {
+                repr_attr: resolved_union.union_sig.modifiers.repr_attr.clone(),
+                align: resolved_union.union_sig.align.clone(),
+                fields: fields_tys,
+            });
 
             let struct_field_init = struct_init_expr.fields.first().unwrap();
             let expr = Box::new(self.lower_expr(scope_id_opt, &struct_field_init.value));
@@ -1537,7 +1542,8 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let struct_ty = CIRStructTy {
             fields: field_tys,
-            is_packed: unnamed_struct_value.is_packed,
+            repr_attr: unnamed_struct_value.repr_attr.clone(),
+            align: unnamed_struct_value.align.clone(),
         };
 
         CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
@@ -1663,15 +1669,17 @@ impl<'resolver> CIRWalk<'resolver> {
             }
             SemanticType::Const(sema_ty) => CIRTy::Const(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
             SemanticType::Pointer(sema_ty) => CIRTy::Pointer(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
-            SemanticType::UnnamedStruct(ustruct_ty) => {
-                let field_tys: Vec<CIRTy> = ustruct_ty
+            SemanticType::UnnamedStruct(unnamed_struct_type) => {
+                let field_tys: Vec<CIRTy> = unnamed_struct_type
                     .fields
                     .iter()
                     .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
                     .collect();
+
                 CIRTy::Struct(CIRStructTy {
                     fields: field_tys,
-                    is_packed: ustruct_ty.is_packed,
+                    repr_attr: unnamed_struct_type.repr_attr.clone(),
+                    align: unnamed_struct_type.align.clone(),
                 })
             }
             SemanticType::FuncType(func_type) => {
@@ -1734,7 +1742,8 @@ impl<'resolver> CIRWalk<'resolver> {
                         CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))), // data_ptr
                         CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))), // vtable_ptr
                     ],
-                    is_packed: false,
+                    repr_attr: None,
+                    align: None,
                 })
             }
             SemanticType::UnnamedUnion(unnamed_union_type) => {
@@ -1759,6 +1768,8 @@ impl<'resolver> CIRWalk<'resolver> {
                 .iter()
                 .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
                 .collect(),
+            repr_attr: unnamed_union_type.repr_attr.clone(),
+            align: unnamed_union_type.align.clone(),
         }
     }
 
@@ -1856,7 +1867,8 @@ impl<'resolver> CIRWalk<'resolver> {
 
         CIRStructTy {
             fields,
-            is_packed: struct_sig.is_packed,
+            repr_attr: struct_sig.modifiers.repr_attr.clone(),
+            align: struct_sig.align.clone(),
         }
     }
 
@@ -1897,7 +1909,11 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
             .collect();
 
-        CIRUnionTy { fields }
+        CIRUnionTy {
+            fields,
+            repr_attr: union_sig.modifiers.repr_attr.clone(),
+            align: union_sig.align.clone(),
+        }
     }
 
     fn lower_resolved_symbol(&mut self, scope_id_opt: Option<ScopeID>, resolved_symbol: &ResolvedSymbol) -> CIRTy {
