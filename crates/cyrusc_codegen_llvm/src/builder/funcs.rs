@@ -149,6 +149,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         lo: ABIType,
         hi: ABIType,
     ) {
+        if !rvalue.as_basic_value().is_struct_value() {
+            // coerced to different type before, so push directly to args and we're done!
+            args_values.push(rvalue.as_basic_value().into());
+            return;
+        }
+
         // value is split across two registers
         // need to extract lo and hi parts from the struct
         let struct_value = rvalue.as_basic_value().into_struct_value();

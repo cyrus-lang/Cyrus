@@ -1414,7 +1414,6 @@ impl<'resolver> CIRWalk<'resolver> {
         }
 
         let tag = enum_ty.compute_variant_tag(&method_call.method_name).unwrap();
-        dbg!(tag);
 
         variant = match typed_variant {
             TypedEnumVariant::Variant(..) => {

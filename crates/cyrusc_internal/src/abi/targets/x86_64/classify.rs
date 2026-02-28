@@ -174,7 +174,19 @@ impl X86_64 {
                     return cir_type_to_abi_type(&self.info, ty);
                 }
             }
-            CIRTy::Tuple(_) | CIRTy::Struct(_) => {
+            CIRTy::Tuple(tuple_ty) => {
+                // tuple lowered as struct in codegen
+                let struct_ty = CIRStructTy {
+                    fields: tuple_ty.elements.clone(),
+                    repr_attr: None,
+                    align: None,
+                };
+
+                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRTy::Struct(struct_ty), offset) {
+                    return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
+                }
+            }
+            CIRTy::Struct(_) => {
                 if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
                 }

@@ -18,12 +18,15 @@ use crate::{
     builder::{builder::IRBuilderCtx, irreg::LocalIRValue},
     c,
 };
-use cyrusc_internal::cir::{
+use cyrusc_internal::{
+    abi::layout::type_layout,
     cir::{
-        CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRSwitchOnEnumPattern,
-        CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
+        cir::{
+            CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRSwitchOnEnumPattern,
+            CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
+        },
+        types::{CIRTupleTy, CIRTy},
     },
-    types::CIRTy,
 };
 use cyrusc_tast::exprs::TypedIdentifier;
 use inkwell::{
@@ -120,8 +123,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    // FIXME: Consider to make enum variant payload struct_type PACKED,
-    // because it is more affordable and we don't need extra padding here, it's USELESS.
     pub(crate) fn emit_switch_on_enum_export_fields(
         &self,
         payload_alloca: PointerValue<'ll>,
@@ -131,13 +132,19 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) {
         let mut irreg = self.irreg.borrow_mut();
 
+        let elements: Vec<CIRTy> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
+        let tuple_type = CIRTy::Tuple(CIRTupleTy { elements });
+        let layout = type_layout(&self.target.info, &tuple_type);
+
         for (idx, (exported_field, _)) in exported_fields.iter().enumerate() {
+            let index = layout.lookup_field_index(idx).unwrap();
+
             let ptr = self
                 .llvmbuilder
                 .build_struct_gep(
                     payload_struct_ty,
                     payload_alloca,
-                    idx.try_into().unwrap(),
+                    index,
                     &format!("export_field.{}", exported_field.name),
                 )
                 .unwrap();

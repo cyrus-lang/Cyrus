@@ -277,6 +277,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let mut param_types = Vec::new();
 
         for (idx, abi_type) in abi_func_info.params_types.iter().enumerate() {
+            // FIXME: VAArgs not handled when accessing params_infos.
             let abi_arg_info = &abi_func_info.params_infos[idx];
 
             let param_type_ref = if abi_arg_info.is_indirect_by_val() {
