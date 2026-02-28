@@ -298,7 +298,7 @@ pub fn substitute_enum_sig(
         methods: sig.methods.clone(),
         variants: new_variants,
         generic_params: sig.generic_params.clone(),
-        discriminant_type: sig.discriminant_type.clone(),
+        tag_type: sig.tag_type.clone(),
         modifiers: sig.modifiers.clone(),
         align: sig.align.clone(),
         loc: sig.loc.clone(),

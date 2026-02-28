@@ -38,18 +38,6 @@ pub trait ABINameMangler: Send + Sync {
     /// Global variable names
     fn global_var_name(&self, module_name: &str, var_name: &str) -> String;
 
-    /// Struct names
-    fn struct_name(&self, module_name: &str, struct_name: &str) -> String;
-
-    /// Union names
-    fn union_name(&self, module_name: &str, union_name: &str) -> String;
-
-    /// Enum names
-    fn enum_name(&self, module_name: &str, enum_name: &str) -> String;
-
-    /// Enum variant names
-    fn enum_variant_name(&self, module_name: &str, enum_name: &str, variant_name: &str) -> String;
-
     /// VTable instances names
     fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String;
 }
@@ -61,10 +49,6 @@ pub struct Cyrus_ABI_Impl;
 impl Cyrus_ABI_Impl {
     pub fn new() -> Self {
         Self {}
-    }
-
-    fn type_name(module_name: &str, type_name: &str) -> String {
-        format!("{module_name}${type_name}")
     }
 
     fn sanitize(name: &str) -> String {
@@ -95,27 +79,6 @@ impl ABINameMangler for Cyrus_ABI_Impl {
 
     fn global_var_name(&self, module_name: &str, var_name: &str) -> String {
         format!("{}${}", Self::sanitize(module_name), Self::sanitize(var_name))
-    }
-
-    fn struct_name(&self, module_name: &str, struct_name: &str) -> String {
-        Self::type_name(module_name, struct_name)
-    }
-
-    fn union_name(&self, module_name: &str, union_name: &str) -> String {
-        Self::type_name(module_name, union_name)
-    }
-
-    fn enum_name(&self, module_name: &str, enum_name: &str) -> String {
-        Self::type_name(module_name, enum_name)
-    }
-
-    fn enum_variant_name(&self, module_name: &str, enum_name: &str, variant_name: &str) -> String {
-        format!(
-            "{}${}${}",
-            Self::sanitize(module_name),
-            Self::sanitize(enum_name),
-            Self::sanitize(variant_name)
-        )
     }
 
     fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String {
@@ -150,22 +113,6 @@ impl ABINameMangler for C_ABI_Impl {
 
     fn global_var_name(&self, _module_name: &str, var_name: &str) -> String {
         Self::sanitize(var_name)
-    }
-
-    fn struct_name(&self, _module_name: &str, struct_name: &str) -> String {
-        Self::sanitize(struct_name)
-    }
-
-    fn union_name(&self, _module_name: &str, union_name: &str) -> String {
-        Self::sanitize(union_name)
-    }
-
-    fn enum_name(&self, _module_name: &str, enum_name: &str) -> String {
-        Self::sanitize(enum_name)
-    }
-
-    fn enum_variant_name(&self, _module_name: &str, enum_name: &str, variant_name: &str) -> String {
-        format!("{}__{}", Self::sanitize(enum_name), Self::sanitize(variant_name))
     }
 
     fn vtable_name(&self, interface_name: &str, vtable_id: &str) -> String {

@@ -14,7 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-pub mod abi;
-pub mod c_str;
-pub mod constness;
-pub mod target_machine;
+
+pub(crate) mod abi;
+pub(crate) mod c_str;
+pub(crate) mod constness;
+pub(crate) mod target_machine;

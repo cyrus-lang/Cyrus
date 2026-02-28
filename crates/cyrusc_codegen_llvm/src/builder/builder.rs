@@ -220,7 +220,10 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_var.ty.clone()).try_into().unwrap();
+        let layout = type_layout(&self.target.info, &cir_var.ty);
+
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
+        let alloca_instr = ptr.as_instruction().unwrap();
 
         if let Some(expr) = &cir_var.expr {
             let lvalue = self.emit_expr(expr);
@@ -233,6 +236,8 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             self.emit_store(ptr, zero_internal_value, cir_var.ty.clone());
         }
+
+        alloca_instr.set_alignment(layout.align).unwrap();
 
         let mut irreg = self.irreg.borrow_mut();
         irreg.insert(cir_var.irv_id, LocalIRValue::LValue(ptr, cir_var.ty.clone()));

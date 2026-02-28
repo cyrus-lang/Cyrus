@@ -325,23 +325,58 @@ impl<'resolver> CIRWalk<'resolver> {
         let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
         let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
 
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+        let unnamed_enum_type = operand_ty
+            .as_enum_symbol_id()
+            .and_then(|symbol_id| {
+                self.resolver
+                    .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
+                    .unwrap()
+                    .as_enum()
+                    .cloned()
+                    .map(|resolved_enum| enum_sig_as_unnamed_enum_ty(&resolved_enum.enum_sig, switch_stmt.loc.clone()))
+            })
+            .or(operand_ty.as_generic_type().and_then(|generic_type| {
+                Some(
+                    self.resolver
+                        .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)
+                        .unwrap()
+                        .as_enum()
+                        .cloned()
+                        .map(|resolved_enum| {
+                            let enum_sig = substitute_enum_sig(
+                                self.mapping_ctx_arena.clone(),
+                                &resolved_enum.enum_sig,
+                                generic_type.mapping_ctx.clone(),
+                            )
+                            .unwrap();
+
+                            enum_sig_as_unnamed_enum_ty(&enum_sig, switch_stmt.loc.clone())
+                        })
+                        .unwrap(),
+                )
+            }))
+            .or(operand_ty.as_unnamed_enum())
+            .unwrap();
+
         let default = switch_stmt
             .default_case
             .as_ref()
             .and_then(|default_case| Some(self.lower_body(&default_case)));
 
-        if operand_ty.as_generic_type().is_some() {
-            return self.lower_switch_on_enum(scope_id_opt, &operand, &default, switch_stmt);
-        }
-
         if operand_ty.is_enum() {
-            self.lower_switch_on_enum(scope_id_opt, &operand, &default, switch_stmt)
+            if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
+                self.lower_switch_on_integer_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
+            } else {
+                self.lower_switch_on_enum(scope_id_opt, &unnamed_enum_type, &operand, &default, switch_stmt)
+            }
         } else {
             if switch_stmt.includes_any_range() || !switch_stmt.includes_only_integer() {
-                self.lower_switch_as_chained_if(scope_id_opt, &operand, &default, switch_stmt)
-            } else {
-                self.lower_pure_switch(scope_id_opt, &operand, &default, switch_stmt)
+                return self.lower_switch_as_chained_if(scope_id_opt, &operand, &default, switch_stmt);
             }
+
+            self.lower_pure_switch(scope_id_opt, &operand, &default, switch_stmt)
         }
     }
 
@@ -465,6 +500,57 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::If(root_if)
     }
 
+    fn lower_switch_on_integer_enum(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        operand: &CIRExpr,
+        unnamed_enum_type: &TypedUnnamedEnumType,
+        default: &Option<CIRBlockStmt>,
+        switch_stmt: &TypedSwitchStmt,
+    ) -> CIRStmt {
+        let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, unnamed_enum_type);
+
+        let cases: Vec<CIRSwitchCase> = switch_stmt
+            .cases
+            .iter()
+            .map(|case| {
+                let patterns: Vec<CIRExpr> = case
+                    .patterns
+                    .iter()
+                    .map(|pattern| {
+                        let case_ident = match &pattern {
+                            TypedSwitchCasePattern::Ident(ident, _) => ident,
+                            _ => unreachable!("Unexpected enum variant pattern when lowering switch on integer enum."),
+                        };
+
+                        let tag = enum_ty.compute_variant_tag(case_ident).unwrap();
+                        let tag_type = enum_ty
+                            .tag_type
+                            .clone()
+                            .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
+
+                        CIRExpr {
+                            kind: CIRExprKind::Literal(CIRLiteral {
+                                kind: CIRLiteralKind::Integer(tag.try_into().unwrap(), tag_type.is_signed_integer()),
+                                ty: *tag_type.clone(),
+                            }),
+                            ty: *tag_type,
+                        }
+                    })
+                    .collect();
+                let body = self.lower_body(&case.body);
+
+                CIRSwitchCase { patterns, body }
+            })
+            .collect();
+
+        CIRStmt::Switch(CIRSwitchStmt {
+            value: operand.clone(),
+            cases,
+            default: default.clone(),
+        })
+    }
+
     fn lower_pure_switch(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -507,46 +593,11 @@ impl<'resolver> CIRWalk<'resolver> {
     fn lower_switch_on_enum(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+        unnamed_enum_type: &TypedUnnamedEnumType,
         operand: &CIRExpr,
         default: &Option<CIRBlockStmt>,
         switch_stmt: &TypedSwitchStmt,
     ) -> CIRStmt {
-        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-        let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
-
-        let unnamed_enum_type = operand_ty
-            .as_enum_symbol_id()
-            .and_then(|symbol_id| {
-                self.resolver
-                    .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)
-                    .unwrap()
-                    .as_enum()
-                    .cloned()
-                    .map(|resolved_enum| enum_sig_as_unnamed_enum_ty(&resolved_enum.enum_sig, switch_stmt.loc.clone()))
-            })
-            .or(operand_ty.as_generic_type().and_then(|generic_type| {
-                Some(
-                    self.resolver
-                        .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)
-                        .unwrap()
-                        .as_enum()
-                        .cloned()
-                        .map(|resolved_enum| {
-                            let enum_sig = substitute_enum_sig(
-                                self.mapping_ctx_arena.clone(),
-                                &resolved_enum.enum_sig,
-                                generic_type.mapping_ctx.clone(),
-                            )
-                            .unwrap();
-
-                            enum_sig_as_unnamed_enum_ty(&enum_sig, switch_stmt.loc.clone())
-                        })
-                        .unwrap(),
-                )
-            }))
-            .or(operand_ty.as_unnamed_enum())
-            .unwrap();
-
         let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();
 
         for case in &switch_stmt.cases {
@@ -946,11 +997,13 @@ impl<'resolver> CIRWalk<'resolver> {
         scope_id_opt: Option<ScopeID>,
         unnamed_enum_value: &TypedUnnamedEnumValue,
     ) -> CIRExprKind {
-        let enum_ty = unnamed_enum_value.enum_ty.clone().unwrap();
+        let unnamed_enum_value_type = unnamed_enum_value.enum_ty.clone().unwrap();
 
-        match enum_ty {
+        match unnamed_enum_value_type {
             TypedUnnamedEnumValueTy::EnumSig(enum_sig) => {
                 let enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
+
+                let tag = enum_ty.compute_variant_tag(&unnamed_enum_value.ident.value).unwrap();
 
                 let variant_idx = enum_sig
                     .variants
@@ -974,13 +1027,15 @@ impl<'resolver> CIRWalk<'resolver> {
                 };
 
                 CIRExprKind::EnumInit(CIREnumInitExpr {
-                    tag: variant_idx,
+                    tag: tag.try_into().unwrap(),
                     variant: cir_enum_variant,
                     enum_ty,
                 })
             }
             TypedUnnamedEnumValueTy::UnnamedEnum(unnamed_enum_type) => {
                 let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, &unnamed_enum_type);
+
+                let tag = enum_ty.compute_variant_tag(&unnamed_enum_value.ident.value).unwrap();
 
                 let variant_idx = unnamed_enum_type
                     .variants
@@ -1004,7 +1059,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 };
 
                 CIRExprKind::EnumInit(CIREnumInitExpr {
-                    tag: variant_idx,
+                    tag: tag.try_into().unwrap(),
                     variant: cir_enum_variant,
                     enum_ty,
                 })
@@ -1321,6 +1376,65 @@ impl<'resolver> CIRWalk<'resolver> {
         cir_expr_kind
     }
 
+    fn lower_enum_init(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        enum_sig: &EnumSig,
+        method_call: &TypedMethodCall,
+    ) -> CIRExprKind {
+        let sema_ty = method_call.operand.sema_ty.as_ref().unwrap();
+
+        let variant_idx_opt = enum_sig
+            .variants
+            .iter()
+            .position(|variant| variant.ident().as_string() == method_call.method_name);
+
+        // it's not a enum variant construction, so try again as a regular method call
+        let variant_idx = if let Some(idx) = variant_idx_opt {
+            idx
+        } else {
+            return self.lower_regular_method_call(scope_id_opt, method_call);
+        };
+
+        let typed_variant = enum_sig.variants.get(variant_idx).unwrap();
+
+        let variant: CIREnumInitVariant;
+        let enum_ty: CIREnumTy;
+        if let Some(generic_type) = sema_ty.as_generic_type() {
+            let enum_sig = substitute_enum_sig(
+                self.mapping_ctx_arena.clone(),
+                &enum_sig,
+                generic_type.mapping_ctx.clone(),
+            )
+            .unwrap();
+
+            enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
+        } else {
+            enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
+        }
+
+        let tag = enum_ty.compute_variant_tag(&method_call.method_name).unwrap();
+        dbg!(tag);
+
+        variant = match typed_variant {
+            TypedEnumVariant::Variant(..) => {
+                let values: Vec<CIRExpr> = method_call
+                    .args
+                    .iter()
+                    .map(|arg| self.lower_expr(scope_id_opt, arg))
+                    .collect();
+                CIREnumInitVariant::Fielded(values)
+            }
+            _ => unreachable!(),
+        };
+
+        return CIRExprKind::EnumInit(CIREnumInitExpr {
+            tag: tag.try_into().unwrap(),
+            variant,
+            enum_ty,
+        });
+    }
+
     fn lower_method_call(&mut self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
@@ -1331,55 +1445,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 .unwrap();
 
             if let Some(resolved_enum) = sym.as_enum() {
-                let sema_ty = method_call.operand.sema_ty.as_ref().unwrap();
-
-                let typed_variant_idx_opt = resolved_enum
-                    .enum_sig
-                    .variants
-                    .iter()
-                    .position(|variant| variant.ident().as_string() == method_call.method_name);
-
-                // it's not a enum variant construction, so try again as a regular method call
-                let typed_variant_idx = if let Some(idx) = typed_variant_idx_opt {
-                    idx
-                } else {
-                    return self.lower_regular_method_call(scope_id_opt, method_call);
-                };
-
-                let typed_variant = resolved_enum.enum_sig.variants.get(typed_variant_idx).unwrap();
-
-                let variant: CIREnumInitVariant;
-                let enum_ty: CIREnumTy;
-                if let Some(generic_type) = sema_ty.as_generic_type() {
-                    let enum_sig = substitute_enum_sig(
-                        self.mapping_ctx_arena.clone(),
-                        &resolved_enum.enum_sig,
-                        generic_type.mapping_ctx.clone(),
-                    )
-                    .unwrap();
-
-                    enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
-                } else {
-                    enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
-                }
-
-                variant = match typed_variant {
-                    TypedEnumVariant::Variant(..) => {
-                        let values: Vec<CIRExpr> = method_call
-                            .args
-                            .iter()
-                            .map(|arg| self.lower_expr(scope_id_opt, arg))
-                            .collect();
-                        CIREnumInitVariant::Fielded(values)
-                    }
-                    _ => unreachable!(),
-                };
-
-                return CIRExprKind::EnumInit(CIREnumInitExpr {
-                    tag: typed_variant_idx,
-                    variant,
-                    enum_ty,
-                });
+                return self.lower_enum_init(scope_id_opt, &resolved_enum.enum_sig, method_call);
             }
         }
 
@@ -1464,8 +1530,10 @@ impl<'resolver> CIRWalk<'resolver> {
 
             enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig);
 
+            let tag = enum_ty.compute_variant_tag(&field_access.field_name).unwrap();
+
             CIRExprKind::EnumInit(CIREnumInitExpr {
-                tag: field_access.field_index.unwrap(),
+                tag: tag.try_into().unwrap(),
                 variant,
                 enum_ty,
             })
@@ -1783,14 +1851,14 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|variant| self.lower_unnamed_enum_ty_variant(scope_id_opt, variant))
             .collect();
 
-        let discriminant_type = unnamed_enum_type
-            .discriminant_type
+        let tag_type = unnamed_enum_type
+            .tag_type
             .clone()
             .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
 
         CIREnumTy {
             variants,
-            discriminant_type,
+            tag_type,
             repr_attr: unnamed_enum_type.repr_attr.clone(),
             align: unnamed_enum_type.align.clone(),
         }
@@ -1802,16 +1870,16 @@ impl<'resolver> CIRWalk<'resolver> {
         variant: &TypedUnnamedEnumVariant,
     ) -> CIREnumTyVariant {
         match variant {
-            TypedUnnamedEnumVariant::Ident(..) => CIREnumTyVariant::Ident,
-            TypedUnnamedEnumVariant::Valued(_, expr) => {
-                CIREnumTyVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
+            TypedUnnamedEnumVariant::Ident(ident) => CIREnumTyVariant::Ident(ident.as_string()),
+            TypedUnnamedEnumVariant::Valued(ident, expr) => {
+                CIREnumTyVariant::Valued(ident.as_string(), Box::new(self.lower_expr(scope_id_opt, expr)))
             }
-            TypedUnnamedEnumVariant::Variant(_, fields) => {
+            TypedUnnamedEnumVariant::Variant(ident, fields) => {
                 let fields: Vec<CIRTy> = fields
                     .iter()
                     .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
                     .collect();
-                CIREnumTyVariant::Fielded(fields)
+                CIREnumTyVariant::Fielded(ident.as_string(), fields)
             }
         }
     }
@@ -1878,16 +1946,16 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_enum_ty_variant(&mut self, scope_id_opt: Option<ScopeID>, variant: &TypedEnumVariant) -> CIREnumTyVariant {
         match variant {
-            TypedEnumVariant::Ident(..) => CIREnumTyVariant::Ident,
-            TypedEnumVariant::Valued(_, expr) => {
-                CIREnumTyVariant::Valued(Box::new(self.lower_expr(scope_id_opt, expr)))
+            TypedEnumVariant::Ident(ident) => CIREnumTyVariant::Ident(ident.as_string()),
+            TypedEnumVariant::Valued(ident, expr) => {
+                CIREnumTyVariant::Valued(ident.as_string(), Box::new(self.lower_expr(scope_id_opt, expr)))
             }
-            TypedEnumVariant::Variant(_, fields) => {
+            TypedEnumVariant::Variant(ident, fields) => {
                 let fields: Vec<CIRTy> = fields
                     .iter()
                     .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
                     .collect();
-                CIREnumTyVariant::Fielded(fields)
+                CIREnumTyVariant::Fielded(ident.as_string(), fields)
             }
         }
     }
@@ -1899,14 +1967,14 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|variant| self.lower_enum_ty_variant(scope_id_opt, variant))
             .collect();
 
-        let discriminant_type = enum_sig
-            .discriminant_type
+        let tag_type = enum_sig
+            .tag_type
             .clone()
             .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
 
         CIREnumTy {
             variants,
-            discriminant_type,
+            tag_type,
             repr_attr: enum_sig.modifiers.repr_attr.clone(),
             align: enum_sig.align.clone(),
         }

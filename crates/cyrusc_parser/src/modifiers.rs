@@ -158,11 +158,11 @@ impl Parser {
         }
 
         self.next_token(); // consume left paren
-        let discriminant_type = self.parse_type_specifier()?;
+        let tag_type = self.parse_type_specifier()?;
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
 
-        Ok(Some(discriminant_type))
+        Ok(Some(tag_type))
     }
 
     pub(crate) fn parse_align_specifier(&mut self) -> Result<Option<usize>, Diag> {

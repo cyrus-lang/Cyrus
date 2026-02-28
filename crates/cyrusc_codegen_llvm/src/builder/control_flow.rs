@@ -151,7 +151,18 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue = self.emit_expr(&switch_on_enum_stmt.value);
         let rvalue = self.load_rvalue(lvalue);
         let enum_ty = rvalue.ty.as_enum().unwrap();
-        let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
+        let enum_struct_ty = {
+            let ty = self.emit_enum_ty(enum_ty.clone());
+
+            if ty.is_struct_type() {
+                ty.into_struct_type()
+            } else if ty.is_int_type() {
+                // return ty.into_int_type();
+                todo!();
+            } else {
+                unreachable!()
+            }
+        };
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
         let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
 

@@ -141,7 +141,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmctx.struct_type(&llvm_field_types, is_packed)
     }
 
-    // ANCHOR
     pub(crate) fn enum_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
         let mut max_payload_size: u64 = 0;
@@ -149,8 +148,8 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for variant in &enum_ty.variants {
             let (payload_size, payload_align) = match variant {
-                CIREnumTyVariant::Ident => (0, 1),
-                CIREnumTyVariant::Valued(expr) => {
+                CIREnumTyVariant::Ident(_) => (0, 1),
+                CIREnumTyVariant::Valued(_, expr) => {
                     let llvm_ty: BasicTypeEnum<'ll> = self
                         .emit_ty(expr.ty.clone())
                         .try_into()
@@ -159,7 +158,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
                 }
-                CIREnumTyVariant::Fielded(field_tys) => {
+                CIREnumTyVariant::Fielded(_, field_tys) => {
                     if field_tys.is_empty() {
                         (0, 1)
                     } else {
@@ -201,17 +200,32 @@ impl<'ll> IRBuilderCtx<'ll> {
         (payload_buffer_ty, aligned_size)
     }
 
-    // ANCHOR
-    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> StructType<'ll> {
-        if enum_ty.is_repr_c() {
+    fn emit_repr_c_enum_ty(&self, enum_ty: &CIREnumTy) -> BasicTypeEnum<'ll> {
+        let cir_tag_type = enum_ty
+            .tag_type
+            .clone()
+            .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
+
+        self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
+    }
+
+    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> BasicTypeEnum<'ll> {
+        if enum_ty.is_repr_c() || !enum_ty.includes_payload() {
             // c-compatible enum
-            todo!();
+            self.emit_repr_c_enum_ty(&enum_ty)
         } else {
             // cyrus special enum
-            let tag_type = self.llvmctx.i32_type();
+            let cir_tag_type = enum_ty
+                .tag_type
+                .clone()
+                .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
+
+            let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
+
             let (payload_ty, _) = self.enum_payload_ty(&enum_ty);
             self.llvmctx
                 .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
+                .as_basic_type_enum()
         }
     }
 

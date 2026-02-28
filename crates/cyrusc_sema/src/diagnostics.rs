@@ -26,6 +26,9 @@ pub enum AnalyzerDiagKind {
     #[error("Alignment must be a power of two, got {value}.")]
     InvalidAlign { value: usize },
 
+    #[error("Repr 'c' enum cannot have expression value with non-integer type.")]
+    ReprCEnumWithNonIntegerExpr,
+
     #[error("Global variable requires explicit type annotation.")]
     GlobalVarRequiresTypeAnnotation,
 

@@ -899,7 +899,7 @@ impl Resolver {
                     }
                 }
 
-                let discriminant_type = if let Some(type_specifier) = &unnamed_enum_type.discriminant_type {
+                let tag_type = if let Some(type_specifier) = &unnamed_enum_type.tag_type {
                     Some(Box::new(self.resolve_type(
                         &None,
                         scope_opt,
@@ -914,7 +914,7 @@ impl Resolver {
 
                 Ok(SemanticType::UnnamedEnum(TypedUnnamedEnumType {
                     variants,
-                    discriminant_type,
+                    tag_type,
                     repr_attr: unnamed_enum_type.repr_attr.clone(),
                     align: unnamed_enum_type.align.clone(),
                     loc: SourceLoc::from_loc(unnamed_enum_type.loc.clone(), self.current_file_path()),
@@ -1527,7 +1527,7 @@ impl Resolver {
                 None => return None,
             };
 
-        let discriminant_type = if let Some(type_specifier) = enum_decl.discriminant_type.clone() {
+        let tag_type = if let Some(type_specifier) = enum_decl.tag_type.clone() {
             self.resolve_type(
                 &None,
                 scope_opt.clone(),
@@ -1549,7 +1549,7 @@ impl Resolver {
                 methods: methods.clone(),
                 variants: variants.clone(),
                 generic_params: generic_params.clone(),
-                discriminant_type,
+                tag_type,
                 modifiers: enum_decl.modifiers.clone(),
                 align: enum_decl.align.clone(),
                 loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.current_file_path()),
@@ -1573,7 +1573,7 @@ impl Resolver {
 
         let impls = self.resolve_object_impls(scope_opt.clone(), module_id, &enum_decl.impls, enum_decl.loc.clone());
 
-        let discriminant_type = if let Some(type_specifier) = &enum_decl.discriminant_type {
+        let tag_type = if let Some(type_specifier) = &enum_decl.tag_type {
             self.resolve_type(
                 &None,
                 scope_opt,
@@ -1594,7 +1594,7 @@ impl Resolver {
             methods,
             generic_params,
             impls,
-            discriminant_type,
+            tag_type,
             modifiers: enum_decl.modifiers.clone(),
             align: enum_decl.align.clone(),
             loc: SourceLoc::from_loc(enum_decl.ident.loc.clone(), self.current_file_path()),

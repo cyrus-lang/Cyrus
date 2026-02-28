@@ -24,6 +24,7 @@ use cyrusc_resolver::{
 use cyrusc_tast::{
     ScopeID, SymbolID,
     exprs::TypedSelfType,
+    format::{format_unnamed_enum_ty, format_unnamed_struct_ty, format_unnamed_union_ty},
     generics::{
         generic_type::GenericType,
         mapping_ctx::GenericMappingCtx,
@@ -36,7 +37,8 @@ use cyrusc_tast::{
     },
     types::{
         InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedFuncType, TypedTupleType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
+        TypedFuncType, TypedTupleType, TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType,
+        TypedUnnamedUnionType,
     },
 };
 use fx_hash::FxHashMap;
@@ -99,12 +101,151 @@ impl<'a> AnalysisContext<'a> {
                 .ok()?;
         }
 
-        if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum() {
-            sema_ty = SemanticType::UnnamedEnum(self.normalize_unnamed_enum_ty(scope_id_opt, unnamed_enum_type));
+        if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum_mut() {
+            self.check_unnamed_enum_type(scope_id_opt, unnamed_enum_type);
+        }
+
+        if let Some(unnamed_struct_type) = sema_ty.as_unnamed_struct_mut() {
+            self.check_unnamed_struct_type(scope_id_opt, unnamed_struct_type);
+        }
+
+        if let Some(unnamed_union_type) = sema_ty.as_unnamed_union_mut() {
+            self.check_unnamed_union_type(scope_id_opt, unnamed_union_type);
         }
 
         self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc.clone());
         Some(sema_ty)
+    }
+
+    fn check_unnamed_union_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_union_type: &mut TypedUnnamedUnionType,
+    ) {
+        let union_name = format_unnamed_union_ty(unnamed_union_type, &(self.symbol_formatter)(scope_id_opt));
+
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &mut unnamed_union_type.fields {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+                Some(sema_ty) => Box::new(sema_ty),
+                None => continue,
+            };
+
+            self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc.clone());
+
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+                        object_name: union_name.clone(),
+                        field_name: field.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            field_names.push(field.name.clone());
+        }
+    }
+
+    fn check_unnamed_struct_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_struct_type: &mut TypedUnnamedStructType,
+    ) {
+        let struct_name = format_unnamed_struct_ty(unnamed_struct_type, &(self.symbol_formatter)(scope_id_opt));
+
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &mut unnamed_struct_type.fields {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+                Some(sema_ty) => Box::new(sema_ty),
+                None => continue,
+            };
+
+            self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc.clone());
+
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+                        object_name: struct_name.clone(),
+                        field_name: field.name.clone(),
+                    }),
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            field_names.push(field.name.clone());
+        }
+    }
+
+    fn check_unnamed_enum_type(&mut self, scope_id_opt: Option<ScopeID>, unnamed_enum_type: &mut TypedUnnamedEnumType) {
+        let is_repr_c = unnamed_enum_type.is_repr_c();
+        let mut variant_names: Vec<String> = Vec::new();
+
+        let enum_name = format_unnamed_enum_ty(unnamed_enum_type, &(self.symbol_formatter)(scope_id_opt));
+
+        for variant in &mut unnamed_enum_type.variants {
+            let variant_ident = match variant {
+                TypedUnnamedEnumVariant::Ident(ident) => ident,
+                TypedUnnamedEnumVariant::Valued(ident, typed_expr) => {
+                    typed_expr.sema_ty = match self.analyze_expr(scope_id_opt, typed_expr, None) {
+                        Some(sema_ty) => Some(sema_ty),
+                        None => continue,
+                    };
+
+                    if is_repr_c && !typed_expr.sema_ty.as_ref().unwrap().is_integer() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerExpr),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                ident.loc.clone(),
+                                unnamed_enum_type.loc.file_path.clone(),
+                            ))),
+                            hint: None,
+                        });
+                        continue;
+                    }
+
+                    ident
+                }
+                TypedUnnamedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
+                    for field in typed_enum_valued_fields {
+                        field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                            Some(sema_ty) => sema_ty,
+                            None => continue,
+                        };
+
+                        self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc.clone());
+                    }
+                    ident
+                }
+            };
+
+            if variant_names.contains(&variant_ident.value) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
+                        enum_name: enum_name.clone(),
+                        variant_name: variant_ident.value.clone(),
+                    }),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        variant_ident.loc.clone(),
+                        unnamed_enum_type.loc.file_path.clone(),
+                    ))),
+                    hint: Some("Consider to rename the variant to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            variant_names.push(variant_ident.value.clone());
+        }
     }
 
     /// Fully normalize AND validate a type

@@ -123,12 +123,12 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             for variant in &enum_ty.variants {
                 let (variant_size, variant_align) = match variant {
-                    CIREnumTyVariant::Ident => (0, 1),
-                    CIREnumTyVariant::Valued(expr) => {
+                    CIREnumTyVariant::Ident(_) => (0, 1),
+                    CIREnumTyVariant::Valued(_, expr) => {
                         let layout = type_layout(info, &expr.ty);
                         (layout.size, layout.align)
                     }
-                    CIREnumTyVariant::Fielded(field_types) => {
+                    CIREnumTyVariant::Fielded(_, field_types) => {
                         let struct_ty = CIRStructTy {
                             fields: field_types.clone(),
                             repr_attr: None,

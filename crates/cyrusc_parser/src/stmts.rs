@@ -527,7 +527,7 @@ impl Parser {
         let enum_name = self.parse_ident()?;
         self.next_token(); // consume enum name
 
-        let discriminant_type = self.parse_enum_discriminant_type()?;
+        let tag_type = self.parse_enum_discriminant_type()?;
         let align = self.parse_align_specifier()?;
 
         let generic_params;
@@ -547,7 +547,7 @@ impl Parser {
             return Ok(Stmt::Enum(Enum {
                 ident: enum_name,
                 variants: enum_fields,
-                discriminant_type,
+                tag_type: tag_type,
                 generic_params,
                 methods: Vec::new(),
                 align,
@@ -635,7 +635,7 @@ impl Parser {
         Ok(Stmt::Enum(Enum {
             ident: enum_name,
             variants: enum_fields,
-            discriminant_type,
+            tag_type: tag_type,
             generic_params,
             methods,
             modifiers,

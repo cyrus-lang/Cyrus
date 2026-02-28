@@ -404,22 +404,30 @@ pub struct CIREnumStmt {
     pub name: String,
     pub variants: Vec<CIREnumTyVariant>,
     pub align: Option<usize>,
-    pub discriminant_type: Option<Box<CIRTy>>,
+    pub tag_type: Option<Box<CIRTy>>,
     pub modifiers: EnumModifiers,
 }
 
 #[derive(Debug, Clone)]
 pub enum CIREnumTyVariant {
-    Ident,
-    Valued(Box<CIRExpr>),
-    Fielded(Vec<CIRTy>),
+    Ident(String),
+    Valued(String, Box<CIRExpr>),
+    Fielded(String, Vec<CIRTy>),
 }
 
 impl CIREnumTyVariant {
     pub fn as_fielded(&self) -> Option<&Vec<CIRTy>> {
         match self {
-            CIREnumTyVariant::Fielded(fields) => Some(fields),
+            CIREnumTyVariant::Fielded(_, fields) => Some(fields),
             _ => None,
+        }
+    }
+
+    pub fn ident(&self) -> &String {
+        match self {
+            CIREnumTyVariant::Ident(ident) => ident,
+            CIREnumTyVariant::Valued(ident, _) => ident,
+            CIREnumTyVariant::Fielded(ident, _) => ident,
         }
     }
 }
@@ -448,6 +456,16 @@ pub struct CIRLabelStmt {
 #[derive(Debug, Clone)]
 pub struct CIRGotoStmt {
     pub label_id: LabelID,
+}
+
+pub fn cir_expr_as_const_integer_value(expr: &CIRExpr) -> Option<i128> {
+    match &expr.kind {
+        CIRExprKind::Literal(literal) => match literal.kind {
+            CIRLiteralKind::Integer(value, _) => Some(value),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
@@ -482,7 +500,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
 pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
     CIREnumTy {
         variants: enum_stmt.variants.clone(),
-        discriminant_type: enum_stmt.discriminant_type.clone(),
+        tag_type: enum_stmt.tag_type.clone(),
         repr_attr: enum_stmt.modifiers.repr_attr.clone(),
         align: enum_stmt.align.clone(),
     }

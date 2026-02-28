@@ -78,7 +78,7 @@ pub struct EnumSig {
     pub variants: Vec<TypedEnumVariant>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub modifiers: EnumModifiers,
-    pub discriminant_type: Option<SemanticType>,
+    pub tag_type: Option<SemanticType>,
     pub align: Option<usize>,
     pub loc: SourceLoc,
 }
@@ -230,7 +230,7 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
         variants: typed_enum.variants.clone(),
         generic_params: typed_enum.generic_params.clone(),
         modifiers: typed_enum.modifiers.clone(),
-        discriminant_type: typed_enum.discriminant_type.clone(),
+        tag_type: typed_enum.tag_type.clone(),
         align: typed_enum.align.clone(),
         loc: typed_enum.loc.clone(),
     }

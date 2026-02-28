@@ -1257,20 +1257,35 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    fn emit_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumTy) -> InternalValue<'ll> {
-        dbg!(enum_ty.clone());
-        todo!();
+    fn emit_repr_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumTy) -> InternalValue<'ll> {
+        let cir_tag_type = enum_ty
+            .tag_type
+            .clone()
+            .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
+
+        let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
+        let int_type = tag_type.into_int_type();
+
+        let value = int_type.const_int(
+            enum_init_expr.tag.try_into().unwrap(),
+            cir_tag_type.is_signed_integer(),
+        );
+
+        InternalValue::new(
+            CIRTy::Enum(enum_ty.clone()),
+            InternalValueKind::RValue(value.as_basic_value_enum()),
+        )
     }
 
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
         let enum_ty = &enum_init_expr.enum_ty;
 
         // handle c-compatible enum init
-        if enum_ty.is_repr_c() {
-            return self.emit_c_enum_init(enum_init_expr, enum_ty);
+        if enum_ty.is_repr_c() || !enum_ty.includes_payload() {
+            return self.emit_repr_c_enum_init(enum_init_expr, enum_ty);
         }
 
-        let enum_struct_ty = self.emit_enum_ty(enum_ty.clone());
+        let enum_struct_ty = self.emit_enum_ty(enum_ty.clone()).into_struct_type();
         let (payload_ty, _) = self.enum_payload_ty(enum_ty);
 
         let mut enum_value = enum_struct_ty.get_undef();
@@ -1377,6 +1392,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         fields.iter().any(|f| f.is_union())
     }
 
+    // ANCHOR: Check extracting tag of repr-c enums.
     pub(crate) fn extract_enum_tag(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
         self.llvmbuilder
             .build_extract_value(struct_value, 0, "extract")
@@ -1391,6 +1407,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .into_array_value()
     }
 
+    // ANCHOR: Check comparing repr-c enums.
     fn emit_compare_enum_variants(
         &mut self,
         lhs: InternalValue<'ll>,

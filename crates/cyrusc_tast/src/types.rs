@@ -21,7 +21,7 @@ use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
 use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
 use cyrusc_ast::Ident;
-use cyrusc_ast::abi::ReprAttr;
+use cyrusc_ast::abi::{ReprAttr, ReprKind};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::TokenKind;
 use std::hash::{Hash, Hasher};
@@ -188,7 +188,7 @@ pub struct TypedUnnamedUnionType {
 pub struct TypedUnnamedEnumType {
     pub variants: Vec<TypedUnnamedEnumVariant>,
     pub repr_attr: Option<ReprAttr>,
-    pub discriminant_type: Option<Box<SemanticType>>,
+    pub tag_type: Option<Box<SemanticType>>,
     pub align: Option<usize>,
     pub loc: SourceLoc,
 }
@@ -311,7 +311,7 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
 
     TypedUnnamedEnumType {
         variants,
-        discriminant_type: enum_sig.discriminant_type.clone().map(Box::new),
+        tag_type: enum_sig.tag_type.clone().map(Box::new),
         repr_attr: enum_sig.modifiers.repr_attr.clone(),
         align: enum_sig.align.clone(),
         loc,
@@ -586,6 +586,13 @@ impl SemanticType {
         }
     }
 
+    pub fn as_unnamed_struct_mut(&mut self) -> Option<&mut TypedUnnamedStructType> {
+        match self.const_inner_mut() {
+            SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type),
+            _ => None,
+        }
+    }
+
     pub fn as_unnamed_enum(&self) -> Option<TypedUnnamedEnumType> {
         match self.const_inner() {
             SemanticType::UnnamedEnum(unnamed_enum_type) => Some(unnamed_enum_type.clone()),
@@ -603,6 +610,13 @@ impl SemanticType {
     pub fn as_unnamed_union(&self) -> Option<TypedUnnamedUnionType> {
         match self.const_inner() {
             SemanticType::UnnamedUnion(unnamed_union_type) => Some(unnamed_union_type.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_unnamed_union_mut(&mut self) -> Option<&mut TypedUnnamedUnionType> {
+        match self.const_inner_mut() {
+            SemanticType::UnnamedUnion(unnamed_union_type) => Some(unnamed_union_type),
             _ => None,
         }
     }
@@ -746,6 +760,28 @@ impl PlainType {
         let a_rank = PlainType::plain_type_rank(&a)?;
         let b_rank = PlainType::plain_type_rank(&b)?;
         if a_rank >= b_rank { Some(a) } else { Some(b) }
+    }
+}
+
+impl TypedUnnamedEnumType {
+    pub fn is_repr_c(&self) -> bool {
+        if let Some(repr_attr) = &self.repr_attr {
+            if let Some(kind) = repr_attr.kind() {
+                return match kind {
+                    ReprKind::C => true,
+                    ReprKind::Cyrus => false,
+                    ReprKind::Transparent => false,
+                };
+            }
+        }
+        false
+    }
+
+    #[inline]
+    pub fn includes_payload(&self) -> bool {
+        self.variants
+            .iter()
+            .any(|v| !matches!(v, TypedUnnamedEnumVariant::Ident(_)))
     }
 }
 

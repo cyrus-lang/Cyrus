@@ -216,7 +216,7 @@ pub struct Enum {
     pub methods: Vec<FuncDef>,
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: EnumModifiers,
-    pub discriminant_type: Option<TypeSpecifier>,
+    pub tag_type: Option<TypeSpecifier>,
     pub align: Option<usize>,
     pub loc: Location,
     pub span: Span,
@@ -225,7 +225,7 @@ pub struct Enum {
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumType {
     pub variants: Vec<UnnamedEnumVariant>,
-    pub discriminant_type: Option<Box<TypeSpecifier>>,
+    pub tag_type: Option<Box<TypeSpecifier>>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: Location,

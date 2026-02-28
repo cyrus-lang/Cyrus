@@ -15,7 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{abi::args::ABIFunctionInfo, cir::cir::CIREnumTyVariant};
+use crate::{
+    abi::args::ABIFunctionInfo,
+    cir::cir::{CIREnumTyVariant, cir_expr_as_const_integer_value},
+};
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
@@ -77,13 +80,29 @@ pub struct CIREnumTy {
     pub variants: Vec<CIREnumTyVariant>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub discriminant_type: Option<Box<CIRTy>>,
+    pub tag_type: Option<Box<CIRTy>>,
 }
 
 impl CIREnumTy {
     #[inline]
     pub fn includes_payload(&self) -> bool {
-        self.variants.iter().any(|v| !matches!(v, CIREnumTyVariant::Ident))
+        self.variants.iter().any(|v| !matches!(v, CIREnumTyVariant::Ident(_)))
+    }
+
+    pub fn compute_variant_tag(&self, lookup_ident: &String) -> Option<u32> {
+        let variant_idx = self
+            .variants
+            .iter()
+            .position(|variant| variant.ident() == lookup_ident)?;
+
+        match &self.variants[variant_idx] {
+            CIREnumTyVariant::Valued(_, expr) => {
+                let integer_value = cir_expr_as_const_integer_value(expr).unwrap();
+                Some(integer_value.try_into().unwrap())
+            }
+            CIREnumTyVariant::Fielded(_, _) => Some(variant_idx.try_into().unwrap()),
+            CIREnumTyVariant::Ident(_) => Some(variant_idx.try_into().unwrap()),
+        }
     }
 }
 

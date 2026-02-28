@@ -1224,7 +1224,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
 
-        self.analyze_enum_fields(scope_id_opt, typed_enum);
+        self.analyze_enum_variants(scope_id_opt, typed_enum);
 
         if typed_enum.generic_params.is_none() {
             self.analyze_non_generic_methods(self.module_id, &typed_enum.methods);
@@ -1666,17 +1666,32 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_enum_fields(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt) {
+    fn analyze_enum_variants(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnumStmt) {
+        let is_repr_c = typed_enum.is_repr_c();
         let mut variant_names: Vec<String> = Vec::new();
 
         for variant in &mut typed_enum.variants {
-            let variant_identifier = match variant {
+            let variant_ident = match variant {
                 TypedEnumVariant::Ident(ident) => ident,
                 TypedEnumVariant::Valued(ident, typed_expr) => {
                     typed_expr.sema_ty = match self.analyze_expr(scope_id_opt, typed_expr, None) {
                         Some(sema_ty) => Some(sema_ty),
                         None => continue,
                     };
+
+                    if is_repr_c && !typed_expr.sema_ty.as_ref().unwrap().is_integer() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerExpr),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                ident.loc.clone(),
+                                typed_enum.loc.file_path.clone(),
+                            ))),
+                            hint: None,
+                        });
+                        continue;
+                    }
+
                     ident
                 }
                 TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
@@ -1692,15 +1707,15 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            if variant_names.contains(&variant_identifier.value) {
+            if variant_names.contains(&variant_ident.value) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
                         enum_name: typed_enum.name.clone(),
-                        variant_name: variant_identifier.value.clone(),
+                        variant_name: variant_ident.value.clone(),
                     }),
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        variant_identifier.loc.clone(),
+                        variant_ident.loc.clone(),
                         typed_enum.loc.file_path.clone(),
                     ))),
                     hint: Some("Consider to rename the variant to a different name.".to_string()),
@@ -1708,7 +1723,7 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            variant_names.push(variant_identifier.value.clone());
+            variant_names.push(variant_ident.value.clone());
         }
     }
 
