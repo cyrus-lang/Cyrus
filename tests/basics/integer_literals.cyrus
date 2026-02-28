@@ -15,8 +15,8 @@ pub fn main() {
     const binary_val = 42;
     printf("%d ", binary_val);
 
-    const u8_val = 0xFFuint8; 
-    printf("%d ", u8_val);
+    const u16_val = 0xFFuint16; 
+    printf("%d ", u16_val);
 
     const decimal_binary = 0b101010;
     printf("%d ", decimal_binary);

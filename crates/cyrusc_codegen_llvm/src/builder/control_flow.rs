@@ -120,6 +120,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
+    // FIXME: Consider to make enum variant payload struct_type PACKED,
+    // because it is more affordable and we don't need extra padding here, it's USELESS.
     pub(crate) fn emit_switch_on_enum_export_fields(
         &self,
         payload_alloca: PointerValue<'ll>,

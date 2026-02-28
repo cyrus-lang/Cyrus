@@ -31,7 +31,7 @@ use cyrusc_ast::{
 };
 use cyrusc_internal::{
     abi::{
-        layout::{ABIFieldOffsetInfo, type_layout},
+        layout::{ABIFieldOffsetInfo, ABITypeLayout, type_layout},
         types::ABIType,
     },
     cir::{
@@ -534,16 +534,14 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let struct_ptr_value = lvalue.as_basic_value().into_pointer_value();
                 let struct_ty = lvalue.ty.clone();
 
+                let layout = type_layout(&self.target.info, &struct_ty);
                 let llvm_struct_ty = self.emit_ty(struct_ty).into_struct_type();
+
+                let index = layout.lookup_field_index(struct_field_access.field_idx).unwrap();
 
                 let field_ptr = self
                     .llvmbuilder
-                    .build_struct_gep(
-                        llvm_struct_ty,
-                        struct_ptr_value,
-                        struct_field_access.field_idx as u32,
-                        "field_ptr",
-                    )
+                    .build_struct_gep(llvm_struct_ty, struct_ptr_value, index, "field_ptr")
                     .unwrap();
 
                 let field_ty = struct_field_access.field_ty.clone();
@@ -1192,17 +1190,22 @@ impl<'ll> IRBuilderCtx<'ll> {
     fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
         let operand = self.emit_lvalue_address(&field_access.operand);
 
-        let struct_ty: BasicTypeEnum<'ll> = if let Some(inner) = field_access.operand.ty.pointer_inner() {
-            self.emit_ty(inner.clone()).try_into().unwrap()
+        let cir_struct_ty = if let Some(inner) = field_access.operand.ty.pointer_inner() {
+            inner.clone().as_struct().unwrap()
         } else {
-            self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap()
+            field_access.operand.ty.clone().as_struct().unwrap()
         };
+
+        let layout = type_layout(&self.target.info, &CIRTy::Struct(cir_struct_ty.clone()));
+        let index = layout.lookup_field_index(field_access.field_idx).unwrap();
+
+        let struct_ty = self.emit_struct_ty(cir_struct_ty);
 
         match operand.kind {
             InternalValueKind::LValue(addr) => {
                 let field_addr = self
                     .llvmbuilder
-                    .build_struct_gep(struct_ty, addr, field_access.field_idx as u32, "field_gep")
+                    .build_struct_gep(struct_ty, addr, index, "field_gep")
                     .unwrap();
 
                 InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(field_addr))
@@ -1212,7 +1215,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 let field_val = self
                     .llvmbuilder
-                    .build_extract_value(struct_val, field_access.field_idx as u32, "field_extract")
+                    .build_extract_value(struct_val, index, "field_extract")
                     .unwrap();
 
                 InternalValue::new(field_access.field_ty.clone(), InternalValueKind::RValue(field_val))
@@ -1266,10 +1269,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
         let int_type = tag_type.into_int_type();
 
-        let value = int_type.const_int(
-            enum_init_expr.tag.try_into().unwrap(),
-            cir_tag_type.is_signed_integer(),
-        );
+        let value = int_type.const_int(enum_init_expr.tag.try_into().unwrap(), cir_tag_type.is_signed_integer());
 
         InternalValue::new(
             CIRTy::Enum(enum_ty.clone()),
@@ -1368,12 +1368,15 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     fn emit_struct_init_via_memcpy(
         &self,
+        layout: &ABITypeLayout,
         struct_type: StructType<'ll>,
         values: &Vec<(InternalValue<'ll>, CIRTy)>,
     ) -> StructValue<'ll> {
         let struct_ptr = self.llvmbuilder.build_alloca(struct_type, "struct.init").unwrap();
 
-        for (index, (field_value, field_cir_ty)) in values.iter().enumerate() {
+        for (original_index, (field_value, field_cir_ty)) in values.iter().enumerate() {
+            let index = layout.lookup_field_index(original_index).unwrap();
+
             let field_ptr = self
                 .llvmbuilder
                 .build_struct_gep(struct_type, struct_ptr, index as u32, "struct.field")
@@ -1493,14 +1496,15 @@ impl<'ll> IRBuilderCtx<'ll> {
         let mut all_const = true;
         let mut values: Vec<InternalValue<'ll>> = Vec::new();
 
-        for (idx, field_offset) in layout.field_offsets.iter().enumerate() {
+        for field_offset in &layout.field_offsets {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { original_index, .. } => {
                     let expr = &struct_init.fields[*original_index];
                     let lvalue = self.emit_expr(expr);
                     let mut rvalue = self.load_rvalue(lvalue);
 
-                    let target_type = struct_init.ty.fields.get(idx).unwrap();
+                    let field_original_index = field_offset.original_index().unwrap();
+                    let target_type = struct_init.ty.fields.get(field_original_index).unwrap();
 
                     if !self.llvmbuilder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(target_type, rvalue);
@@ -1534,7 +1538,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .cloned()
                 .zip(struct_init.ty.fields.clone())
                 .collect::<Vec<_>>();
-            struct_value = self.emit_struct_init_via_memcpy(struct_type, &field_values);
+
+            let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_init.ty.clone()));
+            struct_value = self.emit_struct_init_via_memcpy(&layout, struct_type, &field_values);
         } else {
             if all_const {
                 let field_values = values.iter().map(|v| v.as_basic_value()).collect::<Vec<_>>();

@@ -27,6 +27,7 @@ use crate::{
 };
 use cyrusc_tast::types::PlainType;
 
+#[derive(Debug, Clone)]
 pub struct ABITypeLayout {
     pub size: u32,
     pub align: u32,
@@ -38,8 +39,16 @@ pub struct ABITypeLayout {
 
 #[derive(Debug, Clone)]
 pub enum ABIFieldOffsetInfo {
-    Normal { offset: u32, original_index: usize },
-    Padding { offset: u32, size: u32 },
+    Normal {
+        index: u32,
+        offset: u32,
+        original_index: usize,
+    },
+    Padding {
+        index: u32,
+        offset: u32,
+        size: u32,
+    },
 }
 
 pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
@@ -56,7 +65,9 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut field_offsets = Vec::new();
             let is_packed = struct_ty.is_packed();
 
-            for (i, ty) in struct_ty.fields.iter().enumerate() {
+            let mut field_offset_index = 0u32;
+
+            for (field_original_index, ty) in struct_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 let effective_field_align = if is_packed { 1 } else { field_layout.align };
@@ -67,13 +78,20 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
                     if padding > 0 {
                         // add padding field before real field
-                        field_offsets.push(ABIFieldOffsetInfo::padding(offset, padding));
+                        field_offsets.push(ABIFieldOffsetInfo::padding(field_offset_index, offset, padding));
+                        field_offset_index += 1;
                         offset += padding;
                     }
                 }
 
                 // add the actual field
-                field_offsets.push(ABIFieldOffsetInfo::normal(offset, i));
+                field_offsets.push(ABIFieldOffsetInfo::normal(
+                    field_offset_index,
+                    offset,
+                    field_original_index,
+                ));
+                field_offset_index += 1;
+
                 offset += field_layout.size;
 
                 max_align = max_align.max(field_layout.align);
@@ -91,7 +109,11 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             // add trailing padding if needed
             if total_size > offset {
-                field_offsets.push(ABIFieldOffsetInfo::padding(offset, total_size - offset));
+                field_offsets.push(ABIFieldOffsetInfo::padding(
+                    field_offsets.len().try_into().unwrap(),
+                    offset,
+                    total_size - offset,
+                ));
             }
 
             ABITypeLayout::aggregate(total_size, max_align, field_offsets)
@@ -101,14 +123,18 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
 
-            for (i, ty) in union_ty.fields.iter().enumerate() {
+            for (original_index, ty) in union_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 max_size = max_size.max(field_layout.size);
                 max_align = max_align.max(field_layout.align);
 
                 // all fields start at offset 0
-                field_offsets.push(ABIFieldOffsetInfo::normal(0, i));
+                field_offsets.push(ABIFieldOffsetInfo::normal(
+                    original_index.try_into().unwrap(),
+                    0,
+                    original_index,
+                ));
             }
 
             let total_size = align_offset(max_size, max_align);
@@ -263,21 +289,42 @@ impl ABITypeLayout {
             is_aggregate: true,
         }
     }
+
+    pub fn lookup_field_index(&self, original_index: usize) -> Option<u32> {
+        self.field_offsets
+            .iter()
+            .find(|field_offset| match field_offset.original_index() {
+                Some(idx) => idx == original_index,
+                None => false,
+            })
+            .map(|field_offset| field_offset.index())
+    }
 }
 
 impl ABIFieldOffsetInfo {
-    pub fn normal(offset: u32, original_index: usize) -> Self {
-        ABIFieldOffsetInfo::Normal { offset, original_index }
+    pub fn normal(index: u32, offset: u32, original_index: usize) -> Self {
+        ABIFieldOffsetInfo::Normal {
+            index,
+            offset,
+            original_index,
+        }
     }
 
-    pub fn padding(offset: u32, size: u32) -> Self {
-        ABIFieldOffsetInfo::Padding { offset, size }
+    pub fn padding(index: u32, offset: u32, size: u32) -> Self {
+        ABIFieldOffsetInfo::Padding { index, offset, size }
     }
 
     pub fn offset(&self) -> u32 {
         match self {
             ABIFieldOffsetInfo::Normal { offset, .. } => *offset,
             ABIFieldOffsetInfo::Padding { offset, .. } => *offset,
+        }
+    }
+
+    pub fn index(&self) -> u32 {
+        match self {
+            ABIFieldOffsetInfo::Normal { index, .. } => *index,
+            ABIFieldOffsetInfo::Padding { index, .. } => *index,
         }
     }
 
@@ -289,6 +336,13 @@ impl ABIFieldOffsetInfo {
         match self {
             ABIFieldOffsetInfo::Normal { .. } => None,
             ABIFieldOffsetInfo::Padding { size, .. } => Some(*size),
+        }
+    }
+
+    pub fn original_index(&self) -> Option<usize> {
+        match self {
+            ABIFieldOffsetInfo::Normal { original_index, .. } => Some(*original_index),
+            ABIFieldOffsetInfo::Padding { .. } => None,
         }
     }
 }
