@@ -276,6 +276,36 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut param_types = Vec::new();
 
+        // [crates/cyrusc_codegen_llvm/src/builder/types.rs:279:9] abi_func_info.params_types.clone() = [
+        //     Pointer,
+        //     TargetIntegerType(
+        //         X86_64(
+        //             Int,
+        //         ),
+        //     ),
+        // ]
+        // [crates/cyrusc_codegen_llvm/src/builder/types.rs:280:9] abi_func_info.params_infos.clone() = [
+        //     ABIArgInfo {
+        //         param_index_start: 0,
+        //         param_index_end: 0,
+        //         kind: DirectPair {
+        //             lo: Pointer,
+        //             hi: TargetIntegerType(
+        //                 X86_64(
+        //                     Int,
+        //                 ),
+        //             ),
+        //         },
+        //         attrs: ABIArgAttrs {
+        //             by_reg: false,
+        //             zero_ext: false,
+        //             sign_ext: false,
+        //             realign: false,
+        //             by_val: false,
+        //         },
+        //     },
+        // ]
+
         for (idx, abi_type) in abi_func_info.params_types.iter().enumerate() {
             // FIXME: VAArgs not handled when accessing params_infos.
             let abi_arg_info = &abi_func_info.params_infos[idx];

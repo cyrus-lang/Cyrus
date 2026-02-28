@@ -327,7 +327,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        let unnamed_enum_type = operand_ty
+        let unnamed_enum_type_opt = operand_ty
             .as_enum_symbol_id()
             .and_then(|symbol_id| {
                 self.resolver
@@ -357,8 +357,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         .unwrap(),
                 )
             }))
-            .or(operand_ty.as_unnamed_enum())
-            .unwrap();
+            .or(operand_ty.as_unnamed_enum());
 
         let default = switch_stmt
             .default_case
@@ -366,6 +365,8 @@ impl<'resolver> CIRWalk<'resolver> {
             .and_then(|default_case| Some(self.lower_body(&default_case)));
 
         if operand_ty.is_enum() {
+            let unnamed_enum_type = unnamed_enum_type_opt.unwrap();
+
             if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
                 self.lower_switch_on_integer_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
             } else {
