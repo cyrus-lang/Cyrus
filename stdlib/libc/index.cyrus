@@ -25,4 +25,8 @@ pub extern "C" {
     fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
     fn scanf(format: abi::c_char*, ...) abi::c_int;
     fn getline(lineptr: abi::c_char**, n: abi::c_size_t*, stream: abi::c_file*) abi::c_size_t;
+    fn fread(src: abi::c_void*, size: abi::c_size_t, n: abi::c_size_t, stream: abi::c_file*) abi::c_size_t;
+    fn fopen(file_name: abi::c_char*, modes: abi::c_char*) abi::c_file*;
+    fn fclose(src: abi::c_void*) abi::c_int;
+    fn ferror(stream: abi::c_file*) abi::c_int;
 }

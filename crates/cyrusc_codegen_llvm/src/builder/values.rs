@@ -172,7 +172,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lvalue = self.emit_expr(cir_expr);
         let rvalue = self.load_rvalue(lvalue);
 
-        assert!(rvalue.ty.is_bool());
+        assert!(rvalue.ty.is_integer_or_bool());
 
         let basic_value = rvalue.as_basic_value();
         let int_value = basic_value.into_int_value();

@@ -269,6 +269,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         elm_ty.array_type(array_ty.len as u32).as_any_type_enum()
     }
 
+    // FIXME
     pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncTy) -> FunctionType<'ll> {
         let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 

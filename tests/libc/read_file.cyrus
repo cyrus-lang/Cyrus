@@ -1,0 +1,30 @@
+// @stdout: (55) (Hello, Cyrus!)
+
+import std::libc::abi;
+import std::core{panic};
+import std::libc{printf, fopen, fread, fclose, ferror};
+
+pub fn main() {
+    const file_name = "example_content.txt";
+
+    var file: abi::c_file*;
+    var buffer: char[1024];
+    var bytes_read: usize;
+    var total_bytes: usize;
+
+    file = fopen(file_name, "r");
+    if (file == null) {
+        panic("error opening file");
+    }
+
+     while ((bytes_read = fread(&buffer, 1, sizeof(buffer), file)) != 0) {
+        total_bytes += bytes_read;
+
+        if (ferror(file)) {
+            panic("error reading file");
+        }
+    }
+
+    fclose(file);
+    printf("(%zd) (%s)\n", total_bytes, &buffer);
+}
