@@ -22,7 +22,7 @@ use crate::{
         irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
         values::{InternalValue, InternalValueKind},
     },
-    llvm::abi::modifiers::apply_global_var_modifiers,
+    llvm::abi::{abi_type::abi_type_to_llvm_type, modifiers::apply_global_var_modifiers},
 };
 use cyrusc_internal::{
     abi::{args::ABIFunctionInfo, layout::type_layout, target::ABITarget},
@@ -42,7 +42,7 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::TargetMachine,
-    types::{AnyType, BasicTypeEnum},
+    types::BasicTypeEnum,
     values::{BasicValueEnum, FunctionValue, GlobalValue},
 };
 use std::{
@@ -168,16 +168,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
         let cur_fn = self.cur_func.unwrap();
+        let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
 
         if let Some(expr) = &return_stmt.arg {
             let lvalue = self.emit_expr(&expr);
             let rvalue = self.load_rvalue(lvalue);
 
-            let ret_ty = cur_fn.get_type().get_return_type().unwrap();
-            let casted: BasicValueEnum<'ll> = self
-                .emit_cast(ret_ty.as_any_type_enum(), rvalue.clone())
-                .try_into()
-                .unwrap();
+            let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &cur_abi_func_info.ret_info.ty);
+            let casted: BasicValueEnum<'ll> = self.emit_cast(ret_ty, rvalue.clone()).try_into().unwrap();
 
             // handle sret
             if let Some(abi_func_info) = &self.cur_abi_func_info {

@@ -17,10 +17,12 @@
 
 use crate::builder::builder::IRBuilderCtx;
 use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
+use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
 use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
 use cyrusc_tast::types::PlainType;
+use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMBool},
@@ -269,56 +271,92 @@ impl<'ll> IRBuilderCtx<'ll> {
         elm_ty.array_type(array_ty.len as u32).as_any_type_enum()
     }
 
-    // FIXME
+    fn emit_func_ty_params(&self, abi_func_info: &ABIFunctionInfo) -> Vec<LLVMTypeRef> {
+        let mut param_types = Vec::new();
+
+        for abi_arg_info in &abi_func_info.params_infos {
+            match &abi_arg_info.kind {
+                ABIArgKind::DirectPair { lo, hi } => {
+                    let lo_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo);
+                    let hi_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi);
+
+                    param_types.push(lo_type.as_type_ref());
+                    param_types.push(hi_type.as_type_ref());
+                }
+                ABIArgKind::Direct { coerce_to } => {
+                    let param_type = if let Some(coerce_ty) = coerce_to {
+                        abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce_ty)
+                    } else {
+                        // for direct without coercion, we need to find the type from params_types
+                        let idx = abi_arg_info.param_index_start as usize;
+                        let abi_type = &abi_func_info.params_types[idx];
+                        abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type)
+                    };
+                    param_types.push(param_type.as_type_ref());
+                }
+                ABIArgKind::DirectCoerce { ty } => {
+                    let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ty);
+                    param_types.push(param_type.as_type_ref());
+                }
+                ABIArgKind::Indirect { ty, .. } => {
+                    if abi_arg_info.attrs.by_val {
+                        // for byval indirect, we need a pointer type
+                        let param_type = self.llvmctx.ptr_type(AddressSpace::default());
+                        param_types.push(param_type.as_type_ref());
+                    } else {
+                        // regular indirect, use the type as-is
+                        let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ty);
+                        param_types.push(param_type.as_type_ref());
+                    }
+                }
+                ABIArgKind::Expand { kind } => match kind {
+                    ExpandKind::Coerced { lo, hi, .. } => {
+                        let lo_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo);
+                        param_types.push(lo_type.as_type_ref());
+
+                        let hi_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi);
+                        param_types.push(hi_type.as_type_ref());
+
+                        for idx in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
+                            let abi_type = &abi_func_info.params_types[idx as usize];
+                            let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
+                            param_types.push(param_type.as_type_ref());
+                        }
+                    }
+                    ExpandKind::Simple | ExpandKind::Struct { .. } => {
+                        for idx in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
+                            let abi_type = &abi_func_info.params_types[idx as usize];
+                            let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
+                            param_types.push(param_type.as_type_ref());
+                        }
+                    }
+                },
+                ABIArgKind::Extend { .. } => {
+                    let idx = abi_arg_info.param_index_start as usize;
+                    let abi_type = &abi_func_info.params_types[idx];
+                    let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
+                    param_types.push(param_type.as_type_ref());
+                }
+                ABIArgKind::Ignore => {
+                    // skip ignored parameters
+                    continue;
+                }
+            }
+        }
+
+        param_types
+    }
+
     pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncTy) -> FunctionType<'ll> {
         let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 
-        let ret_type = self.emit_ty(*func_ty.ret);
+        let ret_type = if abi_func_info.ret_info.kind.is_indirect_sret() {
+            AnyTypeEnum::VoidType(self.llvmctx.void_type())
+        } else {
+            self.emit_ty(*func_ty.ret)
+        };
 
-        let mut param_types = Vec::new();
-
-        // [crates/cyrusc_codegen_llvm/src/builder/types.rs:279:9] abi_func_info.params_types.clone() = [
-        //     Pointer,
-        //     TargetIntegerType(
-        //         X86_64(
-        //             Int,
-        //         ),
-        //     ),
-        // ]
-        // [crates/cyrusc_codegen_llvm/src/builder/types.rs:280:9] abi_func_info.params_infos.clone() = [
-        //     ABIArgInfo {
-        //         param_index_start: 0,
-        //         param_index_end: 0,
-        //         kind: DirectPair {
-        //             lo: Pointer,
-        //             hi: TargetIntegerType(
-        //                 X86_64(
-        //                     Int,
-        //                 ),
-        //             ),
-        //         },
-        //         attrs: ABIArgAttrs {
-        //             by_reg: false,
-        //             zero_ext: false,
-        //             sign_ext: false,
-        //             realign: false,
-        //             by_val: false,
-        //         },
-        //     },
-        // ]
-
-        for (idx, abi_type) in abi_func_info.params_types.iter().enumerate() {
-            // FIXME: VAArgs not handled when accessing params_infos.
-            let abi_arg_info = &abi_func_info.params_infos[idx];
-
-            let param_type_ref = if abi_arg_info.is_indirect_by_val() {
-                self.llvmctx.ptr_type(AddressSpace::default()).as_type_ref()
-            } else {
-                abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type).as_type_ref()
-            };
-
-            param_types.push(param_type_ref);
-        }
+        let mut param_types = self.emit_func_ty_params(abi_func_info);
 
         let fn_ty = unsafe {
             LLVMFunctionType(
