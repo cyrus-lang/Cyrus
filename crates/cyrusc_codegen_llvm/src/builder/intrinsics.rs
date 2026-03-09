@@ -22,6 +22,35 @@ use inkwell::{
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    #[allow(unused)]
+    pub(crate) fn intrinsic_memcpy_through_private_const(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+        let target_data = self.llvmtm.get_target_data();
+        let ty = rvalue.get_type();
+
+        let size_in_bytes = target_data.get_store_size(&ty);
+        let size_value = self.llvmctx.i64_type().const_int(size_in_bytes, false);
+
+        let src_align = target_data.get_abi_alignment(&ty);
+        let dest_align = target_data.get_abi_alignment(&ty);
+
+        // create private constant global
+        let global = {
+            let llvmmodule = self.llvmmodule.borrow();
+            llvmmodule.add_global(ty, None, "__const.memcpy")
+        };
+        global.set_linkage(inkwell::module::Linkage::Private);
+        global.set_constant(true);
+        global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
+
+        global.set_initializer(&rvalue);
+
+        let src_ptr = global.as_pointer_value();
+
+        self.llvmbuilder
+            .build_memcpy(dest, dest_align, src_ptr, src_align, size_value)
+            .unwrap();
+    }
+
     pub(crate) fn intrinsic_strcmp(&self, lhs_ptr: PointerValue<'ll>, rhs_ptr: PointerValue<'ll>) -> IntValue<'ll> {
         let i32_type = self.llvmctx.i32_type();
         let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());

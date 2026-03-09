@@ -124,7 +124,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
                 let fn_value = self.emit_func_decl(&func_decl);
                 self.set_current_func(fn_value, func_def_stmt.abi_func_info.clone().unwrap());
-                self.emit_func_body(&func_decl.params, &func_def_stmt.body);
+                self.emit_func_body(
+                    &func_decl.params,
+                    &func_def_stmt.abi_func_info.as_ref().unwrap(),
+                    &func_def_stmt.body,
+                );
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
                 self.emit_func_decl(func_decl_stmt);
@@ -172,9 +176,9 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         if let Some(expr) = &return_stmt.arg {
             let lvalue = self.emit_expr(&expr);
-            let rvalue = self.load_rvalue(lvalue);
+            let rvalue = self.load_rvalue(lvalue.clone());
 
-            let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &cur_abi_func_info.ret_info.ty);
+            let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &cur_abi_func_info.ret_info.abi_type);
             let casted: BasicValueEnum<'ll> = self.emit_cast(ret_ty, rvalue.clone()).try_into().unwrap();
 
             // handle sret
@@ -185,14 +189,19 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let struct_ty = rvalue.ty.clone();
                     let struct_layout = type_layout(&self.target.info, &struct_ty);
-                    let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
+                    let size_vale = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
 
-                    let src_ptr = if rvalue.as_basic_value().is_pointer_value() {
-                        rvalue.as_basic_value().into_pointer_value()
-                    } else {
-                        let temp_alloca = self.llvmbuilder.build_alloca(casted.get_type(), "sret.temp").unwrap();
-                        self.llvmbuilder.build_store(temp_alloca, casted).unwrap();
-                        temp_alloca
+                    let src_ptr = match &lvalue.kind {
+                        InternalValueKind::LValue(ptr) => *ptr,
+                        InternalValueKind::RValue(_) => {
+                            // materialize rvalue into stack
+                            let temp_alloca = self.llvmbuilder.build_alloca(casted.get_type(), "sret.temp").unwrap();
+
+                            self.llvmbuilder.build_store(temp_alloca, casted).unwrap();
+
+                            temp_alloca
+                        }
+                        InternalValueKind::FuncValue(_) => unreachable!(),
                     };
 
                     self.llvmbuilder
@@ -201,7 +210,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                             self.target.info.pointer_align(),
                             src_ptr,
                             self.target.info.pointer_align(),
-                            size_val,
+                            size_vale,
                         )
                         .unwrap();
 

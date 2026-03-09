@@ -1,0 +1,23 @@
+// @stdout: 3.140000 6.500000 Cyrus!
+
+import std::libc{printf, exit};
+
+struct Sample {
+    pub a: float64;
+    pub b: float64;
+}
+
+union Payload {
+    int_value: int64;
+    text_value: char*;
+    float_value: float64;
+    struct_value: Sample;
+}
+
+pub fn main() {
+    var inst = Payload { struct_value: struct { a = 3.14, b = 6.5 } };
+    printf("%f %f ", inst.struct_value.a, inst.struct_value.b);
+
+    inst.text_value = "Cyrus!";
+    printf("%s\n", inst.text_value);
+}

@@ -22,5 +22,4 @@ mod intrinsics;
 mod irreg;
 mod runtime;
 mod types;
-mod unions;
 mod values;

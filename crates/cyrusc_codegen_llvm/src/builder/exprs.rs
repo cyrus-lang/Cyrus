@@ -1169,6 +1169,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let value = self.emit_lvalue_address(&field_access.operand);
 
         let union_ty: BasicTypeEnum<'ll> = self.emit_ty(field_access.operand.ty.clone()).try_into().unwrap();
+
         let union_ptr = match value.kind {
             InternalValueKind::LValue(ptr) => ptr,
             InternalValueKind::RValue(basic_value) => {
@@ -1179,12 +1180,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             _ => unreachable!(),
         };
 
-        let field_ptr = self
-            .llvmbuilder
-            .build_struct_gep(union_ty.clone(), union_ptr, 0, "union.field")
-            .unwrap();
-
-        InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(field_ptr))
+        InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(union_ptr))
     }
 
     fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
@@ -1366,35 +1362,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_expr(&union_init_expr.expr)
     }
 
-    fn emit_struct_init_via_memcpy(
-        &self,
-        layout: &ABITypeLayout,
-        struct_type: StructType<'ll>,
-        values: &Vec<(InternalValue<'ll>, CIRTy)>,
-    ) -> StructValue<'ll> {
-        let struct_ptr = self.llvmbuilder.build_alloca(struct_type, "struct.init").unwrap();
-
-        for (original_index, (field_value, field_cir_ty)) in values.iter().enumerate() {
-            let index = layout.lookup_field_index(original_index).unwrap();
-
-            let field_ptr = self
-                .llvmbuilder
-                .build_struct_gep(struct_type, struct_ptr, index as u32, "struct.field")
-                .unwrap();
-
-            self.emit_store(field_ptr, field_value.clone(), field_cir_ty.clone());
-        }
-
-        self.llvmbuilder
-            .build_load(struct_type, struct_ptr, "struct.rvalue")
-            .unwrap()
-            .into_struct_value()
-    }
-
-    fn must_init_via_memcpy(&self, fields: &Vec<CIRTy>) -> bool {
-        fields.iter().any(|f| f.is_union())
-    }
-
     // ANCHOR: Check extracting tag of repr-c enums.
     pub(crate) fn extract_enum_tag(&self, struct_value: StructValue<'ll>) -> IntValue<'ll> {
         self.llvmbuilder
@@ -1494,7 +1461,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let struct_type = self.emit_struct_ty(struct_init.ty.clone());
 
         let mut all_const = true;
-        let mut values: Vec<InternalValue<'ll>> = Vec::new();
+        let mut values: Vec<(Option<usize>, InternalValue<'ll>)> = Vec::new();
 
         for field_offset in &layout.field_offsets {
             match field_offset {
@@ -1514,7 +1481,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         all_const = false;
                     }
 
-                    values.push(rvalue);
+                    values.push((Some(*original_index), rvalue));
                 }
                 ABIFieldOffsetInfo::Padding { size, .. } => {
                     let cir_array_type = CIRTy::Array(CIRArrayTy {
@@ -1522,9 +1489,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                         len: *size as usize,
                     });
                     let padding_array_value = self.llvmctx.i8_type().array_type(*size).const_zero();
-                    values.push(InternalValue::new(
-                        cir_array_type,
-                        InternalValueKind::RValue(padding_array_value.as_basic_value_enum()),
+                    values.push((
+                        None,
+                        InternalValue::new(
+                            cir_array_type,
+                            InternalValueKind::RValue(padding_array_value.as_basic_value_enum()),
+                        ),
                     ));
                 }
             }
@@ -1532,23 +1502,28 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut struct_value: StructValue<'ll>;
 
-        if self.must_init_via_memcpy(&struct_init.ty.fields) {
+        if must_init_via_memcpy(&struct_init.ty.fields) {
             let field_values = values
                 .iter()
-                .cloned()
-                .zip(struct_init.ty.fields.clone())
+                .filter_map(|(original_index, value)| {
+                    original_index.map(|idx| ((Some(idx), value.clone()), struct_init.ty.fields[idx].clone()))
+                })
                 .collect::<Vec<_>>();
 
             let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_init.ty.clone()));
             struct_value = self.emit_struct_init_via_memcpy(&layout, struct_type, &field_values);
         } else {
             if all_const {
-                let field_values = values.iter().map(|v| v.as_basic_value()).collect::<Vec<_>>();
+                let field_values = values
+                    .iter()
+                    .map(|(_, value)| value.as_basic_value())
+                    .collect::<Vec<_>>();
+
                 struct_value = struct_type.const_named_struct(&field_values);
             } else {
                 struct_value = struct_type.get_undef();
 
-                values.iter().enumerate().for_each(|(index, rvalue)| {
+                values.iter().enumerate().for_each(|(index, (_, rvalue))| {
                     struct_value = self
                         .llvmbuilder
                         .build_insert_value(
@@ -1567,6 +1542,36 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRTy::Struct(struct_init.ty.clone()),
             InternalValueKind::RValue(struct_value.into()),
         )
+    }
+
+    fn emit_struct_init_via_memcpy(
+        &self,
+        layout: &ABITypeLayout,
+        struct_type: StructType<'ll>,
+        values: &Vec<((Option<usize>, InternalValue<'ll>), CIRTy)>,
+    ) -> StructValue<'ll> {
+        let struct_ptr = self.llvmbuilder.build_alloca(struct_type, "struct.init").unwrap();
+
+        for ((original_index, field_value), field_cir_ty) in values {
+            if original_index.is_none() {
+                // skip if padding
+                continue;
+            }
+
+            let llvm_index = layout.lookup_field_index(original_index.unwrap()).unwrap();
+
+            let field_ptr = self
+                .llvmbuilder
+                .build_struct_gep(struct_type, struct_ptr, llvm_index as u32, "struct.field")
+                .unwrap();
+
+            self.emit_store(field_ptr, field_value.clone(), field_cir_ty.clone());
+        }
+
+        self.llvmbuilder
+            .build_load(struct_type, struct_ptr, "struct.rvalue")
+            .unwrap()
+            .into_struct_value()
     }
 
     fn emit_monomorph_func_instance_call(
@@ -1672,13 +1677,25 @@ impl<'ll> IRBuilderCtx<'ll> {
         fn_value: &FunctionValue<'ll>,
     ) -> InternalValue<'ll> {
         let abi_func_info = self.target.target_abi.classify_func(fn_ty).unwrap();
-        let args = self.emit_func_args(args, fn_ty);
+
+        let mut args = self.emit_func_args(args, fn_ty);
+
+        let mut sret_alloca: Option<PointerValue<'ll>> = None;
+
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*fn_ty.ret.clone()).try_into().unwrap();
+
+            sret_alloca = Some(self.llvmbuilder.build_alloca(sret_type, "sret").unwrap());
+            args.insert(0, sret_alloca.clone().unwrap().into());
+        }
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(*fn_value));
 
         let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
 
-        if let Some(basic_value) = call_site.try_as_basic_value().basic() {
+        if let Some(pointer_value) = sret_alloca {
+            InternalValue::new(ret_ty.clone(), InternalValueKind::LValue(pointer_value.into()))
+        } else if let Some(basic_value) = call_site.try_as_basic_value().basic() {
             InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(basic_value))
         } else {
             self.emit_null(ret_ty.clone())
@@ -1810,4 +1827,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     fn emit_bytestring(&self, value: String) -> BasicValueEnum<'ll> {
         self.llvmctx.const_string(value.as_bytes(), true).into()
     }
+}
+
+fn must_init_via_memcpy(fields: &Vec<CIRTy>) -> bool {
+    fields.iter().any(|f| f.is_union())
 }

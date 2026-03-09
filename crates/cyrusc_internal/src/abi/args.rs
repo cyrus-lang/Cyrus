@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::abi::types::ABIType;
+use crate::{abi::types::ABIType};
 
 #[derive(Debug, Clone)]
 pub struct ABIFunctionInfo {
@@ -26,7 +26,7 @@ pub struct ABIFunctionInfo {
 
 #[derive(Debug, Clone)]
 pub struct ABIRetInfo {
-    pub ty: ABIType,
+    pub abi_type: ABIType,
     pub kind: ABIRetInfoKind,
 }
 

@@ -231,27 +231,26 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionTy) -> StructType<'ll> {
-        let mut largest: Option<BasicTypeEnum<'ll>> = None;
+    pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionTy) -> BasicTypeEnum<'ll> {
+        let mut largest_field_type: Option<BasicTypeEnum<'ll>> = None;
         let mut max_size = 0u64;
 
         let target_data = self.llvmtm.get_target_data();
 
-        for field_ty in union_ty.fields {
+        for field_type in &union_ty.fields {
             let llvm_ty: BasicTypeEnum<'ll> = self
-                .emit_ty(field_ty.clone())
+                .emit_ty(field_type.clone())
                 .try_into()
                 .expect("Union variant must be a valid basic type");
 
             let size = target_data.get_store_size(&llvm_ty);
             if size > max_size {
                 max_size = size;
-                largest = Some(llvm_ty);
+                largest_field_type = Some(llvm_ty);
             }
         }
 
-        let largest_ty = largest.expect("Union must have at least one field");
-        self.llvmctx.struct_type(&[largest_ty], false)
+        largest_field_type.unwrap()
     }
 
     pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleTy) -> StructType<'ll> {
@@ -298,16 +297,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ty);
                     param_types.push(param_type.as_type_ref());
                 }
-                ABIArgKind::Indirect { ty, .. } => {
-                    if abi_arg_info.attrs.by_val {
-                        // for byval indirect, we need a pointer type
-                        let param_type = self.llvmctx.ptr_type(AddressSpace::default());
-                        param_types.push(param_type.as_type_ref());
-                    } else {
-                        // regular indirect, use the type as-is
-                        let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ty);
-                        param_types.push(param_type.as_type_ref());
-                    }
+                ABIArgKind::Indirect { .. } => {
+                    let ptr_ty = self.llvmctx.ptr_type(AddressSpace::default());
+                    param_types.push(ptr_ty.as_type_ref());
                 }
                 ABIArgKind::Expand { kind } => match kind {
                     ExpandKind::Coerced { lo, hi, .. } => {

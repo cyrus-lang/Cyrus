@@ -68,7 +68,8 @@ impl X86_64 {
                     param_index_end: 0,
                 };
             }
-            // No change, just put it on the stack
+
+            // no change, just put it on the stack
             return ABIArgInfo::direct();
         }
 
@@ -225,7 +226,7 @@ impl X86_64 {
     }
 
     fn get_member_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<(CIRTy, u32)> {
-        let fields = ty.as_struct().unwrap().fields;
+        let fields = ty.as_struct()?.fields;
 
         let layout = type_layout(&self.info, ty);
 
@@ -488,12 +489,12 @@ impl X86_64 {
 
         let ret_info = if fn_ty.ret.is_void() {
             ABIRetInfo {
-                ty: ret_abi_type,
+                abi_type: ret_abi_type,
                 kind: ABIRetInfoKind::Ignore,
             }
         } else {
             ABIRetInfo {
-                ty: ret_abi_type,
+                abi_type: ret_abi_type,
                 kind: ABIRetInfoKind::Direct { coerce_to: None },
             }
         };
@@ -524,7 +525,7 @@ impl X86_64 {
 
             let sret_info = ABIArgInfo::indirect(cir_type_to_abi_type(&self.info, &fn_ty.ret), self.stack_alignment())
                 .with_attrs(ABIArgAttrs {
-                    by_val: true,
+                    by_val: false,
                     ..Default::default()
                 });
 
@@ -789,7 +790,7 @@ impl TargetABI for X86_64 {
             RegisterClass::NoClass => {
                 if hi_class == RegisterClass::NoClass {
                     return ABIRetInfo {
-                        ty: cir_type_to_abi_type(&self.info, ty),
+                        abi_type: cir_type_to_abi_type(&self.info, ty),
                         kind: ABIRetInfoKind::Ignore,
                     };
                 }
@@ -802,7 +803,7 @@ impl TargetABI for X86_64 {
             RegisterClass::SSEUP => unreachable!(),
             RegisterClass::Memory => {
                 return ABIRetInfo {
-                    ty: cir_type_to_abi_type(&self.info, ty),
+                    abi_type: cir_type_to_abi_type(&self.info, ty),
                     kind: ABIRetInfoKind::Indirect { sret: true },
                 };
             }
@@ -811,7 +812,7 @@ impl TargetABI for X86_64 {
 
                 if hi_class == RegisterClass::NoClass && ty.is_integer_or_bool() {
                     return ABIRetInfo {
-                        ty: result_type.clone(),
+                        abi_type: result_type.clone(),
                         kind: ABIRetInfoKind::Direct {
                             coerce_to: Some(result_type),
                         },
@@ -844,7 +845,7 @@ impl TargetABI for X86_64 {
             // combine lo and hi into a struct type for direct pair return
             let struct_ty = ABIType::Struct(vec![lo.clone(), hi.clone()], false);
             return ABIRetInfo {
-                ty: struct_ty,
+                abi_type: struct_ty,
                 kind: ABIRetInfoKind::Direct { coerce_to: None },
             };
         }
@@ -854,13 +855,13 @@ impl TargetABI for X86_64 {
 
             if result == abi_type {
                 return ABIRetInfo {
-                    ty: result,
+                    abi_type: result,
                     kind: ABIRetInfoKind::Direct { coerce_to: None },
                 };
             }
 
             return ABIRetInfo {
-                ty: result.clone(),
+                abi_type: result.clone(),
                 kind: ABIRetInfoKind::Direct {
                     coerce_to: Some(result),
                 },
@@ -869,7 +870,7 @@ impl TargetABI for X86_64 {
 
         // fallback
         ABIRetInfo {
-            ty: ABIType::Integer(64),
+            abi_type: ABIType::Integer(64),
             kind: ABIRetInfoKind::Direct { coerce_to: None },
         }
     }

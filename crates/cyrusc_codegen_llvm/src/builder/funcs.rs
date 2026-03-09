@@ -417,7 +417,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 self.set_current_func(fn_value, monomorph_func_entry.abi_func_info.clone());
 
-                self.emit_func_body(&monomorph_func_entry.func_params, &monomorph_func_entry.body().unwrap());
+                self.emit_func_body(
+                    &monomorph_func_entry.func_params,
+                    &monomorph_func_entry.abi_func_info,
+                    &monomorph_func_entry.body().unwrap(),
+                );
 
                 {
                     // back to parent state because we emitted a new function in the middle of an another function
@@ -436,22 +440,23 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_func_params(&self, func_params: &CIRFuncParams) {
+    pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
+        let is_sret = abi_func_info.ret_info.kind.is_indirect_sret();
+        let param_offset = if is_sret { 1 } else { 0 };
+
         func_params.list.iter().enumerate().for_each(|(param_idx, param)| {
-            let basic_value = self
-                .cur_func
-                .unwrap()
-                .get_nth_param(param_idx.try_into().unwrap())
-                .unwrap();
+            let llvm_param_idx = param_idx + param_offset;
+
+            let basic_value = self.cur_func.unwrap().get_nth_param(llvm_param_idx as u32).unwrap();
 
             let mut irreg = self.irreg.borrow_mut();
 
             let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+
             let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
             self.llvmbuilder.build_store(ptr, basic_value).unwrap();
-            irreg.insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
 
-            drop(irreg);
+            irreg.insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
         });
     }
 
@@ -480,7 +485,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         self.set_current_func(fn_value, lambda.abi_func_info.clone());
-        self.emit_func_body(&lambda.params, &lambda.body);
+        self.emit_func_body(&lambda.params, &lambda.abi_func_info, &lambda.body);
 
         if let Some(cur_func) = parent_func {
             self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
@@ -521,11 +526,16 @@ impl<'ll> IRBuilderCtx<'ll> {
         fn_value
     }
 
-    pub(crate) fn emit_func_body(&mut self, func_params: &CIRFuncParams, cir_block: &CIRBlockStmt) {
+    pub(crate) fn emit_func_body(
+        &mut self,
+        func_params: &CIRFuncParams,
+        abi_func_info: &ABIFunctionInfo,
+        cir_block: &CIRBlockStmt,
+    ) {
         debug_assert!(self.cur_func.is_some());
 
         self.ensure_entry_block();
-        self.emit_func_params(func_params);
+        self.emit_func_params(func_params.clone(), abi_func_info);
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();
     }
@@ -567,7 +577,25 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_direct_func_call_args_attributes(&mut self, fn_value: &FunctionValue, abi_func_info: &ABIFunctionInfo) {
-        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+        let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+        let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
+
+        let mut llvm_param_index_offset = 0;
+
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            let ret_ty = &abi_func_info.ret_info.abi_type;
+            let llvm_ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ret_ty);
+
+            let attr = unsafe {
+                LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+            };
+
+            unsafe {
+                LLVMAddAttributeAtIndex(fn_value.as_value_ref(), 1, attr);
+            }
+
+            llvm_param_index_offset = 1;
+        }
 
         for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if param_info.is_indirect_by_val() {
@@ -575,11 +603,16 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let llvm_struct_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, struct_type);
 
                 let attr = unsafe {
-                    LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, llvm_struct_type.as_type_ref())
+                    LLVMCreateTypeAttribute(
+                        self.llvmctx.as_ctx_ref(),
+                        byval_attr_kind,
+                        llvm_struct_type.as_type_ref(),
+                    )
                 };
 
+                // index is 1-based, 0 is return
                 unsafe {
-                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), (idx as u32 + 1) as u32, attr);
+                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), idx as u32 + 1 + llvm_param_index_offset, attr);
                 }
             }
         }
@@ -590,7 +623,25 @@ impl<'ll> IRBuilderCtx<'ll> {
         call_site: &CallSiteValue<'ll>,
         abi_func_info: &ABIFunctionInfo,
     ) {
-        let attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+        let byval_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("byval").as_ptr(), 5) };
+        let sret_attr_kind = unsafe { LLVMGetEnumAttributeKindForName(c!("sret").as_ptr(), 4) };
+
+        let mut llvm_param_index_offset = 0;
+
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            let ret_ty = &abi_func_info.ret_info.abi_type;
+            let llvm_ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, ret_ty);
+
+            let attr = unsafe {
+                LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), sret_attr_kind, llvm_ret_ty.as_type_ref())
+            };
+
+            unsafe {
+                LLVMAddCallSiteAttribute(call_site.as_value_ref(), 1, attr);
+            }
+
+            llvm_param_index_offset = 1;
+        }
 
         for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if !param_info.is_indirect_by_val() {
@@ -600,12 +651,13 @@ impl<'ll> IRBuilderCtx<'ll> {
             let param_type = abi_func_info.params_types.get(idx).unwrap().clone();
             let pointee_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &param_type);
 
-            let attr =
-                unsafe { LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), attr_kind, pointee_type.as_type_ref()) };
+            let attr = unsafe {
+                LLVMCreateTypeAttribute(self.llvmctx.as_ctx_ref(), byval_attr_kind, pointee_type.as_type_ref())
+            };
 
-            // call-site attributes: index is 1-based, 0 is return
+            // index is 1-based, 0 is return
             unsafe {
-                LLVMAddCallSiteAttribute(call_site.as_value_ref(), (idx as u32 + 1) as u32, attr);
+                LLVMAddCallSiteAttribute(call_site.as_value_ref(), idx as u32 + 1 + llvm_param_index_offset, attr);
             }
         }
     }
