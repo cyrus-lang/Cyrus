@@ -62,7 +62,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let abi_func_info = fn_ty.abi_func_info.as_ref().unwrap();
 
-        let mut args_values: Vec<BasicMetadataValueEnum> = Vec::new();
+        let mut args_values = Vec::with_capacity(args.len());
 
         for (idx, expr) in args.iter().enumerate() {
             let lvalue = self.emit_expr(expr);
@@ -96,11 +96,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                 }
             } else {
                 // classify variadic argument value
-
                 let promoted_rvalue_ty = self.target.target_abi.apply_variadic_argument_promote(&rvalue.ty);
                 let llvm_promoted_type = self.emit_ty(promoted_rvalue_ty.clone());
                 let promoted_value: BasicValueEnum<'ll> =
                     self.emit_cast(llvm_promoted_type, rvalue).try_into().unwrap();
+
                 rvalue = InternalValue::new(promoted_rvalue_ty, InternalValueKind::RValue(promoted_value));
 
                 let (abi_arg_info, _) = self.target.target_abi.classify_argument(&rvalue.ty, 0, false);
@@ -338,7 +338,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         &mut self,
         args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
         rvalue: &InternalValue<'ll>,
-        alignment: u32,
+        align: u32,
         ty: ABIType,
         abi_arg_info: &ABIArgInfo,
     ) {
@@ -354,11 +354,11 @@ impl<'ll> IRBuilderCtx<'ll> {
             // create a copy
             let alloca = self.llvmbuilder.build_alloca(llvm_ty, "indirect.arg").unwrap();
 
-            if alignment > 0 {
+            if align > 0 {
                 self.llvmbuilder
                     .build_store(alloca, rvalue.as_basic_value())
                     .unwrap()
-                    .set_alignment(alignment)
+                    .set_alignment(align)
                     .unwrap();
             } else {
                 self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
@@ -441,23 +441,27 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
-        let is_sret = abi_func_info.ret_info.kind.is_indirect_sret();
-        let param_offset = if is_sret { 1 } else { 0 };
+        let mut llvm_param_index = 0;
 
-        func_params.list.iter().enumerate().for_each(|(param_idx, param)| {
-            let llvm_param_idx = param_idx + param_offset;
+        // handle sret
+        if abi_func_info.ret_info.kind.is_indirect_sret() {
+            llvm_param_index += 1;
+        }
 
-            let basic_value = self.cur_func.unwrap().get_nth_param(llvm_param_idx as u32).unwrap();
+        for param in &func_params.list {
+            let basic_value = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
 
-            let mut irreg = self.irreg.borrow_mut();
+            llvm_param_index += 1;
 
             let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
 
             let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
             self.llvmbuilder.build_store(ptr, basic_value).unwrap();
 
-            irreg.insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
-        });
+            self.irreg
+                .borrow_mut()
+                .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+        }
     }
 
     pub(crate) fn emit_lambda(&mut self, lambda: &CIRLambda) -> InternalValue<'ll> {

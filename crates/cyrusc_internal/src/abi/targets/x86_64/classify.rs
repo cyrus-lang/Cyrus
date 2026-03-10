@@ -517,19 +517,9 @@ impl X86_64 {
 
         let ret_info = self.classify_return(&fn_ty.ret);
 
+        // sret consumes one integer register in sysv
         if ret_info.kind.is_indirect() {
             available_regs.int_regs -= 1;
-
-            // add sret parameter type
-            params_types.push(ABIType::Pointer);
-
-            let sret_info = ABIArgInfo::indirect(cir_type_to_abi_type(&self.info, &fn_ty.ret), self.stack_alignment())
-                .with_attrs(ABIArgAttrs {
-                    by_val: false,
-                    ..Default::default()
-                });
-
-            params_infos.push(sret_info);
         }
 
         for param_type in &fn_ty.params {

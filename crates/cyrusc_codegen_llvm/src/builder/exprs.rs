@@ -44,7 +44,8 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
-        AnyValueEnum, ArrayValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
+        AnyValue, AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
+        IntValue, PointerValue, StructValue,
     },
 };
 
@@ -1686,25 +1687,29 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) -> InternalValue<'ll> {
         let abi_func_info = self.target.target_abi.classify_func(fn_ty).unwrap();
 
-        let mut args = self.emit_func_args(args, fn_ty);
-
+        let mut llvm_args: Vec<BasicMetadataValueEnum<'ll>> = Vec::new();
         let mut sret_alloca: Option<PointerValue<'ll>> = None;
 
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             let sret_type: BasicTypeEnum<'ll> = self.emit_ty(*fn_ty.ret.clone()).try_into().unwrap();
 
-            sret_alloca = Some(self.llvmbuilder.build_alloca(sret_type, "sret").unwrap());
-            args.insert(0, sret_alloca.clone().unwrap().into());
+            let alloca = self.llvmbuilder.build_alloca(sret_type, "sret").unwrap();
+
+            llvm_args.push(alloca.into());
+            sret_alloca = Some(alloca);
         }
+
+        let mut args = self.emit_func_args(args, fn_ty);
+        llvm_args.append(&mut args);
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Direct(*fn_value));
 
-        let call_site = self.llvmbuilder.build_call(*fn_value, &args, "call").unwrap();
+        let call_site = self.llvmbuilder.build_call(*fn_value, &llvm_args, "call").unwrap();
 
-        if let Some(pointer_value) = sret_alloca {
-            InternalValue::new(ret_ty.clone(), InternalValueKind::LValue(pointer_value.into()))
-        } else if let Some(basic_value) = call_site.try_as_basic_value().basic() {
-            InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(basic_value))
+        if let Some(ptr) = sret_alloca {
+            InternalValue::new(ret_ty.clone(), InternalValueKind::LValue(ptr.into()))
+        } else if let Some(val) = call_site.try_as_basic_value().basic() {
+            InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(val))
         } else {
             self.emit_null(ret_ty.clone())
         }
