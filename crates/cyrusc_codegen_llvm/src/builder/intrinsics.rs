@@ -22,7 +22,25 @@ use inkwell::{
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
-    // FIXME: Change to intrinsic_optimized_memcpy3
+    pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+        let ty = rvalue.get_type();
+
+        // Fast path: direct store
+        if ty.is_int_type()
+            || ty.is_float_type()
+            || ty.is_pointer_type()
+            || ty.is_struct_type()
+            || ty.is_array_type()
+            || ty.is_vector_type()
+        {
+            self.llvmbuilder.build_store(dest, rvalue).unwrap();
+            return;
+        }
+
+        // fallback to memcpy
+        self.intrinsic_memcpy(dest, rvalue);
+    }
+
     pub(crate) fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let target_data = self.llvmtm.get_target_data();
         let ty = rvalue.get_type();

@@ -1372,7 +1372,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         // union-to-union copy
         if rvalue.ty.is_union() {
-            self.intrinsic_memcpy(ptr, rvalue.as_basic_value());
+            self.intrinsic_optimized_memcpy(ptr, rvalue.as_basic_value());
             return;
         }
 
