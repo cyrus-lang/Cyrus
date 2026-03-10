@@ -18,12 +18,11 @@ use crate::builder::builder::IRBuilderCtx;
 use inkwell::{
     AddressSpace,
     types::{ArrayType, BasicType, StructType},
-    values::{ArrayValue, BasicValueEnum, IntValue, PointerValue, StructValue},
+    values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, PointerValue, StructValue},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
-    #[allow(unused)]
-    pub(crate) fn intrinsic_memcpy_through_private_const(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
+    pub(crate) fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let target_data = self.llvmtm.get_target_data();
         let ty = rvalue.get_type();
 
@@ -33,18 +32,25 @@ impl<'ll> IRBuilderCtx<'ll> {
         let src_align = target_data.get_abi_alignment(&ty);
         let dest_align = target_data.get_abi_alignment(&ty);
 
-        // create private constant global
-        let global = {
-            let llvmmodule = self.llvmmodule.borrow();
-            llvmmodule.add_global(ty, None, "__const.memcpy")
+        let src_ptr = if rvalue.is_const() {
+            // use global value if rvalue is a constant
+            let global = {
+                let module = self.llvmmodule.borrow();
+                module.add_global(ty, None, "__const.memcpy")
+            };
+
+            global.set_linkage(inkwell::module::Linkage::Private);
+            global.set_constant(true);
+            global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
+            global.set_initializer(&rvalue);
+
+            global.as_pointer_value()
+        } else {
+            // fallback
+            let tmp = self.llvmbuilder.build_alloca(ty, "memcpy.temp").unwrap();
+            self.llvmbuilder.build_store(tmp, rvalue).unwrap();
+            tmp
         };
-        global.set_linkage(inkwell::module::Linkage::Private);
-        global.set_constant(true);
-        global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
-
-        global.set_initializer(&rvalue);
-
-        let src_ptr = global.as_pointer_value();
 
         self.llvmbuilder
             .build_memcpy(dest, dest_align, src_ptr, src_align, size_value)

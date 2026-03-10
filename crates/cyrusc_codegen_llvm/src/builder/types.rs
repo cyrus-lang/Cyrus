@@ -342,6 +342,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncTy) -> FunctionType<'ll> {
         let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 
+        dbg!(abi_func_info.clone());
+
         let ret_type = if abi_func_info.ret_info.kind.is_indirect_sret() {
             AnyTypeEnum::VoidType(self.llvmctx.void_type())
         } else {

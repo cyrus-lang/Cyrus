@@ -305,12 +305,12 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             (BasicTypeEnum::PointerType(_), BasicTypeEnum::IntType(to_int)) => self
                 .llvmbuilder
-                .build_ptr_to_int(value.into_pointer_value(), to_int, "ptrtoint")
+                .build_ptr_to_int(value.into_pointer_value(), to_int, "ptr_to_int")
                 .unwrap()
                 .into(),
             (BasicTypeEnum::IntType(_), BasicTypeEnum::PointerType(to_ptr)) => self
                 .llvmbuilder
-                .build_int_to_ptr(value.into_int_value(), to_ptr, "inttoptr")
+                .build_int_to_ptr(value.into_int_value(), to_ptr, "int_to_ptr")
                 .unwrap()
                 .into(),
             (BasicTypeEnum::FloatType(_), BasicTypeEnum::FloatType(to_float)) => self
@@ -348,46 +348,52 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_cast(&self, target_type: AnyTypeEnum<'ll>, value: InternalValue<'ll>) -> AnyValueEnum<'ll> {
-        let basic_value = value.as_basic_value();
+        let mut basic_value = value.as_basic_value();
 
         match target_type {
             AnyTypeEnum::IntType(int_type) => {
-                let val = basic_value;
-                if val.is_int_value() {
-                    let bit_width = val.into_int_value().get_type().get_bit_width();
+                if basic_value.is_int_value() {
+                    let bit_width = basic_value.into_int_value().get_type().get_bit_width();
 
                     if bit_width == 1 {
                         AnyValueEnum::IntValue(
                             self.llvmbuilder
-                                .build_int_z_extend(val.into_int_value(), int_type, "bool_zext")
+                                .build_int_z_extend(basic_value.into_int_value(), int_type, "bool_zext")
                                 .unwrap(),
                         )
                     } else {
                         // int -> int
                         AnyValueEnum::IntValue(
                             self.llvmbuilder
-                                .build_int_cast(val.into_int_value(), int_type, "cast")
+                                .build_int_cast(basic_value.into_int_value(), int_type, "cast")
                                 .unwrap(),
                         )
                     }
-                } else if val.is_pointer_value() {
+                } else if basic_value.is_pointer_value() {
                     // ptr -> int
-                    AnyValueEnum::IntValue(
-                        self.llvmbuilder
-                            .build_ptr_to_int(val.into_pointer_value(), int_type, "ptr_to_int")
-                            .unwrap(),
-                    )
+                    let ptr_width = self.llvmtm.get_target_data().get_pointer_byte_size(None) * 8;
+
+                    if int_type.get_bit_width() < ptr_width {
+                        let ptr_int = self.llvmctx.custom_width_int_type(ptr_width);
+                        let tmp = self
+                            .llvmbuilder
+                            .build_ptr_to_int(basic_value.into_pointer_value(), ptr_int, "ptr_to_int")
+                            .unwrap();
+                        AnyValueEnum::IntValue(self.llvmbuilder.build_int_truncate(tmp, int_type, "ptr_trunc").unwrap())
+                    } else {
+                        AnyValueEnum::IntValue(
+                            self.llvmbuilder
+                                .build_ptr_to_int(basic_value.into_pointer_value(), int_type, "ptr_to_int")
+                                .unwrap(),
+                        )
+                    }
                 } else {
-                    val.into()
+                    basic_value.into()
                 }
             }
             AnyTypeEnum::FloatType(float_type) => {
                 if basic_value.is_int_value() {
-                    let is_signed = value
-                        .ty
-                        .as_plain()
-                        .and_then(|plain_type| Some(plain_type.is_signed()))
-                        .unwrap_or(false);
+                    let is_signed = value.ty.is_signed_integer();
 
                     if is_signed {
                         AnyValueEnum::FloatValue(
@@ -417,26 +423,28 @@ impl<'ll> IRBuilderCtx<'ll> {
                 }
             }
             AnyTypeEnum::PointerType(ptr_type) => {
-                let val = basic_value;
-                if val.is_pointer_value() {
+                if basic_value.is_pointer_value() {
                     // ptr -> ptr
                     AnyValueEnum::PointerValue(
                         self.llvmbuilder
-                            .build_pointer_cast(val.into_pointer_value(), ptr_type, "cast")
+                            .build_pointer_cast(basic_value.into_pointer_value(), ptr_type, "cast")
                             .unwrap(),
                     )
-                } else if val.is_int_value() {
+                } else if basic_value.is_int_value() {
+                    let is_signed = value.ty.is_signed_integer();
+                    basic_value = self.widen_int_arg(value, is_signed).as_basic_value();
+
                     // int -> ptr
                     AnyValueEnum::PointerValue(
                         self.llvmbuilder
-                            .build_int_to_ptr(val.into_int_value(), ptr_type, "int_to_ptr")
+                            .build_int_to_ptr(basic_value.into_int_value(), ptr_type, "int_to_ptr")
                             .unwrap(),
                     )
                 } else {
-                    val.into()
+                    basic_value.into()
                 }
             }
-            _ => value.as_basic_value().into(),
+            _ => basic_value.into(),
         }
     }
 
