@@ -22,6 +22,7 @@ use inkwell::{
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    // FIXME: Change to intrinsic_optimized_memcpy3
     pub(crate) fn intrinsic_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let target_data = self.llvmtm.get_target_data();
         let ty = rvalue.get_type();

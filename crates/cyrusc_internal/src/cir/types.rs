@@ -112,7 +112,7 @@ impl CIREnumTy {
 
 impl CIRTy {
     pub fn as_tuple(&self) -> Option<CIRTupleTy> {
-        match self {
+        match self.const_inner() {
             CIRTy::Tuple(tuple) => Some(tuple.clone()),
             _ => None,
         }
@@ -169,7 +169,7 @@ impl CIRTy {
     }
 
     pub fn is_scalar(&self) -> bool {
-        match self {
+        match self.const_inner() {
             // plain types like int, float, bool, char, etc.
             CIRTy::PlainType(plain_type) => plain_type.is_scalar(),
 
@@ -192,7 +192,7 @@ impl CIRTy {
     }
 
     pub fn is_array(&self) -> bool {
-        match self {
+        match self.const_inner() {
             CIRTy::Array(_) => true,
             _ => false,
         }
@@ -206,7 +206,7 @@ impl CIRTy {
     }
 
     pub fn is_bool(&self) -> bool {
-        match self {
+        match self.const_inner() {
             CIRTy::PlainType(PlainType::Bool) => true,
             _ => false,
         }
@@ -252,7 +252,7 @@ impl CIRTy {
     }
 
     pub fn is_struct(&self) -> bool {
-        match self {
+        match self.const_inner() {
             CIRTy::Struct(_) => true,
             _ => false,
         }
@@ -273,7 +273,7 @@ impl CIRTy {
     }
 
     pub fn is_pointer(&self) -> bool {
-        match self {
+        match self.const_inner() {
             CIRTy::Pointer(_) => true,
             _ => false,
         }

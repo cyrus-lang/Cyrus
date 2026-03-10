@@ -137,7 +137,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             args_values.push(coerced.into());
         } else {
-            // Pass as-is
+            // pass as-is
             args_values.push(rvalue.as_basic_value().into());
         }
     }

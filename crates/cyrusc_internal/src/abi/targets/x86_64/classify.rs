@@ -540,6 +540,13 @@ impl X86_64 {
 impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
     fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
+        if ty.is_pointer() {
+            let mut needed = Registers::default();
+            needed.int_regs += 1;
+
+            return (ABIArgInfo::direct(), needed);
+        }
+
         let ty = {
             if !is_named {
                 &self.apply_variadic_argument_promote(ty)
@@ -959,7 +966,7 @@ fn classify_array(
     let element_ty = &array_ty.ty;
     let element_layout = type_layout(info, element_ty);
 
-    if layout.size > 64 {
+    if layout.size > 16 {
         return; // keep memory class
     }
 
@@ -1011,8 +1018,8 @@ fn classify_enum(
 ) {
     let layout = type_layout(info, ty);
 
-    // if size > 64 bytes, keep default memory class
-    if layout.size > 64 {
+    // if size > 16 bytes, keep default memory class
+    if layout.size > 16 {
         return;
     }
 
@@ -1082,8 +1089,8 @@ fn classify_struct_or_union(
 
     let layout = type_layout(info, ty);
 
-    // if size > 64 bytes, keep default memory class
-    if layout.size > 64 {
+    // if size > 16 bytes, keep default memory class
+    if layout.size > 16 {
         return;
     }
 

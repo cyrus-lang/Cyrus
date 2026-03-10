@@ -36,7 +36,7 @@ use cyrusc_internal::{
     },
     cir::{
         cir::*,
-        types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy},
+        types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
     },
 };
 use cyrusc_tast::types::PlainType;
@@ -44,8 +44,8 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
     values::{
-        AnyValue, AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
-        IntValue, PointerValue, StructValue,
+        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue,
+        PointerValue, StructValue,
     },
 };
 
@@ -79,7 +79,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::Tuple(tuple_expr) => self.emit_tuple(tuple_expr),
             CIRExprKind::TupleAccess(tuple_access) => self.emit_tuple_access(tuple_access),
             CIRExprKind::StructInit(struct_init_expr) => self.emit_struct_init(struct_init_expr),
-            CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init(union_init_expr),
+            CIRExprKind::UnionInit(union_init_expr) => self.emit_union_init_value(union_init_expr),
             CIRExprKind::EnumInit(enum_init_expr) => self.emit_enum_init(enum_init_expr),
             CIRExprKind::StructFieldAccess(struct_field_access_expr) => {
                 self.emit_struct_field_access(struct_field_access_expr)
@@ -1367,7 +1367,45 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    fn emit_union_init(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
+    pub(crate) fn emit_union_init(&self, union_ty: &CIRUnionTy, ptr: PointerValue<'ll>, rvalue: InternalValue<'ll>) {
+        let llvm_union_type = self.emit_union_ty(union_ty.clone());
+
+        // union-to-union copy
+        if rvalue.ty.is_union() {
+            self.intrinsic_memcpy(ptr, rvalue.as_basic_value());
+            return;
+        }
+
+        let value = rvalue.as_basic_value();
+        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+
+        if llvm_union_type.is_struct_type() {
+            // get pointer to storage field (largest field)
+            let union_ptr = self
+                .llvmbuilder
+                .build_struct_gep(llvm_union_type.into_struct_type(), ptr, 0, "union.storage")
+                .unwrap();
+
+            let field_ptr = self
+                .llvmbuilder
+                .build_bit_cast(union_ptr, ptr_type, "union.field.ptr")
+                .unwrap()
+                .into_pointer_value();
+
+            self.llvmbuilder.build_store(field_ptr, value).unwrap();
+        } else {
+            // union represented as largest field type (directly, without struct type as wrapper)
+            let field_ptr = self
+                .llvmbuilder
+                .build_bit_cast(ptr, ptr_type, "union.field.ptr")
+                .unwrap()
+                .into_pointer_value();
+
+            self.llvmbuilder.build_store(field_ptr, value).unwrap();
+        }
+    }
+
+    fn emit_union_init_value(&mut self, union_init_expr: &CIRUnionInitExpr) -> InternalValue<'ll> {
         self.emit_expr(&union_init_expr.expr)
     }
 

@@ -232,25 +232,40 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionTy) -> BasicTypeEnum<'ll> {
-        let mut largest_field_type: Option<BasicTypeEnum<'ll>> = None;
-        let mut max_size = 0u64;
-
+        let layout = type_layout(&self.target.info, &CIRTy::Union(union_ty.clone()));
         let target_data = self.llvmtm.get_target_data();
 
-        for field_type in &union_ty.fields {
-            let llvm_ty: BasicTypeEnum<'ll> = self
-                .emit_ty(field_type.clone())
-                .try_into()
-                .expect("Union variant must be a valid basic type");
+        let mut ty = None;
+        let mut max_align = 0;
+        let mut max_size = 0;
 
+        for field in &union_ty.fields {
+            let llvm_ty: BasicTypeEnum = self.emit_ty(field.clone()).try_into().unwrap();
+
+            let align = target_data.get_abi_alignment(&llvm_ty);
             let size = target_data.get_store_size(&llvm_ty);
-            if size > max_size {
+
+            if align > max_align || (align == max_align && size > max_size) {
+                ty = Some(llvm_ty);
+                max_align = align;
                 max_size = size;
-                largest_field_type = Some(llvm_ty);
             }
         }
 
-        largest_field_type.unwrap()
+        if max_size < layout.size as u64 {
+            let mut fields = vec![ty.unwrap()];
+
+            fields.push(
+                self.llvmctx
+                    .i8_type()
+                    .array_type((layout.size as u64 - max_size) as u32)
+                    .into(),
+            );
+
+            self.llvmctx.struct_type(&fields, false).into()
+        } else {
+            ty.unwrap()
+        }
     }
 
     pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleTy) -> StructType<'ll> {

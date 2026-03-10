@@ -59,7 +59,7 @@ impl<'a> InternalValue<'a> {
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRTy) {
         if target_cir_ty.is_union() {
-            self.intrinsic_memcpy(ptr, rvalue.as_basic_value());
+            self.emit_union_init(&target_cir_ty.as_union().as_ref().unwrap(), ptr, rvalue);
             return;
         }
 
