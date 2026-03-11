@@ -364,9 +364,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .as_ref()
             .and_then(|default_case| Some(self.lower_body(&default_case)));
 
-        if operand_ty.is_enum() {
-            let unnamed_enum_type = unnamed_enum_type_opt.unwrap();
-
+        if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
             if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
                 self.lower_switch_on_integer_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
             } else {

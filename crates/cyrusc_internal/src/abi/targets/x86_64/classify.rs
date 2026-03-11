@@ -540,7 +540,7 @@ impl X86_64 {
 impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
     fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
-        if ty.is_pointer() {
+        if ty.is_pointer() || ty.is_func() {
             let mut needed = Registers::default();
             needed.int_regs += 1;
 
@@ -768,6 +768,16 @@ impl TargetABI for X86_64 {
     }
 
     fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo {
+        if ty.is_pointer() || ty.is_func() {
+            let mut needed = Registers::default();
+            needed.int_regs += 1;
+
+            return ABIRetInfo {
+                abi_type: cir_type_to_abi_type(&self.info, ty),
+                kind: ABIRetInfoKind::Direct { coerce_to: None },
+            };
+        }
+
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
         classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
