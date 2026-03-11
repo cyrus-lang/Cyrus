@@ -419,7 +419,7 @@ impl<'a> AnalysisContext<'a> {
             'patterns: for pattern in &case.patterns {
                 let ident = match &pattern {
                     TypedSwitchCasePattern::Ident(ident, _) => ident,
-                    TypedSwitchCasePattern::EnumVariant(ident, valued_fields, loc) => {
+                    TypedSwitchCasePattern::EnumVariant(ident, valued_fields, _) => {
                         let mut field_names: Vec<String> = Vec::new();
 
                         for valued_field in valued_fields {
@@ -430,7 +430,7 @@ impl<'a> AnalysisContext<'a> {
                                         enum_name: enum_name.clone(),
                                         variant_name: valued_field.name.clone(),
                                     }),
-                                    location: Some(DiagLoc::new(loc.clone())),
+                                    location: Some(DiagLoc::new(case.loc.clone())),
                                     hint: None,
                                 });
                                 continue 'patterns;
@@ -445,7 +445,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ExpressionPatternInAEnumSwitch),
-                            location: Some(DiagLoc::new(typed_switch.loc.clone())),
+                            location: Some(DiagLoc::new(case.loc.clone())),
                             hint: None,
                         });
                         continue 'patterns;
@@ -481,76 +481,91 @@ impl<'a> AnalysisContext<'a> {
                     continue 'patterns;
                 }
 
-                if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &pattern {
+                if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, _) = &pattern {
                     if let Some(variant) = variant_opt {
-                        if let TypedUnnamedEnumVariant::Variant(ident, enum_valued_fields) = variant {
-                            let actual_enum_fields_len = enum_valued_fields.len();
+                        match variant {
+                            TypedUnnamedEnumVariant::Variant(ident, enum_valued_fields) => {
+                                let actual_enum_fields_len = enum_valued_fields.len();
 
-                            if valued_fields.len() != actual_enum_fields_len {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
-                                        variant_name: variant.ident().as_string(),
-                                        expected: actual_enum_fields_len as u32,
-                                        provided: valued_fields.len() as u32,
-                                    }),
-                                    location: Some(DiagLoc::new(loc.clone())),
-                                    hint: None,
-                                });
-                                continue 'cases;
+                                if valued_fields.len() != actual_enum_fields_len {
+                                    self.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                                            variant_name: variant.ident().as_string(),
+                                            expected: actual_enum_fields_len as u32,
+                                            provided: valued_fields.len() as u32,
+                                        }),
+                                        location: Some(DiagLoc::new(case.loc.clone())),
+                                        hint: None,
+                                    });
+                                    continue 'cases;
+                                }
+
+                                // normalize and then update valued_field type in local scope
+
+                                for (enum_valued_field_idx, enum_valued_field) in
+                                    enum_valued_fields.iter_mut().enumerate()
+                                {
+                                    enum_valued_field.ty = match self.normalize_sema_type(
+                                        scope_id_opt,
+                                        enum_valued_field.ty.clone(),
+                                        SourceLoc::from_loc(ident.loc.clone(), unnamed_enum_type.loc.file_path.clone()),
+                                    ) {
+                                        Some(sema_ty) => sema_ty,
+                                        None => continue 'patterns,
+                                    };
+
+                                    // update local variable concrete type (exported symbol)
+                                    {
+                                        let valued_field = &valued_fields[enum_valued_field_idx];
+
+                                        update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
+                                            LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                                                resolved_variable.typed_variable.ty = Some(enum_valued_field.ty.clone());
+                                            }
+                                        );
+                                    }
+                                }
                             }
+                            TypedUnnamedEnumVariant::Valued(ident, valued) => {
+                                if valued_fields.len() > 1 {
+                                    self.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
+                                            variant_name: ident.as_string(),
+                                        }),
+                                        location: Some(DiagLoc::new(case.loc.clone())),
+                                        hint: None,
+                                    });
+                                    return FlowState::Reachable;
+                                }
 
-                            // normalize and then update valued_field type in local scope
+                                let valued_field = valued_fields.first().unwrap();
 
-                            for (enum_valued_field_idx, enum_valued_field) in enum_valued_fields.iter_mut().enumerate()
-                            {
-                                enum_valued_field.ty = match self.normalize_sema_type(
-                                    scope_id_opt,
-                                    enum_valued_field.ty.clone(),
-                                    SourceLoc::from_loc(ident.loc.clone(), unnamed_enum_type.loc.file_path.clone()),
-                                ) {
-                                    Some(sema_ty) => sema_ty,
+                                valued.sema_ty = match self.analyze_expr(scope_id_opt, valued, None) {
+                                    Some(sema_ty) => Some(sema_ty),
                                     None => continue 'patterns,
                                 };
 
                                 // update local variable concrete type (exported symbol)
                                 {
-                                    let valued_field = &valued_fields[enum_valued_field_idx];
-
                                     update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
                                         LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                                            resolved_variable.typed_variable.ty = Some(enum_valued_field.ty.clone());
+                                            resolved_variable.typed_variable.ty = Some(valued.sema_ty.clone().unwrap());
                                         }
                                     );
                                 }
                             }
-                        } else if let TypedUnnamedEnumVariant::Valued(ident, valued) = variant {
-                            if valued_fields.len() > 1 {
+                            TypedUnnamedEnumVariant::Ident(ident) => {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
-                                    kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
+                                    kind: Box::new(AnalyzerDiagKind::VariantDoesNotExportAnyField {
                                         variant_name: ident.as_string(),
                                     }),
-                                    location: Some(DiagLoc::new(typed_switch.loc.clone())),
+                                    location: Some(DiagLoc::new(case.loc.clone())),
                                     hint: None,
                                 });
                                 return FlowState::Reachable;
-                            }
-
-                            let valued_field = valued_fields.first().unwrap();
-
-                            valued.sema_ty = match self.analyze_expr(scope_id_opt, valued, None) {
-                                Some(sema_ty) => Some(sema_ty),
-                                None => continue 'patterns,
-                            };
-
-                            // update local variable concrete type (exported symbol)
-                            {
-                                update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
-                                    LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                                        resolved_variable.typed_variable.ty = Some(valued.sema_ty.clone().unwrap());
-                                    }
-                                );
                             }
                         }
                     }

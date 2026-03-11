@@ -150,6 +150,9 @@ pub enum AnalyzerDiagKind {
     #[error("Switch expression must be an enum type, but found '{expr_type}'.")]
     SwitchOperandIsNotEnum { expr_type: String },
 
+    #[error("Variant '{variant_name}' does not export any fields, but you attempted to destructure it.")]
+    VariantDoesNotExportAnyField { variant_name: String },
+
     #[error("Variant '{enum_name}.{variant_name}' is missing fields.")]
     VariantMissingFields { enum_name: String, variant_name: String },
 
