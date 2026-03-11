@@ -540,12 +540,20 @@ impl X86_64 {
 impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
     fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
-        if ty.is_pointer() || ty.is_func() {
-            let mut needed = Registers::default();
-            needed.int_regs += 1;
+        // if ty.is_pointer() || ty.is_func() {
+        //     let mut needed = Registers::default();
+        //     needed.int_regs += 1;
 
-            return (ABIArgInfo::direct(), needed);
-        }
+        //     return (ABIArgInfo::direct(), needed);
+        // }
+
+        // if let Some(enum_ty) = ty.as_enum() {
+        //     if !enum_ty.is_repr_c() {
+        //         let mut needed = Registers::default();
+        //         needed.int_regs += 1;
+        //         return (ABIArgInfo::direct(), needed);
+        //     }
+        // }
 
         let ty = {
             if !is_named {
@@ -646,19 +654,24 @@ impl TargetABI for X86_64 {
         if let Some(result) = &result_type {
             let abi_type = cir_type_to_abi_type(&self.info, ty);
 
+            // if abi type already matches, pass directly
             if *result == abi_type {
                 return (ABIArgInfo::direct(), needed_regs);
             }
 
-            if result.as_integer_bits(&self.info) == abi_type.as_integer_bits(&self.info) {
-                return (ABIArgInfo::direct(), needed_regs);
+            // only allow integer-width coercion for scalar integer/bool types
+            if ty.is_integer_or_bool() {
+                if result.as_integer_bits(&self.info) == abi_type.as_integer_bits(&self.info) {
+                    return (ABIArgInfo::direct(), needed_regs);
+                }
             }
 
+            // coerce to the abi register type otherwise
             return (ABIArgInfo::direct_coerce(result.clone()), needed_regs);
         }
 
         // fallback
-        (ABIArgInfo::direct_coerce(ABIType::Integer(64)), needed_regs)
+        (ABIArgInfo::direct(), needed_regs)
     }
 
     fn classify_func(&self, fn_ty: &CIRFuncTy) -> Result<ABIFunctionInfo, String> {
@@ -1042,9 +1055,13 @@ fn classify_enum(
 
     // enums is as struct { i32 tag, [i8; N] payload } in codegen_llvm
 
-    // first, classify the tag field (i32) at offset 0
-    let tag_ty = CIRTy::PlainType(PlainType::Int32);
+    // first, classify the tag field at offset 0
+    let cir_enum_ty = ty.as_enum().unwrap();
+    let tag_ty = cir_enum_ty.tag_type_or_default();
+
     let tag_offset = offset_base;
+    let tag_layout = type_layout(info, &tag_ty);
+    let tag_size = tag_layout.size;
 
     let mut tag_lo = RegisterClass::NoClass;
     let mut tag_hi = RegisterClass::NoClass;
@@ -1059,9 +1076,8 @@ fn classify_enum(
     }
 
     // classify the payload
-    // byte-arrays are treated as NoClass/Integer depending on size
-    let payload_size = layout.size - 4; // total size minus tag
-    let payload_offset = offset_base + 4; // tag is 4 bytes
+    let payload_size = layout.size - tag_size;
+    let payload_offset = offset_base + tag_size;
 
     if payload_size > 0 {
         // payload is a byte array, classify based on its size

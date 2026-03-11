@@ -459,10 +459,10 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
-        let cir_arr_ty = array.ty.as_array().expect("Expected array type");
+        let cir_arr_ty = array.ty.as_array().unwrap();
         let element_ty = cir_arr_ty.ty.clone();
 
-        let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().expect("Expected ArrayType");
+        let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().unwrap();
 
         let required_len = array.elms.len();
         let mut elements = Vec::with_capacity(required_len);
@@ -484,10 +484,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         // zero-fill if array type is fixed-length and not fully initialized
-        let element_basic_ty: BasicTypeEnum<'ll> = self
-            .emit_ty(*element_ty.clone())
-            .try_into()
-            .expect("Expected BasicTypeEnum for element type");
+        let element_basic_ty: BasicTypeEnum<'ll> = self.emit_ty(*element_ty.clone()).try_into().unwrap();
 
         while elements.len() < arr_ty.len() as usize {
             elements.push(element_basic_ty.const_zero());
@@ -716,15 +713,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         ty: CIRTy,
     ) -> InternalValue<'ll> {
         // cond: lhs == null
-        let is_null = self
-            .llvmbuilder
-            .build_is_null(lhs, "lhs_is_null")
-            .expect("icmp eq null");
+        let is_null = self.llvmbuilder.build_is_null(lhs, "lhs_is_null").unwrap();
 
         let selected = self
             .llvmbuilder
             .build_select(is_null, rhs, lhs, "null_coalesce")
-            .expect("select")
+            .unwrap()
             .into_pointer_value();
 
         InternalValue::new(CIRTy::Pointer(Box::new(ty)), InternalValueKind::RValue(selected.into()))
@@ -1266,10 +1260,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_repr_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumTy) -> InternalValue<'ll> {
-        let cir_tag_type = enum_ty
-            .tag_type
-            .clone()
-            .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
+        let cir_tag_type = enum_ty.tag_type_or_default();
 
         let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
         let int_type = tag_type.into_int_type();
@@ -1300,7 +1291,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         enum_value = self
             .llvmbuilder
             .build_insert_value(enum_value, tag_val, 0, "enum.set_tag")
-            .expect("insert tag")
+            .unwrap()
             .into_struct_value();
 
         match &enum_init_expr.variant {
@@ -1309,7 +1300,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 enum_value = self
                     .llvmbuilder
                     .build_insert_value(enum_value, zero_payload, 1, "enum.zero_payload")
-                    .expect("insert zero payload")
+                    .unwrap()
                     .into_struct_value();
             }
 
@@ -1322,18 +1313,14 @@ impl<'ll> IRBuilderCtx<'ll> {
                 enum_value = self
                     .llvmbuilder
                     .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
-                    .expect("insert payload")
+                    .unwrap()
                     .into_struct_value();
             }
 
             CIREnumInitVariant::Fielded(field_exprs) => {
                 let field_basic_tys: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
-                    .map(|fld| {
-                        self.emit_ty(fld.ty.clone())
-                            .try_into()
-                            .expect("field must be basic type")
-                    })
+                    .map(|fld| self.emit_ty(fld.ty.clone()).try_into().unwrap())
                     .collect();
 
                 let payload_struct_ty = self.llvmctx.struct_type(&field_basic_tys, false);
@@ -1346,7 +1333,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     payload_value = self
                         .llvmbuilder
                         .build_insert_value(payload_value, rvalue.as_basic_value(), idx as u32, "payload.insert")
-                        .expect("insert field into payload")
+                        .unwrap()
                         .into_struct_value();
                 }
 
@@ -1356,7 +1343,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 enum_value = self
                     .llvmbuilder
                     .build_insert_value(enum_value, copied_payload, 1, "enum.set_payload")
-                    .expect("insert payload")
+                    .unwrap()
                     .into_struct_value();
             }
         }

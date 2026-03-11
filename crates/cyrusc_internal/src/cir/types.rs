@@ -84,6 +84,10 @@ pub struct CIREnumTy {
 }
 
 impl CIREnumTy {
+    pub fn tag_type_or_default(&self) -> Box<CIRTy> {
+        self.tag_type.clone().unwrap_or(Box::new(CIRTy::PlainType(PlainType::Int32)))
+    }
+
     #[inline]
     pub fn includes_payload(&self) -> bool {
         self.variants.iter().any(|v| !matches!(v, CIREnumTyVariant::Ident(_)))

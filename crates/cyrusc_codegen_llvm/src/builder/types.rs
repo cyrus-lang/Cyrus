@@ -203,11 +203,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_repr_c_enum_ty(&self, enum_ty: &CIREnumTy) -> BasicTypeEnum<'ll> {
-        let cir_tag_type = enum_ty
-            .tag_type
-            .clone()
-            .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
-
+        let cir_tag_type = enum_ty.tag_type_or_default();
         self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
     }
 
@@ -217,11 +213,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_repr_c_enum_ty(&enum_ty)
         } else {
             // cyrus special enum
-            let cir_tag_type = enum_ty
-                .tag_type
-                .clone()
-                .unwrap_or(Box::new(CIRTy::PlainType(PlainType::UInt32)));
-
+            let cir_tag_type = enum_ty.tag_type_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
 
             let (payload_ty, _) = self.enum_payload_ty(&enum_ty);
