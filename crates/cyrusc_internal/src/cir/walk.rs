@@ -523,7 +523,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         };
 
                         let tag = enum_ty.compute_variant_tag(case_ident).unwrap();
-                        let tag_type = enum_ty.tag_type_or_default();
+                        let tag_type = enum_ty.tag_type_or_infer_or_default();
 
                         CIRExpr {
                             kind: CIRExprKind::Literal(CIRLiteral {

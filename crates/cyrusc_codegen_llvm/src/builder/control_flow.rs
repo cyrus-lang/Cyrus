@@ -25,7 +25,7 @@ use cyrusc_internal::{
             CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRStmt, CIRSwitchOnEnumPattern,
             CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
         },
-        types::{CIRTupleTy, CIRTy},
+        types::{CIREnumTy, CIRTupleTy, CIRTy},
     },
 };
 use cyrusc_tast::exprs::TypedIdentifier;
@@ -156,22 +156,123 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(irreg);
     }
 
+    fn emit_switch_on_scalar_enum(
+        &mut self,
+        switch_on_enum_stmt: &CIRSwitchOnEnumStmt,
+        enum_value: IntValue<'ll>,
+        enum_ty: &CIREnumTy,
+    ) {
+        let parent_block = self.blockreg.cur_block.unwrap();
+        let exit_block = self.new_basic_block("switch_on_enum.exit");
+
+        // for scalar enums the value itself is the tag
+        let enum_idx_int_value = enum_value;
+
+        let else_block = if let Some(block_stmt) = &switch_on_enum_stmt.default {
+            let else_block = self.new_basic_block("switch_on_enum.default");
+
+            self.emit_block(else_block);
+            self.emit_body(block_stmt);
+
+            let cur_block = self.blockreg.cur_block.unwrap();
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+
+            else_block
+        } else {
+            exit_block
+        };
+
+        let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
+
+        for case in &switch_on_enum_stmt.cases {
+            let case_block = self.new_basic_block("switch_on_enum.case");
+
+            for pattern in &case.patterns {
+                let tag = pattern.variant_idx() as u64;
+
+                let pattern_value = enum_value.get_type().const_int(tag, false);
+
+                cases.push((pattern_value, case_block));
+            }
+
+            self.emit_block(case_block);
+
+            // payload binding
+            for pattern in &case.patterns {
+                if let CIRSwitchOnEnumPattern::Valued(_, (ident, expr_ty)) = pattern {
+                    let payload_ty: BasicTypeEnum<'ll> = self.emit_ty(expr_ty.ty.clone()).try_into().unwrap();
+                    let payload_alloca = self.llvmbuilder.build_alloca(payload_ty, "enum_payload").unwrap();
+
+                    // For scalar enums the value itself is the payload
+                    self.llvmbuilder.build_store(payload_alloca, enum_value).unwrap();
+
+                    let mut irreg = self.irreg.borrow_mut();
+                    irreg.insert(
+                        ident.symbol_id,
+                        LocalIRValue::LValue(payload_alloca, expr_ty.ty.clone()),
+                    );
+                }
+            }
+
+            self.emit_body(&case.body);
+
+            let cur_block = self.blockreg.cur_block.unwrap();
+            if cur_block.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
+        // emit switch
+        self.llvmbuilder.position_at_end(parent_block);
+
+        self.llvmbuilder
+            .build_switch(enum_idx_int_value, else_block, &cases)
+            .unwrap();
+
+        // unreachable optimization
+        let all_cases_return = cases.iter().all(|(_, bb)| {
+            bb.get_terminator()
+                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+        });
+
+        if all_cases_return && switch_on_enum_stmt.cases.len() == enum_ty.variants.len() {
+            self.emit_block(exit_block);
+            self.llvmbuilder.build_unreachable().unwrap();
+        }
+
+        let exit_in_use: bool = unsafe {
+            let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));
+            !first_use.is_null()
+        };
+
+        if exit_in_use {
+            self.emit_block(exit_block);
+        }
+    }
+
     pub(crate) fn emit_switch_on_enum(&mut self, switch_on_enum_stmt: &CIRSwitchOnEnumStmt) {
         let lvalue = self.emit_expr(&switch_on_enum_stmt.value);
         let rvalue = self.load_rvalue(lvalue);
         let enum_ty = rvalue.ty.as_enum().unwrap();
+
         let enum_struct_ty = {
             let ty = self.emit_enum_ty(enum_ty.clone());
 
             if ty.is_struct_type() {
                 ty.into_struct_type()
             } else if ty.is_int_type() {
-                // return ty.into_int_type();
-                todo!();
+                let enum_value = rvalue.as_basic_value().into_int_value();
+
+                self.emit_switch_on_scalar_enum(switch_on_enum_stmt, enum_value, &enum_ty);
+
+                return;
             } else {
                 unreachable!()
             }
         };
+
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
         let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
 

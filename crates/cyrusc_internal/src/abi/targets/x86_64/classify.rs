@@ -587,7 +587,17 @@ impl TargetABI for X86_64 {
             }
             RegisterClass::Integer => {
                 needed_regs.int_regs += 1;
-                result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
+
+                if ty.is_integer_or_bool()  {
+                    result_type = Some(cir_type_to_abi_type(&self.info, ty));
+                } 
+                else if let Some(enum_ty) = ty.as_enum() {
+                    let tag_type = enum_ty.tag_type_or_infer_or_default();
+                    result_type = Some(cir_type_to_abi_type(&self.info, &tag_type));
+                }
+                else {
+                    result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
+                }
 
                 if hi_class == RegisterClass::NoClass && ty.is_integer_or_bool() {
                     let attrs: ABIArgAttrs;
@@ -1039,6 +1049,17 @@ fn classify_enum(
     lo_class: &mut RegisterClass,
     hi_class: &mut RegisterClass,
 ) {
+    let cir_enum_ty = ty.as_enum().unwrap();
+
+    if cir_enum_ty.is_scalar_optimizable() {
+        // enum is an integer
+        let tag_ty = cir_enum_ty.tag_type_or_infer_or_default();
+        classify(info, &tag_ty, offset_base, lo_class, hi_class);
+        return;
+    }
+
+    // enums is as struct { i32 tag, [i8; N] payload } in codegen_llvm
+
     let layout = type_layout(info, ty);
 
     // if size > 16 bytes, keep default memory class
@@ -1053,11 +1074,8 @@ fn classify_enum(
         *hi_class = RegisterClass::NoClass;
     }
 
-    // enums is as struct { i32 tag, [i8; N] payload } in codegen_llvm
-
     // first, classify the tag field at offset 0
-    let cir_enum_ty = ty.as_enum().unwrap();
-    let tag_ty = cir_enum_ty.tag_type_or_default();
+    let tag_ty = cir_enum_ty.tag_type_or_infer_or_default();
 
     let tag_offset = offset_base;
     let tag_layout = type_layout(info, &tag_ty);

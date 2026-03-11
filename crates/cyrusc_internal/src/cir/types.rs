@@ -22,7 +22,7 @@ use crate::{
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CIRTy {
     PlainType(PlainType),
     Const(Box<CIRTy>),
@@ -36,17 +36,17 @@ pub enum CIRTy {
     Dynamic(CIRDynamicTy),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CIRTupleTy {
     pub elements: Vec<CIRTy>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CIRDynamicTy {
     pub vtable_id: VTableID,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CIRArrayTy {
     pub ty: Box<CIRTy>,
     pub len: usize,
@@ -61,21 +61,21 @@ pub struct CIRFuncTy {
     pub abi_func_info: Option<ABIFunctionInfo>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CIRStructTy {
     pub fields: Vec<CIRTy>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CIRUnionTy {
     pub fields: Vec<CIRTy>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CIREnumTy {
     pub variants: Vec<CIREnumTyVariant>,
     pub repr_attr: Option<ReprAttr>,
@@ -84,13 +84,53 @@ pub struct CIREnumTy {
 }
 
 impl CIREnumTy {
-    pub fn tag_type_or_default(&self) -> Box<CIRTy> {
-        self.tag_type.clone().unwrap_or(Box::new(CIRTy::PlainType(PlainType::Int32)))
+    pub fn tag_type_or_infer_or_default(&self) -> Box<CIRTy> {
+        self.tag_type
+            .clone()
+            .or_else(|| self.variant_expr_type())
+            .unwrap_or_else(|| Box::new(CIRTy::PlainType(PlainType::Int32)))
+    }
+
+    pub fn is_scalar_optimizable(&self) -> bool {
+        self.is_repr_c() || self.variant_expr_type().is_some() || !self.includes_payload()
+    }
+
+    pub fn variant_expr_type(&self) -> Option<Box<CIRTy>> {
+        let mut expr_ty: Option<Box<CIRTy>> = None;
+
+        for variant in &self.variants {
+            if let CIREnumTyVariant::Valued(_, expr) = variant {
+                let ty = expr.ty.clone();
+
+                match &expr_ty {
+                    None => {
+                        expr_ty = Some(Box::new(ty));
+                    }
+
+                    Some(existing) => {
+                        if **existing != ty {
+                            // inference failed
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+
+        expr_ty
     }
 
     #[inline]
     pub fn includes_payload(&self) -> bool {
         self.variants.iter().any(|v| !matches!(v, CIREnumTyVariant::Ident(_)))
+    }
+
+    pub fn includes_only_integer_payload(&self) -> bool {
+        self.variants.iter().all(|v| match v {
+            CIREnumTyVariant::Valued(_, expr) => expr.ty.is_integer_or_bool(),
+            CIREnumTyVariant::Ident(_) => true,
+            CIREnumTyVariant::Fielded(_, _) => false,
+        })
     }
 
     pub fn compute_variant_tag(&self, lookup_ident: &String) -> Option<u32> {
@@ -295,6 +335,15 @@ impl CIRTy {
             CIRTy::Const(inner) => inner.const_inner(),
             other => other,
         }
+    }
+}
+
+impl PartialEq for CIRFuncTy {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params
+            && self.is_var == other.is_var
+            && self.ret == other.ret
+            && self.callconv == other.callconv
     }
 }
 

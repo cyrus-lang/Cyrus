@@ -203,17 +203,17 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_repr_c_enum_ty(&self, enum_ty: &CIREnumTy) -> BasicTypeEnum<'ll> {
-        let cir_tag_type = enum_ty.tag_type_or_default();
+        let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
         self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
     }
 
     pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> BasicTypeEnum<'ll> {
-        if enum_ty.is_repr_c() || !enum_ty.includes_payload() {
+        if enum_ty.is_repr_c() || enum_ty.is_scalar_optimizable() {
             // c-compatible enum
             self.emit_repr_c_enum_ty(&enum_ty)
         } else {
             // cyrus special enum
-            let cir_tag_type = enum_ty.tag_type_or_default();
+            let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
 
             let (payload_ty, _) = self.enum_payload_ty(&enum_ty);

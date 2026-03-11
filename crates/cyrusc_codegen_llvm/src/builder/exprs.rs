@@ -1260,7 +1260,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_repr_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumTy) -> InternalValue<'ll> {
-        let cir_tag_type = enum_ty.tag_type_or_default();
+         let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
 
         let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
         let int_type = tag_type.into_int_type();
@@ -1277,7 +1277,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let enum_ty = &enum_init_expr.enum_ty;
 
         // handle c-compatible enum init
-        if enum_ty.is_repr_c() || !enum_ty.includes_payload() {
+        if enum_ty.is_repr_c() || enum_ty.is_scalar_optimizable() {
             return self.emit_repr_c_enum_init(enum_init_expr, enum_ty);
         }
 
@@ -1303,7 +1303,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     .unwrap()
                     .into_struct_value();
             }
-
             CIREnumInitVariant::Valued(expr) => {
                 let lvalue = self.emit_expr(expr);
                 let rvalue = self.load_rvalue(lvalue);
@@ -1316,7 +1315,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     .unwrap()
                     .into_struct_value();
             }
-
             CIREnumInitVariant::Fielded(field_exprs) => {
                 let field_basic_tys: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
@@ -1347,6 +1345,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                     .into_struct_value();
             }
         }
+
+        dbg!(enum_value.clone());
 
         InternalValue::new(
             CIRTy::Enum(enum_init_expr.enum_ty.clone()),

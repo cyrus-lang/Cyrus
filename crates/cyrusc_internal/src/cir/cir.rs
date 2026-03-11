@@ -415,6 +415,17 @@ pub enum CIREnumTyVariant {
     Fielded(String, Vec<CIRTy>),
 }
 
+impl PartialEq for CIREnumTyVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
+            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1.ty == expr2.ty,
+            (Self::Fielded(ident1, fields1), Self::Fielded(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
+            _ => false,
+        }
+    }
+}
+
 impl CIREnumTyVariant {
     pub fn as_fielded(&self) -> Option<&Vec<CIRTy>> {
         match self {
