@@ -87,12 +87,20 @@ impl CIREnumTy {
     pub fn tag_type_or_infer_or_default(&self) -> Box<CIRTy> {
         self.tag_type
             .clone()
-            .or_else(|| self.variant_expr_type())
+            .or_else(|| {
+                if self.includes_only_integer_payload() {
+                    self.variant_expr_type()
+                } else {
+                    None
+                }
+            })
             .unwrap_or_else(|| Box::new(CIRTy::PlainType(PlainType::Int32)))
     }
 
     pub fn is_scalar_optimizable(&self) -> bool {
-        self.is_repr_c() || self.variant_expr_type().is_some() || !self.includes_payload()
+        self.is_repr_c()
+            || (self.variant_expr_type().is_some() && self.includes_only_integer_payload())
+            || !self.includes_payload()
     }
 
     pub fn variant_expr_type(&self) -> Option<Box<CIRTy>> {
@@ -141,7 +149,7 @@ impl CIREnumTy {
 
         match &self.variants[variant_idx] {
             CIREnumTyVariant::Valued(_, expr) => {
-                if self.is_repr_c() || self.is_scalar_optimizable() {
+                if self.is_scalar_optimizable() {
                     let integer_value = match cir_expr_as_const_integer_value(expr) {
                         Some(value) => value,
                         None => return Some(variant_idx.try_into().unwrap()),

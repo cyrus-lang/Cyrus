@@ -1349,8 +1349,6 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
         }
 
-        dbg!(enum_value.clone());
-
         InternalValue::new(
             CIRTy::Enum(enum_init_expr.enum_ty.clone()),
             InternalValueKind::RValue(enum_value.as_basic_value_enum()),
