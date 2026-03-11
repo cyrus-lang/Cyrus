@@ -190,7 +190,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let case_block = self.new_basic_block("switch_on_enum.case");
 
             for pattern in &case.patterns {
-                let tag = pattern.variant_idx() as u64;
+                let tag = enum_ty.compute_variant_tag(pattern.ident()).unwrap() as u64;
 
                 let pattern_value = enum_value.get_type().const_int(tag, false);
 
@@ -201,7 +201,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             // payload binding
             for pattern in &case.patterns {
-                if let CIRSwitchOnEnumPattern::Valued(_, (ident, expr_ty)) = pattern {
+                if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr_ty)) = pattern {
                     let payload_ty: BasicTypeEnum<'ll> = self.emit_ty(expr_ty.ty.clone()).try_into().unwrap();
                     let payload_alloca = self.llvmbuilder.build_alloca(payload_ty, "enum_payload").unwrap();
 
@@ -294,6 +294,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             exit_block
         };
 
+        let tag_type = self.emit_ty(*enum_ty.tag_type_or_infer_or_default()).into_int_type();
+
         let mut cases: Vec<(IntValue<'ll>, BasicBlock<'ll>)> = Vec::new();
 
         for case in &switch_on_enum_stmt.cases {
@@ -301,12 +303,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(case_block);
 
             for pattern in &case.patterns {
-                let pattern_int_value = self
-                    .llvmctx
-                    .i32_type()
-                    .const_int(pattern.variant_idx().try_into().unwrap(), false);
+                let pattern_int_value = tag_type.const_int(pattern.variant_idx().try_into().unwrap(), false);
 
-                if let CIRSwitchOnEnumPattern::ExportFields(variant_idx, exported_fields) = pattern {
+                if let CIRSwitchOnEnumPattern::ExportFields(_, variant_idx, exported_fields) = pattern {
                     self.emit_block(case_block);
 
                     let enum_payload = self.extract_enum_payload(enum_struct_value);
@@ -330,7 +329,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         payload_struct_type,
                         exported_fields,
                     );
-                } else if let CIRSwitchOnEnumPattern::Valued(_, (ident, expr)) = pattern {
+                } else if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr)) = pattern {
                     self.emit_block(case_block);
 
                     let lvalue = self.emit_expr(expr);

@@ -366,7 +366,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
         if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
             if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
-                self.lower_switch_on_integer_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
+                self.lower_switch_on_scalar_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
             } else {
                 self.lower_switch_on_enum(scope_id_opt, &unnamed_enum_type, &operand, &default, switch_stmt)
             }
@@ -499,7 +499,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::If(root_if)
     }
 
-    fn lower_switch_on_integer_enum(
+    fn lower_switch_on_scalar_enum(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         operand: &CIRExpr,
@@ -607,7 +607,8 @@ impl<'resolver> CIRWalk<'resolver> {
                             .iter()
                             .position(|variant| variant.ident().as_string() == *ident)
                             .unwrap();
-                        lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(variant_idx));
+
+                        lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(ident.clone(), variant_idx));
                     }
                     TypedSwitchCasePattern::EnumVariant(ident, exported_fields, _) => {
                         let variant_idx = unnamed_enum_type
@@ -621,15 +622,16 @@ impl<'resolver> CIRWalk<'resolver> {
                         match variant {
                             TypedUnnamedEnumVariant::Valued(_, expr) => {
                                 let exported_field = exported_fields.first().unwrap();
-
                                 let lowered_expr = self.lower_expr(scope_id_opt, &expr);
+
                                 lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(
+                                    ident.clone(),
                                     variant_idx,
                                     (exported_field.clone(), lowered_expr),
                                 ));
                             }
                             TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
-                                let typed_exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
+                                let exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
                                     .iter()
                                     .enumerate()
                                     .map(|(idx, ident)| {
@@ -638,8 +640,11 @@ impl<'resolver> CIRWalk<'resolver> {
                                     })
                                     .collect();
 
-                                lowered_patterns
-                                    .push(CIRSwitchOnEnumPattern::ExportFields(variant_idx, typed_exported_fields));
+                                lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(
+                                    ident.clone(),
+                                    variant_idx,
+                                    exported_fields,
+                                ));
                             }
                             TypedUnnamedEnumVariant::Ident(_) => unreachable!(),
                         }

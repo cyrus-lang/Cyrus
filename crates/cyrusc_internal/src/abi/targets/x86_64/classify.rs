@@ -588,14 +588,12 @@ impl TargetABI for X86_64 {
             RegisterClass::Integer => {
                 needed_regs.int_regs += 1;
 
-                if ty.is_integer_or_bool()  {
+                if ty.is_integer_or_bool() {
                     result_type = Some(cir_type_to_abi_type(&self.info, ty));
-                } 
-                else if let Some(enum_ty) = ty.as_enum() {
+                } else if let Some(enum_ty) = ty.as_enum() {
                     let tag_type = enum_ty.tag_type_or_infer_or_default();
                     result_type = Some(cir_type_to_abi_type(&self.info, &tag_type));
-                }
-                else {
+                } else {
                     result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
                 }
 
@@ -1058,7 +1056,7 @@ fn classify_enum(
         return;
     }
 
-    // enums is as struct { i32 tag, [i8; N] payload } in codegen_llvm
+    // enums is a struct { tag, [i8; N] payload }
 
     let layout = type_layout(info, ty);
 

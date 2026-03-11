@@ -371,17 +371,25 @@ pub struct CIRSwitchOnEnumCase {
 
 #[derive(Debug, Clone)]
 pub enum CIRSwitchOnEnumPattern {
-    Ident(usize),
-    Valued(usize, (TypedIdentifier, CIRExpr)),
-    ExportFields(usize, Vec<(TypedIdentifier, CIRTy)>),
+    Ident(String, usize),
+    Valued(String, usize, (TypedIdentifier, CIRExpr)),
+    ExportFields(String, usize, Vec<(TypedIdentifier, CIRTy)>),
 }
 
 impl CIRSwitchOnEnumPattern {
     pub fn variant_idx(&self) -> usize {
         match self {
-            CIRSwitchOnEnumPattern::Ident(variant_idx) => *variant_idx,
-            CIRSwitchOnEnumPattern::ExportFields(variant_idx, ..) => *variant_idx,
-            CIRSwitchOnEnumPattern::Valued(variant_idx, ..) => *variant_idx,
+            CIRSwitchOnEnumPattern::Ident(_, variant_idx) => *variant_idx,
+            CIRSwitchOnEnumPattern::ExportFields(_, variant_idx, ..) => *variant_idx,
+            CIRSwitchOnEnumPattern::Valued(_, variant_idx, ..) => *variant_idx,
+        }
+    }
+
+    pub fn ident(&self) -> &String {
+        match self {
+            CIRSwitchOnEnumPattern::Ident(ident, ..) => ident,
+            CIRSwitchOnEnumPattern::ExportFields(ident, ..) => ident,
+            CIRSwitchOnEnumPattern::Valued(ident, ..) => ident,
         }
     }
 }

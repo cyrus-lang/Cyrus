@@ -1260,16 +1260,13 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_repr_c_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr, enum_ty: &CIREnumTy) -> InternalValue<'ll> {
-         let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
-
-        let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
-        let int_type = tag_type.into_int_type();
-
-        let value = int_type.const_int(enum_init_expr.tag.try_into().unwrap(), cir_tag_type.is_signed_integer());
+        let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
+        let tag_type = self.emit_ty(*cir_tag_type.clone()).into_int_type();
+        let tag_value = tag_type.const_int(enum_init_expr.tag.try_into().unwrap(), cir_tag_type.is_signed_integer());
 
         InternalValue::new(
             CIRTy::Enum(enum_ty.clone()),
-            InternalValueKind::RValue(value.as_basic_value_enum()),
+            InternalValueKind::RValue(tag_value.as_basic_value_enum()),
         )
     }
 
@@ -1286,11 +1283,13 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut enum_value = enum_struct_ty.get_undef();
 
-        let tag_val = self.llvmctx.i32_type().const_int(enum_init_expr.tag as u64, false);
+        let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
+        let tag_type = self.emit_ty(*cir_tag_type.clone()).into_int_type();
+        let tag_value = tag_type.const_int(enum_init_expr.tag as u64, false);
 
         enum_value = self
             .llvmbuilder
-            .build_insert_value(enum_value, tag_val, 0, "enum.set_tag")
+            .build_insert_value(enum_value, tag_value, 0, "enum.set_tag")
             .unwrap()
             .into_struct_value();
 
@@ -1307,6 +1306,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let lvalue = self.emit_expr(expr);
                 let rvalue = self.load_rvalue(lvalue);
 
+                // FIXME
+                // `EnumValuedVariant` must construct a global variable and store the value in that;
+                // wherever you use that `EnumVariant` you must memcpy it! (only and only if not scaler)
+                
                 let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_ty);
 
                 enum_value = self

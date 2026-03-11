@@ -141,7 +141,7 @@ impl CIREnumTy {
 
         match &self.variants[variant_idx] {
             CIREnumTyVariant::Valued(_, expr) => {
-                if self.is_repr_c() {
+                if self.is_repr_c() || self.is_scalar_optimizable() {
                     let integer_value = match cir_expr_as_const_integer_value(expr) {
                         Some(value) => value,
                         None => return Some(variant_idx.try_into().unwrap()),
