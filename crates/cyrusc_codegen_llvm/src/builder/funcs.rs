@@ -561,7 +561,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                                 self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
                             }
                         }
-
                         ExpandKind::Struct { field_count } => {
                             for i in 0..*field_count {
                                 let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
@@ -576,7 +575,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                                 self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
                             }
                         }
-
                         ExpandKind::Coerced { offset_hi, .. } => {
                             // first expanded param
                             let lo_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
