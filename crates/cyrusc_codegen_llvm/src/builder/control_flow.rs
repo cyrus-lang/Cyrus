@@ -368,6 +368,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             bb.get_terminator()
                 .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
         });
+
         if all_cases_return && switch_on_enum_stmt.cases.len() == enum_ty.variants.len() {
             self.emit_block(exit_block);
             self.llvmbuilder.build_unreachable().unwrap();
@@ -430,6 +431,16 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmbuilder
             .build_switch(rvalue.as_basic_value().into_int_value(), else_block, &cases)
             .unwrap();
+
+        let all_cases_return = cases.iter().all(|(_, bb)| {
+            bb.get_terminator()
+                .map_or(false, |inst| inst.get_opcode() == InstructionOpcode::Return)
+        });
+
+        if all_cases_return && switch_stmt.all_cases_covered {
+            self.emit_block(exit_block);
+            self.llvmbuilder.build_unreachable().unwrap();
+        }
 
         let exit_in_use: bool = unsafe {
             let first_use: *const LLVMUse = LLVMGetFirstUse(LLVMBasicBlockAsValue(exit_block.as_mut_ptr()));

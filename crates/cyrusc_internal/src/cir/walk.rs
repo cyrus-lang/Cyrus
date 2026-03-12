@@ -365,7 +365,9 @@ impl<'resolver> CIRWalk<'resolver> {
             .and_then(|default_case| Some(self.lower_body(&default_case)));
 
         if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
-            if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
+            let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, unnamed_enum_type);
+
+            if enum_ty.is_scalar_optimizable() {
                 self.lower_switch_on_scalar_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
             } else {
                 self.lower_switch_on_enum(scope_id_opt, &unnamed_enum_type, &operand, &default, switch_stmt)
@@ -540,10 +542,13 @@ impl<'resolver> CIRWalk<'resolver> {
             })
             .collect();
 
+        let explicit_all_cases_return = switch_stmt.cases.len() == enum_ty.variants.len();
+
         CIRStmt::Switch(CIRSwitchStmt {
             value: operand.clone(),
             cases,
             default: default.clone(),
+            all_cases_covered: explicit_all_cases_return,
         })
     }
 
@@ -573,6 +578,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         self.lower_expr(scope_id_opt, case_expr)
                     })
                     .collect();
+
                 let body = self.lower_body(&case.body);
 
                 CIRSwitchCase { patterns, body }
@@ -583,6 +589,7 @@ impl<'resolver> CIRWalk<'resolver> {
             value: operand.clone(),
             cases,
             default: default.clone(),
+            all_cases_covered: false
         })
     }
 

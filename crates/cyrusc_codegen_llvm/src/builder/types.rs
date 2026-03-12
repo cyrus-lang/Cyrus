@@ -208,7 +208,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> BasicTypeEnum<'ll> {
-        if enum_ty.is_repr_c() || enum_ty.is_scalar_optimizable() {
+        if enum_ty.is_scalar_optimizable() {
             // c-compatible enum
             self.emit_repr_c_enum_ty(&enum_ty)
         } else {

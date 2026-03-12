@@ -348,6 +348,7 @@ pub struct CIRSwitchStmt {
     pub value: CIRExpr,
     pub cases: Vec<CIRSwitchCase>,
     pub default: Option<CIRBlockStmt>,
+    pub all_cases_covered: bool
 }
 
 #[derive(Debug, Clone)]
