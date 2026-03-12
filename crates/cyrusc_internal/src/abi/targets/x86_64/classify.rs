@@ -1074,7 +1074,6 @@ fn classify_enum(
 
     // first, classify the tag field at offset 0
     let tag_ty = cir_enum_ty.tag_type_or_infer_or_default();
-
     let tag_offset = offset_base;
     let tag_layout = type_layout(info, &tag_ty);
     let tag_size = tag_layout.size;

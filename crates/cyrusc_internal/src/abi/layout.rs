@@ -141,8 +141,15 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             ABITypeLayout::aggregate(total_size, max_align, field_offsets)
         }
         CIRTy::Enum(enum_ty) => {
-            let tag_size = 4;
-            let tag_align = 4;
+            let tag_type = enum_ty.tag_type_or_infer_or_default();
+
+            if enum_ty.is_scalar_optimizable() {
+                return type_layout(info, &tag_type);
+            }
+
+            let tag_layout = type_layout(info, &tag_type);
+            let tag_size = tag_layout.size;
+            let tag_align = tag_layout.align;
 
             let mut max_payload_size = 0;
             let mut max_payload_align = 1;
@@ -150,10 +157,12 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             for variant in &enum_ty.variants {
                 let (variant_size, variant_align) = match variant {
                     CIREnumTyVariant::Ident(_) => (0, 1),
+
                     CIREnumTyVariant::Valued(_, expr) => {
                         let layout = type_layout(info, &expr.ty);
                         (layout.size, layout.align)
                     }
+
                     CIREnumTyVariant::Fielded(_, field_types) => {
                         let struct_ty = CIRStructTy {
                             fields: field_types.clone(),
@@ -170,30 +179,28 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                 max_payload_align = max_payload_align.max(variant_align);
             }
 
-            if max_payload_size == 0 {
-                if enum_ty.includes_payload() {
-                    max_payload_size = 1;
-                    max_payload_align = 1;
-                } else {
-                    // c-abi compatible enum
-                    max_payload_size = 0;
-                    max_payload_align = 1;
-                }
+            if max_payload_size == 0 && enum_ty.includes_payload() {
+                max_payload_size = 1;
+                max_payload_align = 1;
             }
 
-            // explicit payload alignment
             if let Some(align) = enum_ty.align {
                 max_payload_align = max_payload_align.max(align as u32);
             }
 
-            let aligned_payload_size =
-                ((max_payload_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
+            // payload offset must respect payload alignment
+            let payload_offset = ((tag_size + (max_payload_align - 1)) / max_payload_align) * max_payload_align;
 
-            let total_size = tag_size + aligned_payload_size;
             let mut total_align = tag_align.max(max_payload_align);
+
             if let Some(align) = enum_ty.align {
                 total_align = total_align.max(align as u32);
             }
+
+            let mut total_size = payload_offset + max_payload_size;
+
+            // struct size must be aligned
+            total_size = ((total_size + (total_align - 1)) / total_align) * total_align;
 
             ABITypeLayout::aggregate(total_size, total_align, Vec::new())
         }

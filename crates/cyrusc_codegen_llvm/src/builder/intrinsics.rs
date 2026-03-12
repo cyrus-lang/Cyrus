@@ -17,11 +17,57 @@
 use crate::builder::builder::IRBuilderCtx;
 use inkwell::{
     AddressSpace,
-    types::{ArrayType, BasicType, StructType},
+    types::{ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, PointerValue, StructValue},
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn intrinsic_coerce_through_alloca(
+        &self,
+        value: BasicValueEnum<'ll>,
+        dst_ty: BasicTypeEnum<'ll>,
+        name: &str,
+    ) -> BasicValueEnum<'ll> {
+        let src_ty = value.get_type();
+
+        // if source and destination types are the same, no coercion is needed
+        if src_ty == dst_ty {
+            return value;
+        }
+
+        let dst_alloca = self
+            .llvmbuilder
+            .build_alloca(dst_ty, &format!("{name}.dst.alloca"))
+            .unwrap();
+
+        let src_alloca = self
+            .llvmbuilder
+            .build_alloca(src_ty, &format!("{name}.src.alloca"))
+            .unwrap();
+
+        self.llvmbuilder.build_store(src_alloca, value).unwrap();
+
+        let i8_ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+        let dst_ptr = self
+            .llvmbuilder
+            .build_bit_cast(dst_alloca, i8_ptr_type, &format!("{name}.dst.ptr"))
+            .unwrap()
+            .into_pointer_value();
+
+        let src_ptr = self
+            .llvmbuilder
+            .build_bit_cast(src_alloca, i8_ptr_type, &format!("{name}.src.ptr"))
+            .unwrap()
+            .into_pointer_value();
+
+        let size = dst_ty.size_of().unwrap();
+
+        self.llvmbuilder.build_memcpy(dst_ptr, 1, src_ptr, 1, size).unwrap();
+
+        self.llvmbuilder.build_load(dst_ty, dst_alloca, name).unwrap()
+    }
+
     pub(crate) fn intrinsic_optimized_memcpy(&self, dest: PointerValue<'ll>, rvalue: BasicValueEnum<'ll>) {
         let ty = rvalue.get_type();
 
@@ -224,7 +270,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let src_ptr = match src_value {
             BasicValueEnum::PointerValue(ptr) => ptr,
             _ => {
-                let tmp_alloca = builder.build_alloca(src_value.get_type(), "tmp").unwrap();
+                let tmp_alloca = builder.build_alloca(src_value.get_type(), "temp").unwrap();
                 builder.build_store(tmp_alloca, src_value).unwrap();
                 tmp_alloca
             }

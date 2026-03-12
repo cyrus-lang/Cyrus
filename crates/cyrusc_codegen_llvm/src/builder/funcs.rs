@@ -45,7 +45,7 @@ use inkwell::{
     llvm_sys::core::{
         LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
     },
-    types::{AsTypeRef, BasicTypeEnum},
+    types::{AsTypeRef, BasicType, BasicTypeEnum},
     values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
 
@@ -160,13 +160,13 @@ impl<'ll> IRBuilderCtx<'ll> {
         let struct_value = rvalue.as_basic_value().into_struct_value();
 
         // extract low part (first 8 bytes)
-        let lo_val = self
+        let lo_value = self
             .llvmbuilder
             .build_extract_value(struct_value, 0, "lo.part")
             .unwrap();
 
         // extract high part (next 8 bytes)
-        let hi_val = self
+        let hi_value = self
             .llvmbuilder
             .build_extract_value(struct_value, 1, "hi.part")
             .unwrap();
@@ -179,17 +179,20 @@ impl<'ll> IRBuilderCtx<'ll> {
             .try_into()
             .unwrap();
 
-        let lo_coerced = if lo_llvm == lo_val.get_type() {
-            lo_val
-        } else {
-            self.llvmbuilder.build_bit_cast(lo_val, lo_llvm, "coerce.lo").unwrap()
-        };
+        let lo_coerced = self.intrinsic_coerce_through_alloca(lo_value, lo_llvm, "lo");
+        let hi_coerced = self.intrinsic_coerce_through_alloca(hi_value, hi_llvm, "hi");
 
-        let hi_coerced = if hi_llvm == hi_val.get_type() {
-            hi_val
-        } else {
-            self.llvmbuilder.build_bit_cast(hi_val, hi_llvm, "coerce.hi").unwrap()
-        };
+        // let lo_coerced = if lo_llvm == lo_val.get_type() {
+        //     lo_val
+        // } else {
+        //     self.llvmbuilder.build_bit_cast(lo_val, lo_llvm, "coerce.lo").unwrap()
+        // };
+
+        // let hi_coerced = if hi_llvm == hi_val.get_type() {
+        //     hi_val
+        // } else {
+        //     self.llvmbuilder.build_bit_cast(hi_val, hi_llvm, "coerce.hi").unwrap()
+        // };
 
         args_values.push(lo_coerced.into());
         args_values.push(hi_coerced.into());
@@ -443,24 +446,106 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
         let mut llvm_param_index = 0;
 
-        // handle sret
+        // handle hidden sret pointer
         if abi_func_info.ret_info.kind.is_indirect_sret() {
             llvm_param_index += 1;
         }
 
-        for param in &func_params.list {
-            let basic_value = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+        for (idx, param) in func_params.list.iter().enumerate() {
+            let abi_arg_info = &abi_func_info.params_infos[idx];
 
-            llvm_param_index += 1;
+            match &abi_arg_info.kind {
+                ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
+                    let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
 
-            let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    llvm_param_index += 1;
 
-            let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
-            self.llvmbuilder.build_store(ptr, basic_value).unwrap();
+                    let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
 
-            self.irreg
-                .borrow_mut()
-                .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+                    let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
+                    self.llvmbuilder.build_store(ptr, llvm_param).unwrap();
+
+                    self.irreg
+                        .borrow_mut()
+                        .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+                }
+
+                ABIArgKind::DirectPair { lo: _, hi: _ } => {
+                    let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+
+                    let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                    let hi = self
+                        .cur_func
+                        .unwrap()
+                        .get_nth_param((llvm_param_index + 1) as u32)
+                        .unwrap();
+
+                    llvm_param_index += 2;
+
+                    let param_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+
+                    let param_alloca = self.llvmbuilder.build_alloca(param_ty, "param").unwrap();
+
+                    let lo_ptr = self
+                        .llvmbuilder
+                        .build_struct_gep(param_ty, param_alloca, 0, "lo.ptr")
+                        .unwrap();
+
+                    self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
+
+                    let hi_ptr = self
+                        .llvmbuilder
+                        .build_struct_gep(param_ty, param_alloca, 1, "hi.ptr")
+                        .unwrap();
+
+                    // spill hi register
+                    let tmp = self.llvmbuilder.build_alloca(hi.get_type(), "hi.temp").unwrap();
+
+                    self.llvmbuilder.build_store(tmp, hi).unwrap();
+
+                    let dst = self
+                        .llvmbuilder
+                        .build_bit_cast(hi_ptr, ptr_type, "")
+                        .unwrap()
+                        .into_pointer_value();
+
+                    let src = self
+                        .llvmbuilder
+                        .build_bit_cast(tmp, ptr_type, "")
+                        .unwrap()
+                        .into_pointer_value();
+
+                    let size = hi.get_type().size_of().unwrap();
+
+                    self.llvmbuilder.build_memcpy(dst, 1, src, 1, size).unwrap();
+
+                    self.irreg
+                        .borrow_mut()
+                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                }
+
+                ABIArgKind::Indirect { .. } => {
+                    let ptr = self
+                        .cur_func
+                        .unwrap()
+                        .get_nth_param(llvm_param_index as u32)
+                        .unwrap()
+                        .into_pointer_value();
+
+                    llvm_param_index += 1;
+
+                    self.irreg
+                        .borrow_mut()
+                        .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+                }
+                ABIArgKind::Ignore => {
+                    // zero sized type
+                }
+                ABIArgKind::Expand { .. } => {
+                    unimplemented!("expand params not implemented yet");
+                }
+            }
         }
     }
 
