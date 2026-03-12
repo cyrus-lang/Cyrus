@@ -182,18 +182,6 @@ impl<'ll> IRBuilderCtx<'ll> {
         let lo_coerced = self.intrinsic_coerce_through_alloca(lo_value, lo_llvm, "lo");
         let hi_coerced = self.intrinsic_coerce_through_alloca(hi_value, hi_llvm, "hi");
 
-        // let lo_coerced = if lo_llvm == lo_val.get_type() {
-        //     lo_val
-        // } else {
-        //     self.llvmbuilder.build_bit_cast(lo_val, lo_llvm, "coerce.lo").unwrap()
-        // };
-
-        // let hi_coerced = if hi_llvm == hi_val.get_type() {
-        //     hi_val
-        // } else {
-        //     self.llvmbuilder.build_bit_cast(hi_val, hi_llvm, "coerce.hi").unwrap()
-        // };
-
         args_values.push(lo_coerced.into());
         args_values.push(hi_coerced.into());
     }

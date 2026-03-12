@@ -365,9 +365,7 @@ impl<'resolver> CIRWalk<'resolver> {
             .and_then(|default_case| Some(self.lower_body(&default_case)));
 
         if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
-            let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(scope_id_opt, unnamed_enum_type);
-
-            if enum_ty.is_scalar_optimizable() {
+            if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
                 self.lower_switch_on_scalar_enum(scope_id_opt, &operand, &unnamed_enum_type, &default, switch_stmt)
             } else {
                 self.lower_switch_on_enum(scope_id_opt, &unnamed_enum_type, &operand, &default, switch_stmt)

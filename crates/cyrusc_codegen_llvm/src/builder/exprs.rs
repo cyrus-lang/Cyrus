@@ -42,7 +42,7 @@ use cyrusc_internal::{
 use cyrusc_tast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::{AnyTypeEnum, ArrayType, BasicTypeEnum, StructType},
+    types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},
     values::{
         AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue,
         PointerValue, StructValue,
@@ -341,10 +341,19 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .llvmbuilder
                 .build_bit_cast(value, target_basic_type, "bitcast")
                 .unwrap(),
-            _ => self
-                .llvmbuilder
-                .build_bit_cast(value, target_basic_type, "bitcast")
-                .unwrap(),
+            _ => {
+                let from_size = from_type.size_of();
+                let to_size = target_basic_type.size_of();
+
+                if from_size == to_size {
+                    self.llvmbuilder
+                        .build_bit_cast(value, target_basic_type, "bitcast")
+                        .unwrap()
+                } else {
+                    // fallback
+                    self.intrinsic_coerce_through_alloca(value, target_basic_type, "cast_func_arg")
+                }
+            }
         }
     }
 
@@ -1309,7 +1318,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 // FIXME
                 // `EnumValuedVariant` must construct a global variable and store the value in that;
                 // wherever you use that `EnumVariant` you must memcpy it! (only and only if not scaler)
-                
+
                 let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_ty);
 
                 enum_value = self
