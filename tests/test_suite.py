@@ -33,13 +33,20 @@ def get_compiler_version(compiler_path: str, timeout: float = 3.0) -> str | None
 def print_compiler_version(compiler_path: str):
     ver = get_compiler_version(compiler_path)
     if ver:
-        print(f"Compiler ({compiler_path}) version:\n{ver}\n")
+        print(f"Compiler ({compiler_path}) version: {ver}\n")
     else:
         print(f"Warning: couldn't determine version for compiler '{compiler_path}'.\n")
 
 
 def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir):
     output_binary = Path(output_dir) / file_path.stem
+
+    before_compile = metadata.get("beforeCompile")
+    if before_compile:
+        before_cmd = shlex.split(before_compile)
+        before_result = subprocess.run(before_cmd, capture_output=True, text=True)
+        if before_result.returncode != 0:
+            raise Exception(f"beforeCompile error:\n{before_result.stderr}")
 
     build_cmd = [
         compiler_path, "build", str(file_path), "-o", str(output_binary),
@@ -69,7 +76,8 @@ def extract_test_metadata(content, file_name):
     metadata = {
         "stdout": "",
         "stdin": "",
-        "args": ""
+        "args": "",
+        "beforeCompile": ""
     }
 
     stdout_match = re.search(r"//\s*@stdout:\s*(.*)", content)
@@ -83,6 +91,10 @@ def extract_test_metadata(content, file_name):
     args_match = re.search(r"//\s*@args:\s*(.*)", content)
     if args_match:
         metadata["args"] = args_match.group(1)
+
+    before_compile_match = re.search(r"//\s*@beforeCompile:\s*(.*)", content)
+    if before_compile_match:
+        metadata["beforeCompile"] = before_compile_match.group(1)
 
     return metadata
 

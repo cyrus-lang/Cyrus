@@ -62,6 +62,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let abi_func_info = fn_ty.abi_func_info.as_ref().unwrap();
 
+        dbg!(abi_func_info.clone());
+        
         let mut args_values = Vec::with_capacity(args.len());
 
         for (idx, expr) in args.iter().enumerate() {
