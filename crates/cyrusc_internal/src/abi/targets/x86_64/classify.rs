@@ -540,21 +540,6 @@ impl X86_64 {
 impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
     fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
-        // if ty.is_pointer() || ty.is_func() {
-        //     let mut needed = Registers::default();
-        //     needed.int_regs += 1;
-
-        //     return (ABIArgInfo::direct(), needed);
-        // }
-
-        // if let Some(enum_ty) = ty.as_enum() {
-        //     if !enum_ty.is_repr_c() {
-        //         let mut needed = Registers::default();
-        //         needed.int_regs += 1;
-        //         return (ABIArgInfo::direct(), needed);
-        //     }
-        // }
-
         let ty = {
             if !is_named {
                 &self.apply_variadic_argument_promote(ty)
@@ -591,8 +576,10 @@ impl TargetABI for X86_64 {
                 if ty.is_integer_or_bool() {
                     result_type = Some(cir_type_to_abi_type(&self.info, ty));
                 } else if let Some(enum_ty) = ty.as_enum() {
-                    let tag_type = enum_ty.tag_type_or_infer_or_default();
-                    result_type = Some(cir_type_to_abi_type(&self.info, &tag_type));
+                    if enum_ty.is_scalar_optimizable() {
+                        let tag_type = enum_ty.tag_type_or_infer_or_default();
+                        result_type = Some(cir_type_to_abi_type(&self.info, &tag_type));
+                    }
                 } else {
                     result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
                 }
