@@ -469,7 +469,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
                 }
-
                 ABIArgKind::DirectPair { lo: _, hi: _ } => {
                     let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
 
@@ -524,7 +523,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
                 }
-
                 ABIArgKind::Indirect { .. } => {
                     let ptr = self
                         .cur_func
@@ -539,11 +537,79 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
                 }
+                ABIArgKind::Expand { kind } => {
+                    let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+
+                    let param_alloca = self.llvmbuilder.build_alloca(struct_ty, "param").unwrap();
+
+                    let fields_cir_types = param.ty.struct_or_union_fields().unwrap();
+
+                    match kind {
+                        ExpandKind::Simple => {
+                            let field_count = fields_cir_types.len();
+
+                            for i in 0..field_count {
+                                let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                                llvm_param_index += 1;
+
+                                let field_ptr = self
+                                    .llvmbuilder
+                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.field.ptr")
+                                    .unwrap();
+
+                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
+                            }
+                        }
+
+                        ExpandKind::Struct { field_count } => {
+                            for i in 0..*field_count {
+                                let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                                llvm_param_index += 1;
+
+                                let field_ptr = self
+                                    .llvmbuilder
+                                    .build_struct_gep(struct_ty, param_alloca, i as u32, "expand.struct.ptr")
+                                    .unwrap();
+
+                                self.llvmbuilder.build_store(field_ptr, llvm_param).unwrap();
+                            }
+                        }
+
+                        ExpandKind::Coerced { offset_hi, .. } => {
+                            // first expanded param
+                            let lo_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                            llvm_param_index += 1;
+
+                            let lo_ptr = self
+                                .llvmbuilder
+                                .build_struct_gep(struct_ty, param_alloca, 0, "expand.lo.ptr")
+                                .unwrap();
+
+                            self.llvmbuilder.build_store(lo_ptr, lo_param).unwrap();
+
+                            // second expanded param
+                            let hi_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
+
+                            llvm_param_index += 1;
+
+                            let hi_ptr = self
+                                .llvmbuilder
+                                .build_struct_gep(struct_ty, param_alloca, *offset_hi as u32, "expand.hi.ptr")
+                                .unwrap();
+
+                            self.llvmbuilder.build_store(hi_ptr, hi_param).unwrap();
+                        }
+                    }
+
+                    self.irreg
+                        .borrow_mut()
+                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                }
                 ABIArgKind::Ignore => {
                     // zero sized type
-                }
-                ABIArgKind::Expand { .. } => {
-                    unimplemented!("expand params not implemented yet");
                 }
             }
         }
