@@ -1,0 +1,19 @@
+// @stdout: union_payload(int)=10 union_payload(text)=Cyrus! union_payload(float)=3.140000
+// @compilerArgs: -z=./tests/abi/unions_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int, c_char, c_float};
+
+repr(c) union UnionPayload {
+    int_value: c_int;
+    text_value: c_char*;
+    float_value: c_float;
+}
+
+extern "C" fn display_union_payload(payload: UnionPayload, kind: c_int);
+
+pub fn main() {
+    display_union_payload(union { int_value = 10 }, 1);
+    display_union_payload(union { text_value = "Cyrus!" }, 2);
+    display_union_payload(union { float_value = 3.14 }, 3);
+}

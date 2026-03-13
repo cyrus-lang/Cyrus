@@ -1,0 +1,16 @@
+// @stdout: write_int=5 read_int=5
+// @compilerArgs: -z=./tests/abi/pointers_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int};
+
+extern "C" fn write_int(ptr: c_int*, value: c_int);
+extern "C" fn read_int(ptr: c_int*) c_int;
+
+pub fn main() {
+    const x: c_int = 10;
+    write_int(&x, 5);
+    printf("write_int=%d ", x);
+
+    printf("read_int=%d ", read_int(&x));
+}

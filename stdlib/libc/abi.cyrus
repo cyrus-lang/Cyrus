@@ -1,5 +1,5 @@
-pub type c_int = int;
-pub type c_uint = uint;
+pub type c_int = int32;
+pub type c_uint = uint32;
 
 pub type c_int8 = int8;
 pub type c_int16 = int16;
@@ -15,13 +15,16 @@ pub type c_uint128 = uint128;
 
 pub type c_signed_char = int8;
 pub type c_unsigned_char = uint8;
-pub type c_char = char;
+pub type c_char = int8;
 
 pub type c_short = int16;
 pub type c_unsigned_short = uint16;
+
 pub type c_unsigned_int = uint32;
-pub type c_long = int;
-pub type c_unsigned_long = uint;
+
+pub type c_long = int64;
+pub type c_unsigned_long = uint64;
+
 pub type c_long_long = int64;
 pub type c_unsigned_long_long = uint64;
 
@@ -29,19 +32,23 @@ pub type c_bool = bool;
 pub type c_void = void;
 
 pub type c_size = usize;
-pub type c_ptrdiff = usize;
+pub type c_ptrdiff = isize;
 
 pub type c_intptr = intptr;
 pub type c_uintptr = uintptr;
 
 pub type c_float = float32;
 pub type c_double = float64;
-pub type c_long_double = float128;
+
+// FIXME
+// pub type c_long_double = x86_fp80; 
 
 pub type c_wchar = int32;
 pub type c_wint = int32;
+
 pub type c_char16 = uint16;
 pub type c_char32 = uint32;
 
 pub type c_sig_atomic = int32;
+
 pub type c_file = void*;

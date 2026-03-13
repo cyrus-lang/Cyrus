@@ -1,0 +1,20 @@
+// @stdout: add_ints=5 add_longs=5 add_doubles=9.100000 add_floats=9.100000
+// @compilerArgs: -z=./tests/abi/basic_types_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int, c_long, c_float, c_double};
+
+extern "C" fn add_ints(a: c_int, b: c_int) c_int;
+
+extern "C" fn add_longs(a: c_long, b: c_long) c_long;
+
+extern "C" fn add_doubles(a: c_double, b: c_double) c_double;
+
+extern "C" fn add_floats(a: c_float, b: c_float) c_float;
+
+pub fn main() {
+    printf("add_ints=%d ", add_ints(2, 3));
+    printf("add_longs=%d ", add_longs(2, 3));
+    printf("add_doubles=%f ", add_doubles(3.5, 5.6));
+    printf("add_floats=%f ", add_floats(3.5, 5.6));
+}

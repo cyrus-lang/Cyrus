@@ -1,0 +1,65 @@
+// @stdout: make_pair=20, 30 sum_pair=50 sum_float_pair=13.400000 mixed_integer_sse=8.700000 print_large_struct=33.700001 triple_struct=3, 4, 5
+// @compilerArgs: -z=./tests/abi/structs_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int, c_float, c_double, c_long};
+
+repr(c) struct Pair {
+    pub a: c_int;
+    pub b: c_int;
+}
+
+extern "C" fn make_pair(a: c_int, b: c_int) Pair;
+
+extern "C" fn sum_pair(pair: Pair) c_int;
+
+repr(c) struct FloatPair {
+    pub a: c_float;
+    pub b: c_float;
+}
+
+extern "C" fn sum_float_pair(float_pair: FloatPair) c_float;
+
+repr(c) struct MixedIntegerSSE {
+    pub a: c_int;
+    pub b: c_double;
+}
+
+extern "C" fn sum_mixed_integer_sse(mixed_integer_sse: MixedIntegerSSE) c_double;
+
+repr(c) struct LargeStruct {
+    pub a: c_int;
+    pub b: c_int;
+    pub c: c_float;
+    pub d: c_double;
+    pub ptr: c_int*;
+}
+
+extern "C" fn print_large_struct(v: LargeStruct) c_double;
+
+repr(c) struct TripleStruct {
+    pub a: c_long;
+    pub b: c_long;
+    pub c: c_long;
+}
+
+extern "C" fn make_triple(a: c_long, b: c_long, c: c_long) TripleStruct;
+
+pub fn main() {
+    const pair = make_pair(20, 30);
+    printf("make_pair=%d, %d ", pair.a, pair.b);
+    printf("sum_pair=%d ", sum_pair(pair));
+
+    const float_pair = FloatPair { a: 5.6, b: 7.8 };
+    printf("sum_float_pair=%f ", sum_float_pair(float_pair));
+
+    const mixed_integer_sse = MixedIntegerSSE { a: 5, b: 3.7 };
+    printf("mixed_integer_sse=%f ", sum_mixed_integer_sse(mixed_integer_sse));
+
+    const x = 10;
+    const large_struct = LargeStruct { a: 5, b: 10, c: 3.2, d: 5.5, ptr: &x };
+    printf("print_large_struct=%f ", print_large_struct(large_struct));
+
+    const triple_struct = make_triple(3, 4, 5);
+    printf("triple_struct=%d, %d, %d ", triple_struct.a, triple_struct.b, triple_struct.c);
+}

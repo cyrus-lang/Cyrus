@@ -53,9 +53,7 @@ struct FloatPair {
   float b;
 };
 
-float sum_float_pair(struct FloatPair p) {
-  return p.a + p.b;
-}
+float sum_float_pair(struct FloatPair p) { return p.a + p.b; }
 
 // Mixed Struct (INTEGER + SSE)
 
@@ -64,13 +62,11 @@ struct MixedIntegerSSE {
   double b;
 };
 
-double sum_mixed_integer_sse(struct MixedIntegerSSE m) {
-  return m.a + m.b;
-}
+double sum_mixed_integer_sse(struct MixedIntegerSSE m) { return m.a + m.b; }
 
 // Large Struct (>16 bytes) (passed by memory)
 
-struct Large {
+struct LargeStruct {
   int a;
   int b;
   float c;
@@ -78,13 +74,8 @@ struct Large {
   int *ptr;
 };
 
-void print_large(struct Large v) {
-  printf("Large:\n");
-  printf("a=%d\n", v.a);
-  printf("b=%d\n", v.b);
-  printf("c=%f\n", v.c);
-  printf("d=%f\n", v.d);
-  printf("ptr=%p val=%d\n", v.ptr, *v.ptr);
+double print_large_struct(struct LargeStruct v) {
+  return v.a + v.b + v.c + v.d + *v.ptr;
 }
 
 // Struct Return
@@ -102,32 +93,42 @@ struct Triple make_triple(long a, long b, long c) {
 
 // Union
 
-union Payload {
+union UnionPayload {
   int int_value;
+  float float_value;
   char *text_value;
 };
 
-void display_payload(union Payload payload, int is_int) {
-  if (is_int) {
-    printf("payload int=%d\n", payload.int_value);
-  } else {
-    printf("payload text=%s\n", payload.text_value);
+void display_union_payload(union UnionPayload payload, int kind) {
+  switch (kind) {
+  case 1:
+    printf("union_payload(int)=%d\n", payload.int_value);
+    break;
+  case 2:
+    printf("union_payload(text)=%s\n", payload.text_value);
+    break;
+  case 3:
+    printf("union_payload(float)=%f\n", payload.float_value);
+    break;
+  default:
+    printf("union_payload(invalid)\n");
+    break;
   }
 }
 
 // Nested Struct
 
-struct Inner {
+struct NestedStructInner {
   int x;
   int y;
 };
 
-struct Outer {
-  struct Inner inner;
+struct NestedStructOuter {
+  struct NestedStructInner inner;
   double z;
 };
 
-double nested_sum(struct Outer o) {
+double nested_sum(struct NestedStructOuter o) {
   printf("nested_sum %d %d %f\n", o.inner.x, o.inner.y, o.z);
 
   return o.inner.x + o.inner.y + o.z;

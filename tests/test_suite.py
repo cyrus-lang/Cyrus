@@ -55,6 +55,10 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
     if compiler_flags:
         build_cmd += shlex.split(compiler_flags)
 
+    extra_args = metadata.get("compilerArgs")
+    if extra_args:
+        build_cmd += shlex.split(extra_args)
+
     build_result = subprocess.run(build_cmd, capture_output=True, text=True)
     if build_result.returncode != 0:
         raise Exception(f"Build error:\n{build_result.stderr}")
@@ -77,7 +81,8 @@ def extract_test_metadata(content, file_name):
         "stdout": "",
         "stdin": "",
         "args": "",
-        "beforeCompile": ""
+        "beforeCompile": "",
+        "compilerArgs": ""
     }
 
     stdout_match = re.search(r"//\s*@stdout:\s*(.*)", content)
@@ -96,6 +101,10 @@ def extract_test_metadata(content, file_name):
     if before_compile_match:
         metadata["beforeCompile"] = before_compile_match.group(1)
 
+    extra_args_match = re.search(r"//\s*@compilerArgs:\s*(.*)", content)
+    if extra_args_match:
+        metadata["compilerArgs"] = extra_args_match.group(1)
+    
     return metadata
 
 
