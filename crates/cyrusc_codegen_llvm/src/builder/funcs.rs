@@ -31,6 +31,7 @@ use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
+        layout::type_layout,
         types::ABIType,
     },
     cir::{
@@ -62,8 +63,6 @@ impl<'ll> IRBuilderCtx<'ll> {
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let abi_func_info = fn_ty.abi_func_info.as_ref().unwrap();
 
-        dbg!(abi_func_info.clone());
-        
         let mut args_values = Vec::with_capacity(args.len());
 
         for (idx, expr) in args.iter().enumerate() {
@@ -161,16 +160,21 @@ impl<'ll> IRBuilderCtx<'ll> {
         // need to extract lo and hi parts from the struct
         let struct_value = rvalue.as_basic_value().into_struct_value();
 
+        let layout = type_layout(&self.target.info, &rvalue.ty);
+
+        let lo_index = layout.lookup_field_index_at_offset(0).unwrap();
+        let hi_index = layout.lookup_field_index_at_offset(8).unwrap();
+
         // extract low part (first 8 bytes)
         let lo_value = self
             .llvmbuilder
-            .build_extract_value(struct_value, 0, "lo.part")
+            .build_extract_value(struct_value, lo_index as u32, "lo.part")
             .unwrap();
 
         // extract high part (next 8 bytes)
         let hi_value = self
             .llvmbuilder
-            .build_extract_value(struct_value, 1, "hi.part")
+            .build_extract_value(struct_value, hi_index as u32, "hi.part")
             .unwrap();
 
         let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)

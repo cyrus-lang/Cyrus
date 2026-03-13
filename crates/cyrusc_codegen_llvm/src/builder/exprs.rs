@@ -1743,8 +1743,13 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         if let Some(ptr) = sret_alloca {
             InternalValue::new(ret_ty.clone(), InternalValueKind::LValue(ptr.into()))
-        } else if let Some(val) = call_site.try_as_basic_value().basic() {
-            InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(val))
+        } else if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
+            // REVIEW: Optimization Required
+            // coerce back from abi return type to actual return type
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*fn_ty.ret.clone()).try_into().unwrap();
+            basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
+
+            InternalValue::new(ret_ty.clone(), InternalValueKind::RValue(basic_value))
         } else {
             self.emit_null(ret_ty.clone())
         }
@@ -1769,7 +1774,12 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         self.emit_func_call_attributes(&abi_func_info, FuncCallKind::Indirect(call_site));
 
-        if let Some(basic_value) = call_site.try_as_basic_value().basic() {
+        if let Some(mut basic_value) = call_site.try_as_basic_value().basic() {
+            // REVIEW: Optimization Required
+            // coerce back from abi return type to actual return type
+            let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_fn_ty.ret.clone()).try_into().unwrap();
+            basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
+
             InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))
         } else {
             self.emit_null(func_call.ret_ty.clone())

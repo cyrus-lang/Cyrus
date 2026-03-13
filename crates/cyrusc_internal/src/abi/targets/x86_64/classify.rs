@@ -264,7 +264,6 @@ impl X86_64 {
 
         if ty.is_struct() || ty.is_union() {
             if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
-                dbg!(&field_ty, field_offset);
                 return self.get_fp_type_at_offset(&field_ty, offset - field_offset);
             }
         }
@@ -623,6 +622,7 @@ impl TargetABI for X86_64 {
         }
 
         let mut high_part = None;
+
         match hi_class {
             RegisterClass::Memory => unreachable!(),
             RegisterClass::NoClass => {}
@@ -642,8 +642,8 @@ impl TargetABI for X86_64 {
             }
         }
 
-        if let (Some(lo), Some(hi)) = (&result_type, high_part) {
-            return (ABIArgInfo::direct_pair(lo.clone(), hi), needed_regs);
+        if let (Some(lo), Some(hi)) = (&result_type, &high_part) {
+            return (ABIArgInfo::direct_pair(lo.clone(), hi.clone()), needed_regs);
         }
 
         if let Some(result) = &result_type {
@@ -899,33 +899,39 @@ fn classify(
     info: &ABITargetInfo,
     ty: &CIRTy,
     offset_base: u32,
-    lo_class: &mut RegisterClass,
-    hi_class: &mut RegisterClass,
+    lo_class: *mut RegisterClass,
+    hi_class: *mut RegisterClass,
 ) {
-    *lo_class = RegisterClass::NoClass;
-    *hi_class = RegisterClass::NoClass;
+    unsafe { *lo_class = RegisterClass::NoClass };
+    unsafe { *hi_class = RegisterClass::NoClass };
 
-    // set default
-    if offset_base < 8 {
-        *lo_class = RegisterClass::Memory;
-    } else {
-        *hi_class = RegisterClass::Memory;
-    }
+    let current = if offset_base < 8 { lo_class } else { hi_class };
+    unsafe { *current = RegisterClass::Memory };
 
     match ty {
         CIRTy::PlainType(plain_type) => classify_plain_type(plain_type, offset_base, lo_class, hi_class),
-        CIRTy::Const(ty) => classify(info, ty, offset_base, lo_class, hi_class),
-        CIRTy::Pointer(_) | CIRTy::FuncType(_) => classify_pointer(offset_base, lo_class, hi_class),
-        CIRTy::Struct(_) => classify_struct_or_union(info, ty, offset_base, lo_class, hi_class),
-        CIRTy::Union(_) => classify_struct_or_union(info, ty, offset_base, lo_class, hi_class),
+        CIRTy::Const(inner) => classify(info, inner, offset_base, lo_class, hi_class),
+        CIRTy::Pointer(_) | CIRTy::FuncType(_) => {
+            unsafe { *current = RegisterClass::Integer };
+        }
+        CIRTy::Struct(_) | CIRTy::Union(_) => {
+            classify_struct_or_union(info, ty, offset_base, current, lo_class, hi_class)
+        }
         CIRTy::Tuple(tuple_ty) => {
-            // tuple lowered as struct in codegen
             let struct_ty = CIRStructTy {
                 fields: tuple_ty.elements.clone(),
                 repr_attr: None,
                 align: None,
             };
-            classify_struct_or_union(info, &CIRTy::Struct(struct_ty), offset_base, lo_class, hi_class)
+
+            classify_struct_or_union(
+                info,
+                &CIRTy::Struct(struct_ty),
+                offset_base,
+                current,
+                lo_class,
+                hi_class,
+            );
         }
         CIRTy::Array(array_ty) => classify_array(info, array_ty, offset_base, lo_class, hi_class),
         CIRTy::Dynamic(_) => classify_dynamic(info, offset_base, lo_class, hi_class),
@@ -936,8 +942,8 @@ fn classify(
 fn classify_dynamic(
     info: &ABITargetInfo,
     offset_base: u32,
-    lo_class: &mut RegisterClass,
-    hi_class: &mut RegisterClass,
+    lo_class: *mut RegisterClass,
+    hi_class: *mut RegisterClass,
 ) {
     // dynamic type is construct of two pointers: data_ptr and vtable_ptr
     // each pointer is 8 bytes and integer-class
@@ -954,8 +960,8 @@ fn classify_dynamic(
         &mut temp_hi,
     );
 
-    *lo_class = classify_merge(*lo_class, temp_lo);
-    *hi_class = classify_merge(*hi_class, temp_hi);
+    unsafe { *lo_class = classify_merge(*lo_class, temp_lo) };
+    unsafe { *hi_class = classify_merge(*hi_class, temp_hi) };
 
     // second pointer (vtable_ptr) at offset + 8
     let mut temp_lo2 = RegisterClass::NoClass;
@@ -969,16 +975,16 @@ fn classify_dynamic(
         &mut temp_hi2,
     );
 
-    *lo_class = classify_merge(*lo_class, temp_lo2);
-    *hi_class = classify_merge(*hi_class, temp_hi2);
+    unsafe { *lo_class = classify_merge(*lo_class, temp_lo2) };
+    unsafe { *hi_class = classify_merge(*hi_class, temp_hi2) };
 }
 
 fn classify_array(
     info: &ABITargetInfo,
     array_ty: &CIRArrayTy,
     offset_base: u32,
-    lo_class: &mut RegisterClass,
-    hi_class: &mut RegisterClass,
+    lo_class: *mut RegisterClass,
+    hi_class: *mut RegisterClass,
 ) {
     let layout = type_layout(info, &CIRTy::Array(array_ty.clone()));
     let element_ty = &array_ty.ty;
@@ -989,21 +995,21 @@ fn classify_array(
     }
 
     if offset_base % element_layout.align != 0 {
-        *lo_class = RegisterClass::Memory;
+        unsafe { *lo_class = RegisterClass::Memory };
         classify_post_merge(layout.size, lo_class, hi_class);
         return;
     }
 
     // re-classify
     if offset_base < 8 {
-        *lo_class = RegisterClass::NoClass;
+        unsafe { *lo_class = RegisterClass::NoClass };
     } else {
-        *hi_class = RegisterClass::NoClass;
+        unsafe { *hi_class = RegisterClass::NoClass };
     }
 
     // check for vector-sized array
     if layout.size > 16 && (layout.size != element_layout.size) {
-        *lo_class = RegisterClass::Memory;
+        unsafe { *lo_class = RegisterClass::Memory };
         return;
     }
 
@@ -1016,10 +1022,10 @@ fn classify_array(
 
         offset += element_layout.size;
 
-        *lo_class = classify_merge(*lo_class, field_lo);
-        *hi_class = classify_merge(*hi_class, field_hi);
+        unsafe { *lo_class = classify_merge(*lo_class, field_lo) };
+        unsafe { *hi_class = classify_merge(*hi_class, field_hi) };
 
-        if *lo_class == RegisterClass::Memory || *hi_class == RegisterClass::Memory {
+        if unsafe { *lo_class } == RegisterClass::Memory || unsafe { *hi_class } == RegisterClass::Memory {
             break;
         }
     }
@@ -1031,8 +1037,8 @@ fn classify_enum(
     info: &ABITargetInfo,
     ty: &CIRTy,
     offset_base: u32,
-    lo_class: &mut RegisterClass,
-    hi_class: &mut RegisterClass,
+    lo_class: *mut RegisterClass,
+    hi_class: *mut RegisterClass,
 ) {
     let cir_enum_ty = ty.as_enum().unwrap();
 
@@ -1054,9 +1060,9 @@ fn classify_enum(
 
     // re-classify
     if offset_base < 8 {
-        *lo_class = RegisterClass::NoClass;
+        unsafe { *lo_class = RegisterClass::NoClass };
     } else {
-        *hi_class = RegisterClass::NoClass;
+        unsafe { *hi_class = RegisterClass::NoClass };
     }
 
     // first, classify the tag field at offset 0
@@ -1069,10 +1075,10 @@ fn classify_enum(
     let mut tag_hi = RegisterClass::NoClass;
     classify(info, &tag_ty, tag_offset, &mut tag_lo, &mut tag_hi);
 
-    *lo_class = classify_merge(*lo_class, tag_lo);
-    *hi_class = classify_merge(*hi_class, tag_hi);
+    unsafe { *lo_class = classify_merge(*lo_class, tag_lo) };
+    unsafe { *hi_class = classify_merge(*hi_class, tag_hi) };
 
-    if *lo_class == RegisterClass::Memory || *hi_class == RegisterClass::Memory {
+    if unsafe { *lo_class } == RegisterClass::Memory || unsafe { *hi_class } == RegisterClass::Memory {
         classify_post_merge(layout.size, lo_class, hi_class);
         return;
     }
@@ -1092,8 +1098,8 @@ fn classify_enum(
         let mut payload_hi = RegisterClass::NoClass;
         classify(info, &payload_ty, payload_offset, &mut payload_lo, &mut payload_hi);
 
-        *lo_class = classify_merge(*lo_class, payload_lo);
-        *hi_class = classify_merge(*hi_class, payload_hi);
+        unsafe { *lo_class = classify_merge(*lo_class, payload_lo) };
+        unsafe { *hi_class = classify_merge(*hi_class, payload_hi) };
     }
 
     classify_post_merge(layout.size, lo_class, hi_class);
@@ -1103,111 +1109,69 @@ fn classify_struct_or_union(
     info: &ABITargetInfo,
     ty: &CIRTy,
     offset_base: u32,
-    lo_class: &mut RegisterClass,
-    hi_class: &mut RegisterClass,
+    current: *mut RegisterClass,
+    lo_class: *mut RegisterClass,
+    hi_class: *mut RegisterClass,
 ) {
-    let is_union = ty.is_union();
-    let fields = if let Some(struct_ty) = ty.as_struct() {
-        struct_ty.fields.clone()
-    } else if let Some(union_ty) = ty.as_union() {
-        union_ty.fields.clone()
+    let layout = type_layout(info, ty);
+    let size = layout.size;
+
+    if size > 16 {
+        return;
+    }
+
+    // FIXME
+    // if ty.has_variable_array return;
+
+    unsafe { *current = RegisterClass::NoClass };
+
+    let fields = if let Some(s) = ty.as_struct() {
+        s.fields.clone()
+    } else if let Some(u) = ty.as_union() {
+        u.fields.clone()
     } else {
         unreachable!()
     };
 
-    let layout = type_layout(info, ty);
+    let is_union = ty.is_union();
 
-    // if size > 16 bytes, keep default memory class
-    if layout.size > 16 {
-        return;
-    }
-
-    // re-classify
-    if offset_base < 8 {
-        *lo_class = RegisterClass::NoClass;
-    } else {
-        *hi_class = RegisterClass::NoClass;
-    }
-
-    // for unions, all fields share the same offset
-    if is_union {
-        let mut union_lo = RegisterClass::NoClass;
-        let mut union_hi = RegisterClass::NoClass;
-
-        for field_ty in &fields {
-            let mut field_lo = RegisterClass::NoClass;
-            let mut field_hi = RegisterClass::NoClass;
-            classify(info, field_ty, offset_base, &mut field_lo, &mut field_hi);
-
-            union_lo = classify_merge(union_lo, field_lo);
-            union_hi = classify_merge(union_hi, field_hi);
-
-            if union_lo == RegisterClass::Memory || union_hi == RegisterClass::Memory {
-                break;
-            }
-        }
-
-        *lo_class = union_lo;
-        *hi_class = union_hi;
-        classify_post_merge(layout.size, lo_class, hi_class);
-        return;
-    }
-
-    // for structs, we need the actual field offsets from the type
-    let field_offsets = layout.field_offsets;
-
-    for (idx, field_ty) in fields.iter().enumerate() {
-        let field_offset = &field_offsets[idx];
-        let field_abs_offset = offset_base + field_offset.offset();
-
-        // alignment check
+    for (i, field_ty) in fields.iter().enumerate() {
         let field_layout = type_layout(info, field_ty);
 
-        if field_abs_offset % field_layout.align != 0 {
-            *lo_class = RegisterClass::Memory;
-            classify_post_merge(layout.size, lo_class, hi_class);
-            return;
-        }
+        let field_offset = if is_union {
+            offset_base
+        } else {
+            offset_base + layout.lookup_field_offset(i)
+        };
 
-        // vector size check
-        if layout.size > 16 && layout.size != field_layout.size {
-            *lo_class = RegisterClass::Memory;
-            classify_post_merge(layout.size, lo_class, hi_class);
+        // alignment rule
+        if field_offset % field_layout.align != 0 {
+            unsafe { *lo_class = RegisterClass::Memory };
+            classify_post_merge(size, lo_class, hi_class);
             return;
         }
 
         let mut field_lo = RegisterClass::NoClass;
         let mut field_hi = RegisterClass::NoClass;
 
-        // classify the field at its absolute offset
-        classify(info, field_ty, field_abs_offset, &mut field_lo, &mut field_hi);
+        classify(info, field_ty, field_offset, &mut field_lo, &mut field_hi);
 
-        // merge field's classes into the overall struct classes
-        *lo_class = classify_merge(*lo_class, field_lo);
-        *hi_class = classify_merge(*hi_class, field_hi);
+        unsafe { *lo_class = classify_merge(*lo_class, field_lo) };
+        unsafe { *hi_class = classify_merge(*hi_class, field_hi) };
 
-        if *lo_class == RegisterClass::Memory || *hi_class == RegisterClass::Memory {
+        if unsafe { *lo_class } == RegisterClass::Memory || unsafe { *hi_class } == RegisterClass::Memory {
             break;
         }
     }
 
-    classify_post_merge(layout.size, lo_class, hi_class);
-}
-
-fn classify_pointer(offset_base: u32, lo_class: &mut RegisterClass, hi_class: &mut RegisterClass) {
-    // pointers are always 8 bytes on x86-64
-    if offset_base < 8 {
-        *lo_class = RegisterClass::Integer;
-    } else {
-        *hi_class = RegisterClass::Integer;
-    }
+    classify_post_merge(size, lo_class, hi_class);
 }
 
 fn classify_plain_type(
     plain_type: &PlainType,
     offset_base: u32,
-    lo_class: &mut RegisterClass,
-    hi_class: &mut RegisterClass,
+    lo_class: *mut RegisterClass,
+    hi_class: *mut RegisterClass,
 ) {
     match plain_type {
         PlainType::Int8
@@ -1227,35 +1191,35 @@ fn classify_plain_type(
         | PlainType::IntPtr
         | PlainType::UIntPtr => {
             if offset_base < 8 {
-                *lo_class = RegisterClass::Integer;
+                unsafe { *lo_class = RegisterClass::Integer };
             } else {
-                *hi_class = RegisterClass::Integer;
+                unsafe { *hi_class = RegisterClass::Integer };
             }
         }
 
         PlainType::Int128 | PlainType::UInt128 => {
-            *lo_class = RegisterClass::Integer;
-            *hi_class = RegisterClass::Integer;
+            unsafe { *lo_class = RegisterClass::Integer };
+            unsafe { *hi_class = RegisterClass::Integer };
         }
 
         PlainType::Float16 | PlainType::Float32 | PlainType::Float64 => {
             if offset_base < 8 {
-                *lo_class = RegisterClass::SSE;
+                unsafe { *lo_class = RegisterClass::SSE };
             } else {
-                *hi_class = RegisterClass::SSE;
+                unsafe { *hi_class = RegisterClass::SSE };
             }
         }
 
         PlainType::Float128 => {
-            *lo_class = RegisterClass::SSE;
-            *hi_class = RegisterClass::SSEUP;
+            unsafe { *lo_class = RegisterClass::SSE };
+            unsafe { *hi_class = RegisterClass::SSEUP };
         }
 
         PlainType::Void => {
             if offset_base < 8 {
-                *lo_class = RegisterClass::NoClass;
+                unsafe { *lo_class = RegisterClass::NoClass };
             } else {
-                *hi_class = RegisterClass::NoClass;
+                unsafe { *hi_class = RegisterClass::NoClass };
             }
         }
 
@@ -1288,21 +1252,24 @@ fn classify_merge(current: RegisterClass, field: RegisterClass) -> RegisterClass
     RegisterClass::Memory
 }
 
-fn classify_post_merge(size: u32, lo_class: &mut RegisterClass, hi_class: &mut RegisterClass) {
-    if *hi_class == RegisterClass::Memory {
-        *lo_class = RegisterClass::Memory;
+fn classify_post_merge(size: u32, lo_class: *mut RegisterClass, hi_class: *mut RegisterClass) {
+    if unsafe { *hi_class } == RegisterClass::Memory {
+        unsafe { *lo_class = RegisterClass::Memory };
         return;
     }
 
     // if size > 16 and lo isn't SSE or hi isn't SSEUP, default to memory
-    if size > 16 && (*lo_class != RegisterClass::SSE || *hi_class != RegisterClass::SSEUP) {
-        *lo_class = RegisterClass::Memory;
+    if size > 16 && (unsafe { *lo_class } != RegisterClass::SSE || unsafe { *hi_class } != RegisterClass::SSEUP) {
+        unsafe { *lo_class = RegisterClass::Memory };
         return;
     }
 
     // if hi is SSEUP but lo isn't SSE or SSEUP, convert hi to SSE
-    if *hi_class == RegisterClass::SSEUP && *lo_class != RegisterClass::SSE && *lo_class != RegisterClass::SSEUP {
-        *hi_class = RegisterClass::SSE;
+    if unsafe { *hi_class } == RegisterClass::SSEUP
+        && unsafe { *lo_class } != RegisterClass::SSE
+        && unsafe { *lo_class } != RegisterClass::SSEUP
+    {
+        unsafe { *hi_class = RegisterClass::SSE };
     }
 }
 

@@ -54,19 +54,17 @@ struct FloatPair {
 };
 
 float sum_float_pair(struct FloatPair p) {
-  printf("sum_float_pair %f %f\n", p.a, p.b);
   return p.a + p.b;
 }
 
 // Mixed Struct (INTEGER + SSE)
 
-struct Mixed {
+struct MixedIntegerSSE {
   int a;
   double b;
 };
 
-double sum_mixed(struct Mixed m) {
-  printf("sum_mixed %d %f\n", m.a, m.b);
+double sum_mixed_integer_sse(struct MixedIntegerSSE m) {
   return m.a + m.b;
 }
 

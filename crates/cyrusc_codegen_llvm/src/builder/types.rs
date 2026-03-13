@@ -352,7 +352,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let ret_type = if abi_func_info.ret_info.kind.is_indirect_sret() {
             AnyTypeEnum::VoidType(self.llvmctx.void_type())
         } else {
-            self.emit_ty(*func_ty.ret)
+            abi_type_to_llvm_type(self.llvmctx, &self.target.info, &abi_func_info.ret_info.abi_type)
         };
 
         let mut param_types = self.emit_func_ty_params(abi_func_info);

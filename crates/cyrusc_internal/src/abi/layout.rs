@@ -306,6 +306,37 @@ impl ABITypeLayout {
             })
             .map(|field_offset| field_offset.index())
     }
+
+    pub fn lookup_field_index_at_offset(&self, offset: u32) -> Option<usize> {
+        for entry in &self.field_offsets {
+            if let ABIFieldOffsetInfo::Normal {
+                offset: field_offset,
+                index,
+                ..
+            } = entry
+            {
+                if *field_offset == offset {
+                    return Some(*index as usize);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn lookup_field_offset(&self, field_original_index: usize) -> u32 {
+        for entry in &self.field_offsets {
+            if let ABIFieldOffsetInfo::Normal {
+                offset, original_index, ..
+            } = entry
+            {
+                if *original_index == field_original_index {
+                    return *offset;
+                }
+            }
+        }
+
+        panic!("field offset not found for index {}", field_original_index);
+    }
 }
 
 impl ABIFieldOffsetInfo {
