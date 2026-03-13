@@ -524,8 +524,16 @@ impl X86_64 {
         for param_type in &fn_ty.params {
             let abi_arg = self.classify_parameter(param_type, &mut available_regs, true);
 
+            // index before expansion
+            let start = params_types.len() as u16;
+
+            // expand ABI arg into LLVM param types
             params_types.extend(self.param_types_from_arg_info(&abi_arg, param_type));
-            params_infos.push(abi_arg);
+
+            // index after expansion
+            let end = params_types.len() as u16;
+
+            params_infos.push(abi_arg.with_indices(start, end));
         }
 
         ABIFunctionInfo {

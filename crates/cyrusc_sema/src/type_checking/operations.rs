@@ -290,7 +290,7 @@ impl<'a> AnalysisContext<'a> {
             PrefixOperator::Minus => {
                 let valid_concrete_type = match &operand_type {
                     SemanticType::PlainType(basic_concrete_type) => {
-                        if basic_concrete_type.is_integer() || basic_concrete_type.is_float() {
+                        if basic_concrete_type.is_integer() {
                             if !basic_concrete_type.is_signed() {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
@@ -303,6 +303,8 @@ impl<'a> AnalysisContext<'a> {
                                 return None;
                             }
 
+                            Some(basic_concrete_type)
+                        } else if basic_concrete_type.is_float() {
                             Some(basic_concrete_type)
                         } else {
                             None
