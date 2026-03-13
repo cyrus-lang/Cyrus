@@ -776,16 +776,6 @@ impl TargetABI for X86_64 {
     }
 
     fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo {
-        if ty.is_pointer() || ty.is_func() {
-            let mut needed = Registers::default();
-            needed.int_regs += 1;
-
-            return ABIRetInfo {
-                abi_type: cir_type_to_abi_type(&self.info, ty),
-                kind: ABIRetInfoKind::Direct { coerce_to: None },
-            };
-        }
-
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
         classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
@@ -823,14 +813,13 @@ impl TargetABI for X86_64 {
                 };
             }
             RegisterClass::Integer => {
-                let result_type = self.get_int_type_at_offset(ty, 0, ty, 0);
+                result_type = Some(self.get_int_type_at_offset(ty, 0, ty, 0));
 
+                // FIXME Would break if used on a small struct_type. Maybe?
                 if hi_class == RegisterClass::NoClass && ty.is_integer_or_bool() {
                     return ABIRetInfo {
-                        abi_type: result_type.clone(),
-                        kind: ABIRetInfoKind::Direct {
-                            coerce_to: Some(result_type),
-                        },
+                        abi_type: result_type.clone().unwrap(),
+                        kind: ABIRetInfoKind::Direct { coerce_to: result_type },
                     };
                 }
             }
@@ -840,6 +829,7 @@ impl TargetABI for X86_64 {
         }
 
         let mut high_part = None;
+
         match hi_class {
             RegisterClass::Memory | RegisterClass::NoClass => {}
             RegisterClass::Integer => {
@@ -858,10 +848,9 @@ impl TargetABI for X86_64 {
         // if a high part was specified, return as direct pair
         if let (Some(lo), Some(hi)) = (&result_type, high_part) {
             // combine lo and hi into a struct type for direct pair return
-            let struct_ty = ABIType::Struct(vec![lo.clone(), hi.clone()], false);
             return ABIRetInfo {
-                abi_type: struct_ty,
-                kind: ABIRetInfoKind::Direct { coerce_to: None },
+                abi_type: ABIType::Struct(vec![lo.clone(), hi.clone()], false),
+                kind: ABIRetInfoKind::DirectPair { lo: lo.clone(), hi },
             };
         }
 
@@ -884,8 +873,9 @@ impl TargetABI for X86_64 {
         }
 
         // fallback
+        let abi_type = cir_type_to_abi_type(&self.info, ty);
         ABIRetInfo {
-            abi_type: ABIType::Integer(64),
+            abi_type,
             kind: ABIRetInfoKind::Direct { coerce_to: None },
         }
     }

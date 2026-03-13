@@ -25,7 +25,12 @@ use crate::{
     llvm::abi::{abi_type::abi_type_to_llvm_type, modifiers::apply_global_var_modifiers},
 };
 use cyrusc_internal::{
-    abi::{args::ABIFunctionInfo, layout::type_layout, target::ABITarget},
+    abi::{
+        args::{ABIFunctionInfo, ABIRetInfoKind},
+        layout::type_layout,
+        target::ABITarget,
+        types::ABIType,
+    },
     cir::{
         cir::{
             CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRReturnStmt, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
@@ -42,8 +47,8 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::TargetMachine,
-    types::BasicTypeEnum,
-    values::{BasicValueEnum, FunctionValue, GlobalValue},
+    types::{AnyType, BasicTypeEnum},
+    values::{BasicValue, BasicValueEnum, FunctionValue, GlobalValue},
 };
 use std::{
     cell::RefCell,
@@ -173,56 +178,166 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_ret(&mut self, return_stmt: &CIRReturnStmt) {
         let cur_fn = self.cur_func.unwrap();
         let cur_abi_func_info = self.cur_abi_func_info.clone().unwrap();
+        let ret_info = &cur_abi_func_info.ret_info;
 
         if let Some(expr) = &return_stmt.arg {
-            let lvalue = self.emit_expr(&expr);
+            let lvalue = self.emit_expr(expr);
             let rvalue = self.load_rvalue(lvalue.clone());
 
-            let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &cur_abi_func_info.ret_info.abi_type);
-            let casted: BasicValueEnum<'ll> = self.emit_cast(ret_ty, rvalue.clone()).try_into().unwrap();
+            match &ret_info.kind {
+                ABIRetInfoKind::Ignore => {
+                    self.llvmbuilder.build_return(None).unwrap();
+                }
+                ABIRetInfoKind::Indirect { sret } => {
+                    if *sret {
+                        self.emit_indirect_sret(cur_fn, &lvalue, &rvalue);
+                        return;
+                    }
+                }
+                ABIRetInfoKind::Direct { coerce_to } => {
+                    let ret_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ret_info.abi_type);
 
-            // handle sret
-            if let Some(abi_func_info) = &self.cur_abi_func_info {
-                if abi_func_info.ret_info.kind.is_indirect_sret() {
-                    let sret_param = cur_fn.get_first_param().unwrap();
-                    let sret_ptr = sret_param.into_pointer_value();
-
-                    let struct_ty = rvalue.ty.clone();
-                    let struct_layout = type_layout(&self.target.info, &struct_ty);
-                    let size_vale = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
-
-                    let src_ptr = match &lvalue.kind {
-                        InternalValueKind::LValue(ptr) => *ptr,
-                        InternalValueKind::RValue(_) => {
-                            // materialize rvalue into stack
-                            let temp_alloca = self.llvmbuilder.build_alloca(casted.get_type(), "sret.temp").unwrap();
-
-                            self.llvmbuilder.build_store(temp_alloca, casted).unwrap();
-
-                            temp_alloca
-                        }
-                        InternalValueKind::FuncValue(_) => unreachable!(),
+                    let value: BasicValueEnum = if let Some(coerce) = coerce_to {
+                        let coerce_ty = abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce);
+                        self.emit_cast(coerce_ty, rvalue).try_into().unwrap()
+                    } else {
+                        self.emit_cast(ret_ty, rvalue).try_into().unwrap()
                     };
 
-                    self.llvmbuilder
-                        .build_memcpy(
-                            sret_ptr,
-                            self.target.info.pointer_align(),
-                            src_ptr,
-                            self.target.info.pointer_align(),
-                            size_vale,
-                        )
-                        .unwrap();
+                    let llvm_abi_ret_type: BasicTypeEnum<'ll> =
+                        abi_type_to_llvm_type(self.llvmctx, &self.target.info, &ret_info.abi_type)
+                            .try_into()
+                            .unwrap();
 
-                    self.llvmbuilder.build_return(None).unwrap();
-                    return;
+                    let return_value = self.intrinsic_coerce_through_alloca(value, llvm_abi_ret_type, "coerce.ret");
+
+                    self.llvmbuilder.build_return(Some(&return_value)).unwrap();
+                }
+                ABIRetInfoKind::DirectPair { lo, hi } => {
+                    self.emit_return_direct_pair(rvalue, lo, hi, &ret_info.abi_type);
                 }
             }
-
-            self.llvmbuilder.build_return(Some(&casted)).unwrap();
         } else {
             self.llvmbuilder.build_return(None).unwrap();
         }
+    }
+
+    fn emit_indirect_sret(
+        &mut self,
+        cur_fn: FunctionValue<'ll>,
+        lvalue: &InternalValue<'ll>,
+        rvalue: &InternalValue<'ll>,
+    ) {
+        let sret_param = cur_fn.get_first_param().unwrap();
+        let sret_ptr = sret_param.into_pointer_value();
+
+        let struct_ty = rvalue.ty.clone();
+        let struct_layout = type_layout(&self.target.info, &struct_ty);
+
+        let size_val = self.llvmctx.i64_type().const_int(struct_layout.size as u64, false);
+
+        let src_ptr = match &lvalue.kind {
+            InternalValueKind::LValue(ptr) => *ptr,
+            InternalValueKind::RValue(val) => {
+                let temp_alloca = self.llvmbuilder.build_alloca(val.get_type(), "sret.temp").unwrap();
+
+                self.llvmbuilder.build_store(temp_alloca, *val).unwrap();
+                temp_alloca
+            }
+            InternalValueKind::FuncValue(_) => unreachable!(),
+        };
+
+        self.llvmbuilder
+            .build_memcpy(
+                sret_ptr,
+                self.target.info.pointer_align(),
+                src_ptr,
+                self.target.info.pointer_align(),
+                size_val,
+            )
+            .unwrap();
+
+        self.llvmbuilder.build_return(None).unwrap();
+    }
+
+    fn emit_return_direct_pair(
+        &mut self,
+        rvalue: InternalValue<'ll>,
+        lo: &ABIType,
+        hi: &ABIType,
+        abi_ret_type: &ABIType,
+    ) {
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
+            .try_into()
+            .unwrap();
+
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
+            .try_into()
+            .unwrap();
+
+        let struct_value = rvalue.as_basic_value().into_struct_value();
+        let layout = type_layout(&self.target.info, &rvalue.ty);
+
+        let lo_index = layout.lookup_field_index_at_offset(0).unwrap() as u32;
+        let mut lo_value = self
+            .llvmbuilder
+            .build_extract_value(struct_value, lo_index, "ret.lo")
+            .unwrap();
+
+        let hi_index = layout.lookup_field_index_at_offset(8).unwrap() as u32;
+        let mut hi_value = self
+            .llvmbuilder
+            .build_extract_value(struct_value, hi_index, "ret.hi")
+            .unwrap();
+
+        let cir_struct_type = rvalue.ty.as_struct().unwrap();
+        let ret_struct_ty = self.llvmctx.struct_type(&[lo_ty.into(), hi_ty.into()], false);
+
+        let mut pair_struct = ret_struct_ty.get_undef();
+
+        lo_value = self
+            .emit_cast(
+                lo_ty.as_any_type_enum(),
+                InternalValue::new(
+                    cir_struct_type.fields.get(0).unwrap().clone(),
+                    InternalValueKind::RValue(lo_value),
+                ),
+            )
+            .try_into()
+            .unwrap();
+
+        pair_struct = self
+            .llvmbuilder
+            .build_insert_value(pair_struct, lo_value, 0, "insert")
+            .unwrap()
+            .into_struct_value();
+
+        hi_value = self
+            .emit_cast(
+                hi_ty.as_any_type_enum(),
+                InternalValue::new(
+                    cir_struct_type.fields.get(1).unwrap().clone(),
+                    InternalValueKind::RValue(hi_value),
+                ),
+            )
+            .try_into()
+            .unwrap();
+
+        pair_struct = self
+            .llvmbuilder
+            .build_insert_value(pair_struct, hi_value, 1, "insert")
+            .unwrap()
+            .into_struct_value();
+
+        let llvm_abi_ret_type: BasicTypeEnum<'ll> =
+            abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_ret_type)
+                .try_into()
+                .unwrap();
+
+        let return_value =
+            self.intrinsic_coerce_through_alloca(pair_struct.as_basic_value_enum(), llvm_abi_ret_type, "coerce.ret");
+
+        self.llvmbuilder.build_return(Some(&return_value)).unwrap();
     }
 
     pub(crate) fn emit_var(&mut self, cir_var: &CIRVarStmt) {

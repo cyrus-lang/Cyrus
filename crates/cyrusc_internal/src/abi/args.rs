@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{abi::types::ABIType};
+use crate::abi::types::ABIType;
 
 #[derive(Debug, Clone)]
 pub struct ABIFunctionInfo {
@@ -33,6 +33,7 @@ pub struct ABIRetInfo {
 #[derive(Debug, Clone)]
 pub enum ABIRetInfoKind {
     Direct { coerce_to: Option<ABIType> },
+    DirectPair { lo: ABIType, hi: ABIType },
     Indirect { sret: bool },
     Ignore,
 }

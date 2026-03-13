@@ -116,6 +116,8 @@ void display_union_payload(union UnionPayload payload, int kind) {
   }
 }
 
+// ANCHOR
+
 // Nested Struct
 
 struct NestedStructInner {
@@ -133,6 +135,56 @@ double nested_sum(struct NestedStructOuter o) {
 
   return o.inner.x + o.inner.y + o.z;
 }
+
+// TODO Nested union inside struct
+// TODO Nested struct inside union
+
+// TODO Struct With Mixed Vector‑Like Layout
+// struct Float4 {
+//   float a;
+//   float b;
+//   float c;
+//   float d;
+// };
+
+// float sum_float4(struct Float4 v) {
+//   return v.a + v.b + v.c + v.d;
+// }
+
+// TODO Struct With Array Crossing Eightbyte
+// struct Cross {
+//   int a[3];
+// };
+
+// int cross_sum(struct Cross c) {
+//   return c.a[0] + c.a[1] + c.a[2];
+// }
+
+
+// TODO
+// double register_pressure(
+//   int a1, int a2, int a3, int a4, int a5, int a6,
+//   double f1, double f2, double f3, double f4,
+//   double f5, double f6, double f7, double f8,
+//   double f9
+// ) {
+//   return a1 + a2 + f1 + f9;
+// }
+
+// TODO Evil Nested Aggregate (Real ABI Torture)
+// struct A {
+//   int a;
+//   float b;
+// };
+
+// struct B {
+//   struct A x;
+//   double y;
+// };
+
+// double evil_nested(struct B b) {
+//   return b.x.a + b.x.b + b.y;
+// }
 
 // Arrays
 

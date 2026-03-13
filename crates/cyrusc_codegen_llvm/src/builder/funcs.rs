@@ -445,8 +445,8 @@ impl<'ll> IRBuilderCtx<'ll> {
             llvm_param_index += 1;
         }
 
-        for (idx, param) in func_params.list.iter().enumerate() {
-            let abi_arg_info = &abi_func_info.params_infos[idx];
+        for (i, param) in func_params.list.iter().enumerate() {
+            let abi_arg_info = &abi_func_info.params_infos[i];
 
             match &abi_arg_info.kind {
                 ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
@@ -464,6 +464,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
                 }
                 ABIArgKind::DirectPair { lo: _, hi: _ } => {
+                    let layout = type_layout(&self.target.info, &param.ty);
+
                     let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
 
                     let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
@@ -480,16 +482,20 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let param_alloca = self.llvmbuilder.build_alloca(param_ty, "param").unwrap();
 
+                    let lo_index = layout.lookup_field_index(0).unwrap();
+
                     let lo_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(param_ty, param_alloca, 0, "lo.ptr")
+                        .build_struct_gep(param_ty, param_alloca, lo_index, "lo.ptr")
                         .unwrap();
 
                     self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
 
+                    let hi_index = layout.lookup_field_index(1).unwrap();
+
                     let hi_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(param_ty, param_alloca, 1, "hi.ptr")
+                        .build_struct_gep(param_ty, param_alloca, hi_index, "hi.ptr")
                         .unwrap();
 
                     // spill hi register
