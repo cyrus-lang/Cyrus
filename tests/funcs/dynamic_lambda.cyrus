@@ -7,8 +7,6 @@ var handler = fn(x: int64, y: float64) float64 {
 };
 
 pub fn main() {
-    var x = true;
-
     const compute_handler = fn(cond: bool) fn(int64, float64) float64 {
         if (cond) {
             return fn(x: int64, y: float64) float64 { return y + cast(float64, x); };
