@@ -3752,7 +3752,6 @@ impl Resolver {
                 fields,
                 repr_attr: unnamed_struct_value.repr_attr.clone(),
                 align: unnamed_struct_value.align.clone(),
-                is_const: unnamed_struct_value.is_const,
                 loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,

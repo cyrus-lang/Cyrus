@@ -224,15 +224,8 @@ impl Parser {
             TokenKind::Repr => {
                 let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();
 
-                let is_const = if self.current_token_is(TokenKind::Const) {
-                    self.next_token();
-                    true
-                } else {
-                    false
-                };
-
                 if self.current_token_is(TokenKind::Struct) {
-                    self.parse_unnamed_struct_value(Some(repr_attr), is_const)?
+                    self.parse_unnamed_struct_value(Some(repr_attr))?
                 } else if self.current_token_is(TokenKind::Union) {
                     let token = self.current_token();
 
@@ -251,7 +244,7 @@ impl Parser {
                     return Err(self.error_invalid_token());
                 }
             }
-            TokenKind::Struct => self.parse_unnamed_struct_value(None, false)?,
+            TokenKind::Struct => self.parse_unnamed_struct_value(None)?,
             TokenKind::Union => self.parse_unnamed_union_value(false)?,
             TokenKind::Dot => self.parse_unnamed_enum_value()?,
             TokenKind::Dynamic => self.parse_dynamic_expr()?,
@@ -266,50 +259,6 @@ impl Parser {
             TokenKind::Function => self.parse_lambda_expr(false)?,
             TokenKind::SizeOf => self.parse_sizeof_expr()?,
             TokenKind::Typecast => self.parse_cast_expr()?,
-            TokenKind::Const => {
-                if self.peek_token_is(TokenKind::Struct) {
-                    self.next_token();
-                    self.parse_unnamed_struct_value(None, true)?
-                } else if self.peek_token_is(TokenKind::Union) {
-                    let token = self.peek_token();
-
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(
-                            "Const cannot be applied to unnamed union values.".to_string(),
-                        )),
-                        level: DiagLevel::Error,
-                        location: Some(
-                            DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
-                                .span(token.span),
-                        ),
-                        hint: Some("Consider to remove 'const' qualifier.".to_string()),
-                    });
-                } else if self.peek_token_is(TokenKind::Dot) {
-                    let token = self.peek_token();
-
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(
-                            "Const cannot be applied to unnamed enum values.".to_string(),
-                        )),
-                        level: DiagLevel::Error,
-                        location: Some(
-                            DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
-                                .span(token.span),
-                        ),
-                        hint: Some("Consider to remove 'const' qualifier.".to_string()),
-                    });
-                } else if let TokenKind::Ident { .. } = self.peek_token().kind {
-                    self.next_token(); // consume const
-                    let module_import = self.parse_module_import()?;
-                    self.next_token();
-
-                    let mut struct_init = self.parse_struct_init(module_import, None)?;
-                    struct_init.is_const = true;
-                    Expr::StructInit(struct_init)
-                } else {
-                    return Err(self.error_invalid_token());
-                }
-            }
             TokenKind::Ident { .. } => {
                 let module_import = self.parse_module_import()?;
 
@@ -1133,7 +1082,7 @@ impl Parser {
         }))
     }
 
-    fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>, is_const: bool) -> Result<Expr, Diag> {
+    fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>) -> Result<Expr, Diag> {
         let struct_start = self.current_token().span.start;
 
         self.next_token(); // consume struct
@@ -1210,7 +1159,6 @@ impl Parser {
             fields,
             repr_attr,
             align,
-            is_const,
             loc: self.current_token().loc.clone(),
             span: Span::new(struct_start, self.current_token().span.end),
         }))

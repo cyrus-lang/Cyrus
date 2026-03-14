@@ -219,10 +219,6 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
         TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
             let mut fmt = String::new();
 
-            if unnamed_struct_value.is_const {
-                fmt.push_str("const ");
-            }
-
             if let Some(repr_attr) = &unnamed_struct_value.repr_attr {
                 fmt.push_str(&repr_attr.to_string());
                 fmt.push_str(" ");

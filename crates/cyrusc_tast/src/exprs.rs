@@ -389,7 +389,6 @@ pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub is_const: bool,
     pub loc: SourceLoc,
 }
 

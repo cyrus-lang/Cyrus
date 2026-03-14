@@ -892,13 +892,7 @@ impl<'a> AnalysisContext<'a> {
             loc: unnamed_struct_value.loc.clone(),
         };
 
-        if unnamed_struct_value.is_const {
-            Some(SemanticType::Const(Box::new(SemanticType::UnnamedStruct(
-                unnamed_struct_type,
-            ))))
-        } else {
-            Some(SemanticType::UnnamedStruct(unnamed_struct_type))
-        }
+        Some(SemanticType::UnnamedStruct(unnamed_struct_type))
     }
 
     /// Analyzes array index expressions with bounds and type validation.
