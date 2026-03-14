@@ -141,9 +141,8 @@ impl Parser {
             }
 
             let stmts = self.parse_stmt(grouped_modifiers.clone(), toplevel)?;
+            self.next_token();
             group_stmts.extend(stmts);
-
-            self.expect_semicolon()?;
 
             if self.current_token_is(TokenKind::RightBrace) {
                 break;
@@ -786,7 +785,6 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.next_token(); // consume break
-
         self.must_be_semicolon()?;
 
         Ok(Stmt::Break(Break {
@@ -800,7 +798,6 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         self.next_token(); // consume continue
-
         self.must_be_semicolon()?;
 
         Ok(Stmt::Continue(Continue {
@@ -952,6 +949,8 @@ impl Parser {
             module_path = self.parse_import_module_path(module_path.clone())?;
             paths = vec![module_path];
         }
+
+        self.must_be_semicolon()?;
 
         return Ok(Stmt::Import(Import {
             paths,
@@ -1496,6 +1495,8 @@ impl Parser {
             }
         };
 
+        self.must_be_semicolon()?;
+
         Ok(Stmt::GlobalVar(GlobalVar {
             ident,
             type_specifier,
@@ -1527,6 +1528,9 @@ impl Parser {
 
         let type_specifier = self.parse_type_specifier()?;
         self.next_token();
+
+        self.must_be_semicolon()?;
+
         Ok(Stmt::Typedef(Typedef {
             vis,
             ident,
@@ -1751,6 +1755,8 @@ impl Parser {
 
         self.next_token();
         let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
+
+        self.must_be_semicolon()?;
 
         Ok(Stmt::Defer(Defer {
             operand: Box::new(stmt),

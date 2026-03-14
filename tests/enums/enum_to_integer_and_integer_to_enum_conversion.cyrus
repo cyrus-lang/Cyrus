@@ -1,3 +1,5 @@
+// @stdout: 2A
+
 import std::libc{printf};
 
 enum Tag {
@@ -9,19 +11,19 @@ enum Tag {
 
 pub fn main() {
 	var x = Tag.B;
-	printf("%d\n", cast(int32, x));
+	printf("%d ", cast(int32, x));
 
 	x = cast(Tag, 1);
 
 	switch (x) {
 		case .A => {
-			printf("A\n");
+			printf("A");
 		}
 		case .B => {
-			printf("B\n");
+			printf("B");
 		}
 		case .C => {
-			printf("C\n");
+			printf("C");
 		}
 		default => {
 			printf("default\n");
