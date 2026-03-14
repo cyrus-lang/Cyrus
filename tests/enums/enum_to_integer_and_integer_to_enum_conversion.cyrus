@@ -11,7 +11,7 @@ enum Tag {
 
 pub fn main() {
 	var x = Tag.B;
-	printf("%d ", cast(int32, x));
+	printf("%d", cast(int32, x));
 
 	x = cast(Tag, 1);
 

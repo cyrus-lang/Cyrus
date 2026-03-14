@@ -2933,8 +2933,12 @@ impl<'a> AnalysisContext<'a> {
             .fields
             .iter()
             .find(|f| f.name == field_init.name)
+            .cloned()
         {
-            Some(field) => field,
+            Some(mut field) => {
+                field.ty = self.normalize_sema_type(scope_id_opt, field.ty.clone(), field_init.value.loc.clone())?;
+                field
+            }
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -3082,7 +3086,11 @@ impl<'a> AnalysisContext<'a> {
                 .cloned()
                 .find(|field| field.name == field_init.name)
             {
-                Some(field) => field,
+                Some(mut field) => {
+                    field.ty =
+                        self.normalize_sema_type(scope_id_opt, field.ty.clone(), field_init.value.loc.clone())?;
+                    field
+                }
                 None => {
                     let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
@@ -3105,7 +3113,18 @@ impl<'a> AnalysisContext<'a> {
                 .or(infer_ctx_expected_type)
                 .unwrap_or(field.ty.clone());
 
-            let field_value_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type));
+            let field_value_ty =
+                self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type.clone()));
+
+            if let Some(sema_ty) = self.infer_generic_param(
+                scope_id_opt,
+                generic_type_opt.as_ref(),
+                field.ty.clone(),
+                field_value_ty.clone(),
+                field_init.loc.clone(),
+            ) {
+                field_init.value.sema_ty = Some(sema_ty);
+            }
 
             if generic_type_opt.is_none() {
                 if !self.check_type_mismatch(
@@ -3128,16 +3147,6 @@ impl<'a> AnalysisContext<'a> {
                     });
                     return None;
                 }
-            }
-
-            if let Some(sema_ty) = self.infer_generic_param(
-                scope_id_opt,
-                generic_type_opt.as_ref(),
-                field.ty.clone(),
-                field_value_ty.clone(),
-                field_init.loc.clone(),
-            ) {
-                field_init.value.sema_ty = Some(sema_ty);
             }
 
             let missing_fields_idx = match missing_fields
@@ -3619,13 +3628,13 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         scope_opt: Option<LocalScopeRef>,
-        enum_variant: TypedEnumVariant,
+        mut enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
-        let mut valued_fields = self.analyze_enum_fielded_variant(&enum_variant, method_call)?;
+        let mut valued_fields = self.analyze_enum_fielded_variant(scope_id_opt, &mut enum_variant, method_call)?;
 
         let is_const = false;
 
@@ -3664,6 +3673,9 @@ impl<'a> AnalysisContext<'a> {
             }
 
             if generic_type_opt.is_none() {
+                enum_valued_field.ty =
+                    self.normalize_sema_type(scope_id_opt, enum_valued_field.ty.clone(), typed_expr.loc.clone())?;
+
                 if !self.check_type_mismatch(
                     scope_id_opt,
                     typed_expr.sema_ty.clone().unwrap(),
@@ -3750,7 +3762,8 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_enum_fielded_variant<'b>(
         &mut self,
-        mut enum_variant: &'b TypedEnumVariant,
+        scope_id_opt: Option<ScopeID>,
+        mut enum_variant: &'b mut TypedEnumVariant,
         method_call: &TypedMethodCall,
     ) -> Option<Vec<TypedEnumValuedField>> {
         match &mut enum_variant {
@@ -3767,6 +3780,11 @@ impl<'a> AnalysisContext<'a> {
                         hint: None,
                     });
                     return None;
+                }
+
+                for valued_field in &mut *valued_fields {
+                    valued_field.ty =
+                        self.normalize_sema_type(scope_id_opt, valued_field.ty.clone(), valued_field.loc.clone())?;
                 }
 
                 Some(valued_fields.clone())

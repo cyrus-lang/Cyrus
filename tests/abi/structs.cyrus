@@ -56,7 +56,7 @@ pub fn main() {
     const mixed_integer_sse = MixedIntegerSSE { a: 5, b: 3.7 };
     printf("mixed_integer_sse=%f ", sum_mixed_integer_sse(mixed_integer_sse));
 
-    const x = 10;
+    const x: int32 = 10;
     const large_struct = LargeStruct { a: 5, b: 10, c: 3.2, d: 5.5, ptr: &x };
     printf("print_large_struct=%f ", print_large_struct(large_struct));
 
