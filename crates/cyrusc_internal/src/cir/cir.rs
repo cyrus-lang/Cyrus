@@ -56,6 +56,7 @@ pub enum CIRStmt {
     Return(CIRReturnStmt),
     Label(CIRLabelStmt),
     Goto(CIRGotoStmt),
+    Defer(CIRDeferStmt),
     Continue,
     Break,
 }
@@ -320,6 +321,7 @@ pub struct CIRFuncParams {
 #[derive(Debug, Clone)]
 pub struct CIRBlockStmt {
     pub stmts: Vec<CIRStmt>,
+    pub defers: Vec<CIRStmt>
 }
 
 #[derive(Debug, Clone)]
@@ -476,6 +478,11 @@ pub struct CIRLabelStmt {
 #[derive(Debug, Clone)]
 pub struct CIRGotoStmt {
     pub label_id: LabelID,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRDeferStmt {
+    pub operand: Box<CIRStmt>,
 }
 
 pub fn cir_expr_as_const_integer_value(expr: &CIRExpr) -> Option<i128> {

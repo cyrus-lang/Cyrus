@@ -96,74 +96,96 @@ impl<'resolver> CIRWalk<'resolver> {
         }
     }
 
+    fn lower_stmt(&mut self, scope_id_opt: Option<ScopeID>, stmt: &TypedStmt, lowered_stmts: &mut Vec<CIRStmt>) {
+        match stmt {
+            TypedStmt::FuncDef(func_def_stmt) => {
+                if func_def_stmt.generic_params.is_some() {
+                    return; // skip lowering at this point
+                }
+                lowered_stmts.push(self.lower_func_def(scope_id_opt, func_def_stmt, true));
+            }
+            TypedStmt::FuncDecl(func_decl_stmt) => {
+                lowered_stmts.push(CIRStmt::FuncDecl(self.lower_func_decl(
+                    scope_id_opt,
+                    func_decl_stmt,
+                    true,
+                )));
+            }
+            TypedStmt::Switch(switch_stmt) => {
+                lowered_stmts.push(self.lower_switch(scope_id_opt, switch_stmt));
+            }
+            TypedStmt::Variable(var_stmt) => {
+                lowered_stmts.push(CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)));
+            }
+            TypedStmt::GlobalVar(global_var_stmt) => {
+                lowered_stmts.push(self.lower_global_var(scope_id_opt, &mut global_var_stmt.clone()));
+            }
+            TypedStmt::BlockStmt(block_stmt) => {
+                lowered_stmts.push(CIRStmt::Block(self.lower_body(block_stmt)));
+            }
+            TypedStmt::If(if_stmt) => {
+                lowered_stmts.push(self.lower_if(scope_id_opt, if_stmt));
+            }
+            TypedStmt::Return(return_stmt) => {
+                lowered_stmts.push(self.lower_return(scope_id_opt, return_stmt));
+            }
+            TypedStmt::Break(break_stmt) => {
+                lowered_stmts.push(self.lower_break(break_stmt));
+            }
+            TypedStmt::Continue(continue_stmt) => {
+                lowered_stmts.push(self.lower_continue(continue_stmt));
+            }
+            TypedStmt::For(for_stmt) => {
+                lowered_stmts.push(self.lower_for(scope_id_opt, for_stmt));
+            }
+            TypedStmt::While(while_stmt) => {
+                lowered_stmts.push(self.lower_while(scope_id_opt, while_stmt));
+            }
+            TypedStmt::ExportTuple(export_tuple_stmt) => {
+                self.lower_export_tuple_to_vars(scope_id_opt, export_tuple_stmt)
+                    .iter()
+                    .for_each(|var| {
+                        lowered_stmts.push(CIRStmt::Variable(var.clone()));
+                    });
+            }
+            TypedStmt::Label(label) => {
+                lowered_stmts.push(self.lower_label(label));
+            }
+            TypedStmt::Goto(goto) => {
+                lowered_stmts.push(self.lower_goto(scope_id_opt, goto));
+            }
+            TypedStmt::Expr(expr) => {
+                lowered_stmts.push(CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)));
+            }
+            // Lowered only when used
+            TypedStmt::Struct(struct_stmt) => {
+                if struct_stmt.generic_params.is_none() {
+                    let stmts = self.lower_non_generic_methods(scope_id_opt, &struct_stmt.name, &struct_stmt.methods);
+                    lowered_stmts.extend(stmts);
+                }
+            }
+            TypedStmt::Enum(enum_stmt) => {
+                if enum_stmt.generic_params.is_none() {
+                    let stmts = self.lower_non_generic_methods(scope_id_opt, &enum_stmt.name, &enum_stmt.methods);
+                    lowered_stmts.extend(stmts);
+                }
+            }
+            TypedStmt::Union(union_stmt) => {
+                if union_stmt.generic_params.is_none() {
+                    let stmts = self.lower_non_generic_methods(scope_id_opt, &union_stmt.name, &union_stmt.methods);
+                    lowered_stmts.extend(stmts);
+                }
+            }
+            // skipped
+            TypedStmt::Defer(_) | TypedStmt::Interface(..) | TypedStmt::Typedef(..) => {}
+        }
+    }
+
     fn lower_stmts(&mut self, scope_id_opt: Option<ScopeID>, stmts: &Vec<TypedStmt>) -> Vec<CIRStmt> {
-        let mut lowered_stmts: Vec<CIRStmt> = Vec::new();
+        let mut lowered_stmts = Vec::new();
 
         for stmt in stmts {
-            let lowered_stmt = match stmt {
-                TypedStmt::FuncDef(func_def_stmt) => {
-                    if func_def_stmt.generic_params.is_some() {
-                        continue; // skip lowering at this point
-                    }
-                    self.lower_func_def(scope_id_opt, func_def_stmt, true)
-                }
-                TypedStmt::FuncDecl(func_decl_stmt) => {
-                    CIRStmt::FuncDecl(self.lower_func_decl(scope_id_opt, func_decl_stmt, true))
-                }
-                TypedStmt::Switch(switch_stmt) => self.lower_switch(scope_id_opt, switch_stmt),
-                TypedStmt::Variable(var_stmt) => CIRStmt::Variable(self.lower_var(scope_id_opt, var_stmt)),
-                TypedStmt::GlobalVar(global_var_stmt) => {
-                    self.lower_global_var(scope_id_opt, &mut global_var_stmt.clone())
-                }
-                TypedStmt::BlockStmt(block_stmt) => CIRStmt::Block(self.lower_body(block_stmt)),
-                TypedStmt::If(if_stmt) => self.lower_if(scope_id_opt, if_stmt),
-                TypedStmt::Return(return_stmt) => self.lower_return(scope_id_opt, return_stmt),
-                TypedStmt::Break(break_stmt) => self.lower_break(break_stmt),
-                TypedStmt::Continue(continue_stmt) => self.lower_continue(continue_stmt),
-                TypedStmt::For(for_stmt) => self.lower_for(scope_id_opt, for_stmt),
-                TypedStmt::While(while_stmt) => self.lower_while(scope_id_opt, while_stmt),
-                TypedStmt::ExportTuple(export_tuple_stmt) => {
-                    self.lower_export_tuple_to_vars(scope_id_opt, export_tuple_stmt)
-                        .iter()
-                        .for_each(|var| {
-                            lowered_stmts.push(CIRStmt::Variable(var.clone()));
-                        });
-                    continue;
-                }
-                TypedStmt::Label(label) => self.lower_label(label),
-                TypedStmt::Goto(goto) => self.lower_goto(scope_id_opt, goto),
-                TypedStmt::Expr(expr) => CIRStmt::Expr(self.lower_expr(scope_id_opt, expr)),
-                // lowered only when used
-                TypedStmt::Struct(struct_stmt) => {
-                    if struct_stmt.generic_params.is_none() {
-                        // non generic
-                        let stmts =
-                            self.lower_non_generic_methods(scope_id_opt, &struct_stmt.name, &struct_stmt.methods);
-                        lowered_stmts.extend(stmts);
-                    }
-                    continue;
-                }
-                TypedStmt::Enum(enum_stmt) => {
-                    if enum_stmt.generic_params.is_none() {
-                        // non generic
-                        let stmts = self.lower_non_generic_methods(scope_id_opt, &enum_stmt.name, &enum_stmt.methods);
-                        lowered_stmts.extend(stmts);
-                    }
-                    continue;
-                }
-                TypedStmt::Union(union_stmt) => {
-                    if union_stmt.generic_params.is_none() {
-                        // non generic
-                        let stmts = self.lower_non_generic_methods(scope_id_opt, &union_stmt.name, &union_stmt.methods);
-                        lowered_stmts.extend(stmts);
-                    }
-                    continue;
-                }
-                // skipped
-                TypedStmt::Interface(..) | TypedStmt::Defer(..) | TypedStmt::Typedef(..) => continue,
-            };
-
-            lowered_stmts.push(lowered_stmt);
+            self.lower_stmt(scope_id_opt, stmt, &mut lowered_stmts);
         }
 
         lowered_stmts
@@ -233,6 +255,15 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
+    fn lower_defer(&mut self, scope_id_opt: Option<ScopeID>, defer: &TypedDeferStmt) -> CIRStmt {
+        let mut lowered_stmts = Vec::new();
+        self.lower_stmt(scope_id_opt, &defer.operand, &mut lowered_stmts);
+        assert_eq!(lowered_stmts.len(), 1);
+
+        let operand = lowered_stmts.first().unwrap();
+        operand.clone()
+    }
+
     fn lower_goto(&self, scope_id_opt: Option<ScopeID>, goto: &TypedGotoStmt) -> CIRStmt {
         let scope_rc = self
             .resolver
@@ -299,7 +330,10 @@ impl<'resolver> CIRWalk<'resolver> {
         let cond = self.lower_expr(scope_id_opt, &if_stmt.cond);
         let then_block = Box::new(self.lower_body(&if_stmt.then_block));
 
-        let mut else_block = if_stmt.else_block.as_ref().map(|b| Box::new(self.lower_body(b)));
+        let mut else_block = if_stmt
+            .else_block
+            .as_ref()
+            .map(|block| Box::new(self.lower_body(block)));
 
         for branch in if_stmt.branches.iter().rev() {
             let branch_cond = self.lower_expr(scope_id_opt, &branch.cond);
@@ -311,7 +345,10 @@ impl<'resolver> CIRWalk<'resolver> {
                 else_block: else_block.take(),
             });
 
-            else_block = Some(Box::new(CIRBlockStmt { stmts: vec![nested_if] }));
+            else_block = Some(Box::new(CIRBlockStmt {
+                stmts: vec![nested_if],
+                defers: Vec::new(),
+            }));
         }
 
         CIRStmt::If(CIRIfStmt {
@@ -471,6 +508,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 else_block: match current {
                     Some(inner) => Some(Box::new(CIRBlockStmt {
                         stmts: vec![CIRStmt::If(inner)],
+                        defers: Vec::new(),
                     })),
                     None => None,
                 },
@@ -484,6 +522,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 if let Some(default_block) = default.clone() {
                     if_stmt.else_block = Some(Box::new(CIRBlockStmt {
                         stmts: vec![CIRStmt::Block(default_block)],
+                        defers: Vec::new(),
                     }));
                 }
                 if_stmt
@@ -534,6 +573,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         }
                     })
                     .collect();
+
                 let body = self.lower_body(&case.body);
 
                 CIRSwitchCase { patterns, body }
@@ -587,7 +627,7 @@ impl<'resolver> CIRWalk<'resolver> {
             value: operand.clone(),
             cases,
             default: default.clone(),
-            all_cases_covered: false
+            all_cases_covered: false,
         })
     }
 
@@ -925,10 +965,14 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     pub(crate) fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
-        let mut stmts = self.lower_stmts(Some(block.scope_id), &block.stmts);
-        let defer_stmts: Vec<TypedStmt> = block.defers.iter().map(|defer| *defer.operand.clone()).collect();
-        stmts.extend(self.lower_stmts(Some(block.scope_id), &defer_stmts));
-        CIRBlockStmt { stmts }
+        let stmts = self.lower_stmts(Some(block.scope_id), &block.stmts);
+        let defers = block
+            .defers
+            .iter()
+            .map(|defer| self.lower_defer(Some(block.scope_id), defer))
+            .collect();
+
+        CIRBlockStmt { stmts, defers }
     }
 
     // exprs

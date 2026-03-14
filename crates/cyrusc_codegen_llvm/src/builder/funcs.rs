@@ -688,13 +688,15 @@ impl<'ll> IRBuilderCtx<'ll> {
         debug_assert!(self.cur_func.is_some());
 
         self.ensure_entry_block();
+        self.blockreg.labels.clear();
         self.emit_func_params(func_params.clone(), abi_func_info);
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();
     }
 
-    pub(crate) fn ensure_void_fn_terminated(&self) {
+    pub(crate) fn ensure_void_fn_terminated(&mut self) {
         let cur_fn = self.cur_func.unwrap();
+
         if cur_fn.get_type().get_return_type().is_some() {
             return; // works only for void return type
         }
@@ -705,6 +707,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 return;
             }
 
+            self.emit_all_defers();
             self.llvmbuilder.build_return(None).unwrap();
         }
     }

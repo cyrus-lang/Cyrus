@@ -1,0 +1,44 @@
+// @stdout: 12349995236121172008100
+
+import std::libc{printf};
+
+fn log(x: int) {
+    printf("%d", x);
+}
+
+pub fn main() {
+    defer log(100);
+
+    log(1);
+
+        var a = 10;
+    {
+        defer log(a + 1);
+        defer log(a + 2);
+
+        log(2);
+
+        {
+            var b = 20;
+            defer log(b + 3);
+
+            log(3);
+
+            {
+                defer log(999);
+                log(4);
+            }
+
+            log(5);
+        }
+
+        log(6);
+    }
+
+    {
+        defer log(200);
+        log(7);
+    }
+
+    log(8);
+}

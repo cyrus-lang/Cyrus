@@ -1,0 +1,44 @@
+// @stdout: 1234502010200
+
+import std::libc{printf};
+
+fn log(x: int) {
+    printf("%d", x);
+}
+
+fn test(n: int) {
+    defer log(200);
+
+    log(1);
+
+    {
+        var a = 10;
+        defer log(a);
+
+        log(2);
+
+        {
+            var b = 20;
+            defer log(b);
+
+            log(3);
+
+            if (n == 1) {
+                defer log(50);
+                log(4);
+                return;
+            }
+
+            log(5);
+        }
+
+        log(6);
+    }
+
+    log(7);
+    return;
+}
+
+pub fn main() {
+    test(1);
+}
