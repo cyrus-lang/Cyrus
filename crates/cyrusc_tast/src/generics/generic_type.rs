@@ -82,10 +82,10 @@ impl GenericType {
 
         for type_arg in type_args {
             match type_arg {
-                TypedTypeArg::Positional { idx, ty, loc } => {
-                    let generic_param = self.generic_params.lookup_positional(idx).ok_or(Diag {
+                TypedTypeArg::Positional { i, ty, loc } => {
+                    let generic_param = self.generic_params.lookup_positional(i).ok_or(Diag {
                         level: DiagLevel::Error,
-                        kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { idx }),
+                        kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { i }),
                         location: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     })?;
@@ -330,8 +330,8 @@ pub fn debug_generic_type<'a>(
                             .type_args
                             .iter()
                             .map(|type_arg| match type_arg {
-                                TypedTypeArg::Positional { idx, ty, .. } => {
-                                    format!("  {}:{}\n", idx, format_sema_ty(ty.clone(), format_symbol))
+                                TypedTypeArg::Positional { i, ty, .. } => {
+                                    format!("  {}:{}\n", i, format_sema_ty(ty.clone(), format_symbol))
                                 }
                                 TypedTypeArg::Named { key, ty, .. } => {
                                     format!("  {}:{}\n", key, format_sema_ty(ty.clone(), format_symbol))
@@ -354,8 +354,8 @@ pub fn debug_generic_type<'a>(
 
         for type_arg in type_args {
             match type_arg {
-                TypedTypeArg::Positional { idx, ty, .. } => {
-                    println!("  {}:{}", idx, format_sema_ty(ty.clone(), format_symbol));
+                TypedTypeArg::Positional { i, ty, .. } => {
+                    println!("  {}:{}", i, format_sema_ty(ty.clone(), format_symbol));
                 }
                 TypedTypeArg::Named { key, ty, .. } => {
                     println!("  {}:{}", key, format_sema_ty(ty.clone(), format_symbol));

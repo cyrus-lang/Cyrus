@@ -450,10 +450,10 @@ impl<'a> AnalysisContext<'a> {
             None => None,
         };
 
-        for (idx, expr) in &mut tuple_value.expr_list.iter_mut().enumerate() {
+        for (i, expr) in &mut tuple_value.expr_list.iter_mut().enumerate() {
             let mut expected_type: Option<SemanticType> = None;
             if let Some(tuple_type) = &tuple_type_opt {
-                expected_type = tuple_type.type_list.get(idx).cloned();
+                expected_type = tuple_type.type_list.get(i).cloned();
             }
 
             match self.analyze_expr(scope_id_opt, expr, expected_type) {
@@ -2147,8 +2147,8 @@ impl<'a> AnalysisContext<'a> {
             method_call_args: &mut Vec<TypedExprStmt>,
         ) {
             // infer generic params from arguments
-            for (idx, arg) in method_call_args.iter_mut().enumerate() {
-                let target_type = match func_sig_params_list.get(idx).and_then(|param| param.param_type()) {
+            for (i, arg) in method_call_args.iter_mut().enumerate() {
+                let target_type = match func_sig_params_list.get(i).and_then(|param| param.param_type()) {
                     Some(sema_ty) => sema_ty,
                     None => continue,
                 };
@@ -2695,7 +2695,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(var_param) = &func_sig.params.variadic {
             match var_param.clone() {
                 TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
-                    for (idx, arg) in variadic_args.iter_mut().enumerate() {
+                    for (i, arg) in variadic_args.iter_mut().enumerate() {
                         if let Some(arg_type) = self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone()) {
                             if !self.check_type_mismatch(
                                 scope_id_opt,
@@ -2711,7 +2711,7 @@ impl<'a> AnalysisContext<'a> {
                                             &(self.symbol_formatter)(scope_id_opt),
                                         ),
                                         argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
-                                        argument_idx: (idx + static_params_len) as u32,
+                                        argument_idx: (i + static_params_len) as u32,
                                     }),
                                     location: Some(DiagLoc::new(loc.clone())),
                                     hint: None,
@@ -2779,7 +2779,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(var_param) = &func_type.params.variadic {
                 match *var_param.clone() {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
-                        for (idx, arg) in variadic_args.iter_mut().enumerate() {
+                        for (i, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) = self.analyze_expr(scope_id_opt, arg, arg.sema_ty.clone()) {
                                 if !self.check_type_mismatch(
                                     scope_id_opt,
@@ -2798,7 +2798,7 @@ impl<'a> AnalysisContext<'a> {
                                                 arg_type,
                                                 &(self.symbol_formatter)(scope_id_opt),
                                             ),
-                                            argument_idx: (idx + static_params_len) as u32,
+                                            argument_idx: (i + static_params_len) as u32,
                                         }),
                                         location: Some(DiagLoc::new(loc.clone())),
                                         hint: None,
@@ -3098,7 +3098,7 @@ impl<'a> AnalysisContext<'a> {
                 .iter()
                 .position(|field_name| *field_name == field_init.name.clone())
             {
-                Some(idx) => idx,
+                Some(i) => i,
                 None => continue,
             };
 
@@ -3781,7 +3781,7 @@ impl<'a> AnalysisContext<'a> {
             .position(|variant| variant.ident().as_string() == field_access.field_name);
 
         let enum_variant_opt =
-            enum_variant_idx_opt.and_then(|idx| Some(resolved_enum.enum_sig.variants.get(idx).unwrap()));
+            enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_sig.variants.get(i).unwrap()));
 
         if enum_variant_opt.is_none() {
             self.reporter.report(Diag {

@@ -352,14 +352,14 @@ impl<'a> AnalysisContext<'a> {
                 let rhs_ty = rhs.sema_ty.clone().unwrap();
                 let tuple_type = rhs_ty.as_tuple_type().unwrap();
 
-                for &idx in &access_path {
+                for &i in &access_path {
                     rhs = TypedExprStmt {
                         kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                             operand: Box::new(rhs),
-                            index: idx,
+                            index: i,
                             loc: loc.clone(),
                         }),
-                        sema_ty: Some(tuple_type.type_list.get(idx).unwrap().clone()),
+                        sema_ty: Some(tuple_type.type_list.get(i).unwrap().clone()),
                         mloc: MemoryLocation::LValue,
                         loc: loc.clone(),
                     };

@@ -388,7 +388,7 @@ pub struct TypedBound {
 #[derive(Debug, Clone, Eq)]
 pub enum TypedTypeArg {
     Positional {
-        idx: usize,
+        i: usize,
         ty: SemanticType,
         loc: SourceLoc,
     },
@@ -577,8 +577,8 @@ impl TypedGenericParamsList {
         self.list.iter().find(|p| &p.param_name.name == name)
     }
 
-    pub fn lookup_positional(&self, idx: usize) -> Option<&TypedGenericParam> {
-        self.list.get(idx)
+    pub fn lookup_positional(&self, i: usize) -> Option<&TypedGenericParam> {
+        self.list.get(i)
     }
 }
 
@@ -610,8 +610,8 @@ pub type TypedTypeArgs = Vec<TypedTypeArg>;
 impl Hash for TypedTypeArg {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            TypedTypeArg::Positional { idx, ty, .. } => {
-                idx.hash(state);
+            TypedTypeArg::Positional { i, ty, .. } => {
+                i.hash(state);
                 ty.hash(state);
             }
             TypedTypeArg::Named { key, ty, .. } => {
@@ -627,10 +627,10 @@ impl PartialEq for TypedTypeArg {
         match (self, other) {
             (
                 Self::Positional {
-                    idx: l_idx, ty: l_ty, ..
+                    i: l_idx, ty: l_ty, ..
                 },
                 Self::Positional {
-                    idx: r_idx, ty: r_ty, ..
+                    i: r_idx, ty: r_ty, ..
                 },
             ) => l_idx == r_idx && l_ty == r_ty,
 

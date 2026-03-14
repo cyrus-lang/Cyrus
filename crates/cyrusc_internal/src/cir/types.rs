@@ -349,6 +349,16 @@ impl CIRTy {
     }
 }
 
+impl CIRTupleTy {
+    pub fn as_struct_ty(&self) -> CIRStructTy {
+        CIRStructTy {
+            fields: self.elements.clone(),
+            repr_attr: None,
+            align: None,
+        }
+    }
+}
+
 impl PartialEq for CIRFuncTy {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params

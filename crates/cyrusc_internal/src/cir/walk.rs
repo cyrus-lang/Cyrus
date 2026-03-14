@@ -639,8 +639,8 @@ impl<'resolver> CIRWalk<'resolver> {
                                 let exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
                                     .iter()
                                     .enumerate()
-                                    .map(|(idx, ident)| {
-                                        let field_ty = &valued_fields.get(idx).as_ref().unwrap().ty;
+                                    .map(|(i, ident)| {
+                                        let field_ty = &valued_fields.get(i).as_ref().unwrap().ty;
                                         (ident.clone(), self.lower_sema_ty(scope_id_opt, field_ty))
                                     })
                                     .collect();
@@ -1396,8 +1396,8 @@ impl<'resolver> CIRWalk<'resolver> {
             .position(|variant| variant.ident().as_string() == method_call.method_name);
 
         // it's not a enum variant construction, so try again as a regular method call
-        let variant_idx = if let Some(idx) = variant_idx_opt {
-            idx
+        let variant_idx = if let Some(i) = variant_idx_opt {
+            i
         } else {
             return self.lower_regular_method_call(scope_id_opt, method_call);
         };
@@ -2041,8 +2041,8 @@ pub fn walk_program_trees_in_parallel(
         program_trees
             .into_par_iter()
             .enumerate()
-            .map(|(idx, program_tree)| {
-                let vtable_registry = vtable_registries[idx].clone();
+            .map(|(i, program_tree)| {
+                let vtable_registry = vtable_registries[i].clone();
 
                 let mut cir_walk = CIRWalk::new(
                     program_tree.clone(),

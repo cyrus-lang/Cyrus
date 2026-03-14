@@ -143,7 +143,26 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.llvmctx.struct_type(&llvm_field_types, is_packed)
     }
 
-    pub(crate) fn enum_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {
+    pub(crate) fn emit_enum_fielded_variant_payload_ty(
+        &self,
+        variant_idx: usize,
+        enum_ty: &CIREnumTy,
+    ) -> Option<StructType<'ll>> {
+        if !enum_ty.includes_payload() {
+            return None;
+        }
+
+        let variant = &enum_ty.variants[variant_idx];
+        let fields = variant.as_fielded()?;
+
+        Some(self.emit_struct_ty(CIRStructTy {
+            fields: fields.to_vec(),
+            repr_attr: None,
+            align: None,
+        }))
+    }
+
+    pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
         let mut max_payload_size: u64 = 0;
         let mut max_payload_align: u64 = 1;
@@ -152,10 +171,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let (payload_size, payload_align) = match variant {
                 CIREnumTyVariant::Ident(_) => (0, 1),
                 CIREnumTyVariant::Valued(_, expr) => {
-                    let llvm_ty: BasicTypeEnum<'ll> = self
-                        .emit_ty(expr.ty.clone())
-                        .try_into()
-                        .expect("Enum value payload must be a valid llvm type.");
+                    let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(expr.ty.clone()).try_into().unwrap();
                     let size = target_data.get_store_size(&llvm_ty);
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
@@ -216,7 +232,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
             let tag_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_tag_type.clone()).try_into().unwrap();
 
-            let (payload_ty, _) = self.enum_payload_ty(&enum_ty);
+            let (payload_ty, _) = self.emit_enum_buffer_payload_ty(&enum_ty);
             self.llvmctx
                 .struct_type(&[tag_type.as_basic_type_enum(), payload_ty.into()], false)
                 .as_basic_type_enum()
@@ -261,12 +277,8 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleTy) -> StructType<'ll> {
-        let element_types = self
-            .emit_types(&tuple_ty.elements)
-            .iter()
-            .map(|ty| (*ty).try_into().unwrap())
-            .collect::<Vec<BasicTypeEnum<'ll>>>();
-        self.llvmctx.struct_type(&element_types, false)
+        let struct_ty = tuple_ty.as_struct_ty();
+        self.emit_struct_ty(struct_ty)
     }
 
     pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayTy) -> AnyTypeEnum<'ll> {
@@ -294,8 +306,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                         abi_type_to_llvm_type(self.llvmctx, &self.target.info, coerce_ty)
                     } else {
                         // for direct without coercion, we need to find the type from params_types
-                        let idx = abi_arg_info.param_index_start as usize;
-                        let abi_type = &abi_func_info.params_types[idx];
+                        let i = abi_arg_info.param_index_start as usize;
+                        let abi_type = &abi_func_info.params_types[i];
                         abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type)
                     };
                     param_types.push(param_type.as_type_ref());
@@ -316,23 +328,23 @@ impl<'ll> IRBuilderCtx<'ll> {
                         let hi_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi);
                         param_types.push(hi_type.as_type_ref());
 
-                        for idx in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
-                            let abi_type = &abi_func_info.params_types[idx as usize];
+                        for i in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
+                            let abi_type = &abi_func_info.params_types[i as usize];
                             let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
                             param_types.push(param_type.as_type_ref());
                         }
                     }
                     ExpandKind::Simple | ExpandKind::Struct { .. } => {
-                        for idx in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
-                            let abi_type = &abi_func_info.params_types[idx as usize];
+                        for i in abi_arg_info.param_index_start..=abi_arg_info.param_index_end {
+                            let abi_type = &abi_func_info.params_types[i as usize];
                             let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
                             param_types.push(param_type.as_type_ref());
                         }
                     }
                 },
                 ABIArgKind::Extend { .. } => {
-                    let idx = abi_arg_info.param_index_start as usize;
-                    let abi_type = &abi_func_info.params_types[idx];
+                    let i = abi_arg_info.param_index_start as usize;
+                    let abi_type = &abi_func_info.params_types[i];
                     let param_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_type);
                     param_types.push(param_type.as_type_ref());
                 }

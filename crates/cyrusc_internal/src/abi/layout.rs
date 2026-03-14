@@ -210,11 +210,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
         }
         CIRTy::Tuple(tuple_ty) => {
             // tuple lowered as struct in codegen
-            let struct_ty = CIRStructTy {
-                fields: tuple_ty.elements.clone(),
-                repr_attr: None,
-                align: None,
-            };
+            let struct_ty = tuple_ty.as_struct_ty();
             type_layout(info, &CIRTy::Struct(struct_ty))
         }
         CIRTy::Array(array_ty) => {
@@ -301,7 +297,7 @@ impl ABITypeLayout {
         self.field_offsets
             .iter()
             .find(|field_offset| match field_offset.original_index() {
-                Some(idx) => idx == original_index,
+                Some(i) => i == original_index,
                 None => false,
             })
             .map(|field_offset| field_offset.index())

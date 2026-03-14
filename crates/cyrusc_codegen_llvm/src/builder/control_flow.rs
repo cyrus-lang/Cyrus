@@ -136,8 +136,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let tuple_type = CIRTy::Tuple(CIRTupleTy { elements });
         let layout = type_layout(&self.target.info, &tuple_type);
 
-        for (idx, (exported_field, _)) in exported_fields.iter().enumerate() {
-            let index = layout.lookup_field_index(idx).unwrap();
+        for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
+            let index = layout.lookup_field_index(i).unwrap();
 
             let ptr = self
                 .llvmbuilder
@@ -149,7 +149,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 )
                 .unwrap();
 
-            let field_ty = &variant_field_types[idx];
+            let field_ty = &variant_field_types[i];
             irreg.insert(exported_field.symbol_id, LocalIRValue::LValue(ptr, field_ty.clone()));
         }
 
@@ -257,21 +257,29 @@ impl<'ll> IRBuilderCtx<'ll> {
         let rvalue = self.load_rvalue(lvalue);
         let enum_ty = rvalue.ty.as_enum().unwrap();
 
-        let enum_struct_ty = {
+        {
             let ty = self.emit_enum_ty(enum_ty.clone());
 
-            if ty.is_struct_type() {
-                ty.into_struct_type()
-            } else if ty.is_int_type() {
+            if ty.is_int_type() {
                 let enum_value = rvalue.as_basic_value().into_int_value();
-
                 self.emit_switch_on_scalar_enum(switch_on_enum_stmt, enum_value, &enum_ty);
-
                 return;
-            } else {
-                unreachable!()
             }
-        };
+        }
+
+        // let enum_struct_ty = {
+        //     if ty.is_struct_type() {
+        //         ty.into_struct_type()
+        //     } else if ty.is_int_type() {
+        //         let enum_value = rvalue.as_basic_value().into_int_value();
+
+        //         self.emit_switch_on_scalar_enum(switch_on_enum_stmt, enum_value, &enum_ty);
+
+        //         return;
+        //     } else {
+        //         unreachable!()
+        //     }
+        // };
 
         let enum_struct_value = rvalue.as_basic_value().into_struct_value();
         let enum_idx_int_value = self.extract_enum_tag(enum_struct_value);
@@ -310,13 +318,8 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let enum_payload = self.extract_enum_payload(enum_struct_value);
 
-                    let payload_field_types: Vec<BasicTypeEnum<'ll>> = exported_fields
-                        .iter()
-                        .map(|(_, ty)| self.emit_ty(ty.clone()).try_into().unwrap())
-                        .collect();
-
-                    let payload_struct_type = self.llvmctx.struct_type(&payload_field_types, false);
-                    let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, enum_struct_ty);
+                    let payload_struct_type = self.emit_enum_fielded_variant_payload_ty(*variant_idx, &enum_ty).unwrap();
+                    let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, payload_struct_type);
 
                     let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
                     self.llvmbuilder

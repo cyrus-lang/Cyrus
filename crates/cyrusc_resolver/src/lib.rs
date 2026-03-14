@@ -531,7 +531,7 @@ impl Resolver {
         type_args
             .iter()
             .enumerate()
-            .map(|(idx, type_arg)| match type_arg {
+            .map(|(i, type_arg)| match type_arg {
                 TypeArg::Positional(type_specifier) => {
                     let ty = self.resolve_type(
                         generic_params,
@@ -543,7 +543,7 @@ impl Resolver {
                     )?;
 
                     Some(TypedTypeArg::Positional {
-                        idx,
+                        i,
                         ty,
                         loc: SourceLoc::from_loc(type_specifier.loc().0, self.current_file_path()),
                     })

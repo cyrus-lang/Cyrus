@@ -892,7 +892,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let gep_index = if index.get_type() == i64_type {
             index
         } else {
-            self.llvmbuilder.build_int_cast(index, i64_type, "idx.cast").unwrap()
+            self.llvmbuilder.build_int_cast(index, i64_type, "i.cast").unwrap()
         };
 
         // Create GEP instruction
@@ -918,10 +918,10 @@ impl<'ll> IRBuilderCtx<'ll> {
         let index_i64 = if index.get_type() == i64_type {
             index
         } else {
-            self.llvmbuilder.build_int_cast(index, i64_type, "idx.cast").unwrap()
+            self.llvmbuilder.build_int_cast(index, i64_type, "i.cast").unwrap()
         };
 
-        let neg_index = self.llvmbuilder.build_int_neg(index_i64, "idx.neg").unwrap();
+        let neg_index = self.llvmbuilder.build_int_neg(index_i64, "i.neg").unwrap();
 
         // Create GEP with negative index
         let gep_ptr = unsafe {
@@ -1233,16 +1233,37 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_tuple_access(&mut self, tuple_access: &CIRTupleAccessExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&tuple_access.operand);
-        let rvalue = self.load_rvalue(lvalue);
-        let struct_value = rvalue.as_basic_value().into_struct_value();
+        let operand = self.emit_lvalue_address(&tuple_access.operand);
 
-        let extracted_value = self
-            .llvmbuilder
-            .build_extract_value(struct_value, tuple_access.index.try_into().unwrap(), "extractvalue")
-            .unwrap();
+        let cir_tuple_ty = tuple_access.operand.ty.clone().as_tuple().unwrap();
 
-        InternalValue::new(rvalue.ty.clone(), InternalValueKind::RValue(extracted_value))
+        let layout = type_layout(&self.target.info, &CIRTy::Tuple(cir_tuple_ty.clone()));
+        let index = layout.lookup_field_index(tuple_access.index).unwrap();
+
+        let tuple_ty = self.emit_tuple_ty(cir_tuple_ty.clone());
+        let field_type = &cir_tuple_ty.elements[tuple_access.index];
+
+        match operand.kind {
+            InternalValueKind::LValue(addr) => {
+                let field_addr = self
+                    .llvmbuilder
+                    .build_struct_gep(tuple_ty, addr, index, "tuple_gep")
+                    .unwrap();
+
+                InternalValue::new(field_type.clone(), InternalValueKind::LValue(field_addr))
+            }
+            InternalValueKind::RValue(val) => {
+                let tuple_value = val.into_struct_value();
+
+                let field_value = self
+                    .llvmbuilder
+                    .build_extract_value(tuple_value, index, "tuple_extract")
+                    .unwrap();
+
+                InternalValue::new(field_type.clone(), InternalValueKind::RValue(field_value))
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
@@ -1288,7 +1309,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         let enum_struct_ty = self.emit_enum_ty(enum_ty.clone()).into_struct_type();
-        let (payload_ty, _) = self.enum_payload_ty(enum_ty);
+        let (payload_ty, _) = self.emit_enum_buffer_payload_ty(enum_ty);
 
         let mut enum_value = enum_struct_ty.get_undef();
 
@@ -1315,10 +1336,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let lvalue = self.emit_expr(expr);
                 let rvalue = self.load_rvalue(lvalue);
 
-                // FIXME
-                // `EnumValuedVariant` must construct a global variable and store the value in that;
-                // wherever you use that `EnumVariant` you must memcpy it! (only and only if not scaler)
-
                 let copied_payload = self.intrinsic_copy_payload_to_buffer(rvalue.as_basic_value(), payload_ty);
 
                 enum_value = self
@@ -1336,13 +1353,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let payload_struct_ty = self.llvmctx.struct_type(&field_basic_tys, false);
 
                 let mut payload_value = payload_struct_ty.get_undef();
-                for (idx, field_expr) in field_exprs.iter().enumerate() {
+                for (i, field_expr) in field_exprs.iter().enumerate() {
                     let lvalue = self.emit_expr(&field_expr);
                     let rvalue = self.load_rvalue(lvalue);
 
                     payload_value = self
                         .llvmbuilder
-                        .build_insert_value(payload_value, rvalue.as_basic_value(), idx as u32, "payload.insert")
+                        .build_insert_value(payload_value, rvalue.as_basic_value(), i as u32, "payload.insert")
                         .unwrap()
                         .into_struct_value();
                 }
@@ -1550,7 +1567,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let field_values = values
                 .iter()
                 .filter_map(|(original_index, value)| {
-                    original_index.map(|idx| ((Some(idx), value.clone()), struct_init.ty.fields[idx].clone()))
+                    original_index.map(|i| ((Some(i), value.clone()), struct_init.ty.fields[i].clone()))
                 })
                 .collect::<Vec<_>>();
 

@@ -65,12 +65,12 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let mut args_values = Vec::with_capacity(args.len());
 
-        for (idx, expr) in args.iter().enumerate() {
+        for (i, expr) in args.iter().enumerate() {
             let lvalue = self.emit_expr(expr);
             let mut rvalue = self.load_rvalue(lvalue);
 
-            if idx < abi_func_info.params_infos.len() {
-                let abi_arg_info = &abi_func_info.params_infos[idx];
+            if i < abi_func_info.params_infos.len() {
+                let abi_arg_info = &abi_func_info.params_infos[i];
 
                 match abi_arg_info.kind.clone() {
                     ABIArgKind::Direct { coerce_to } => {
@@ -750,9 +750,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             llvm_param_index_offset = 1;
         }
 
-        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+        for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if param_info.is_indirect_by_val() {
-                let struct_type = &abi_func_info.params_types[idx];
+                let struct_type = &abi_func_info.params_types[i];
                 let llvm_struct_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, struct_type);
 
                 let attr = unsafe {
@@ -765,7 +765,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 // index is 1-based, 0 is return
                 unsafe {
-                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), idx as u32 + 1 + llvm_param_index_offset, attr);
+                    LLVMAddAttributeAtIndex(fn_value.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
                 }
             }
         }
@@ -796,12 +796,12 @@ impl<'ll> IRBuilderCtx<'ll> {
             llvm_param_index_offset = 1;
         }
 
-        for (idx, param_info) in abi_func_info.params_infos.iter().enumerate() {
+        for (i, param_info) in abi_func_info.params_infos.iter().enumerate() {
             if !param_info.is_indirect_by_val() {
                 continue;
             }
 
-            let param_type = abi_func_info.params_types.get(idx).unwrap().clone();
+            let param_type = abi_func_info.params_types.get(i).unwrap().clone();
             let pointee_type = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &param_type);
 
             let attr = unsafe {
@@ -810,7 +810,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             // index is 1-based, 0 is return
             unsafe {
-                LLVMAddCallSiteAttribute(call_site.as_value_ref(), idx as u32 + 1 + llvm_param_index_offset, attr);
+                LLVMAddCallSiteAttribute(call_site.as_value_ref(), i as u32 + 1 + llvm_param_index_offset, attr);
             }
         }
     }

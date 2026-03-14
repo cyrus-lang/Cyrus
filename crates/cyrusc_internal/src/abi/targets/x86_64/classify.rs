@@ -23,7 +23,7 @@ use crate::{
         target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
         types::{ABIFloatKind, ABIType},
     },
-    cir::types::{CIRArrayTy, CIRFuncTy, CIRStructTy, CIRTy},
+    cir::types::{CIRArrayTy, CIRFuncTy, CIRTy},
     is_integer_type,
 };
 use cyrusc_ast::abi::CallConv;
@@ -177,11 +177,7 @@ impl X86_64 {
             }
             CIRTy::Tuple(tuple_ty) => {
                 // tuple lowered as struct in codegen
-                let struct_ty = CIRStructTy {
-                    fields: tuple_ty.elements.clone(),
-                    repr_attr: None,
-                    align: None,
-                };
+                let struct_ty = tuple_ty.as_struct_ty();
 
                 if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRTy::Struct(struct_ty), offset) {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
@@ -916,11 +912,8 @@ fn classify(
             classify_struct_or_union(info, ty, offset_base, current, lo_class, hi_class)
         }
         CIRTy::Tuple(tuple_ty) => {
-            let struct_ty = CIRStructTy {
-                fields: tuple_ty.elements.clone(),
-                repr_attr: None,
-                align: None,
-            };
+            // tuple lowered as struct in codegen
+            let struct_ty = tuple_ty.as_struct_ty();
 
             classify_struct_or_union(
                 info,

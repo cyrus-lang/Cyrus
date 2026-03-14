@@ -58,14 +58,14 @@ impl fmt::Display for ModuleSegment {
             ModuleSegment::SubModule(ident) => write!(f, "{}", ident.value),
             ModuleSegment::Single(singles) => {
                 write!(f, "{{")?;
-                for (idx, item) in singles.iter().enumerate() {
+                for (i, item) in singles.iter().enumerate() {
                     if let Some(renamed) = &item.renamed {
                         write!(f, "{}: ", renamed)?;
                     }
 
                     write!(f, "{}", item.ident)?;
 
-                    if !(singles.len() - 1 == idx) {
+                    if !(singles.len() - 1 == i) {
                         write!(f, ",")?;
                     }
                 }
@@ -116,10 +116,10 @@ impl fmt::Display for TypeSpecifier {
             }
             TypeSpecifier::UnnamedStruct(unnamed_struct) => {
                 write!(f, "struct {{ ")?;
-                for (idx, field) in unnamed_struct.fields.iter().enumerate() {
+                for (i, field) in unnamed_struct.fields.iter().enumerate() {
                     write!(f, "{}: {}", field.field_name, field.field_ty)?;
 
-                    if idx == unnamed_struct.fields.len() - 1 {
+                    if i == unnamed_struct.fields.len() - 1 {
                         write!(f, " ")?;
                     } else {
                         write!(f, ", ")?;
@@ -129,10 +129,10 @@ impl fmt::Display for TypeSpecifier {
             }
             TypeSpecifier::UnnamedUnion(unnamed_union) => {
                 write!(f, "union {{ ")?;
-                for (idx, field) in unnamed_union.fields.iter().enumerate() {
+                for (i, field) in unnamed_union.fields.iter().enumerate() {
                     write!(f, "{}: {}", field.field_name, field.field_ty)?;
 
-                    if idx == unnamed_union.fields.len() - 1 {
+                    if i == unnamed_union.fields.len() - 1 {
                         write!(f, " ")?;
                     } else {
                         write!(f, ", ")?;
@@ -142,7 +142,7 @@ impl fmt::Display for TypeSpecifier {
             }
             TypeSpecifier::UnnamedEnum(unnamed_enum) => {
                 write!(f, "enum {{ ")?;
-                for (idx, variant) in unnamed_enum.variants.iter().enumerate() {
+                for (i, variant) in unnamed_enum.variants.iter().enumerate() {
                     match variant {
                         UnnamedEnumVariant::Ident(ident) => {
                             write!(f, "{}", ident.as_string())?;
@@ -164,7 +164,7 @@ impl fmt::Display for TypeSpecifier {
                         }
                     }
 
-                    if idx == unnamed_enum.variants.len() - 1 {
+                    if i == unnamed_enum.variants.len() - 1 {
                         write!(f, " ")?;
                     } else {
                         write!(f, ", ")?;
@@ -207,9 +207,9 @@ impl fmt::Display for TypeSpecifier {
 impl fmt::Display for UnnamedStructType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "struct {{ ")?;
-        for (idx, field) in self.fields.iter().enumerate() {
+        for (i, field) in self.fields.iter().enumerate() {
             write!(f, "{}: {}", field.field_name, field.field_ty)?;
-            if idx == self.fields.len() - 1 {
+            if i == self.fields.len() - 1 {
                 write!(f, ", ",)?;
             }
         }
@@ -330,14 +330,14 @@ impl fmt::Display for Expr {
             }
             Expr::UnnamedStructValue(unnamed_struct_value) => {
                 write!(f, "struct {{ ")?;
-                for (idx, field) in unnamed_struct_value.fields.iter().enumerate() {
+                for (i, field) in unnamed_struct_value.fields.iter().enumerate() {
                     if let Some(field_ty) = &field.field_ty {
                         write!(f, "{}: {} = {}", field.field_name, field_ty, field.field_value)?;
                     } else {
                         write!(f, "{} = {}", field.field_name, field.field_value)?;
                     }
 
-                    if idx == unnamed_struct_value.fields.len() - 1 {
+                    if i == unnamed_struct_value.fields.len() - 1 {
                         write!(f, " ")?;
                     } else {
                         write!(f, ", ")?;
@@ -454,12 +454,12 @@ impl fmt::Display for UnnamedStructValue {
 pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
     let mut out = String::new();
 
-    for (idx, item) in segments.iter().enumerate() {
+    for (i, item) in segments.iter().enumerate() {
         match item {
             ModuleSegment::SubModule(ident) => {
                 out.push_str(&ident.value);
                 // add '::' only if the next segment exists and is a SubModule
-                if matches!(segments.get(idx + 1), Some(ModuleSegment::SubModule(_))) {
+                if matches!(segments.get(i + 1), Some(ModuleSegment::SubModule(_))) {
                     out.push_str("::");
                 }
             }

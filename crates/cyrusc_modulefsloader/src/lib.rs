@@ -162,7 +162,7 @@ impl ModuleLoader {
     ) -> Result<String, ModuleFSLoaderDiagKind> {
         let module_name = module_segments_as_string(segments.to_vec());
 
-        for (idx, segment) in segments.iter().enumerate() {
+        for (i, segment) in segments.iter().enumerate() {
             match segment {
                 ModuleSegment::SubModule(ident) => {
                     let file_path = format!("{}{}.cyrus", module_file_path, ident.value);
@@ -188,14 +188,14 @@ impl ModuleLoader {
                         }
                         (Some(file_buf), None) => {
                             module_file_path = file_buf.to_str().unwrap().to_string();
-                            if idx == segments.len() - 1 {
+                            if i == segments.len() - 1 {
                                 return Ok(module_file_path);
                             }
                             // continue to next segment
                         }
                         (None, Some(dir_buf)) => {
                             module_file_path = dir_buf.to_str().unwrap().to_string();
-                            if idx == segments.len() - 1 {
+                            if i == segments.len() - 1 {
                                 // last segment (require index.cyr)
                                 let index_path = dir_buf.join("index.cyrus");
                                 if !index_path.exists() {

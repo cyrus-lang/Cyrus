@@ -4,7 +4,7 @@ pub type ParentGenericMappingCtxID = usize;
 
 pub trait GenericMappingCtxArena: Send + Sync {
     fn insert(&mut self, mapping_ctx: GenericMappingCtx) -> Option<ParentGenericMappingCtxID>;
-    fn get(&self, idx: usize) -> Option<&GenericMappingCtx>;
+    fn get(&self, i: usize) -> Option<&GenericMappingCtx>;
 }
 
 pub struct GenericMappingCtxArenaImpl(Vec<GenericMappingCtx>);
@@ -26,8 +26,8 @@ impl GenericMappingCtxArena for GenericMappingCtxArenaImpl {
         Some(self.0.len() - 1)
     }
 
-    fn get(&self, idx: usize) -> Option<&GenericMappingCtx> {
-        self.0.get(idx)
+    fn get(&self, i: usize) -> Option<&GenericMappingCtx> {
+        self.0.get(i)
     }
 }
 
