@@ -1222,14 +1222,6 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.validate_enum_repr_attr(
-            &typed_enum.modifiers.repr_attr,
-            typed_enum.align.is_some(),
-            &typed_enum.loc,
-        );
-        self.validate_align(&typed_enum.align, &typed_enum.loc);
-        self.validate_enum_tag_type(scope_id_opt, &typed_enum.tag_type, &typed_enum.loc);
-
         if let Some(generic_params) = &typed_enum.generic_params {
             self.analyze_generics_params(generic_params);
         }
@@ -1254,6 +1246,14 @@ impl<'a> AnalysisContext<'a> {
             &typed_enum.impls,
             &typed_enum.methods,
         );
+
+        self.validate_enum_repr_attr(
+            &typed_enum.modifiers.repr_attr,
+            typed_enum.align.is_some(),
+            &typed_enum.loc,
+        );
+        self.validate_align(&typed_enum.align, &typed_enum.loc);
+        self.validate_enum_tag_type(scope_id_opt, &typed_enum.tag_type, &typed_enum.loc);
 
         update_enum_symbol_entry(self, &typed_enum);
     }
@@ -1698,7 +1698,7 @@ impl<'a> AnalysisContext<'a> {
                     if is_repr_c && !typed_expr.sema_ty.as_ref().unwrap().is_integer() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerExpr),
+                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 ident.loc.clone(),
                                 typed_enum.loc.file_path.clone(),
@@ -2215,7 +2215,7 @@ impl<'a> AnalysisContext<'a> {
                     if has_align {
                         self.reporter.report(Diag {
                             kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
-                                err: "Cannot specify alignment with 'C' or 'Cyrus' enum layout. Alignment is determined by the target ABI.".to_string(),
+                                err: "Cannot specify alignment with 'c' or 'cyrus' enum layout. Alignment is determined by the target ABI.".to_string(),
                             }),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(loc.clone())),
@@ -2227,7 +2227,7 @@ impl<'a> AnalysisContext<'a> {
                 ReprKind::Transparent => {
                     self.reporter.report(Diag {
                         kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
-                            err: "Repr 'transparent' cannot be applied to enums. Enums only support 'C' and 'Cyrus' layouts.".to_string(),
+                            err: "Repr 'transparent' cannot be applied to enums. Enums only support 'c' and 'cyrus' layouts.".to_string(),
                         }),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(loc.clone())),
@@ -2275,3 +2275,31 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 }
+
+// pub(crate) fn unnamed_enum_includes_non_scalar_payload(variants: &Vec<TypedUnnamedEnumVariant>) -> bool {
+//     variants.iter().any(|variant| match variant {
+//         TypedUnnamedEnumVariant::Ident(..) => false,
+//         TypedUnnamedEnumVariant::Valued(_, expr) => {
+//             if let Some(sema_ty) = &expr.sema_ty {
+//                 !sema_ty.is_scalar()
+//             } else {
+//                 true
+//             }
+//         }
+//         TypedUnnamedEnumVariant::Variant(..) => true,
+//     })
+// }
+
+// fn typed_enum_includes_non_scalar_payload(variants: &Vec<TypedEnumVariant>) -> bool {
+//     variants.iter().any(|variant| match variant {
+//         TypedEnumVariant::Ident(..) => false,
+//         TypedEnumVariant::Valued(_, expr) => {
+//             if let Some(sema_ty) = &expr.sema_ty {
+//                 !sema_ty.is_scalar()
+//             } else {
+//                 true
+//             }
+//         }
+//         TypedEnumVariant::Variant(..) => true,
+//     })
+// }

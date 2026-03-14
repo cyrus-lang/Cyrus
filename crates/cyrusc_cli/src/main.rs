@@ -171,8 +171,8 @@ struct CompilerOptions {
     help =
     "Select the ABI name mangling scheme for code generation. \
 Choices determine how function, global variable, and type names \
-are represented in the generated output. For example, 'C' produces \
-C-compatible names, while 'Cyrus' uses the compiler's default mangling."
+are represented in the generated output. For example, 'c' produces \
+C-compatible names, while 'cyrus' uses the compiler's default mangling."
     )]
     abi: ABI,
 

@@ -20,6 +20,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error(
+        "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
+    )]
+    ReprCEnumWithNonIntegerVariant,
+
     #[error("Enum tag type must be a scalar integer, char or bool but got '{got}'.")]
     InvalidEnumTagType { got: String },
 
@@ -28,9 +33,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Alignment must be a power of two, got {value}.")]
     InvalidAlign { value: usize },
-
-    #[error("Repr 'c' enum cannot have expression value with non-integer type.")]
-    ReprCEnumWithNonIntegerExpr,
 
     #[error("Global variable requires explicit type annotation.")]
     GlobalVarRequiresTypeAnnotation,

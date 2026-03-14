@@ -503,7 +503,7 @@ impl UnresolvedModifiers {
                     ReprKind::Transparent => {
                         return Err(Diag {
                             kind: Box::new(ParserDiagKind::InvalidModifier(
-                                "Repr 'transparent' cannot be applied to enums. Enums only support 'C' and 'Cyrus' layouts.".to_string(),
+                                "Repr 'transparent' cannot be applied to enums. Enums only support 'c' and 'cyrus' layouts.".to_string(),
                             )),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(loc)),

@@ -499,6 +499,13 @@ impl SemanticType {
         }
     }
 
+    pub fn is_scalar(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::PlainType(plain_type) => plain_type.is_scalar(),
+            _ => false,
+        }
+    }
+
     pub fn is_self_type(&self) -> bool {
         match self.const_inner() {
             SemanticType::SelfType(_) => true,

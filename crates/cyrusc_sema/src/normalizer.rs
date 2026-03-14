@@ -229,7 +229,7 @@ impl<'a> AnalysisContext<'a> {
                     if is_repr_c && !typed_expr.sema_ty.as_ref().unwrap().is_integer() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerExpr),
+                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
                             location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 ident.loc.clone(),
                                 unnamed_enum_type.loc.file_path.clone(),
