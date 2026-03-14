@@ -309,11 +309,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.emit_block(case_block);
 
                     let enum_payload = self.extract_enum_payload(enum_struct_value);
-                    let payload_field_tys: Vec<BasicTypeEnum<'ll>> = exported_fields
+
+                    let payload_field_types: Vec<BasicTypeEnum<'ll>> = exported_fields
                         .iter()
                         .map(|(_, ty)| self.emit_ty(ty.clone()).try_into().unwrap())
                         .collect();
-                    let payload_struct_type = self.llvmctx.struct_type(&payload_field_tys, false);
+
+                    let payload_struct_type = self.llvmctx.struct_type(&payload_field_types, false);
                     let payload_struct_value = self.intrinsic_copy_buffer_to_struct(enum_payload, enum_struct_ty);
 
                     let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
@@ -332,16 +334,23 @@ impl<'ll> IRBuilderCtx<'ll> {
                 } else if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr)) = pattern {
                     self.emit_block(case_block);
 
-                    let lvalue = self.emit_expr(expr);
-                    let rvalue = self.load_rvalue(lvalue);
+                    let variant_expr_type = &expr.ty;
+                    let llvm_variant_expr_type: BasicTypeEnum<'ll> =
+                        self.emit_ty(variant_expr_type.clone()).try_into().unwrap();
+
+                    // reinterpret payload buffer as expr.ty
+
+                    let enum_payload = self.extract_enum_payload(enum_struct_value);
+
                     let alloca = self
                         .llvmbuilder
-                        .build_alloca(rvalue.as_basic_value().get_type(), "alloca")
+                        .build_alloca(llvm_variant_expr_type, "reinterpret.variant")
                         .unwrap();
-                    self.llvmbuilder.build_store(alloca, rvalue.as_basic_value()).unwrap();
+
+                    self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
 
                     let mut irreg = self.irreg.borrow_mut();
-                    irreg.insert(ident.symbol_id, LocalIRValue::LValue(alloca, rvalue.ty));
+                    irreg.insert(ident.symbol_id, LocalIRValue::LValue(alloca, variant_expr_type.clone()));
                     drop(irreg);
                 }
 
