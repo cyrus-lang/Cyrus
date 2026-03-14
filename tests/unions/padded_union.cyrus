@@ -1,4 +1,4 @@
-// @stdout: 10
+// @stdout: 10 5 25
 
 import std::libc{printf};
 
@@ -9,6 +9,10 @@ union PaddedUnion {
 }
 
 pub fn main() {
-    const inst = PaddedUnion { a: 10 };
-    printf("%d\n", inst.a);
+    var inst = PaddedUnion { b: 10 };
+    printf("%d ", inst.b);
+
+    inst.c[0] = 5;
+    inst.c[1] = 25;
+    printf("%d %d", inst.c[0], inst.c[1]);
 }
