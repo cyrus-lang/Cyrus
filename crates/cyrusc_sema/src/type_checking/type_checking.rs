@@ -2955,6 +2955,29 @@ impl<'a> AnalysisContext<'a> {
 
         field_init.value.sema_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type));
 
+        if generic_type_opt.is_none() {
+            if !self.check_type_mismatch(
+                scope_id_opt,
+                field_init.value.sema_ty.clone().unwrap(),
+                field.ty.clone(),
+                field_init.value.loc.clone(),
+            ) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: format_sema_ty(field.ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        rhs_type: format_sema_ty(
+                            field_init.value.sema_ty.clone().unwrap(),
+                            &(self.symbol_formatter)(scope_id_opt),
+                        ),
+                    }),
+                    location: Some(DiagLoc::new(field_init.value.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
         if let Some(sema_ty) = self.infer_generic_param(
             scope_id_opt,
             generic_type_opt.as_ref(),
@@ -3083,6 +3106,29 @@ impl<'a> AnalysisContext<'a> {
                 .unwrap_or(field.ty.clone());
 
             let field_value_ty = self.analyze_expr(scope_id_opt, &mut field_init.value, Some(field_expected_type));
+
+            if generic_type_opt.is_none() {
+                if !self.check_type_mismatch(
+                    scope_id_opt,
+                    field_init.value.sema_ty.clone().unwrap(),
+                    field.ty.clone(),
+                    field_init.value.loc.clone(),
+                ) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                            lhs_type: format_sema_ty(field.ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                            rhs_type: format_sema_ty(
+                                field_init.value.sema_ty.clone().unwrap(),
+                                &(self.symbol_formatter)(scope_id_opt),
+                            ),
+                        }),
+                        location: Some(DiagLoc::new(field_init.value.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
 
             if let Some(sema_ty) = self.infer_generic_param(
                 scope_id_opt,
@@ -3780,8 +3826,7 @@ impl<'a> AnalysisContext<'a> {
             .iter()
             .position(|variant| variant.ident().as_string() == field_access.field_name);
 
-        let enum_variant_opt =
-            enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_sig.variants.get(i).unwrap()));
+        let enum_variant_opt = enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_sig.variants.get(i).unwrap()));
 
         if enum_variant_opt.is_none() {
             self.reporter.report(Diag {
