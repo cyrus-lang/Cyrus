@@ -475,7 +475,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn check_explicit_typecast(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
+    pub(crate) fn check_explicit_typecast(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        value_type: SemanticType,
+        target_type: SemanticType,
+    ) -> bool {
         match (value_type, target_type) {
             // Any integer to any integer
             (SemanticType::PlainType(value), SemanticType::PlainType(target))
@@ -511,6 +516,66 @@ impl<'a> AnalysisContext<'a> {
             | (SemanticType::PlainType(PlainType::IntPtr), SemanticType::Pointer(..))
             | (SemanticType::PlainType(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
 
+            // NOTE
+            //
+            // At the semantic/typecheck layer we intentionally allow casts between
+            // enums and integer/bool scalar types without validating the enum’s
+            // underlying representation yet.
+            //
+            // The reason is architectural: the semantic layer only answers the
+            // question “is this cast conceptually legal?”, not "how exactly should it
+            // be lowered?”. Determining the actual integer representation of an enum
+            // (its tag type) is a lowering concern that is handled
+            // later in the CIR stage.
+            //
+            //
+            // Therefore here we accept the following conversions:
+            // enum -> integer/bool ^ integer/bool -> enum
+            //
+            //
+            // as long as the non‑enum side is a scalar integer or bool. This keeps the
+            // typechecker simple and avoids pulling enum layout/lowering knowledge
+            // into this phase.
+            //
+            // During CIR lowering the expression:
+            //
+            // @cast(IntType, enumValue)
+            //
+            // is resolved using the enum's tag type. At that
+            // point we perform the precise lowering (and any required compile‑time validation)
+            // through the cast builtin implementation.
+            //
+            (
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)),
+                SemanticType::PlainType(plain_type),
+            ) => {
+                let scope_opt =
+                    scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, enum_symbol_id)
+                    .unwrap();
+
+                sym.as_enum().is_some() && plain_type.is_integer_or_bool()
+            }
+            (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
+            (
+                SemanticType::PlainType(plain_type),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)),
+            ) => {
+                let scope_opt =
+                    scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+                let sym = self
+                    .resolver
+                    .resolve_local_or_global_symbol(scope_opt, enum_symbol_id)
+                    .unwrap();
+
+                sym.as_enum().is_some() && plain_type.is_integer_or_bool()
+            }
+            (SemanticType::PlainType(plain_type), SemanticType::UnnamedEnum(_)) => plain_type.is_integer_or_bool(),
+            // END
             _ => false,
         }
     }

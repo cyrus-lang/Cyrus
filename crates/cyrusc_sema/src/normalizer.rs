@@ -122,6 +122,13 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         unnamed_union_type: &mut TypedUnnamedUnionType,
     ) {
+        self.validate_union_repr_attr(
+            &unnamed_union_type.repr_attr,
+            unnamed_union_type.fields.len(),
+            &unnamed_union_type.loc,
+        );
+        self.validate_align(&unnamed_union_type.align, &unnamed_union_type.loc);
+
         let union_name = format_unnamed_union_ty(unnamed_union_type, &(self.symbol_formatter)(scope_id_opt));
 
         let mut field_names: Vec<String> = Vec::new();
@@ -156,6 +163,13 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         unnamed_struct_type: &mut TypedUnnamedStructType,
     ) {
+        self.validate_struct_repr_attr(
+            &unnamed_struct_type.repr_attr,
+            unnamed_struct_type.fields.len(),
+            &unnamed_struct_type.loc,
+        );
+        self.validate_align(&unnamed_struct_type.align, &unnamed_struct_type.loc);
+
         let struct_name = format_unnamed_struct_ty(unnamed_struct_type, &(self.symbol_formatter)(scope_id_opt));
 
         let mut field_names: Vec<String> = Vec::new();
@@ -186,6 +200,18 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_unnamed_enum_type(&mut self, scope_id_opt: Option<ScopeID>, unnamed_enum_type: &mut TypedUnnamedEnumType) {
+        self.validate_enum_repr_attr(
+            &unnamed_enum_type.repr_attr,
+            unnamed_enum_type.align.is_some(),
+            &unnamed_enum_type.loc,
+        );
+        self.validate_align(&unnamed_enum_type.align, &unnamed_enum_type.loc);
+        self.validate_enum_tag_type(
+            scope_id_opt,
+            &unnamed_enum_type.tag_type.clone().map(|sema_ty| *sema_ty),
+            &unnamed_enum_type.loc,
+        );
+
         let is_repr_c = unnamed_enum_type.is_repr_c();
         let mut variant_names: Vec<String> = Vec::new();
 
@@ -257,7 +283,6 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<SemanticType> {
         let sema_ty = self.normalize_sema_type(scope_id_opt, sema_ty, loc.clone())?;
-
         self.check_sema_ty(scope_id_opt, sema_ty, loc.clone())
     }
 

@@ -1,0 +1,30 @@
+import std::libc{printf};
+
+enum Tag {
+	A = 1,
+	B = 2,
+	C = 3,
+	D = 4
+}
+
+pub fn main() {
+	var x = Tag.B;
+	printf("%d\n", cast(int32, x));
+
+	x = cast(Tag, 1);
+
+	switch (x) {
+		case .A => {
+			printf("A\n");
+		}
+		case .B => {
+			printf("B\n");
+		}
+		case .C => {
+			printf("C\n");
+		}
+		default => {
+			printf("default\n");
+		}
+	}
+}

@@ -1907,7 +1907,7 @@ impl<'a> AnalysisContext<'a> {
             operand.clone(),
             cast.target_type.clone(),
             cast.loc.clone(),
-        ) || self.check_explicit_typecast(operand.clone(), cast.target_type.clone()))
+        ) || self.check_explicit_typecast(scope_id_opt, operand.clone(), cast.target_type.clone()))
         {
             let lhs_type = format_sema_ty(cast.target_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type = format_sema_ty(operand, &(self.symbol_formatter)(scope_id_opt));

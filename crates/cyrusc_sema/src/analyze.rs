@@ -1228,6 +1228,7 @@ impl<'a> AnalysisContext<'a> {
             &typed_enum.loc,
         );
         self.validate_align(&typed_enum.align, &typed_enum.loc);
+        self.validate_enum_tag_type(scope_id_opt, &typed_enum.tag_type, &typed_enum.loc);
 
         if let Some(generic_params) = &typed_enum.generic_params {
             self.analyze_generics_params(generic_params);
@@ -2246,6 +2247,29 @@ impl<'a> AnalysisContext<'a> {
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(loc.clone())),
                     hint: Some("Valid alignments are 1, 2, 4, 8, 16, etc.".to_string()),
+                });
+            }
+        }
+    }
+
+    pub(crate) fn validate_enum_tag_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        tag_type: &Option<SemanticType>,
+        loc: &SourceLoc,
+    ) {
+        if let Some(tag_type) = tag_type {
+            let tag_type = tag_type.const_inner();
+            let valid = tag_type.is_integer() || tag_type.is_char() || tag_type.is_bool();
+
+            if !valid {
+                let got = format_sema_ty(tag_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+                self.reporter.report(Diag {
+                    kind: Box::new(AnalyzerDiagKind::InvalidEnumTagType { got }),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
                 });
             }
         }

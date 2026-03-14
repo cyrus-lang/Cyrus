@@ -20,6 +20,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Enum tag type must be a scalar integer, char or bool but got '{got}'.")]
+    InvalidEnumTagType { got: String },
+
     #[error("{err}")]
     InvalidReprAttr { err: String },
 

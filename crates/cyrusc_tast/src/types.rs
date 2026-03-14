@@ -671,6 +671,10 @@ impl PlainType {
         matches!(self, PlainType::Char)
     }
 
+    pub fn is_integer_or_bool(&self) -> bool {
+        self.is_integer() || self.is_bool()
+    }
+
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
