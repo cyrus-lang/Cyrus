@@ -1406,8 +1406,22 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if typed_variable.is_const && !matches!(typed_variable.ty, Some(SemanticType::Const(..))) {
-            typed_variable.ty = typed_variable.ty.clone().and_then(|sema_ty| Some(sema_ty.as_const()));
+        let ty_is_const = typed_variable.ty.as_ref().map(|t| t.is_const()).unwrap_or(false);
+
+        if typed_variable.is_const != ty_is_const {
+            typed_variable.ty = typed_variable.ty.clone().map(|t| t.as_const());
+        }
+
+        if !typed_variable.is_const && ty_is_const {
+            // example:
+            // var x: const int = expr;
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Warning,
+                kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
+                location: Some(DiagLoc::new(typed_variable.loc.clone())),
+                hint: Some("Prefer declaring the variable itself as const instead of using a const-qualified type.".to_string()),
+            });
         }
 
         if let Some(sema_ty) = &typed_variable.ty {

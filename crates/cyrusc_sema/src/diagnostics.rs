@@ -360,6 +360,9 @@ pub enum AnalyzerDiagKind {
         expected_type: String,
     },
 
+    #[error("Variable has a const-qualified type but is not declared const.")]
+    ConstQualifiedTypeAssignedToNonConstVariable,
+
     #[error("Cannot assign value of type '{rhs_type}' to variable of type '{lhs_type}'.")]
     AssignmentTypeMismatch { lhs_type: String, rhs_type: String },
 
