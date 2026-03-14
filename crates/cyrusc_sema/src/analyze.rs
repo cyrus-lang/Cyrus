@@ -1711,6 +1711,19 @@ impl<'a> AnalysisContext<'a> {
                     ident
                 }
                 TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
+                    if is_repr_c {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                ident.loc.clone(),
+                                typed_enum.loc.file_path.clone(),
+                            ))),
+                            hint: None,
+                        });
+                        continue;
+                    }
+
                     for field in typed_enum_valued_fields {
                         field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
                             Some(sema_ty) => sema_ty,
