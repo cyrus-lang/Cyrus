@@ -2035,7 +2035,7 @@ impl<'a> AnalysisContext<'a> {
     ) {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-        if let Some(symbol_id) = sema_ty.symbol_id() {
+        if let Some(symbol_id) = sema_ty.maybe_generic_base_symbol_id() {
             let sym = self
                 .resolver
                 .resolve_local_or_global_symbol(scope_opt, symbol_id)

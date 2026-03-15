@@ -98,7 +98,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some(generic_type) = sema_ty.as_generic_type_mut() {
             generic_type
                 .init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
-                .ok()?;
+                .ok();
         }
 
         if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum_mut() {
