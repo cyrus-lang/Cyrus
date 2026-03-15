@@ -132,21 +132,6 @@ double nested_struct_sum(struct NestedStructOuter o) {
   return o.inner.x + o.inner.y + o.z;
 }
 
-// TODO Nested union inside struct
-// TODO Nested struct inside union
-
-// TODO Struct With Mixed Vector‑Like Layout
-// struct Float4 {
-//   float a;
-//   float b;
-//   float c;
-//   float d;
-// };
-
-// float sum_float4(struct Float4 v) {
-//   return v.a + v.b + v.c + v.d;
-// }
-
 // TODO Struct With Array Crossing Eightbyte
 // struct Cross {
 //   int a[3];

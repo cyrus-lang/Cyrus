@@ -69,3 +69,15 @@ double nested_struct_sum(struct NestedStructOuter o) {
   return o.inner.x + o.inner.y + o.z;
 }
 
+// Struct With Mixed Vector‑Like Layout
+
+struct Float4 {
+  float a;
+  float b;
+  float c;
+  float d;
+};
+
+float sum_float4(struct Float4 v) {
+  return v.a + v.b + v.c + v.d;
+}
