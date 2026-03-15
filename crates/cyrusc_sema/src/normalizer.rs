@@ -537,16 +537,16 @@ impl<'a> AnalysisContext<'a> {
     fn normalize_resolved_symbol(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        resolved: ResolvedSymbol,
+        resolved_symbol: ResolvedSymbol,
         loc: SourceLoc,
     ) -> Option<SemanticType> {
-        match resolved {
+        match resolved_symbol {
             ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(scope_id_opt, symbol_id),
             ResolvedSymbol::Variable(symbol_id) => self.normalize_variable(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::GlobalVar(symbol_id) => self.normalize_global_var(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::Interface(symbol_id) => self.normalize_interface_type(scope_id_opt, symbol_id, loc),
             ResolvedSymbol::Struct(_) | ResolvedSymbol::Enum(_) | ResolvedSymbol::Union(_) => {
-                Some(SemanticType::ResolvedSymbol(resolved))
+                Some(SemanticType::ResolvedSymbol(resolved_symbol))
             }
             ResolvedSymbol::Func(..) | ResolvedSymbol::Method(..) => {
                 unreachable!("Function symbols should not appear as types")
@@ -562,6 +562,10 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         self.resolver.resolve_local_or_global_symbol(scope_opt, symbol_id);
+
+        if !self.check_generic_typedef_missing_args(scope_id_opt, symbol_id, loc.clone()) {
+            return None;
+        }
 
         let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
         self.normalize_sema_type(scope_id_opt, resolved, loc)
@@ -721,7 +725,6 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    // REVIEW: Refactor and improve this!
     fn resolve_generic_typedef(
         &mut self,
         scope_id_opt: Option<ScopeID>,

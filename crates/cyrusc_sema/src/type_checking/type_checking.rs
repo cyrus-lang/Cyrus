@@ -2011,22 +2011,43 @@ impl<'a> AnalysisContext<'a> {
 // Helper Functions
 // ============================================================
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn check_generic_typedef_missing_args(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+        loc: SourceLoc,
+    ) -> bool {
+        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
+
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(scope_opt, symbol_id)
+            .unwrap();
+
+        if let Some(resolved_typedef) = sym.as_typedef() {
+            let includes_generic_params = resolved_typedef.typedef_sig.generic_params.is_some();
+
+            if includes_generic_params {
+                let type_name = (self.symbol_formatter)(scope_id_opt)(resolved_typedef.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MissingTypeArgs { type_name }),
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+                return false;
+            }
+        }
+
+        true // it's okay
+    }
+
     /// Validates that generic types have provided type arguments when required.
     ///
     /// Checks whether a semantic type which might have generic params
     /// has the required type arguments specified. Reports an error if type args
     /// are used without type arguments in a context where they're mandatory.
-    ///
-    /// # Validation
-    /// - If the type references a generic object (has generic parameters defined).
-    /// - And the type is not already instantiated as a generic type (missing type args).
-    /// - Then reports a missing type arguments error.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for symbol resolution and type name formatting.
-    /// - `sema_ty`: The semantic type to check for missing type arguments.
-    /// - `loc`: Source location for error reporting.
-    ///
     pub(crate) fn check_sema_ty_for_missing_type_args(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -2042,7 +2063,8 @@ impl<'a> AnalysisContext<'a> {
                 .unwrap();
 
             let is_generic_object = sym.symbol_generic_params().is_some();
-            let is_generic_type = sema_ty.as_generic_type().is_some();
+            let is_generic_interface = sym.as_interface().is_some() && is_generic_object;
+            let is_generic_type = sema_ty.as_generic_type().is_some() || is_generic_interface;
 
             if is_generic_object && !is_generic_type {
                 let type_name = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(scope_id_opt));

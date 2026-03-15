@@ -1395,7 +1395,7 @@ impl<'a> AnalysisContext<'a> {
             let inferred_ty = self.analyze_expr(scope_id_opt, rhs, typed_variable.ty.clone());
 
             if inferred_ty.is_none() {
-                // expr has issue, that is reported and we cannot continue this
+                // unhealthy expr, we can't continue this
                 return;
             }
 
