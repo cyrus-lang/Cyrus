@@ -321,12 +321,42 @@ impl<'a> AnalysisContext<'a> {
             SemanticType::UnnamedEnum(unnamed_enum_type) => Some(SemanticType::UnnamedEnum(
                 self.normalize_unnamed_enum_ty(scope_id_opt, unnamed_enum_type),
             )),
-            SemanticType::PlainType(_)
-            | SemanticType::UnnamedUnion(_)
-            | SemanticType::UnnamedStruct(_)
-            | SemanticType::DynamicType(_)
-            | SemanticType::Interface(_) => Some(ty),
+            SemanticType::UnnamedUnion(unnamed_union_type) => {
+                self.normalize_unnamed_union_ty(scope_id_opt, unnamed_union_type)
+            }
+            SemanticType::UnnamedStruct(unnamed_struct_type) => {
+                self.normalize_unnamed_struct_ty(scope_id_opt, unnamed_struct_type)
+            }
+            SemanticType::PlainType(_) | SemanticType::DynamicType(_) | SemanticType::Interface(_) => Some(ty),
         }
+    }
+
+    fn normalize_unnamed_union_ty(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        mut unnamed_union_type: TypedUnnamedUnionType,
+    ) -> Option<SemanticType> {
+        for field in &mut unnamed_union_type.fields {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+                Some(sema_ty) => Box::new(sema_ty),
+                None => continue,
+            };
+        }
+        Some(SemanticType::UnnamedUnion(unnamed_union_type))
+    }
+
+    fn normalize_unnamed_struct_ty(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        mut unnamed_struct_type: TypedUnnamedStructType,
+    ) -> Option<SemanticType> {
+        for field in &mut unnamed_struct_type.fields {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+                Some(sema_ty) => Box::new(sema_ty),
+                None => continue,
+            };
+        }
+        Some(SemanticType::UnnamedStruct(unnamed_struct_type))
     }
 
     fn normalize_unnamed_enum_ty(

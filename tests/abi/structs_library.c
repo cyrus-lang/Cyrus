@@ -66,6 +66,6 @@ struct NestedStructOuter {
 };
 
 double nested_struct_sum(struct NestedStructOuter o) {
-
   return o.inner.x + o.inner.y + o.z;
 }
+

@@ -638,7 +638,13 @@ impl TargetABI for X86_64 {
             }
             RegisterClass::SSE => {
                 needed_regs.sse_regs += 1;
-                high_part = Some(self.get_sse_type_at_offset(ty, 8, ty, 8).unwrap());
+
+                let sse_ty = self
+                    .get_sse_type_at_offset(ty, 8, ty, 8)
+                    .unwrap_or(ABIType::Float(ABIFloatKind::F64)); // fallback
+
+                high_part = Some(sse_ty);
+
                 assert!(lo_class != RegisterClass::NoClass, "empty first 8 bytes not allowed");
             }
             RegisterClass::SSEUP => {

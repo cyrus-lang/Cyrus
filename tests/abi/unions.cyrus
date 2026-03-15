@@ -1,8 +1,8 @@
-// @stdout: union_payload(int)=10 union_payload(text)=Cyrus! union_payload(float)=3.140000
+// @stdout: union_payload(int)=10 union_payload(text)=Cyrus! union_payload(float)=3.140000 nested_union=3.140000
 // @compilerArgs: -z=./tests/abi/unions_library.c
 
 import std::libc{printf};
-import std::libc::abi{c_int, c_char, c_float};
+import std::libc::abi{c_int, c_char, c_float, c_double};
 
 repr(c) union UnionPayload {
     int_value: c_int;
@@ -12,8 +12,42 @@ repr(c) union UnionPayload {
 
 extern "C" fn display_union_payload(payload: UnionPayload, kind: c_int);
 
+repr(c) struct WithNestedUnion {
+    pub tag: c_int;
+    pub data: repr(c) union {
+        i: c_int,
+        f: c_float
+    };
+}
+
+extern "C" fn nested_union(v: WithNestedUnion) c_double;
+
+repr(c) union WithNestedStruct {
+    id: c_int;
+    coords: repr(c) struct {
+        a: c_double,
+        b: c_double
+    };
+}
+
+extern "C" fn nested_struct_inside_union(v: WithNestedStruct, use_struct: c_int) c_double;
+
 pub fn main() {
     display_union_payload(union { int_value = 10 }, 1);
     display_union_payload(union { text_value = "Cyrus!" }, 2);
     display_union_payload(union { float_value = 3.14 }, 3);
+
+    const with_nested_union = WithNestedUnion {
+        tag: 1,
+        data: union { f = 3.14 }
+    };
+    printf("nested_union=%f ", nested_union(with_nested_union));
+
+    const with_nested_struct = WithNestedStruct {
+        coords: repr(c) struct {
+            a = 3.3,
+            b = 8.7
+        }
+    };
+    printf("nested_struct_inside_union=%f ", nested_struct_inside_union(with_nested_struct, cast(int32, true)));
 }

@@ -304,6 +304,8 @@ impl ABITypeLayout {
     }
 
     pub fn lookup_field_index_at_offset(&self, offset: u32) -> Option<usize> {
+        let mut best: Option<(usize, u32)> = None;
+
         for entry in &self.field_offsets {
             if let ABIFieldOffsetInfo::Normal {
                 offset: field_offset,
@@ -311,12 +313,16 @@ impl ABITypeLayout {
                 ..
             } = entry
             {
-                if *field_offset == offset {
-                    return Some(*index as usize);
+                if offset >= *field_offset && offset < (*field_offset + self.size) {
+                    match best {
+                        Some((_, best_size)) if best_size >= self.size => {}
+                        _ => best = Some((*index as usize, self.size)),
+                    }
                 }
             }
         }
-        None
+
+        best.map(|(idx, _)| idx)
     }
 
     pub fn lookup_field_offset(&self, field_original_index: usize) -> u32 {

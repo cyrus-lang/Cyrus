@@ -526,10 +526,11 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let Some(field) = unnamed_union_type
+        let Some(mut field) = unnamed_union_type
             .fields
             .iter()
             .find(|field| field.name == unnamed_union_value.field_name.as_string())
+            .cloned()
         else {
             let object_name = format_sema_ty(expected_type.unwrap(), &(self.symbol_formatter)(scope_id_opt));
 
@@ -544,6 +545,8 @@ impl<'a> AnalysisContext<'a> {
             });
             return None;
         };
+
+        field.ty = Box::new(self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone())?);
 
         self.analyze_expr(
             scope_id_opt,

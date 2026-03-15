@@ -160,22 +160,39 @@ impl<'ll> IRBuilderCtx<'ll> {
         // need to extract lo and hi parts from the struct
         let struct_value = rvalue.as_basic_value().into_struct_value();
 
-        let layout = type_layout(&self.target.info, &rvalue.ty);
+        let (lo_value, hi_value) = if struct_value.get_type().count_fields() == 2 {
+            // Canonical ABI case:
+            // already split into two eightbytes
+            let lo = self
+                .llvmbuilder
+                .build_extract_value(struct_value, 0, "lo.part")
+                .unwrap();
 
-        let lo_index = layout.lookup_field_index_at_offset(0).unwrap();
-        let hi_index = layout.lookup_field_index_at_offset(8).unwrap();
+            let hi = self
+                .llvmbuilder
+                .build_extract_value(struct_value, 1, "hi.part")
+                .unwrap();
 
-        // extract low part (first 8 bytes)
-        let lo_value = self
-            .llvmbuilder
-            .build_extract_value(struct_value, lo_index as u32, "lo.part")
-            .unwrap();
+            (lo, hi)
+        } else {
+            // fallback: use layout offsets
+            let layout = type_layout(&self.target.info, &rvalue.ty);
 
-        // extract high part (next 8 bytes)
-        let hi_value = self
-            .llvmbuilder
-            .build_extract_value(struct_value, hi_index as u32, "hi.part")
-            .unwrap();
+            let lo_index = layout.lookup_field_index_at_offset(0).unwrap();
+            let hi_index = layout.lookup_field_index_at_offset(8).unwrap_or(lo_index);
+
+            let lo = self
+                .llvmbuilder
+                .build_extract_value(struct_value, lo_index as u32, "lo.part")
+                .unwrap();
+
+            let hi = self
+                .llvmbuilder
+                .build_extract_value(struct_value, hi_index as u32, "hi.part")
+                .unwrap();
+
+            (lo, hi)
+        };
 
         let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
             .try_into()
