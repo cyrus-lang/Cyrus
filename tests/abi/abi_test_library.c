@@ -116,8 +116,6 @@ void display_union_payload(union UnionPayload payload, int kind) {
   }
 }
 
-// ANCHOR
-
 // Nested Struct
 
 struct NestedStructInner {
@@ -130,9 +128,7 @@ struct NestedStructOuter {
   double z;
 };
 
-double nested_sum(struct NestedStructOuter o) {
-  printf("nested_sum %d %d %f\n", o.inner.x, o.inner.y, o.z);
-
+double nested_struct_sum(struct NestedStructOuter o) {
   return o.inner.x + o.inner.y + o.z;
 }
 
@@ -159,7 +155,6 @@ double nested_sum(struct NestedStructOuter o) {
 // int cross_sum(struct Cross c) {
 //   return c.a[0] + c.a[1] + c.a[2];
 // }
-
 
 // TODO
 // double register_pressure(

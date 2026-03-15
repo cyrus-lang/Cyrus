@@ -1,4 +1,4 @@
-// @stdout: make_pair=20, 30 sum_pair=50 sum_float_pair=13.400000 mixed_integer_sse=8.700000 print_large_struct=33.700001 triple_struct=3, 4, 5
+// @stdout: make_pair=20, 30 sum_pair=50 sum_float_pair=13.400000 mixed_integer_sse=8.700000 print_large_struct=33.700001 triple_struct=3, 4, 5 nested_struct_sum=31.100000
 // @compilerArgs: -z=./tests/abi/structs_library.c
 
 import std::libc{printf};
@@ -45,6 +45,18 @@ repr(c) struct TripleStruct {
 
 extern "C" fn make_triple(a: c_long, b: c_long, c: c_long) TripleStruct;
 
+repr(c) struct NestedStructInner {
+    pub x: c_int;
+    pub y: c_int;
+}
+
+repr(c) struct NestedStructOuter {
+    pub inner: NestedStructInner;
+    pub z: c_double;
+}
+
+extern "C" fn nested_struct_sum(outer: NestedStructOuter) c_double;
+
 pub fn main() {
     const pair = make_pair(20, 30);
     printf("make_pair=%d, %d ", pair.a, pair.b);
@@ -62,4 +74,10 @@ pub fn main() {
 
     const triple_struct = make_triple(3, 4, 5);
     printf("triple_struct=%d, %d, %d ", triple_struct.a, triple_struct.b, triple_struct.c);
+
+    const outer = NestedStructOuter {
+        inner: repr(c) struct { x = 10, y = 20 },
+        z: 1.1
+    };
+    printf("nested_struct_sum=%f\n", nested_struct_sum(outer));
 }

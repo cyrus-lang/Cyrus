@@ -1420,7 +1420,10 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Warning,
                 kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
                 location: Some(DiagLoc::new(typed_variable.loc.clone())),
-                hint: Some("Prefer declaring the variable itself as const instead of using a const-qualified type.".to_string()),
+                hint: Some(
+                    "Prefer declaring the variable itself as const instead of using a const-qualified type."
+                        .to_string(),
+                ),
             });
         }
 
@@ -2302,31 +2305,3 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 }
-
-// pub(crate) fn unnamed_enum_includes_non_scalar_payload(variants: &Vec<TypedUnnamedEnumVariant>) -> bool {
-//     variants.iter().any(|variant| match variant {
-//         TypedUnnamedEnumVariant::Ident(..) => false,
-//         TypedUnnamedEnumVariant::Valued(_, expr) => {
-//             if let Some(sema_ty) = &expr.sema_ty {
-//                 !sema_ty.is_scalar()
-//             } else {
-//                 true
-//             }
-//         }
-//         TypedUnnamedEnumVariant::Variant(..) => true,
-//     })
-// }
-
-// fn typed_enum_includes_non_scalar_payload(variants: &Vec<TypedEnumVariant>) -> bool {
-//     variants.iter().any(|variant| match variant {
-//         TypedEnumVariant::Ident(..) => false,
-//         TypedEnumVariant::Valued(_, expr) => {
-//             if let Some(sema_ty) = &expr.sema_ty {
-//                 !sema_ty.is_scalar()
-//             } else {
-//                 true
-//             }
-//         }
-//         TypedEnumVariant::Variant(..) => true,
-//     })
-// }

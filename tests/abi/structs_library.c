@@ -1,4 +1,4 @@
-// Simple Struct 
+// Simple Struct
 
 struct Pair {
   int a;
@@ -10,9 +10,7 @@ struct Pair make_pair(int a, int b) {
   return p;
 }
 
-int sum_pair(struct Pair p) {
-  return p.a + p.b;
-}
+int sum_pair(struct Pair p) { return p.a + p.b; }
 
 // Float Struct (SSE)
 
@@ -55,4 +53,19 @@ struct Triple {
 struct Triple make_triple(long a, long b, long c) {
   struct Triple t = {a, b, c};
   return t;
+}
+
+struct NestedStructInner {
+  int x;
+  int y;
+};
+
+struct NestedStructOuter {
+  struct NestedStructInner inner;
+  double z;
+};
+
+double nested_struct_sum(struct NestedStructOuter o) {
+
+  return o.inner.x + o.inner.y + o.z;
 }
