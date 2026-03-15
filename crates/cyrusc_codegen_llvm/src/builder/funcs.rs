@@ -32,6 +32,7 @@ use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
         layout::type_layout,
+        target::ABITargetInfo,
         types::ABIType,
     },
     cir::{
@@ -42,11 +43,11 @@ use cyrusc_internal::{
 };
 use cyrusc_tast::generics::monomorph::MonomorphKey;
 use inkwell::{
-    context::AsContextRef,
+    context::{AsContextRef, Context},
     llvm_sys::core::{
         LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
     },
-    types::{AsTypeRef, BasicType, BasicTypeEnum},
+    types::{AsTypeRef, BasicType, BasicTypeEnum, StructType},
     values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
 
@@ -67,7 +68,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for (i, expr) in args.iter().enumerate() {
             let lvalue = self.emit_expr(expr);
-            let mut rvalue = self.load_rvalue(lvalue);
+            let mut rvalue = self.load_rvalue(lvalue.clone());
 
             if i < abi_func_info.params_infos.len() {
                 let abi_arg_info = &abi_func_info.params_infos[i];
@@ -77,7 +78,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         self.emit_direct_arg(&mut args_values, &rvalue, coerce_to);
                     }
                     ABIArgKind::DirectPair { lo, hi } => {
-                        self.emit_direct_pair_arg(&mut args_values, &rvalue, lo, hi);
+                        self.emit_direct_pair_arg(&mut args_values, &lvalue, lo, hi);
                     }
                     ABIArgKind::DirectCoerce { ty } => {
                         self.emit_direct_coerce_arg(&mut args_values, &rvalue, ty);
@@ -143,70 +144,46 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
+    pub(crate) fn emit_abi_pair_llvm_type(&self, lo: &ABIType, hi: &ABIType) -> StructType<'ll> {
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
+            .try_into()
+            .unwrap();
+
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
+            .try_into()
+            .unwrap();
+
+        self.llvmctx.struct_type(&[lo_ty.into(), hi_ty.into()], false)
+    }
+
     fn emit_direct_pair_arg(
         &mut self,
-        args_values: &mut Vec<BasicMetadataValueEnum<'ll>>,
-        rvalue: &InternalValue<'ll>,
+        args: &mut Vec<BasicMetadataValueEnum<'ll>>,
+        lvalue: &InternalValue<'ll>,
         lo: ABIType,
         hi: ABIType,
     ) {
-        if !rvalue.as_basic_value().is_struct_value() {
-            // coerced to different type before, so push directly to args and we're done!
-            args_values.push(rvalue.as_basic_value().into());
-            return;
-        }
+        let ptr = lvalue.as_basic_value().into_pointer_value();
+        let pair_ty = self.emit_abi_pair_llvm_type(&lo, &hi);
 
-        // value is split across two registers
-        // need to extract lo and hi parts from the struct
-        let struct_value = rvalue.as_basic_value().into_struct_value();
-
-        let (lo_value, hi_value) = if struct_value.get_type().count_fields() == 2 {
-            // Canonical ABI case:
-            // already split into two eightbytes
-            let lo = self
-                .llvmbuilder
-                .build_extract_value(struct_value, 0, "lo.part")
-                .unwrap();
-
-            let hi = self
-                .llvmbuilder
-                .build_extract_value(struct_value, 1, "hi.part")
-                .unwrap();
-
-            (lo, hi)
-        } else {
-            // fallback: use layout offsets
-            let layout = type_layout(&self.target.info, &rvalue.ty);
-
-            let lo_index = layout.lookup_field_index_at_offset(0).unwrap();
-            let hi_index = layout.lookup_field_index_at_offset(8).unwrap_or(lo_index);
-
-            let lo = self
-                .llvmbuilder
-                .build_extract_value(struct_value, lo_index as u32, "lo.part")
-                .unwrap();
-
-            let hi = self
-                .llvmbuilder
-                .build_extract_value(struct_value, hi_index as u32, "hi.part")
-                .unwrap();
-
-            (lo, hi)
-        };
-
-        let lo_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
             .try_into()
             .unwrap();
 
-        let hi_llvm: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
+        let lo_ptr = self.llvmbuilder.build_struct_gep(pair_ty, ptr, 0, "lo.ptr").unwrap();
+
+        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "lo").unwrap();
+
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
             .try_into()
             .unwrap();
 
-        let lo_coerced = self.intrinsic_coerce_through_alloca(lo_value, lo_llvm, "lo");
-        let hi_coerced = self.intrinsic_coerce_through_alloca(hi_value, hi_llvm, "hi");
+        let hi_ptr = self.llvmbuilder.build_struct_gep(pair_ty, ptr, 1, "hi.ptr").unwrap();
 
-        args_values.push(lo_coerced.into());
-        args_values.push(hi_coerced.into());
+        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "hi").unwrap();
+
+        args.push(lo_val.into());
+        args.push(hi_val.into());
     }
 
     fn emit_direct_coerce_arg(

@@ -1,4 +1,4 @@
-// @stdout: union_payload(int)=10 union_payload(text)=Cyrus! union_payload(float)=3.140000 nested_union=3.140000
+// @stdout: union_payload(int)=10 union_payload(text)=Cyrus! union_payload(float)=3.140000 nested_union=3.140000 nested_struct_inside_union=12.000000
 // @compilerArgs: -z=./tests/abi/unions_library.c
 
 import std::libc{printf};

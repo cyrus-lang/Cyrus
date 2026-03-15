@@ -255,77 +255,59 @@ impl<'ll> IRBuilderCtx<'ll> {
         hi: &ABIType,
         abi_ret_type: &ABIType,
     ) -> BasicValueEnum<'ll> {
-        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &lo)
+        let value = rvalue.as_basic_value();
+
+        let lo_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo)
             .try_into()
             .unwrap();
 
-        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, &hi)
+        let hi_ty: BasicTypeEnum<'ll> = abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi)
             .try_into()
             .unwrap();
 
-        let struct_value = rvalue.as_basic_value().into_struct_value();
-        let layout = type_layout(&self.target.info, &rvalue.ty);
+        let pair_ty = self.emit_abi_pair_llvm_type(lo, hi);
 
-        let lo_index = layout.lookup_field_index_at_offset(0).unwrap() as u32;
-        let mut lo_value = self
+        let src_alloca = self
             .llvmbuilder
-            .build_extract_value(struct_value, lo_index, "ret.lo")
+            .build_alloca(value.get_type(), "ret.src.alloca")
             .unwrap();
 
-        let hi_index = layout.lookup_field_index_at_offset(8).unwrap() as u32;
-        let mut hi_value = self
+        self.llvmbuilder.build_store(src_alloca, value).unwrap();
+
+        let lo_ptr = self
             .llvmbuilder
-            .build_extract_value(struct_value, hi_index, "ret.hi")
+            .build_struct_gep(pair_ty, src_alloca, 0, "ret.lo.ptr")
             .unwrap();
 
-        let cir_struct_type = rvalue.ty.as_struct().unwrap();
-        let ret_struct_ty = self.llvmctx.struct_type(&[lo_ty.into(), hi_ty.into()], false);
+        let lo_val = self.llvmbuilder.build_load(lo_ty, lo_ptr, "ret.lo").unwrap();
+
+        let hi_ptr = self
+            .llvmbuilder
+            .build_struct_gep(pair_ty, src_alloca, 1, "ret.hi.ptr")
+            .unwrap();
+
+        let hi_val = self.llvmbuilder.build_load(hi_ty, hi_ptr, "ret.hi").unwrap();
+
+        // construct ABI return struct
+        let ret_struct_ty: StructType = abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_ret_type)
+            .try_into()
+            .unwrap();
 
         let mut pair_struct = ret_struct_ty.get_undef();
 
-        lo_value = self
-            .emit_cast(
-                lo_ty.as_any_type_enum(),
-                InternalValue::new(
-                    cir_struct_type.fields.get(0).unwrap().clone(),
-                    InternalValueKind::RValue(lo_value),
-                ),
-            )
-            .try_into()
-            .unwrap();
-
         pair_struct = self
             .llvmbuilder
-            .build_insert_value(pair_struct, lo_value, 0, "insert")
+            .build_insert_value(pair_struct, lo_val, 0, "ret.insert.lo")
             .unwrap()
             .into_struct_value();
 
-        hi_value = self
-            .emit_cast(
-                hi_ty.as_any_type_enum(),
-                InternalValue::new(
-                    cir_struct_type.fields.get(1).unwrap().clone(),
-                    InternalValueKind::RValue(hi_value),
-                ),
-            )
-            .try_into()
-            .unwrap();
-
         pair_struct = self
             .llvmbuilder
-            .build_insert_value(pair_struct, hi_value, 1, "insert")
+            .build_insert_value(pair_struct, hi_val, 1, "ret.insert.hi")
             .unwrap()
             .into_struct_value();
 
-        let llvm_abi_ret_type: BasicTypeEnum<'ll> =
-            abi_type_to_llvm_type(self.llvmctx, &self.target.info, abi_ret_type)
-                .try_into()
-                .unwrap();
-
-        let return_value =
-            self.intrinsic_coerce_through_alloca(pair_struct.as_basic_value_enum(), llvm_abi_ret_type, "coerce.ret");
-
-        return_value
+        pair_struct.into()
     }
 
     pub(crate) fn emit_switch_on_enum_export_fields(
