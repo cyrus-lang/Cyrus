@@ -78,6 +78,12 @@ struct Float4 {
   float d;
 };
 
-float sum_float4(struct Float4 v) {
-  return v.a + v.b + v.c + v.d;
-}
+float sum_float4(struct Float4 v) { return v.a + v.b + v.c + v.d; }
+
+// Struct With Array Crossing Eightbyte
+
+struct Cross {
+  int a[3];
+};
+
+int cross_sum(struct Cross c) { return c.a[0] + c.a[1] + c.a[2]; }

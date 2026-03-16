@@ -1,0 +1,12 @@
+// @stdout: sum_variadic=60
+// @compilerArgs: -z=./tests/abi/variadic_library.c
+
+import std::libc{printf};
+import std::libc::abi{c_int, c_long};
+
+extern "C" fn sum_variadic(count: c_int, ...) c_long;
+
+pub fn main() {
+    printf("sum_variadic=%d\n", sum_variadic(3, 10, 20, 30));
+}
+

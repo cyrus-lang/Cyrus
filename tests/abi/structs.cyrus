@@ -1,4 +1,4 @@
-// @stdout: make_pair=20, 30 sum_pair=50 sum_float_pair=13.400000 mixed_integer_sse=8.700000 print_large_struct=33.700001 triple_struct=3, 4, 5 nested_struct_sum=31.100000 sum_float4=10.400000
+// @stdout: make_pair=20, 30 sum_pair=50 sum_float_pair=13.400000 mixed_integer_sse=8.700000 print_large_struct=33.700001 triple_struct=3, 4, 5 nested_struct_sum=31.100000 sum_float4=10.400000 cross_sum=6
 // @compilerArgs: -z=./tests/abi/structs_library.c
 
 import std::libc{printf};
@@ -66,6 +66,12 @@ repr(c) struct Float4 {
 
 extern "C" fn sum_float4(v: Float4) c_float;
 
+repr(c) struct Cross {
+    a: c_int[3];
+}
+
+extern "C" fn cross_sum(cross: Cross) c_int;
+
 pub fn main() {
     const pair = make_pair(20, 30);
     printf("make_pair=%d, %d ", pair.a, pair.b);
@@ -91,5 +97,8 @@ pub fn main() {
     printf("nested_struct_sum=%f ", nested_struct_sum(outer));
 
     const float4 = Float4 { a: 1.1, b: 2.1, c: 3.1, d: 4.1 };
-    printf("sum_float4=%f\n", sum_float4(float4));
+    printf("sum_float4=%f ", sum_float4(float4));
+
+    const cross = Cross { a: c_int[3] {1, 2, 3} };
+    printf("cross_sum=%d\n", cross_sum(cross));
 }
