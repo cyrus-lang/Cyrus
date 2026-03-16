@@ -66,7 +66,8 @@ pub struct CIRFuncTy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRStructTy {
     pub name: Option<String>,
-    pub fields: Vec<(String, CIRTy)>,
+    pub fields: Vec<CIRTy>,
+    pub fields_info: Vec<(String, SourceLoc)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: SourceLoc,
@@ -75,7 +76,8 @@ pub struct CIRStructTy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRUnionTy {
     pub name: Option<String>,
-    pub fields: Vec<(String, CIRTy)>,
+    pub fields: Vec<CIRTy>,
+    pub fields_info: Vec<(String, SourceLoc)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: SourceLoc,
@@ -222,7 +224,7 @@ impl CIRTy {
             CIRTy::Union(union_ty) => Some(union_ty.fields.clone()),
             _ => None,
         }
-        .map(|fields| fields.iter().map(|(_, ty)| ty.clone()).collect::<Vec<CIRTy>>())
+        .map(|fields| fields.iter().map(|ty| ty.clone()).collect::<Vec<CIRTy>>())
     }
 
     pub fn as_union(&self) -> Option<CIRUnionTy> {
@@ -360,16 +362,19 @@ impl CIRTy {
 
 impl CIRTupleTy {
     pub fn as_struct_ty(&self) -> CIRStructTy {
-        let fields = self
+        let fields = self.elements.iter().map(|ty| ty.clone()).collect();
+
+        let fields_info = self
             .elements
             .iter()
             .enumerate()
-            .map(|(i, ty)| (i.to_string(), ty.clone()))
+            .map(|(i, _)| (i.to_string(), self.loc.clone()))
             .collect();
 
         CIRStructTy {
             name: None,
             fields,
+            fields_info,
             repr_attr: None,
             align: None,
             loc: self.loc.clone(),

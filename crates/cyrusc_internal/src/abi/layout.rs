@@ -67,7 +67,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             let mut field_offset_index = 0u32;
 
-            for (field_original_index, (_, ty)) in struct_ty.fields.iter().enumerate() {
+            for (field_original_index, ty) in struct_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 let effective_field_align = if is_packed { 1 } else { field_layout.align };
@@ -123,7 +123,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
 
-            for (original_index, (_, ty)) in union_ty.fields.iter().enumerate() {
+            for (original_index, ty) in union_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 max_size = max_size.max(field_layout.size);
@@ -173,6 +173,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                         let struct_ty = CIRStructTy {
                             name: None,
                             fields: tuple_struct_type.fields.clone(),
+                            fields_info: tuple_struct_type.fields_info.clone(),
                             repr_attr: None,
                             align: None,
                             loc: enum_ty.loc.clone(),

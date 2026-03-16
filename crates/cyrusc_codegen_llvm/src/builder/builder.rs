@@ -26,7 +26,7 @@ use crate::{
         abi::modifiers::apply_global_var_modifiers,
         debug_info::{
             BlockScope, DebugContext, create_debug_global_var_metadata, create_debug_lexical_block,
-            create_debug_var_metadata, debug_current_scope, debug_func_type, emit_dbg_declare, set_debug_location,
+            create_debug_var_metadata, debug_current_scope, emit_dbg_declare, set_debug_location,
         },
     },
 };
@@ -49,14 +49,10 @@ use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
-    context::{AsContextRef, Context},
-    llvm_sys::{
-        LLVMOpaqueMetadata, core::LLVMSetCurrentDebugLocation2, debuginfo::LLVMDIBuilderCreateDebugLocation,
-        prelude::LLVMMetadataRef,
-    },
+    context::Context,
     module::Module,
     targets::TargetMachine,
-    types::{AsTypeRef, BasicTypeEnum},
+    types::BasicTypeEnum,
     values::{AsValueRef, FunctionValue, GlobalValue, PointerValue},
 };
 use std::{

@@ -21,7 +21,7 @@ use inkwell::{
     context::{AsContextRef, Context},
     debug_info::LLVMDWARFTypeEncoding,
     llvm_sys::{
-        core::{LLVMGetInsertBlock, LLVMGetIntTypeWidth, LLVMSetCurrentDebugLocation2},
+        core::{LLVMGetInsertBlock, LLVMSetCurrentDebugLocation2},
         debuginfo::*,
         prelude::{LLVMDIBuilderRef, LLVMMetadataRef, LLVMModuleRef, LLVMTypeRef, LLVMValueRef},
     },
@@ -260,25 +260,160 @@ pub unsafe fn debug_pointer_type(
     }
 }
 
-// TODO: Support rust-like enum type debug info emission.
 pub unsafe fn debug_enum_type(
+    dctx: &DebugContext,
+    name: &str,
+    line: u32,
+    tag_type: LLVMMetadataRef,
+    variants: &[(String, i64, LLVMMetadataRef)],
+    size_bits: u64,
+    align_bits: u32,
+) -> LLVMMetadataRef {
+    let scope = debug_current_scope(dctx);
+
+    // payload union
+
+    let union_name = format!("{}$payload", name);
+    let union_name_cstr = CString::new(union_name.clone()).unwrap();
+
+    let mut union_fields: Vec<LLVMMetadataRef> = Vec::new();
+
+    for (variant_name, _, payload_ty) in variants {
+        let cname = CString::new(variant_name.as_str()).unwrap();
+
+        let member = unsafe {
+            LLVMDIBuilderCreateMemberType(
+                dctx.builder,
+                scope,
+                cname.as_ptr(),
+                variant_name.len(),
+                dctx.file.metadata,
+                line,
+                0,
+                0,
+                0,
+                LLVMDIFlagZero,
+                *payload_ty,
+            )
+        };
+
+        union_fields.push(member);
+    }
+
+    let payload_union = unsafe {
+        LLVMDIBuilderCreateUnionType(
+            dctx.builder,
+            scope,
+            union_name_cstr.as_ptr(),
+            union_name.len(),
+            dctx.file.metadata,
+            line,
+            size_bits,
+            align_bits,
+            LLVMDIFlagZero,
+            union_fields.as_mut_ptr(),
+            union_fields.len() as u32,
+            0,
+            union_name_cstr.as_ptr(),
+            union_name.len(),
+        )
+    };
+
+    // tag field
+
+    let tag_name = CString::new("tag").unwrap();
+
+    let tag_member = unsafe {
+        LLVMDIBuilderCreateMemberType(
+            dctx.builder,
+            scope,
+            tag_name.as_ptr(),
+            3,
+            dctx.file.metadata,
+            line,
+            8,
+            8,
+            0,
+            LLVMDIFlagZero,
+            tag_type,
+        )
+    };
+
+    // payload field
+
+    let payload_name = CString::new("payload").unwrap();
+
+    let payload_member = unsafe {
+        LLVMDIBuilderCreateMemberType(
+            dctx.builder,
+            scope,
+            payload_name.as_ptr(),
+            7,
+            dctx.file.metadata,
+            line,
+            size_bits - 8,
+            align_bits,
+            8,
+            LLVMDIFlagZero,
+            payload_union,
+        )
+    };
+
+    let mut members = vec![tag_member, payload_member];
+
+    // final struct
+
+    let cname = CString::new(name).unwrap();
+
+    unsafe {
+        LLVMDIBuilderCreateStructType(
+            dctx.builder,
+            scope,
+            cname.as_ptr(),
+            name.len(),
+            dctx.file.metadata,
+            line,
+            size_bits,
+            align_bits,
+            LLVMDIFlagZero,
+            std::ptr::null_mut(),
+            members.as_mut_ptr(),
+            members.len() as u32,
+            0,
+            std::ptr::null_mut(),
+            cname.as_ptr(),
+            name.len(),
+        )
+    }
+}
+
+pub unsafe fn debug_scalar_enum_type(
     dctx: &DebugContext,
     name: &str,
     variants: &[(String, i64)],
     size_bits: u64,
     align_bits: u32,
-    scope: LLVMMetadataRef,
     line: u32,
     underlying: LLVMMetadataRef,
 ) -> LLVMMetadataRef {
-    let mut elements: Vec<LLVMMetadataRef> = Vec::new();
+    let scope = debug_current_scope(dctx);
+
+    let mut elements: Vec<LLVMMetadataRef> = Vec::with_capacity(variants.len());
 
     for (variant, value) in variants {
-        let cname = CString::new(variant.clone()).unwrap();
+        let cname = CString::new(variant.as_str()).unwrap();
 
-        let e = unsafe { LLVMDIBuilderCreateEnumerator(dctx.builder, cname.as_ptr(), variant.len(), *value, 0) };
+        let enumerator = unsafe {
+            LLVMDIBuilderCreateEnumerator(
+                dctx.builder,
+                cname.as_ptr(),
+                variant.len(),
+                *value,
+                1, // signed
+            )
+        };
 
-        elements.push(e);
+        elements.push(enumerator);
     }
 
     let cname = CString::new(name).unwrap();

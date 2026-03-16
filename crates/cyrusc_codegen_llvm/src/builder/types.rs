@@ -18,7 +18,8 @@
 use crate::builder::builder::IRBuilderCtx;
 use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
 use crate::llvm::debug_info::{
-    debug_array_type, debug_const_type, debug_dynamic_type, debug_member_type, debug_pointer_type, debug_simple_type, debug_struct_type, debug_union_type
+    debug_array_type, debug_const_type, debug_dynamic_type, debug_enum_type, debug_member_type, debug_pointer_type,
+    debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
 use cyrusc_diagcentral::source_loc::SourceLoc;
@@ -36,6 +37,12 @@ use inkwell::{
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_debug_ty_metadata(&self, ty: &CIRTy) -> LLVMMetadataRef {
+        let llvm_ty = self.emit_ty(ty.clone());
+
+        if let Some(metadata) = self.dctx.type_cache.get(&llvm_ty.as_type_ref()) {
+            return *metadata;
+        }
+
         match ty {
             CIRTy::PlainType(plain_type) => {
                 let name = plain_type.to_string();
@@ -80,24 +87,29 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
-                unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "ptr") }
+                unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
             }
             CIRTy::Struct(struct_ty) => unsafe {
                 let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_ty.clone()));
+                let size_bits = layout.size * 8;
+                let align_bits = layout.align * 8;
+
                 let mut elements_metadata: Vec<LLVMMetadataRef> = struct_ty
                     .fields
                     .iter()
                     .enumerate()
-                    .map(|(i, (name, ty))| {
+                    .map(|(i, ty)| {
                         let field_type_metadata = self.emit_debug_ty_metadata(ty);
                         let offset_bits = layout.lookup_field_offset(i) * 8;
 
+                        let (name, loc) = &struct_ty.fields_info[i];
+
                         debug_member_type(
                             &self.dctx,
-                            name,
+                            &name,
                             field_type_metadata,
                             offset_bits as u64,
-                            struct_ty.loc.line as u32,
+                            loc.line as u32,
                         )
                     })
                     .collect();
@@ -108,25 +120,26 @@ impl<'ll> IRBuilderCtx<'ll> {
                     &self.dctx,
                     &struct_name,
                     &mut elements_metadata,
-                    layout.size as u64,
-                    layout.align,
+                    size_bits as u64,
+                    align_bits,
                     struct_ty.loc.line.try_into().unwrap(),
                 )
             },
             CIRTy::Tuple(tuple_ty) => {
                 let layout = type_layout(&self.target.info, &CIRTy::Tuple(tuple_ty.clone()));
+
                 let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_ty
                     .elements
                     .iter()
                     .map(|ty| self.emit_debug_ty_metadata(ty))
                     .collect();
 
-                let struct_name = "<tuple>".to_string();
+                let tuple_name = "<tuple>".to_string();
 
                 unsafe {
                     debug_struct_type(
                         &self.dctx,
-                        &struct_name,
+                        &tuple_name,
                         &mut elements_metadata,
                         layout.size as u64,
                         layout.align,
@@ -134,21 +147,99 @@ impl<'ll> IRBuilderCtx<'ll> {
                     )
                 }
             }
-            CIRTy::Enum(enum_ty) => todo!(),
+            CIRTy::Enum(enum_ty) => {
+                let layout = type_layout(&self.target.info, &CIRTy::Enum(enum_ty.clone()));
+                let size_bits = layout.size * 8;
+                let align_bits = layout.align * 8;
+
+                let enum_name = enum_ty.name.clone().unwrap_or("<unnamed_enum>".to_string());
+
+                let tag_type = self.emit_debug_ty_metadata(&enum_ty.tag_type_or_infer_or_default());
+
+                if enum_ty.is_scalar_optimizable() {
+                    let variants: Vec<(String, i64)> = enum_ty
+                        .variants
+                        .iter()
+                        .map(|variant| match variant {
+                            CIREnumTyVariant::Ident(ident) => {
+                                let tag = enum_ty.compute_variant_tag(ident).unwrap();
+                                (ident.clone(), tag as i64)
+                            }
+                            CIREnumTyVariant::Valued(ident, _) => {
+                                let tag = enum_ty.compute_variant_tag(ident).unwrap();
+                                (ident.clone(), tag as i64)
+                            }
+                            CIREnumTyVariant::Fielded(..) => unreachable!(),
+                        })
+                        .collect();
+
+                    unsafe {
+                        debug_scalar_enum_type(
+                            &self.dctx,
+                            &enum_name,
+                            &variants,
+                            size_bits as u64,
+                            align_bits,
+                            enum_ty.loc.line as u32,
+                            tag_type,
+                        )
+                    }
+                } else {
+                    let variants: Vec<(String, i64, LLVMMetadataRef)> = enum_ty
+                        .variants
+                        .iter()
+                        .map(|variant| {
+                            let ident = variant.ident();
+                            let tag = enum_ty.compute_variant_tag(ident).unwrap();
+
+                            match variant {
+                                CIREnumTyVariant::Ident(_) => {
+                                    (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
+                                }
+                                CIREnumTyVariant::Valued(_, _) => {
+                                    (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
+                                }
+                                CIREnumTyVariant::Fielded(_, elements) => {
+                                    let tuple_type = CIRTupleTy {
+                                        elements: elements.to_vec(),
+                                        loc: enum_ty.loc.clone(),
+                                    };
+
+                                    let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRTy::Tuple(tuple_type));
+
+                                    (ident.clone(), tag as i64, tuple_type_metadata)
+                                }
+                            }
+                        })
+                        .collect();
+
+                    unsafe {
+                        debug_enum_type(
+                            &self.dctx,
+                            &enum_name,
+                            enum_ty.loc.line as u32,
+                            tag_type,
+                            &variants,
+                            size_bits as u64,
+                            align_bits,
+                        )
+                    }
+                }
+            }
             CIRTy::Union(union_ty) => {
                 let layout = type_layout(&self.target.info, &CIRTy::Union(union_ty.clone()));
                 let mut elements_metadata: Vec<LLVMMetadataRef> = union_ty
                     .fields
                     .iter()
-                    .map(|(_, ty)| self.emit_debug_ty_metadata(ty))
+                    .map(|ty| self.emit_debug_ty_metadata(ty))
                     .collect();
 
-                let struct_name = union_ty.name.clone().unwrap_or("<unnamed_union>".to_string());
+                let union_name = union_ty.name.clone().unwrap_or("<unnamed_union>".to_string());
 
                 unsafe {
                     debug_union_type(
                         &self.dctx,
-                        &struct_name,
+                        &union_name,
                         &mut elements_metadata,
                         layout.size as u64,
                         layout.align,
@@ -204,11 +295,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         CIRTy::Struct(CIRStructTy {
             name: None,
             fields: vec![
-                ("data_ptr".to_string(), CIRTy::Pointer(Box::new(data_ptr_inner_ty))),
-                (
-                    "vtable_ptr".to_string(),
-                    CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
-                ),
+                CIRTy::Pointer(Box::new(data_ptr_inner_ty)),
+                CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+            ],
+            fields_info: vec![
+                ("data_ptr".to_string(), loc.clone()),
+                ("vtable_ptr".to_string(), loc.clone()),
             ],
             align: None,
             repr_attr: None,
@@ -281,7 +373,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { .. } => {
                     // get the next actual field from the struct
-                    let (_, field_ty) = &struct_ty.fields[next_field_index];
+                    let field_ty = &struct_ty.fields[next_field_index];
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(field_ty.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);
                     next_field_index += 1;
@@ -323,6 +415,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         Some(self.emit_struct_ty(CIRStructTy {
             name: None,
             fields: struct_tuple_type.fields,
+            fields_info: struct_tuple_type.fields_info,
             repr_attr: None,
             align: None,
             loc: enum_ty.loc.clone(),
@@ -414,7 +507,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let mut max_align = 0;
         let mut max_size = 0;
 
-        for (_, field_ty) in &union_ty.fields {
+        for field_ty in &union_ty.fields {
             let llvm_ty: BasicTypeEnum = self.emit_ty(field_ty.clone()).try_into().unwrap();
 
             let align = target_data.get_abi_alignment(&llvm_ty);

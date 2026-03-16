@@ -422,7 +422,8 @@ pub struct CIRReturnStmt {
 #[derive(Debug, Clone)]
 pub struct CIRStructStmt {
     pub name: String,
-    pub fields: Vec<(String, CIRTy)>,
+    pub fields: Vec<CIRTy>,
+    pub fields_info: Vec<(String, SourceLoc)>,
     pub align: Option<usize>,
     pub modifiers: StructModifiers,
     pub loc: SourceLoc,
@@ -483,7 +484,8 @@ pub enum CIREnumInitVariant {
 #[derive(Debug, Clone)]
 pub struct CIRUnionStmt {
     pub name: String,
-    pub fields: Vec<(String, CIRTy)>,
+    pub fields: Vec<CIRTy>,
+    pub fields_info: Vec<(String, SourceLoc)>,
     pub align: Option<usize>,
     pub modifiers: UnionModifiers,
     pub loc: SourceLoc,
@@ -544,6 +546,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
     CIRStructTy {
         name: Some(struct_stmt.name.clone()),
         fields: struct_stmt.fields.clone(),
+        fields_info: struct_stmt.fields_info.clone(),
         repr_attr: struct_stmt.modifiers.repr_attr.clone(),
         align: struct_stmt.align.clone(),
         loc: struct_stmt.loc.clone(),
@@ -565,6 +568,7 @@ pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
     CIRUnionTy {
         name: Some(union_stmt.name.clone()),
         fields: union_stmt.fields.clone(),
+        fields_info: union_stmt.fields_info.clone(),
         repr_attr: union_stmt.modifiers.repr_attr.clone(),
         align: union_stmt.align.clone(),
         loc: union_stmt.loc.clone(),

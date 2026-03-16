@@ -19,7 +19,7 @@ use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
-        PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
+        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
         TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };

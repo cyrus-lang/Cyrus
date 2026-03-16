@@ -1298,15 +1298,16 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         if let Some(resolved_struct) = sym.as_struct() {
-            let fields: Vec<(String, CIRTy)> = struct_init_expr
+            let fields = struct_init_expr
                 .fields
                 .iter()
-                .map(|field| {
-                    (
-                        field.name.clone(),
-                        self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()),
-                    )
-                })
+                .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+                .collect();
+
+            let fields_info = struct_init_expr
+                .fields
+                .iter()
+                .map(|field| (field.name.clone(), field.loc.clone()))
                 .collect();
 
             let struct_ty = CIRStructTy {
@@ -1314,6 +1315,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 repr_attr: resolved_struct.struct_sig.modifiers.repr_attr.clone(),
                 align: resolved_struct.struct_sig.align.clone(),
                 fields,
+                fields_info,
                 loc: resolved_struct.struct_sig.loc.clone(),
             };
 
@@ -1328,17 +1330,19 @@ impl<'resolver> CIRWalk<'resolver> {
             let fields = struct_init_expr
                 .fields
                 .iter()
-                .map(|field| {
-                    (
-                        field.name.clone(),
-                        self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()),
-                    )
-                })
+                .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+                .collect();
+
+            let fields_info = struct_init_expr
+                .fields
+                .iter()
+                .map(|field| (field.name.clone(), field.loc.clone()))
                 .collect();
 
             let union_ty = CIRTy::Union(CIRUnionTy {
                 name: Some(resolved_union.union_sig.name.clone()),
                 fields,
+                fields_info,
                 repr_attr: resolved_union.union_sig.modifiers.repr_attr.clone(),
                 align: resolved_union.union_sig.align.clone(),
                 loc: resolved_union.union_sig.loc.clone(),
@@ -1729,12 +1733,19 @@ impl<'resolver> CIRWalk<'resolver> {
         let field_types = unnamed_struct_type
             .fields
             .iter()
-            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
+            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .collect();
+
+        let fields_info = unnamed_struct_type
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.loc.clone()))
             .collect();
 
         let struct_ty = CIRStructTy {
             name: None,
             fields: field_types,
+            fields_info,
             repr_attr: unnamed_struct_value.repr_attr.clone(),
             align: unnamed_struct_value.align.clone(),
             loc: unnamed_struct_type.loc.clone(),
@@ -1868,15 +1879,19 @@ impl<'resolver> CIRWalk<'resolver> {
                 let fields = unnamed_struct_type
                     .fields
                     .iter()
-                    .map(|field| {
-                        let var_name = (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty));
-                        var_name
-                    })
+                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+                    .collect();
+
+                let fields_info = unnamed_struct_type
+                    .fields
+                    .iter()
+                    .map(|field| (field.name.clone(), field.loc.clone()))
                     .collect();
 
                 CIRTy::Struct(CIRStructTy {
                     name: None,
                     fields,
+                    fields_info,
                     repr_attr: unnamed_struct_type.repr_attr.clone(),
                     align: unnamed_struct_type.align.clone(),
                     loc: unnamed_struct_type.loc.clone(),
@@ -1942,14 +1957,12 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::Interface(interface_type) => CIRTy::Struct(CIRStructTy {
                 name: None,
                 fields: vec![
-                    (
-                        "data_ptr".to_string(),
-                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
-                    ),
-                    (
-                        "vtable_ptr".to_string(),
-                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
-                    ),
+                    CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                    CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                ],
+                fields_info: vec![
+                    ("data_ptr".to_string(), interface_type.loc.clone()),
+                    ("vtable_ptr".to_string(), interface_type.loc.clone()),
                 ],
                 repr_attr: None,
                 align: None,
@@ -1974,12 +1987,19 @@ impl<'resolver> CIRWalk<'resolver> {
         let fields = unnamed_union_type
             .fields
             .iter()
-            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
+            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .collect();
+
+        let fields_info = unnamed_union_type
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.loc.clone()))
             .collect();
 
         CIRUnionTy {
             name: None,
             fields,
+            fields_info,
             repr_attr: unnamed_union_type.repr_attr.clone(),
             align: unnamed_union_type.align.clone(),
             loc: unnamed_union_type.loc.clone(),
@@ -2082,12 +2102,19 @@ impl<'resolver> CIRWalk<'resolver> {
         let fields = struct_sig
             .fields
             .iter()
-            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
+            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .collect();
+
+        let fields_info = struct_sig
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.loc.clone()))
             .collect();
 
         CIRStructTy {
             name: Some(struct_sig.name.clone()),
             fields,
+            fields_info,
             repr_attr: struct_sig.modifiers.repr_attr.clone(),
             align: struct_sig.align.clone(),
             loc: struct_sig.loc.clone(),
@@ -2136,12 +2163,19 @@ impl<'resolver> CIRWalk<'resolver> {
         let fields = union_sig
             .fields
             .iter()
-            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
+            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .collect();
+
+        let fields_info = union_sig
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.loc.clone()))
             .collect();
 
         CIRUnionTy {
             name: Some(union_sig.name.clone()),
             fields,
+            fields_info,
             repr_attr: union_sig.modifiers.repr_attr.clone(),
             align: union_sig.align.clone(),
             loc: union_sig.loc.clone(),

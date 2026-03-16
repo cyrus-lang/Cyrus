@@ -1281,11 +1281,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
         let element_types = tuple.elements.iter().map(|elm| elm.ty.clone()).collect();
-        let fields = tuple
+
+        let fields = tuple.elements.iter().map(|expr| expr.ty.clone()).collect();
+
+        let fields_info = tuple
             .elements
             .iter()
             .enumerate()
-            .map(|(i, expr)| (i.to_string(), expr.ty.clone()))
+            .map(|(i, _)| (i.to_string(), tuple.loc.clone()))
             .collect();
 
         let struct_value = self
@@ -1293,6 +1296,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 ty: CIRStructTy {
                     name: None,
                     fields,
+                    fields_info,
                     repr_attr: None,
                     align: None,
                     loc: tuple.loc.clone(),
@@ -1554,7 +1558,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let mut rvalue = self.load_rvalue(lvalue);
 
                     let field_original_index = field_offset.original_index().unwrap();
-                    let (_, target_type) = struct_init.ty.fields.get(field_original_index).unwrap();
+                    let target_type = struct_init.ty.fields.get(field_original_index).unwrap();
 
                     if !self.llvmbuilder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(target_type, rvalue);
@@ -1590,7 +1594,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .iter()
                 .filter_map(|(original_index, value)| {
                     original_index.map(|i| {
-                        let (_, field_ty) = struct_init.ty.fields[i].clone();
+                        let field_ty = struct_init.ty.fields[i].clone();
                         ((Some(i), value.clone()), field_ty)
                     })
                 })
@@ -1929,6 +1933,6 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 }
 
-fn must_init_via_memcpy(fields: &Vec<(String, CIRTy)>) -> bool {
-    fields.iter().any(|(_, field_ty)| field_ty.is_union())
+fn must_init_via_memcpy(fields: &Vec<CIRTy>) -> bool {
+    fields.iter().any(|ty| ty.is_union())
 }

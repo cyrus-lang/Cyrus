@@ -64,11 +64,12 @@ mod tests {
     }
 
     fn struct_ty(fields: Vec<CIRTy>) -> CIRTy {
-        let fields = fields.iter().map(|ty| ("".to_string(), ty.clone())).collect();
+        let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRTy::Struct(CIRStructTy {
             name: None,
             fields,
+            fields_info: Vec::new(), // won't be used
             repr_attr: None,
             align: None,
             loc: SourceLoc::default(),
@@ -76,11 +77,12 @@ mod tests {
     }
 
     fn union_ty(fields: Vec<CIRTy>) -> CIRTy {
-        let fields = fields.iter().map(|ty| ("".to_string(), ty.clone())).collect();
+        let fields = fields.iter().map(|ty| ty.clone()).collect();
 
         CIRTy::Union(CIRUnionTy {
             name: None,
             fields,
+            fields_info: Vec::new(), // won't be used
             align: None,
             repr_attr: None,
             loc: SourceLoc::default(),
