@@ -32,7 +32,6 @@ use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
         layout::type_layout,
-        target::ABITargetInfo,
         types::ABIType,
     },
     cir::{
@@ -43,7 +42,7 @@ use cyrusc_internal::{
 };
 use cyrusc_tast::generics::monomorph::MonomorphKey;
 use inkwell::{
-    context::{AsContextRef, Context},
+    context::AsContextRef,
     llvm_sys::core::{
         LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
     },
