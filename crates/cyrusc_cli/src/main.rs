@@ -31,14 +31,12 @@ use cyrusc_compiler::{
     },
 };
 use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
 use serde::Deserialize;
 
-use crate::version::CYRUS_COMPILER_VERSION;
-
 mod commands;
 mod temp_executable_builder;
-mod version;
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {

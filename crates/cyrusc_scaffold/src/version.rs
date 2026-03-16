@@ -15,4 +15,4 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) const CYRUS_COMPILER_VERSION: &str = include_str!("../../../CYRUS_COMPILER_VERSION");
+pub const CYRUS_COMPILER_VERSION: &str = include_str!("../../../CYRUS_COMPILER_VERSION");

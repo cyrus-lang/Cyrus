@@ -44,8 +44,8 @@ use inkwell::{
         },
         prelude::{LLVMBasicBlockRef, LLVMValueRef},
     },
-    types::{AnyType, BasicTypeEnum, StructType},
-    values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
+    types::{BasicTypeEnum, StructType},
+    values::{AsValueRef, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue},
 };
 use inkwell::{
     llvm_sys::{

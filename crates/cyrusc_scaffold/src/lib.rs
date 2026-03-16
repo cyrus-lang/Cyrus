@@ -14,7 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::diagnostics::ProjectLayoutDiagKind;
+
+use crate::{diagnostics::ProjectLayoutDiagKind, version::CYRUS_COMPILER_VERSION};
 use cyrusc_diagcentral::{Diag, DiagLevel, display_single_diag};
 use std::{
     fs::{self, File},
@@ -23,10 +24,7 @@ use std::{
 };
 
 mod diagnostics;
-
-fn cyrus_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
+pub mod version;
 
 fn create_common_files(output: String) -> Result<(), String> {
     if fs::exists(output.clone()).map_err(|err| err.to_string())? {
@@ -83,8 +81,7 @@ sources = [\"src/*\"]
 version = \"{}\"
 build_dir = \"./build\"
 ",
-                pure_project_name,
-                cyrus_version()
+                pure_project_name, CYRUS_COMPILER_VERSION
             )
             .as_bytes(),
         )
@@ -135,8 +132,7 @@ optimize = \"o1\"
 sources = [\"src/*\"]
 version = \"{}\"
 ",
-                pure_project_name,
-                cyrus_version()
+                pure_project_name, CYRUS_COMPILER_VERSION
             )
             .as_bytes(),
         )
