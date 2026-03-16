@@ -252,6 +252,7 @@ impl<'resolver> CIRWalk<'resolver> {
         CIRStmt::Label(CIRLabelStmt {
             name: label.name.clone(),
             label_id: label.label_id,
+            loc: label.loc.clone(),
         })
     }
 
@@ -273,7 +274,10 @@ impl<'resolver> CIRWalk<'resolver> {
         {
             let scope_ref = scope_rc.borrow();
             let label_id = scope_ref.resolve_label(&goto.name).unwrap();
-            CIRStmt::Goto(CIRGotoStmt { label_id })
+            CIRStmt::Goto(CIRGotoStmt {
+                label_id,
+                loc: goto.loc.clone(),
+            })
         }
     }
 
@@ -316,6 +320,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     name: format!("tuple.{}", var_name),
                     ty: var_ty,
                     expr: Some(var_rhs),
+                    loc: resolved_variable.typed_variable.loc.clone(),
                 });
             }
             TypedExportPattern::Tuple(patterns) => {
@@ -343,11 +348,13 @@ impl<'resolver> CIRWalk<'resolver> {
                 cond: branch_cond,
                 then_block: branch_then,
                 else_block: else_block.take(),
+                loc: branch.loc.clone(),
             });
 
             else_block = Some(Box::new(CIRBlockStmt {
                 stmts: vec![nested_if],
                 defers: Vec::new(),
+                loc: branch.loc.clone(),
             }));
         }
 
@@ -355,6 +362,7 @@ impl<'resolver> CIRWalk<'resolver> {
             cond,
             then_block,
             else_block,
+            loc: if_stmt.loc.clone(),
         })
     }
 
@@ -433,6 +441,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     ty: CIRTy::PlainType(PlainType::Bool),
                 }),
                 ty: CIRTy::PlainType(PlainType::Bool),
+                loc: case.loc.clone(),
             };
             for pattern in &case.patterns {
                 let new_cond = match &pattern {
@@ -446,6 +455,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                 rhs: Box::new(lowered_case_expr),
                             }),
                             ty: CIRTy::PlainType(PlainType::Bool),
+                            loc: expr.loc.clone(),
                         }
                     }
                     TypedSwitchCasePattern::Range(range) => {
@@ -459,6 +469,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                 rhs: Box::new(lower),
                             }),
                             ty: CIRTy::PlainType(PlainType::Bool),
+                            loc: range.loc.clone(),
                         };
 
                         // lhs <= upper (inclusive)
@@ -476,6 +487,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                 rhs: Box::new(upper),
                             }),
                             ty: CIRTy::PlainType(PlainType::Bool),
+                            loc: range.loc.clone(),
                         };
 
                         CIRExpr {
@@ -485,10 +497,13 @@ impl<'resolver> CIRWalk<'resolver> {
                                 rhs: Box::new(upper_cmp),
                             }),
                             ty: CIRTy::PlainType(PlainType::Bool),
+                            loc: range.loc.clone(),
                         }
                     }
                     _ => unreachable!("Unexpected switch pattern for if-chain lowering"),
                 };
+
+                let loc = new_cond.loc.clone();
 
                 cond_expr = CIRExpr {
                     kind: CIRExprKind::Infix(CIRInfixExpr {
@@ -497,6 +512,7 @@ impl<'resolver> CIRWalk<'resolver> {
                         rhs: Box::new(new_cond),
                     }),
                     ty: CIRTy::PlainType(PlainType::Bool),
+                    loc,
                 };
             }
 
@@ -506,12 +522,18 @@ impl<'resolver> CIRWalk<'resolver> {
                 cond: cond_expr,
                 then_block,
                 else_block: match current {
-                    Some(inner) => Some(Box::new(CIRBlockStmt {
-                        stmts: vec![CIRStmt::If(inner)],
-                        defers: Vec::new(),
-                    })),
+                    Some(inner) => {
+                        let loc = inner.loc.clone();
+
+                        Some(Box::new(CIRBlockStmt {
+                            stmts: vec![CIRStmt::If(inner)],
+                            defers: Vec::new(),
+                            loc,
+                        }))
+                    }
                     None => None,
                 },
+                loc: switch_stmt.loc.clone(),
             };
 
             current = Some(new_if);
@@ -520,9 +542,12 @@ impl<'resolver> CIRWalk<'resolver> {
         let root_if = match current {
             Some(mut if_stmt) => {
                 if let Some(default_block) = default.clone() {
+                    let loc = default_block.loc.clone();
+
                     if_stmt.else_block = Some(Box::new(CIRBlockStmt {
                         stmts: vec![CIRStmt::Block(default_block)],
                         defers: Vec::new(),
+                        loc,
                     }));
                 }
                 if_stmt
@@ -556,8 +581,8 @@ impl<'resolver> CIRWalk<'resolver> {
                     .patterns
                     .iter()
                     .map(|pattern| {
-                        let case_ident = match &pattern {
-                            TypedSwitchCasePattern::Ident(ident, _) => ident,
+                        let (case_ident, case_loc) = match &pattern {
+                            TypedSwitchCasePattern::Ident(ident, loc) => (ident, loc),
                             _ => unreachable!("Unexpected enum variant pattern when lowering switch on integer enum."),
                         };
 
@@ -570,6 +595,7 @@ impl<'resolver> CIRWalk<'resolver> {
                                 ty: *tag_type.clone(),
                             }),
                             ty: *tag_type,
+                            loc: case_loc.clone(),
                         }
                     })
                     .collect();
@@ -587,6 +613,7 @@ impl<'resolver> CIRWalk<'resolver> {
             cases,
             default: default.clone(),
             all_cases_covered: explicit_all_cases_return,
+            loc: switch_stmt.loc.clone(),
         })
     }
 
@@ -628,6 +655,7 @@ impl<'resolver> CIRWalk<'resolver> {
             cases,
             default: default.clone(),
             all_cases_covered: false,
+            loc: switch_stmt.loc.clone(),
         })
     }
 
@@ -709,13 +737,18 @@ impl<'resolver> CIRWalk<'resolver> {
             value: operand.clone(),
             cases: lowered_cases,
             default: default.clone(),
+            loc: switch_stmt.loc.clone(),
         })
     }
 
     fn lower_while(&mut self, scope_id_opt: Option<ScopeID>, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(scope_id_opt, &while_stmt.cond));
         let body = Box::new(self.lower_body(&while_stmt.body));
-        CIRStmt::While(CIRWhileStmt { cond, body })
+        CIRStmt::While(CIRWhileStmt {
+            cond,
+            body,
+            loc: while_stmt.loc.clone(),
+        })
     }
 
     fn lower_for(&mut self, scope_id_opt: Option<ScopeID>, for_stmt: &TypedForStmt) -> CIRStmt {
@@ -723,10 +756,12 @@ impl<'resolver> CIRWalk<'resolver> {
             .initializer
             .clone()
             .and_then(|var| Some(self.lower_var(scope_id_opt, &var)));
+
         let cond = for_stmt
             .cond
             .clone()
             .and_then(|cond| Some(self.lower_expr(scope_id_opt, &cond)));
+
         let increment = for_stmt
             .increment
             .clone()
@@ -739,23 +774,28 @@ impl<'resolver> CIRWalk<'resolver> {
             cond,
             increment,
             body,
+            loc: for_stmt.loc.clone(),
         })
     }
 
-    fn lower_break(&self, _: &TypedBreakStmt) -> CIRStmt {
-        CIRStmt::Break
+    fn lower_break(&self, break_stmt: &TypedBreakStmt) -> CIRStmt {
+        CIRStmt::Break(break_stmt.loc.clone())
     }
 
-    fn lower_continue(&self, _: &TypedContinueStmt) -> CIRStmt {
-        CIRStmt::Continue
+    fn lower_continue(&self, continue_stmt: &TypedContinueStmt) -> CIRStmt {
+        CIRStmt::Continue(continue_stmt.loc.clone())
     }
 
-    fn lower_return(&mut self, scope_id_opt: Option<ScopeID>, ret: &TypedReturnStmt) -> CIRStmt {
-        let arg = ret
+    fn lower_return(&mut self, scope_id_opt: Option<ScopeID>, return_stmt: &TypedReturnStmt) -> CIRStmt {
+        let arg = return_stmt
             .arg
             .clone()
             .and_then(|arg| Some(self.lower_expr(scope_id_opt, &arg)));
-        CIRStmt::Return(CIRReturnStmt { arg })
+
+        CIRStmt::Return(CIRReturnStmt {
+            arg,
+            loc: return_stmt.loc.clone(),
+        })
     }
 
     fn lower_global_var(&mut self, scope_id_opt: Option<ScopeID>, global_var: &mut TypedGlobalVarStmt) -> CIRStmt {
@@ -788,6 +828,7 @@ impl<'resolver> CIRWalk<'resolver> {
             ty,
             expr,
             modifiers: global_var.modifiers.clone(),
+            loc: global_var.loc.clone(),
         })
     }
 
@@ -815,6 +856,7 @@ impl<'resolver> CIRWalk<'resolver> {
             ty,
             expr: None,
             modifiers: global_var_sig.modifiers.clone(),
+            loc: global_var_sig.loc.clone(),
         }
     }
 
@@ -841,6 +883,7 @@ impl<'resolver> CIRWalk<'resolver> {
             name: var.name.clone(),
             ty,
             expr,
+            loc: var.loc.clone(),
         }
     }
 
@@ -895,6 +938,7 @@ impl<'resolver> CIRWalk<'resolver> {
             ret,
             modifiers: func_def.modifiers.clone(),
             abi_func_info: None,
+            loc: func_def.loc.clone(),
         };
 
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_def_as_decl(&cir_func_def));
@@ -934,6 +978,7 @@ impl<'resolver> CIRWalk<'resolver> {
             ret,
             modifiers: func_decl.modifiers.clone(),
             abi_func_info: None,
+            loc: func_decl.loc.clone(),
         };
 
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
@@ -957,6 +1002,7 @@ impl<'resolver> CIRWalk<'resolver> {
             ret,
             modifiers: func_sig.modifiers.clone(),
             abi_func_info: None,
+            loc: func_sig.loc.clone(),
         };
 
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
@@ -972,7 +1018,11 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|defer| self.lower_defer(Some(block.scope_id), defer))
             .collect();
 
-        CIRBlockStmt { stmts, defers }
+        CIRBlockStmt {
+            stmts,
+            defers,
+            loc: block.loc.clone(),
+        }
     }
 
     // exprs
@@ -1020,7 +1070,11 @@ impl<'resolver> CIRWalk<'resolver> {
             TypedExprKind::SemanticType(..) => unreachable!(),
         };
 
-        CIRExpr { kind, ty }
+        CIRExpr {
+            kind,
+            ty,
+            loc: expr.loc.clone(),
+        }
     }
 
     fn lower_unnamed_union_value(
@@ -1124,6 +1178,7 @@ impl<'resolver> CIRWalk<'resolver> {
                 operand: Box::new(operand),
             }),
             ty: CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+            loc: dynamic_expr.loc.clone(),
         };
 
         let vtable_info = {
@@ -1157,6 +1212,7 @@ impl<'resolver> CIRWalk<'resolver> {
             method_decls,
             global_var_id: vtable_info.global_var_id,
             vtable_abi_name,
+            loc: dynamic_expr.loc.clone(),
         })
     }
 
@@ -1242,16 +1298,23 @@ impl<'resolver> CIRWalk<'resolver> {
             .unwrap();
 
         if let Some(resolved_struct) = sym.as_struct() {
-            let fields_tys: Vec<CIRTy> = struct_init_expr
+            let fields: Vec<(String, CIRTy)> = struct_init_expr
                 .fields
                 .iter()
-                .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+                .map(|field| {
+                    (
+                        field.name.clone(),
+                        self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()),
+                    )
+                })
                 .collect();
 
             let struct_ty = CIRStructTy {
+                name: Some(resolved_struct.struct_sig.name.clone()),
                 repr_attr: resolved_struct.struct_sig.modifiers.repr_attr.clone(),
                 align: resolved_struct.struct_sig.align.clone(),
-                fields: fields_tys,
+                fields,
+                loc: resolved_struct.struct_sig.loc.clone(),
             };
 
             let fields: Vec<CIRExpr> = struct_init_expr
@@ -1262,16 +1325,23 @@ impl<'resolver> CIRWalk<'resolver> {
 
             CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
         } else if let Some(resolved_union) = sym.as_union() {
-            let fields_tys: Vec<CIRTy> = struct_init_expr
+            let fields = struct_init_expr
                 .fields
                 .iter()
-                .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+                .map(|field| {
+                    (
+                        field.name.clone(),
+                        self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()),
+                    )
+                })
                 .collect();
 
             let union_ty = CIRTy::Union(CIRUnionTy {
+                name: Some(resolved_union.union_sig.name.clone()),
+                fields,
                 repr_attr: resolved_union.union_sig.modifiers.repr_attr.clone(),
                 align: resolved_union.union_sig.align.clone(),
-                fields: fields_tys,
+                loc: resolved_union.union_sig.loc.clone(),
             });
 
             let struct_field_init = struct_init_expr.fields.first().unwrap();
@@ -1296,12 +1366,16 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_tuple(&mut self, scope_id_opt: Option<ScopeID>, tuple: &TypedTupleExpr) -> CIRExprKind {
-        let elms: Vec<CIRExpr> = tuple
+        let elements: Vec<CIRExpr> = tuple
             .expr_list
             .iter()
             .map(|expr| self.lower_expr(scope_id_opt, expr))
             .collect();
-        CIRExprKind::Tuple(CIRTupleExpr { elms })
+
+        CIRExprKind::Tuple(CIRTupleExpr {
+            elements,
+            loc: tuple.loc.clone(),
+        })
     }
 
     fn lower_lambda(&mut self, scope_id_opt: Option<ScopeID>, lambda: &TypedLambdaExpr) -> CIRExprKind {
@@ -1326,6 +1400,7 @@ impl<'resolver> CIRWalk<'resolver> {
             ret,
             body,
             abi_func_info,
+            loc: lambda.loc.clone(),
         })
     }
 
@@ -1417,6 +1492,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     kind: CIRValueKind::Func(Box::new(cir_func_decl)),
                 }),
                 ty: ret_ty.clone(),
+                loc: func_decl.loc.clone(),
             });
 
             cir_expr_kind = CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
@@ -1653,13 +1729,15 @@ impl<'resolver> CIRWalk<'resolver> {
         let field_types = unnamed_struct_type
             .fields
             .iter()
-            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
             .collect();
 
         let struct_ty = CIRStructTy {
+            name: None,
             fields: field_types,
             repr_attr: unnamed_struct_value.repr_attr.clone(),
             align: unnamed_struct_value.align.clone(),
+            loc: unnamed_struct_type.loc.clone(),
         };
 
         CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
@@ -1673,7 +1751,7 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_array(&mut self, scope_id_opt: Option<ScopeID>, array: &TypedArrayExpr) -> CIRExprKind {
-        let elms: Vec<CIRExpr> = array
+        let elements: Vec<CIRExpr> = array
             .elements
             .iter()
             .map(|elm| self.lower_expr(scope_id_opt, elm))
@@ -1681,7 +1759,8 @@ impl<'resolver> CIRWalk<'resolver> {
 
         CIRExprKind::Array(CIRArrayExpr {
             ty: self.lower_sema_ty(scope_id_opt, &array.array_type.as_ref().unwrap()),
-            elms,
+            elements,
+            loc: array.loc.clone(),
         })
     }
 
@@ -1786,16 +1865,21 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::Const(sema_ty) => CIRTy::Const(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
             SemanticType::Pointer(sema_ty) => CIRTy::Pointer(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
             SemanticType::UnnamedStruct(unnamed_struct_type) => {
-                let field_tys: Vec<CIRTy> = unnamed_struct_type
+                let fields = unnamed_struct_type
                     .fields
                     .iter()
-                    .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+                    .map(|field| {
+                        let var_name = (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty));
+                        var_name
+                    })
                     .collect();
 
                 CIRTy::Struct(CIRStructTy {
-                    fields: field_tys,
+                    name: None,
+                    fields,
                     repr_attr: unnamed_struct_type.repr_attr.clone(),
                     align: unnamed_struct_type.align.clone(),
+                    loc: unnamed_struct_type.loc.clone(),
                 })
             }
             SemanticType::FuncType(func_type) => {
@@ -1814,13 +1898,16 @@ impl<'resolver> CIRWalk<'resolver> {
                 CIRTy::FuncType(cir_type)
             }
             SemanticType::Tuple(tuple_type) => {
-                let items: Vec<CIRTy> = tuple_type
+                let elements: Vec<CIRTy> = tuple_type
                     .type_list
                     .iter()
                     .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
                     .collect();
 
-                CIRTy::Tuple(CIRTupleTy { elements: items })
+                CIRTy::Tuple(CIRTupleTy {
+                    elements,
+                    loc: tuple_type.loc.clone(),
+                })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(scope_id_opt, generic_type.clone()),
             SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
@@ -1852,16 +1939,22 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::DynamicType(dynamic_type) => CIRTy::Dynamic(CIRDynamicTy {
                 vtable_id: dynamic_type.vtable_id,
             }),
-            SemanticType::Interface(_) => {
-                CIRTy::Struct(CIRStructTy {
-                    fields: vec![
-                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))), // data_ptr
-                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))), // vtable_ptr
-                    ],
-                    repr_attr: None,
-                    align: None,
-                })
-            }
+            SemanticType::Interface(interface_type) => CIRTy::Struct(CIRStructTy {
+                name: None,
+                fields: vec![
+                    (
+                        "data_ptr".to_string(),
+                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                    ),
+                    (
+                        "vtable_ptr".to_string(),
+                        CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                    ),
+                ],
+                repr_attr: None,
+                align: None,
+                loc: interface_type.loc.clone(),
+            }),
             SemanticType::UnnamedUnion(unnamed_union_type) => {
                 CIRTy::Union(self.lower_unnamed_union_type_as_cir_union_ty(scope_id_opt, unnamed_union_type))
             }
@@ -1878,14 +1971,18 @@ impl<'resolver> CIRWalk<'resolver> {
         scope_id_opt: Option<ScopeID>,
         unnamed_union_type: &TypedUnnamedUnionType,
     ) -> CIRUnionTy {
+        let fields = unnamed_union_type
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
+            .collect();
+
         CIRUnionTy {
-            fields: unnamed_union_type
-                .fields
-                .iter()
-                .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
-                .collect(),
+            name: None,
+            fields,
             repr_attr: unnamed_union_type.repr_attr.clone(),
             align: unnamed_union_type.align.clone(),
+            loc: unnamed_union_type.loc.clone(),
         }
     }
 
@@ -1906,10 +2003,12 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
 
         CIREnumTy {
+            name: None,
             variants,
             tag_type,
             repr_attr: unnamed_enum_type.repr_attr.clone(),
             align: unnamed_enum_type.align.clone(),
+            loc: unnamed_enum_type.loc.clone(),
         }
     }
 
@@ -1980,16 +2079,18 @@ impl<'resolver> CIRWalk<'resolver> {
     }
 
     fn lower_struct_sig_as_struct_ty(&mut self, scope_id_opt: Option<ScopeID>, struct_sig: &StructSig) -> CIRStructTy {
-        let fields: Vec<CIRTy> = struct_sig
+        let fields = struct_sig
             .fields
             .iter()
-            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
             .collect();
 
         CIRStructTy {
+            name: Some(struct_sig.name.clone()),
             fields,
             repr_attr: struct_sig.modifiers.repr_attr.clone(),
             align: struct_sig.align.clone(),
+            loc: struct_sig.loc.clone(),
         }
     }
 
@@ -2022,24 +2123,28 @@ impl<'resolver> CIRWalk<'resolver> {
             .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
 
         CIREnumTy {
+            name: Some(enum_sig.name.clone()),
             variants,
             tag_type,
             repr_attr: enum_sig.modifiers.repr_attr.clone(),
             align: enum_sig.align.clone(),
+            loc: enum_sig.loc.clone(),
         }
     }
 
     fn lower_union_sig_as_union_ty(&mut self, scope_id_opt: Option<ScopeID>, union_sig: &UnionSig) -> CIRUnionTy {
-        let fields: Vec<CIRTy> = union_sig
+        let fields = union_sig
             .fields
             .iter()
-            .map(|field| self.lower_sema_ty(scope_id_opt, &field.ty))
+            .map(|field| (field.name.clone(), self.lower_sema_ty(scope_id_opt, &field.ty)))
             .collect();
 
         CIRUnionTy {
+            name: Some(union_sig.name.clone()),
             fields,
             repr_attr: union_sig.modifiers.repr_attr.clone(),
             align: union_sig.align.clone(),
+            loc: union_sig.loc.clone(),
         }
     }
 

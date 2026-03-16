@@ -23,6 +23,7 @@ use crate::{
         walk::CIRWalk,
     },
 };
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     SymbolID,
     generics::monomorph::{MonomorphEntry, MonomorphFuncEntry, MonomorphKey},
@@ -42,6 +43,7 @@ pub struct CIRMonomorphFuncEntry {
     pub func_params: CIRFuncParams,
     pub func_body: CIRMonomorphFuncBody,
     pub abi_func_info: ABIFunctionInfo,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +147,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     func_type: cir_func_type,
                     func_body: CIRMonomorphFuncBody::Placeholder,
                     abi_func_info,
+                    loc: cir_func_decl.loc.clone(),
                 }),
             );
         }

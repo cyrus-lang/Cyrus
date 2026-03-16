@@ -22,14 +22,24 @@ use crate::{
         irreg::{LocalIRValue, LocalIRValueRegistry, LocalIRValueRegistryRef},
         values::{InternalValue, InternalValueKind},
     },
-    llvm::abi::modifiers::apply_global_var_modifiers,
+    llvm::{
+        abi::modifiers::apply_global_var_modifiers,
+        debug_info::{
+            BlockScope, DebugContext, create_debug_global_var_metadata, create_debug_lexical_block,
+            create_debug_var_metadata, debug_current_scope, debug_func_type, emit_dbg_declare, set_debug_location,
+        },
+    },
 };
 use cyrusc_internal::{
-    abi::{args::ABIFunctionInfo, layout::type_layout, target::ABITarget},
+    abi::{
+        args::ABIFunctionInfo,
+        layout::{ABITypeLayout, type_layout},
+        target::ABITarget,
+    },
     cir::{
         cir::{
             CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
-            cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
+            cir_func_decl_as_func_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
         },
         monomorph::CIRMonomorphRegistry,
     },
@@ -39,11 +49,15 @@ use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
-    context::Context,
+    context::{AsContextRef, Context},
+    llvm_sys::{
+        LLVMOpaqueMetadata, core::LLVMSetCurrentDebugLocation2, debuginfo::LLVMDIBuilderCreateDebugLocation,
+        prelude::LLVMMetadataRef,
+    },
     module::Module,
     targets::TargetMachine,
-    types::BasicTypeEnum,
-    values::{FunctionValue, GlobalValue},
+    types::{AsTypeRef, BasicTypeEnum},
+    values::{AsValueRef, FunctionValue, GlobalValue, PointerValue},
 };
 use std::{
     cell::RefCell,
@@ -64,8 +78,11 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
     pub(crate) monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-    // lambda name (auto increment)
+
+    // lambda abi name (auto increment)
     pub(crate) lambda_id: usize,
+
+    pub(crate) dctx: DebugContext,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +100,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
         monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        dctx: DebugContext,
     ) -> Self {
         let llvmmodule = unsafe {
             std::mem::transmute::<Rc<RefCell<Module<'static>>>, Rc<RefCell<Module<'ll>>>>(owned_module.module.clone())
@@ -105,6 +123,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             monomorph_registry,
             lambda_id: 0,
             defer_stack: Vec::new(),
+            dctx,
         }
     }
 
@@ -116,26 +135,31 @@ impl<'ll> IRBuilderCtx<'ll> {
         tui_compiled(cir_program_tree.file_path.clone());
     }
 
-    pub(crate) fn emit_stmt(&mut self, cir_stmt: &CIRStmt) {
-        match cir_stmt {
+    pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
+        match stmt {
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
             CIRStmt::GlobalVar(global_var_stmt) => {
                 self.emit_global_var(global_var_stmt);
             }
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
+                let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
                 let fn_value = self.emit_func_decl(&func_decl);
                 self.set_current_func(fn_value, func_def_stmt.abi_func_info.clone().unwrap());
+                let func_metadata = self.emit_func_metadata(&cir_func_ty);
+
                 self.emit_func_body(
                     &func_decl.params,
                     &func_def_stmt.abi_func_info.as_ref().unwrap(),
                     &func_def_stmt.body,
+                    func_metadata,
+                    &func_decl.loc,
                 );
             }
             CIRStmt::FuncDecl(func_decl_stmt) => {
                 self.emit_func_decl(func_decl_stmt);
             }
-            CIRStmt::Block(block_stmt) => self.emit_body(block_stmt),
+            CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Struct(struct_stmt) => {
                 self.emit_struct_ty(cir_struct_as_struct_ty(struct_stmt));
             }
@@ -156,10 +180,36 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
             CIRStmt::Label(label_stmt) => self.emit_label(label_stmt),
             CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
-            CIRStmt::Break => self.emit_break(),
-            CIRStmt::Continue => self.emit_continue(),
+            CIRStmt::Break(loc) => self.emit_break(loc),
+            CIRStmt::Continue(loc) => self.emit_continue(loc),
             CIRStmt::Defer(_) => unreachable!(),
         }
+
+        unsafe {
+            set_debug_location(
+                &self.dctx,
+                self.llvmctx,
+                self.llvmbuilder,
+                stmt.loc().line.try_into().unwrap(),
+                stmt.loc().column.try_into().unwrap(),
+            )
+        };
+    }
+
+    pub(crate) fn emit_scope_block(&mut self, block: &CIRBlockStmt) {
+        let parent = debug_current_scope(&self.dctx);
+
+        let lexical_block =
+            unsafe { create_debug_lexical_block(&self.dctx, parent, block.loc.line as u32, block.loc.column as u32) };
+
+        self.dctx.block_stack.push(BlockScope {
+            lexical_block,
+            inline_loc: std::ptr::null_mut(),
+        });
+
+        self.emit_body(block);
+
+        self.dctx.block_stack.pop();
     }
 
     pub(crate) fn emit_body(&mut self, block: &CIRBlockStmt) {
@@ -193,6 +243,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();
 
+        self.emit_var_metadata(&layout, &ptr, cir_var);
+
         if let Some(expr) = &cir_var.expr {
             let lvalue = self.emit_expr(expr);
             let rvalue = self.load_rvalue(lvalue);
@@ -212,6 +264,80 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(irreg);
     }
 
+    fn emit_var_metadata(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
+        let var_ty_metadata = self.emit_debug_ty_metadata(&cir_var.ty);
+
+        let scope = debug_current_scope(&self.dctx);
+        let file = self.dctx.file.metadata;
+        let var_meta = unsafe {
+            create_debug_var_metadata(
+                &self.dctx,
+                &cir_var.name,
+                scope,
+                file,
+                cir_var.loc.line.try_into().unwrap(),
+                var_ty_metadata,
+                layout.align,
+            )
+        };
+
+        unsafe {
+            emit_dbg_declare(
+                &self.dctx,
+                self.llvmctx,
+                self.llvmbuilder,
+                ptr.as_value_ref(),
+                var_meta,
+                cir_var.loc.line.try_into().unwrap(),
+                cir_var.loc.column.try_into().unwrap(),
+            )
+        };
+    }
+
+    fn emit_global_var_metadata(
+        &self,
+        layout: &ABITypeLayout,
+        ptr: &PointerValue<'ll>,
+        cir_global_var: &CIRGlobalVarStmt,
+    ) {
+        let var_ty_metadata = self.emit_debug_ty_metadata(&cir_global_var.ty);
+
+        let is_global_var_local = !cir_global_var
+            .modifiers
+            .linkage
+            .clone()
+            .map(|linkage| linkage.is_extern())
+            .unwrap_or(false);
+
+        let scope = debug_current_scope(&self.dctx);
+        let file = self.dctx.file.metadata;
+        let var_meta = unsafe {
+            create_debug_global_var_metadata(
+                &self.dctx,
+                scope,
+                &cir_global_var.name,
+                &cir_global_var.name,
+                file,
+                cir_global_var.loc.line.try_into().unwrap(),
+                var_ty_metadata,
+                is_global_var_local,
+                layout.align,
+            )
+        };
+
+        unsafe {
+            emit_dbg_declare(
+                &self.dctx,
+                self.llvmctx,
+                self.llvmbuilder,
+                ptr.as_value_ref(),
+                var_meta,
+                cir_global_var.loc.line.try_into().unwrap(),
+                cir_global_var.loc.column.try_into().unwrap(),
+            )
+        };
+    }
+
     pub(crate) fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
         {
             let irreg = self.irreg.borrow();
@@ -229,6 +355,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         let ty: BasicTypeEnum<'ll> = self.emit_ty(cir_global_var.ty.clone()).try_into().unwrap();
         let global_value = llvmmodule.add_global(ty, None, &cir_global_var.name);
         drop(llvmmodule);
+
+        let layout = type_layout(&self.target.info, &cir_global_var.ty);
+        self.emit_global_var_metadata(&layout, &global_value.as_pointer_value(), cir_global_var);
 
         if let Some(expr) = &cir_global_var.expr {
             let lvalue = self.emit_expr(&expr);

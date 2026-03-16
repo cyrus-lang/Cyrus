@@ -18,6 +18,7 @@
 #[cfg(test)]
 mod tests {
     use cyrusc_ast::abi::CallConv;
+    use cyrusc_diagcentral::source_loc::SourceLoc;
     use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
     use crate::{
@@ -63,18 +64,26 @@ mod tests {
     }
 
     fn struct_ty(fields: Vec<CIRTy>) -> CIRTy {
+        let fields = fields.iter().map(|ty| ("".to_string(), ty.clone())).collect();
+
         CIRTy::Struct(CIRStructTy {
+            name: None,
             fields,
             repr_attr: None,
             align: None,
+            loc: SourceLoc::default(),
         })
     }
 
     fn union_ty(fields: Vec<CIRTy>) -> CIRTy {
+        let fields = fields.iter().map(|ty| ("".to_string(), ty.clone())).collect();
+
         CIRTy::Union(CIRUnionTy {
+            name: None,
             fields,
             align: None,
             repr_attr: None,
+            loc: SourceLoc::default(),
         })
     }
 

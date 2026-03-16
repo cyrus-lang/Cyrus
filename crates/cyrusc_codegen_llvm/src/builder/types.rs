@@ -17,12 +17,17 @@
 
 use crate::builder::builder::IRBuilderCtx;
 use crate::llvm::abi::abi_type::abi_type_to_llvm_type;
+use crate::llvm::debug_info::{
+    debug_array_type, debug_const_type, debug_dynamic_type, debug_member_type, debug_pointer_type, debug_simple_type, debug_struct_type, debug_union_type
+};
+use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
 use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
 use cyrusc_tast::types::PlainType;
-use inkwell::llvm_sys::prelude::LLVMTypeRef;
+use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMBool},
@@ -30,6 +35,156 @@ use inkwell::{
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_debug_ty_metadata(&self, ty: &CIRTy) -> LLVMMetadataRef {
+        match ty {
+            CIRTy::PlainType(plain_type) => {
+                let name = plain_type.to_string();
+                let layout = type_layout(&self.target.info, &CIRTy::PlainType(plain_type.clone()));
+                let bits = layout.size * 8;
+
+                let encoding = match plain_type {
+                    PlainType::Int
+                    | PlainType::Int8
+                    | PlainType::Int16
+                    | PlainType::Int32
+                    | PlainType::Int64
+                    | PlainType::Int128
+                    | PlainType::ISize
+                    | PlainType::IntPtr => DW_ATE_SIGNED,
+
+                    PlainType::UInt
+                    | PlainType::UInt8
+                    | PlainType::UInt16
+                    | PlainType::UInt32
+                    | PlainType::UInt64
+                    | PlainType::UInt128
+                    | PlainType::USize
+                    | PlainType::UIntPtr => DW_ATE_UNSIGNED,
+
+                    PlainType::Float16 | PlainType::Float32 | PlainType::Float64 | PlainType::Float128 => DW_ATE_FLOAT,
+                    PlainType::Bool => DW_ATE_BOOLEAN,
+                    PlainType::Char => DW_ATE_UNSIGNED_CHAR,
+
+                    PlainType::Void | PlainType::Null => {
+                        unreachable!()
+                    }
+                };
+
+                unsafe { debug_simple_type(&self.dctx, &name, bits as u64, encoding as u32) }
+            }
+            CIRTy::Const(inner_ty) => {
+                let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
+                unsafe { debug_const_type(&self.dctx, inner_ty_metadata) }
+            }
+            CIRTy::Pointer(inner_ty) => {
+                let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
+                let ptr_size_bits = self.target.info.pointer_size() * 8;
+                let ptr_align = self.target.info.pointer_align() * 8;
+                unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "ptr") }
+            }
+            CIRTy::Struct(struct_ty) => unsafe {
+                let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_ty.clone()));
+                let mut elements_metadata: Vec<LLVMMetadataRef> = struct_ty
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (name, ty))| {
+                        let field_type_metadata = self.emit_debug_ty_metadata(ty);
+                        let offset_bits = layout.lookup_field_offset(i) * 8;
+
+                        debug_member_type(
+                            &self.dctx,
+                            name,
+                            field_type_metadata,
+                            offset_bits as u64,
+                            struct_ty.loc.line as u32,
+                        )
+                    })
+                    .collect();
+
+                let struct_name = struct_ty.name.clone().unwrap_or("<unnamed_struct>".to_string());
+
+                debug_struct_type(
+                    &self.dctx,
+                    &struct_name,
+                    &mut elements_metadata,
+                    layout.size as u64,
+                    layout.align,
+                    struct_ty.loc.line.try_into().unwrap(),
+                )
+            },
+            CIRTy::Tuple(tuple_ty) => {
+                let layout = type_layout(&self.target.info, &CIRTy::Tuple(tuple_ty.clone()));
+                let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_ty
+                    .elements
+                    .iter()
+                    .map(|ty| self.emit_debug_ty_metadata(ty))
+                    .collect();
+
+                let struct_name = "<tuple>".to_string();
+
+                unsafe {
+                    debug_struct_type(
+                        &self.dctx,
+                        &struct_name,
+                        &mut elements_metadata,
+                        layout.size as u64,
+                        layout.align,
+                        tuple_ty.loc.line.try_into().unwrap(),
+                    )
+                }
+            }
+            CIRTy::Enum(enum_ty) => todo!(),
+            CIRTy::Union(union_ty) => {
+                let layout = type_layout(&self.target.info, &CIRTy::Union(union_ty.clone()));
+                let mut elements_metadata: Vec<LLVMMetadataRef> = union_ty
+                    .fields
+                    .iter()
+                    .map(|(_, ty)| self.emit_debug_ty_metadata(ty))
+                    .collect();
+
+                let struct_name = union_ty.name.clone().unwrap_or("<unnamed_union>".to_string());
+
+                unsafe {
+                    debug_union_type(
+                        &self.dctx,
+                        &struct_name,
+                        &mut elements_metadata,
+                        layout.size as u64,
+                        layout.align,
+                        union_ty.loc.line.try_into().unwrap(),
+                    )
+                }
+            }
+            CIRTy::FuncType(func_ty) => self.emit_func_metadata(func_ty),
+            CIRTy::Array(array_ty) => {
+                let element_ty_metadata = self.emit_debug_ty_metadata(&array_ty.ty);
+                let layout = type_layout(&self.target.info, &CIRTy::Array(array_ty.clone()));
+
+                unsafe {
+                    debug_array_type(
+                        &self.dctx,
+                        element_ty_metadata,
+                        array_ty.len as u64,
+                        layout.size as u64,
+                        layout.align,
+                    )
+                }
+            }
+            CIRTy::Dynamic(dynamic_ty) => {
+                let layout = type_layout(&self.target.info, &CIRTy::Dynamic(dynamic_ty.clone()));
+                let ptr_size_bits = layout.size * 8;
+                let align_bits = layout.align * 8;
+
+                let cir_void_ptr_ty = CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void)));
+                let data_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
+                let vtable_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
+
+                unsafe { debug_dynamic_type(&self.dctx, data_ptr_ty, vtable_ptr_ty, ptr_size_bits as u64, align_bits) }
+            }
+        }
+    }
+
     pub(crate) fn emit_ty(&self, ty: CIRTy) -> AnyTypeEnum<'ll> {
         match ty {
             CIRTy::Const(inner_ty) => self.emit_ty(*inner_ty),
@@ -45,14 +200,19 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy) -> CIRTy {
+    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy, loc: &SourceLoc) -> CIRTy {
         CIRTy::Struct(CIRStructTy {
+            name: None,
             fields: vec![
-                CIRTy::Pointer(Box::new(data_ptr_inner_ty)),
-                CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                ("data_ptr".to_string(), CIRTy::Pointer(Box::new(data_ptr_inner_ty))),
+                (
+                    "vtable_ptr".to_string(),
+                    CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                ),
             ],
             align: None,
             repr_attr: None,
+            loc: loc.clone(),
         })
     }
 
@@ -121,7 +281,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             match field_offset {
                 ABIFieldOffsetInfo::Normal { .. } => {
                     // get the next actual field from the struct
-                    let field_ty = &struct_ty.fields[next_field_index];
+                    let (_, field_ty) = &struct_ty.fields[next_field_index];
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(field_ty.clone()).try_into().unwrap();
                     llvm_field_types.push(llvm_ty);
                     next_field_index += 1;
@@ -153,12 +313,19 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         let variant = &enum_ty.variants[variant_idx];
-        let fields = variant.as_fielded()?;
+        let elements = variant.as_fielded()?.clone();
+        let tuple_type = CIRTupleTy {
+            elements,
+            loc: enum_ty.loc.clone(),
+        };
+        let struct_tuple_type = tuple_type.as_struct_ty();
 
         Some(self.emit_struct_ty(CIRStructTy {
-            fields: fields.to_vec(),
+            name: None,
+            fields: struct_tuple_type.fields,
             repr_attr: None,
             align: None,
+            loc: enum_ty.loc.clone(),
         }))
     }
 
@@ -247,8 +414,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         let mut max_align = 0;
         let mut max_size = 0;
 
-        for field in &union_ty.fields {
-            let llvm_ty: BasicTypeEnum = self.emit_ty(field.clone()).try_into().unwrap();
+        for (_, field_ty) in &union_ty.fields {
+            let llvm_ty: BasicTypeEnum = self.emit_ty(field_ty.clone()).try_into().unwrap();
 
             let align = target_data.get_abi_alignment(&llvm_ty);
             let size = target_data.get_store_size(&llvm_ty);

@@ -23,6 +23,7 @@ use crate::{
     c,
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_internal::{
     abi::{args::ABIRetInfoKind, layout::type_layout, types::ABIType},
     cir::{
@@ -316,11 +317,15 @@ impl<'ll> IRBuilderCtx<'ll> {
         variant_field_types: Vec<CIRTy>,
         payload_struct_ty: StructType<'ll>,
         exported_fields: &Vec<(TypedIdentifier, CIRTy)>,
+        loc: &SourceLoc,
     ) {
         let mut irreg = self.irreg.borrow_mut();
 
         let elements: Vec<CIRTy> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
-        let tuple_type = CIRTy::Tuple(CIRTupleTy { elements });
+        let tuple_type = CIRTy::Tuple(CIRTupleTy {
+            elements,
+            loc: loc.clone(),
+        });
         let layout = type_layout(&self.target.info, &tuple_type);
 
         for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
@@ -377,7 +382,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let case_block = self.new_basic_block("switch_on_enum.case");
 
             for pattern in &case.patterns {
-                let tag = enum_ty.compute_variant_tag(pattern.ident()).unwrap() as u64;
+                let tag = enum_ty.compute_variant_tag(pattern.variant_name()).unwrap() as u64;
 
                 let pattern_value = enum_value.get_type().const_int(tag, false);
 
@@ -508,6 +513,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         variant_field_types.to_vec(),
                         payload_struct_type,
                         exported_fields,
+                        &switch_on_enum_stmt.loc,
                     );
                 } else if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr)) = pattern {
                     self.emit_block(case_block);
@@ -760,7 +766,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.blockreg.control_flow_stack.pop().unwrap();
     }
 
-    pub(crate) fn emit_break(&mut self) {
+    pub(crate) fn emit_break(&mut self, _: &SourceLoc) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
 
         let CFEntry::Loop(cf_loop) = entry;
@@ -774,7 +780,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.blockreg.cur_block = None;
     }
 
-    pub(crate) fn emit_continue(&mut self) {
+    pub(crate) fn emit_continue(&mut self, _: &SourceLoc) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
 
         let CFEntry::Loop(cf_loop) = entry;

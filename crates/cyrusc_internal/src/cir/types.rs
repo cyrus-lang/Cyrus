@@ -20,6 +20,7 @@ use crate::{
     cir::cir::{CIREnumTyVariant, cir_expr_as_const_integer_value},
 };
 use cyrusc_ast::abi::{CallConv, ReprAttr};
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +40,7 @@ pub enum CIRTy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRTupleTy {
     pub elements: Vec<CIRTy>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,24 +65,30 @@ pub struct CIRFuncTy {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRStructTy {
-    pub fields: Vec<CIRTy>,
+    pub name: Option<String>,
+    pub fields: Vec<(String, CIRTy)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRUnionTy {
-    pub fields: Vec<CIRTy>,
+    pub name: Option<String>,
+    pub fields: Vec<(String, CIRTy)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIREnumTy {
+    pub name: Option<String>,
     pub variants: Vec<CIREnumTyVariant>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRTy>>,
+    pub loc: SourceLoc,
 }
 
 impl CIREnumTy {
@@ -214,6 +222,7 @@ impl CIRTy {
             CIRTy::Union(union_ty) => Some(union_ty.fields.clone()),
             _ => None,
         }
+        .map(|fields| fields.iter().map(|(_, ty)| ty.clone()).collect::<Vec<CIRTy>>())
     }
 
     pub fn as_union(&self) -> Option<CIRUnionTy> {
@@ -351,10 +360,19 @@ impl CIRTy {
 
 impl CIRTupleTy {
     pub fn as_struct_ty(&self) -> CIRStructTy {
+        let fields = self
+            .elements
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| (i.to_string(), ty.clone()))
+            .collect();
+
         CIRStructTy {
-            fields: self.elements.clone(),
+            name: None,
+            fields,
             repr_attr: None,
             align: None,
+            loc: self.loc.clone(),
         }
     }
 }

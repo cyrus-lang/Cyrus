@@ -17,7 +17,10 @@
 use crate::{
     asan::enable_asan_for_owned_module,
     builder::builder::IRBuilderCtx,
-    llvm::target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
+    llvm::{
+        debug_info::{DebugContext, finalize_debug},
+        target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
+    },
 };
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_compiler::{
@@ -96,6 +99,7 @@ impl CodeGenLLVM {
         builder: Rc<Builder<'ctx>>,
         cir_program_tree: &'ctx CIRProgramTree,
         monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        dctx: DebugContext,
     ) {
         {
             let llvmmodule = owned_module.module.borrow();
@@ -116,9 +120,12 @@ impl CodeGenLLVM {
             &builder,
             &self.llvmtm,
             monomorph_registry,
+            dctx,
         );
 
         ir_builder_ctx.emit_program_tree(cir_program_tree);
+
+        unsafe { finalize_debug(&ir_builder_ctx.dctx) };
 
         {
             let llvmmodule = owned_module.module.borrow();
@@ -342,6 +349,11 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 continue;
             }
 
+            let dctx = {
+                let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
+                unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_name.as_str(), ".") }
+            };
+
             // emit llvm-ir module
             let builder = owned_module.create_builder();
             self.process_module_with_local_context(
@@ -349,6 +361,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder,
                 cir_program_tree,
                 self.monomorph_registry.clone(),
+                dctx,
             );
             modules.push(owned_module);
         }
@@ -362,6 +375,11 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
         let context = OwnedModule::create_context();
         let owned_module = OwnedModule::create_owned_module(context, &self.entry_module_file_path, "module", true);
 
+        let dctx = {
+            let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
+            unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_name.as_str(), ".") }
+        };
+
         for cir_program_tree in cir_modules {
             let builder = owned_module.create_builder();
 
@@ -370,6 +388,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder.clone(),
                 cir_program_tree,
                 self.monomorph_registry.clone(),
+                dctx.clone(),
             );
         }
 

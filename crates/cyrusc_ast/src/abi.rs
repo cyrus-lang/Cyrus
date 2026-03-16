@@ -310,8 +310,18 @@ impl Visibility {
         matches!(self, Visibility::Public)
     }
 }
+
 impl Prologue {
     pub fn conflicts_with_inline(&self) -> bool {
         matches!(self, Prologue::Naked)
+    }
+}
+
+impl Linkage {
+    pub fn is_extern(&self) -> bool {
+        match self {
+            Linkage::Extern(_) => true,
+            _ => false,
+        }
     }
 }

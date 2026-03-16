@@ -29,4 +29,5 @@ pub extern "C" {
     fn fopen(file_name: abi::c_char*, modes: abi::c_char*) abi::c_file*;
     fn fclose(src: abi::c_void*) abi::c_int;
     fn ferror(stream: abi::c_file*) abi::c_int;
+    fn abort();
 }

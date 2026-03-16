@@ -22,12 +22,16 @@ use crate::{
         values::{InternalValue, InternalValueKind},
     },
     c,
-    llvm::abi::{
-        abi_type::abi_type_to_llvm_type,
-        modifiers::{apply_func_modifiers, apply_inlining_func},
+    llvm::{
+        abi::{
+            abi_type::abi_type_to_llvm_type,
+            modifiers::{apply_func_modifiers, apply_inlining_func},
+        },
+        debug_info::{debug_func_type, emit_debug_function},
     },
 };
 use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
+use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
@@ -43,8 +47,11 @@ use cyrusc_internal::{
 use cyrusc_tast::generics::monomorph::MonomorphKey;
 use inkwell::{
     context::AsContextRef,
-    llvm_sys::core::{
-        LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
+    llvm_sys::{
+        core::{
+            LLVMAddAttributeAtIndex, LLVMAddCallSiteAttribute, LLVMCreateTypeAttribute, LLVMGetEnumAttributeKindForName,
+        },
+        prelude::LLVMMetadataRef,
     },
     types::{AsTypeRef, BasicType, BasicTypeEnum, StructType},
     values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
@@ -56,6 +63,22 @@ pub(crate) enum FuncCallKind<'ll> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
+    pub(crate) fn emit_func_metadata(&self, func_ty: &CIRFuncTy) -> LLVMMetadataRef {
+        let ret_ty_meta = if !func_ty.ret.is_void() {
+            Some(self.emit_debug_ty_metadata(&func_ty.ret))
+        } else {
+            None
+        };
+
+        let params_metadata: Vec<LLVMMetadataRef> = func_ty
+            .params
+            .iter()
+            .map(|ty| self.emit_debug_ty_metadata(&ty))
+            .collect();
+
+        unsafe { debug_func_type(&self.dctx, ret_ty_meta, &params_metadata) }
+    }
+
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
@@ -407,10 +430,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 self.set_current_func(fn_value, monomorph_func_entry.abi_func_info.clone());
 
+                let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
+
                 self.emit_func_body(
                     &monomorph_func_entry.func_params,
                     &monomorph_func_entry.abi_func_info,
                     &monomorph_func_entry.body().unwrap(),
+                    func_metadata,
+                    &monomorph_func_entry.loc,
                 );
 
                 {
@@ -619,6 +646,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             ret: lambda.ret.clone(),
             modifiers: FuncModifiers::default(),
             abi_func_info: None,
+            loc: lambda.loc.clone(),
         };
 
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
@@ -630,8 +658,16 @@ impl<'ll> IRBuilderCtx<'ll> {
             apply_inlining_func(self.llvmctx, &fn_value, Inlining::Inline);
         }
 
+        let func_metadata = self.emit_func_metadata(&cir_func_type);
+
         self.set_current_func(fn_value, lambda.abi_func_info.clone());
-        self.emit_func_body(&lambda.params, &lambda.abi_func_info, &lambda.body);
+        self.emit_func_body(
+            &lambda.params,
+            &lambda.abi_func_info,
+            &lambda.body,
+            func_metadata,
+            &lambda.loc,
+        );
 
         if let Some(cur_func) = parent_func {
             self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
@@ -677,14 +713,32 @@ impl<'ll> IRBuilderCtx<'ll> {
         func_params: &CIRFuncParams,
         abi_func_info: &ABIFunctionInfo,
         cir_block: &CIRBlockStmt,
+        func_metadata: LLVMMetadataRef,
+        loc: &SourceLoc,
     ) {
         debug_assert!(self.cur_func.is_some());
+
+        let cur_func = self.cur_func.unwrap();
+        let cur_func_name = cur_func.get_name().to_str().unwrap();
+        let parent_dctx_func = self.dctx.func;
+
+        unsafe {
+            emit_debug_function(
+                &mut self.dctx,
+                cur_func.as_value_ref(),
+                cur_func_name,
+                loc.line.try_into().unwrap(),
+                func_metadata,
+            )
+        };
 
         self.ensure_entry_block();
         self.blockreg.labels.clear();
         self.emit_func_params(func_params.clone(), abi_func_info);
         self.emit_body(cir_block);
         self.ensure_void_fn_terminated();
+
+        self.dctx.func = parent_dctx_func;
     }
 
     pub(crate) fn ensure_void_fn_terminated(&mut self) {

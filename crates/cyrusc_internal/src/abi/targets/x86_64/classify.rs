@@ -232,7 +232,7 @@ impl X86_64 {
 
         let mut current_offset = 0;
 
-        for field_ty in fields {
+        for (_, field_ty) in fields {
             let field_layout = type_layout(&self.info, &field_ty);
             let align = field_layout.align;
 
@@ -346,10 +346,10 @@ impl X86_64 {
 
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2321
     fn bits_contain_no_user_data(&self, ty: &CIRTy, start: u32, end: u32) -> bool {
-        let check_for_struct_or_union = |fields: &Vec<CIRTy>, is_union: bool| {
+        let check_for_struct_or_union = |fields: &Vec<(String, CIRTy)>, is_union: bool| {
             let mut current_offset = 0;
 
-            for field in fields {
+            for (_, field) in fields {
                 let field_layout = type_layout(&self.info, field);
                 let align = field_layout.align;
 
@@ -1132,7 +1132,7 @@ fn classify_struct_or_union(
 
     let is_union = ty.is_union();
 
-    for (i, field_ty) in fields.iter().enumerate() {
+    for (i, (_, field_ty)) in fields.iter().enumerate() {
         let field_layout = type_layout(info, field_ty);
 
         let field_offset = if is_union {

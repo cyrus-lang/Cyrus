@@ -22,7 +22,7 @@ use crate::{
     },
     cir::{
         cir::CIREnumTyVariant,
-        types::{CIRStructTy, CIRTy},
+        types::{CIRStructTy, CIRTupleTy, CIRTy},
     },
 };
 use cyrusc_tast::types::PlainType;
@@ -67,7 +67,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             let mut field_offset_index = 0u32;
 
-            for (field_original_index, ty) in struct_ty.fields.iter().enumerate() {
+            for (field_original_index, (_, ty)) in struct_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 let effective_field_align = if is_packed { 1 } else { field_layout.align };
@@ -123,7 +123,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
 
-            for (original_index, ty) in union_ty.fields.iter().enumerate() {
+            for (original_index, (_, ty)) in union_ty.fields.iter().enumerate() {
                 let field_layout = type_layout(info, ty);
 
                 max_size = max_size.max(field_layout.size);
@@ -164,10 +164,18 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                     }
 
                     CIREnumTyVariant::Fielded(_, field_types) => {
+                        let tuple_type = CIRTupleTy {
+                            elements: field_types.clone(),
+                            loc: enum_ty.loc.clone(),
+                        };
+                        let tuple_struct_type = tuple_type.as_struct_ty();
+
                         let struct_ty = CIRStructTy {
-                            fields: field_types.clone(),
+                            name: None,
+                            fields: tuple_struct_type.fields.clone(),
                             repr_attr: None,
                             align: None,
+                            loc: enum_ty.loc.clone(),
                         };
 
                         let layout = type_layout(info, &CIRTy::Struct(struct_ty));

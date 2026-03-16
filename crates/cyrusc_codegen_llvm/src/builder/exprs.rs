@@ -22,7 +22,7 @@ use crate::{
         irreg::LocalIRValue,
         values::{InternalValue, InternalValueKind},
     },
-    llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant},
+    llvm::{abi::abi_type::abi_type_to_llvm_type, constness::is_basic_value_constant, debug_info::set_debug_location},
 };
 use cyrusc_ast::{
     abi::Linkage,
@@ -57,7 +57,7 @@ pub enum DerefMode {
 
 impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_expr(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
-        match &expr.kind {
+        let value = match &expr.kind {
             CIRExprKind::Load(value_ref) => self.emit_load(value_ref),
             CIRExprKind::Literal(literal) => self.emit_literal(literal),
             CIRExprKind::Prefix(prefix_expr) => self.emit_prefix_expr(prefix_expr),
@@ -96,7 +96,19 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::InterfaceMethodCall(interface_method_call) => {
                 self.emit_interface_method_call(interface_method_call)
             }
-        }
+        };
+
+        unsafe {
+            set_debug_location(
+                &self.dctx,
+                self.llvmctx,
+                self.llvmbuilder,
+                expr.loc.line.try_into().unwrap(),
+                expr.loc.column.try_into().unwrap(),
+            )
+        };
+
+        value
     }
 
     fn emit_dynamic_expr(&mut self, dynamic_expr: &CIRDynamicExpr) -> InternalValue<'ll> {
@@ -163,7 +175,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .into_struct_value();
 
             InternalValue::new(
-                self.cir_dynamic_ty(dynamic_expr.data_expr.ty.clone()),
+                self.cir_dynamic_ty(dynamic_expr.data_expr.ty.clone(), &dynamic_expr.loc),
                 InternalValueKind::RValue(dynamic_struct_value.as_basic_value_enum()),
             )
         }
@@ -473,11 +485,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().unwrap();
 
-        let required_len = array.elms.len();
+        let required_len = array.elements.len();
         let mut elements = Vec::with_capacity(required_len);
         let mut all_const = true;
 
-        for expr in &array.elms {
+        for expr in &array.elements {
             let lvalue = self.emit_expr(expr);
             let mut rvalue = self.load_rvalue(lvalue);
 
@@ -582,6 +594,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
                 kind: CIRExprKind::Deref(deref.clone()),
                 ty: deref.operand.ty.pointer_inner().cloned().unwrap(),
+                loc: deref.operand.loc.clone(),
             }),
         }
     }
@@ -1267,16 +1280,24 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_tuple(&mut self, tuple: &CIRTupleExpr) -> InternalValue<'ll> {
-        let element_types: Vec<CIRTy> = tuple.elms.iter().map(|elm| elm.ty.clone()).collect();
+        let element_types = tuple.elements.iter().map(|elm| elm.ty.clone()).collect();
+        let fields = tuple
+            .elements
+            .iter()
+            .enumerate()
+            .map(|(i, expr)| (i.to_string(), expr.ty.clone()))
+            .collect();
 
         let struct_value = self
             .emit_struct_init(&CIRStructInitExpr {
                 ty: CIRStructTy {
-                    fields: element_types.clone(),
+                    name: None,
+                    fields,
                     repr_attr: None,
                     align: None,
+                    loc: tuple.loc.clone(),
                 },
-                fields: tuple.elms.clone(),
+                fields: tuple.elements.clone(),
             })
             .as_basic_value()
             .into_struct_value();
@@ -1284,6 +1305,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(
             CIRTy::Tuple(CIRTupleTy {
                 elements: element_types,
+                loc: tuple.loc.clone(),
             }),
             InternalValueKind::RValue(struct_value.into()),
         )
@@ -1532,7 +1554,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     let mut rvalue = self.load_rvalue(lvalue);
 
                     let field_original_index = field_offset.original_index().unwrap();
-                    let target_type = struct_init.ty.fields.get(field_original_index).unwrap();
+                    let (_, target_type) = struct_init.ty.fields.get(field_original_index).unwrap();
 
                     if !self.llvmbuilder.get_insert_block().is_none() {
                         rvalue = self.emit_implicit_cast(target_type, rvalue);
@@ -1567,7 +1589,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             let field_values = values
                 .iter()
                 .filter_map(|(original_index, value)| {
-                    original_index.map(|i| ((Some(i), value.clone()), struct_init.ty.fields[i].clone()))
+                    original_index.map(|i| {
+                        let (_, field_ty) = struct_init.ty.fields[i].clone();
+                        ((Some(i), value.clone()), field_ty)
+                    })
                 })
                 .collect::<Vec<_>>();
 
@@ -1904,6 +1929,6 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 }
 
-fn must_init_via_memcpy(fields: &Vec<CIRTy>) -> bool {
-    fields.iter().any(|f| f.is_union())
+fn must_init_via_memcpy(fields: &Vec<(String, CIRTy)>) -> bool {
+    fields.iter().any(|(_, field_ty)| field_ty.is_union())
 }

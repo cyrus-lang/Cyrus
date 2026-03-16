@@ -24,6 +24,7 @@ use cyrusc_ast::Ident;
 use cyrusc_ast::abi::{ReprAttr, ReprKind};
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::TokenKind;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -947,6 +948,39 @@ impl TryFrom<TokenKind> for SemanticType {
         };
 
         Ok(SemanticType::PlainType(basic_type))
+    }
+}
+
+impl fmt::Display for PlainType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            PlainType::UIntPtr => "uintptr",
+            PlainType::IntPtr => "intptr",
+            PlainType::ISize => "isize",
+            PlainType::USize => "usize",
+            PlainType::Int => "int",
+            PlainType::Int8 => "int8",
+            PlainType::Int16 => "int16",
+            PlainType::Int32 => "int32",
+            PlainType::Int64 => "int64",
+            PlainType::Int128 => "int128",
+            PlainType::UInt => "uint",
+            PlainType::UInt8 => "uint8",
+            PlainType::UInt16 => "uint16",
+            PlainType::UInt32 => "uint32",
+            PlainType::UInt64 => "uint64",
+            PlainType::UInt128 => "uint128",
+            PlainType::Float16 => "float16",
+            PlainType::Float32 => "float32",
+            PlainType::Float64 => "float64",
+            PlainType::Float128 => "float128",
+            PlainType::Char => "char",
+            PlainType::Bool => "bool",
+            PlainType::Void => "void",
+            PlainType::Null => "null",
+        };
+
+        write!(f, "{name}")
     }
 }
 
