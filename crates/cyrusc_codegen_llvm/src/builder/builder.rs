@@ -134,9 +134,6 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_stmt(&mut self, stmt: &CIRStmt) {
         match stmt {
             CIRStmt::Variable(var_stmt) => self.emit_var(var_stmt),
-            CIRStmt::GlobalVar(global_var_stmt) => {
-                self.emit_global_var(global_var_stmt);
-            }
             CIRStmt::FuncDef(func_def_stmt) => {
                 let func_decl = cir_func_def_as_decl(func_def_stmt);
                 let cir_func_ty = cir_func_decl_as_func_ty(&func_decl);
@@ -152,8 +149,9 @@ impl<'ll> IRBuilderCtx<'ll> {
                     &func_decl.loc,
                 );
             }
-            CIRStmt::FuncDecl(func_decl_stmt) => {
-                self.emit_func_decl(func_decl_stmt);
+            CIRStmt::GlobalVar(_) | CIRStmt::FuncDecl(_) => {
+                // early emitting causes symtab bloat;
+                // only emitted when used.
             }
             CIRStmt::Block(block_stmt) => self.emit_scope_block(block_stmt),
             CIRStmt::Struct(struct_stmt) => {
