@@ -249,7 +249,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let ptr = self.llvmbuilder.build_alloca(ty, &cir_var.name).unwrap();
         let alloca_instr = ptr.as_instruction().unwrap();
 
-        self.emit_var_metadata(&layout, &ptr, cir_var);
+        self.emit_debug_var(&layout, &ptr, cir_var);
 
         if let Some(expr) = &cir_var.expr {
             let lvalue = self.emit_expr(expr);
@@ -270,7 +270,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(irreg);
     }
 
-    fn emit_var_metadata(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
+    fn emit_debug_var(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
         let var_ty_metadata = self.emit_debug_ty_metadata(&cir_var.ty);
 
         let var_meta = unsafe {
@@ -296,7 +296,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         };
     }
 
-    fn emit_global_var_metadata(
+    fn emit_debug_global_var(
         &self,
         _layout: &ABITypeLayout,
         global_value: &GlobalValue<'ll>,
@@ -350,7 +350,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(llvmmodule);
 
         let layout = type_layout(&self.target.info, &cir_global_var.ty);
-        self.emit_global_var_metadata(&layout, &global_value, cir_global_var);
+        self.emit_debug_global_var(&layout, &global_value, cir_global_var);
 
         if let Some(expr) = &cir_global_var.expr {
             let lvalue = self.emit_expr(&expr);

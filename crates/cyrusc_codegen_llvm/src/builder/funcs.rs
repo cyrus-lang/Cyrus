@@ -468,7 +468,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         for (i, param) in func_params.list.iter().enumerate() {
             let abi_arg_info = &abi_func_info.params_infos[i];
 
-            let param_alloca = match &abi_arg_info.kind {
+            match &abi_arg_info.kind {
                 ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
                     let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
 
@@ -483,8 +483,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.irreg
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
-
-                    param_alloca
                 }
                 ABIArgKind::DirectPair { lo: _, hi: _ } => {
                     let layout = type_layout(&self.target.info, &param.ty);
@@ -545,8 +543,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.irreg
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
-
-                    param_alloca
                 }
                 ABIArgKind::Indirect { .. } => {
                     let param_alloca = self
@@ -561,8 +557,6 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.irreg
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
-
-                    param_alloca
                 }
                 ABIArgKind::Expand { kind } => {
                     let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
@@ -632,14 +626,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.irreg
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
-
-                    param_alloca
                 }
                 ABIArgKind::Ignore => {
                     // zero sized type
                     continue;
                 }
-            };
+            }
 
             let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
             let param_ty_metadata = self.emit_debug_ty_metadata(&param.ty);
