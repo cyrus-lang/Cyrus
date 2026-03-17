@@ -149,7 +149,19 @@ impl<'ll> IRBuilderCtx<'ll> {
                     &func_decl.loc,
                 );
             }
-            CIRStmt::GlobalVar(_) | CIRStmt::FuncDecl(_) => {
+            CIRStmt::GlobalVar(global_var_stmt) => {
+                let is_extern = global_var_stmt
+                    .modifiers
+                    .linkage
+                    .as_ref()
+                    .map(|linkage| linkage.is_extern())
+                    .unwrap_or(false);
+
+                if !is_extern {
+                    self.emit_global_var(global_var_stmt);
+                }
+            }
+            CIRStmt::FuncDecl(_) => {
                 // early emitting causes symtab bloat;
                 // only emitted when used.
             }
