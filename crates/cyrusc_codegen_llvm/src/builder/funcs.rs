@@ -27,7 +27,7 @@ use crate::{
             abi_type::abi_type_to_llvm_type,
             modifiers::{apply_func_modifiers, apply_inlining_func},
         },
-        debug_info::{debug_func_type, emit_debug_function, reset_debug_location},
+        debug_info::{create_debug_parameter, debug_func_type, emit_debug_function, reset_debug_location},
     },
 };
 use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
@@ -468,7 +468,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         for (i, param) in func_params.list.iter().enumerate() {
             let abi_arg_info = &abi_func_info.params_infos[i];
 
-            match &abi_arg_info.kind {
+            let param_alloca = match &abi_arg_info.kind {
                 ABIArgKind::Direct { .. } | ABIArgKind::DirectCoerce { .. } | ABIArgKind::Extend { .. } => {
                     let llvm_param = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
 
@@ -476,12 +476,15 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
 
-                    let ptr = self.llvmbuilder.build_alloca(ty, "param").unwrap();
-                    self.llvmbuilder.build_store(ptr, llvm_param).unwrap();
+                    let param_alloca = self.llvmbuilder.build_alloca(ty, "param").unwrap();
+
+                    self.llvmbuilder.build_store(param_alloca, llvm_param).unwrap();
 
                     self.irreg
                         .borrow_mut()
-                        .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+
+                    param_alloca
                 }
                 ABIArgKind::DirectPair { lo: _, hi: _ } => {
                     let layout = type_layout(&self.target.info, &param.ty);
@@ -542,9 +545,11 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.irreg
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+
+                    param_alloca
                 }
                 ABIArgKind::Indirect { .. } => {
-                    let ptr = self
+                    let param_alloca = self
                         .cur_func
                         .unwrap()
                         .get_nth_param(llvm_param_index as u32)
@@ -555,7 +560,9 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     self.irreg
                         .borrow_mut()
-                        .insert(param.irv_id, LocalIRValue::LValue(ptr, param.ty.clone()));
+                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+
+                    param_alloca
                 }
                 ABIArgKind::Expand { kind } => {
                     let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
@@ -625,11 +632,26 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.irreg
                         .borrow_mut()
                         .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+
+                    param_alloca
                 }
                 ABIArgKind::Ignore => {
                     // zero sized type
+                    continue;
                 }
-            }
+            };
+
+            let param_name = param.name.clone().unwrap_or("<unnamed_param>".to_string());
+            let param_ty_metadata = self.emit_debug_ty_metadata(&param.ty);
+            unsafe {
+                create_debug_parameter(
+                    &self.dctx,
+                    &param_name,
+                    param.loc.line as u32,
+                    param_ty_metadata,
+                    (i + 1) as u32,
+                )
+            };
         }
     }
 

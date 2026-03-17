@@ -25,7 +25,7 @@ use crate::{
     llvm::{
         abi::modifiers::apply_global_var_modifiers,
         debug_info::{
-            BlockScope, DebugContext, create_debug_lexical_block, create_debug_var_metadata, debug_current_scope,
+            BlockScope, DebugContext, create_debug_lexical_block, create_debug_variable, debug_current_scope,
             emit_dbg_declare, emit_global_debug, set_debug_location,
         },
     },
@@ -273,14 +273,10 @@ impl<'ll> IRBuilderCtx<'ll> {
     fn emit_var_metadata(&self, layout: &ABITypeLayout, ptr: &PointerValue<'ll>, cir_var: &CIRVarStmt) {
         let var_ty_metadata = self.emit_debug_ty_metadata(&cir_var.ty);
 
-        let scope = debug_current_scope(&self.dctx);
-        let file = self.dctx.file.metadata;
         let var_meta = unsafe {
-            create_debug_var_metadata(
+            create_debug_variable(
                 &self.dctx,
                 &cir_var.name,
-                scope,
-                file,
                 cir_var.loc.line.try_into().unwrap(),
                 var_ty_metadata,
                 layout.align,

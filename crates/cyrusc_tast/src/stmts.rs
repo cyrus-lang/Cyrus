@@ -500,6 +500,13 @@ impl TypedFuncTypeParams {
 }
 
 impl TypedFuncParamKind {
+    pub fn name(&self) -> String {
+        match self {
+            TypedFuncParamKind::FuncParam(func_param) => func_param.name.clone(),
+            TypedFuncParamKind::SelfModifier(_) => "self".to_string(),
+        }
+    }
+
     pub fn loc(&self) -> SourceLoc {
         match self {
             TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc.clone(),
@@ -625,14 +632,9 @@ impl Hash for TypedTypeArg {
 impl PartialEq for TypedTypeArg {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (
-                Self::Positional {
-                    i: l_idx, ty: l_ty, ..
-                },
-                Self::Positional {
-                    i: r_idx, ty: r_ty, ..
-                },
-            ) => l_idx == r_idx && l_ty == r_ty,
+            (Self::Positional { i: l_idx, ty: l_ty, .. }, Self::Positional { i: r_idx, ty: r_ty, .. }) => {
+                l_idx == r_idx && l_ty == r_ty
+            }
 
             (
                 Self::Named {

@@ -139,15 +139,42 @@ pub unsafe fn create_debug_lexical_block(
     unsafe { LLVMDIBuilderCreateLexicalBlock(dctx.builder, parent, dctx.file.metadata, line, col) }
 }
 
-pub unsafe fn create_debug_var_metadata(
+pub unsafe fn create_debug_parameter(
     dctx: &DebugContext,
     name: &str,
-    scope: LLVMMetadataRef,
-    file: LLVMMetadataRef,
+    line: u32,
+    ty: LLVMMetadataRef,
+    arg_num: u32,
+) -> LLVMMetadataRef {
+    let scope = debug_current_scope(dctx);
+
+    let cname = CString::new(name).unwrap();
+
+    unsafe {
+        LLVMDIBuilderCreateParameterVariable(
+            dctx.builder,
+            scope,
+            cname.as_ptr(),
+            name.len(),
+            arg_num, // must be 1-based
+            dctx.file.metadata,
+            line,
+            ty,
+            1, // alwaysPreserve
+            0,
+        )
+    }
+}
+
+pub unsafe fn create_debug_variable(
+    dctx: &DebugContext,
+    name: &str,
     line: u32,
     ty: LLVMMetadataRef,
     align: u32,
 ) -> LLVMMetadataRef {
+    let scope = debug_current_scope(dctx);
+
     let cname = CString::new(name).unwrap();
 
     unsafe {
@@ -156,7 +183,7 @@ pub unsafe fn create_debug_var_metadata(
             scope,
             cname.as_ptr(),
             name.len(),
-            file,
+            dctx.file.metadata,
             line,
             ty,
             1, // alwaysPreserve

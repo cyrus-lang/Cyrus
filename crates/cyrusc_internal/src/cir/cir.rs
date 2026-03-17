@@ -318,8 +318,10 @@ pub struct CIRFuncDeclStmt {
 
 #[derive(Debug, Clone)]
 pub struct CIRFuncParam {
+    pub name: Option<String>,
     pub irv_id: IRValueID,
     pub ty: CIRTy,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]

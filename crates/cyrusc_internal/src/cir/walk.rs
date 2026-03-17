@@ -904,15 +904,24 @@ impl<'resolver> CIRWalk<'resolver> {
             list: func_params
                 .list
                 .iter()
-                .map(|param| match param {
-                    TypedFuncParamKind::FuncParam(func_param) => CIRFuncParam {
-                        irv_id: func_param.symbol_id,
-                        ty: self.lower_sema_ty(scope_id_opt, &func_param.ty),
-                    },
-                    TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
-                        irv_id: self_modifier.self_symbol_id.unwrap(),
-                        ty: self.lower_sema_ty(scope_id_opt, &self_modifier.ty.as_ref().unwrap()),
-                    },
+                .map(|param| {
+                    let name = Some(param.name());
+                    let loc = param.loc();
+
+                    match param {
+                        TypedFuncParamKind::FuncParam(func_param) => CIRFuncParam {
+                            name,
+                            irv_id: func_param.symbol_id,
+                            ty: self.lower_sema_ty(scope_id_opt, &func_param.ty),
+                            loc,
+                        },
+                        TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
+                            name,
+                            irv_id: self_modifier.self_symbol_id.unwrap(),
+                            ty: self.lower_sema_ty(scope_id_opt, &self_modifier.ty.as_ref().unwrap()),
+                            loc,
+                        },
+                    }
                 })
                 .collect(),
             is_var: func_params.variadic.is_some(),
