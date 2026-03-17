@@ -19,8 +19,8 @@ use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
-        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedFuncType,
-        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
+        ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
+        TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
 use cyrusc_ast::{AssignKind, operators::UnaryOperator};
@@ -275,7 +275,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
             format!(
                 "({})",
                 tuple_value
-                    .expr_list
+                    .elements
                     .iter()
                     .map(|v| format_typed_expr(v, format_symbol))
                     .collect::<Vec<String>>()
@@ -401,7 +401,7 @@ pub fn format_unnamed_enum_ty<'a>(
 
 pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match sema_ty {
-        SemanticType::UnresolvedSymbol(..) => format!("UNKNOWN"),
+        SemanticType::UnresolvedSymbol(..) => format!("<unresolved_symbol>"),
         SemanticType::GenericParam(generic_param) => generic_param.param_name.name.clone(),
         SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
             ResolvedSymbol::Enum(symbol_id) => format_symbol(symbol_id),
@@ -420,14 +420,9 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
             fmt.push_str(&format_sema_ty(*typed_array_type.element_type, format_symbol));
             fmt.push_str("[");
             match typed_array_type.capacity {
-                TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
-                    TypedArrayFixedCapacityValue::Expr(typed_expr) => {
-                        fmt.push_str(&format_typed_expr(&typed_expr, format_symbol));
-                    }
-                    TypedArrayFixedCapacityValue::Value(value) => {
-                        fmt.push_str(&value.to_string());
-                    }
-                },
+                TypedArrayCapacity::Fixed(expr) => {
+                    fmt.push_str(&format_typed_expr(&expr, format_symbol));
+                }
                 TypedArrayCapacity::Dynamic => {}
             }
             fmt.push_str("]");

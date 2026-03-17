@@ -40,7 +40,7 @@ use cyrusc_tast::{
     TypedProgramTree,
     exprs::*,
     stmts::*,
-    types::{SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue},
+    types::{SemanticType, TypedArrayCapacity},
 };
 use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
 use cyrusc_vtable_registry::VTableRegistry;
@@ -1380,7 +1380,7 @@ impl<'resolver> CIRWalk<'resolver> {
 
     fn lower_tuple(&mut self, scope_id_opt: Option<ScopeID>, tuple: &TypedTupleExpr) -> CIRExprKind {
         let elements: Vec<CIRExpr> = tuple
-            .expr_list
+            .elements
             .iter()
             .map(|expr| self.lower_expr(scope_id_opt, expr))
             .collect();
@@ -1842,10 +1842,10 @@ impl<'resolver> CIRWalk<'resolver> {
         })
     }
 
-    fn lower_literal(&mut self, scope_id_opt: Option<ScopeID>, lit: &TypedLiteralExpr) -> CIRExprKind {
-        let kind = match &lit.kind {
+    fn lower_literal(&mut self, scope_id_opt: Option<ScopeID>, literal: &TypedLiteralExpr) -> CIRExprKind {
+        let kind = match &literal.kind {
             LiteralKind::Integer(value, ..) => {
-                let is_signed = lit.ty.clone().unwrap().as_basic_type().unwrap().is_signed();
+                let is_signed = literal.ty.clone().unwrap().as_basic_type().unwrap().is_signed();
                 CIRLiteralKind::Integer(*value, is_signed)
             }
             LiteralKind::Float(value, ..) => CIRLiteralKind::Float(*value),
@@ -1858,7 +1858,7 @@ impl<'resolver> CIRWalk<'resolver> {
             },
         };
 
-        let ty = self.lower_sema_ty(scope_id_opt, &lit.ty.clone().unwrap());
+        let ty = self.lower_sema_ty(scope_id_opt, &literal.ty.clone().unwrap());
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
@@ -1871,12 +1871,10 @@ impl<'resolver> CIRWalk<'resolver> {
             SemanticType::Array(array_type) => {
                 let ty = self.lower_sema_ty(scope_id_opt, &array_type.element_type);
                 let len = match &array_type.capacity {
-                    TypedArrayCapacity::Fixed(fixed_cap) => match fixed_cap {
-                        TypedArrayFixedCapacityValue::Value(value) => *value,
-                        TypedArrayFixedCapacityValue::Expr(_) => unreachable!(),
-                    },
+                    TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
                     TypedArrayCapacity::Dynamic => todo!(),
                 };
+
                 CIRTy::Array(CIRArrayTy {
                     ty: Box::new(ty),
                     len: len.try_into().unwrap(),

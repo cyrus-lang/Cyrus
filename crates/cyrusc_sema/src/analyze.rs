@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     diagnostics::AnalyzerDiagKind,
     flowstate::{ControlContext, FlowState},
@@ -24,14 +25,15 @@ use cyrusc_ast::{
     AssignKind,
     abi::{ReprAttr, ReprKind},
 };
+use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter, source_loc::SourceLoc};
 use cyrusc_resolver::{
     Resolver,
-    symbols::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
+    symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     update_global_symbol, update_local_symbol,
 };
 use cyrusc_tast::{
-    exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedLiteralExpr, TypedTupleAccessExpr},
+    exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
     format::{format_sema_ty, format_unnamed_enum_ty},
     generics::{
         mapping_ctx_arena::GenericMappingCtxArena,
@@ -46,7 +48,6 @@ use cyrusc_tast::{
     },
     *,
 };
-use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     cell::RefCell,
@@ -88,6 +89,7 @@ impl<'a> AnalysisContext<'a> {
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
+
         disable_warnings: bool,
     ) -> Self {
         let symbol_formatter = Self::build_symbol_formatter(resolver, module_id);
@@ -744,17 +746,31 @@ impl<'a> AnalysisContext<'a> {
                         self.analyze_expr(scope_id_opt, &mut range.lower, Some(operand_ty.clone()));
                         self.analyze_expr(scope_id_opt, &mut range.upper, Some(operand_ty.clone()));
 
-                        let lower = match self.const_expr_as_raw_integer(scope_id_opt, &range.lower) {
-                            Some(value) => value,
-                            None => continue,
-                        };
+                        if !is_comptime_valid(&range.lower.kind) {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
+                                location: Some(DiagLoc::new(range.lower.loc.clone())),
+                                hint: None,
+                            });
+                            continue;
+                        }
 
-                        let upper = match self.const_expr_as_raw_integer(scope_id_opt, &range.upper) {
-                            Some(value) => value,
-                            None => continue,
-                        };
+                        if !is_comptime_valid(&range.upper.kind) {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
+                                location: Some(DiagLoc::new(range.upper.loc.clone())),
+                                hint: None,
+                            });
+                            continue;
+                        }
 
-                        if lower >= upper {
+                        let mut folder = ConstFolder::new(self);
+                        let lower_int = folder.expr_as_const_int(scope_id_opt, &range.lower).unwrap();
+                        let upper_int = folder.expr_as_const_int(scope_id_opt, &range.upper).unwrap();
+
+                        if lower_int >= upper_int {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(AnalyzerDiagKind::InvalidRange),
@@ -764,7 +780,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         }
 
-                        local_range_table.push((lower.try_into().unwrap(), upper.try_into().unwrap()));
+                        local_range_table.push((lower_int.try_into().unwrap(), upper_int.try_into().unwrap()));
                     }
                 }
             }
@@ -989,43 +1005,20 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
-            let sema_ty = match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
-                Some(sema_ty) => sema_ty,
-                None => return,
-            };
-
-            // TODO: Const folding logic gotta change.
-            // Especially custom `LiteralKind` should not be constructed manually here
-            // and must be replaced with helper methods.
-            if self.is_const_foldable_integer(sema_ty) {
-                if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
-                    let integer_concrete_type = Some(SemanticType::PlainType(PlainType::Int));
-
-                    expr = TypedExprStmt {
-                        kind: TypedExprKind::Literal(TypedLiteralExpr {
-                            ty: integer_concrete_type.clone(),
-                            kind: LiteralKind::Integer(integer, None),
-                            loc: expr.loc.clone(),
-                        }),
-                        sema_ty: integer_concrete_type,
-                        mloc: MemoryLocation::RValue,
-                        loc: expr.loc.clone(),
-                    };
-                } else {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
-                        location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-                        hint: None,
-                    });
-                    return;
-                }
-            }
-
-            expr.sema_ty = match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
+            match self.analyze_expr(None, &mut expr, typed_global_var.ty.clone()) {
                 Some(sema_ty) => Some(sema_ty),
                 None => return,
             };
+
+            if !is_comptime_valid(&expr.kind) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
+                    location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                    hint: None,
+                });
+                return;
+            }
 
             typed_global_var.expr = Some(expr);
         }
@@ -1060,7 +1053,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(expr) = &typed_global_var.expr {
-            if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
+            if !is_comptime_valid(&expr.kind) && !matches!(typed_global_var.ty, Some(SemanticType::Const(..))) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
@@ -2302,6 +2295,65 @@ impl<'a> AnalysisContext<'a> {
                     hint: None,
                 });
             }
+        }
+    }
+
+    pub(crate) fn fold_consts(&mut self, scope_id_opt: Option<ScopeID>, expr: &mut TypedExprStmt) {
+        let mut folder = ConstFolder::new(self);
+        folder.fold_expr(scope_id_opt, expr);
+    }
+
+    fn resolve_any_variable_expr(
+        &mut self,
+        scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+    ) -> Option<TypedExprStmt> {
+        let sym = self
+            .resolver
+            .resolve_local_or_global_symbol(scope_opt.clone(), symbol_id)?;
+
+        match match &sym {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
+                let variable = &local_symbol.as_variable()?.typed_variable;
+                let mut expr = variable.rhs.clone()?;
+
+                if let Some(sema_ty) = &variable.ty {
+                    expr.sema_ty = Some(sema_ty.clone());
+                }
+                Some(expr)
+            }
+            LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
+                Some(resolved_global_var) => {
+                    let mut expr = resolved_global_var.global_var_sig.rhs.clone()?;
+
+                    if let Some(sema_ty) = &resolved_global_var.global_var_sig.ty {
+                        expr.sema_ty = Some(sema_ty.clone());
+                    }
+
+                    Some(expr)
+                }
+                None => None,
+            },
+        } {
+            Some(typed_expr) => Some(typed_expr),
+            None => None,
+        }
+    }
+}
+
+impl<'ctx> ConstResolver for AnalysisContext<'ctx> {
+    fn resolve_symbol_expr(&mut self, symbol: SymbolID) -> Option<TypedExprStmt> {
+        let resolved = self.resolve_any_variable_expr(None, symbol)?;
+        Some(resolved)
+    }
+
+    fn symbol_is_const(&mut self, symbol: SymbolID) -> bool {
+        let resolved = self.resolve_any_variable_expr(None, symbol);
+
+        match resolved {
+            Some(expr) => expr.sema_ty.as_ref().map(|t| t.is_const()).unwrap_or(false),
+
+            None => false,
         }
     }
 }

@@ -15,14 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod analyze;
-mod deduce;
-mod diagnostics;
-mod entrypoints;
-mod flowstate;
-mod format;
-mod generics;
-mod inference_ctx;
-mod nameconv;
-mod normalizer;
-mod type_checking;
+use cyrusc_tast::{SymbolID, exprs::TypedExprStmt};
+
+pub trait ConstResolver {
+    fn symbol_is_const(&mut self, symbol: SymbolID) -> bool;
+    fn resolve_symbol_expr(&mut self, symbol: SymbolID) -> Option<TypedExprStmt>;
+}

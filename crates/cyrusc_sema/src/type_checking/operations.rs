@@ -234,10 +234,10 @@ impl<'a> AnalysisContext<'a> {
 
         match prefix_expr.op {
             PrefixOperator::BitwiseNot => {
-                let valid_concrete_type = match &operand_type {
-                    SemanticType::PlainType(basic_concrete_type) => {
-                        if basic_concrete_type.is_integer() {
-                            Some(basic_concrete_type.clone())
+                let valid_plain_type = match &operand_type {
+                    SemanticType::PlainType(plain_type) => {
+                        if plain_type.is_integer() {
+                            Some(plain_type.clone())
                         } else {
                             None
                         }
@@ -245,7 +245,7 @@ impl<'a> AnalysisContext<'a> {
                     _ => None,
                 };
 
-                match valid_concrete_type {
+                match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
                         let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
@@ -261,10 +261,10 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             PrefixOperator::Bang => {
-                let valid_concrete_type = match &operand_type {
-                    SemanticType::PlainType(basic_concrete_type) => {
-                        if basic_concrete_type.is_bool() {
-                            Some(basic_concrete_type)
+                let valid_plain_type = match &operand_type {
+                    SemanticType::PlainType(plain_type) => {
+                        if plain_type.is_bool() {
+                            Some(plain_type)
                         } else {
                             None
                         }
@@ -272,7 +272,7 @@ impl<'a> AnalysisContext<'a> {
                     _ => None,
                 };
 
-                match valid_concrete_type {
+                match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
                         let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
@@ -288,10 +288,10 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             PrefixOperator::Minus => {
-                let valid_concrete_type = match &operand_type {
-                    SemanticType::PlainType(basic_concrete_type) => {
-                        if basic_concrete_type.is_integer() {
-                            if !basic_concrete_type.is_signed() {
+                let valid_plain_type = match &operand_type {
+                    SemanticType::PlainType(plain_type) => {
+                        if plain_type.is_integer() {
+                            if !plain_type.is_signed() {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::UnaryOperatorMinusOnUnsignedInteger),
@@ -303,9 +303,9 @@ impl<'a> AnalysisContext<'a> {
                                 return None;
                             }
 
-                            Some(basic_concrete_type)
-                        } else if basic_concrete_type.is_float() {
-                            Some(basic_concrete_type)
+                            Some(plain_type)
+                        } else if plain_type.is_float() {
+                            Some(plain_type)
                         } else {
                             None
                         }
@@ -313,7 +313,7 @@ impl<'a> AnalysisContext<'a> {
                     _ => None,
                 };
 
-                match valid_concrete_type {
+                match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
                         let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
@@ -592,9 +592,9 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             (
-                null_concrete_type @ SemanticType::PlainType(PlainType::Null),
+                null_sema_ty @ SemanticType::PlainType(PlainType::Null),
                 SemanticType::PlainType(PlainType::Null),
-            ) => Some(null_concrete_type),
+            ) => Some(null_sema_ty),
             _ => self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
                 (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic))
                     if lhs_basic.is_bool() && rhs_basic.is_bool() =>

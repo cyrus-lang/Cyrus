@@ -14,8 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::SelfModifierKind;
+use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
@@ -36,9 +38,8 @@ use cyrusc_tast::{
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
-        InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedFuncType, TypedTupleType, TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType,
-        TypedUnnamedUnionType,
+        InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
+        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
 use fx_hash::FxHashMap;
@@ -444,8 +445,6 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    // NOTE: This logic here is temporary and it's not completed yet!
-    // TODO: Implement comptime array capacity evaluation later.
     // TODO: Implement slices.
     fn normalize_array_capacity(
         &mut self,
@@ -454,30 +453,20 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) -> Option<TypedArrayType> {
         match &mut arr.capacity {
-            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value.clone() {
-                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
-                    if let Some(value) = self.const_expr_as_raw_integer(scope_id_opt, &typed_expr) {
-                        if let Ok(unsigned_integer) = value.try_into() {
-                            arr.capacity =
-                                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(unsigned_integer));
-                        } else {
-                            todo!();
-                        }
-                    } else {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                            location: Some(DiagLoc::new(typed_expr.loc.clone())),
-                            hint: None,
-                        });
-                        return None;
-                    }
+            TypedArrayCapacity::Fixed(expr) => {
+                self.analyze_expr(scope_id_opt, expr, None);
+
+                if !is_comptime_valid(&expr.kind) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
+                    return None;
                 }
-                TypedArrayFixedCapacityValue::Value(_) => {}
-            },
-            TypedArrayCapacity::Dynamic => {
-                todo!();
             }
+            TypedArrayCapacity::Dynamic => todo!(),
         }
 
         arr.element_type = Box::new(self.normalize_sema_type(scope_id_opt, *arr.element_type, loc.clone())?);

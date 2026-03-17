@@ -22,6 +22,7 @@ use crate::{
     inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
 };
 use cyrusc_ast::{SelfModifierKind, abi::Visibility};
+use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion, SymbolEntryKind},
@@ -262,6 +263,8 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        self.fold_consts(scope_id_opt, typed_expr);
+
         normalized_type
     }
 
@@ -313,12 +316,12 @@ impl<'a> AnalysisContext<'a> {
     ///
     pub(crate) fn analyze_literal(
         &mut self,
-        typed_literal: &mut TypedLiteralExpr,
+        literal: &mut TypedLiteralExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let typed_literal_clone = typed_literal.clone();
+        let typed_literal_clone = literal.clone();
 
-        let ty_opt = match &mut typed_literal.kind {
+        let ty_opt = match &mut literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
                 match infer_integer_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
                     Ok(ty) => Some(ty),
@@ -347,12 +350,14 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::UnescapeError(unescape_err)),
-                            location: Some(DiagLoc::new(typed_literal.loc.clone())),
+                            location: Some(DiagLoc::new(literal.loc.clone())),
                             hint: None,
                         });
                         return None;
                     }
                 };
+
+                let capacity_expr = literal_expr_from_const_int(value.len().try_into().unwrap(), literal.loc.clone());
 
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
@@ -361,21 +366,20 @@ impl<'a> AnalysisContext<'a> {
                             element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
                                 PlainType::Char,
                             )))),
-                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                                value.len().try_into().unwrap(),
-                            )),
-                            loc: typed_literal.loc.clone(),
+                            capacity: TypedArrayCapacity::Fixed(Box::new(capacity_expr)),
+                            loc: literal.loc.clone(),
                         }),
                     }
                 } else {
                     SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char)))
                 };
+
                 Some(ty)
             }
         };
 
         if let Some(ref ty) = ty_opt {
-            typed_literal.ty = Some(ty.clone());
+            literal.ty = Some(ty.clone());
         }
 
         ty_opt
@@ -450,7 +454,7 @@ impl<'a> AnalysisContext<'a> {
             None => None,
         };
 
-        for (i, expr) in &mut tuple_value.expr_list.iter_mut().enumerate() {
+        for (i, expr) in &mut tuple_value.elements.iter_mut().enumerate() {
             let mut expected_type: Option<SemanticType> = None;
             if let Some(tuple_type) = &tuple_type_opt {
                 expected_type = tuple_type.type_list.get(i).cloned();
@@ -1752,17 +1756,18 @@ impl<'a> AnalysisContext<'a> {
                 .map(|array_type| *array_type.element_type.clone())
         });
 
+        let elements_count = typed_array.elements.len();
+
         // try to infer from first element
         if typed_array.array_type.is_none() {
             if let Some(first_elem) = typed_array.elements.first_mut() {
                 if let Some(sema_ty) = self.analyze_expr(scope_id_opt, first_elem, expected_element_type.clone()) {
-                    let elements_count = typed_array.elements.len();
+                    let elements_count_expr =
+                        literal_expr_from_const_int(elements_count.try_into().unwrap(), first_elem.loc.clone());
 
                     typed_array.array_type = Some(SemanticType::Array(TypedArrayType {
                         element_type: Box::new(sema_ty),
-                        capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                            elements_count.try_into().unwrap(),
-                        )),
+                        capacity: TypedArrayCapacity::Fixed(Box::new(elements_count_expr)),
                         loc: typed_array.loc.clone(),
                     }));
                 }
@@ -1773,13 +1778,12 @@ impl<'a> AnalysisContext<'a> {
         // try to infer from expected type
         if typed_array.array_type.is_none() {
             if let Some(sema_ty) = expected_element_type {
-                let elements_count = typed_array.elements.len();
+                let elements_count_expr =
+                    literal_expr_from_const_int(elements_count.try_into().unwrap(), typed_array.loc.clone());
 
                 typed_array.array_type = Some(SemanticType::Array(TypedArrayType {
                     element_type: Box::new(sema_ty),
-                    capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                        elements_count.try_into().unwrap(),
-                    )),
+                    capacity: TypedArrayCapacity::Fixed(Box::new(elements_count_expr)),
                     loc: typed_array.loc.clone(),
                 }));
             }
@@ -1839,14 +1843,23 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let array_type = array_type!().clone();
-        let array_capacity = match &array_type.capacity {
-            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
-                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
-                    self.const_expr_as_raw_integer(scope_id_opt, typed_expr)?
+        let mut array_type = array_type!().clone();
+        let array_capacity = match &mut array_type.capacity {
+            TypedArrayCapacity::Fixed(expr) => {
+                self.analyze_expr(scope_id_opt, expr, None)?;
+
+                if !is_comptime_valid(&expr.kind) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
+                        location: Some(DiagLoc::new(array_type.loc.clone())),
+                        hint: None,
+                    });
                 }
-                TypedArrayFixedCapacityValue::Value(value) => *value as i128,
-            },
+
+                let mut folder = ConstFolder::new(self);
+                folder.expr_as_const_int(scope_id_opt, &expr).unwrap()
+            }
             TypedArrayCapacity::Dynamic => todo!(),
         };
 

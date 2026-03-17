@@ -670,7 +670,7 @@ impl PartialEq for TypedLambdaExpr {
 
 impl PartialEq for TypedTupleExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.expr_list == other.expr_list
+        self.elements == other.elements
     }
 }
 

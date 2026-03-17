@@ -92,7 +92,7 @@ pub struct TypedTupleAccessExpr {
 
 #[derive(Debug, Clone)]
 pub struct TypedTupleExpr {
-    pub expr_list: Vec<TypedExprStmt>,
+    pub elements: Vec<TypedExprStmt>,
     pub loc: SourceLoc,
 }
 
@@ -154,63 +154,6 @@ impl TypedExprKind {
         match self {
             TypedExprKind::Symbol(symbol_id, _) => Some(*symbol_id),
             _ => None,
-        }
-    }
-
-    // TODO: Move it cyrusc_interp.
-    pub fn is_comptime_valid(&self) -> bool {
-        match self {
-            TypedExprKind::Literal(_) => true,
-            TypedExprKind::Lambda(_) => true,
-            TypedExprKind::Tuple(tuple_value) => {
-                let mut comptime_valid = true;
-
-                for expr in &tuple_value.expr_list {
-                    if !expr.kind.is_comptime_valid() {
-                        comptime_valid = false;
-                        break;
-                    }
-                }
-
-                comptime_valid
-            }
-            TypedExprKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
-            TypedExprKind::Infix(infix) => infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid(),
-            TypedExprKind::Unary(unary) => unary.operand.kind.is_comptime_valid(),
-            TypedExprKind::Cast(cast) => cast.operand.kind.is_comptime_valid(),
-            TypedExprKind::Array(typed_array) => typed_array
-                .elements
-                .iter()
-                .all(|typed_expr| typed_expr.kind.is_comptime_valid()),
-            TypedExprKind::StructInit(typed_struct_init) => typed_struct_init
-                .fields
-                .iter()
-                .all(|field_init| field_init.value.kind.is_comptime_valid()),
-            TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => typed_unnamed_struct_value
-                .fields
-                .iter()
-                .all(|typed_unnamed_struct_value_field| {
-                    typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
-                }),
-            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => match &unnamed_enum_value.kind {
-                TypedUnnamedEnumValueKind::Plain => true,
-                TypedUnnamedEnumValueKind::Fielded(values) => values.iter().any(|expr| expr.kind.is_comptime_valid()),
-            },
-            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
-                unnamed_union_value.field_value.kind.is_comptime_valid()
-            }
-            TypedExprKind::Symbol(..)
-            | TypedExprKind::ArrayIndex(_)
-            | TypedExprKind::TupleAccess(_)
-            | TypedExprKind::Deref(_)
-            | TypedExprKind::FieldAccess(_)
-            | TypedExprKind::MethodCall(_)
-            | TypedExprKind::FuncCall(_)
-            | TypedExprKind::Assign(_)
-            | TypedExprKind::SizeOf(_)
-            | TypedExprKind::Dynamic(_)
-            | TypedExprKind::SemanticType(_)
-            | TypedExprKind::AddrOf(_) => false,
         }
     }
 
@@ -482,5 +425,31 @@ impl std::hash::Hash for TypedSelfType {
 impl PartialEq for TypedUnnamedUnionValue {
     fn eq(&self, other: &Self) -> bool {
         self.field_name == other.field_name && self.field_value == other.field_value
+    }
+}
+
+impl TypedExprStmt {
+    pub fn literal_const_int_value(&self) -> Option<i128> {
+        match &self.kind {
+            TypedExprKind::Literal(lit) => match &lit.kind {
+                LiteralKind::Integer(v, ..) => Some(*v),
+                LiteralKind::Bool(v) => Some(if *v { 1 } else { 0 }),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
+pub fn literal_expr_from_const_int(value: i128, loc: SourceLoc) -> TypedExprStmt {
+    TypedExprStmt {
+        kind: TypedExprKind::Literal(TypedLiteralExpr {
+            kind: LiteralKind::Integer(value, None),
+            ty: None,
+            loc: loc.clone(),
+        }),
+        sema_ty: None,
+        mloc: MemoryLocation::RValue,
+        loc,
     }
 }

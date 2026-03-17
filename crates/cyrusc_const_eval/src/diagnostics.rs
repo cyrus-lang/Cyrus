@@ -15,14 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod analyze;
-mod deduce;
-mod diagnostics;
-mod entrypoints;
-mod flowstate;
-mod format;
-mod generics;
-mod inference_ctx;
-mod nameconv;
-mod normalizer;
-mod type_checking;
+use cyrusc_tast::SymbolID;
+
+#[derive(Debug)]
+pub enum ConstEvalError {
+    NonConstSymbol(SymbolID),
+    CyclicConst(SymbolID),
+    UnsupportedExpr,
+    DivisionByZero,
+    TypeError,
+}

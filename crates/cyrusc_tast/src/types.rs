@@ -157,16 +157,10 @@ pub struct TypedArrayType {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypedArrayCapacity {
-    Fixed(TypedArrayFixedCapacityValue),
-    Dynamic,
-}
-
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypedArrayFixedCapacityValue {
-    Expr(Box<TypedExprStmt>),
-    Value(u64),
+pub enum TypedArrayCapacity {
+    Fixed(Box<TypedExprStmt>),
+    Dynamic,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -205,73 +199,6 @@ pub enum TypedUnnamedEnumVariant {
 pub struct TypedUnnamedEnumValuedField {
     pub ty: SemanticType,
     pub loc: SourceLoc,
-}
-
-impl PartialEq for TypedUnnamedEnumValuedField {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty
-    }
-}
-
-impl Hash for TypedUnnamedEnumType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.variants.hash(state);
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumType {
-    fn eq(&self, other: &Self) -> bool {
-        self.variants == other.variants
-    }
-}
-
-impl Hash for TypedUnnamedEnumVariant {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumVariant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
-            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1 == expr2,
-            (Self::Variant(ident1, fields1), Self::Variant(ident2, fields2)) => {
-                if ident1 != ident2 {
-                    return false;
-                }
-                if fields1.len() != fields2.len() {
-                    return false;
-                }
-                fields1.iter().zip(fields2.iter()).all(|(f1, f2)| f1.ty == f2.ty)
-            }
-            _ => false,
-        }
-    }
-}
-impl PartialEq for TypedUnnamedUnionType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields
-    }
-}
-
-impl PartialEq for TypedUnnamedStructType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.repr_attr == other.repr_attr
-    }
-}
-
-impl Hash for TypedUnnamedUnionType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedStructType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-        self.repr_attr.hash(state);
-    }
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -797,22 +724,6 @@ impl TypedUnnamedEnumType {
     }
 }
 
-impl TypedArrayFixedCapacityValue {
-    pub fn as_value(&self) -> Option<u64> {
-        match self {
-            TypedArrayFixedCapacityValue::Expr(..) => None,
-            TypedArrayFixedCapacityValue::Value(value) => Some(*value),
-        }
-    }
-
-    pub fn as_expr(&self) -> Option<Box<TypedExprStmt>> {
-        match self {
-            TypedArrayFixedCapacityValue::Expr(typed_expr) => Some(typed_expr.clone()),
-            TypedArrayFixedCapacityValue::Value(..) => None,
-        }
-    }
-}
-
 impl TypedUnnamedEnumVariant {
     pub fn ident(&self) -> &Ident {
         match self {
@@ -849,17 +760,6 @@ impl Hash for TypedUnnamedStructTypeField {
     }
 }
 
-impl Hash for TypedArrayFixedCapacityValue {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            TypedArrayFixedCapacityValue::Value(v) => v.hash(state),
-            TypedArrayFixedCapacityValue::Expr(_) => {
-                panic!("Requires a compile-time constant array size.");
-            }
-        }
-    }
-}
-
 impl Hash for TypedArrayType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.element_type.hash(state);
@@ -877,6 +777,80 @@ impl Hash for TypedFuncType {
 impl Hash for TypedTupleType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.type_list.hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedEnumType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.variants.hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedEnumVariant {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
+impl Hash for TypedArrayCapacity {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedUnionType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
+    }
+}
+
+impl Hash for TypedUnnamedStructType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
+        self.repr_attr.hash(state);
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumValuedField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumType {
+    fn eq(&self, other: &Self) -> bool {
+        self.variants == other.variants
+    }
+}
+
+impl PartialEq for TypedUnnamedEnumVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
+            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1 == expr2,
+            (Self::Variant(ident1, fields1), Self::Variant(ident2, fields2)) => {
+                if ident1 != ident2 {
+                    return false;
+                }
+                if fields1.len() != fields2.len() {
+                    return false;
+                }
+                fields1.iter().zip(fields2.iter()).all(|(f1, f2)| f1.ty == f2.ty)
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for TypedUnnamedUnionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
+impl PartialEq for TypedUnnamedStructType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.repr_attr == other.repr_attr
     }
 }
 
@@ -984,6 +958,6 @@ impl fmt::Display for PlainType {
     }
 }
 
-impl Eq for TypedArrayFixedCapacityValue {}
+impl Eq for TypedArrayCapacity {}
 impl Eq for TypedUnnamedEnumVariant {}
 impl Eq for TypedFuncType {}

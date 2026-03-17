@@ -804,18 +804,9 @@ impl Resolver {
 
                 let capacity = match &array_type.size {
                     ArrayCapacity::Fixed(expr) => {
-                        let typed_expr = self.resolve_expr(module_id, scope_opt.clone(), expr)?;
-                        if let TypedExprKind::Literal(lit) = &typed_expr.kind {
-                            if let LiteralKind::Integer(value, ..) = &lit.kind {
-                                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                                    (*value).try_into().unwrap(),
-                                ))
-                            } else {
-                                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(Box::new(typed_expr)))
-                            }
-                        } else {
-                            TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(Box::new(typed_expr)))
-                        }
+                        let expr = self.resolve_expr(module_id, scope_opt.clone(), expr)?;
+
+                        TypedArrayCapacity::Fixed(Box::new(expr))
                     }
                     ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
                 };
@@ -2034,7 +2025,7 @@ impl Resolver {
         generic_params: &Option<TypedGenericParamsList>,
         params: &FuncParams,
     ) -> Option<(Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
-        let mut typed_func_params = Vec::with_capacity(params.list.len());
+        let mut func_params = Vec::with_capacity(params.list.len());
 
         for param in &params.list {
             match param {
@@ -2083,7 +2074,7 @@ impl Resolver {
                         );
                     }
 
-                    typed_func_params.push(TypedFuncParamKind::FuncParam(TypedFuncParam {
+                    func_params.push(TypedFuncParamKind::FuncParam(TypedFuncParam {
                         symbol_id,
                         name: func_param.ident.value.clone(),
                         ty: param_type,
@@ -2091,7 +2082,7 @@ impl Resolver {
                     }));
                 }
                 FuncParamKind::SelfModifier(self_modifier) => {
-                    typed_func_params.push(TypedFuncParamKind::SelfModifier(TypedSelfModifier {
+                    func_params.push(TypedFuncParamKind::SelfModifier(TypedSelfModifier {
                         symbol_id: None,
                         self_symbol_id: None,
                         ty: None,
@@ -2102,11 +2093,11 @@ impl Resolver {
             }
         }
 
-        let typed_variadic_param = params.variadic.as_ref().and_then(|variadic| match variadic {
+        let variadic_param = params.variadic.as_ref().and_then(|variadic| match variadic {
             FuncVariadicParams::UntypedCStyle => Some(TypedFuncVariadicParams::UntypedCStyle),
             FuncVariadicParams::Typed(ident, type_specifier) => {
                 let variadic_type = self.resolve_type(
-                    &None, // FIXME Generic Params
+                    &None,
                     scope_opt.clone(),
                     module_id,
                     type_specifier.clone(),
@@ -2147,7 +2138,7 @@ impl Resolver {
             }
         });
 
-        Some((typed_func_params, typed_variadic_param))
+        Some((func_params, variadic_param))
     }
 
     fn resolve_func_decl_stmt(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStmt> {
@@ -3153,7 +3144,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Tuple(TypedTupleExpr {
-                expr_list,
+                elements: expr_list,
                 loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
@@ -3591,11 +3582,14 @@ impl Resolver {
                     match string_prefix {
                         StringPrefix::B => {
                             let len = string_value.len() + 1;
+                            let len_expr = literal_expr_from_const_int(
+                                len.try_into().unwrap(),
+                                SourceLoc::from_loc(literal.loc.clone(), self.current_file_path()),
+                            );
+
                             Some(SemanticType::Array(TypedArrayType {
                                 element_type: Box::new(SemanticType::PlainType(PlainType::Char)),
-                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                                    len.try_into().unwrap(),
-                                )),
+                                capacity: TypedArrayCapacity::Fixed(Box::new(len_expr)),
                                 loc: SourceLoc::from_loc(literal.loc.clone(), self.current_file_path()),
                             }))
                         }
@@ -3878,6 +3872,7 @@ impl Resolver {
         drop(global_symbols);
     }
 
+    #[inline]
     pub fn current_file_path(&self) -> String {
         let current_module_id = self.current_module.unwrap();
         let file_paths = self.file_paths.lock().unwrap();

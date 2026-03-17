@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::analyze::AnalysisContext;
+use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tast::{
     ScopeID,
@@ -25,8 +26,8 @@ use cyrusc_tast::{
     sigs::{EnumSig, StructSig, UnionSig},
     stmts::TypedEnumVariant,
     types::{
-        PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
-        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
+        PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayType, TypedUnnamedEnumType,
+        TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
 
@@ -48,7 +49,8 @@ impl<'a> AnalysisContext<'a> {
                 self.check_plain_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
-                let valid_capacity = self.check_const_str_to_array_assignment(array_type1.clone(), array_type2.clone());
+                let valid_capacity =
+                    self.check_const_str_to_array_assign(scope_id_opt, array_type1.clone(), array_type2.clone());
 
                 valid_capacity
                     && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
@@ -465,12 +467,21 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_const_str_to_array_assignment(&self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
+    fn check_const_str_to_array_assign(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        value_type: TypedArrayType,
+        target_type: TypedArrayType,
+    ) -> bool {
         match (value_type.capacity, target_type.capacity) {
-            (
-                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value_capacity)),
-                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(target_capacity)),
-            ) => value_capacity == target_capacity,
+            (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
+                let mut folder = ConstFolder::new(self);
+
+                let value_capacity = folder.expr_as_const_int(scope_id_opt, &value_capacity_expr).unwrap();
+                let target_capacity = folder.expr_as_const_int(scope_id_opt, &target_capacity_expr).unwrap();
+
+                value_capacity == target_capacity
+            }
             _ => false, // not valid
         }
     }

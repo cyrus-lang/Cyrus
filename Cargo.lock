@@ -302,6 +302,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_const_eval"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_tast",
+ "cyrusc_tokens",
+]
+
+[[package]]
 name = "cyrusc_diagcentral"
 version = "0.1.0"
 dependencies = [
@@ -414,6 +423,7 @@ name = "cyrusc_sema"
 version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
+ "cyrusc_const_eval",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
