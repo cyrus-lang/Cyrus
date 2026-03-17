@@ -18,7 +18,7 @@ use crate::{
     asan::enable_asan_for_owned_module,
     builder::builder::IRBuilderCtx,
     llvm::{
-        debug_info::{DebugContext, finalize_debug},
+        debug_info::{DebugContext, emit_debug_module_flags, finalize_debug},
         target_machine::{create_target_machine, llvm_code_model, llvm_opt_level, llvm_reloc_mode},
     },
 };
@@ -126,9 +126,11 @@ impl CodeGenLLVM {
         ir_builder_ctx.emit_program_tree(cir_program_tree);
 
         unsafe { finalize_debug(&ir_builder_ctx.dctx) };
-
         {
             let llvmmodule = owned_module.module.borrow();
+
+            unsafe { emit_debug_module_flags(llvmmodule.as_mut_ptr()) };
+
             if let Err(err) = llvmmodule.verify() {
                 eprintln!("LLVM Module Error: {}", err)
             }

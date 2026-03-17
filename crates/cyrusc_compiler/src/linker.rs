@@ -85,6 +85,11 @@ impl Linker {
             cmd.arg("-lc");
         }
 
+        if self.opts.debug_enabled {
+            cmd.arg("-g");
+            cmd.arg("-fno-omit-frame-pointer");
+        }
+
         for library in &self.opts.libraries {
             cmd.arg(format!("-l{}", library));
         }

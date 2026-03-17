@@ -73,7 +73,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     PlainType::Char => DW_ATE_UNSIGNED_CHAR,
 
                     PlainType::Void | PlainType::Null => {
-                        unreachable!()
+                        return std::ptr::null_mut() as LLVMMetadataRef;
                     }
                 };
 

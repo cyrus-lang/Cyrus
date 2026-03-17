@@ -25,8 +25,8 @@ use crate::{
     llvm::{
         abi::modifiers::apply_global_var_modifiers,
         debug_info::{
-            BlockScope, DebugContext, create_debug_global_var_metadata, create_debug_lexical_block,
-            create_debug_var_metadata, debug_current_scope, emit_dbg_declare, set_debug_location,
+            BlockScope, DebugContext, create_debug_lexical_block, create_debug_var_metadata, debug_current_scope,
+            emit_dbg_declare, emit_global_debug, set_debug_location,
         },
     },
 };
@@ -292,46 +292,37 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     fn emit_global_var_metadata(
         &self,
-        layout: &ABITypeLayout,
-        ptr: &PointerValue<'ll>,
+        _layout: &ABITypeLayout,
+        global_value: &GlobalValue<'ll>,
         cir_global_var: &CIRGlobalVarStmt,
     ) {
-        let var_ty_metadata = self.emit_debug_ty_metadata(&cir_global_var.ty);
+        let ty_meta = self.emit_debug_ty_metadata(&cir_global_var.ty);
 
-        let is_global_var_local = !cir_global_var
+        let is_local = !cir_global_var
             .modifiers
             .linkage
             .clone()
-            .map(|linkage| linkage.is_extern())
+            .map(|l| l.is_extern())
             .unwrap_or(false);
 
-        let scope = debug_current_scope(&self.dctx);
         let file = self.dctx.file.metadata;
-        let var_meta = unsafe {
-            create_debug_global_var_metadata(
-                &self.dctx,
-                scope,
-                &cir_global_var.name,
-                &cir_global_var.name,
-                file,
-                cir_global_var.loc.line.try_into().unwrap(),
-                var_ty_metadata,
-                is_global_var_local,
-                layout.align,
-            )
-        };
+
+        // globals should use the compile unit as scope
+        let scope = self.dctx.compile_unit;
 
         unsafe {
-            emit_dbg_declare(
+            emit_global_debug(
                 &self.dctx,
-                self.llvmctx,
-                self.llvmbuilder,
-                ptr.as_value_ref(),
-                var_meta,
-                cir_global_var.loc.line.try_into().unwrap(),
-                cir_global_var.loc.column.try_into().unwrap(),
-            )
-        };
+                global_value.as_value_ref(),
+                scope,
+                file,
+                &cir_global_var.name,
+                &cir_global_var.name,
+                cir_global_var.loc.line as u32,
+                ty_meta,
+                is_local,
+            );
+        }
     }
 
     pub(crate) fn emit_global_var(&mut self, cir_global_var: &CIRGlobalVarStmt) -> GlobalValue<'ll> {
@@ -353,7 +344,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         drop(llvmmodule);
 
         let layout = type_layout(&self.target.info, &cir_global_var.ty);
-        self.emit_global_var_metadata(&layout, &global_value.as_pointer_value(), cir_global_var);
+        self.emit_global_var_metadata(&layout, &global_value, cir_global_var);
 
         if let Some(expr) = &cir_global_var.expr {
             let lvalue = self.emit_expr(&expr);

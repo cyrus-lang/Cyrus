@@ -108,6 +108,13 @@ struct CompilerOptions {
     linkerflags: Vec<String>,
 
     #[clap(
+        long = "debug",
+        short = 'g',
+        help = "Enable generation of DWARF debug information for use with debuggers (GDB/LLDB)."
+    )]
+    debug_enabled: bool,
+
+    #[clap(
         long = "build-dir",
         value_name = "PATH",
         help = "Specifies the directory where build artifacts will be stored."
@@ -334,6 +341,7 @@ impl CompilerOptions {
                     None => BuildDir::Default,
                 }
             },
+            debug_enabled: self.debug_enabled,
             quiet: self.quiet,
             verbose: self.verbose,
             stdlib_path: self.stdlib.clone(),

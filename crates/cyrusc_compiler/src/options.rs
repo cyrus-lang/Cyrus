@@ -56,6 +56,7 @@ pub struct CodeGenOptions {
     pub target: Option<String>,
     pub disable_modulefs_cache: bool,
     pub disable_warnings: bool,
+    pub debug_enabled: bool,
     pub abi: Option<CodeGenABI>,
     pub source_dirs: Vec<String>,
 }
@@ -122,6 +123,7 @@ impl Default for CodeGenOptions {
             linker_options: CodeGenLinkerOptions::default(),
             linker_flags: Vec::new(),
             sanitizer: Vec::new(),
+            debug_enabled: false,
             abi: None,
         }
     }

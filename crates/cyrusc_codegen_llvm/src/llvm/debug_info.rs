@@ -21,7 +21,12 @@ use inkwell::{
     context::{AsContextRef, Context},
     debug_info::LLVMDWARFTypeEncoding,
     llvm_sys::{
-        core::{LLVMGetInsertBlock, LLVMSetCurrentDebugLocation2},
+        LLVMModuleFlagBehavior,
+        core::{
+            LLVMAddModuleFlag, LLVMConstInt, LLVMGetGlobalParent, LLVMGetInsertBlock, LLVMGetMDKindIDInContext,
+            LLVMGetModuleContext, LLVMGetModuleFlag, LLVMGlobalSetMetadata, LLVMInt32Type,
+            LLVMSetCurrentDebugLocation2, LLVMValueAsMetadata,
+        },
         debuginfo::*,
         prelude::{LLVMDIBuilderRef, LLVMMetadataRef, LLVMModuleRef, LLVMTypeRef, LLVMValueRef},
     },
@@ -161,39 +166,6 @@ pub unsafe fn create_debug_var_metadata(
     }
 }
 
-pub unsafe fn create_debug_global_var_metadata(
-    dctx: &DebugContext,
-    scope: LLVMMetadataRef,
-    name: &str,
-    linkage_name: &str,
-    file: LLVMMetadataRef,
-    line: u32,
-    ty: LLVMMetadataRef,
-    is_local: bool,
-    align: u32,
-) -> LLVMMetadataRef {
-    let cname = CString::new(name).unwrap();
-    let clink = CString::new(linkage_name).unwrap();
-
-    unsafe {
-        LLVMDIBuilderCreateGlobalVariableExpression(
-            dctx.builder,
-            scope,
-            cname.as_ptr(),
-            name.len(),
-            clink.as_ptr(),
-            linkage_name.len(),
-            file,
-            line,
-            ty,
-            is_local as i32,
-            std::ptr::null_mut(), // initializer
-            std::ptr::null_mut(), // declaration
-            align,
-        )
-    }
-}
-
 pub unsafe fn create_debug_location_with_inline(
     dctx: &DebugContext,
     ctx: &Context,
@@ -224,16 +196,9 @@ pub unsafe fn debug_simple_type(
     bits: u64,
     encoding: LLVMDWARFTypeEncoding,
 ) -> LLVMMetadataRef {
-    unsafe {
-        LLVMDIBuilderCreateBasicType(
-            dctx.builder,
-            name.as_ptr() as *const _,
-            name.len(),
-            bits,
-            encoding,
-            LLVMDIFlagZero,
-        )
-    }
+    let cname = CString::new(name).unwrap();
+
+    unsafe { LLVMDIBuilderCreateBasicType(dctx.builder, cname.as_ptr(), name.len(), bits, encoding, LLVMDIFlagZero) }
 }
 
 pub unsafe fn debug_const_type(dctx: &DebugContext, base_type: LLVMMetadataRef) -> LLVMMetadataRef {
@@ -247,14 +212,16 @@ pub unsafe fn debug_pointer_type(
     align_bits: u32,
     name: &str,
 ) -> LLVMMetadataRef {
+    let cname = CString::new(name).unwrap();
+
     unsafe {
         LLVMDIBuilderCreatePointerType(
             dctx.builder,
             inner,
             size_bits,
             align_bits,
-            0,
-            name.as_ptr() as *const _,
+            0, // address space
+            cname.as_ptr(),
             name.len(),
         )
     }
@@ -499,11 +466,13 @@ pub unsafe fn debug_member_type(
 ) -> LLVMMetadataRef {
     let scope = debug_current_scope(dctx);
 
+    let cname = CString::new(name).unwrap();
+
     unsafe {
         LLVMDIBuilderCreateMemberType(
             dctx.builder,
             scope,
-            name.as_ptr() as *const _,
+            cname.as_ptr(),
             name.len(),
             dctx.file.metadata,
             line,
@@ -591,11 +560,13 @@ pub unsafe fn debug_struct_type(
 ) -> LLVMMetadataRef {
     let scope = debug_current_scope(dctx);
 
+    let cname = CString::new(name).unwrap();
+
     unsafe {
         LLVMDIBuilderCreateStructType(
             dctx.builder,
             scope,
-            name.as_ptr() as *const _,
+            cname.as_ptr(),
             name.len(),
             dctx.file.metadata,
             line,
@@ -607,7 +578,7 @@ pub unsafe fn debug_struct_type(
             elements.len() as u32,
             dctx.runtime_version,
             std::ptr::null_mut(),
-            name.as_ptr() as *const _,
+            name.as_ptr() as *const i8,
             name.len(),
         )
     }
@@ -646,13 +617,15 @@ pub unsafe fn emit_debug_function(
     line: u32,
     debug_type: LLVMMetadataRef,
 ) {
+    let cname = CString::new(name).unwrap();
+
     let sub_program = unsafe {
         LLVMDIBuilderCreateFunction(
             dctx.builder,
             dctx.file.metadata,
-            name.as_ptr() as *const _,
+            cname.as_ptr(),
             name.len(),
-            name.as_ptr() as *const _,
+            cname.as_ptr(),
             name.len(),
             dctx.file.metadata,
             line,
@@ -668,6 +641,50 @@ pub unsafe fn emit_debug_function(
     dctx.func = sub_program;
 
     unsafe { LLVMSetSubprogram(func, sub_program) };
+}
+
+pub unsafe fn emit_global_debug(
+    dctx: &DebugContext,
+    global: LLVMValueRef,
+    scope: LLVMMetadataRef,
+    file: LLVMMetadataRef,
+    name: &str,
+    linkage_name: &str,
+    line: u32,
+    ty: LLVMMetadataRef,
+    is_local: bool,
+) -> LLVMMetadataRef {
+    let cname = CString::new(name).unwrap();
+    let clinkage = CString::new(linkage_name).unwrap();
+
+    let expr = unsafe { LLVMDIBuilderCreateExpression(dctx.builder, std::ptr::null_mut(), 0) };
+
+    let gv_expr = unsafe {
+        LLVMDIBuilderCreateGlobalVariableExpression(
+            dctx.builder,
+            scope,
+            cname.as_ptr(),
+            name.len(),
+            clinkage.as_ptr(),
+            linkage_name.len(),
+            file,
+            line,
+            ty,
+            is_local as i32,
+            expr,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+
+    let dbg = CString::new("dbg").unwrap();
+
+    let dbg_kind =
+        unsafe { LLVMGetMDKindIDInContext(LLVMGetModuleContext(LLVMGetGlobalParent(global)), dbg.as_ptr(), 3) };
+
+    unsafe { LLVMGlobalSetMetadata(global, dbg_kind, gv_expr) };
+
+    gv_expr
 }
 
 pub unsafe fn emit_dbg_declare(
@@ -699,4 +716,39 @@ pub unsafe fn emit_dbg_declare(
 
 pub unsafe fn finalize_debug(dctx: &DebugContext) {
     unsafe { LLVMDIBuilderFinalize(dctx.builder) };
+}
+
+unsafe fn module_flag(module: LLVMModuleRef, behavior: LLVMModuleFlagBehavior, name: &str, value: u32) {
+    let cname = CString::new(name).unwrap();
+
+    // check if flag already exists
+    let existing = unsafe { LLVMGetModuleFlag(module, cname.as_ptr(), name.len()) };
+
+    if !existing.is_null() {
+        return;
+    }
+
+    let int_value = unsafe { LLVMConstInt(LLVMInt32Type(), value as u64, 0) };
+    let metadata_value = unsafe { LLVMValueAsMetadata(int_value) };
+
+    unsafe { LLVMAddModuleFlag(module, behavior, cname.as_ptr(), name.len(), metadata_value) };
+}
+
+pub unsafe fn emit_debug_module_flags(module: LLVMModuleRef) {
+    use LLVMModuleFlagBehavior::*;
+
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "Dwarf Version", 4) };
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 3) };
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "wchar_size", 4) };
+
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorOverride, "PIE Level", 2) };
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorOverride, "PIC Level", 2) };
+
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorError, "uwtable", 2) };
+
+    unsafe { module_flag(module, LLVMModuleFlagBehaviorWarning, "frame-pointer", 2) };
+}
+
+pub unsafe fn reset_debug_location(builder: &Builder) {
+    unsafe { LLVMSetCurrentDebugLocation2(builder.as_mut_ptr(), std::ptr::null_mut()) };
 }

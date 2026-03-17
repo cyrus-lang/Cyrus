@@ -27,7 +27,7 @@ use crate::{
             abi_type::abi_type_to_llvm_type,
             modifiers::{apply_func_modifiers, apply_inlining_func},
         },
-        debug_info::{debug_func_type, emit_debug_function},
+        debug_info::{debug_func_type, emit_debug_function, reset_debug_location},
     },
 };
 use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
@@ -716,6 +716,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         func_metadata: LLVMMetadataRef,
         loc: &SourceLoc,
     ) {
+        unsafe { reset_debug_location(self.llvmbuilder) };
         debug_assert!(self.cur_func.is_some());
 
         let cur_func = self.cur_func.unwrap();
