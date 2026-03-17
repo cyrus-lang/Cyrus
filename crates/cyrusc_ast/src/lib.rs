@@ -56,6 +56,7 @@ pub enum Expr {
     Deref(Deref),
     StructInit(StructInit),
     FuncCall(FuncCall),
+    Builtin(Builtin),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
     SizeOf(SizeOf),
@@ -275,6 +276,30 @@ pub struct PrefixExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Builtin {
+    BuiltinFunc(BuiltinFunc),
+    BuiltinScope(BuiltinScope),
+}
+
+#[derive(Debug, Clone)]
+pub struct BuiltinFunc {
+    pub name: Ident,
+    pub args: Vec<Expr>,
+    pub child_stmt: Option<Box<Stmt>>,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct BuiltinScope {
+    pub name: Ident,
+    pub args: Vec<Expr>,
+    pub block: Box<BlockStmt>,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncCall {
     pub operand: Box<Expr>,
     pub args: Vec<Expr>,
@@ -455,6 +480,7 @@ pub enum Stmt {
     Defer(Defer),
     Label(Label),
     Goto(Goto),
+    Builtin(Builtin),
 }
 
 #[derive(Debug, Clone)]
@@ -937,6 +963,10 @@ impl Stmt {
             Stmt::Defer(defer) => defer.loc.clone(),
             Stmt::Label(label) => label.loc.clone(),
             Stmt::Goto(goto) => goto.loc.clone(),
+            Stmt::Builtin(builtin) => match builtin {
+                Builtin::BuiltinFunc(builtin_func) => builtin_func.loc.clone(),
+                Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc.clone(),
+            },
             Stmt::Expr(..) => unreachable!(),
         }
     }
@@ -1302,6 +1332,20 @@ impl PartialEq for FuncVariadicParams {
     }
 }
 
+impl PartialEq for BuiltinScope {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args
+    }
+}
+
+impl PartialEq for BuiltinFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args && self.child_stmt.is_some() == other.child_stmt.is_some()
+    }
+}
+
+impl Eq for BuiltinFunc {}
+impl Eq for BuiltinScope {}
 impl Eq for Array {}
 impl Eq for UntypedArray {}
 impl Eq for ArrayIndex {}

@@ -122,7 +122,9 @@ impl Parser {
                 })]
             }
             _ => {
-                return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier));
+                return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
+                    got: self.current_token().kind.to_string(),
+                }));
             }
         };
 
@@ -145,6 +147,7 @@ impl Parser {
             self.next_token(); // consume '::'
 
             let ident_token = self.current_token();
+
             match &ident_token.kind {
                 TokenKind::Ident(name) => {
                     segments.push(ModuleSegment::SubModule(Ident {
@@ -155,7 +158,9 @@ impl Parser {
                 }
                 _ => {
                     // if we find '::' but no identifier after it
-                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier));
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
+                        got: ident_token.kind.to_string(),
+                    }));
                 }
             }
 
@@ -218,9 +223,12 @@ impl Parser {
 
     fn parse_prefix_expr(&mut self) -> Result<Expr, Diag> {
         let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let loc = self.current_token().loc;
 
-        let expr = match &self.current_token().clone().kind {
+        let expr = match &self.current_token().kind {
+            TokenKind::At => {
+                return Ok(Expr::Builtin(self.parse_builtin()?));
+            }
             TokenKind::Repr => {
                 let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();
 
@@ -470,7 +478,7 @@ impl Parser {
         let return_type = self.parse_type_specifier()?;
         self.next_token(); // last token of return type
 
-        let body = self.parse_compound_stmt()?;
+        let body = self.parse_block_stmt()?;
 
         Ok(Expr::Lambda(Lambda {
             params,
@@ -628,7 +636,7 @@ impl Parser {
         }
     }
 
-    fn parse_expr_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
+    pub(crate) fn parse_expr_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
         let start = self.current_token().span.start;
         let mut series: Vec<Expr> = Vec::new();
 

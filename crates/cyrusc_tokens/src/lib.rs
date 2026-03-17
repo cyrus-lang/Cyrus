@@ -81,6 +81,7 @@ pub enum TokenKind {
     GreaterEqual,
     And,
     Or,
+    At,
 
     // Keywords
     Var,
@@ -234,6 +235,7 @@ impl fmt::Display for TokenKind {
             TokenKind::RightBrace => write!(f, "}}"),
             TokenKind::LeftBracket => write!(f, "[["),
             TokenKind::RightBracket => write!(f, "]]"),
+            TokenKind::At => write!(f, "@"),
             TokenKind::Comma => write!(f, ","),
             TokenKind::DoubleDot => write!(f, ".."),
             TokenKind::TripleDot => write!(f, "..."),

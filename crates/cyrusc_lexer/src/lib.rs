@@ -173,6 +173,7 @@ impl Lexer {
             '}' => TokenKind::RightBrace,
             '[' => TokenKind::LeftBracket,
             ']' => TokenKind::RightBracket,
+            '@' => TokenKind::At,
             ':' => {
                 if self.peek_char() == ':' {
                     let start = self.pos;

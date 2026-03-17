@@ -44,7 +44,7 @@ impl Parser {
                 loc: token.loc,
             })
         } else {
-            Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier))
+            Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier { got: token.kind.to_string() }))
         }
     }
 

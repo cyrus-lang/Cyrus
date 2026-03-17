@@ -38,6 +38,24 @@ impl Parser {
         grouped_modifiers: Option<UnresolvedModifiers>,
         toplevel: bool,
     ) -> Result<Vec<Stmt>, Diag> {
+        if self.current_token_is(TokenKind::At) {
+            let mut builtin = self.parse_builtin()?;
+
+            if let Builtin::BuiltinFunc(builtin_func) = &mut builtin {
+                self.expect_current(TokenKind::RightParen)?;
+                
+                let stmts = self.parse_stmt(grouped_modifiers, toplevel)?;
+
+                if !stmts.len() == 1 {
+                    return Err(self.error_invalid_token());
+                }
+
+                builtin_func.child_stmt = Some(Box::new(stmts.first().unwrap().clone()));
+            }
+
+            return Ok(vec![Stmt::Builtin(builtin)]);
+        }
+
         let modifiers = grouped_modifiers.clone().unwrap_or(self.parse_unresolved_modifiers()?);
         let loc = self.current_token().loc.clone();
 
@@ -75,9 +93,7 @@ impl Parser {
 
         if !toplevel {
             // modifiers should not be used with non-top-level stmts.
-            if modifiers != UnresolvedModifiers::default() {
-                return Err(self.error_invalid_token());
-            }
+            if modifiers != UnresolvedModifiers::default() {}
 
             let stmt = match self.current_token().kind {
                 TokenKind::Var | TokenKind::Const => self.parse_variable(),
@@ -92,14 +108,14 @@ impl Parser {
                 TokenKind::Switch => self.parse_switch(),
                 TokenKind::Goto => self.parse_goto(),
                 TokenKind::LeftBrace => {
-                    let block_statement = self.parse_compound_stmt()?;
-                    Ok(Stmt::BlockStmt(block_statement))
+                    let block_stmt = self.parse_block_stmt()?;
+                    Ok(Stmt::BlockStmt(block_stmt))
                 }
                 _ => {
                     if matches!(self.current_token().kind, TokenKind::Ident { .. })
                         && self.peek_token_is(TokenKind::Colon)
                     {
-                        return Ok(vec![self.parse_label_statement()?]);
+                        return Ok(vec![self.parse_label_stmt()?]);
                     }
 
                     self.parse_expr_stmt()
@@ -114,6 +130,44 @@ impl Parser {
                     return Err(self.error_invalid_token());
                 }
             }
+        }
+    }
+
+    pub(crate) fn parse_builtin(&mut self) -> Result<Builtin, Diag> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc;
+
+        self.next_token(); // consume at
+
+        let ident = self.parse_ident()?;
+        self.next_token();
+
+        dbg!(self.current_token());
+
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let args = self.parse_expr_series(TokenKind::RightParen)?.0;
+        self.must_be_right_paren()?;
+
+        if self.peek_token_is(TokenKind::LeftBrace) {
+            self.next_token(); // consume right paren
+            let block = self.parse_block_stmt()?;
+
+            Ok(Builtin::BuiltinScope(BuiltinScope {
+                name: ident,
+                args,
+                block: Box::new(block),
+                span: Span::new(start, self.current_token().span.end),
+                loc,
+            }))
+        } else {
+            Ok(Builtin::BuiltinFunc(BuiltinFunc {
+                name: ident,
+                args,
+                child_stmt: None,
+                span: Span::new(start, self.current_token().span.end),
+                loc,
+            }))
         }
     }
 
@@ -169,7 +223,7 @@ impl Parser {
         }))
     }
 
-    pub(crate) fn parse_label_statement(&mut self) -> Result<Stmt, Diag> {
+    pub(crate) fn parse_label_stmt(&mut self) -> Result<Stmt, Diag> {
         let name = self.parse_ident()?;
         let start = name.span.start;
         let loc = name.loc.clone();
@@ -182,7 +236,7 @@ impl Parser {
         }))
     }
 
-    pub(crate) fn parse_compound_stmt(&mut self) -> Result<BlockStmt, Diag> {
+    pub(crate) fn parse_block_stmt(&mut self) -> Result<BlockStmt, Diag> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -317,7 +371,12 @@ impl Parser {
                     }
                 }
                 _ => {
-                    return Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier));
+                    return Err(self.error_at_token(
+                        &token,
+                        ParserDiagKind::ExpectedIdentifier {
+                            got: self.current_token().kind.to_string(),
+                        },
+                    ));
                 }
             }
 
@@ -965,7 +1024,7 @@ impl Parser {
     fn parse_for_loop_body(&mut self) -> Result<Box<BlockStmt>, Diag> {
         let body: Box<BlockStmt>;
         if self.current_token_is(TokenKind::LeftBrace) {
-            body = Box::new(self.parse_compound_stmt()?);
+            body = Box::new(self.parse_block_stmt()?);
 
             if self.peek_token_is(TokenKind::Semicolon) {
                 self.next_token();
@@ -1001,7 +1060,7 @@ impl Parser {
 
         self.expect_current(TokenKind::RightParen)?;
 
-        let body = self.parse_compound_stmt()?;
+        let body = self.parse_block_stmt()?;
 
         Ok(Stmt::Foreach(Foreach {
             item: item_identifier,
@@ -1023,7 +1082,7 @@ impl Parser {
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
 
-        let body = self.parse_compound_stmt()?;
+        let body = self.parse_block_stmt()?;
 
         Ok(Stmt::While(While {
             condition,
@@ -1043,7 +1102,7 @@ impl Parser {
         if self.current_token_is(TokenKind::LeftBrace) {
             let body: Box<BlockStmt>;
             if self.current_token_is(TokenKind::LeftBrace) {
-                body = Box::new(self.parse_compound_stmt()?);
+                body = Box::new(self.parse_block_stmt()?);
 
                 if self.peek_token_is(TokenKind::Semicolon) {
                     self.next_token();
@@ -1415,7 +1474,7 @@ impl Parser {
             }));
         }
 
-        let body = Box::new(self.parse_compound_stmt()?);
+        let body = Box::new(self.parse_block_stmt()?);
         let end = self.current_token().span.end;
 
         return Ok(Stmt::FuncDef(FuncDef {
@@ -1642,7 +1701,7 @@ impl Parser {
 
                 self.expect_current(TokenKind::FatArrow)?;
 
-                let case_body = self.parse_compound_stmt()?;
+                let case_body = self.parse_block_stmt()?;
                 self.next_token();
 
                 cases.push(SwitchCase {
@@ -1654,7 +1713,7 @@ impl Parser {
             } else if self.current_token_is(TokenKind::Default) {
                 self.next_token();
                 self.expect_current(TokenKind::FatArrow)?;
-                let case_body = self.parse_compound_stmt()?;
+                let case_body = self.parse_block_stmt()?;
                 self.next_token();
                 default_case = Some(case_body);
                 break;
@@ -1688,7 +1747,7 @@ impl Parser {
         self.expect_peek(TokenKind::RightParen)?;
         self.next_token(); // consume right paren
 
-        let consequent = Box::new(self.parse_compound_stmt()?);
+        let consequent = Box::new(self.parse_block_stmt()?);
 
         if self.peek_token_is(TokenKind::Else) {
             self.next_token(); // consume right brace
@@ -1706,7 +1765,7 @@ impl Parser {
                 self.next_token(); // consume last token of the expression
                 self.expect_current(TokenKind::RightParen)?;
 
-                let consequent = Box::new(self.parse_compound_stmt()?);
+                let consequent = Box::new(self.parse_block_stmt()?);
 
                 if self.peek_token_is(TokenKind::Else) {
                     self.next_token(); // consume else token
@@ -1727,7 +1786,7 @@ impl Parser {
                 });
             } else {
                 // parse else block
-                alternate = Some(Box::new(self.parse_compound_stmt()?));
+                alternate = Some(Box::new(self.parse_block_stmt()?));
 
                 if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                     return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));

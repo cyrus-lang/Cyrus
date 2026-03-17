@@ -52,6 +52,33 @@ impl fmt::Display for FuncCall {
     }
 }
 
+impl fmt::Display for Builtin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Builtin::BuiltinFunc(builtin_func) => write!(f, "{}", builtin_func),
+            Builtin::BuiltinScope(builtin_scope) => write!(f, "{}", builtin_scope),
+        }
+    }
+}
+
+impl fmt::Display for BuiltinFunc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "@{}({})", self.name, expr_series_to_string(self.args.clone()))
+    }
+}
+
+impl fmt::Display for BuiltinScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "@{}({}) {{ {} }}",
+            self.name,
+            expr_series_to_string(self.args.clone()),
+            self.block
+        )
+    }
+}
+
 impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -285,7 +312,10 @@ impl fmt::Display for Expr {
                 write!(f, "({} {} {})", infix_expr.lhs, infix_expr.op, infix_expr.rhs)
             }
             Expr::FuncCall(func_call) => {
-                write!(f, "{}", func_call)
+                write!(f, "{}", func_call.to_string())
+            }
+            Expr::Builtin(builtin) => {
+                write!(f, "{}", builtin.to_string())
             }
             Expr::FieldAccess(field_access) => {
                 if field_access.is_fat_arrow {

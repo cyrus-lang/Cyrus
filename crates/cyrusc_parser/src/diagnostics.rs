@@ -52,8 +52,8 @@ pub enum ParserDiagKind {
     #[error("Missing opening paren '('.")]
     MissingOpeningParen,
 
-    #[error("Expected an ident.")]
-    ExpectedIdentifier,
+    #[error("Expected an identifier but got '{got}'.")]
+    ExpectedIdentifier { got: String },
 
     #[error("Missing semicolon.")]
     MissingSemicolon,
