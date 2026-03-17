@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::diagnostics::LexicalDiagKind;
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, source_loc::SourceLoc};
 use cyrusc_strescape::unescape_string;
@@ -360,7 +361,7 @@ impl Lexer {
                     return self.read_string(Some(StringPrefix::B));
                 } else if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_ident();
-                } else if self.is_numeric(self.ch) {
+                } else if is_numeric(self.ch) {
                     return self.read_number();
                 } else {
                     lexer_invalid_char_error(self.file_name.clone(), self.line, self.column - 1, self.ch);
@@ -546,7 +547,7 @@ impl Lexer {
 
         let end = self.pos;
 
-        let token_kind = self.lookup_identifier(final_ident);
+        let token_kind = lookup_identifier(final_ident);
 
         Token {
             kind: token_kind,
@@ -565,7 +566,7 @@ impl Lexer {
                 self.read_char();
             }
 
-            Some(Box::new(self.lookup_identifier(suffix)))
+            Some(Box::new(lookup_identifier(suffix)))
         } else {
             None
         }
@@ -713,40 +714,13 @@ impl Lexer {
     }
 
     #[inline]
-    fn is_numeric(&self, ch: char) -> bool {
-        ch.is_ascii_digit()
-    }
-
-    #[inline]
     fn is_eof(&mut self) -> bool {
         self.pos == self.input.len() || self.ch == '\0'
     }
 
     #[inline]
-    fn is_whitespace(ch: char) -> bool {
-        matches!(
-            ch,
-            // Usual ASCII suspects
-            '\u{0009}'   // \t
-            | '\u{000A}' // \n
-            | '\u{000B}' // vertical tab
-            | '\u{000C}' // form feed
-            | '\u{000D}' // \r
-            | '\u{0020}' // space
-            // NEXT LINE from latin1
-            | '\u{0085}'
-            // Bidi markers
-            | '\u{200E}' // LEFT-TO-RIGHT MARK
-            | '\u{200F}' // RIGHT-TO-LEFT MARK
-            // Dedicated whitespace characters from Unicode
-            | '\u{2028}' // LINE SEPARATOR
-            | '\u{2029}' // PARAGRAPH SEPARATOR
-        )
-    }
-
-    #[inline]
     fn skip_whitespace(&mut self) {
-        while Self::is_whitespace(self.ch) && !self.is_eof() {
+        while is_whitespace(self.ch) && !self.is_eof() {
             self.read_char();
         }
     }
@@ -813,85 +787,111 @@ impl Lexer {
             self.skip_whitespace();
         }
     }
+}
 
-    #[inline]
-    fn lookup_identifier(&mut self, ident: String) -> TokenKind {
-        match ident.as_str() {
-            "dynamic" => TokenKind::Dynamic,
-            "var" => TokenKind::Var,
-            "defer" => TokenKind::Defer,
-            "goto" => TokenKind::Goto,
-            "union" => TokenKind::Union,
-            "interface" => TokenKind::Interface,
-            "type" => TokenKind::Typedef,
-            "cast" => TokenKind::Typecast,
-            "fn" => TokenKind::Function,
-            "switch" => TokenKind::Switch,
-            "case" => TokenKind::Case,
-            "default" => TokenKind::Default,
-            "struct" => TokenKind::Struct,
-            "import" => TokenKind::Import,
-            "if" => TokenKind::If,
-            "else" => TokenKind::Else,
-            "return" => TokenKind::Return,
-            "for" => TokenKind::For,
-            "while" => TokenKind::While,
-            "foreach" => TokenKind::Foreach,
-            "break" => TokenKind::Break,
-            "continue" => TokenKind::Continue,
-            "true" => TokenKind::True,
-            "false" => TokenKind::False,
-            "null" => TokenKind::Null,
-            "as" => TokenKind::As,
-            "in" => TokenKind::In,
-            "enum" => TokenKind::Enum,
-            "void" => TokenKind::Void,
-            "extern" => TokenKind::Extern,
-            "inline" => TokenKind::Inline,
-            "alwaysinline" => TokenKind::AlwaysInline,
-            "noinline" => TokenKind::NoInline,
-            "pub" => TokenKind::Public,
-            "const" => TokenKind::Const,
-            "sizeof" => TokenKind::SizeOf,
-            "weak" => TokenKind::Weak,
-            "linkonce" => TokenKind::LinkOnce,
-            "callconv" => TokenKind::Callconv,
-            "naked" => TokenKind::Naked,
-            "noreturn" => TokenKind::NoReturn,
-            "hot" => TokenKind::Hot,
-            "cold" => TokenKind::Cold,
-            "dllimport" => TokenKind::DllImport,
-            "dllexport" => TokenKind::DllExport,
-            "optsize" => TokenKind::OptSize,
-            "optnone" => TokenKind::OptNone,
-            "no_sanitize" => TokenKind::NoSanitize,
-            "nounwind" => TokenKind::NoUnwind,
-            "section" => TokenKind::Section,
-            "repr" => TokenKind::Repr,
-            "align" => TokenKind::Align,
-            "uintptr" => TokenKind::UIntPtr,
-            "intptr" => TokenKind::IntPtr,
-            "isize" => TokenKind::ISize,
-            "usize" => TokenKind::USize,
-            "int" => TokenKind::Int,
-            "int8" => TokenKind::Int8,
-            "int16" => TokenKind::Int16,
-            "int32" => TokenKind::Int32,
-            "int64" => TokenKind::Int64,
-            "int128" => TokenKind::Int128,
-            "uint" => TokenKind::UInt,
-            "uint8" => TokenKind::UInt8,
-            "uint16" => TokenKind::UInt16,
-            "uint32" => TokenKind::UInt32,
-            "uint64" => TokenKind::UInt64,
-            "uint128" => TokenKind::UInt128,
-            "float16" => TokenKind::Float16,
-            "float32" => TokenKind::Float32,
-            "float64" => TokenKind::Float64,
-            "float128" => TokenKind::Float128,
-            "char" => TokenKind::Char,
-            "bool" => TokenKind::Bool,
-            _ => TokenKind::Ident(ident),
-        }
+fn lookup_identifier(ident: String) -> TokenKind {
+    match ident.as_str() {
+        "dynamic" => TokenKind::Dynamic,
+        "var" => TokenKind::Var,
+        "defer" => TokenKind::Defer,
+        "goto" => TokenKind::Goto,
+        "union" => TokenKind::Union,
+        "interface" => TokenKind::Interface,
+        "type" => TokenKind::Typedef,
+        "cast" => TokenKind::Typecast,
+        "fn" => TokenKind::Function,
+        "switch" => TokenKind::Switch,
+        "case" => TokenKind::Case,
+        "default" => TokenKind::Default,
+        "struct" => TokenKind::Struct,
+        "import" => TokenKind::Import,
+        "if" => TokenKind::If,
+        "else" => TokenKind::Else,
+        "return" => TokenKind::Return,
+        "for" => TokenKind::For,
+        "while" => TokenKind::While,
+        "foreach" => TokenKind::Foreach,
+        "break" => TokenKind::Break,
+        "continue" => TokenKind::Continue,
+        "true" => TokenKind::True,
+        "false" => TokenKind::False,
+        "null" => TokenKind::Null,
+        "as" => TokenKind::As,
+        "in" => TokenKind::In,
+        "enum" => TokenKind::Enum,
+        "void" => TokenKind::Void,
+        "extern" => TokenKind::Extern,
+        "inline" => TokenKind::Inline,
+        "alwaysinline" => TokenKind::AlwaysInline,
+        "noinline" => TokenKind::NoInline,
+        "pub" => TokenKind::Public,
+        "const" => TokenKind::Const,
+        "sizeof" => TokenKind::SizeOf,
+        "weak" => TokenKind::Weak,
+        "linkonce" => TokenKind::LinkOnce,
+        "callconv" => TokenKind::Callconv,
+        "naked" => TokenKind::Naked,
+        "noreturn" => TokenKind::NoReturn,
+        "hot" => TokenKind::Hot,
+        "cold" => TokenKind::Cold,
+        "dllimport" => TokenKind::DllImport,
+        "dllexport" => TokenKind::DllExport,
+        "optsize" => TokenKind::OptSize,
+        "optnone" => TokenKind::OptNone,
+        "no_sanitize" => TokenKind::NoSanitize,
+        "nounwind" => TokenKind::NoUnwind,
+        "section" => TokenKind::Section,
+        "repr" => TokenKind::Repr,
+        "align" => TokenKind::Align,
+        "uintptr" => TokenKind::UIntPtr,
+        "intptr" => TokenKind::IntPtr,
+        "isize" => TokenKind::ISize,
+        "usize" => TokenKind::USize,
+        "int" => TokenKind::Int,
+        "int8" => TokenKind::Int8,
+        "int16" => TokenKind::Int16,
+        "int32" => TokenKind::Int32,
+        "int64" => TokenKind::Int64,
+        "int128" => TokenKind::Int128,
+        "uint" => TokenKind::UInt,
+        "uint8" => TokenKind::UInt8,
+        "uint16" => TokenKind::UInt16,
+        "uint32" => TokenKind::UInt32,
+        "uint64" => TokenKind::UInt64,
+        "uint128" => TokenKind::UInt128,
+        "float16" => TokenKind::Float16,
+        "float32" => TokenKind::Float32,
+        "float64" => TokenKind::Float64,
+        "float128" => TokenKind::Float128,
+        "char" => TokenKind::Char,
+        "bool" => TokenKind::Bool,
+        _ => TokenKind::Ident(ident),
     }
+}
+
+#[inline]
+fn is_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        // Usual ASCII suspects
+        '\u{0009}'   // \t
+            | '\u{000A}' // \n
+            | '\u{000B}' // vertical tab
+            | '\u{000C}' // form feed
+            | '\u{000D}' // \r
+            | '\u{0020}' // space
+            // NEXT LINE from latin1
+            | '\u{0085}'
+            // Bidi markers
+            | '\u{200E}' // LEFT-TO-RIGHT MARK
+            | '\u{200F}' // RIGHT-TO-LEFT MARK
+            // Dedicated whitespace characters from Unicode
+            | '\u{2028}' // LINE SEPARATOR
+            | '\u{2029}' // PARAGRAPH SEPARATOR
+    )
+}
+
+#[inline]
+fn is_numeric(ch: char) -> bool {
+    ch.is_ascii_digit()
 }
