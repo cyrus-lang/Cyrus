@@ -353,7 +353,7 @@ impl SeparateModuleSupport<'static, OwnedModule> for CodeGenLLVM {
 
             let dctx = {
                 let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
-                unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_name.as_str(), ".") }
+                unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_file_path.to_str().unwrap(), ".") }
             };
 
             // emit llvm-ir module
@@ -377,12 +377,12 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
         let context = OwnedModule::create_context();
         let owned_module = OwnedModule::create_owned_module(context, &self.entry_module_file_path, "module", true);
 
-        let dctx = {
-            let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
-            unsafe { DebugContext::new(llvmmodule_ref, owned_module.module_name.as_str(), ".") }
-        };
-
         for cir_program_tree in cir_modules {
+            let dctx = {
+                let llvmmodule_ref = owned_module.module.borrow().as_mut_ptr();
+                unsafe { DebugContext::new(llvmmodule_ref, &cir_program_tree.file_path, ".") }
+            };
+
             let builder = owned_module.create_builder();
 
             self.process_module_with_local_context(
@@ -390,7 +390,7 @@ impl UnifiedModuleSupport<'static, OwnedModule> for CodeGenLLVM {
                 builder.clone(),
                 cir_program_tree,
                 self.monomorph_registry.clone(),
-                dctx.clone(),
+                dctx,
             );
         }
 

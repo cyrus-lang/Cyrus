@@ -131,7 +131,26 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_ty
                     .elements
                     .iter()
-                    .map(|ty| self.emit_debug_ty_metadata(ty))
+                    .enumerate()
+                    .map(|(i, ty)| {
+                        let field_type_metadata = self.emit_debug_ty_metadata(ty);
+                        let offset_bits = layout.lookup_field_offset(i) * 8;
+
+                        let name = i.to_string();
+
+                        unsafe {
+                            debug_member_type(
+                                &self.dctx,
+                                &name,
+                                field_type_metadata,
+                                offset_bits as u64,
+                                // FIXME: Expected to have exact location of the element
+                                // but hence it's not implemented correctly in the AST
+                                // using tuple_ty.loc for now.
+                                tuple_ty.loc.line as u32,
+                            )
+                        }
+                    })
                     .collect();
 
                 let tuple_name = "<tuple>".to_string();
@@ -228,10 +247,27 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             CIRTy::Union(union_ty) => {
                 let layout = type_layout(&self.target.info, &CIRTy::Union(union_ty.clone()));
+
                 let mut elements_metadata: Vec<LLVMMetadataRef> = union_ty
                     .fields
                     .iter()
-                    .map(|ty| self.emit_debug_ty_metadata(ty))
+                    .enumerate()
+                    .map(|(i, ty)| {
+                        let field_type_metadata = self.emit_debug_ty_metadata(ty);
+                        let offset_bits = layout.lookup_field_offset(i) * 8;
+
+                        let (name, loc) = &union_ty.fields_info[i];
+
+                        unsafe {
+                            debug_member_type(
+                                &self.dctx,
+                                &name,
+                                field_type_metadata,
+                                offset_bits as u64,
+                                loc.line as u32,
+                            )
+                        }
+                    })
                     .collect();
 
                 let union_name = union_ty.name.clone().unwrap_or("<unnamed_union>".to_string());
