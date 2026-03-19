@@ -31,6 +31,12 @@ pub type SymbolID = u32;
 pub type LabelID = u32;
 pub type ModuleID = u64;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct DeclID {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
     pub body: Vec<TypedStmt>,

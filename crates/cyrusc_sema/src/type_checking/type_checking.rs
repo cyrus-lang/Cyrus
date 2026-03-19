@@ -113,7 +113,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnknownSymbol { symbol_name }),
-                        location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                        loc: Some(DiagLoc::new(typed_expr.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -239,7 +239,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidUsageOfTheSemanticType),
-                    location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                    loc: Some(DiagLoc::new(typed_expr.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -350,7 +350,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::UnescapeError(unescape_err)),
-                            location: Some(DiagLoc::new(literal.loc.clone())),
+                            loc: Some(DiagLoc::new(literal.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -486,7 +486,7 @@ impl<'a> AnalysisContext<'a> {
 
                 if let Some(sym) = sym_opt {
                     if let Some(resolved_union) = sym.as_union() {
-                        return Some(union_sig_as_unnamed_union_ty(
+                        return Some(union_sig_as_unnamed_union_type(
                             &resolved_union.union_sig,
                             unnamed_union_value.loc.clone(),
                         ));
@@ -508,7 +508,7 @@ impl<'a> AnalysisContext<'a> {
                         )
                         .unwrap();
 
-                        return Some(union_sig_as_unnamed_union_ty(
+                        return Some(union_sig_as_unnamed_union_type(
                             &union_sig,
                             unnamed_union_value.loc.clone(),
                         ));
@@ -523,7 +523,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::UnnamedUnionValueInfering),
-                    location: Some(DiagLoc::new(unnamed_union_value.loc.clone())),
+                    loc: Some(DiagLoc::new(unnamed_union_value.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -544,7 +544,7 @@ impl<'a> AnalysisContext<'a> {
                     struct_name: object_name,
                     field_name: unnamed_union_value.field_name.as_string(),
                 }),
-                location: Some(DiagLoc::new(unnamed_union_value.loc.clone())),
+                loc: Some(DiagLoc::new(unnamed_union_value.loc.clone())),
                 hint: None,
             });
             return None;
@@ -604,7 +604,7 @@ impl<'a> AnalysisContext<'a> {
                         enum_name,
                         variant_name: unnamed_enum_value.ident.as_string(),
                     }),
-                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                    loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -625,7 +625,7 @@ impl<'a> AnalysisContext<'a> {
                                 enum_name,
                                 variant_name: unnamed_enum_value.ident.as_string(),
                             }),
-                            location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                            loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -638,7 +638,7 @@ impl<'a> AnalysisContext<'a> {
                             kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
                                 variant_name: unnamed_enum_value.ident.as_string(),
                             }),
-                            location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                            loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -652,7 +652,7 @@ impl<'a> AnalysisContext<'a> {
                                     expected: values_fields.len() as u32,
                                     provided: values_fields.len() as u32,
                                 }),
-                                location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                                 hint: None,
                             });
                             return None;
@@ -692,7 +692,7 @@ impl<'a> AnalysisContext<'a> {
                                         enum_name: enum_sig.name.clone(),
                                         variant_name: unnamed_enum_value.ident.as_string(),
                                     }),
-                                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                    loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                                     hint: None,
                                 });
                                 return None;
@@ -705,7 +705,7 @@ impl<'a> AnalysisContext<'a> {
                                     kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
                                         variant_name: unnamed_enum_value.ident.as_string(),
                                     }),
-                                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                    loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                                     hint: None,
                                 });
                                 return None;
@@ -719,7 +719,7 @@ impl<'a> AnalysisContext<'a> {
                                             expected: values_fields.len() as u32,
                                             provided: values_fields.len() as u32,
                                         }),
-                                        location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                                        loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                                         hint: None,
                                     });
                                     return None;
@@ -817,7 +817,7 @@ impl<'a> AnalysisContext<'a> {
                     kind: Box::new(AnalyzerDiagKind::UnnamedEnumValueInfering {
                         variant_name: unnamed_enum_value.ident.as_string(),
                     }),
-                    location: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
+                    loc: Some(DiagLoc::new(unnamed_enum_value.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -878,7 +878,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
-                        location: Some(DiagLoc::new(field.loc.clone())),
+                        loc: Some(DiagLoc::new(field.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -939,7 +939,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ArrayIndexOnNonArrayOperand),
-                location: Some(DiagLoc::new(array_index.loc.clone())),
+                loc: Some(DiagLoc::new(array_index.loc.clone())),
                 hint: None,
             });
             return None;
@@ -962,7 +962,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ArrayNonIntegerIndex { found_type }),
-                location: Some(DiagLoc::new(array_index.loc.clone())),
+                loc: Some(DiagLoc::new(array_index.loc.clone())),
                 hint: None,
             });
             return None;
@@ -982,7 +982,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DerefVoidPointerValue),
-                    location: Some(DiagLoc::new(array_index.loc.clone())),
+                    loc: Some(DiagLoc::new(array_index.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -1174,7 +1174,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
+                loc: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1245,7 +1245,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
-                location: Some(DiagLoc::new(struct_init.loc.clone())),
+                loc: Some(DiagLoc::new(struct_init.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1303,7 +1303,7 @@ impl<'a> AnalysisContext<'a> {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
-            location: Some(DiagLoc::new(struct_init.loc.clone())),
+            loc: Some(DiagLoc::new(struct_init.loc.clone())),
             hint: None,
         });
         None
@@ -1351,7 +1351,7 @@ impl<'a> AnalysisContext<'a> {
                     kind: Box::new(AnalyzerDiagKind::PrivateFunctionCall {
                         name: format_typed_expr(&func_call.operand, &(self.symbol_formatter)(scope_id_opt)),
                     }),
-                    location: Some(DiagLoc::new(func_call.loc.clone())),
+                    loc: Some(DiagLoc::new(func_call.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -1401,7 +1401,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                        location: Some(DiagLoc::new(func_call.loc.clone())),
+                        loc: Some(DiagLoc::new(func_call.loc.clone())),
                         hint: Some("Lambdas never accept type args.".to_string()),
                     });
                     return None;
@@ -1426,7 +1426,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol { symbol_name }),
-                location: Some(DiagLoc::new(func_call.loc.clone())),
+                loc: Some(DiagLoc::new(func_call.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1589,7 +1589,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
-                            location: Some(DiagLoc::new(method_call.loc.clone())),
+                            loc: Some(DiagLoc::new(method_call.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -1602,7 +1602,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
-                        location: Some(DiagLoc::new(method_call.loc.clone())),
+                        loc: Some(DiagLoc::new(method_call.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -1621,7 +1621,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsMethods),
-                    location: Some(DiagLoc::new(method_call.loc.clone())),
+                    loc: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -1685,7 +1685,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectNotSupportsFields),
-                    location: Some(DiagLoc::new(method_call.loc.clone())),
+                    loc: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -1793,7 +1793,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UntypedArrayCannotBeInferred),
-                location: Some(DiagLoc::new(typed_array.loc.clone())),
+                loc: Some(DiagLoc::new(typed_array.loc.clone())),
                 hint: None,
             });
         }
@@ -1837,7 +1837,7 @@ impl<'a> AnalysisContext<'a> {
                         element_index: argument_idx.try_into().unwrap(),
                         expected_type,
                     }),
-                    location: Some(DiagLoc::new(typed_array.loc.clone())),
+                    loc: Some(DiagLoc::new(typed_array.loc.clone())),
                     hint: None,
                 });
             }
@@ -1852,7 +1852,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                        location: Some(DiagLoc::new(array_type.loc.clone())),
+                        loc: Some(DiagLoc::new(array_type.loc.clone())),
                         hint: None,
                     });
                 }
@@ -1870,7 +1870,7 @@ impl<'a> AnalysisContext<'a> {
                     elements: typed_array.elements.len().try_into().unwrap(),
                     expected: array_capacity.try_into().unwrap(),
                 }),
-                location: Some(DiagLoc::new(typed_array.loc.clone())),
+                loc: Some(DiagLoc::new(typed_array.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1925,7 +1925,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CastTypeMismatch { lhs_type, rhs_type }),
-                location: Some(DiagLoc::new(cast.loc.clone())),
+                loc: Some(DiagLoc::new(cast.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1977,7 +1977,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidMultipleDynamicType),
-                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
+                loc: Some(DiagLoc::new(dynamic_expr.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1987,7 +1987,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotInferDynamicInterfaceType),
-                location: Some(DiagLoc::new(dynamic_expr.loc.clone())),
+                loc: Some(DiagLoc::new(dynamic_expr.loc.clone())),
                 hint: None,
             });
             return None;
@@ -2049,7 +2049,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::MissingTypeArgs { type_name }),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
                 return false;
@@ -2088,7 +2088,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::MissingTypeArgs { type_name }),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
                 return;
@@ -2248,7 +2248,7 @@ impl<'a> AnalysisContext<'a> {
                                 object_name: object_name.clone(),
                                 method_name: method_call.method_name.clone(),
                             }),
-                            location: Some(DiagLoc::new(method_call.loc.clone())),
+                            loc: Some(DiagLoc::new(method_call.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -2282,7 +2282,7 @@ impl<'a> AnalysisContext<'a> {
                             object_name: object_name.clone(),
                             method_name: method_call.method_name.clone(),
                         }),
-                        location: Some(DiagLoc::new(method_call.loc.clone())),
+                        loc: Some(DiagLoc::new(method_call.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -2313,7 +2313,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: Box::new(AnalyzerDiagKind::StaticMethodCallOnInstance {
                     method_name: method_call.method_name.clone(),
                 }),
-                location: Some(DiagLoc::new(method_call.loc.clone())),
+                loc: Some(DiagLoc::new(method_call.loc.clone())),
                 hint: Some(format!(
                     "Call it on a value of type '{}', or declare it as a static function if no instance is required.",
                     format_sema_ty(operand_ty, &(self.symbol_formatter)(scope_id_opt))
@@ -2619,7 +2619,7 @@ impl<'a> AnalysisContext<'a> {
                     expected: expected_args_len as u32,
                     func_name: func_sig.name.clone(),
                 }),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
             return None;
@@ -2677,7 +2677,7 @@ impl<'a> AnalysisContext<'a> {
                         argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
                         argument_idx: param_idx as u32,
                     }),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
             }
@@ -2745,7 +2745,7 @@ impl<'a> AnalysisContext<'a> {
                                         argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
                                         argument_idx: (i + static_params_len) as u32,
                                     }),
-                                    location: Some(DiagLoc::new(loc.clone())),
+                                    loc: Some(DiagLoc::new(loc.clone())),
                                     hint: None,
                                 });
                             }
@@ -2797,7 +2797,7 @@ impl<'a> AnalysisContext<'a> {
                     expected: expected_args_len as u32,
                     func_name,
                 }),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
             return None;
@@ -2832,7 +2832,7 @@ impl<'a> AnalysisContext<'a> {
                                             ),
                                             argument_idx: (i + static_params_len) as u32,
                                         }),
-                                        location: Some(DiagLoc::new(loc.clone())),
+                                        loc: Some(DiagLoc::new(loc.clone())),
                                         hint: None,
                                     });
                                 }
@@ -2875,7 +2875,7 @@ impl<'a> AnalysisContext<'a> {
                         argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
                         argument_idx: param_idx as u32,
                     }),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
             }
@@ -2952,7 +2952,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UnionInitWithInvalidFields),
-                location: Some(DiagLoc::new(struct_init.loc.clone())),
+                loc: Some(DiagLoc::new(struct_init.loc.clone())),
                 hint: None,
             });
             return None;
@@ -2978,7 +2978,7 @@ impl<'a> AnalysisContext<'a> {
                         struct_name: resolved_union.union_sig.name.clone(),
                         field_name: field_init.name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field_init.loc.clone())),
+                    loc: Some(DiagLoc::new(field_init.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3007,7 +3007,7 @@ impl<'a> AnalysisContext<'a> {
                             &(self.symbol_formatter)(scope_id_opt),
                         ),
                     }),
-                    location: Some(DiagLoc::new(field_init.value.loc.clone())),
+                    loc: Some(DiagLoc::new(field_init.value.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3094,7 +3094,7 @@ impl<'a> AnalysisContext<'a> {
                         object_name: struct_name,
                         field_name: field_init.name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field_init.loc.clone())),
+                    loc: Some(DiagLoc::new(field_init.loc.clone())),
                     hint: None,
                 });
                 continue;
@@ -3132,7 +3132,7 @@ impl<'a> AnalysisContext<'a> {
                             struct_name,
                             field_name: field_init.name.clone(),
                         }),
-                        location: Some(DiagLoc::new(field_init.loc.clone())),
+                        loc: Some(DiagLoc::new(field_init.loc.clone())),
                         hint: None,
                     });
                     continue;
@@ -3174,7 +3174,7 @@ impl<'a> AnalysisContext<'a> {
                                 &(self.symbol_formatter)(scope_id_opt),
                             ),
                         }),
-                        location: Some(DiagLoc::new(field_init.value.loc.clone())),
+                        loc: Some(DiagLoc::new(field_init.value.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -3202,7 +3202,7 @@ impl<'a> AnalysisContext<'a> {
                     struct_name,
                     missing_field_names,
                 }),
-                location: Some(DiagLoc::new(struct_init.loc.clone())),
+                loc: Some(DiagLoc::new(struct_init.loc.clone())),
                 hint: None,
             });
         }
@@ -3410,7 +3410,7 @@ impl<'a> AnalysisContext<'a> {
                         struct_name: union_sig.name.clone(),
                         field_name: field_access.field_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    loc: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3464,7 +3464,7 @@ impl<'a> AnalysisContext<'a> {
                         ),
                         field_name: field_access.field_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    loc: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3536,7 +3536,7 @@ impl<'a> AnalysisContext<'a> {
                         ),
                         field_name: field_access.field_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    loc: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3600,7 +3600,7 @@ impl<'a> AnalysisContext<'a> {
                         struct_name,
                         field_name: field_access.field_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    loc: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3726,7 +3726,7 @@ impl<'a> AnalysisContext<'a> {
                                 &(self.symbol_formatter)(scope_id_opt),
                             ),
                         }),
-                        location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                        loc: Some(DiagLoc::new(typed_expr.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -3808,7 +3808,7 @@ impl<'a> AnalysisContext<'a> {
                             expected: valued_fields.len() as u32,
                             provided: method_call.args.len() as u32,
                         }),
-                        location: Some(DiagLoc::new(method_call.loc.clone())),
+                        loc: Some(DiagLoc::new(method_call.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -3827,7 +3827,7 @@ impl<'a> AnalysisContext<'a> {
                     kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
                         variant_name: method_call.method_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(method_call.loc.clone())),
+                    loc: Some(DiagLoc::new(method_call.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -3885,7 +3885,7 @@ impl<'a> AnalysisContext<'a> {
                     enum_name: resolved_enum.enum_sig.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 }),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
+                loc: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: None,
             });
             return None;
@@ -3896,7 +3896,7 @@ impl<'a> AnalysisContext<'a> {
                     enum_name: resolved_enum.enum_sig.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 }),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
+                loc: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: None,
             });
             return None;
@@ -4095,7 +4095,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
+                loc: Some(DiagLoc::new(tuple_member_access.loc.clone())),
                 hint: None,
             });
             return None;
@@ -4112,7 +4112,7 @@ impl<'a> AnalysisContext<'a> {
                     index: tuple_member_access.index.try_into().unwrap(),
                     length: tuple_type.type_list.len(),
                 }),
-                location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
+                loc: Some(DiagLoc::new(tuple_member_access.loc.clone())),
                 hint: None,
             });
             return None;
@@ -4258,7 +4258,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
             return true;
@@ -4396,7 +4396,7 @@ impl<'a> AnalysisContext<'a> {
                     field_name: field_access.field_name.clone(),
                     struct_name: struct_name.to_string(),
                 }),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
+                loc: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: None,
             });
             result = false;
@@ -4416,7 +4416,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    loc: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: Some("Use '.' instead of '->'.".to_string()),
                 });
                 result = false;
@@ -4426,7 +4426,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    loc: Some(DiagLoc::new(field_access.loc.clone())),
                     hint: Some("Use '->' when accessing through a pointer.".to_string()),
                 });
                 result = false;
@@ -4461,7 +4461,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
+                loc: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: Some("Use '->' when accessing through a pointer.".to_string()),
             });
             result = false;
@@ -4469,7 +4469,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                location: Some(DiagLoc::new(field_access.loc.clone())),
+                loc: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: Some("Use '.' instead of '->'.".to_string()),
             });
             result = false;
@@ -4559,7 +4559,7 @@ impl<'a> AnalysisContext<'a> {
                     method_name: func_sig.name.clone(),
                     object_name,
                 }),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
             result = false;
@@ -4576,7 +4576,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: Some("Use '.' instead of '->'.".to_string()),
                 });
                 result = false;
@@ -4586,7 +4586,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: Some("Use '->' when accessing through a pointer.".to_string()),
                 });
                 result = false;
@@ -4604,7 +4604,7 @@ impl<'a> AnalysisContext<'a> {
                             method_name: method_name.clone(),
                             instance_name: instance_name.clone(),
                         }),
-                        location: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(DiagLoc::new(loc.clone())),
                         hint: Some(format!(
                             "Instance '{}' is declared as 'const' and cannot be modified.",
                             instance_name
@@ -4642,7 +4642,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -4719,7 +4719,7 @@ fn infer_integer_type(
             None => Err(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidIntegerLiteralSuffix),
-                location: Some(DiagLoc::new(literal.loc.clone())),
+                loc: Some(DiagLoc::new(literal.loc.clone())),
                 hint: Some(format!("Invalid suffix {:?} for integer literal.", suffix)),
             }),
         };
@@ -4744,7 +4744,7 @@ fn infer_float_type(
             None => Err(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidFloatLiteralSuffix),
-                location: Some(DiagLoc::new(literal.loc.clone())),
+                loc: Some(DiagLoc::new(literal.loc.clone())),
                 hint: Some(format!("Invalid suffix {} for float literal.", suffix)),
             }),
         };

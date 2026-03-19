@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_and_exit_with_single_diag, source_loc::SourceLoc};
 use std::sync::{Arc, Mutex};
 
 impl<'a> AnalysisContext<'a> {
@@ -24,19 +24,19 @@ impl<'a> AnalysisContext<'a> {
         let mut entry_points_clone = entry_points.clone();
 
         if entry_points.len() == 0 {
-            display_single_diag!(Diag {
+            display_and_exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
-                location: None,
+                loc: None,
                 hint: None,
             });
         } else if entry_points.len() > 1 {
             let loc = entry_points_clone.pop().unwrap();
 
-            display_single_diag!(Diag {
+            display_and_exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: {
                     if let Some(another_decl_loc) = entry_points_clone.pop() {
                         Some(format!("Another declaration is at {}.", another_decl_loc))

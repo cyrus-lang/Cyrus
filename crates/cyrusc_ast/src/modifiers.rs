@@ -21,7 +21,6 @@ use crate::abi::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncModifiers {
-    pub vis: Visibility,
     pub linkage: Option<Linkage>,
     pub inline: Option<Inlining>,
     pub prologue: Option<Prologue>,
@@ -30,12 +29,12 @@ pub struct FuncModifiers {
     pub optional_flags: Vec<OptionalFlag>,
     pub placement: Vec<SectionAttr>,
     pub section: Option<SectionAttr>,
+    pub vis: Visibility,
 }
 
 impl Default for FuncModifiers {
     fn default() -> Self {
         Self {
-            vis: Visibility::default(),
             linkage: None,
             inline: None,
             prologue: None,
@@ -44,6 +43,7 @@ impl Default for FuncModifiers {
             section: None,
             optional_flags: Vec::new(),
             placement: Vec::new(),
+            vis: Visibility::default(),
         }
     }
 }

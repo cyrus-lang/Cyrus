@@ -70,7 +70,7 @@ impl<'a> AnalysisContext<'a> {
                         kind: "Method".to_string(),
                         expected: "snake_case".to_string(),
                     }),
-                    location: Some(DiagLoc::new(loc)),
+                    loc: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
             }
@@ -88,7 +88,7 @@ impl<'a> AnalysisContext<'a> {
                     name,
                     expected: expected.to_string(),
                 }),
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }

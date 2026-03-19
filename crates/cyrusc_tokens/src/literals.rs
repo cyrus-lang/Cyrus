@@ -14,17 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::{
-    TokenKind,
-    loc::{Location, Span},
-};
+
+use crate::TokenKind;
+use cyrusc_source_loc::Loc;
 use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Literal {
     pub kind: LiteralKind,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]

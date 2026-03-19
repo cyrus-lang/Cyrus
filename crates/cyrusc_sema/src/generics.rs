@@ -353,7 +353,7 @@ impl<'a> AnalysisContext<'a> {
                     return Err(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                        location: Some(DiagLoc::new(loc)),
+                        loc: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
                 }

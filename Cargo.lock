@@ -316,7 +316,7 @@ version = "0.1.0"
 dependencies = [
  "colorized",
  "console",
- "cyrusc_ast",
+ "cyrusc_source_loc",
  "cyrusc_strescape",
  "cyrusc_tokens",
 ]
@@ -334,7 +334,6 @@ version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
- "cyrusc_resolver",
  "cyrusc_tast",
  "cyrusc_tokens",
  "cyrusc_vtable_registry",
@@ -350,6 +349,7 @@ dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
+ "cyrusc_source_loc",
  "cyrusc_strescape",
  "cyrusc_tokens",
  "thiserror",
@@ -441,6 +441,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_source_loc"
+version = "0.1.0"
+
+[[package]]
 name = "cyrusc_strescape"
 version = "0.1.0"
 dependencies = [
@@ -463,6 +467,9 @@ dependencies = [
 [[package]]
 name = "cyrusc_tokens"
 version = "0.1.0"
+dependencies = [
+ "cyrusc_source_loc",
+]
 
 [[package]]
 name = "cyrusc_tui_utils"

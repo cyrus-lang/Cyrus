@@ -16,7 +16,7 @@
  */
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
-use crate::sigs::{EnumSig, FuncSig, UnionSig};
+use crate::sigs::{EnumSig, FuncSig, InterfaceSig, UnionSig, typed_func_decl_as_func_sig};
 use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
 use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
@@ -215,7 +215,22 @@ pub struct TypedUnnamedUnionTypeField {
     pub loc: SourceLoc,
 }
 
-pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedUnnamedEnumType {
+pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> InterfaceType {
+    let methods = interface_sig
+        .methods
+        .clone()
+        .iter()
+        .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
+        .collect();
+
+    InterfaceType {
+        symbol_id: interface_sig.symbol_id,
+        methods,
+        loc: interface_sig.loc.clone(),
+    }
+}
+
+pub fn enum_sig_as_unnamed_enum_type(enum_sig: &EnumSig, loc: SourceLoc) -> TypedUnnamedEnumType {
     let variants = enum_sig
         .variants
         .iter()
@@ -246,7 +261,7 @@ pub fn enum_sig_as_unnamed_enum_ty(enum_sig: &EnumSig, loc: SourceLoc) -> TypedU
     }
 }
 
-pub fn union_sig_as_unnamed_union_ty(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
+pub fn union_sig_as_unnamed_union_type(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
     let fields = union_sig
         .fields
         .iter()

@@ -7,7 +7,6 @@ edition = "2024"
 cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
 cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 rayon = "1.11.0"

@@ -23,7 +23,7 @@ use crate::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::exit_with_single_diag;
 use cyrusc_internal::{abi::target::ABITarget, cir::cir::CIRProgramTree};
 use cyrusc_tui_utils::{tui_compile_finished, tui_warning};
 use inkwell::targets::{Target as LLVMTarget, TargetTriple};
@@ -102,7 +102,7 @@ impl CodeGenContext {
     pub fn save_context_build_cache(&self) {
         let build_manifest = self.build_manifest.lock().unwrap();
         if let Err(err) = build_manifest.save_manifest() {
-            display_single_custom_diag!(err.to_string());
+            exit_with_single_diag!(err.to_string());
         }
         drop(build_manifest);
     }

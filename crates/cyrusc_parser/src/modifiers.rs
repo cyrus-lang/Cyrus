@@ -124,7 +124,7 @@ impl Parser {
                     return Err(Diag {
                         kind: Box::new(ParserDiagKind::InvalidModifier(diag.kind.to_string())),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
+                        loc: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
                         hint: None,
                     });
                 }
@@ -134,7 +134,7 @@ impl Parser {
                 return Err(Diag {
                     kind: Box::new(ParserDiagKind::InvalidModifier(err.to_string())),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
+                    loc: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
                     hint: None,
                 });
             }
@@ -377,7 +377,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for functions.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -402,7 +402,7 @@ impl UnresolvedModifiers {
                     "Function cannot be both exported and always inlined.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -413,7 +413,7 @@ impl UnresolvedModifiers {
                     "Attribute 'repr' cannot be applied to functions.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: Some("only data types like structs and enums can have a 'repr' attribute.".to_string()),
             });
         }
@@ -430,7 +430,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for struct declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -441,7 +441,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for structs.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -467,7 +467,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for enum declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -478,7 +478,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for enums.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -492,7 +492,7 @@ impl UnresolvedModifiers {
                         "Repr 'packed' is not supported for enums".to_string(),
                     )),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(loc)),
+                    loc: Some(DiagLoc::new(loc)),
                     hint: Some("If you need packed enum-like behavior, consider using a manually packed struct with a tag field".to_string()),
                 });
             }
@@ -506,7 +506,7 @@ impl UnresolvedModifiers {
                                 "Repr 'transparent' cannot be applied to enums. Enums only support 'c' and 'cyrus' layouts.".to_string(),
                             )),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(loc)),
+                            loc: Some(DiagLoc::new(loc)),
                             hint: None,
                         });
                     }
@@ -532,7 +532,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for union declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -543,7 +543,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for unions.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -555,7 +555,7 @@ impl UnresolvedModifiers {
                         "Packed layout is not supported for unions. Packed unions would cause unaligned accesses to fields.".to_string(),
                     )),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(loc)),
+                    loc: Some(DiagLoc::new(loc)),
                     hint: Some("If you need explicit control over union layout, Consider using 'repr(C)' with manual padding or a packed struct wrapper.".to_string()),
                 });
             }
@@ -570,7 +570,7 @@ impl UnresolvedModifiers {
                                     "Repr 'packed' cannot be combined with 'transparent' on unions.".to_string(),
                                 )),
                                 level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(loc)),
+                                loc: Some(DiagLoc::new(loc)),
                                 hint: Some("Remove either packed or transparent.".to_string()),
                             });
                         }
@@ -600,7 +600,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for global variable declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -611,7 +611,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for global variables.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -622,7 +622,7 @@ impl UnresolvedModifiers {
                     "Global variables cannot have repr.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: Some("Use 'align(n)' instead if you need alignment.".to_string()),
             });
         }
@@ -657,7 +657,7 @@ impl UnresolvedModifiers {
                     "Interfaces can only have visibility modifiers.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -682,7 +682,7 @@ impl UnresolvedModifiers {
                     "Typedefs can only have visibility modifiers.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -699,7 +699,7 @@ impl UnresolvedModifiers {
                     "Methods cannot use export, linkage, or section placement.".into(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -736,7 +736,7 @@ impl UnresolvedModifiers {
                     "Only visibility modifier allowed for fields.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(loc)),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }

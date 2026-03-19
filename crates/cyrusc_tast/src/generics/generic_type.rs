@@ -86,7 +86,7 @@ impl GenericType {
                     let generic_param = self.generic_params.lookup_positional(i).ok_or(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { i }),
-                        location: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     })?;
 
@@ -134,7 +134,7 @@ impl GenericType {
                             Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(GenericTypesDiagKind::UndefinedGenericParam { name: key.clone() }),
-                                location: Some(DiagLoc::new(loc.clone())),
+                                loc: Some(DiagLoc::new(loc.clone())),
                                 hint: None,
                             }
                         })?;
@@ -187,7 +187,7 @@ impl GenericType {
             return Err(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(GenericTypesDiagKind::RequiresExplicitTypeArgs { ty }),
-                location: Some(DiagLoc::new(self.loc.clone())),
+                loc: Some(DiagLoc::new(self.loc.clone())),
                 hint: Some(format!("Missing generic parameters: {}", missing_fmt)),
             });
         }
@@ -223,7 +223,7 @@ impl GenericType {
                             generic_param: generic_param_name.clone(),
                             already_inferred_as: format_sema_ty(parent_sema_ty, &format_symbol),
                         }),
-                        location: Some(DiagLoc::new(loc)),
+                        loc: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
                 }

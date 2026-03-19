@@ -138,7 +138,7 @@ pub fn validate_flags(flags: &[OptionalFlag]) -> Result<Vec<OptionalFlag>, Strin
             }
             _ => {
                 if !seen.insert(flag.clone()) {
-                    return Err(format!("Duplicate flag: {:?}", flag));
+                    return Err(format!("Duplicate flag: '{:?}'.", flag));
                 }
             }
         }
@@ -205,6 +205,7 @@ impl Default for CallConv {
         Self::System
     }
 }
+
 impl ReprAttr {
     pub fn new() -> Self {
         Self { items: Vec::new() }
@@ -263,6 +264,37 @@ impl ReprAttr {
     }
 }
 
+impl Default for Visibility {
+    fn default() -> Self {
+        Visibility::Private
+    }
+}
+
+impl Visibility {
+    pub fn is_private(&self) -> bool {
+        *self == Visibility::Private
+    }
+
+    pub fn is_public(&self) -> bool {
+        *self == Visibility::Public
+    }
+}
+
+impl Prologue {
+    pub fn conflicts_with_inline(&self) -> bool {
+        matches!(self, Prologue::Naked)
+    }
+}
+
+impl Linkage {
+    pub fn is_extern(&self) -> bool {
+        match self {
+            Linkage::Extern(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Display for ReprAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let items_fmt = self
@@ -291,37 +323,6 @@ impl fmt::Display for ReprKind {
             ReprKind::C => write!(f, "c"),
             ReprKind::Cyrus => write!(f, "cyrus"),
             ReprKind::Transparent => write!(f, "transparent"),
-        }
-    }
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
-}
-
-impl Visibility {
-    pub fn is_private(&self) -> bool {
-        matches!(self, Visibility::Private)
-    }
-
-    pub fn is_public(&self) -> bool {
-        matches!(self, Visibility::Public)
-    }
-}
-
-impl Prologue {
-    pub fn conflicts_with_inline(&self) -> bool {
-        matches!(self, Prologue::Naked)
-    }
-}
-
-impl Linkage {
-    pub fn is_extern(&self) -> bool {
-        match self {
-            Linkage::Extern(_) => true,
-            _ => false,
         }
     }
 }

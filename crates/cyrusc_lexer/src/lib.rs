@@ -16,12 +16,13 @@
  */
 
 use crate::diagnostics::LexicalDiagKind;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_and_exit_with_single_diag, source_loc::SourceLoc};
+use cyrusc_source_loc::Loc;
 use cyrusc_strescape::unescape_string;
 use cyrusc_tokens::{
     Token, TokenKind,
     literals::{Literal, LiteralKind, StringPrefix},
-    loc::{Location, Span},
+    loc::{Loc, Span},
 };
 use diagnostics::lexer_invalid_char_error;
 use std::{fmt::Debug, process::exit};
@@ -30,30 +31,40 @@ mod diagnostics;
 mod format;
 
 #[derive(Debug, Clone)]
-pub struct Lexer {
+pub struct Lexer<'source> {
+    source: &'source SourceFile,
     pos: usize,
     next_pos: usize,
     ch: char,
-    pub input: String,
-    pub file_name: String,
     line: usize,
     column: usize,
 }
 
 impl Lexer {
-    pub fn new(input: String, file_name: String) -> Self {
+    /// Creates a new lexer that reads a single characters from a SourceFile immediately.
+    pub fn new(source: &'src SourceFile) -> Self {
         let mut lexer = Self {
-            input: input.to_string(),
+            source,
             pos: 0,
             next_pos: 0,
             ch: '\0',
-            file_name,
             line: 1,
             column: 1,
         };
-
         lexer.read_char();
         lexer
+    }
+
+    /// Returns the FileID of the source file being tokenized.
+    #[inline]
+    pub fn file_id(&self) -> FileId {
+        self.source.id
+    }
+
+    /// Returns the input source string.
+    #[inline]
+    pub fn input(&self) -> &str {
+        &self.source.content
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
@@ -110,11 +121,7 @@ impl Lexer {
         if self.ch == '\0' {
             return Token {
                 kind: TokenKind::EOF,
-                span: Span {
-                    start: self.pos,
-                    end: self.pos,
-                },
-                loc: Location::new(self.line, self.column),
+                loc: Loc::new(self.file_id(), self.line, self.column, self.column),
             };
         }
 
@@ -126,15 +133,13 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Increment,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Plus,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -144,23 +149,20 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Decrement,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else if self.peek_char() == '>' {
                     self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::ThinArrow,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Minus,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -181,37 +183,36 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::DoubleColon,
-                        span: Span::new(start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Colon,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
             ',' => TokenKind::Comma,
             '.' => {
                 self.read_char();
-
                 let mut kind = TokenKind::Dot;
+                let token_end = self.pos;
 
                 if self.ch == '.' && self.peek_char() == '.' {
                     self.read_char();
                     self.read_char();
                     kind = TokenKind::TripleDot;
+                    token_end += 2; // triple dot
                 } else if self.ch == '.' {
                     self.read_char();
                     kind = TokenKind::DoubleDot;
+                    token_end += 1; // double dot
                 }
 
                 return Token {
                     kind,
-                    span: Span::new(token_start, self.pos),
-                    loc: Location::new(token_line, token_column),
+                    loc: Loc::new(self.file_id(), token_line, token_column, token_end),
                 };
             }
             '^' => TokenKind::Caret,
@@ -223,23 +224,20 @@ impl Lexer {
                     self.read_char(); // consume peeked equal sign
                     return Token {
                         kind: TokenKind::Equal,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else if self.peek_char() == '>' {
                     self.read_char(); // consume current equal sign
                     self.read_char(); // consume peeked equal sign
                     return Token {
                         kind: TokenKind::FatArrow,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char(); // consume current equal sign
                     return Token {
                         kind: TokenKind::Assign,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -249,15 +247,13 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::NotEqual,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char(); // consume current equal sign
                     return Token {
                         kind: TokenKind::Bang,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -267,23 +263,20 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::LessEqual,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else if self.peek_char() == '<' {
                     self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::ShiftLeft,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::LessThan,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -295,15 +288,13 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::GreaterEqual,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::GreaterThan,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -313,23 +304,20 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::And,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else if self.peek_char() == '~' {
                     self.read_char();
                     self.read_char();
                     return Token {
                         kind: TokenKind::AmpTilde,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Ampersand,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -339,15 +327,13 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Or,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column + 1),
                     };
                 } else {
                     self.read_char();
                     return Token {
                         kind: TokenKind::Pipe,
-                        span: Span::new(token_start, self.pos),
-                        loc: Location::new(token_line, token_column),
+                        loc: Loc::new(self.file_id(), token_line, token_column, token_column),
                     };
                 }
             }
@@ -375,8 +361,7 @@ impl Lexer {
 
         Token {
             kind: token_kind,
-            span: Span::new(token_start, self.pos),
-            loc: Location::new(token_line, token_column),
+            loc: Loc::new(self.file_id(), token_line, token_column, token_column),
         }
     }
 
@@ -395,10 +380,10 @@ impl Lexer {
             }
 
             if final_char.is_some() {
-                display_single_diag!(Diag {
+                display_and_exit_with_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
-                    location: Some(DiagLoc::new(SourceLoc {
+                    loc: Some(DiagLoc::new(SourceLoc {
                         line,
                         column,
                         file_path: self.file_name.clone()
@@ -409,10 +394,10 @@ impl Lexer {
 
             // multi-byte UTF-8 is not allowed in single quotes
             if self.ch.len_utf8() != 1 {
-                display_single_diag!(Diag {
+                display_and_exit_with_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
-                    location: Some(DiagLoc::new(SourceLoc {
+                    Loc: Some(DiagLoc::new(SourceLoc {
                         line,
                         column,
                         file_path: self.file_name.clone()
@@ -425,10 +410,10 @@ impl Lexer {
             self.read_char();
 
             if self.is_eof() {
-                display_single_diag!(Diag {
+                display_and_exit_with_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
-                    location: Some(DiagLoc::new(SourceLoc {
+                    Loc: Some(DiagLoc::new(SourceLoc {
                         line,
                         column,
                         file_path: self.file_name.clone()
@@ -444,17 +429,17 @@ impl Lexer {
             Token {
                 kind: TokenKind::Literal(Literal {
                     kind: LiteralKind::Char(value),
-                    loc: Location::new(line, column),
+                    loc: Loc::new(line, column),
                     span: Span::new(start, self.pos),
                 }),
                 span: Span::new(start, self.pos),
-                loc: Location::new(line, column),
+                loc: Loc::new(line, column),
             }
         } else {
-            display_single_diag!(Diag {
+            display_and_exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(LexicalDiagKind::EmptyCharLiteral),
-                location: Some(DiagLoc::new(SourceLoc {
+                Loc: Some(DiagLoc::new(SourceLoc {
                     line,
                     column,
                     file_path: self.file_name.clone()
@@ -475,10 +460,10 @@ impl Lexer {
 
         loop {
             if self.is_eof() {
-                display_single_diag!(Diag {
+                display_and_exit_with_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
-                    location: Some(DiagLoc::new(SourceLoc {
+                    Loc: Some(DiagLoc::new(SourceLoc {
                         line,
                         column,
                         file_path: self.file_name.clone()
@@ -510,10 +495,10 @@ impl Lexer {
         let unescaped = match unescape_string(&raw) {
             Ok(s) => s,
             Err(err) => {
-                display_single_diag!(Diag {
+                display_and_exit_with_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
-                    location: Some(DiagLoc::new(SourceLoc {
+                    Loc: Some(DiagLoc::new(SourceLoc {
                         line,
                         column,
                         file_path: self.file_name.clone()
@@ -527,10 +512,10 @@ impl Lexer {
             kind: TokenKind::Literal(Literal {
                 kind: LiteralKind::String(unescaped, prefix),
                 span: Span::new(start, self.pos),
-                loc: Location::new(line, column),
+                loc: Loc::new(line, column),
             }),
             span: Span::new(start, self.pos),
-            loc: Location::new(line, column),
+            loc: Loc::new(line, column),
         }
     }
 
@@ -553,7 +538,7 @@ impl Lexer {
         Token {
             kind: token_kind,
             span: Span { start, end },
-            loc: Location::new(line, column),
+            loc: Loc::new(line, column),
         }
     }
 
@@ -652,10 +637,10 @@ impl Lexer {
             match number.parse::<f64>() {
                 Ok(value) => LiteralKind::Float(value, suffix),
                 Err(_) => {
-                    display_single_diag!(Diag {
+                    display_and_exit_with_single_diag!(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
-                        location: Some(DiagLoc::new(SourceLoc {
+                        Loc: Some(DiagLoc::new(SourceLoc {
                             line,
                             column,
                             file_path: self.file_name.clone()
@@ -670,10 +655,10 @@ impl Lexer {
                 match u128::from_str_radix(&number, base) {
                     Ok(v) => v as i128,
                     Err(_) => {
-                        display_single_diag!(Diag {
+                        display_and_exit_with_single_diag!(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
-                            location: Some(DiagLoc::new(SourceLoc {
+                            Loc: Some(DiagLoc::new(SourceLoc {
                                 line,
                                 column,
                                 file_path: self.file_name.clone()
@@ -686,10 +671,10 @@ impl Lexer {
                 match i128::from_str_radix(&number, base) {
                     Ok(v) => v,
                     Err(_) => {
-                        display_single_diag!(Diag {
+                        display_and_exit_with_single_diag!(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
-                            location: Some(DiagLoc::new(SourceLoc {
+                            Loc: Some(DiagLoc::new(SourceLoc {
                                 line,
                                 column,
                                 file_path: self.file_name.clone()
@@ -707,10 +692,10 @@ impl Lexer {
             kind: TokenKind::Literal(Literal {
                 kind: token_kind,
                 span: Span::new(start, self.pos),
-                loc: Location::new(line, column),
+                loc: Loc::new(line, column),
             }),
             span: Span::new(start, self.pos),
-            loc: Location::new(line, column),
+            loc: Loc::new(line, column),
         }
     }
 
@@ -766,10 +751,10 @@ impl Lexer {
                 }
 
                 if depth > 0 {
-                    display_single_diag!(Diag {
+                    display_and_exit_with_single_diag!(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(LexicalDiagKind::UnterminatedMultiLineComment),
-                        location: Some(DiagLoc::new(SourceLoc {
+                        Loc: Some(DiagLoc::new(SourceLoc {
                             line: comment_start_line,
                             column: comment_start_column,
                             file_path: self.file_name.clone()

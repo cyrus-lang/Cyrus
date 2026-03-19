@@ -33,7 +33,7 @@ use cyrusc_tast::generics::substitute::{
 use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, StructSig, UnionSig, typed_func_decl_from_func_sig};
 use cyrusc_tast::types::{
     PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedUnionType,
-    enum_sig_as_unnamed_enum_ty,
+    enum_sig_as_unnamed_enum_type,
 };
 use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 use cyrusc_tast::{
@@ -380,7 +380,7 @@ impl<'resolver> CIRWalk<'resolver> {
                     .unwrap()
                     .as_enum()
                     .cloned()
-                    .map(|resolved_enum| enum_sig_as_unnamed_enum_ty(&resolved_enum.enum_sig, switch_stmt.loc.clone()))
+                    .map(|resolved_enum| enum_sig_as_unnamed_enum_type(&resolved_enum.enum_sig, switch_stmt.loc.clone()))
             })
             .or(operand_ty.as_generic_type().and_then(|generic_type| {
                 Some(
@@ -397,7 +397,7 @@ impl<'resolver> CIRWalk<'resolver> {
                             )
                             .unwrap();
 
-                            enum_sig_as_unnamed_enum_ty(&enum_sig, switch_stmt.loc.clone())
+                            enum_sig_as_unnamed_enum_type(&enum_sig, switch_stmt.loc.clone())
                         })
                         .unwrap(),
                 )

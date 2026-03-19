@@ -14,21 +14,18 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
+use cyrusc_source_loc::Loc;
+
+use crate::literals::Literal;
 use std::fmt;
 
-use crate::{
-    literals::Literal,
-    loc::{Location, Span},
-};
-
 pub mod literals;
-pub mod loc;
 
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -344,9 +341,10 @@ impl fmt::Display for TokenKind {
     }
 }
 
-impl Eq for Token {}
 impl PartialEq for Token {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
     }
 }
+
+impl Eq for Token {}

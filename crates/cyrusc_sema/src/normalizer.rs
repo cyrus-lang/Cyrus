@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
         }
@@ -91,7 +91,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
         }
@@ -149,7 +149,7 @@ impl<'a> AnalysisContext<'a> {
                         object_name: union_name.clone(),
                         field_name: field.name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
+                    loc: Some(DiagLoc::new(field.loc.clone())),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
                 continue;
@@ -190,7 +190,7 @@ impl<'a> AnalysisContext<'a> {
                         object_name: struct_name.clone(),
                         field_name: field.name.clone(),
                     }),
-                    location: Some(DiagLoc::new(field.loc.clone())),
+                    loc: Some(DiagLoc::new(field.loc.clone())),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
                 continue;
@@ -231,7 +231,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            loc: Some(DiagLoc::new(SourceLoc::from_loc(
                                 ident.loc.clone(),
                                 unnamed_enum_type.loc.file_path.clone(),
                             ))),
@@ -247,7 +247,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            loc: Some(DiagLoc::new(SourceLoc::from_loc(
                                 ident.loc.clone(),
                                 unnamed_enum_type.loc.file_path.clone(),
                             ))),
@@ -275,7 +275,7 @@ impl<'a> AnalysisContext<'a> {
                         enum_name: enum_name.clone(),
                         variant_name: variant_ident.value.clone(),
                     }),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    loc: Some(DiagLoc::new(SourceLoc::from_loc(
                         variant_ident.loc.clone(),
                         unnamed_enum_type.loc.file_path.clone(),
                     ))),
@@ -460,7 +460,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                        location: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -920,7 +920,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
             return None;

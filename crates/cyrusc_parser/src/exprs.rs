@@ -243,7 +243,7 @@ impl Parser {
                             "Repr attribute cannot be applied to unnamed union values.".to_string(),
                         )),
                         level: DiagLevel::Error,
-                        location: Some(
+                        loc: Some(
                             DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
                                 .span(token.span),
                         ),
@@ -526,24 +526,22 @@ impl Parser {
     fn parse_infix_expr(&mut self, left: Expr, left_start: usize) -> Option<Result<Expr, Diag>> {
         let loc = self.current_token().loc.clone();
 
-        {
-            // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
-            // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
-            // Generic<A, Generic<B, C>>
-            if let (Some(token1), Some(token2)) = (self.peek_n_token(1), self.peek_n_token(2)) {
-                if token1.kind == TokenKind::GreaterThan && token2.kind == TokenKind::GreaterThan {
-                    let peek_token_idx = self.cur_token_idx + 1;
-                    self.tokens.remove(peek_token_idx);
-                    self.tokens.remove(peek_token_idx);
-                    self.tokens.insert(
-                        peek_token_idx,
-                        Token {
-                            kind: TokenKind::ShiftLeft,
-                            span: Span::new(token1.span.start, token2.span.end),
-                            loc: token1.loc.clone(),
-                        },
-                    );
-                }
+        // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
+        // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
+        // Generic<A, Generic<B, C>>
+        if let (Some(token1), Some(token2)) = (self.peek_n_token(1), self.peek_n_token(2)) {
+            if token1.kind == TokenKind::GreaterThan && token2.kind == TokenKind::GreaterThan {
+                let peek_token_idx = self.pos + 1;
+                self.tokens.remove(peek_token_idx);
+                self.tokens.remove(peek_token_idx);
+                self.tokens.insert(
+                    peek_token_idx,
+                    Token {
+                        kind: TokenKind::ShiftLeft,
+                        span: Span::new(token1.span.start, token2.span.end),
+                        loc: token1.loc.clone(),
+                    },
+                );
             }
         }
 

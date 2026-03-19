@@ -655,7 +655,7 @@ impl Parser {
                         return Err(Diag {
                             kind: Box::new(ParserDiagKind::MethodMustHaveABody),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            loc: Some(DiagLoc::new(SourceLoc::from_loc(
                                 self.current_token().loc,
                                 self.file_name.clone(),
                             ))),
@@ -678,7 +678,7 @@ impl Parser {
                             return Err(Diag {
                                 kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
                                 level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                loc: Some(DiagLoc::new(SourceLoc::from_loc(
                                     self.current_token().loc,
                                     self.file_name.clone(),
                                 ))),

@@ -113,7 +113,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AddressOfRvalue),
-                location: Some(DiagLoc::new(addr_of.loc.clone())),
+                loc: Some(DiagLoc::new(addr_of.loc.clone())),
                 hint: None,
             });
             return None;
@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                location: Some(DiagLoc::new(deref.loc.clone())),
+                loc: Some(DiagLoc::new(deref.loc.clone())),
                 hint: None,
             });
             return None;
@@ -157,7 +157,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                    location: Some(DiagLoc::new(deref.loc.clone())),
+                    loc: Some(DiagLoc::new(deref.loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -168,7 +168,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefVoidPointerValue),
-                location: Some(DiagLoc::new(deref.loc.clone())),
+                loc: Some(DiagLoc::new(deref.loc.clone())),
                 hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
             });
             return None;
@@ -253,7 +253,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type }),
-                            location: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                            loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -280,7 +280,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixBangOnNonBool { operand_type }),
-                            location: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                            loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -295,7 +295,7 @@ impl<'a> AnalysisContext<'a> {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::UnaryOperatorMinusOnUnsignedInteger),
-                                    location: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                                    loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
                                     hint: Some(
                                         "Use a signed type if you need to represent negative values.".to_string(),
                                     ),
@@ -321,7 +321,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type }),
-                            location: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                            loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
                             hint: None,
                         });
                         return None;
@@ -346,7 +346,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
-                location: Some(DiagLoc::new(unary_expr.loc.clone())),
+                loc: Some(DiagLoc::new(unary_expr.loc.clone())),
                 hint: None,
             });
             return None;
@@ -358,7 +358,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary { operand_type }),
-                location: Some(DiagLoc::new(unary_expr.loc.clone())),
+                loc: Some(DiagLoc::new(unary_expr.loc.clone())),
                 hint: None,
             });
             return None;
@@ -457,7 +457,7 @@ impl<'a> AnalysisContext<'a> {
                         lhs_type: lhs_type_str,
                         rhs_type: rhs_type_str,
                     }),
-                    location: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc.clone())),
                     hint: None,
                 });
                 return None;
@@ -477,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
                             lhs_type: lhs_type_str,
                             rhs_type: rhs_type_str,
                         }),
-                        location: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(DiagLoc::new(loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -493,7 +493,7 @@ impl<'a> AnalysisContext<'a> {
                     lhs_type: lhs_type_str,
                     rhs_type: rhs_type_str,
                 }),
-                location: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc.clone())),
                 hint: None,
             });
             return None;
@@ -542,7 +542,7 @@ impl<'a> AnalysisContext<'a> {
                     lhs_type: lhs_type_str,
                     rhs_type: rhs_type_str,
                 }),
-                location: Some(DiagLoc::new(
+                loc: Some(DiagLoc::new(
                     loc.clone()
                 )),
                 hint: Some("Consider adding an explicit cast to either the left-hand or right-hand operand to make their types compatible.".to_string()),
@@ -562,7 +562,7 @@ impl<'a> AnalysisContext<'a> {
                         lhs_type: lhs_type_str,
                         rhs_type: rhs_type_str,
                     }),
-                    location: Some(DiagLoc::new(loc)),
+                    loc: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
                 None
@@ -665,7 +665,7 @@ impl<'a> AnalysisContext<'a> {
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger),
-                            location: Some(DiagLoc::new(loc.clone())),
+                            loc: Some(DiagLoc::new(loc.clone())),
                             hint: None,
                         });
                         return None;

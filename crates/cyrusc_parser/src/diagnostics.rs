@@ -109,7 +109,7 @@ impl Parser {
         Diag {
             kind: Box::new(ParserDiagKind::InvalidToken(token.kind)),
             level: DiagLevel::Error,
-            location: Some(
+            loc: Some(
                 DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
             ),
             hint: None,
@@ -121,7 +121,7 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            location: Some(
+            loc: Some(
                 DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
             ),
             hint: Some(hint.to_string()),
@@ -133,7 +133,7 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            location: Some(
+            loc: Some(
                 DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
             ),
             hint: None,
@@ -145,7 +145,7 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            location: Some(
+            loc: Some(
                 DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
             ),
             hint: None,
@@ -156,7 +156,7 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            location: Some(
+            loc: Some(
                 DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
             ),
             hint: None,
@@ -167,7 +167,7 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            location: Some(
+            loc: Some(
                 DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
             ),
             hint: Some(hint.to_string()),

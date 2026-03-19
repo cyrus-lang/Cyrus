@@ -24,7 +24,7 @@ use cyrusc_compiler::driver::{
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
-use cyrusc_diagcentral::display_single_custom_diag;
+use cyrusc_diagcentral::exit_with_single_diag;
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
@@ -73,7 +73,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &temp_exe.path) {
-        display_single_custom_diag!(err);
+        exit_with_single_diag!(err);
     }
 
     match Command::new(&temp_exe.path)
@@ -131,7 +131,7 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &output_path) {
-        display_single_custom_diag!(err);
+        exit_with_single_diag!(err);
     }
 }
 
@@ -140,7 +140,7 @@ pub(crate) fn command_clean(opts: CodeGenOptions) {
 
     if build_dir.exists() {
         if let Err(err) = fs::remove_dir_all(build_dir) {
-            display_single_custom_diag!(format!("Error while cleaning build directory: {}", err.to_string()));
+            exit_with_single_diag!(format!("Error while cleaning build directory: {}", err.to_string()));
         }
     }
 }
@@ -295,7 +295,7 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &shared_lib_dir) {
-        display_single_custom_diag!(err);
+        exit_with_single_diag!(err);
     }
 }
 
@@ -333,7 +333,7 @@ pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<Str
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &static_lib_dir) {
-        display_single_custom_diag!(err);
+        exit_with_single_diag!(err);
     }
 }
 

@@ -182,10 +182,6 @@ pub fn escape_string(s: &str) -> String {
     result
 }
 
-pub fn saturating_sub(value: usize, input: usize) -> usize {
-    value.saturating_sub(input)
-}
-
 pub fn spaces(n: usize) -> String {
     " ".repeat(n)
 }

@@ -23,7 +23,7 @@ use crate::{
         TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedGenericParamsList,
         TypedImplementInterface, TypedStructField, TypedStructStmt, TypedUnionField, TypedUnionStmt,
     },
-    types::{InterfaceType, SemanticType, TypedFuncType},
+    types::{SemanticType, TypedFuncType},
 };
 use cyrusc_ast::{
     SelfModifierKind,
@@ -116,19 +116,7 @@ pub struct GlobalVarSig {
     pub loc: SourceLoc,
 }
 
-pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> InterfaceType {
-    InterfaceType {
-        symbol_id: interface_sig.symbol_id,
-        methods: interface_sig
-            .methods
-            .clone()
-            .iter()
-            .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
-            .collect(),
-        loc: interface_sig.loc.clone(),
-    }
-}
-
+// FIXME: Make this method for FuncSig
 pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &SemanticType) {
     let first_param = func_sig.params.list.first_mut();
 
@@ -146,6 +134,7 @@ pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &Sema
     }
 }
 
+// FIXME: Make this method for FuncSig
 pub fn set_self_modifier_symbol_id_in_func_sig(func_sig: &mut FuncSig, symbol_id: SymbolID) {
     let first_param = func_sig.params.list.first_mut();
 
@@ -250,31 +239,32 @@ pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
 }
 
 pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedFuncTypeParams {
-    TypedFuncTypeParams {
-        list: params
-            .list
-            .iter()
-            .map(|param| match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    let ty = SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
-                    match typed_self_modifier.kind {
-                        SelfModifierKind::Copied => ty,
-                        SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(ty)),
-                    }
+    let list = params
+        .list
+        .iter()
+        .map(|param| match param {
+            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+            TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                let ty = SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
+                match typed_self_modifier.kind {
+                    SelfModifierKind::Copied => ty,
+                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(ty)),
                 }
-            })
-            .collect(),
-        variadic: match &params.variadic {
-            Some(variadic) => match variadic {
-                TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-                TypedFuncVariadicParams::Typed(_, sema_ty) => {
-                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty.clone())))
-                }
-            },
-            None => None,
+            }
+        })
+        .collect();
+
+    let variadic = match &params.variadic {
+        Some(variadic) => match variadic {
+            TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
+            TypedFuncVariadicParams::Typed(_, sema_ty) => {
+                Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty.clone())))
+            }
         },
-    }
+        None => None,
+    };
+
+    TypedFuncTypeParams { list, variadic }
 }
 
 impl FuncSig {

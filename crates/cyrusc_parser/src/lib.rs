@@ -42,11 +42,11 @@ mod stmts;
 /// A tuple containing:
 /// - `ProgramTree`: The parsed program representation.
 /// - `String`: The name of the file.
-pub fn parse_program(file_path: String) -> (ProgramTree, String) {
+pub fn parse_program<'source_file>(source_file: &'source_file SourceFile, file_path: String) -> (ProgramTree, String) {
     let file = read_file(file_path.clone());
     let code = file.0;
 
-    let mut lexer = Lexer::new(code, file_path.clone());
+    let mut lexer = Lexer::new(source_file, code, file_path.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_path);
 
     let program = match parser.parse() {
@@ -62,7 +62,7 @@ pub fn parse_program(file_path: String) -> (ProgramTree, String) {
 
 pub struct Parser {
     tokens: Vec<Token>,
-    cur_token_idx: usize,
+    pos: usize,
     file_name: String,
     errors: Vec<Diag>,
 }
@@ -71,7 +71,7 @@ impl Parser {
     pub fn new(tokens: Vec<Token>, file_name: String) -> Self {
         Parser {
             tokens,
-            cur_token_idx: 0,
+            pos: 0,
             file_name,
             errors: Vec::new(),
         }
@@ -103,10 +103,9 @@ impl Parser {
 
     #[inline]
     pub fn display_parser_errors(&mut self, errors: Vec<Diag>) {
-        let len = errors.len();
-        if len > 0 {
+        if errors.len() > 0 {
             let diag = errors.first().unwrap().clone();
-            DiagReporter::display_single(diag);
+            DiagReporter::display(diag);
         }
     }
 
@@ -122,20 +121,20 @@ impl Parser {
 
     #[inline]
     fn next_token(&mut self) -> Option<Token> {
-        let peek_token = match self.tokens.get(self.cur_token_idx) {
+        let peek_token = match self.tokens.get(self.pos) {
             Some(token) => token,
             None => {
                 self.error_at_peek(ParserDiagKind::InvalidToken(self.peek_token().kind));
                 return None;
             }
         };
-        self.cur_token_idx += 1;
+        self.pos += 1;
         Some(peek_token.clone())
     }
 
     #[inline]
     fn current_token_is(&self, token_kind: TokenKind) -> bool {
-        let current_token = match self.tokens.get(self.cur_token_idx) {
+        let current_token = match self.tokens.get(self.pos) {
             Some(token) => token,
             None => {
                 if token_kind == TokenKind::EOF {
@@ -150,7 +149,7 @@ impl Parser {
 
     #[inline]
     fn peek_token_is(&self, token_kind: TokenKind) -> bool {
-        let peek_token = match self.tokens.get(self.cur_token_idx + 1) {
+        let peek_token = match self.tokens.get(self.pos + 1) {
             Some(token) => token,
             None => {
                 if token_kind == TokenKind::EOF {
@@ -165,7 +164,7 @@ impl Parser {
 
     #[inline]
     fn current_token(&self) -> Token {
-        match self.tokens.get(self.cur_token_idx).cloned() {
+        match self.tokens.get(self.pos).cloned() {
             Some(token) => token,
             None => Token {
                 kind: TokenKind::EOF,
@@ -177,7 +176,7 @@ impl Parser {
 
     #[inline]
     fn peek_token(&self) -> Token {
-        match self.tokens.get(self.cur_token_idx + 1).cloned() {
+        match self.tokens.get(self.pos + 1).cloned() {
             Some(token) => token,
             None => Token {
                 kind: TokenKind::EOF,
@@ -189,7 +188,7 @@ impl Parser {
 
     #[inline]
     fn peek_n_token(&self, n: usize) -> Option<Token> {
-        self.tokens.get(self.cur_token_idx + n).cloned()
+        self.tokens.get(self.pos + n).cloned()
     }
 
     /// This function peeks at the next token without advancing the lexer. If the token matches
@@ -282,6 +281,6 @@ impl Parser {
     }
 
     fn prev_token(&self) -> Token {
-        self.tokens[self.cur_token_idx - 1].clone()
+        self.tokens[self.pos - 1].clone()
     }
 }
