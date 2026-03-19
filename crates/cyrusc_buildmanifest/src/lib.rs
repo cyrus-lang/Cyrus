@@ -14,7 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::exit_with_single_diag;
+
+use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_scaffold_parser::{MANIFEST_FILENAME, SRC_CACHE_DIR_PATH};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -170,7 +171,7 @@ impl BuildManifest {
                 }
                 Err(err) => {
                     let file_path = manifest_path.display().to_string();
-                    exit_with_single_diag!(format!("Failed to parse '{}': {}", file_path, err));
+                    exit_with_msg!(format!("Failed to parse '{}': {}", file_path, err));
                 }
             },
             _ => {}
@@ -178,7 +179,7 @@ impl BuildManifest {
 
         let initial_build_manifest = BuildManifest::new(base_path.clone(), build_dir.clone());
         if let Err(err) = initial_build_manifest.save_manifest() {
-            exit_with_single_diag!(format!("Error while saving build manifest: {}", err.to_string()));
+            exit_with_msg!(format!("Error while saving build manifest: {}", err.to_string()));
         }
         return initial_build_manifest;
     }

@@ -21,10 +21,10 @@ use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
 use cyrusc_ast::abi::ReprAttr;
 use cyrusc_ast::*;
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::PRIMITIVE_TYPES;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::LiteralKind;
-use cyrusc_tokens::loc::Span;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypeArgStartDetail {
@@ -32,7 +32,7 @@ pub(crate) struct TypeArgStartDetail {
     pub(crate) is_array_init: bool,
 }
 
-impl Parser {
+impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     /// Parses an identifier token.
     pub(crate) fn parse_ident(&mut self) -> Result<Ident, Diag> {
         let token = self.current_token();
@@ -40,11 +40,15 @@ impl Parser {
         if let TokenKind::Ident(ident) = token.kind {
             Ok(Ident {
                 value: ident,
-                span: token.span,
                 loc: token.loc,
             })
         } else {
-            Err(self.error_at_token(&token, ParserDiagKind::ExpectedIdentifier { got: token.kind.to_string() }))
+            Err(self.error_at_token(
+                &token,
+                ParserDiagKind::ExpectedIdentifier {
+                    got: token.kind.to_string(),
+                },
+            ))
         }
     }
 
@@ -99,6 +103,9 @@ impl Parser {
     pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, Diag> {
         let mut base_type = self.parse_base_type_token()?;
 
+        let start = base_type.loc().start;
+        let line = base_type.loc().line;
+
         loop {
             if self.peek_token_is(TokenKind::Asterisk) {
                 self.next_token();
@@ -108,17 +115,16 @@ impl Parser {
                 base_type = self.parse_array_type(base_type)?;
             } else if self.peek_token_is(TokenKind::LessThan) {
                 // handle generic type arguments
-                let start = self.peek_token().span.start;
-                let loc = self.peek_token().loc.clone();
 
                 self.next_token(); // consume less than
                 let type_args = self.parse_type_arg_list()?;
 
+                let end = self.current_token().loc.end;
+
                 base_type = TypeSpecifier::GenericInst(GenericInst {
                     base: Box::new(base_type),
                     type_args,
-                    loc,
-                    span: Span::new(start, self.current_token().span.end),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 });
             } else {
                 break;
@@ -575,44 +581,42 @@ impl Parser {
     }
 
     fn parse_func_type(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume function
 
         let params = self.parse_func_type_params()?;
         let ret = self.parse_type_specifier()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::FuncType(Box::new(FuncType {
             params,
             return_type: Box::new(ret),
-            span: Span::new(start, self.current_token().span.end),
             vis_opt: None,
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         })))
     }
 
     fn parse_tuple(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut type_list: Vec<TypeSpecifier> = Vec::new();
 
         loop {
-            let type_specifier = self.parse_type_specifier()?;
-            self.next_token();
+            let ty = self.parse_type_specifier()?;
+            type_list.push(ty);
 
-            type_list.push(type_specifier);
-
-            match self.current_token().kind {
-                TokenKind::Comma => {
-                    self.next_token();
-                    continue;
-                }
-                _ => break,
+            if self.current_token().kind == TokenKind::Comma {
+                self.next_token(); // consume comma
+                continue;
             }
+
+            break;
         }
 
         self.must_be_right_paren()?;
@@ -624,10 +628,11 @@ impl Parser {
             ));
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::Tuple(TupleType {
             type_list,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -665,10 +670,7 @@ impl Parser {
                     Ok(TypeSpecifier::ModuleImport(module_import))
                 } else {
                     if ident == "Self" {
-                        Ok(TypeSpecifier::SelfType(SelfType {
-                            span: token.span,
-                            loc: self.current_token().loc.clone(),
-                        }))
+                        Ok(TypeSpecifier::SelfType(SelfType { loc: token.loc }))
                     } else {
                         Ok(TypeSpecifier::Ident(Ident {
                             value: {
@@ -678,8 +680,7 @@ impl Parser {
                                     unreachable!()
                                 }
                             },
-                            span: token.span,
-                            loc: self.current_token().loc.clone(),
+                            loc: token.loc,
                         }))
                     }
                 }
@@ -688,7 +689,10 @@ impl Parser {
         }
     }
 
-    fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
+    fn parse_array_type(&mut self, base_type: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
+        let start = base_type.loc().start;
+        let line = base_type.loc().line;
+
         let mut dims: Vec<ArrayCapacity> = Vec::new();
 
         // Parse consecutive array dimensions: `int[3][4]` -> dims = [3, 4]
@@ -704,6 +708,8 @@ impl Parser {
             dims.push(array_capacity);
         }
 
+        let end = self.current_token().loc.end;
+
         // Build the nested array type from the inside out:
         // Start with base type `int`, then wrap with outer dimensions.
         //
@@ -711,11 +717,13 @@ impl Parser {
         // 1. `type_specifier = int`
         // 2. `type_specifier = Array(4, element=int)`
         // 3. `type_specifier = Array(3, element=Array(4, element=int))`
-        let mut type_specifier = base_type_specifier.clone();
+        let mut type_specifier = base_type.clone();
+
         for array_capacity in dims.iter().rev() {
-            type_specifier = TypeSpecifier::Array(ArrayTypeSpecifier {
+            type_specifier = TypeSpecifier::Array(ArrayType {
                 size: array_capacity.clone(),
                 element_type: Box::new(type_specifier),
+                loc: Loc::new(self.file_id(), line, start, end),
             });
         }
 
@@ -733,8 +741,8 @@ impl Parser {
     }
 
     fn parse_unnamed_struct_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume struct 
 
@@ -753,8 +761,8 @@ impl Parser {
                     return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
                 TokenKind::Ident { .. } => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
+                    let start = self.current_token().loc.start;
+                    let line = self.current_token().loc.line;
 
                     let field_name = self.parse_ident()?;
                     self.next_token(); // consume ident
@@ -764,14 +772,12 @@ impl Parser {
                     let field_type_specifier = self.parse_type_specifier()?;
                     self.next_token();
 
+                    let end = self.current_token().loc.end;
+
                     fields.push(UnnamedStructTypeField {
                         field_name,
                         field_ty: field_type_specifier,
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
+                        loc: Loc::new(self.file_id(), line, start, end),
                     });
 
                     if self.current_token_is(TokenKind::RightBrace) {
@@ -784,18 +790,19 @@ impl Parser {
             }
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
             fields,
             repr_attr,
             align,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_unnamed_union_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume union 
 
@@ -814,8 +821,8 @@ impl Parser {
                     return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
                 TokenKind::Ident { .. } => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
+                    let start = self.current_token().loc.start;
+                    let line = self.current_token().loc.line;
 
                     let field_name = self.parse_ident()?;
                     self.next_token(); // consume ident
@@ -825,14 +832,12 @@ impl Parser {
                     let field_type_specifier = self.parse_type_specifier()?;
                     self.next_token();
 
+                    let end = self.current_token().loc.end;
+
                     fields.push(UnnamedUnionTypeField {
                         field_name,
                         field_ty: field_type_specifier,
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
+                        loc: Loc::new(self.file_id(), line, start, end),
                     });
 
                     if self.current_token_is(TokenKind::RightBrace) {
@@ -845,12 +850,13 @@ impl Parser {
             }
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::UnnamedUnion(UnnamedUnionType {
             fields,
             repr_attr,
             align,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -879,15 +885,17 @@ impl Parser {
                     ));
                 }
 
-                let start = self.current_token().span.start;
-                let loc = self.current_token().loc.clone();
-                let field_ty = self.parse_type_specifier()?;
+                let start = self.current_token().loc.start;
+                let line = self.current_token().loc.line;
+
+                let ty = self.parse_type_specifier()?;
                 self.next_token();
 
+                let end = self.current_token().loc.end;
+
                 variant_fields.push(UnnamedEnumValuedField {
-                    ty: field_ty,
-                    loc,
-                    span: Span::new(start, self.current_token().span.end),
+                    ty,
+                    loc: Loc::new(self.file_id(), line, start, end),
                 });
 
                 if self.current_token_is(TokenKind::RightParen) {
@@ -908,8 +916,8 @@ impl Parser {
     }
 
     fn parse_unnamed_enum_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let line = self.current_token().loc.line;
+        let start = self.current_token().loc.start;
 
         self.next_token(); // parse enum keyword
 
@@ -921,13 +929,14 @@ impl Parser {
         let mut enum_fields: Vec<UnnamedEnumVariant> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
                 variants: enum_fields,
                 repr_attr,
                 tag_type: tag_type,
                 align,
-                loc,
-                span: Span::new(start, self.current_token().span.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
@@ -951,13 +960,14 @@ impl Parser {
             self.next_token();
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(TypeSpecifier::UnnamedEnum(UnnamedEnumType {
             variants: enum_fields,
             tag_type: tag_type,
             repr_attr,
             align,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 

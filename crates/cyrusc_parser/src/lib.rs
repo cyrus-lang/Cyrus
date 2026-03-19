@@ -14,16 +14,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::diagnostics::ParserDiagKind;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::reporter::DiagReporter;
-use cyrusc_fs_utils::read_file;
-use cyrusc_lexer::*;
-use cyrusc_tokens::Token;
-use cyrusc_tokens::TokenKind;
-use cyrusc_tokens::loc::Location;
-use cyrusc_tokens::loc::Span;
+use cyrusc_source_loc::{FileID, Loc, SourceFile};
+use cyrusc_tokens::{Token, TokenKind};
 use std::rc::Rc;
 
 mod common;
@@ -33,52 +30,39 @@ mod modifiers;
 mod prec;
 mod stmts;
 
-/// Parses the program from the given file path.
-///
-/// # Parameters
-/// - `file_path`: The path to the file containing the program code.
-///
-/// # Returns
-/// A tuple containing:
-/// - `ProgramTree`: The parsed program representation.
-/// - `String`: The name of the file.
-pub fn parse_program<'source_file>(source_file: &'source_file SourceFile, file_path: String) -> (ProgramTree, String) {
-    let file = read_file(file_path.clone());
-    let code = file.0;
-
-    let mut lexer = Lexer::new(source_file, code, file_path.clone());
-    let mut parser = Parser::new(lexer.tokenize(), file_path);
-
-    let program = match parser.parse() {
-        Ok(program) => program,
-        Err(errors) => {
-            parser.display_parser_errors(errors);
-            panic!();
-        }
-    };
-
-    (program, file.1)
-}
-
-pub struct Parser {
+pub struct Parser<'diag, 'source_file> {
+    source_file: &'source_file SourceFile,
+    reporter: &'diag mut DiagReporter<'diag>,
     tokens: Vec<Token>,
     pos: usize,
-    file_name: String,
-    errors: Vec<Diag>,
+    last_loc: Loc,
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<Token>, file_name: String) -> Self {
+impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+    pub fn new(
+        reporter: &'diag mut DiagReporter<'diag>,
+        source_file: &'source_file SourceFile,
+        tokens: Vec<Token>,
+    ) -> Self {
+        let initial_loc = Loc::default(source_file.id);
+
         Parser {
+            source_file,
+            reporter,
             tokens,
             pos: 0,
-            file_name,
-            errors: Vec::new(),
+            last_loc: initial_loc,
         }
     }
 
+    /// Returns the FileID of the source file being tokenized.
     #[inline]
-    pub fn parse(&mut self) -> Result<ProgramTree, Vec<Diag>> {
+    pub fn file_id(&self) -> FileID {
+        self.source_file.id
+    }
+
+    #[inline]
+    pub fn parse(&mut self) -> Result<ProgramTree, ()> {
         self.parse_program()
     }
 
@@ -86,13 +70,15 @@ impl Parser {
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<Diag>> {
+    pub fn parse_program(&mut self) -> Result<ProgramTree, ()> {
         let mut body: Vec<Stmt> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
             match self.parse_stmt(None, true) {
                 Ok(stmts) => body.extend(stmts),
-                Err(error) => self.errors.push(error),
+                Err(diag) => {
+                    self.reporter.report(diag);
+                }
             }
             self.next_token();
         }
@@ -102,20 +88,12 @@ impl Parser {
     }
 
     #[inline]
-    pub fn display_parser_errors(&mut self, errors: Vec<Diag>) {
-        if errors.len() > 0 {
-            let diag = errors.first().unwrap().clone();
-            DiagReporter::display(diag);
-        }
-    }
-
-    #[inline]
     /// Finalizes the program parse by checking for errors.
-    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<Diag>> {
-        if self.errors.is_empty() {
+    fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, ()> {
+        if !self.reporter.has_errors() {
             Ok(program)
         } else {
-            Err(self.errors.clone())
+            Err(())
         }
     }
 
@@ -128,6 +106,8 @@ impl Parser {
                 return None;
             }
         };
+
+        self.last_loc = self.current_token().loc;
         self.pos += 1;
         Some(peek_token.clone())
     }
@@ -159,6 +139,7 @@ impl Parser {
                 }
             }
         };
+
         peek_token.kind == token_kind
     }
 
@@ -166,11 +147,18 @@ impl Parser {
     fn current_token(&self) -> Token {
         match self.tokens.get(self.pos).cloned() {
             Some(token) => token,
-            None => Token {
-                kind: TokenKind::EOF,
-                span: Span::default(),
-                loc: Location::default(),
-            },
+            None => {
+                // generate proper EOF using last known location
+                Token {
+                    kind: TokenKind::EOF,
+                    loc: Loc {
+                        id: self.last_loc.id,
+                        line: self.last_loc.line,
+                        start: self.last_loc.end,
+                        end: self.last_loc.end,
+                    },
+                }
+            }
         }
     }
 
@@ -178,11 +166,18 @@ impl Parser {
     fn peek_token(&self) -> Token {
         match self.tokens.get(self.pos + 1).cloned() {
             Some(token) => token,
-            None => Token {
-                kind: TokenKind::EOF,
-                span: Span::default(),
-                loc: Location::default(),
-            },
+            None => {
+                // generate proper EOF using last known location
+                Token {
+                    kind: TokenKind::EOF,
+                    loc: Loc {
+                        id: self.last_loc.id,
+                        line: self.last_loc.line,
+                        start: self.last_loc.end,
+                        end: self.last_loc.end,
+                    },
+                }
+            }
         }
     }
 

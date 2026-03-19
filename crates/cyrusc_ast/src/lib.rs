@@ -18,11 +18,8 @@
 use crate::abi::{ReprAttr, Visibility};
 use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
-use cyrusc_tokens::{
-    Token,
-    literals::Literal,
-    loc::{Location, Span},
-};
+use cyrusc_source_loc::Loc;
+use cyrusc_tokens::{Token, literals::Literal};
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
@@ -40,7 +37,6 @@ pub struct ProgramTree {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    Cast(Cast),
     Ident(Ident),
     TypeSpecifier(TypeSpecifier),
     ModuleImport(ModuleImport),
@@ -59,7 +55,6 @@ pub enum Expr {
     Builtin(Builtin),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
-    SizeOf(SizeOf),
     Lambda(Lambda),
     Tuple(TupleValue),
     TupleAccess(TupleAccess),
@@ -72,44 +67,32 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub struct Dynamic {
     pub operand: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TupleAccess {
     pub operand: Box<Expr>,
     pub index: usize,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TupleValue {
     pub elements: Vec<Expr>,
-    pub loc: Location,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct SizeOf {
-    pub expr: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Deref {
     pub expr: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct AddrOf {
     pub expr: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -117,8 +100,7 @@ pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -126,16 +108,14 @@ pub struct UnnamedUnionValue {
     pub field_name: Ident,
     pub field_value: Box<Expr>,
     pub is_const: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumValue {
     pub ident: Ident,
     pub kind: UnnamedEnumValueKind,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -149,8 +129,7 @@ pub struct UnnamedStructValueField {
     pub field_name: Ident,
     pub field_ty: Option<TypeSpecifier>,
     pub field_value: Box<Expr>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -158,16 +137,14 @@ pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
     pub field_name: Ident,
     pub field_ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -175,16 +152,14 @@ pub struct UnnamedUnionType {
     pub fields: Vec<UnnamedUnionTypeField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedUnionTypeField {
     pub field_name: Ident,
     pub field_ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -196,16 +171,14 @@ pub struct Union {
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: UnionModifiers,
     pub align: Option<usize>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnionField {
     pub ident: Ident,
     pub ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -218,8 +191,7 @@ pub struct Enum {
     pub modifiers: EnumModifiers,
     pub tag_type: Option<TypeSpecifier>,
     pub align: Option<usize>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -228,8 +200,7 @@ pub struct UnnamedEnumType {
     pub tag_type: Option<Box<TypeSpecifier>>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,8 +213,7 @@ pub enum UnnamedEnumVariant {
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumValuedField {
     pub ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -256,23 +226,14 @@ pub enum EnumVariant {
 #[derive(Debug, Clone)]
 pub struct EnumValuedField {
     pub ty: TypeSpecifier,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cast {
-    pub expr: Box<Expr>,
-    pub target_type: TypeSpecifier,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrefixExpr {
     pub operand: Box<Expr>,
     pub op: PrefixOperator,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -286,8 +247,7 @@ pub struct BuiltinFunc {
     pub name: Ident,
     pub args: Vec<Expr>,
     pub child_stmt: Option<Box<Stmt>>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -295,8 +255,7 @@ pub struct BuiltinScope {
     pub name: Ident,
     pub args: Vec<Expr>,
     pub block: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,8 +263,7 @@ pub struct FuncCall {
     pub operand: Box<Expr>,
     pub args: Vec<Expr>,
     pub type_args: Option<TypeArgs>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -314,8 +272,7 @@ pub struct FieldAccess {
     pub operand: Box<Expr>,
     pub field_name: Ident,
     pub type_args: Option<TypeArgs>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -325,22 +282,19 @@ pub struct MethodCall {
     pub method_name: Ident,
     pub args: Vec<Expr>,
     pub type_args: Option<TypeArgs>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct Ident {
     pub value: String,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct ModuleImport {
     pub segments: Vec<ModuleSegment>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -348,7 +302,7 @@ pub enum TypeSpecifier {
     TypeToken(Token),
     Ident(Ident),
     Const(Box<TypeSpecifier>),
-    Array(ArrayTypeSpecifier),
+    Array(ArrayType),
     ModuleImport(ModuleImport),
     Deref(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
@@ -362,29 +316,27 @@ pub enum TypeSpecifier {
 
 #[derive(Debug, Clone)]
 pub struct SelfType {
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct GenericInst {
     pub base: Box<TypeSpecifier>,
     pub type_args: TypeArgs,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TupleType {
     pub type_list: Vec<TypeSpecifier>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArrayTypeSpecifier {
+pub struct ArrayType {
     pub size: ArrayCapacity,
     pub element_type: Box<TypeSpecifier>,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -397,8 +349,7 @@ pub enum ArrayCapacity {
 pub struct UnaryExpr {
     pub operand: Box<Expr>,
     pub op: UnaryOperator,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -406,8 +357,7 @@ pub struct FuncType {
     pub params: FuncTypeParams,
     pub return_type: Box<TypeSpecifier>,
     pub vis_opt: Option<Visibility>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -427,31 +377,27 @@ pub struct InfixExpr {
     pub op: InfixOperator,
     pub lhs: Box<Expr>,
     pub rhs: Box<Expr>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Array {
     pub data_type: TypeSpecifier,
     pub elements: Vec<Expr>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct UntypedArray {
     pub elements: Vec<Expr>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct ArrayIndex {
     pub operand: Box<Expr>,
     pub index: Box<Expr>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -486,22 +432,19 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub struct Goto {
     pub name: Ident,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Label {
     pub name: Ident,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Defer {
     pub operand: Box<Stmt>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -510,8 +453,7 @@ pub struct Interface {
     pub methods: Vec<FuncDecl>,
     pub generic_params: Option<GenericParamsList>,
     pub vis: Visibility,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -521,8 +463,7 @@ pub struct GlobalVar {
     pub expr: Option<Expr>,
     pub is_const: bool,
     pub modifiers: GlobalVarModifiers,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -531,27 +472,24 @@ pub struct Typedef {
     pub type_specifier: TypeSpecifier,
     pub generic_params: Option<GenericParamsList>,
     pub vis: Visibility,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Break {
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Continue {
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Return {
     pub argument: Option<Expr>,
-    pub span: Span,
-    pub loc: Location,
+
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -570,15 +508,14 @@ pub enum ModuleSegment {
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct Import {
     pub paths: Vec<ModulePath>,
-    pub span: Span,
-    pub loc: Location,
+
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -591,8 +528,7 @@ pub struct Struct {
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
     pub is_packed: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -601,8 +537,7 @@ pub struct StructInit {
     pub field_inits: Vec<FieldInit>,
     pub type_args: Option<TypeArgs>,
     pub is_const: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -610,23 +545,21 @@ pub struct StructField {
     pub ident: Ident,
     pub vis: Visibility,
     pub ty: TypeSpecifier,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldInit {
     pub ident: Ident,
     pub value: Expr,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct While {
     pub condition: Expr,
     pub body: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -635,8 +568,7 @@ pub struct For {
     pub condition: Option<Expr>,
     pub increment: Option<Expr>,
     pub body: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -645,8 +577,7 @@ pub struct Foreach {
     pub index: Option<Ident>,
     pub expr: Expr,
     pub body: Box<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -654,16 +585,14 @@ pub struct Switch {
     pub operand: Expr,
     pub cases: Vec<SwitchCase>,
     pub default_case: Option<BlockStmt>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct SwitchCase {
     pub patterns: Vec<SwitchCasePattern>,
     pub body: BlockStmt,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -679,8 +608,7 @@ pub struct Range {
     pub lower: Expr,
     pub upper: Expr,
     pub inclusive_upper: bool,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -689,8 +617,7 @@ pub struct Lambda {
     pub body: Box<BlockStmt>,
     pub return_type: TypeSpecifier,
     pub inline: bool,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -701,8 +628,7 @@ pub struct FuncDef {
     pub body: Box<BlockStmt>,
     pub return_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -713,15 +639,13 @@ pub struct FuncDecl {
     pub return_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
     pub renamed_as: Option<Ident>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct BlockStmt {
     pub exprs: Vec<Stmt>,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -730,8 +654,7 @@ pub struct Variable {
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expr>,
     pub is_const: bool,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -740,8 +663,7 @@ pub struct ExportTuple {
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expr>,
     pub is_const: bool,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -755,8 +677,7 @@ pub struct Assign {
     pub lhs: Expr,
     pub rhs: Expr,
     pub kind: AssignKind,
-    pub span: Span,
-    pub loc: Location,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -774,29 +695,10 @@ pub enum AssignKind {
     RightShiftAssign,
 }
 
-impl AssignKind {
-    pub fn to_infix_operator(&self) -> InfixOperator {
-        match self {
-            AssignKind::Default => unreachable!(),
-            AssignKind::AddAssign => InfixOperator::Add,
-            AssignKind::SubAssign => InfixOperator::Sub,
-            AssignKind::MulAssign => InfixOperator::Mul,
-            AssignKind::DivAssign => InfixOperator::Div,
-            AssignKind::ModAssign => InfixOperator::Rem,
-            AssignKind::BitwiseAndAssign => InfixOperator::BitwiseAnd,
-            AssignKind::BitwiseXorAssign => InfixOperator::BitwiseXor,
-            AssignKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
-            AssignKind::LeftShiftAssign => InfixOperator::ShiftLeft,
-            AssignKind::RightShiftAssign => InfixOperator::ShiftRight,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SelfModifier {
     pub kind: SelfModifierKind,
-    pub loc: Location,
-    pub span: Span,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -815,8 +717,8 @@ pub enum FuncParamKind {
 pub struct FuncParam {
     pub ident: Ident,
     pub ty: Option<TypeSpecifier>,
-    pub span: Span,
-    pub loc: Location,
+
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -837,9 +739,10 @@ pub struct If {
     pub consequent: Box<BlockStmt>,
     pub branches: Vec<If>,
     pub alternate: Option<Box<BlockStmt>>,
-    pub span: Span,
-    pub loc: Location,
+
+    pub loc: Loc,
 }
+
 pub type GenericParamsList = Vec<GenericParam>;
 
 #[derive(Debug, Clone)]
@@ -906,7 +809,6 @@ impl ModulePath {
     pub fn as_module_import(&self) -> ModuleImport {
         ModuleImport {
             segments: self.segments.clone(),
-            span: self.span,
             loc: self.loc.clone(),
         }
     }
@@ -921,7 +823,6 @@ impl FuncDef {
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
             renamed_as: None,
-            span: self.span,
             loc: self.loc.clone(),
         }
     }
@@ -938,7 +839,7 @@ impl FuncDecl {
 }
 
 impl Stmt {
-    pub fn loc(&self) -> Location {
+    pub fn loc(&self) -> Loc {
         match self {
             Stmt::Interface(interface) => interface.loc.clone(),
             Stmt::Variable(variable) => variable.loc.clone(),
@@ -1035,43 +936,54 @@ impl TypeSpecifier {
             TypeSpecifier::Ident(ident) => Some(ModuleImport {
                 segments: vec![ModuleSegment::SubModule(ident.clone())],
                 loc: ident.loc,
-                span: ident.span,
             }),
             TypeSpecifier::ModuleImport(module_import) => Some(module_import.clone()),
             _ => None,
         }
     }
 
-    pub fn loc(&self) -> (Location, usize) {
+    pub fn loc(&self) -> Loc {
         match self {
-            TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
-            TypeSpecifier::Ident(ident) => (ident.loc.clone(), ident.span.end),
+            TypeSpecifier::TypeToken(token) => token.loc,
+            TypeSpecifier::Ident(ident) => ident.loc,
             TypeSpecifier::Const(inner) => inner.loc(),
-            TypeSpecifier::Array(array) => array.element_type.loc(),
-            TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
-            TypeSpecifier::Deref(inner) => inner.loc(),
-            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
-                (unnamed_struct_type.loc.clone(), unnamed_struct_type.span.end)
-            }
-            TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
-                (unnamed_union_type.loc.clone(), unnamed_union_type.span.end)
-            }
-            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
-                (unnamed_enum_type.loc.clone(), unnamed_enum_type.span.end)
-            }
-            TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
-            TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
-            TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),
-            TypeSpecifier::SelfType(self_type) => (self_type.loc.clone(), self_type.span.end),
+            TypeSpecifier::Array(array) => array.loc,
+            TypeSpecifier::ModuleImport(module_import) => module_import.loc,
+            TypeSpecifier::Deref(type_specifier) => type_specifier.loc(),
+            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => unnamed_struct_type.loc,
+            TypeSpecifier::UnnamedUnion(unnamed_union_type) => unnamed_union_type.loc,
+            TypeSpecifier::UnnamedEnum(unnamed_enum_type) => unnamed_enum_type.loc,
+            TypeSpecifier::FuncType(func_type) => func_type.loc,
+            TypeSpecifier::Tuple(tuple_type) => tuple_type.loc,
+            TypeSpecifier::GenericInst(generic_inst) => generic_inst.loc,
+            TypeSpecifier::SelfType(self_type) => self_type.loc,
         }
     }
 }
 
 impl Builtin {
-    pub fn loc(&self) -> Location {
+    pub fn loc(&self) -> Loc {
         match self {
-            Builtin::BuiltinFunc(builtin_func) => builtin_func.loc.clone(),
-            Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc.clone(),
+            Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
+            Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc,
+        }
+    }
+}
+
+impl AssignKind {
+    pub fn to_infix_operator(&self) -> InfixOperator {
+        match self {
+            AssignKind::Default => unreachable!(),
+            AssignKind::AddAssign => InfixOperator::Add,
+            AssignKind::SubAssign => InfixOperator::Sub,
+            AssignKind::MulAssign => InfixOperator::Mul,
+            AssignKind::DivAssign => InfixOperator::Div,
+            AssignKind::ModAssign => InfixOperator::Rem,
+            AssignKind::BitwiseAndAssign => InfixOperator::BitwiseAnd,
+            AssignKind::BitwiseXorAssign => InfixOperator::BitwiseXor,
+            AssignKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
+            AssignKind::LeftShiftAssign => InfixOperator::ShiftLeft,
+            AssignKind::RightShiftAssign => InfixOperator::ShiftRight,
         }
     }
 }
@@ -1234,12 +1146,6 @@ impl PartialEq for FieldInit {
     }
 }
 
-impl PartialEq for SizeOf {
-    fn eq(&self, other: &Self) -> bool {
-        self.expr == other.expr
-    }
-}
-
 impl PartialEq for TupleValue {
     fn eq(&self, other: &Self) -> bool {
         self.elements == other.elements
@@ -1300,7 +1206,7 @@ impl PartialEq for Lambda {
 
 impl PartialEq for FuncParam {
     fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident && self.ty == other.ty && self.span == other.span && self.loc == other.loc
+        self.ident == other.ident && self.ty == other.ty
     }
 }
 
@@ -1361,7 +1267,6 @@ impl Eq for ArrayIndex {}
 impl Eq for AddrOf {}
 impl Eq for Deref {}
 impl Eq for StructInit {}
-impl Eq for SizeOf {}
 impl Eq for Lambda {}
 impl Eq for TupleValue {}
 impl Eq for TupleAccess {}

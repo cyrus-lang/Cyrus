@@ -14,11 +14,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, DiagLoc, source_loc::SourceLoc};
-use cyrusc_tokens::{Token, TokenKind};
-use thiserror::Error;
 
 use crate::Parser;
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
+use cyrusc_tokens::{Token, TokenKind};
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ParserDiagKind {
@@ -101,53 +101,47 @@ pub enum ParserDiagKind {
     GroupedModifiersCannotBeNested,
 }
 
-impl DiagKind for ParserDiagKind {}
-
-impl Parser {
+impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     pub(crate) fn error_invalid_token(&self) -> Diag {
         let token = self.current_token();
+
         Diag {
             kind: Box::new(ParserDiagKind::InvalidToken(token.kind)),
             level: DiagLevel::Error,
-            loc: Some(
-                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
-            ),
+            loc: Some(token.loc),
             hint: None,
         }
     }
 
     pub(crate) fn error_at_current_with_hint(&self, kind: ParserDiagKind, hint: &str) -> Diag {
         let token = self.current_token();
+
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            loc: Some(
-                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
-            ),
+            loc: Some(token.loc),
             hint: Some(hint.to_string()),
         }
     }
 
     pub(crate) fn error_at_current(&self, kind: ParserDiagKind) -> Diag {
         let token = self.current_token();
+
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            loc: Some(
-                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
-            ),
+            loc: Some(token.loc),
             hint: None,
         }
     }
 
     pub(crate) fn error_at_peek(&self, kind: ParserDiagKind) -> Diag {
         let token = self.peek_token();
+
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            loc: Some(
-                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
-            ),
+            loc: Some(token.loc),
             hint: None,
         }
     }
@@ -156,9 +150,7 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            loc: Some(
-                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
-            ),
+            loc: Some(token.loc),
             hint: None,
         }
     }
@@ -167,10 +159,10 @@ impl Parser {
         Diag {
             kind: Box::new(kind),
             level: DiagLevel::Error,
-            loc: Some(
-                DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone())).span(token.span),
-            ),
+            loc: Some(token.loc),
             hint: Some(hint.to_string()),
         }
     }
 }
+
+impl DiagKind for ParserDiagKind {}

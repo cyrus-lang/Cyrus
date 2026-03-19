@@ -24,18 +24,16 @@ use cyrusc_ast::operators::PrefixOperator;
 use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
-use cyrusc_diagcentral::DiagLoc;
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::Literal;
 use cyrusc_tokens::literals::LiteralKind;
-use cyrusc_tokens::loc::Location;
-use cyrusc_tokens::loc::Span;
 
-impl Parser {
-    pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<(Expr, Span), Diag> {
-        let mut left_start = self.current_token().span.start;
+impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+    pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<Expr, Diag> {
+        let mut left_start = self.current_token().loc.start;
+        let mut left_line = self.current_token().loc.line;
         let mut left = self.parse_prefix_expr()?;
 
         loop {
@@ -54,30 +52,24 @@ impl Parser {
 
             if self.peek_token_is(TokenKind::Increment) {
                 self.next_token();
-                let loc = self.current_token().loc.clone();
-                let span = Span::new(left_start, self.current_token().span.end);
-                return Ok((
-                    Expr::Unary(UnaryExpr {
-                        operand: Box::new(left),
-                        op: UnaryOperator::PostIncrement,
-                        span: span,
-                        loc,
-                    }),
-                    span,
-                ));
+
+                let end = self.current_token().loc.end;
+
+                return Ok(Expr::Unary(UnaryExpr {
+                    operand: Box::new(left),
+                    op: UnaryOperator::PostIncrement,
+                    loc: Loc::new(self.file_id(), left_line, left_start, end),
+                }));
             } else if self.peek_token_is(TokenKind::Decrement) {
                 self.next_token();
-                let loc = self.current_token().loc.clone();
-                let span = Span::new(left_start, self.current_token().span.end);
-                return Ok((
-                    Expr::Unary(UnaryExpr {
-                        operand: Box::new(left),
-                        op: UnaryOperator::PostDecrement,
-                        span: span,
-                        loc,
-                    }),
-                    span,
-                ));
+
+                let end = self.current_token().loc.end;
+
+                return Ok(Expr::Unary(UnaryExpr {
+                    operand: Box::new(left),
+                    op: UnaryOperator::PostDecrement,
+                    loc: Loc::new(self.file_id(), left_line, left_start, end),
+                }));
             }
 
             // infix handling (respect precedence)
@@ -86,39 +78,29 @@ impl Parser {
                 match self.parse_infix_expr(left.clone(), left_start) {
                     Some(infix) => {
                         left = infix?;
-                        if let Expr::Infix(b) = left.clone() {
-                            left_start = b.span.start;
+                        if let Expr::Infix(infix_expr) = left.clone() {
+                            left_start = infix_expr.loc.start;
                         }
                     }
-                    None => {
-                        return Ok((
-                            left,
-                            Span {
-                                start: left_start,
-                                end: self.current_token().span.end,
-                            },
-                        ));
-                    }
+                    None => return Ok(left),
                 }
             } else {
                 break;
             }
         }
 
-        let end = self.current_token().span.end;
-        Ok((left, Span { start: left_start, end }))
+        Ok(left)
     }
 
     pub(crate) fn parse_module_import(&mut self) -> Result<ModuleImport, Diag> {
-        let start_token = self.current_token();
-        let start_pos = start_token.span.start;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let mut segments = match &self.current_token().kind {
             TokenKind::Ident(ident) => {
                 vec![ModuleSegment::SubModule(Ident {
                     value: ident.clone(),
-                    span: start_token.span,
-                    loc: start_token.loc.clone(),
+                    loc: token.loc,
                 })]
             }
             _ => {
@@ -130,10 +112,11 @@ impl Parser {
 
         // if no '::' follows, this is a single identifier import
         if !self.peek_token_is(TokenKind::DoubleColon) {
+            let end = self.current_token().loc.end;
+
             return Ok(ModuleImport {
                 segments,
-                span: Span::new(start_pos, self.current_token().span.end),
-                loc: start_token.loc.clone(),
+                loc: Loc::new(self.file_id(), line, start, end),
             });
         }
 
@@ -152,7 +135,6 @@ impl Parser {
                 TokenKind::Ident(name) => {
                     segments.push(ModuleSegment::SubModule(Ident {
                         value: name.clone(),
-                        span: ident_token.span,
                         loc: ident_token.loc.clone(),
                     }));
                 }
@@ -173,19 +155,17 @@ impl Parser {
             self.next_token();
         }
 
-        let end_token = self.current_token();
+        let end = self.current_token().loc.end;
 
         Ok(ModuleImport {
             segments,
-            span: Span::new(start_pos, end_token.span.end),
-            loc: start_token.loc.clone(),
+            loc: Loc::new(self.file_id(), line, start, end),
         })
     }
 
     pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, Diag> {
-        let start_token = self.current_token();
-        let start_pos = start_token.span.start;
-        let start_loc = start_token.loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let mut segments = Vec::new();
         let mut alias = None;
@@ -211,19 +191,18 @@ impl Parser {
             self.next_token(); // consume the alias identifier
         }
 
-        let end_pos = self.current_token().span.end;
+        let end = self.current_token().loc.end;
 
         Ok(ModulePath {
             alias,
             segments,
-            loc: start_loc,
-            span: Span::new(start_pos, end_pos),
+            loc: Loc::new(self.file_id(), line, start, end),
         })
     }
 
     fn parse_prefix_expr(&mut self) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let expr = match &self.current_token().kind {
             TokenKind::At => {
@@ -236,17 +215,14 @@ impl Parser {
                 if self.current_token_is(TokenKind::Struct) {
                     self.parse_unnamed_struct_value(Some(repr_attr))?
                 } else if self.current_token_is(TokenKind::Union) {
-                    let token = self.current_token();
+                    let end = self.current_token().loc.end;
 
                     return Err(Diag {
                         kind: Box::new(ParserDiagKind::InvalidModifier(
                             "Repr attribute cannot be applied to unnamed union values.".to_string(),
                         )),
                         level: DiagLevel::Error,
-                        loc: Some(
-                            DiagLoc::new(SourceLoc::from_loc(token.loc.clone(), self.file_name.clone()))
-                                .span(token.span),
-                        ),
+                        loc: Some(Loc::new(self.file_id(), line, start, end)),
                         hint: None,
                     });
                 } else {
@@ -278,46 +254,49 @@ impl Parser {
                 }
             }
             TokenKind::Ampersand => {
-                let start = self.current_token().span.start;
-                let loc = self.current_token().loc.clone();
                 self.next_token();
+
+                let end = self.current_token().loc.end;
+
                 Expr::AddrOf(AddrOf {
-                    expr: Box::new(self.parse_expr(Precedence::Prefix)?.0),
-                    span: Span::new(start, self.current_token().span.end),
-                    loc,
+                    expr: Box::new(self.parse_expr(Precedence::Prefix)?),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 })
             }
             TokenKind::Asterisk => {
-                let start = self.current_token().span.start;
-                let loc = self.current_token().loc.clone();
                 self.next_token();
+
+                let end = self.current_token().loc.end;
+
                 Expr::Deref(Deref {
-                    expr: Box::new(self.parse_expr(Precedence::Prefix)?.0),
-                    span: Span::new(start, self.current_token().span.end),
-                    loc,
+                    expr: Box::new(self.parse_expr(Precedence::Prefix)?),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 })
             }
-            TokenKind::Null => Expr::Literal(Literal {
-                kind: LiteralKind::Null,
-                span: Span::new(start, self.current_token().span.end),
-                loc: loc.clone(),
-            }),
+            TokenKind::Null => {
+                let end = self.current_token().loc.end;
+
+                Expr::Literal(Literal {
+                    kind: LiteralKind::Null,
+                    loc: Loc::new(self.file_id(), line, start, end),
+                })
+            }
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
                 let value = match bool_token {
                     TokenKind::True => true,
                     TokenKind::False => false,
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
+
+                let end = self.current_token().loc.end;
 
                 Expr::Literal(Literal {
                     kind: LiteralKind::Bool(value),
-                    span: Span::new(start, self.current_token().span.end),
-                    loc: loc.clone(),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 })
             }
             TokenKind::Literal(value) => Expr::Literal(value.clone()),
             token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::Tilde => {
-                let start = self.current_token().span.start;
                 let prefix_operator = match token_kind {
                     TokenKind::Minus => PrefixOperator::Minus,
                     TokenKind::Bang => PrefixOperator::Bang,
@@ -326,13 +305,16 @@ impl Parser {
                         return Err(self.error_at_current(ParserDiagKind::InvalidPrefixOperator(token_kind.clone())));
                     }
                 };
+
                 self.next_token(); // consume the prefix operator
-                let (expr, span) = self.parse_expr(Precedence::Prefix)?;
+                let expr = self.parse_expr(Precedence::Prefix)?;
+
+                let end = self.current_token().loc.end;
+
                 Expr::Prefix(PrefixExpr {
                     op: prefix_operator,
                     operand: Box::new(expr),
-                    span: Span { start, end: span.end },
-                    loc: loc.clone(),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 })
             }
             TokenKind::LeftParen => {
@@ -399,8 +381,8 @@ impl Parser {
     }
 
     fn parse_unnamed_enum_value(&mut self) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume dot
 
@@ -410,47 +392,50 @@ impl Parser {
             self.next_token(); // consume ident
             let field_values = self.parse_expr_series(TokenKind::RightParen)?.0;
 
+            let end = self.current_token().loc.end;
+
             Ok(Expr::UnnamedEnumValue(UnnamedEnumValue {
                 ident,
                 kind: UnnamedEnumValueKind::Fielded(field_values),
-                loc,
-                span: Span::new(start, self.current_token().span.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }))
         } else {
+            let end = self.current_token().loc.end;
+
             Ok(Expr::UnnamedEnumValue(UnnamedEnumValue {
                 ident,
                 kind: UnnamedEnumValueKind::Plain,
-                loc,
-                span: Span::new(start, self.current_token().span.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }))
         }
     }
 
     fn parse_dynamic_expr(&mut self) -> Result<Expr, Diag> {
-        let start = self.current_token().span.end;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.end;
+        let line = self.current_token().loc.line;
 
         self.next_token();
-        let (expr, span) = self.parse_expr(Precedence::Lowest)?;
+        let expr = self.parse_expr(Precedence::Lowest)?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Expr::Dynamic(Dynamic {
             operand: Box::new(expr),
-            loc,
-            span: Span::new(start, span.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_tuple_value(&mut self, first_expr: Expr) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
-        let mut expr_list: Vec<Expr> = vec![first_expr];
+        let mut elements: Vec<Expr> = vec![first_expr];
 
         loop {
-            let expr = self.parse_expr(Precedence::Lowest)?.0;
+            let expr = self.parse_expr(Precedence::Lowest)?;
             self.next_token();
 
-            expr_list.push(expr);
+            elements.push(expr);
 
             match self.current_token().kind {
                 TokenKind::Comma => {
@@ -463,16 +448,17 @@ impl Parser {
 
         self.must_be_right_paren()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Expr::Tuple(TupleValue {
-            elements: expr_list,
-            loc,
-            span: Span::new(start, self.current_token().span.end),
+            elements,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_lambda_expr(&mut self, inline: bool) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume function
         let params = self.parse_func_params()?;
@@ -481,56 +467,27 @@ impl Parser {
 
         let body = self.parse_block_stmt()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Expr::Lambda(Lambda {
             params,
             body: Box::new(body),
             return_type,
             inline,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    fn parse_sizeof_expr(&mut self) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc;
-
-        self.next_token(); // consume sizeof
-
-        self.must_be_left_paren()?;
-        self.next_token(); // consume left paren
-
-        let expr = if let Some(token) = self.peek_n_token(1) {
-            if self.is_type_specifier_base_token(&self.current_token().kind)
-                && self.is_type_specifier_base_token(&token.kind)
-            {
-                let type_specifier = self.parse_type_specifier()?;
-                Expr::TypeSpecifier(type_specifier)
-            } else {
-                self.parse_expr(Precedence::Lowest)?.0
-            }
-        } else {
-            self.parse_expr(Precedence::Lowest)?.0
-        };
-
-        self.next_token();
-        self.must_be_right_paren()?;
-
-        Ok(Expr::SizeOf(SizeOf {
-            expr: Box::new(expr),
-            loc,
-            span: Span::new(start, self.current_token().span.end),
-        }))
-    }
-
-    fn parse_infix_expr(&mut self, left: Expr, left_start: usize) -> Option<Result<Expr, Diag>> {
-        let loc = self.current_token().loc.clone();
+    fn parse_infix_expr(&mut self, lhs: Expr, lhs_start: usize) -> Option<Result<Expr, Diag>> {
+        let line = self.current_token().loc.line;
 
         // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
         // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
         // Generic<A, Generic<B, C>>
         if let (Some(token1), Some(token2)) = (self.peek_n_token(1), self.peek_n_token(2)) {
             if token1.kind == TokenKind::GreaterThan && token2.kind == TokenKind::GreaterThan {
+                let end = self.current_token().loc.end;
+
                 let peek_token_idx = self.pos + 1;
                 self.tokens.remove(peek_token_idx);
                 self.tokens.remove(peek_token_idx);
@@ -538,8 +495,7 @@ impl Parser {
                     peek_token_idx,
                     Token {
                         kind: TokenKind::ShiftLeft,
-                        span: Span::new(token1.span.start, token2.span.end),
-                        loc: token1.loc.clone(),
+                        loc: Loc::new(self.file_id(), line, start, end),
                     },
                 );
             }
@@ -548,7 +504,7 @@ impl Parser {
         match self.peek_token().kind {
             TokenKind::Assign => {
                 self.next_token();
-                match self.parse_assign(left, AssignKind::Default, left_start) {
+                match self.parse_assign(lhs, AssignKind::Default, lhs_start) {
                     Ok(expr) => Some(Ok(expr)),
                     Err(err) => Some(Err(err)),
                 }
@@ -574,7 +530,7 @@ impl Parser {
             | TokenKind::ShiftLeft
             | TokenKind::ShiftRight
             | TokenKind::Ident { .. } => {
-                self.next_token(); // consume left expression
+                self.next_token(); // consume lhs expr
 
                 let operator_token = self.current_token().kind;
                 if self.peek_token_is(TokenKind::Assign) {
@@ -585,7 +541,7 @@ impl Parser {
                         ));
                     };
 
-                    return Some(self.parse_assign(left, assign_kind, left_start));
+                    return Some(self.parse_assign(lhs, assign_kind, lhs_start));
                 }
 
                 let precedence = token_precedence_of(operator_token.clone());
@@ -618,17 +574,15 @@ impl Parser {
                     }
                 };
 
-                let (right, span) = self.parse_expr(precedence).ok()?;
+                let rhs = self.parse_expr(precedence).ok()?;
+
+                let end = self.current_token().loc.end;
 
                 Some(Ok(Expr::Infix(InfixExpr {
                     op,
-                    lhs: Box::new(left),
-                    rhs: Box::new(right),
-                    span: Span {
-                        start: left_start,
-                        end: span.end,
-                    },
-                    loc,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    loc: Loc::new(self.file_id(), line, lhs_start, end),
                 })))
             }
             _ => None,
@@ -636,15 +590,15 @@ impl Parser {
     }
 
     pub(crate) fn parse_expr_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
-        let start = self.current_token().span.start;
+        let start = self.current_token().loc.start;
         let mut series: Vec<Expr> = Vec::new();
 
         // detect empty series of expressions
         if self.peek_token_is(end.clone()) {
             self.next_token();
-            return Ok((series, Span::new(start, self.current_token().span.end)));
+            return Ok((series, Span::new(start, self.current_token().loc.end)));
         } else if self.current_token_is(end.clone()) {
-            return Ok((series, Span::new(start, self.current_token().span.end)));
+            return Ok((series, Span::new(start, self.current_token().loc.end)));
         }
         self.next_token();
 
@@ -661,34 +615,9 @@ impl Parser {
             series,
             Span {
                 start,
-                end: self.current_token().span.end,
+                end: self.current_token().loc.end,
             },
         ))
-    }
-
-    fn parse_cast_expr(&mut self) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
-
-        self.next_token(); // consume cast 
-        self.expect_current(TokenKind::LeftParen)?;
-
-        let target_type = self.parse_type_specifier()?;
-        self.next_token(); // consume target_type
-
-        self.expect_current(TokenKind::Comma)?;
-
-        let expr = self.parse_expr(Precedence::Lowest)?.0;
-        self.next_token();
-
-        self.must_be_right_paren()?;
-
-        Ok(Expr::Cast(Cast {
-            expr: Box::new(expr),
-            target_type,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
-        }))
     }
 
     fn parse_method_call(
@@ -698,11 +627,13 @@ impl Parser {
         is_fat_arrow: bool,
         type_args: Option<TypeArgs>,
         start: usize,
-        loc: Location,
+        line: usize,
     ) -> Result<Expr, Diag> {
         self.must_be_left_paren()?;
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
         self.must_be_right_paren()?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Expr::MethodCall(MethodCall {
             is_fat_arrow,
@@ -710,14 +641,13 @@ impl Parser {
             method_name,
             type_args,
             args,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_field_access(&mut self, operand: Expr) -> Result<Expr, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let is_fat_arrow = {
             if self.current_token_is(TokenKind::ThinArrow) {
@@ -749,38 +679,38 @@ impl Parser {
                     is_fat_arrow,
                     operand: Box::new(operand),
                     field_name: ident,
-                    type_args: type_args_opt,
-                    span: Span::new(start, self.current_token().span.end),
-                    loc,
+                    type_args,
+                    loc: Loc::new(self.file_id(), line, start, end),
                 }))
             }
         } else {
             let index = self.parse_integer_without_suffix()?;
+            let end = self.current_token().loc.end;
 
             Ok(Expr::TupleAccess(TupleAccess {
                 operand: Box::new(operand),
                 index: index.try_into().unwrap(),
-                loc,
-                span: Span::new(start, self.current_token().span.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }))
         }
     }
 
     fn parse_func_call(&mut self, operand: Expr, type_args: Option<TypeArgs>) -> Result<Expr, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_peek(TokenKind::LeftParen)?;
 
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
         self.must_be_right_paren()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Expr::FuncCall(FuncCall {
             operand: Box::new(operand),
             args,
             type_args,
-            span: Span::new(start, self.current_token().span.end),
-            loc: loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -789,23 +719,21 @@ impl Parser {
         struct_name: ModuleImport,
         type_args: Option<TypeArgs>,
     ) -> Result<StructInit, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let mut field_inits: Vec<FieldInit> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(StructInit {
                 struct_name,
                 field_inits,
                 type_args,
                 is_const: false,
-                loc,
-                span: Span {
-                    start,
-                    end: self.current_token().span.end,
-                },
+                loc: Loc::new(self.file_id(), line, start, end),
             });
         }
 
@@ -856,16 +784,14 @@ impl Parser {
             }
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(StructInit {
             struct_name,
             field_inits,
             type_args,
             is_const: false,
-            loc,
-            span: Span {
-                start,
-                end: self.current_token().span.end,
-            },
+            loc: Loc::new(self.file_id(), line, start, end),
         })
     }
 
@@ -886,17 +812,18 @@ impl Parser {
     }
 
     fn parse_assign(&mut self, lhs: Expr, kind: AssignKind, start: usize) -> Result<Expr, Diag> {
-        let loc = self.current_token().loc.clone();
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::Assign)?;
         let rhs = self.parse_expr(Precedence::Lowest)?.0;
-        let end = self.current_token().span.end;
+
+        let end = self.current_token().loc.end;
+
         Ok(Expr::Assign(Box::new(Assign {
             lhs,
             rhs,
             kind,
-            span: Span { start, end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         })))
     }
 
@@ -913,18 +840,21 @@ impl Parser {
     }
 
     fn parse_array_index(&mut self, expr: Expr) -> Result<Expr, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let index_expr = self.parse_single_array_index()?;
         let mut indexes_backup: Vec<Expr> = vec![index_expr.clone()];
 
-        let mut base_index = Expr::ArrayIndex(ArrayIndex {
-            operand: Box::new(expr.clone()),
-            index: Box::new(index_expr.clone()),
-            span: Span::new(start, self.current_token().span.end),
-            loc: loc.clone(),
-        });
+        let mut base_index = {
+            let end = self.current_token().loc.end;
+
+            Expr::ArrayIndex(ArrayIndex {
+                operand: Box::new(expr.clone()),
+                index: Box::new(index_expr.clone()),
+                loc: Loc::new(self.file_id(), line, start, end),
+            })
+        };
 
         // handle chained indices ident[a][b][c]
         if self.peek_token_is(TokenKind::LeftBracket) {
@@ -934,11 +864,12 @@ impl Parser {
         while self.current_token_is(TokenKind::LeftBracket) {
             let index_expr = self.parse_single_array_index()?;
 
+            let end = self.current_token().loc.end;
+
             base_index = Expr::ArrayIndex(ArrayIndex {
                 operand: Box::new(base_index),
                 index: Box::new(index_expr.clone()),
-                span: Span::new(start, self.current_token().span.end),
-                loc: loc.clone(),
+                loc: Loc::new(self.file_id(), line, start, end),
             });
 
             indexes_backup.push(index_expr);
@@ -961,15 +892,23 @@ impl Parser {
                 }
             };
 
-            let mut base_array = ArrayTypeSpecifier {
-                size: ArrayCapacity::Fixed(Box::new(indexes_backup.remove(0))),
-                element_type: Box::new(element_type),
+            let mut base_array = {
+                let end = self.current_token().loc.end;
+
+                ArrayType {
+                    size: ArrayCapacity::Fixed(Box::new(indexes_backup.remove(0))),
+                    element_type: Box::new(element_type),
+                    loc: Loc::new(self.file_id(), line, start, end),
+                }
             };
 
             for index in &indexes_backup {
-                base_array = ArrayTypeSpecifier {
+                let end = self.current_token().loc.end;
+
+                base_array = ArrayType {
                     size: ArrayCapacity::Fixed(Box::new(index.clone())),
                     element_type: Box::new(TypeSpecifier::Array(base_array)),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 };
             }
 
@@ -984,21 +923,23 @@ impl Parser {
     }
 
     fn parse_untyped_array(&mut self) -> Result<Expr, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let line = self.current_token().loc.line;
+        let start = self.current_token().loc.start;
         let elements = self.parse_expr_series(TokenKind::RightBrace)?.0;
 
         self.must_be_right_brace()?;
+
+        let end = self.current_token().loc.end;
+
         Ok(Expr::UntypedArray(UntypedArray {
             elements,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_array(&mut self, type_specifier: TypeSpecifier) -> Result<Expr, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let line = self.current_token().loc.line;
+        let start = self.current_token().loc.start;
 
         if !matches!(type_specifier, TypeSpecifier::Array(..)) {
             return Err(self.error_at_current(ParserDiagKind::NonArrayDataTypeForArrayConstruction));
@@ -1010,17 +951,18 @@ impl Parser {
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(Expr::Array(Array {
                 elements,
                 data_type: type_specifier,
-                span: Span::new(start, self.current_token().span.end),
-                loc: loc.clone(),
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
         loop {
             if self.current_token_is(TokenKind::LeftBrace) {
-                let untyped_array_start = self.current_token().span.start;
+                let untyped_array_start = self.current_token().loc.start;
                 let mut untyped_array: Vec<Expr> = Vec::new();
                 self.next_token(); // consume left brace
 
@@ -1044,19 +986,21 @@ impl Parser {
                 }
 
                 if let TypeSpecifier::Array(inner_type_specifier, ..) = type_specifier.clone() {
-                    let data_type = TypeSpecifier::Array(ArrayTypeSpecifier {
+                    let end = self.current_token().loc.end;
+
+                    let data_type = TypeSpecifier::Array(ArrayType {
                         size: ArrayCapacity::Fixed(Box::new(Expr::Literal(Literal {
                             kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
-                            span: Span::new(untyped_array_start, self.current_token().span.end),
-                            loc: loc.clone(),
+                            loc: Loc::new(self.file_id(), line, start, end),
                         }))),
                         element_type: inner_type_specifier.element_type,
+                        loc: Loc::new(self.file_id(), line, start, end),
                     });
+
                     elements.push(Expr::Array(Array {
                         data_type,
                         elements: untyped_array,
-                        span: Span::new(untyped_array_start, self.current_token().span.end),
-                        loc: loc.clone(),
+                        loc: Loc::new(self.file_id(), line, start, end),
                     }));
                 } else {
                     unreachable!()
@@ -1081,16 +1025,17 @@ impl Parser {
 
         self.expect_peek(TokenKind::RightBrace)?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Expr::Array(Array {
             elements,
             data_type: type_specifier,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>) -> Result<Expr, Diag> {
-        let struct_start = self.current_token().span.start;
+        let struct_start = self.current_token().loc.start;
 
         self.next_token(); // consume struct
 
@@ -1109,8 +1054,8 @@ impl Parser {
                     return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
                 }
                 TokenKind::Ident(_) => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
+                    let start = self.current_token().loc.start;
+                    let line = self.current_token().loc.line;
                     let ident = self.parse_ident()?;
 
                     self.next_token(); // consume ident
@@ -1119,12 +1064,13 @@ impl Parser {
                         // syntax shorthand for `ident:ident`
                         let ident_expr = Expr::Ident(ident.clone());
 
+                        let end = self.current_token().loc.end;
+
                         fields.push(UnnamedStructValueField {
                             field_name: ident.clone(),
                             field_ty: None,
                             field_value: Box::new(ident_expr),
-                            loc,
-                            span: Span::new(start, self.current_token().span.end),
+                            loc: Loc::new(self.file_id(), line, start, end),
                         });
                     } else {
                         let mut field_ty: Option<TypeSpecifier> = None;
@@ -1141,12 +1087,13 @@ impl Parser {
                         let field_value = self.parse_expr(Precedence::Lowest)?.0;
                         self.next_token();
 
+                        let end = self.current_token().loc.end;
+
                         fields.push(UnnamedStructValueField {
                             field_name: ident.clone(),
                             field_ty,
                             field_value: Box::new(field_value),
-                            loc,
-                            span: Span::new(start, self.current_token().span.end),
+                            loc: Loc::new(self.file_id(), line, start, end),
                         });
                     }
 
@@ -1162,17 +1109,18 @@ impl Parser {
             }
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(Expr::UnnamedStructValue(UnnamedStructValue {
             fields,
             repr_attr,
             align,
-            loc: self.current_token().loc.clone(),
-            span: Span::new(struct_start, self.current_token().span.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_unnamed_union_value(&mut self, is_const: bool) -> Result<Expr, Diag> {
-        let union_start = self.current_token().span.start;
+        let union_start = self.current_token().loc.start;
 
         self.next_token(); // consume union
 
@@ -1188,12 +1136,13 @@ impl Parser {
 
             self.must_be_right_brace()?;
 
+            let end = self.current_token().loc.end;
+
             return Ok(Expr::UnnamedUnionValue(UnnamedUnionValue {
                 field_name: ident,
                 field_value: Box::new(ident_expr),
                 is_const,
-                loc: self.current_token().loc.clone(),
-                span: Span::new(union_start, self.current_token().span.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         } else {
             self.expect_current(TokenKind::Assign)?;
@@ -1202,12 +1151,14 @@ impl Parser {
 
             self.must_be_right_brace()?;
 
+            let end = self.current_token().loc.end;
+
             return Ok(Expr::UnnamedUnionValue(UnnamedUnionValue {
                 field_name: ident,
                 field_value: Box::new(field_value),
                 is_const,
                 loc: self.current_token().loc.clone(),
-                span: Span::new(union_start, self.current_token().span.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
     }

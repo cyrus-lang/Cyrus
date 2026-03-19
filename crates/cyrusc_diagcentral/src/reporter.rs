@@ -239,7 +239,7 @@ impl fmt::Display for CustomDiagKind {
 }
 
 #[macro_export]
-macro_rules! exit_with_diag_msg {
+macro_rules! exit_with_msg {
     ($msg:expr) => {
         cyrusc_diagcentral::reporter::DiagReporter::display_single(cyrusc_diagcentral::Diag {
             level: cyrusc_diagcentral::DiagLevel::Error,

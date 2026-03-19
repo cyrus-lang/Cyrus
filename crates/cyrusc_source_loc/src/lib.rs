@@ -80,4 +80,13 @@ impl Loc {
             end,
         }
     }
+
+    pub fn default(id: FileID) -> Self {
+        Self {
+            id,
+            line: 0,
+            start: 0,
+            end: 0,
+        }
+    }
 }

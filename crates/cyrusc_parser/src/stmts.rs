@@ -27,10 +27,7 @@ use cyrusc_ast::modifiers::StructModifiers;
 use cyrusc_ast::modifiers::UnionModifiers;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::DiagLevel;
-use cyrusc_diagcentral::DiagLoc;
-use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_tokens::TokenKind;
-use cyrusc_tokens::loc::Span;
 
 impl Parser {
     pub(crate) fn parse_stmt(
@@ -61,7 +58,7 @@ impl Parser {
         }
 
         let modifiers = grouped_modifiers.clone().unwrap_or(self.parse_unresolved_modifiers()?);
-        let loc = self.current_token().loc.clone();
+        let line = self.current_token().loc.line;
 
         if toplevel && self.current_token_is(TokenKind::LeftBrace) {
             if grouped_modifiers.is_some() {
@@ -138,7 +135,7 @@ impl Parser {
     }
 
     pub(crate) fn parse_builtin(&mut self) -> Result<Builtin, Diag> {
-        let start = self.current_token().span.start;
+        let start = self.current_token().loc.start;
         let loc = self.current_token().loc;
 
         self.next_token(); // consume at
@@ -159,7 +156,7 @@ impl Parser {
                 name: ident,
                 args,
                 block: Box::new(block),
-                span: Span::new(start, self.current_token().span.end),
+                span: Span::new(start, self.current_token().loc.end),
                 loc,
             }))
         } else {
@@ -167,7 +164,7 @@ impl Parser {
                 name: ident,
                 args,
                 child_stmt: None,
-                span: Span::new(start, self.current_token().span.end),
+                span: Span::new(start, self.current_token().loc.end),
                 loc,
             }))
         }
@@ -210,8 +207,8 @@ impl Parser {
     }
 
     pub(crate) fn parse_goto(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::Goto)?;
         let label = self.parse_ident()?;
@@ -221,7 +218,7 @@ impl Parser {
         Ok(Stmt::Goto(Goto {
             name: label,
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
@@ -234,13 +231,13 @@ impl Parser {
         Ok(Stmt::Label(Label {
             name,
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
     pub(crate) fn parse_block_stmt(&mut self) -> Result<BlockStmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         if self.peek_token_is(TokenKind::EOF) {
             return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
@@ -256,7 +253,7 @@ impl Parser {
                 exprs: block_stmt,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             });
@@ -275,7 +272,7 @@ impl Parser {
         }
 
         self.expect_peek(TokenKind::RightBrace)?;
-        let end = self.current_token().span.end;
+        let end = self.current_token().loc.end;
 
         Ok(BlockStmt {
             exprs: block_stmt,
@@ -324,12 +321,12 @@ impl Parser {
                     list.push(FuncParamKind::SelfModifier(SelfModifier {
                         kind: SelfModifierKind::Referenced,
                         loc: token.loc.clone(),
-                        span: Span::new(token.span.start, self.current_token().span.end),
+                        span: Span::new(token.span.start, self.current_token().loc.end),
                     }));
                 }
                 TokenKind::Ident(_) => {
                     let param_loc = self.current_token().loc.clone();
-                    let start = self.current_token().span.start;
+                    let start = self.current_token().loc.start;
                     let ident = self.parse_ident()?;
                     self.next_token(); // consume the ident
 
@@ -338,7 +335,7 @@ impl Parser {
                         list.push(FuncParamKind::SelfModifier(SelfModifier {
                             kind: SelfModifierKind::Copied,
                             loc: param_loc,
-                            span: Span::new(start, self.current_token().span.end),
+                            span: Span::new(start, self.current_token().loc.end),
                         }));
                     } else {
                         // get the var type
@@ -366,7 +363,7 @@ impl Parser {
                             ty: var_type,
                             span: Span {
                                 start: start,
-                                end: self.current_token().span.end,
+                                end: self.current_token().loc.end,
                             },
                             loc: param_loc,
                         }));
@@ -435,7 +432,7 @@ impl Parser {
                     ));
                 }
 
-                let loc = self.current_token().loc.clone();
+                let line = self.current_token().loc.line;
                 let field_ty = self.parse_type_specifier()?;
                 self.next_token();
 
@@ -459,8 +456,8 @@ impl Parser {
     }
 
     fn parse_union_field(&mut self) -> Result<UnionField, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let ident = self.parse_ident()?;
         self.next_token(); // consume ident
@@ -476,7 +473,7 @@ impl Parser {
             loc,
             span: Span {
                 start,
-                end: self.current_token().span.end,
+                end: self.current_token().loc.end,
             },
         };
 
@@ -486,8 +483,8 @@ impl Parser {
     }
 
     fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::Union)?;
 
@@ -517,7 +514,7 @@ impl Parser {
                 impls,
                 modifiers,
                 loc,
-                span: Span::new(start, self.current_token().span.end),
+                span: Span::new(start, self.current_token().loc.end),
             }));
         }
 
@@ -546,7 +543,7 @@ impl Parser {
                 }
                 _ => {
                     let modifiers = self.parse_unresolved_modifiers()?;
-                    let loc = self.current_token().loc.clone();
+                    let line = self.current_token().loc.line;
 
                     if self.current_token_is(TokenKind::Function) {
                         let func_modifiers =
@@ -574,13 +571,13 @@ impl Parser {
             align,
             impls,
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
     fn parse_enum(&mut self, modifiers: EnumModifiers) -> Result<Stmt, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let line = self.current_token().loc.line;
+        let start = self.current_token().loc.start;
 
         self.next_token(); // parse enum keyword
 
@@ -614,7 +611,7 @@ impl Parser {
                 modifiers,
                 impls,
                 loc,
-                span: Span::new(start, self.current_token().span.end),
+                span: Span::new(start, self.current_token().loc.end),
             }));
         }
 
@@ -665,7 +662,7 @@ impl Parser {
                 }
                 _ => {
                     let modifiers = self.parse_unresolved_modifiers()?;
-                    let loc = self.current_token().loc.clone();
+                    let line = self.current_token().loc.line;
 
                     if self.current_token_is(TokenKind::Function) {
                         let func_modifiers =
@@ -702,7 +699,7 @@ impl Parser {
             align,
             impls,
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
@@ -728,8 +725,8 @@ impl Parser {
     }
 
     fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
-        let loc = self.current_token().loc.clone();
-        let struct_start = self.current_token().span.start.clone();
+        let line = self.current_token().loc.line;
+        let struct_start = self.current_token().loc.start.clone();
 
         self.next_token(); // consume struct/bits token
 
@@ -774,7 +771,7 @@ impl Parser {
                 }
                 _ => {
                     let modifiers = self.parse_unresolved_modifiers()?;
-                    let loc = self.current_token().loc.clone();
+                    let line = self.current_token().loc.line;
 
                     if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
                         let field_modifiers =
@@ -809,14 +806,14 @@ impl Parser {
             loc,
             span: Span {
                 start: struct_start,
-                end: self.current_token().span.end,
+                end: self.current_token().loc.end,
             },
         }))
     }
 
     fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let ident = self.parse_ident()?;
         self.next_token(); // consume ident
@@ -833,7 +830,7 @@ impl Parser {
             loc,
             span: Span {
                 start,
-                end: self.current_token().span.end,
+                end: self.current_token().loc.end,
             },
         };
 
@@ -842,28 +839,28 @@ impl Parser {
     }
 
     fn parse_break(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume break
         self.must_be_semicolon()?;
 
         Ok(Stmt::Break(Break {
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
     fn parse_continue(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume continue
         self.must_be_semicolon()?;
 
         Ok(Stmt::Continue(Continue {
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
@@ -906,8 +903,8 @@ impl Parser {
     }
 
     fn parse_interface(&mut self, vis: Visibility) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token();
 
@@ -931,7 +928,7 @@ impl Parser {
                 loc,
                 vis,
                 generic_params,
-                span: Span::new(start, self.current_token().span.end),
+                span: Span::new(start, self.current_token().loc.end),
             }));
         }
 
@@ -965,13 +962,13 @@ impl Parser {
             loc,
             vis,
             generic_params,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
     fn parse_import(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume import keyword
 
@@ -1017,7 +1014,7 @@ impl Parser {
             paths,
             span: Span {
                 start,
-                end: self.current_token().span.end,
+                end: self.current_token().loc.end,
             },
             loc,
         }));
@@ -1038,8 +1035,8 @@ impl Parser {
     }
 
     fn parse_foreach(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.end;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.end;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume foreach
         self.expect_current(TokenKind::LeftParen)?;
@@ -1069,14 +1066,14 @@ impl Parser {
             index: index_identifier,
             expr,
             body: Box::new(body),
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
             loc,
         }))
     }
 
     fn parse_while_loop(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume while token
         self.expect_current(TokenKind::LeftParen)?;
@@ -1089,14 +1086,14 @@ impl Parser {
         Ok(Stmt::While(While {
             condition,
             body: Box::new(body),
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
             loc,
         }))
     }
 
     fn parse_for_loop(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume for token
 
@@ -1120,7 +1117,7 @@ impl Parser {
                 body,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1149,7 +1146,7 @@ impl Parser {
                 body,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1175,7 +1172,7 @@ impl Parser {
             body,
             span: Span {
                 start,
-                end: self.current_token().span.end,
+                end: self.current_token().loc.end,
             },
             loc,
         }))
@@ -1226,8 +1223,8 @@ impl Parser {
     }
 
     fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -1285,7 +1282,7 @@ impl Parser {
                 is_const,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1309,8 +1306,8 @@ impl Parser {
     }
 
     fn parse_variable(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let is_const;
         if self.current_token_is(TokenKind::Const) {
@@ -1352,7 +1349,7 @@ impl Parser {
                 is_const,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1373,8 +1370,8 @@ impl Parser {
     }
 
     fn parse_func(&mut self, modifiers: FuncModifiers) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::Function)?;
 
@@ -1404,7 +1401,7 @@ impl Parser {
                 renamed_as: None,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1422,7 +1419,7 @@ impl Parser {
                 renamed_as: Some(renamed_as),
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1441,7 +1438,7 @@ impl Parser {
                 renamed_as: None,
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
@@ -1470,14 +1467,14 @@ impl Parser {
                 renamed_as: Some(renamed_as),
                 span: Span {
                     start,
-                    end: self.current_token().span.end,
+                    end: self.current_token().loc.end,
                 },
                 loc,
             }));
         }
 
         let body = Box::new(self.parse_block_stmt()?);
-        let end = self.current_token().span.end;
+        let end = self.current_token().loc.end;
 
         return Ok(Stmt::FuncDef(FuncDef {
             ident: func_name,
@@ -1492,15 +1489,15 @@ impl Parser {
     }
 
     fn parse_return(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume return token
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Stmt::Return(Return {
                 argument: None,
-                span: Span::new(start, self.current_token().span.end),
+                span: Span::new(start, self.current_token().loc.end),
                 loc,
             }));
         }
@@ -1520,8 +1517,8 @@ impl Parser {
     }
 
     fn parse_global_var(&mut self, modifiers: UnresolvedModifiers) -> Result<Stmt, Diag> {
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let line = self.current_token().loc.line;
+        let start = self.current_token().loc.start;
 
         let is_const;
         if self.current_token_is(TokenKind::Const) {
@@ -1565,7 +1562,7 @@ impl Parser {
             is_const,
             modifiers: global_var_modifiers,
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
@@ -1584,8 +1581,8 @@ impl Parser {
 
         self.expect_current(TokenKind::Assign)?;
 
-        let loc = self.current_token().loc.clone();
-        let start = self.current_token().span.start;
+        let line = self.current_token().loc.line;
+        let start = self.current_token().loc.start;
 
         let type_specifier = self.parse_type_specifier()?;
         self.next_token();
@@ -1598,13 +1595,13 @@ impl Parser {
             type_specifier,
             generic_params,
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 
     fn parse_switch(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token();
         self.expect_current(TokenKind::LeftParen)?;
@@ -1685,7 +1682,7 @@ impl Parser {
         loop {
             if self.current_token_is(TokenKind::Case) {
                 let case_loc = self.current_token().loc.clone();
-                let case_start = self.current_token().span.start;
+                let case_start = self.current_token().loc.start;
                 self.next_token();
 
                 let mut patterns: Vec<SwitchCasePattern> = Vec::new();
@@ -1709,7 +1706,7 @@ impl Parser {
                 cases.push(SwitchCase {
                     patterns,
                     body: case_body,
-                    span: Span::new(case_start, self.current_token().span.end),
+                    span: Span::new(case_start, self.current_token().loc.end),
                     loc: case_loc,
                 });
             } else if self.current_token_is(TokenKind::Default) {
@@ -1730,14 +1727,14 @@ impl Parser {
             operand,
             cases,
             default_case,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
             loc,
         }))
     }
 
     fn parse_if_stmt(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
-        let loc = self.current_token().loc.clone();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         let mut branches: Vec<If> = Vec::new();
         let mut alternate: Option<Box<BlockStmt>> = None;
@@ -1759,7 +1756,7 @@ impl Parser {
             self.next_token(); // consume else token
 
             if self.current_token_is(TokenKind::If) {
-                let else_if_start = self.current_token().span.start;
+                let else_if_start = self.current_token().loc.start;
                 self.next_token(); // consume if token
 
                 self.expect_current(TokenKind::LeftParen)?;
@@ -1773,7 +1770,7 @@ impl Parser {
                     self.next_token(); // consume else token
                 }
 
-                let end = self.current_token().span.end;
+                let end = self.current_token().loc.end;
 
                 branches.push(If {
                     condition,
@@ -1798,7 +1795,7 @@ impl Parser {
 
         self.must_be_right_brace()?;
 
-        let end = self.current_token().span.end;
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::If(If {
             condition,
@@ -1811,7 +1808,7 @@ impl Parser {
     }
 
     fn parse_defer_stmt(&mut self) -> Result<Stmt, Diag> {
-        let start = self.current_token().span.start;
+        let start = self.current_token().loc.start;
         let loc = self.current_token().loc;
 
         self.next_token();
@@ -1822,7 +1819,7 @@ impl Parser {
         Ok(Stmt::Defer(Defer {
             operand: Box::new(stmt),
             loc,
-            span: Span::new(start, self.current_token().span.end),
+            span: Span::new(start, self.current_token().loc.end),
         }))
     }
 }

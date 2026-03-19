@@ -243,6 +243,7 @@ dependencies = [
 name = "cyrusc_ast"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_source_loc",
  "cyrusc_tokens",
 ]
 
@@ -378,6 +379,7 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
+ "cyrusc_source_loc",
  "cyrusc_tokens",
  "thiserror",
  "thiserror-impl",
