@@ -18,7 +18,7 @@ use crate::diagnostics::ModuleFSLoaderDiagKind;
 use cyrusc_ast::{
     Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string,
 };
-use cyrusc_diagcentral::{Diag, DiagLevel, display_and_exit_with_single_diag};
+use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
@@ -230,7 +230,7 @@ impl ModuleLoader {
             None => match env::var("CYRUS_STDLIB_PATH") {
                 Ok(stdlib_path) => stdlib_path,
                 Err(_) => {
-                    display_and_exit_with_single_diag!(Diag {
+                    exit_with_single_diag!(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(ModuleFSLoaderDiagKind::StdlibNotFound),
                         loc: None,

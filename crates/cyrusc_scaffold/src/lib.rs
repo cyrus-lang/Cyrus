@@ -16,7 +16,7 @@
  */
 
 use crate::{diagnostics::ProjectLayoutDiagKind, version::CYRUS_COMPILER_VERSION};
-use cyrusc_diagcentral::{Diag, DiagLevel, display_and_exit_with_single_diag};
+use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag};
 use std::{
     fs::{self, File},
     io::Write,
@@ -28,7 +28,7 @@ pub mod version;
 
 fn create_common_files(output: String) -> Result<(), String> {
     if fs::exists(output.clone()).map_err(|err| err.to_string())? {
-        display_and_exit_with_single_diag!(Diag {
+        exit_with_single_diag!(Diag {
             level: DiagLevel::Error,
             kind: Box::new(ProjectLayoutDiagKind::DuplicateProjectName { name: output.clone() }),
             loc: None,

@@ -17,7 +17,7 @@
 use crate::Lexer;
 use core::fmt;
 
-impl fmt::Display for Lexer {
+impl<'source> fmt::Display for Lexer<'source> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
         write!(f, "pos: {}, next_pos: {}, char: {}", self.pos, self.next_pos, self.ch)
     }

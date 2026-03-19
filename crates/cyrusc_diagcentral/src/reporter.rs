@@ -71,7 +71,7 @@ impl<'source_map> DiagReporter<'source_map> {
 
 impl<'source_map> DiagReporter<'source_map> {
     pub(crate) fn render(&self, diag: &Diag) -> String {
-        let mut formatted = String::new();
+        let mut out = String::new();
 
         let level_text = {
             let color = self.highlight_color(diag);
@@ -82,48 +82,66 @@ impl<'source_map> DiagReporter<'source_map> {
             }
         };
 
-        formatted.push_str(&format!("[{}] {}\n", level_text, diag.kind));
+        out.push_str(&format!("[{}] {}\n", level_text, diag.kind));
 
-        if let Some(loc) = diag.loc {
-            let file = self.source_map.unwrap().get_file(loc.id).unwrap();
-            let lines: Vec<&str> = file.content.lines().collect();
-
-            formatted.push_str(&self.render_header(&file.name, loc));
-
-            let error_idx = loc.line.saturating_sub(1);
-
-            let start_line = error_idx.saturating_sub(PANEL_LENGTH);
-            let end_line = std::cmp::min(error_idx + PANEL_LENGTH + 1, lines.len());
-
-            for line_idx in start_line..end_line {
-                let line = lines[line_idx];
-                let line_no = line_idx + 1;
-
-                formatted.push_str(&self.render_line_number(line_no));
-
-                if line_idx == error_idx {
-                    {
-                        let color = self.highlight_color(diag);
-                        formatted.push_str(&self.render_highlighted_line(line, loc, color));
-                    }
-
-                    if user_attended() {
-                        let color = self.highlight_color(diag);
-                        formatted.push_str(&self.render_pointer_line(line, loc, color));
-                    }
-                } else {
-                    formatted.push_str(line);
-                    formatted.push('\n');
-                }
-            }
-
+        if diag.loc.is_none() || self.source_map.is_none() {
             if let Some(hint) = &diag.hint {
-                formatted.push_str("\n");
-                formatted.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
+                out.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
+            }
+            return out;
+        }
+
+        let loc = diag.loc.unwrap();
+        let sm = self.source_map.unwrap();
+        let file = match sm.get_file(loc.id) {
+            Some(f) => f,
+            None => {
+                return out;
+            }
+        };
+
+        let lines: Vec<&str> = file.content.lines().collect();
+
+        // Render header: `--> file:line:column`
+        out.push_str(&self.render_header(&file.name, loc));
+
+        // Compute which lines to print
+        let error_idx = loc.line.saturating_sub(1);
+        let start_line = error_idx.saturating_sub(PANEL_LENGTH);
+        let end_line = std::cmp::min(error_idx + PANEL_LENGTH + 1, lines.len());
+
+        for line_idx in start_line..end_line {
+            let line = lines[line_idx];
+            let line_no = line_idx + 1;
+
+            out.push_str(&self.render_line_number(line_no));
+
+            if line_idx == error_idx {
+                let highlighted_line = {
+                    let color = self.highlight_color(diag);
+                    self.render_highlighted_line(line, loc, color)
+                };
+
+                out.push_str(&highlighted_line);
+
+                // draw pointer caret if "user attended" mode
+                if user_attended() {
+                    let color = self.highlight_color(diag);
+                    out.push_str(&self.render_pointer_line(line, loc, color));
+                }
+            } else {
+                out.push_str(line);
+                out.push('\n');
             }
         }
 
-        formatted
+        // Render hints
+        if let Some(hint) = &diag.hint {
+            out.push_str("\n");
+            out.push_str(&format!(" {}: {}\n", "hint".color(Colors::BlueFg), hint));
+        }
+
+        out
     }
 
     fn render_header(&self, file: &str, loc: Loc) -> String {
@@ -221,7 +239,7 @@ impl fmt::Display for CustomDiagKind {
 }
 
 #[macro_export]
-macro_rules! exit_with_single_diag {
+macro_rules! exit_with_diag_msg {
     ($msg:expr) => {
         cyrusc_diagcentral::reporter::DiagReporter::display_single(cyrusc_diagcentral::Diag {
             level: cyrusc_diagcentral::DiagLevel::Error,
@@ -229,6 +247,14 @@ macro_rules! exit_with_single_diag {
             loc: None,
             hint: None,
         });
+        std::process::exit(1);
+    };
+}
+
+#[macro_export]
+macro_rules! exit_with_single_diag {
+    ($diag:expr) => {
+        cyrusc_diagcentral::reporter::DiagReporter::display_single($diag);
         std::process::exit(1);
     };
 }

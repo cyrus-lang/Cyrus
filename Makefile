@@ -27,7 +27,7 @@ COMMON_FLAGS = --disable-warnings $(ARGS)
 .PHONY: run build test testsuite \
         cir_walk sema resolver parser emit-llvm
 
-cir_walk sema resolver parser:
+cir_walk sema resolver parser lexer:
 	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
 emit-llvm:

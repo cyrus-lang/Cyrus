@@ -346,7 +346,6 @@ dependencies = [
 name = "cyrusc_lexer"
 version = "0.1.0"
 dependencies = [
- "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_source_loc",

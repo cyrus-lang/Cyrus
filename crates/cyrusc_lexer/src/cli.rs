@@ -14,16 +14,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
+use cyrusc_source_loc::{FileID, SourceFile};
 use std::env;
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = args[1].clone();
-    let file_content = read_file(file_path.clone()).0;
+    let (file_content, file_name) = read_file(file_path.clone());
 
-    let mut lexer = Lexer::new(file_content, file_path);
+    let source_file = SourceFile::new(FileID(0), file_name, file_content);
+    let mut lexer = Lexer::new(&source_file);
     let tokens = lexer.tokenize();
 
     dbg!(tokens.clone());

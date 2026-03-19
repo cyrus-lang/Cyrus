@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, display_and_exit_with_single_diag, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, exit_with_single_diag, source_loc::SourceLoc};
 use std::sync::{Arc, Mutex};
 
 impl<'a> AnalysisContext<'a> {
@@ -24,7 +24,7 @@ impl<'a> AnalysisContext<'a> {
         let mut entry_points_clone = entry_points.clone();
 
         if entry_points.len() == 0 {
-            display_and_exit_with_single_diag!(Diag {
+            exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
                 loc: None,
@@ -33,7 +33,7 @@ impl<'a> AnalysisContext<'a> {
         } else if entry_points.len() > 1 {
             let loc = entry_points_clone.pop().unwrap();
 
-            display_and_exit_with_single_diag!(Diag {
+            exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
                 loc: Some(DiagLoc::new(loc)),
