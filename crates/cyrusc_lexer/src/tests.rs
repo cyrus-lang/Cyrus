@@ -18,13 +18,17 @@
 #[cfg(test)]
 mod tests {
     use crate::Lexer;
-    use cyrusc_source_loc::{FileID, SourceFile};
+    use cyrusc_diagcentral::reporter::DiagReporter;
+    use cyrusc_source_loc::SourceMap;
     use cyrusc_tokens::{Token, TokenKind};
 
     fn lex(input: &str) -> Vec<Token> {
-        let sf = SourceFile::new(FileID(0), "test".to_string(), input.to_string());
-        let mut lx = Lexer::new(&sf);
-        lx.tokenize()
+        let mut source_map = SourceMap::new();
+        let file_id = source_map.add_file("test".to_string(), input.to_string());
+        let source_file = source_map.get_file(file_id).unwrap();
+        let mut reporter = DiagReporter::new(&source_map);
+        let mut lexer = Lexer::new(&mut reporter, source_file);
+        lexer.tokenize()
     }
 
     macro_rules! t {
@@ -71,13 +75,13 @@ mod tests {
         t!(t, 1, TokenKind::Literal(_), 1, 9, 15);
     }
 
-    // #[test]
-    // fn test_char_literal() {
-    //     let t = lex("'x' '\\n'");
+    #[test]
+    fn test_char_literal() {
+        let t = lex("'x' '\\n'");
 
-    //     t!(t, 0, TokenKind::Literal(_), 1, 0, 3);
-    //     t!(t, 1, TokenKind::Literal(_), 1, 4, 8);
-    // }
+        t!(t, 0, TokenKind::Literal(_), 1, 0, 3);
+        t!(t, 1, TokenKind::Literal(_), 1, 4, 8);
+    }
 
     #[test]
     fn test_plus_ops() {

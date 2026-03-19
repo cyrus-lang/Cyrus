@@ -31,6 +31,7 @@ pub struct Token {
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     EOF,
+    Invalid,
     Ident(String),
     Literal(Literal),
 
@@ -218,6 +219,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TokenKind::EOF => write!(f, "EOF"),
+            TokenKind::Invalid => write!(f, "INVALID"),
             TokenKind::Ident(ident) => write!(f, "{}", ident),
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),

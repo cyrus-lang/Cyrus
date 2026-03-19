@@ -15,9 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
-use cyrusc_source_loc::{FileID, SourceFile};
+use cyrusc_source_loc::SourceMap;
 use std::env;
 
 pub fn main() {
@@ -25,8 +26,12 @@ pub fn main() {
     let file_path = args[1].clone();
     let (file_content, file_name) = read_file(file_path.clone());
 
-    let source_file = SourceFile::new(FileID(0), file_name, file_content);
-    let mut lexer = Lexer::new(&source_file);
+    let mut source_map = SourceMap::new();
+    let file_id = source_map.add_file(file_name, file_content);
+    let source_file = source_map.get_file(file_id).unwrap();
+    let mut reporter = DiagReporter::new(&source_map);
+
+    let mut lexer = Lexer::new(&mut reporter, &source_file);
     let tokens = lexer.tokenize();
 
     dbg!(tokens.clone());

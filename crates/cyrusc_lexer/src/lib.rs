@@ -16,38 +16,39 @@
  */
 
 use crate::diagnostics::LexicalDiagKind;
-use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag};
+use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_source_loc::{FileID, Loc, SourceFile};
 use cyrusc_strescape::unescape_string;
 use cyrusc_tokens::{
     Token, TokenKind,
     literals::{Literal, LiteralKind, StringPrefix},
 };
-use std::fmt::Debug;
 
 mod diagnostics;
 mod format;
 mod tests;
 
-#[derive(Debug, Clone)]
-pub struct Lexer<'source_file> {
-    source: &'source_file SourceFile,
+pub struct Lexer<'diag, 'source_file> {
+    source_file: &'source_file SourceFile,
+    reporter: &'diag mut DiagReporter<'diag>,
     pos: usize,
     next_pos: usize,
     ch: char,
     line: usize,
 }
 
-impl<'source_file> Lexer<'source_file> {
+impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
     /// Creates a new lexer that reads a single characters from a SourceFile immediately.
-    pub fn new(source: &'source_file SourceFile) -> Self {
+    pub fn new(reporter: &'diag mut DiagReporter<'diag>, source_file: &'source_file SourceFile) -> Self {
         let mut lexer = Self {
-            source,
+            source_file,
+            reporter,
             pos: 0,
             next_pos: 0,
             ch: '\0',
             line: 1,
         };
+
         lexer.read_char();
         lexer
     }
@@ -55,13 +56,13 @@ impl<'source_file> Lexer<'source_file> {
     /// Returns the FileID of the source file being tokenized.
     #[inline]
     pub fn file_id(&self) -> FileID {
-        self.source.id
+        self.source_file.id
     }
 
     /// Returns the input source string.
     #[inline]
     pub fn input(&self) -> &str {
-        &self.source.content
+        &self.source_file.content
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
@@ -112,12 +113,14 @@ impl<'source_file> Lexer<'source_file> {
     }
 
     fn invalid_char(&mut self) -> TokenKind {
-        exit_with_single_diag!(Diag {
+        self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
             loc: Some(Loc::new(self.file_id(), self.line, self.pos, self.pos)),
             hint: None,
         });
+        self.read_char();
+        TokenKind::Invalid
     }
 
     #[inline]
@@ -126,7 +129,7 @@ impl<'source_file> Lexer<'source_file> {
     }
 }
 
-impl<'source_file> Lexer<'source_file> {
+impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
     pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         self.skip_comments();
@@ -353,60 +356,75 @@ impl<'source_file> Lexer<'source_file> {
 
         self.read_char(); // skip opening quote
 
-        let mut final_char: Option<char> = None;
+        if self.is_eof() {
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
+                loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
+                hint: None,
+            });
+        }
 
-        loop {
-            if self.ch == '\'' {
-                break;
-            }
+        let value = if self.ch == '\\' {
+            // escape sequence
+            self.read_char();
 
-            if final_char.is_some() {
-                exit_with_single_diag!(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
-                    loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
-                    hint: Some("Character literals may contain exactly one character.".to_string()),
-                });
-            }
+            let escaped = match self.ch {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '\\' => '\\',
+                '\'' => '\'',
+                '0' => '\0',
+                _ => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(LexicalDiagKind::InvalidEscapeSequence),
+                        loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
+                        hint: Some("Valid escapes include \\n, \\t, \\\\, \\'.".to_string()),
+                    });
+                    self.read_char();
+                    return TokenKind::Invalid;
+                }
+            };
 
-            // multi-byte UTF-8 is not allowed in single quotes
+            self.read_char();
+            escaped
+        } else {
+            // normal char
             if self.ch.len_utf8() != 1 {
-                exit_with_single_diag!(Diag {
+                self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
                     loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                     hint: Some("Use a string literal for multi-byte characters or emojis.".to_string()),
                 });
+                self.read_char();
+                return TokenKind::Invalid;
             }
 
-            final_char = Some(self.ch);
+            let c = self.ch;
             self.read_char();
+            c
+        };
 
-            if self.is_eof() {
-                exit_with_single_diag!(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
-                    loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
-                    hint: None,
-                });
-            }
+        if self.ch != '\'' {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(LexicalDiagKind::CharLiteralMustBeASingleUnit),
+                loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
+                hint: Some("Character literals may contain exactly one character.".to_string()),
+            });
+            self.read_char();
+            return TokenKind::Invalid;
         }
 
         self.read_char(); // consume closing quote
 
-        if let Some(value) = final_char {
-            TokenKind::Literal(Literal {
-                kind: LiteralKind::Char(value),
-                loc: Loc::new(self.file_id(), line, start, self.pos),
-            })
-        } else {
-            exit_with_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(LexicalDiagKind::EmptyCharLiteral),
-                loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
-                hint: None,
-            });
-        }
+        TokenKind::Literal(Literal {
+            kind: LiteralKind::Char(value),
+            loc: Loc::new(self.file_id(), line, start, self.pos),
+        })
     }
 
     fn read_string_literal(&mut self, prefix: Option<StringPrefix>) -> TokenKind {
@@ -419,12 +437,14 @@ impl<'source_file> Lexer<'source_file> {
 
         loop {
             if self.is_eof() {
-                exit_with_single_diag!(Diag {
+                self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::UnterminatedStringLiteral),
                     loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                     hint: None,
                 });
+                self.read_char();
+                return TokenKind::Invalid;
             }
 
             match self.ch {
@@ -448,14 +468,16 @@ impl<'source_file> Lexer<'source_file> {
         self.read_char();
 
         let unescaped = match unescape_string(&raw) {
-            Ok(s) => s,
+            Ok(str) => str,
             Err(err) => {
-                exit_with_single_diag!(Diag {
+                self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(LexicalDiagKind::InvalidChar(self.ch)),
                     loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                     hint: Some(err.to_string()),
                 });
+                self.read_char();
+                return TokenKind::Invalid;
             }
         };
 
@@ -543,12 +565,14 @@ impl<'source_file> Lexer<'source_file> {
             match number.parse::<f64>() {
                 Ok(value) => LiteralKind::Float(value, suffix),
                 Err(_) => {
-                    exit_with_single_diag!(Diag {
+                    self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(LexicalDiagKind::InvalidFloatLiteral),
                         loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                         hint: None,
                     });
+                    self.read_char();
+                    return TokenKind::Invalid;
                 }
             }
         } else {
@@ -557,24 +581,28 @@ impl<'source_file> Lexer<'source_file> {
                 match u128::from_str_radix(&number, base) {
                     Ok(v) => v as i128,
                     Err(_) => {
-                        exit_with_single_diag!(Diag {
+                        self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
                             loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                             hint: None,
                         });
+                        self.read_char();
+                        return TokenKind::Invalid;
                     }
                 }
             } else {
                 match i128::from_str_radix(&number, base) {
                     Ok(v) => v,
                     Err(_) => {
-                        exit_with_single_diag!(Diag {
+                        self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(LexicalDiagKind::InvalidIntegerLiteral),
                             loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                             hint: None,
                         });
+                        self.read_char();
+                        return TokenKind::Invalid;
                     }
                 }
             };
@@ -662,12 +690,14 @@ impl<'source_file> Lexer<'source_file> {
                 }
 
                 if depth > 0 {
-                    exit_with_single_diag!(Diag {
+                    self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(LexicalDiagKind::UnterminatedMultiLineComment),
                         loc: Some(Loc::new(self.file_id(), line, start, self.pos)),
                         hint: None,
                     });
+                    self.read_char();
+                    return;
                 }
 
                 // skip any newlines after comment

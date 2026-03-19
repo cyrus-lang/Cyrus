@@ -19,7 +19,9 @@ members = [
     "crates/cyrusc_asan_wrapper",
     "crates/cyrusc_tokens",
     "crates/cyrusc_vtable_registry",
-    "crates/cyrusc_internal", "crates/cyrusc_const_eval", "crates/cyrusc_source_loc",
+    "crates/cyrusc_internal",
+    "crates/cyrusc_const_eval",
+    "crates/cyrusc_source_loc",
 ]
 
 default-members = ["crates/cyrusc_cli"]

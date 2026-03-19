@@ -34,8 +34,8 @@ pub enum LexicalDiagKind {
     #[error("Unterminated multi-line comment.")]
     UnterminatedMultiLineComment,
 
-    #[error("Empty char literal is invalid.")]
-    EmptyCharLiteral,
+    #[error("Invalid escape sequence.")]
+    InvalidEscapeSequence,
 
     #[error("Invalid character: '{0}'.")]
     InvalidChar(char),
