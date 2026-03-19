@@ -42,15 +42,19 @@ impl Parser {
             let mut builtin = self.parse_builtin()?;
 
             if let Builtin::BuiltinFunc(builtin_func) = &mut builtin {
-                self.expect_current(TokenKind::RightParen)?;
-                
-                let stmts = self.parse_stmt(grouped_modifiers, toplevel)?;
+                if !self.peek_token_is(TokenKind::Semicolon) {
+                    self.expect_current(TokenKind::RightParen)?;
 
-                if !stmts.len() == 1 {
-                    return Err(self.error_invalid_token());
+                    let stmts = self.parse_stmt(grouped_modifiers, toplevel)?;
+
+                    if !stmts.len() == 1 {
+                        return Err(self.error_invalid_token());
+                    }
+
+                    builtin_func.child_stmt = Some(Box::new(stmts.first().unwrap().clone()));
+                } else {
+                    self.expect_current(TokenKind::RightParen)?;
                 }
-
-                builtin_func.child_stmt = Some(Box::new(stmts.first().unwrap().clone()));
             }
 
             return Ok(vec![Stmt::Builtin(builtin)]);
@@ -142,9 +146,7 @@ impl Parser {
         let ident = self.parse_ident()?;
         self.next_token();
 
-        dbg!(self.current_token());
-
-        self.expect_current(TokenKind::LeftParen)?;
+        self.must_be_left_paren()?;
 
         let args = self.parse_expr_series(TokenKind::RightParen)?.0;
         self.must_be_right_paren()?;

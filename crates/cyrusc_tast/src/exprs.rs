@@ -19,7 +19,7 @@ use crate::{
     SymbolID,
     generics::monomorph::MonomorphKey,
     sigs::{EnumSig, FuncSig},
-    stmts::{TypedBlockStmt, TypedFuncParams, TypedTypeArgs},
+    stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{
         SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedStructTypeField, TypedUnnamedUnionType,
     },
@@ -73,6 +73,7 @@ pub enum TypedExprKind {
     TupleAccess(TypedTupleAccessExpr),
     Dynamic(TypedDynamicExpr),
     SemanticType(SemanticType),
+    Builtin(TypedBuiltin),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,6 +184,7 @@ impl TypedExprKind {
             TypedExprKind::Tuple(_) => false,
             TypedExprKind::Dynamic(_) => false,
             TypedExprKind::UnnamedUnionValue(_) => false,
+            TypedExprKind::Builtin(_) => false,
         }
     }
 }

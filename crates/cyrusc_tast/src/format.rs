@@ -17,13 +17,13 @@
 use crate::{
     SymbolID,
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedUnnamedEnumValueKind},
-    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
+    stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
         ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
         TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
-use cyrusc_ast::{AssignKind, operators::UnaryOperator};
+use cyrusc_ast::{AssignKind, format::format_stmts, operators::UnaryOperator};
 use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
 
 pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
@@ -288,6 +288,22 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn
                 format_typed_expr(&typed_dynamic_expr.operand, format_symbol)
             )
         }
+        TypedExprKind::Builtin(builtin) => match builtin {
+            TypedBuiltin::BuiltinFunc(builtin_func) => {
+                format!(
+                    "@{}({})",
+                    builtin_func.name,
+                    format_typed_exprs(&builtin_func.args, format_symbol)
+                )
+            }
+            TypedBuiltin::BuiltinScope(builtin_scope) => {
+                format!(
+                    "@{}({}) {{ ... }}",
+                    builtin_scope.name,
+                    format_typed_exprs(&builtin_scope.args, format_symbol),
+                )
+            }
+        },
     }
 }
 

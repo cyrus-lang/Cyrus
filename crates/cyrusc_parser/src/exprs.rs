@@ -227,7 +227,8 @@ impl Parser {
 
         let expr = match &self.current_token().kind {
             TokenKind::At => {
-                return Ok(Expr::Builtin(self.parse_builtin()?));
+                // return Ok(Expr::Builtin(self.parse_builtin()?));
+                Expr::Builtin(self.parse_builtin()?)
             }
             TokenKind::Repr => {
                 let repr_attr = self.parse_repr_attr(self.current_token())?.unwrap();

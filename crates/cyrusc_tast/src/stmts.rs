@@ -52,6 +52,29 @@ pub enum TypedStmt {
     ExportTuple(TypedExportTupleStmt),
     Label(TypedLabelStmt),
     Goto(TypedGotoStmt),
+    Builtin(TypedBuiltin),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypedBuiltin {
+    BuiltinFunc(TypedBuiltinFunc),
+    BuiltinScope(TypedBuiltinScope),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedBuiltinFunc {
+    pub name: Ident,
+    pub args: Vec<TypedExprStmt>,
+    pub child_stmt: Option<Box<TypedStmt>>,
+    pub loc: SourceLoc,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedBuiltinScope {
+    pub name: Ident,
+    pub args: Vec<TypedExprStmt>,
+    pub block: Box<TypedBlockStmt>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -424,6 +447,16 @@ impl TypedStmt {
             TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
             TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc.clone(),
             TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc.clone(),
+            TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
+        }
+    }
+}
+
+impl TypedBuiltin {
+    pub fn loc(&self) -> SourceLoc {
+        match self {
+            TypedBuiltin::BuiltinFunc(builtin_func) => builtin_func.loc.clone(),
+            TypedBuiltin::BuiltinScope(builtin_scope) => builtin_scope.loc.clone(),
         }
     }
 }
@@ -686,12 +719,27 @@ impl PartialEq for TypedIdentifier {
     }
 }
 
+impl PartialEq for TypedBuiltinFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args && self.child_stmt.is_some() == other.child_stmt.is_some()
+    }
+}
+
+impl PartialEq for TypedBuiltinScope {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args
+    }
+}
+
 impl Hash for TypedIdentifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.symbol_id.hash(state);
     }
 }
+
+impl Eq for TypedBuiltinFunc {}
+impl Eq for TypedBuiltinScope {}
 
 pub fn lookup_symbol_from_generic_params(
     generic_params: &TypedGenericParamsList,

@@ -1067,6 +1067,15 @@ impl TypeSpecifier {
     }
 }
 
+impl Builtin {
+    pub fn loc(&self) -> Location {
+        match self {
+            Builtin::BuiltinFunc(builtin_func) => builtin_func.loc.clone(),
+            Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc.clone(),
+        }
+    }
+}
+
 impl Hash for ModuleSegmentSingle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.ident.hash(state);

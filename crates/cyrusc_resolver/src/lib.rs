@@ -223,7 +223,7 @@ impl Resolver {
         self.current_module = Some(parent_module_id);
 
         // Collect exact definitions and details of the symbols (second pass).
-        let typed_body = self.resolve_definitions(module_id, &ast);
+        let typed_body = self.resolve_decl(module_id, &ast);
 
         let base_path = Path::new(&self.module_loader.opts.base_path);
         let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
@@ -1167,12 +1167,16 @@ impl Resolver {
     }
 
     // Resolves the full meaning of each top-level declaration in the AST (second pass)
-    fn resolve_definitions(&mut self, module_id: ModuleID, ast: &ProgramTree) -> Vec<TypedStmt> {
+    fn resolve_decl(&mut self, module_id: ModuleID, ast: &ProgramTree) -> Vec<TypedStmt> {
         let mut typed_body: Vec<TypedStmt> = Vec::new();
 
         for stmt in ast.body.as_ref() {
             let valid_top_level_stmt: Result<TypedStmt, SourceLoc> = match stmt {
                 Stmt::Import(..) => continue,
+                Stmt::Builtin(builtin) => match self.resolve_builtin(module_id, None, builtin) {
+                    Some(typed_builtin) => Ok(TypedStmt::Builtin(typed_builtin)),
+                    None => continue,
+                },
                 Stmt::GlobalVar(global_var) => match self.resolve_global_var_stmt(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
@@ -1248,6 +1252,62 @@ impl Resolver {
         }
 
         typed_body
+    }
+
+    // ANCHOR
+    fn resolve_builtin(
+        &mut self,
+        module_id: ModuleID,
+        scope_id: ScopeID,
+        scope: LocalScopeRef,
+        builtin: &Builtin,
+    ) -> Option<TypedBuiltin> {
+        match builtin {
+            Builtin::BuiltinFunc(builtin_func) => self.resolve_builtin_func(module_id, scope_id, scope, builtin_func),
+            Builtin::BuiltinScope(builtin_scope) => {
+                // self.resolve_builtin_scope(module_id, scope, builtin_scope)
+                todo!();
+            }
+        }
+    }
+
+    fn resolve_builtin_func(
+        &mut self,
+        module_id: ModuleID,
+        scope_id: ScopeID,
+        scope_opt: LocalScopeRef,
+        builtin_func: &BuiltinFunc,
+    ) -> Option<TypedBuiltin> {
+        let args: Vec<TypedExprStmt> = builtin_func
+            .args
+            .iter()
+            .filter_map(|arg| self.resolve_expr(module_id, Some(scope_opt.clone()), arg))
+            .collect();
+
+        let child_stmt = builtin_func
+            .child_stmt
+            .clone()
+            .and_then(|stmt| self.resolve_stmt(module_id, scope_id, scope_opt, &stmt))
+            .map(Box::new);
+
+        let builtin_func = TypedBuiltinFunc {
+            name: builtin_func.name.clone(),
+            args,
+            child_stmt,
+            loc: SourceLoc::from_loc(builtin_func.loc, self.current_file_path()),
+        };
+
+        // TypedBuiltin::BuiltinFunc(())
+        todo!();
+    }
+
+    fn resolve_builtin_scope(
+        &self,
+        module_id: ModuleID,
+        scope_opt: Option<LocalScopeRef>,
+        builtin_scope: &BuiltinScope,
+    ) -> Option<TypedBuiltin> {
+        todo!();
     }
 
     fn resolve_interface_stmt(
@@ -2526,17 +2586,21 @@ impl Resolver {
                 let typed_var = self.declare_local_variable(module_id, scope.clone(), &variable)?;
                 Some(TypedStmt::Variable(typed_var))
             }
+            Stmt::Builtin(builtin) => match self.resolve_builtin(module_id, scope_id, scope.clone(), builtin) {
+                Some(typed_builtin) => Some(TypedStmt::Builtin(typed_builtin)),
+                None => None,
+            },
             Stmt::Expr(expr) => {
-                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&scope)), expr)?;
+                let typed_expr = self.resolve_expr(module_id, Some(scope.clone()), expr)?;
                 Some(TypedStmt::Expr(typed_expr))
             }
             Stmt::If(if_stmt) => {
-                let typed_if = self.resolve_if_stmt(module_id, Rc::clone(&scope), if_stmt)?;
+                let typed_if = self.resolve_if_stmt(module_id, scope.clone(), if_stmt)?;
                 Some(TypedStmt::If(typed_if))
             }
             Stmt::Return(return_stmt) => {
                 let arg = if let Some(argument) = &return_stmt.argument {
-                    Some(self.resolve_expr(module_id, Some(Rc::clone(&scope)), argument)?)
+                    Some(self.resolve_expr(module_id, Some(scope.clone()), argument)?)
                 } else {
                     None
                 };
@@ -3017,7 +3081,6 @@ impl Resolver {
             Expr::UnnamedUnionValue(unnamed_union_value) => {
                 self.resolve_unnamed_union_value(module_id, scope_opt, unnamed_union_value)
             }
-
             Expr::SizeOf(size_of_expression) => self.resolve_size_of_expr(module_id, scope_opt, size_of_expression),
             Expr::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
             Expr::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, scope_opt, tuple_value),
@@ -3026,6 +3089,19 @@ impl Resolver {
             }
             Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(module_id, scope_opt, dynamic_expr),
             Expr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(module_id, scope_opt, untyped_array),
+            Expr::Builtin(builtin) => match self.resolve_builtin(module_id, scope_opt, builtin) {
+                Some(typed_builtin) => {
+                    let kind = TypedExprKind::Builtin(typed_builtin);
+
+                    Some(TypedExprStmt {
+                        kind,
+                        sema_ty: None,
+                        mloc: MemoryLocation::RValue,
+                        loc: SourceLoc::from_loc(builtin.loc(), self.current_file_path()),
+                    })
+                }
+                None => None,
+            },
         }
     }
 
@@ -3898,7 +3974,7 @@ impl Resolver {
 /// Constructs a unique name for a struct method by prefixing with the struct's SymbolID.
 /// This allows the resolver to differentiate between `Point::distance()` and `Circle::distance()`.
 fn method_symbol_name_for_struct(struct_id: SymbolID, method_name: String) -> String {
-    format!("{}{}", struct_id, method_name)
+    format!("{}.{}", struct_id, method_name)
 }
 
 fn return_type_or_void_as_default(
