@@ -640,7 +640,15 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         let token = self.current_token().clone();
 
         match token.kind {
+            // plain types
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(token)),
+
+            TokenKind::Const => {
+                self.next_token(); // consume const
+                let inner_type = self.parse_base_type_token()?;
+                Ok(TypeSpecifier::Const(Box::new(inner_type)))
+            }
+
             TokenKind::Repr => {
                 let repr_attr = self.parse_repr_attr(token)?.unwrap();
 
@@ -654,16 +662,13 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                     todo!();
                 }
             }
+
             TokenKind::Struct => self.parse_unnamed_struct_type(None),
             TokenKind::Union => self.parse_unnamed_union_type(None),
             TokenKind::Enum => self.parse_unnamed_enum_type(None),
-            TokenKind::LeftParen => self.parse_tuple(),
             TokenKind::Function => self.parse_func_type(),
-            TokenKind::Const => {
-                self.next_token(); // consume const
-                let inner_type = self.parse_base_type_token()?;
-                Ok(TypeSpecifier::Const(Box::new(inner_type)))
-            }
+            TokenKind::LeftParen => self.parse_tuple(),
+
             TokenKind::Ident(ref ident) => {
                 if self.peek_token_is(TokenKind::DoubleColon) {
                     let module_import = self.parse_module_import()?;
@@ -685,6 +690,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                     }
                 }
             }
+
             _ => Err(self.error_at_current(ParserDiagKind::InvalidTypeToken(token.kind))),
         }
     }
@@ -819,41 +825,44 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         let mut fields: Vec<UnnamedUnionTypeField> = Vec::new();
 
         loop {
-            match self.current_token().kind {
-                TokenKind::RightBrace => {
-                    break;
-                }
-                TokenKind::EOF => {
-                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-                }
-                TokenKind::Ident { .. } => {
-                    let start = self.current_token().loc.start;
-                    let line = self.current_token().loc.line;
-
-                    let field_name = self.parse_ident()?;
-                    self.next_token(); // consume ident
-
-                    self.expect_current(TokenKind::Colon)?;
-
-                    let field_type_specifier = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    let end = self.current_token().loc.end;
-
-                    fields.push(UnnamedUnionTypeField {
-                        field_name,
-                        field_ty: field_type_specifier,
-                        loc: Loc::new(self.file_id(), line, start, end),
-                    });
-
-                    if self.current_token_is(TokenKind::RightBrace) {
-                        break;
-                    } else {
-                        self.expect_current(TokenKind::Comma)?;
-                    }
-                }
-                _ => return Err(self.error_invalid_token()),
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
             }
+
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
+
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let start = self.current_token().loc.start;
+                let line = self.current_token().loc.line;
+
+                let field_name = self.parse_ident()?;
+                self.next_token(); // consume ident
+
+                self.expect_current(TokenKind::Colon)?;
+
+                let field_type_specifier = self.parse_type_specifier()?;
+                self.next_token();
+
+                let end = self.current_token().loc.end;
+
+                fields.push(UnnamedUnionTypeField {
+                    field_name,
+                    field_ty: field_type_specifier,
+                    loc: Loc::new(self.file_id(), line, start, end),
+                });
+
+                if self.current_token_is(TokenKind::RightBrace) {
+                    break;
+                } else {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+
+                continue;
+            }
+
+            return Err(self.error_invalid_token());
         }
 
         let end = self.current_token().loc.end;
