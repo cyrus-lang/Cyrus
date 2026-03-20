@@ -732,11 +732,14 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
 
     fn parse_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {
         self.expect_current(TokenKind::LeftBracket)?;
+
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
         }
-        let capacity = self.parse_expr(Precedence::Lowest)?.0;
+
+        let capacity = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek(TokenKind::RightBracket)?;
+
         Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
@@ -753,41 +756,44 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
 
         loop {
-            match self.current_token().kind {
-                TokenKind::RightBrace => {
-                    break;
-                }
-                TokenKind::EOF => {
-                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-                }
-                TokenKind::Ident { .. } => {
-                    let start = self.current_token().loc.start;
-                    let line = self.current_token().loc.line;
-
-                    let field_name = self.parse_ident()?;
-                    self.next_token(); // consume ident
-
-                    self.expect_current(TokenKind::Colon)?;
-
-                    let field_type_specifier = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    let end = self.current_token().loc.end;
-
-                    fields.push(UnnamedStructTypeField {
-                        field_name,
-                        field_ty: field_type_specifier,
-                        loc: Loc::new(self.file_id(), line, start, end),
-                    });
-
-                    if self.current_token_is(TokenKind::RightBrace) {
-                        break;
-                    } else {
-                        self.expect_current(TokenKind::Comma)?;
-                    }
-                }
-                _ => return Err(self.error_invalid_token()),
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
             }
+
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
+
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let start = self.current_token().loc.start;
+                let line = self.current_token().loc.line;
+
+                let field_name = self.parse_ident()?;
+                self.next_token(); // consume ident
+
+                self.expect_current(TokenKind::Colon)?;
+
+                let field_type_specifier = self.parse_type_specifier()?;
+                self.next_token();
+
+                let end = self.current_token().loc.end;
+
+                fields.push(UnnamedStructTypeField {
+                    field_name,
+                    field_ty: field_type_specifier,
+                    loc: Loc::new(self.file_id(), line, start, end),
+                });
+
+                if self.current_token_is(TokenKind::RightBrace) {
+                    break;
+                } else {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+
+                continue;
+            }
+
+            return Err(self.error_invalid_token());
         }
 
         let end = self.current_token().loc.end;
@@ -870,8 +876,10 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
             return Ok(UnnamedEnumVariant::Ident(variant_name));
         } else if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
-            let value = self.parse_expr(Precedence::Lowest)?.0;
+
+            let value = self.parse_expr(Precedence::Lowest)?;
             self.next_token(); // consume last token of the expression
+
             return Ok(UnnamedEnumVariant::Valued(variant_name, Box::new(value)));
         } else if self.current_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume left paren
@@ -921,7 +929,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
 
         self.next_token(); // parse enum keyword
 
-        let tag_type = self.parse_enum_discriminant_type()?.map(Box::new);
+        let tag_type = self.parse_enum_tag_type()?.map(Box::new);
         let align = self.parse_align_specifier()?;
 
         self.expect_current(TokenKind::LeftBrace)?;

@@ -22,8 +22,8 @@ use cyrusc_ast::abi::{
     Visibility, validate_flags,
 };
 use cyrusc_ast::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
-use cyrusc_diagcentral::source_loc::SourceLoc;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::{Token, TokenKind};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub(crate) struct FieldModifiers {
     pub vis: Visibility,
 }
 
-impl Parser {
+impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     pub(crate) fn parse_unresolved_modifiers(&mut self) -> Result<UnresolvedModifiers, Diag> {
         let mut mods = UnresolvedModifiers {
             visibility: None,
@@ -121,22 +121,12 @@ impl Parser {
                     }
                 }
                 Err(diag) => {
-                    return Err(Diag {
-                        kind: Box::new(ParserDiagKind::InvalidModifier(diag.kind.to_string())),
-                        level: DiagLevel::Error,
-                        loc: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
-                        hint: None,
-                    });
+                    return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(diag.kind.to_string())));
                 }
             }
 
             if let Err(err) = validate_flags(&mods.optional_flags) {
-                return Err(Diag {
-                    kind: Box::new(ParserDiagKind::InvalidModifier(err.to_string())),
-                    level: DiagLevel::Error,
-                    loc: Some(DiagLoc::new(SourceLoc::from_loc(token.loc, self.file_name.clone()))),
-                    hint: None,
-                });
+                return Err(self.error_at_token(&token, ParserDiagKind::InvalidModifier(err)));
             }
 
             if let Ok(Some(section)) = self.parse_placement(token.clone()) {
@@ -152,7 +142,7 @@ impl Parser {
         Ok(mods)
     }
 
-    pub(crate) fn parse_enum_discriminant_type(&mut self) -> Result<Option<TypeSpecifier>, Diag> {
+    pub(crate) fn parse_enum_tag_type(&mut self) -> Result<Option<TypeSpecifier>, Diag> {
         if !self.current_token_is(TokenKind::LeftParen) {
             return Ok(None);
         }
@@ -368,7 +358,7 @@ impl Parser {
 }
 
 impl UnresolvedModifiers {
-    pub(crate) fn into_func_modifiers(self, loc: SourceLoc) -> Result<FuncModifiers, Diag> {
+    pub(crate) fn into_func_modifiers(self, loc: Loc) -> Result<FuncModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if !self.placement.is_empty() && self.placement.len() > 1 {
@@ -377,7 +367,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for functions.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -402,7 +392,7 @@ impl UnresolvedModifiers {
                     "Function cannot be both exported and always inlined.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -413,7 +403,7 @@ impl UnresolvedModifiers {
                     "Attribute 'repr' cannot be applied to functions.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: Some("only data types like structs and enums can have a 'repr' attribute.".to_string()),
             });
         }
@@ -421,7 +411,7 @@ impl UnresolvedModifiers {
         Ok(func_modifiers)
     }
 
-    pub(crate) fn into_struct_modifiers(self, loc: SourceLoc) -> Result<StructModifiers, Diag> {
+    pub(crate) fn into_struct_modifiers(self, loc: Loc) -> Result<StructModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
@@ -430,7 +420,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for struct declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -441,7 +431,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for structs.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -458,7 +448,7 @@ impl UnresolvedModifiers {
         })
     }
 
-    pub(crate) fn into_enum_modifiers(self, loc: SourceLoc) -> Result<EnumModifiers, Diag> {
+    pub(crate) fn into_enum_modifiers(self, loc: Loc) -> Result<EnumModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
@@ -467,7 +457,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for enum declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -478,7 +468,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for enums.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -492,7 +482,7 @@ impl UnresolvedModifiers {
                         "Repr 'packed' is not supported for enums".to_string(),
                     )),
                     level: DiagLevel::Error,
-                    loc: Some(DiagLoc::new(loc)),
+                    loc: Some(loc),
                     hint: Some("If you need packed enum-like behavior, consider using a manually packed struct with a tag field".to_string()),
                 });
             }
@@ -506,7 +496,7 @@ impl UnresolvedModifiers {
                                 "Repr 'transparent' cannot be applied to enums. Enums only support 'c' and 'cyrus' layouts.".to_string(),
                             )),
                             level: DiagLevel::Error,
-                            loc: Some(DiagLoc::new(loc)),
+                            loc: Some(loc),
                             hint: None,
                         });
                     }
@@ -523,7 +513,7 @@ impl UnresolvedModifiers {
         })
     }
 
-    pub(crate) fn into_union_modifiers(self, loc: SourceLoc) -> Result<UnionModifiers, Diag> {
+    pub(crate) fn into_union_modifiers(self, loc: Loc) -> Result<UnionModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
@@ -532,7 +522,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for union declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -543,7 +533,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for unions.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -555,7 +545,7 @@ impl UnresolvedModifiers {
                         "Packed layout is not supported for unions. Packed unions would cause unaligned accesses to fields.".to_string(),
                     )),
                     level: DiagLevel::Error,
-                    loc: Some(DiagLoc::new(loc)),
+                    loc: Some(loc),
                     hint: Some("If you need explicit control over union layout, Consider using 'repr(C)' with manual padding or a packed struct wrapper.".to_string()),
                 });
             }
@@ -570,7 +560,7 @@ impl UnresolvedModifiers {
                                     "Repr 'packed' cannot be combined with 'transparent' on unions.".to_string(),
                                 )),
                                 level: DiagLevel::Error,
-                                loc: Some(DiagLoc::new(loc)),
+                                loc: Some(loc),
                                 hint: Some("Remove either packed or transparent.".to_string()),
                             });
                         }
@@ -591,7 +581,7 @@ impl UnresolvedModifiers {
         })
     }
 
-    pub(crate) fn into_global_var_modifiers(self, loc: SourceLoc) -> Result<GlobalVarModifiers, Diag> {
+    pub(crate) fn into_global_var_modifiers(self, loc: Loc) -> Result<GlobalVarModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
@@ -600,7 +590,7 @@ impl UnresolvedModifiers {
                     "Invalid modifier for global variable declaration.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -611,7 +601,7 @@ impl UnresolvedModifiers {
                     "Multiple section placements are not allowed for global variables.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -622,7 +612,7 @@ impl UnresolvedModifiers {
                     "Global variables cannot have repr.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: Some("Use 'align(n)' instead if you need alignment.".to_string()),
             });
         }
@@ -640,7 +630,7 @@ impl UnresolvedModifiers {
         })
     }
 
-    pub(crate) fn into_interface_modifiers(self, loc: SourceLoc) -> Result<InterfaceModifiers, Diag> {
+    pub(crate) fn into_interface_modifiers(self, loc: Loc) -> Result<InterfaceModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.linkage.is_some()
@@ -657,7 +647,7 @@ impl UnresolvedModifiers {
                     "Interfaces can only have visibility modifiers.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -665,7 +655,7 @@ impl UnresolvedModifiers {
         Ok(InterfaceModifiers { vis })
     }
 
-    pub(crate) fn into_typedef_modifiers(self, loc: SourceLoc) -> Result<TypedefModifiers, Diag> {
+    pub(crate) fn into_typedef_modifiers(self, loc: Loc) -> Result<TypedefModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.linkage.is_some()
@@ -682,7 +672,7 @@ impl UnresolvedModifiers {
                     "Typedefs can only have visibility modifiers.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -690,7 +680,7 @@ impl UnresolvedModifiers {
         Ok(TypedefModifiers { vis })
     }
 
-    pub(crate) fn into_method_modifiers(self, loc: SourceLoc) -> Result<FuncModifiers, Diag> {
+    pub(crate) fn into_method_modifiers(self, loc: Loc) -> Result<FuncModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.export.is_some() || self.linkage.is_some() || !self.placement.is_empty() {
@@ -699,7 +689,7 @@ impl UnresolvedModifiers {
                     "Methods cannot use export, linkage, or section placement.".into(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }
@@ -719,7 +709,7 @@ impl UnresolvedModifiers {
         })
     }
 
-    pub(crate) fn into_field_modifiers(self, loc: SourceLoc) -> Result<FieldModifiers, Diag> {
+    pub(crate) fn into_field_modifiers(self, loc: Loc) -> Result<FieldModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
         if self.linkage.is_some()
@@ -736,7 +726,7 @@ impl UnresolvedModifiers {
                     "Only visibility modifier allowed for fields.".to_string(),
                 )),
                 level: DiagLevel::Error,
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }

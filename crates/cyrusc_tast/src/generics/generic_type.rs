@@ -43,7 +43,7 @@ pub struct GenericType {
     pub mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub generic_params: TypedGenericParamsList,
     pub is_const: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 impl GenericType {
@@ -54,7 +54,7 @@ impl GenericType {
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         generic_params: TypedGenericParamsList,
         is_const: bool,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Self {
         debug_assert!(generic_params.list.is_empty() == false);
 
@@ -202,7 +202,7 @@ impl GenericType {
         generic_param_name: String,
         type_arg_sema_ty: Option<SemanticType>,
         format_symbol: &impl Fn(SymbolID) -> String,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Result<(), Diag> {
         if let Some(parent_id) = child_mapping_ctx.parent_id() {
             let parent_mapping_ctx = {
@@ -223,7 +223,7 @@ impl GenericType {
                             generic_param: generic_param_name.clone(),
                             already_inferred_as: format_sema_ty(parent_sema_ty, &format_symbol),
                         }),
-                        loc: Some(DiagLoc::new(loc)),
+                        loc: Some(loc),
                         hint: None,
                     });
                 }

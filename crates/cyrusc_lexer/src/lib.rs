@@ -30,7 +30,7 @@ mod tests;
 
 pub struct Lexer<'diag, 'source_file> {
     source_file: &'source_file SourceFile,
-    reporter: &'diag mut DiagReporter<'diag>,
+    reporter: &'diag DiagReporter<'diag>,
     pos: usize,
     next_pos: usize,
     ch: char,
@@ -39,7 +39,7 @@ pub struct Lexer<'diag, 'source_file> {
 
 impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
     /// Creates a new lexer that reads a single characters from a SourceFile immediately.
-    pub fn new(reporter: &'diag mut DiagReporter<'diag>, source_file: &'source_file SourceFile) -> Self {
+    pub fn new(reporter: &'diag DiagReporter<'diag>, source_file: &'source_file SourceFile) -> Self {
         let mut lexer = Self {
             source_file,
             reporter,

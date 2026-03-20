@@ -32,8 +32,8 @@ use cyrusc_tokens::literals::LiteralKind;
 
 impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<Expr, Diag> {
-        let mut left_start = self.current_token().loc.start;
-        let mut left_line = self.current_token().loc.line;
+        let mut lhs_start = self.current_token().loc.start;
+        let mut lhs_line = self.current_token().loc.line;
         let mut left = self.parse_prefix_expr()?;
 
         loop {
@@ -58,7 +58,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 return Ok(Expr::Unary(UnaryExpr {
                     operand: Box::new(left),
                     op: UnaryOperator::PostIncrement,
-                    loc: Loc::new(self.file_id(), left_line, left_start, end),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
                 }));
             } else if self.peek_token_is(TokenKind::Decrement) {
                 self.next_token();
@@ -68,18 +68,19 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 return Ok(Expr::Unary(UnaryExpr {
                     operand: Box::new(left),
                     op: UnaryOperator::PostDecrement,
-                    loc: Loc::new(self.file_id(), left_line, left_start, end),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
                 }));
             }
 
             // infix handling (respect precedence)
             let peek_prec = token_precedence_of(self.peek_token().kind);
             if self.peek_token().kind != TokenKind::EOF && precedence < peek_prec {
-                match self.parse_infix_expr(left.clone(), left_start) {
+                match self.parse_infix_expr(left.clone(), lhs_line, lhs_start) {
                     Some(infix) => {
                         left = infix?;
                         if let Expr::Infix(infix_expr) = left.clone() {
-                            left_start = infix_expr.loc.start;
+                            lhs_start = infix_expr.loc.start;
+                            lhs_line = infix_expr.loc.line;
                         }
                     }
                     None => return Ok(left),
@@ -96,17 +97,21 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
-        let mut segments = match &self.current_token().kind {
-            TokenKind::Ident(ident) => {
-                vec![ModuleSegment::SubModule(Ident {
-                    value: ident.clone(),
-                    loc: token.loc,
-                })]
-            }
-            _ => {
-                return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
-                    got: self.current_token().kind.to_string(),
-                }));
+        let mut segments = {
+            let end = self.current_token().loc.end;
+
+            match &self.current_token().kind {
+                TokenKind::Ident(ident) => {
+                    vec![ModuleSegment::SubModule(Ident {
+                        value: ident.clone(),
+                        loc: Loc::new(self.file_id(), line, start, end),
+                    })]
+                }
+                _ => {
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
+                        got: self.current_token().kind.to_string(),
+                    }));
+                }
             }
         };
 
@@ -242,8 +247,6 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 }
             }
             TokenKind::Function => self.parse_lambda_expr(false)?,
-            TokenKind::SizeOf => self.parse_sizeof_expr()?,
-            TokenKind::Typecast => self.parse_cast_expr()?,
             TokenKind::Ident { .. } => {
                 let module_import = self.parse_module_import()?;
 
@@ -320,7 +323,8 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
             TokenKind::LeftParen => {
                 // grouped expression
                 self.next_token();
-                let expr = self.parse_expr(Precedence::Lowest)?.0;
+
+                let expr = self.parse_expr(Precedence::Lowest)?;
                 self.next_token(); // consume last token of expr
 
                 if self.current_token_is(TokenKind::Comma) {
@@ -390,7 +394,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
 
         if self.peek_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume ident
-            let field_values = self.parse_expr_series(TokenKind::RightParen)?.0;
+            let field_values = self.parse_expr_series(TokenKind::RightParen)?;
 
             let end = self.current_token().loc.end;
 
@@ -465,7 +469,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         let return_type = self.parse_type_specifier()?;
         self.next_token(); // last token of return type
 
-        let body = self.parse_block_stmt()?;
+        let body = self.parse_block()?;
 
         let end = self.current_token().loc.end;
 
@@ -478,9 +482,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         }))
     }
 
-    fn parse_infix_expr(&mut self, lhs: Expr, lhs_start: usize) -> Option<Result<Expr, Diag>> {
-        let line = self.current_token().loc.line;
-
+    fn parse_infix_expr(&mut self, lhs: Expr, lhs_line: usize, lhs_start: usize) -> Option<Result<Expr, Diag>> {
         // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
         // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
         // Generic<A, Generic<B, C>>
@@ -495,7 +497,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                     peek_token_idx,
                     Token {
                         kind: TokenKind::ShiftLeft,
-                        loc: Loc::new(self.file_id(), line, start, end),
+                        loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
                     },
                 );
             }
@@ -582,42 +584,35 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                     op,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
-                    loc: Loc::new(self.file_id(), line, lhs_start, end),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
                 })))
             }
             _ => None,
         }
     }
 
-    pub(crate) fn parse_expr_series(&mut self, end: TokenKind) -> Result<(Vec<Expr>, Span), Diag> {
-        let start = self.current_token().loc.start;
+    pub(crate) fn parse_expr_series(&mut self, ending_token: TokenKind) -> Result<Vec<Expr>, Diag> {
         let mut series: Vec<Expr> = Vec::new();
 
         // detect empty series of expressions
-        if self.peek_token_is(end.clone()) {
+        if self.peek_token_is(ending_token.clone()) {
             self.next_token();
-            return Ok((series, Span::new(start, self.current_token().loc.end)));
-        } else if self.current_token_is(end.clone()) {
-            return Ok((series, Span::new(start, self.current_token().loc.end)));
+            return Ok(series);
+        } else if self.current_token_is(ending_token.clone()) {
+            return Ok(series);
         }
         self.next_token();
 
-        series.push(self.parse_expr(Precedence::Lowest)?.0);
+        series.push(self.parse_expr(Precedence::Lowest)?);
 
         while self.peek_token_is(TokenKind::Comma) {
             self.next_token();
             self.next_token();
-            series.push(self.parse_expr(Precedence::Lowest)?.0);
+            series.push(self.parse_expr(Precedence::Lowest)?);
         }
         self.next_token(); // consume latest token of the expression
 
-        Ok((
-            series,
-            Span {
-                start,
-                end: self.current_token().loc.end,
-            },
-        ))
+        Ok(series)
     }
 
     fn parse_method_call(
@@ -630,7 +625,8 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         line: usize,
     ) -> Result<Expr, Diag> {
         self.must_be_left_paren()?;
-        let args = self.parse_expr_series(TokenKind::RightParen)?.0;
+
+        let args = self.parse_expr_series(TokenKind::RightParen)?;
         self.must_be_right_paren()?;
 
         let end = self.current_token().loc.end;
@@ -664,17 +660,19 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
 
-            let mut type_args_opt: Option<Vec<TypeArg>> = None;
+            let mut type_args: Option<Vec<TypeArg>> = None;
             if self.is_type_arg_start(operand.clone()).includes_type_args {
                 self.next_token(); // consume current token of expr
-                type_args_opt = Some(self.parse_type_arg_list()?);
+                type_args = Some(self.parse_type_arg_list()?);
             }
 
             if self.peek_token_is(TokenKind::LeftParen) {
                 self.next_token(); // consume ident
 
-                self.parse_method_call(operand, ident, is_fat_arrow, type_args_opt, start, loc)
+                self.parse_method_call(operand, ident, is_fat_arrow, type_args, start, line)
             } else {
+                let end = self.current_token().loc.end;
+
                 Ok(Expr::FieldAccess(FieldAccess {
                     is_fat_arrow,
                     operand: Box::new(operand),
@@ -701,7 +699,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
 
         self.expect_peek(TokenKind::LeftParen)?;
 
-        let args = self.parse_expr_series(TokenKind::RightParen)?.0;
+        let args = self.parse_expr_series(TokenKind::RightParen)?;
         self.must_be_right_paren()?;
 
         let end = self.current_token().loc.end;
@@ -755,7 +753,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
             } else {
                 self.expect_current(TokenKind::Colon)?;
 
-                let value = self.parse_expr(Precedence::Lowest)?.0;
+                let value = self.parse_expr(Precedence::Lowest)?;
                 self.next_token();
 
                 field_inits.push(FieldInit {
@@ -815,7 +813,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::Assign)?;
-        let rhs = self.parse_expr(Precedence::Lowest)?.0;
+        let rhs = self.parse_expr(Precedence::Lowest)?;
 
         let end = self.current_token().loc.end;
 
@@ -834,7 +832,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
             return Err(self.error_invalid_token());
         }
 
-        let index = self.parse_expr(Precedence::Lowest)?.0;
+        let index = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek(TokenKind::RightBracket)?;
         Ok(index)
     }
@@ -925,7 +923,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     fn parse_untyped_array(&mut self) -> Result<Expr, Diag> {
         let line = self.current_token().loc.line;
         let start = self.current_token().loc.start;
-        let elements = self.parse_expr_series(TokenKind::RightBrace)?.0;
+        let elements = self.parse_expr_series(TokenKind::RightBrace)?;
 
         self.must_be_right_brace()?;
 
@@ -962,7 +960,6 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
 
         loop {
             if self.current_token_is(TokenKind::LeftBrace) {
-                let untyped_array_start = self.current_token().loc.start;
                 let mut untyped_array: Vec<Expr> = Vec::new();
                 self.next_token(); // consume left brace
 
@@ -972,7 +969,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                         return Err(self.error_at_current(ParserDiagKind::InvalidUntypedArrayConstructor));
                     }
 
-                    untyped_array.push(self.parse_expr(Precedence::Lowest)?.0);
+                    untyped_array.push(self.parse_expr(Precedence::Lowest)?);
 
                     if self.peek_token_is(TokenKind::Comma) {
                         self.next_token(); // consume last token of the expression
@@ -1006,7 +1003,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                     unreachable!()
                 }
             } else {
-                elements.push(self.parse_expr(Precedence::Lowest)?.0);
+                elements.push(self.parse_expr(Precedence::Lowest)?);
             }
 
             if self.peek_token_is(TokenKind::Comma) {
@@ -1035,7 +1032,8 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     }
 
     fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>) -> Result<Expr, Diag> {
-        let struct_start = self.current_token().loc.start;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume struct
 
@@ -1084,7 +1082,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                         }
 
                         self.expect_current(TokenKind::Assign)?;
-                        let field_value = self.parse_expr(Precedence::Lowest)?.0;
+                        let field_value = self.parse_expr(Precedence::Lowest)?;
                         self.next_token();
 
                         let end = self.current_token().loc.end;
@@ -1120,7 +1118,8 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     }
 
     fn parse_unnamed_union_value(&mut self, is_const: bool) -> Result<Expr, Diag> {
-        let union_start = self.current_token().loc.start;
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume union
 
@@ -1146,7 +1145,8 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
             }));
         } else {
             self.expect_current(TokenKind::Assign)?;
-            let field_value = self.parse_expr(Precedence::Lowest)?.0;
+
+            let field_value = self.parse_expr(Precedence::Lowest)?;
             self.next_token();
 
             self.must_be_right_brace()?;
@@ -1157,7 +1157,6 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 field_name: ident,
                 field_value: Box::new(field_value),
                 is_const,
-                loc: self.current_token().loc.clone(),
                 loc: Loc::new(self.file_id(), line, start, end),
             }));
         }

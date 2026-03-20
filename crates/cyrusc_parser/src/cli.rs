@@ -1,3 +1,4 @@
+use cyrusc_diagcentral::reporter::DiagReporter;
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -17,20 +18,31 @@
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
+use cyrusc_source_loc::SourceMap;
 use std::env;
 
+// FIXME: Move to cyrusc_compiler/driver.rs
 pub fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = args[1].clone();
-    let file_content = read_file(file_path.clone()).0;
-    let mut lexer = Lexer::new(file_content, file_path.clone());
+    let (file_content, file_name) = read_file(file_path.clone());
 
-    let mut parser = Parser::new(lexer.tokenize(), file_path);
+    let mut source_map = SourceMap::new();
+    let file_id = source_map.add_file(file_name, file_content);
+    let source_file = source_map.get_file(file_id).unwrap();
 
-    match parser.parse() {
-        Ok(result) => println!("{:#?}", result),
-        Err(errors) => {
-            parser.display_parser_errors(errors);
+    let reporter = DiagReporter::new(&source_map);
+
+    let mut lexer = Lexer::new(&reporter, &source_file);
+    let tokens = lexer.tokenize();
+    reporter.display_and_exit_if_has_errors();
+
+    let mut parser = Parser::new(&reporter, &source_file, tokens);
+
+    match parser.parse_program() {
+        Ok(program_tree) => {
+            dbg!(program_tree);
         }
+        Err(()) => reporter.display_and_exit_if_has_errors(),
     }
 }

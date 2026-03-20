@@ -20,38 +20,49 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_strescape::spaces;
-use std::fmt::{self};
+use std::{cell::RefCell, fmt, process::exit};
 
 const PANEL_LENGTH: usize = 2;
 const TAB_WIDTH: usize = 4;
 
 pub struct DiagReporter<'source_map> {
     pub source_map: Option<&'source_map SourceMap>,
-    pub diags: Vec<Diag>,
+    pub diags: RefCell<Vec<Diag>>,
 }
 
 impl<'source_map> DiagReporter<'source_map> {
     pub fn new(source_map: &'source_map SourceMap) -> Self {
         Self {
             source_map: Some(source_map),
-            diags: Vec::new(),
+            diags: RefCell::new(Vec::new()),
         }
     }
 
     pub fn new_with_no_source_map() -> Self {
         Self {
             source_map: None,
-            diags: Vec::new(),
+            diags: RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn display_and_exit_if_has_errors(&self) {
+        if self.has_errors() {
+            self.display();
+            exit(1);
         }
     }
 
     pub fn display(&self) {
-        for diag in self.diags.iter() {
+        let diags = self.diags.borrow();
+
+        for diag in diags.iter() {
             match diag.level {
                 DiagLevel::Error => eprintln!("{}", self.render(diag)),
                 DiagLevel::Warning => println!("{}", self.render(diag)),
             }
         }
+
+        drop(diags);
     }
 
     pub fn display_single(diag: Diag) {
@@ -60,12 +71,12 @@ impl<'source_map> DiagReporter<'source_map> {
         eprintln!("{}", output);
     }
 
-    pub fn report(&mut self, diag: Diag) {
-        self.diags.push(diag);
+    pub fn report(&self, diag: Diag) {
+        self.diags.borrow_mut().push(diag)
     }
 
     pub fn has_errors(&self) -> bool {
-        self.diags.iter().any(|d| matches!(d.level, DiagLevel::Error))
+        self.diags.borrow().iter().any(|d| matches!(d.level, DiagLevel::Error))
     }
 }
 

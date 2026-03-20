@@ -2031,7 +2031,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> bool {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
@@ -2068,7 +2068,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         sema_ty: &SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
@@ -2562,7 +2562,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         var_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<u32> {
         self.normalize_sema_type(scope_id_opt, var_type, loc.clone())?
             .maybe_generic_base_symbol_id()
@@ -2599,7 +2599,7 @@ impl<'a> AnalysisContext<'a> {
         func_sig: &mut FuncSig,
         generic_type_opt: &Option<GenericType>,
         args: &mut Vec<TypedExprStmt>,
-        loc: SourceLoc,
+        loc: Loc,
         instance_method_call: bool,
     ) -> Option<SemanticType> {
         let is_variadic = func_sig.params.variadic.is_some();
@@ -2719,7 +2719,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         func_sig: &FuncSig,
         args: &mut Vec<TypedExprStmt>,
-        loc: SourceLoc,
+        loc: Loc,
     ) {
         let static_params_len = func_sig.params.list.len();
         let variadic_args = &mut args[static_params_len..];
@@ -2782,7 +2782,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         func_type: &mut TypedFuncType,
         args: &mut Vec<TypedExprStmt>,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
@@ -3999,7 +3999,7 @@ impl<'a> AnalysisContext<'a> {
         scope_opt: Option<LocalScopeRef>,
         operand: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<FieldAccessKind> {
         let operand_type = match &operand.kind {
             TypedExprKind::Symbol(instance_symbol_id, ..) => {
@@ -4252,13 +4252,13 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
         type_args: &Option<TypedTypeArgs>,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> bool {
         if generic_params.is_none() && type_args.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
             return true;
@@ -4301,7 +4301,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         scope_opt: Option<LocalScopeRef>,
         instance_symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let sym = self
             .resolver
@@ -4525,7 +4525,7 @@ impl<'a> AnalysisContext<'a> {
         object_methods_opt: Option<HashMap<String, SymbolID>>,
         object_name: String,
         func_sig: &FuncSig,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> bool {
         let mut result = true;
         let method_vis = &func_sig.modifiers.vis;
@@ -4637,12 +4637,12 @@ impl<'a> AnalysisContext<'a> {
     /// - This validation is typically called after type checking conditional expressions
     ///   but before generating code for control flow constructs.
     ///
-    pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_ty: SemanticType, loc: SourceLoc) {
+    pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_ty: SemanticType, loc: Loc) {
         if !sema_ty.is_bool() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }

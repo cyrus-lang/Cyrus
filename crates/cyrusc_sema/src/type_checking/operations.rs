@@ -372,7 +372,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             let valid = (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float());
@@ -426,7 +426,7 @@ impl<'a> AnalysisContext<'a> {
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         cmp_eq: bool,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
@@ -526,7 +526,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
         type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<SemanticType>,
     ) -> Option<SemanticType> {
         let lhs_type = lhs_type.const_inner();
@@ -562,7 +562,7 @@ impl<'a> AnalysisContext<'a> {
                         lhs_type: lhs_type_str,
                         rhs_type: rhs_type_str,
                     }),
-                    loc: Some(DiagLoc::new(loc)),
+                    loc: Some(loc),
                     hint: None,
                 });
                 None
@@ -575,7 +575,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         match (lhs_type.clone(), rhs_type.clone()) {
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(inner_pointer_type)) => {
@@ -611,7 +611,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
             (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic))
@@ -628,7 +628,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
@@ -651,7 +651,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(
             scope_id_opt,
@@ -691,7 +691,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             // only allow integer types

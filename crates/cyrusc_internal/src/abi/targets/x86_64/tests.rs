@@ -72,7 +72,7 @@ mod tests {
             fields_info: Vec::new(), // won't be used
             repr_attr: None,
             align: None,
-            loc: SourceLoc::default(),
+            loc: Loc::default(),
         })
     }
 
@@ -85,7 +85,7 @@ mod tests {
             fields_info: Vec::new(), // won't be used
             align: None,
             repr_attr: None,
-            loc: SourceLoc::default(),
+            loc: Loc::default(),
         })
     }
 

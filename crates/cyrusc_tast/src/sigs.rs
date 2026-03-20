@@ -42,7 +42,7 @@ pub struct StructSig {
     pub generic_params: Option<TypedGenericParamsList>,
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +54,7 @@ pub struct UnionSig {
     pub generic_params: Option<TypedGenericParamsList>,
     pub modifiers: UnionModifiers,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -67,7 +67,7 @@ pub struct FuncSig {
     pub return_type: SemanticType,
     pub is_func_decl: bool,
     pub modifiers: FuncModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -80,7 +80,7 @@ pub struct EnumSig {
     pub modifiers: EnumModifiers,
     pub tag_type: Option<SemanticType>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -89,7 +89,7 @@ pub struct TypedefSig {
     pub ty: SemanticType,
     pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +100,7 @@ pub struct InterfaceSig {
     pub methods: Vec<TypedFuncDeclStmt>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +113,7 @@ pub struct GlobalVarSig {
     pub is_const: bool,
     pub analyzed: bool,
     pub modifiers: GlobalVarModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 // FIXME: Make this method for FuncSig

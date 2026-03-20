@@ -66,7 +66,7 @@ pub struct TypedBuiltinFunc {
     pub name: Ident,
     pub args: Vec<TypedExprStmt>,
     pub child_stmt: Option<Box<TypedStmt>>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -74,21 +74,21 @@ pub struct TypedBuiltinScope {
     pub name: Ident,
     pub args: Vec<TypedExprStmt>,
     pub block: Box<TypedBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedLabelStmt {
     pub name: String,
     pub label_id: LabelID,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedGotoStmt {
     pub name: String,
     pub label_id: Option<LabelID>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +97,7 @@ pub struct TypedExportTupleStmt {
     pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -109,14 +109,14 @@ pub enum TypedExportPattern {
 #[derive(Debug, Clone)]
 pub struct TypedDeferStmt {
     pub operand: Box<TypedStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedImplementInterface {
     pub symbol_id: SymbolID,
     pub type_args: Option<TypedTypeArgs>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -126,7 +126,7 @@ pub struct TypedInterfaceStmt {
     pub methods: Vec<TypedFuncDeclStmt>,
     pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ pub struct TypedEnumStmt {
     pub modifiers: EnumModifiers,
     pub tag_type: Option<SemanticType>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +155,7 @@ pub enum TypedEnumVariant {
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
     pub ty: SemanticType,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +171,7 @@ pub struct TypedStructStmt {
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
     pub is_packed: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -186,14 +186,14 @@ pub struct TypedUnionStmt {
     pub impls: Vec<TypedImplementInterface>,
     pub align: Option<usize>,
     pub modifiers: UnionModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedUnionField {
     pub name: String,
     pub ty: SemanticType,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -201,13 +201,13 @@ pub struct TypedStructField {
     pub name: String,
     pub ty: SemanticType,
     pub vis: Visibility,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedReturnStmt {
     pub arg: Option<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -219,7 +219,7 @@ pub struct TypedGlobalVarStmt {
     pub expr: Option<TypedExprStmt>,
     pub is_const: bool,
     pub modifiers: GlobalVarModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -229,7 +229,7 @@ pub struct TypedTypedefStmt {
     pub ty: SemanticType,
     pub generic_params: Option<TypedGenericParamsList>,
     pub vis: Visibility,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -237,7 +237,7 @@ pub struct TypedBlockStmt {
     pub scope_id: ScopeID,
     pub stmts: Vec<TypedStmt>,
     pub defers: Vec<TypedDeferStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -248,7 +248,7 @@ pub struct TypedVarStmt {
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub analyzed: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -257,7 +257,7 @@ pub struct TypedIfStmt {
     pub then_block: Box<TypedBlockStmt>,
     pub branches: Vec<TypedIfStmt>,
     pub else_block: Option<Box<TypedBlockStmt>>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -270,7 +270,7 @@ pub struct TypedFuncDefStmt {
     pub body: Box<TypedBlockStmt>,
     pub return_type: SemanticType,
     pub modifiers: FuncModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -283,7 +283,7 @@ pub struct TypedFuncDeclStmt {
     pub return_type: SemanticType,
     pub modifiers: FuncModifiers,
     pub renamed_as: Option<String>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -322,7 +322,7 @@ pub struct TypedSelfModifier {
     pub self_symbol_id: Option<SymbolID>,
     pub ty: Option<SemanticType>,
     pub kind: SelfModifierKind,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -330,7 +330,7 @@ pub struct TypedFuncParam {
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: SemanticType,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -339,14 +339,14 @@ pub struct TypedForStmt {
     pub cond: Option<TypedExprStmt>,
     pub increment: Option<TypedExprStmt>,
     pub body: Box<TypedBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedWhileStmt {
     pub cond: TypedExprStmt,
     pub body: Box<TypedBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -354,14 +354,14 @@ pub struct TypedSwitchStmt {
     pub operand: TypedExprStmt,
     pub cases: Vec<TypedSwitchCase>,
     pub default_case: Option<TypedBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
     pub patterns: Vec<TypedSwitchCasePattern>,
     pub body: Box<TypedBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -377,17 +377,17 @@ pub struct TypedRange {
     pub lower: TypedExprStmt,
     pub upper: TypedExprStmt,
     pub inclusive_upper: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedBreakStmt {
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedContinueStmt {
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -413,12 +413,12 @@ pub enum TypedTypeArg {
     Positional {
         i: usize,
         ty: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     },
     Named {
         key: String,
         ty: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     },
 }
 
@@ -503,7 +503,7 @@ impl TypedEnumVariant {
 }
 
 impl TypedBlockStmt {
-    pub fn new_empty(scope_id: ScopeID, loc: SourceLoc) -> Self {
+    pub fn new_empty(scope_id: ScopeID, loc: Loc) -> Self {
         Self {
             scope_id,
             stmts: Vec::new(),

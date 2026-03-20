@@ -345,7 +345,7 @@ impl<'a> AnalysisContext<'a> {
         pattern: &TypedExportPattern,
         sema_ty: &SemanticType,
         expr: &TypedExprStmt,
-        loc: SourceLoc,
+        loc: Loc,
         access_path: Vec<usize>,
     ) {
         match pattern {
@@ -2018,7 +2018,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         sema_ty: &SemanticType,
         is_init: bool,
-        loc: SourceLoc,
+        loc: Loc,
     ) {
         if sema_ty.const_inner().is_void() {
             self.reporter.report(Diag {
@@ -2055,7 +2055,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         object_symbol_id: SymbolID,
         sema_ty: &SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) {
         let sema_ty = sema_ty.const_inner();
 
@@ -2098,7 +2098,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         sema_ty: &SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) {
         let sema_ty = sema_ty.const_inner();
 

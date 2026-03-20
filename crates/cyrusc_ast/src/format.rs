@@ -40,12 +40,6 @@ impl fmt::Display for UnaryOperator {
     }
 }
 
-impl fmt::Display for Cast {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} as {}", self.expr, self.target_type)
-    }
-}
-
 impl fmt::Display for FuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", self.operand, expr_series_to_string(self.args.clone()))
@@ -375,16 +369,10 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            Expr::Cast(cast_as) => {
-                write!(f, "{}", cast_as)
-            }
             Expr::ModuleImport(module_import) => {
                 write!(f, "{}", module_import.to_string())
             }
             Expr::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
-            Expr::SizeOf(size_of_expression) => {
-                write!(f, "sizeof {}", size_of_expression.expr)
-            }
             Expr::Tuple(tuple_value) => {
                 write!(
                     f,

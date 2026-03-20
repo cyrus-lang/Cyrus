@@ -32,7 +32,7 @@ mod stmts;
 
 pub struct Parser<'diag, 'source_file> {
     source_file: &'source_file SourceFile,
-    reporter: &'diag mut DiagReporter<'diag>,
+    reporter: &'diag DiagReporter<'diag>,
     tokens: Vec<Token>,
     pos: usize,
     last_loc: Loc,
@@ -40,7 +40,7 @@ pub struct Parser<'diag, 'source_file> {
 
 impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     pub fn new(
-        reporter: &'diag mut DiagReporter<'diag>,
+        reporter: &'diag DiagReporter<'diag>,
         source_file: &'source_file SourceFile,
         tokens: Vec<Token>,
     ) -> Self {
@@ -59,11 +59,6 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     #[inline]
     pub fn file_id(&self) -> FileID {
         self.source_file.id
-    }
-
-    #[inline]
-    pub fn parse(&mut self) -> Result<ProgramTree, ()> {
-        self.parse_program()
     }
 
     /// Parses the program by repeatedly parsing statements until the end of file (EOF) token is encountered.

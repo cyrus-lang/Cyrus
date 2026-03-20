@@ -25,7 +25,7 @@ enum NamingConvDeclKind {
 }
 
 impl<'a> AnalysisContext<'a> {
-    fn check_name(&mut self, decl_kind: NamingConvDeclKind, name: &str, loc: SourceLoc, is_local: bool) {
+    fn check_name(&mut self, decl_kind: NamingConvDeclKind, name: &str, loc: Loc, is_local: bool) {
         let valid = if is_local {
             is_camel_case(name)
         } else {
@@ -44,23 +44,23 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn check_struct_name(&mut self, name: String, loc: SourceLoc, is_local: bool) {
+    pub(crate) fn check_struct_name(&mut self, name: String, loc: Loc, is_local: bool) {
         self.check_name(NamingConvDeclKind::Struct, &name, loc, is_local);
     }
 
-    pub(crate) fn check_enum_name(&mut self, name: String, loc: SourceLoc, is_local: bool) {
+    pub(crate) fn check_enum_name(&mut self, name: String, loc: Loc, is_local: bool) {
         self.check_name(NamingConvDeclKind::Enum, &name, loc, is_local);
     }
 
-    pub(crate) fn check_union_name(&mut self, name: String, loc: SourceLoc, is_local: bool) {
+    pub(crate) fn check_union_name(&mut self, name: String, loc: Loc, is_local: bool) {
         self.check_name(NamingConvDeclKind::Union, &name, loc, is_local);
     }
 
-    pub(crate) fn check_interface_name(&mut self, name: String, loc: SourceLoc, is_local: bool) {
+    pub(crate) fn check_interface_name(&mut self, name: String, loc: Loc, is_local: bool) {
         self.check_name(NamingConvDeclKind::Interface, &name, loc, is_local);
     }
 
-    pub(crate) fn check_method_name(&mut self, name: String, loc: SourceLoc) {
+    pub(crate) fn check_method_name(&mut self, name: String, loc: Loc) {
         if !self.disable_warnings {
             if !is_snake_case(&name) {
                 self.reporter.report(Diag {
@@ -70,14 +70,14 @@ impl<'a> AnalysisContext<'a> {
                         kind: "Method".to_string(),
                         expected: "snake_case".to_string(),
                     }),
-                    loc: Some(DiagLoc::new(loc)),
+                    loc: Some(loc),
                     hint: None,
                 });
             }
         }
     }
 
-    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: SourceLoc, is_local: bool) {
+    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Loc, is_local: bool) {
         if !self.disable_warnings {
             let expected = if is_local { "camelCase" } else { "PascalCase" };
 
@@ -88,7 +88,7 @@ impl<'a> AnalysisContext<'a> {
                     name,
                     expected: expected.to_string(),
                 }),
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
         }

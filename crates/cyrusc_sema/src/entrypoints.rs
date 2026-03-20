@@ -36,7 +36,7 @@ impl<'a> AnalysisContext<'a> {
             exit_with_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: {
                     if let Some(another_decl_loc) = entry_points_clone.pop() {
                         Some(format!("Another declaration is at {}.", another_decl_loc))

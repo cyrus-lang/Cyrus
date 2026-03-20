@@ -27,7 +27,7 @@ mod tests {
             param_name: TypedIdentifier {
                 name: name.to_string(),
                 symbol_id: 1000,
-                loc: SourceLoc::default(),
+                loc: Loc::default(),
             },
             bounds: None,
             default: None,

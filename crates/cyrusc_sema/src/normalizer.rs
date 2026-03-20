@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         mut sema_ty: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         if sema_ty.count_const_layers() > 1 {
             self.reporter.report(Diag {
@@ -294,7 +294,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         sema_ty: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let sema_ty = self.normalize_sema_type(scope_id_opt, sema_ty, loc.clone())?;
         self.check_sema_ty(scope_id_opt, sema_ty, loc.clone())
@@ -306,7 +306,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         ty: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         match ty {
             SemanticType::GenericParam(generic_param) => self.normalize_generic_param(generic_param),
@@ -450,7 +450,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         mut arr: TypedArrayType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<TypedArrayType> {
         match &mut arr.capacity {
             TypedArrayCapacity::Fixed(expr) => {
@@ -477,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         arr: TypedArrayType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let normalized_arr = self.normalize_array_capacity(scope_id_opt, arr, loc.clone())?;
         Some(SemanticType::Array(normalized_arr))
@@ -487,7 +487,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         inner: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let normalized = self.normalize_sema_type(scope_id_opt, inner, loc.clone())?;
         Some(normalized.as_const())
@@ -497,7 +497,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         inner: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let normalized = self.normalize_sema_type(scope_id_opt, inner, loc.clone())?;
         Some(SemanticType::Pointer(Box::new(normalized)))
@@ -507,7 +507,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let symbol_entry = self.resolver.resolve_global_symbol(symbol_id)?;
         let global_var = symbol_entry.as_global_var()?;
@@ -523,7 +523,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let scope = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id))?;
         let local_symbol = self.resolver.resolve_symbol_from_local_scope(scope, symbol_id)?;
@@ -557,7 +557,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         resolved_symbol: ResolvedSymbol,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         match resolved_symbol {
             ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(scope_id_opt, symbol_id),
@@ -577,7 +577,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         self.resolver.resolve_local_or_global_symbol(scope_opt, symbol_id);
@@ -694,7 +694,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         interface_symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let scope_opt = scope_id_opt.and_then(|sid| self.resolver.resolve_local_scope(self.module_id, sid));
         let sym = self
@@ -750,7 +750,7 @@ impl<'a> AnalysisContext<'a> {
         scope_opt: Option<LocalScopeRef>,
         resolved_typedef: &ResolvedTypedef,
         mut type_args: Option<TypedTypeArgs>,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         let typedef_generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
 
@@ -826,7 +826,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: SourceLoc) {
+    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Loc) {
         // analyze static arguments
         for param in params.list.iter_mut() {
             match param {
@@ -879,7 +879,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: SourceLoc) {
+    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: Loc) {
         // analyze static arguments
         for param in params.list.iter_mut() {
             let sema_ty = self.normalize_sema_type(None, param.clone(), loc.clone()).unwrap();
@@ -908,7 +908,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         if let Some(cached_sema_ty) = self.ty_caches.cache.get(&symbol_id) {
             return Some(cached_sema_ty.clone());

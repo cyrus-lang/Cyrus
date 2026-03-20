@@ -333,7 +333,7 @@ impl<'a> AnalysisContext<'a> {
         parent_mapping_ctx: Option<Rc<GenericMappingCtx>>,
         generic_params: Option<&TypedGenericParamsList>,
         is_const: bool,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Result<Option<(SymbolID, Option<GenericType>)>, Diag> {
         self.normalize_type_args(scope_id_opt, type_args.as_mut());
 
@@ -353,7 +353,7 @@ impl<'a> AnalysisContext<'a> {
                     return Err(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                        loc: Some(DiagLoc::new(loc)),
+                        loc: Some(loc),
                         hint: None,
                     });
                 }
@@ -537,7 +537,7 @@ impl<'a> AnalysisContext<'a> {
         generic_type_opt: Option<&GenericType>,
         target_ty: SemanticType,
         expr_ty: Option<SemanticType>,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> Option<SemanticType> {
         macro_rules! check_type_mismatch {
             ($lhs:expr, $rhs:expr) => {

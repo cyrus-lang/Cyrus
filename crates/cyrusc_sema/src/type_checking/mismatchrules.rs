@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         value_type: SemanticType,
         target_type: SemanticType,
-        loc: SourceLoc,
+        loc: Loc,
     ) -> bool {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 

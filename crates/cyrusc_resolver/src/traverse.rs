@@ -48,7 +48,7 @@ impl Resolver {
                     Some(TypedTypeArg::Positional {
                         i,
                         ty,
-                        loc: SourceLoc::from_loc(type_specifier.loc().0, self.current_file_path()),
+                        loc: Loc::from_loc(type_specifier.loc().0, self.current_file_path()),
                     })
                 }
                 TypeArg::Named { key, ty } => {
@@ -63,7 +63,7 @@ impl Resolver {
                     Some(TypedTypeArg::Named {
                         key: key.as_string(),
                         ty,
-                        loc: SourceLoc::from_loc(key.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(key.loc.clone(), self.current_file_path()),
                     })
                 }
             })
@@ -114,7 +114,7 @@ impl Resolver {
                     param_name: TypedIdentifier {
                         name: generic_param.param_name.as_string(),
                         symbol_id: generate_symbol_id(),
-                        loc: SourceLoc::from_loc(generic_param.param_name.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(generic_param.param_name.loc.clone(), self.current_file_path()),
                     },
                     bounds,
                     default,
@@ -183,7 +183,7 @@ impl Resolver {
                         mapping_ctx_arena: self.mapping_ctx_arena.clone(),
                         generic_params: TypedGenericParamsList::new(),
                         is_const,
-                        loc: SourceLoc::from_loc(generic_inst.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(generic_inst.loc.clone(), self.current_file_path()),
                     }))
                 } else {
                     Err(ResolverDiagKind::TypeDoesNotAcceptTypeArgs {
@@ -209,7 +209,7 @@ impl Resolver {
 
                 Ok(SemanticType::Tuple(TypedTupleType {
                     type_list,
-                    loc: SourceLoc::from_loc(tuple_type.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(tuple_type.loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::FuncType(func_type) => {
@@ -262,7 +262,7 @@ impl Resolver {
                     params: TypedFuncTypeParams { list: params, variadic },
                     return_type: Box::new(return_type),
                     is_public: true,
-                    loc: SourceLoc::from_loc(loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::TypeToken(token) => {
@@ -314,7 +314,7 @@ impl Resolver {
                 Ok(SemanticType::Array(TypedArrayType {
                     element_type: Box::new(element_type),
                     capacity,
-                    loc: SourceLoc::from_loc(loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::UnnamedUnion(unnamed_union_type) => {
@@ -332,7 +332,7 @@ impl Resolver {
                         fields.push(TypedUnnamedUnionTypeField {
                             name: field.field_name.value.clone(),
                             ty: Box::new(ty),
-                            loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
+                            loc: Loc::from_loc(field.loc.clone(), self.current_file_path()),
                         });
                     }
                 }
@@ -341,7 +341,7 @@ impl Resolver {
                     fields,
                     repr_attr: unnamed_union_type.repr_attr.clone(),
                     align: unnamed_union_type.align.clone(),
-                    loc: SourceLoc::from_loc(unnamed_union_type.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(unnamed_union_type.loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::UnnamedEnum(unnamed_enum_type) => {
@@ -375,7 +375,7 @@ impl Resolver {
                                     Some(ty) => {
                                         valued_fields.push(TypedUnnamedEnumValuedField {
                                             ty,
-                                            loc: SourceLoc::from_loc(
+                                            loc: Loc::from_loc(
                                                 valued_field.loc.clone(),
                                                 self.current_file_path(),
                                             ),
@@ -408,7 +408,7 @@ impl Resolver {
                     tag_type,
                     repr_attr: unnamed_enum_type.repr_attr.clone(),
                     align: unnamed_enum_type.align.clone(),
-                    loc: SourceLoc::from_loc(unnamed_enum_type.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(unnamed_enum_type.loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
@@ -426,7 +426,7 @@ impl Resolver {
                         fields.push(TypedUnnamedStructTypeField {
                             name: field.field_name.value.clone(),
                             ty: Box::new(ty),
-                            loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
+                            loc: Loc::from_loc(field.loc.clone(), self.current_file_path()),
                         });
                     }
                 }
@@ -435,7 +435,7 @@ impl Resolver {
                     fields,
                     repr_attr: unnamed_struct_type.repr_attr.clone(),
                     align: unnamed_struct_type.align.clone(),
-                    loc: SourceLoc::from_loc(unnamed_struct_type.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(unnamed_struct_type.loc.clone(), self.current_file_path()),
                 }))
             }
             TypeSpecifier::ModuleImport(module_import) => self
@@ -468,7 +468,7 @@ impl Resolver {
                 }
             }
             TypeSpecifier::SelfType(self_type) => Ok(SemanticType::SelfType(TypedSelfType {
-                loc: SourceLoc::from_loc(self_type.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(self_type.loc.clone(), self.current_file_path()),
             })),
         };
 
@@ -510,7 +510,7 @@ impl Resolver {
             generic_params,
             ty: sema_ty.clone(),
             vis: typedef.vis.clone(),
-            loc: SourceLoc::from_loc(typedef.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(typedef.loc.clone(), self.current_file_path()),
         };
 
         let resolved_typedef = ResolvedTypedef {
@@ -789,7 +789,7 @@ impl Resolver {
             name: builtin_func.name.clone(),
             args,
             child_stmt,
-            loc: SourceLoc::from_loc(builtin_func.loc, self.current_file_path()),
+            loc: Loc::from_loc(builtin_func.loc, self.current_file_path()),
         };
 
         // TypedBuiltin::BuiltinFunc(())
@@ -844,7 +844,7 @@ impl Resolver {
                     return_type,
                     modifiers: func_decl.modifiers.clone(),
                     renamed_as: None,
-                    loc: SourceLoc::from_loc(func_decl.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(func_decl.loc.clone(), self.current_file_path()),
                 })
             })
             .collect();
@@ -859,7 +859,7 @@ impl Resolver {
                 methods: typed_methods.clone(),
                 generic_params: generic_params.clone(),
                 vis: interface.vis.clone(),
-                loc: SourceLoc::from_loc(interface.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(interface.loc.clone(), self.current_file_path()),
             },
         };
 
@@ -885,7 +885,7 @@ impl Resolver {
             methods: typed_methods,
             generic_params,
             vis: interface.vis.clone(),
-            loc: SourceLoc::from_loc(interface.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(interface.loc.clone(), self.current_file_path()),
         }))
     }
 
@@ -925,7 +925,7 @@ impl Resolver {
                     typed_union_fields.push(TypedUnionField {
                         name: field.ident.value.clone(),
                         ty: sema_ty,
-                        loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(field.loc.clone(), self.current_file_path()),
                     });
                 }
                 None => continue,
@@ -955,7 +955,7 @@ impl Resolver {
                 generic_params: generic_params.clone(),
                 modifiers: union_decl.modifiers.clone(),
                 align: union_decl.align.clone(),
-                loc: SourceLoc::from_loc(union_decl.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(union_decl.loc.clone(), self.current_file_path()),
             },
         };
 
@@ -985,7 +985,7 @@ impl Resolver {
             generic_params,
             modifiers: union_decl.modifiers.clone(),
             impls,
-            loc: SourceLoc::from_loc(union_decl.ident.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(union_decl.ident.loc.clone(), self.current_file_path()),
             align: union_decl.align.clone(),
             is_local: is_local,
         }))
@@ -1034,7 +1034,7 @@ impl Resolver {
 
                         fields.push(TypedEnumValuedField {
                             ty: field_ty,
-                            loc: SourceLoc::from_loc(valued_field.loc.clone(), self.current_file_path()),
+                            loc: Loc::from_loc(valued_field.loc.clone(), self.current_file_path()),
                         });
                     }
                     TypedEnumVariant::Variant(ident.clone(), fields)
@@ -1088,7 +1088,7 @@ impl Resolver {
                 tag_type,
                 modifiers: enum_decl.modifiers.clone(),
                 align: enum_decl.align.clone(),
-                loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(enum_decl.loc.clone(), self.current_file_path()),
             },
         };
 
@@ -1133,7 +1133,7 @@ impl Resolver {
             tag_type,
             modifiers: enum_decl.modifiers.clone(),
             align: enum_decl.align.clone(),
-            loc: SourceLoc::from_loc(enum_decl.ident.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(enum_decl.ident.loc.clone(), self.current_file_path()),
             is_local,
         }))
     }
@@ -1163,7 +1163,7 @@ impl Resolver {
                 analyzed: true,
                 is_const: global_var.is_const,
                 modifiers: global_var.modifiers.clone(),
-                loc: SourceLoc::from_loc(global_var.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(global_var.loc.clone(), self.current_file_path()),
             },
         };
 
@@ -1181,7 +1181,7 @@ impl Resolver {
             expr: typed_expr,
             modifiers: global_var.modifiers.clone(),
             is_const: global_var.is_const,
-            loc: SourceLoc::from_loc(global_var.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(global_var.loc.clone(), self.current_file_path()),
         }))
     }
 
@@ -1259,7 +1259,7 @@ impl Resolver {
                     },
                     return_type,
                     modifiers: func_def.modifiers.clone(),
-                    loc: SourceLoc::from_loc(func_def.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(func_def.loc.clone(), self.current_file_path()),
                 };
 
                 let is_generic = func_sig.generic_params.is_some() || generic_object;
@@ -1418,7 +1418,7 @@ impl Resolver {
             symbol_ids.push(TypedImplementInterface {
                 symbol_id,
                 type_args,
-                loc: SourceLoc::from_loc(
+                loc: Loc::from_loc(
                     type_specifier.loc().0,
                     self.resolve_module_file_path(module_id).unwrap(),
                 ),
@@ -1465,7 +1465,7 @@ impl Resolver {
                     name: field.ident.value.clone(),
                     vis: field.vis.clone(),
                     ty,
-                    loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(field.loc.clone(), self.current_file_path()),
                 })
             })
             .collect();
@@ -1496,7 +1496,7 @@ impl Resolver {
                 methods: methods.clone(),
                 modifiers: struct_decl.modifiers.clone(),
                 align: struct_decl.align.clone(),
-                loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
             },
         };
 
@@ -1524,7 +1524,7 @@ impl Resolver {
             modifiers: struct_decl.modifiers.clone(),
             align: struct_decl.align.clone(),
             is_packed: struct_decl.is_packed,
-            loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(struct_decl.loc.clone(), self.current_file_path()),
             is_local,
         }))
     }
@@ -1613,7 +1613,7 @@ impl Resolver {
                                     rhs: None,
                                     is_const: false,
                                     analyzed: true,
-                                    loc: SourceLoc::from_loc(func_param.loc.clone(), self.current_file_path()),
+                                    loc: Loc::from_loc(func_param.loc.clone(), self.current_file_path()),
                                 },
                             })),
                         );
@@ -1623,7 +1623,7 @@ impl Resolver {
                         symbol_id,
                         name: func_param.ident.value.clone(),
                         ty: param_type,
-                        loc: SourceLoc::from_loc(func_param.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(func_param.loc.clone(), self.current_file_path()),
                     }));
                 }
                 FuncParamKind::SelfModifier(self_modifier) => {
@@ -1632,7 +1632,7 @@ impl Resolver {
                         self_symbol_id: None,
                         ty: None,
                         kind: self_modifier.kind.clone(),
-                        loc: SourceLoc::from_loc(self_modifier.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(self_modifier.loc.clone(), self.current_file_path()),
                     }));
                 }
             }
@@ -1666,7 +1666,7 @@ impl Resolver {
                                 rhs: None,
                                 is_const: false,
                                 analyzed: true,
-                                loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
+                                loc: Loc::from_loc(ident.loc.clone(), self.current_file_path()),
                             },
                         })),
                     );
@@ -1676,7 +1676,7 @@ impl Resolver {
                     TypedIdentifier {
                         name: ident.as_string(),
                         symbol_id,
-                        loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(ident.loc.clone(), self.current_file_path()),
                     },
                     variadic_type,
                 ))
@@ -1704,7 +1704,7 @@ impl Resolver {
             },
             return_type: return_type.clone(),
             modifiers: func_decl.modifiers.clone(),
-            loc: SourceLoc::from_loc(func_decl.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(func_decl.loc.clone(), self.current_file_path()),
         };
 
         self.insert_symbol_entry(
@@ -1729,7 +1729,7 @@ impl Resolver {
             return_type,
             modifiers: func_decl.modifiers.clone(),
             renamed_as: func_decl.renamed_as.as_ref().map(|id| id.as_string()),
-            loc: SourceLoc::from_loc(func_decl.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(func_decl.loc.clone(), self.current_file_path()),
         }))
     }
 
@@ -1755,7 +1755,7 @@ impl Resolver {
             },
             return_type: return_type.clone(),
             modifiers: func_def.modifiers.clone(),
-            loc: SourceLoc::from_loc(func_def.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(func_def.loc.clone(), self.current_file_path()),
         };
 
         self.insert_symbol_entry(
@@ -1785,7 +1785,7 @@ impl Resolver {
             },
             return_type,
             modifiers: func_def.modifiers.clone(),
-            loc: SourceLoc::from_loc(func_def.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(func_def.loc.clone(), self.current_file_path()),
             body: Box::new(typed_func_body),
         }))
     }
@@ -1836,7 +1836,7 @@ impl Resolver {
             rhs: typed_rhs.clone(),
             is_const: variable.is_const,
             analyzed: typed_rhs.is_some(),
-            loc: SourceLoc::from_loc(variable.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(variable.loc.clone(), self.current_file_path()),
         };
 
         let resolved_var = ResolvedVariable {
@@ -1899,7 +1899,7 @@ impl Resolver {
             else_block,
             then_block,
             branches,
-            loc: SourceLoc::from_loc(if_stmt.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(if_stmt.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -1919,7 +1919,7 @@ impl Resolver {
                     if let Some(typed_stmt) = self.resolve_stmt(module_id, scope_id, scope.clone(), &defer.operand) {
                         defers.push(TypedDeferStmt {
                             operand: Box::new(typed_stmt),
-                            loc: SourceLoc::from_loc(defer.loc.clone(), self.current_file_path()),
+                            loc: Loc::from_loc(defer.loc.clone(), self.current_file_path()),
                         });
                     }
                 }
@@ -1935,7 +1935,7 @@ impl Resolver {
             scope_id,
             stmts: typed_body,
             defers,
-            loc: SourceLoc::from_loc(block_statement.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(block_statement.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -1989,7 +1989,7 @@ impl Resolver {
                 rhs: None,
                 is_const: false,
                 analyzed: typed_rhs.is_some(),
-                loc: SourceLoc::from_loc(ident.loc.clone(), this.current_file_path()),
+                loc: Loc::from_loc(ident.loc.clone(), this.current_file_path()),
             };
 
             let resolved_var = ResolvedVariable {
@@ -2054,7 +2054,7 @@ impl Resolver {
             ty: var_type,
             rhs: typed_rhs,
             is_const: export_tuple.is_const,
-            loc: SourceLoc::from_loc(export_tuple.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(export_tuple.loc.clone(), self.current_file_path()),
         }))
     }
 
@@ -2091,7 +2091,7 @@ impl Resolver {
                 };
                 Some(TypedStmt::Return(TypedReturnStmt {
                     arg,
-                    loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(return_stmt.loc.clone(), self.current_file_path()),
                 }))
             }
             Stmt::Foreach(..) => todo!(),
@@ -2125,7 +2125,7 @@ impl Resolver {
                     cond,
                     increment,
                     body,
-                    loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(for_stmt.loc.clone(), self.current_file_path()),
                 }))
             }
             Stmt::While(while_stmt) => {
@@ -2141,7 +2141,7 @@ impl Resolver {
                 Some(TypedStmt::While(TypedWhileStmt {
                     cond,
                     body: while_typed_body,
-                    loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(while_stmt.loc.clone(), self.current_file_path()),
                 }))
             }
             Stmt::Switch(switch) => {
@@ -2177,7 +2177,7 @@ impl Resolver {
                                             rhs: None,
                                             is_const: false,
                                             analyzed: true,
-                                            loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
+                                            loc: Loc::from_loc(ident.loc.clone(), self.current_file_path()),
                                         },
                                     })),
                                 );
@@ -2208,7 +2208,7 @@ impl Resolver {
                                                         rhs: None,
                                                         is_const: false,
                                                         analyzed: true,
-                                                        loc: SourceLoc::from_loc(
+                                                        loc: Loc::from_loc(
                                                             ident.loc.clone(),
                                                             self.current_file_path(),
                                                         ),
@@ -2219,7 +2219,7 @@ impl Resolver {
                                             TypedIdentifier {
                                                 name: ident.value.clone(),
                                                 symbol_id,
-                                                loc: SourceLoc::from_loc(ident.loc.clone(), self.current_file_path()),
+                                                loc: Loc::from_loc(ident.loc.clone(), self.current_file_path()),
                                             }
                                         })
                                         .collect(),
@@ -2234,7 +2234,7 @@ impl Resolver {
                                     lower: lower?,
                                     upper: upper?,
                                     inclusive_upper: range.inclusive_upper,
-                                    loc: SourceLoc::from_loc(range.loc.clone(), self.current_file_path()),
+                                    loc: Loc::from_loc(range.loc.clone(), self.current_file_path()),
                                 })
                             }
                         };
@@ -2248,7 +2248,7 @@ impl Resolver {
                     cases.push(TypedSwitchCase {
                         patterns,
                         body: Box::new(body),
-                        loc: SourceLoc::from_loc(case.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(case.loc.clone(), self.current_file_path()),
                     });
                     drop(case_scope_rc);
                 }
@@ -2267,7 +2267,7 @@ impl Resolver {
                     operand,
                     cases,
                     default_case,
-                    loc: SourceLoc::from_loc(switch.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(switch.loc.clone(), self.current_file_path()),
                 }))
             }
             Stmt::Enum(enum_decl) => {
@@ -2299,10 +2299,10 @@ impl Resolver {
                 Some(TypedStmt::BlockStmt(typed_stmt))
             }
             Stmt::Break(break_stmt) => Some(TypedStmt::Break(TypedBreakStmt {
-                loc: SourceLoc::from_loc(break_stmt.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(break_stmt.loc.clone(), self.current_file_path()),
             })),
             Stmt::Continue(continue_stmt) => Some(TypedStmt::Continue(TypedContinueStmt {
-                loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(continue_stmt.loc.clone(), self.current_file_path()),
             })),
             Stmt::Typedef(typedef) => {
                 let typed_stmt = self.resolve_typedef_stmt(module_id, Some(scope.clone()), &typedef)?;
@@ -2329,7 +2329,7 @@ impl Resolver {
         Some(TypedStmt::Goto(TypedGotoStmt {
             name: goto.name.as_string(),
             label_id: None,
-            loc: SourceLoc::from_loc(goto.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(goto.loc.clone(), self.current_file_path()),
         }))
     }
 
@@ -2363,7 +2363,7 @@ impl Resolver {
         Some(TypedStmt::Label(TypedLabelStmt {
             name: label.name.as_string(),
             label_id,
-            loc: SourceLoc::from_loc(label.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(label.loc.clone(), self.current_file_path()),
         }))
     }
 
@@ -2516,7 +2516,7 @@ impl Resolver {
                     ),
                     sema_ty: None,
                     mloc: MemoryLocation::LValue,
-                    loc: SourceLoc::from_loc(module_import.loc.clone(), self.current_file_path()),
+                    loc: Loc::from_loc(module_import.loc.clone(), self.current_file_path()),
                 })
         }
     }
@@ -2567,7 +2567,7 @@ impl Resolver {
                         kind,
                         sema_ty: None,
                         mloc: MemoryLocation::RValue,
-                        loc: SourceLoc::from_loc(builtin.loc(), self.current_file_path()),
+                        loc: Loc::from_loc(builtin.loc(), self.current_file_path()),
                     })
                 }
                 None => None,
@@ -2588,14 +2588,14 @@ impl Resolver {
             field_value: Box::new(field_value),
             union_ty: None,
             is_const: unnamed_union_value.is_const,
-            loc: SourceLoc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
         });
 
         Some(TypedExprStmt {
             kind,
             sema_ty: None,
             mloc: MemoryLocation::RValue,
-            loc: SourceLoc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(unnamed_union_value.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2624,11 +2624,11 @@ impl Resolver {
                 ident: unnamed_enum_value.ident.clone(),
                 kind,
                 enum_ty: None,
-                loc: SourceLoc::from_loc(unnamed_enum_value.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(unnamed_enum_value.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(unnamed_enum_value.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(unnamed_enum_value.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2640,11 +2640,11 @@ impl Resolver {
                 operand: Box::new(operand),
                 vtable_id: None,
                 object_name: None,
-                loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
             mloc: MemoryLocation::RValue,
-            loc: SourceLoc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(dynamic_expr.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2660,11 +2660,11 @@ impl Resolver {
             kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                 operand: Box::new(operand),
                 index: tuple_member_access.index,
-                loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(tuple_member_access.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
             mloc: MemoryLocation::LValue,
-            loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(tuple_member_access.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2681,11 +2681,11 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Tuple(TypedTupleExpr {
                 elements: expr_list,
-                loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
             }),
             sema_ty: None,
             mloc: MemoryLocation::RValue,
-            loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(tuple_value.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2749,11 +2749,11 @@ impl Resolver {
                 field_ty: None,
                 object_symbol_id: None,
                 type_args,
-                loc: SourceLoc::from_loc(field_access.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(field_access.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(field_access.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(field_access.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2789,12 +2789,12 @@ impl Resolver {
                 self_ty: None,
                 enum_const: None,
                 method_call_on_interface: None,
-                loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(method_call.loc.clone(), self.current_file_path()),
                 args,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(method_call.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(method_call.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2809,7 +2809,7 @@ impl Resolver {
                     .map(|value| TypedStructFieldInit {
                         name: field_init.ident.value.clone(),
                         value,
-                        loc: SourceLoc::from_loc(field_init.loc.clone(), self.current_file_path()),
+                        loc: Loc::from_loc(field_init.loc.clone(), self.current_file_path()),
                     })
             })
             .collect();
@@ -2831,11 +2831,11 @@ impl Resolver {
                 fields: field_inits,
                 type_args,
                 is_const: struct_init.is_const,
-                loc: SourceLoc::from_loc(struct_init.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(struct_init.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(struct_init.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(struct_init.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2870,11 +2870,11 @@ impl Resolver {
                 type_args,
                 return_type: None,
                 monomorph_key: None,
-                loc: SourceLoc::from_loc(func_call.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(func_call.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(func_call.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(func_call.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2894,11 +2894,11 @@ impl Resolver {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 array_type: None,
                 elements: typed_elements,
-                loc: SourceLoc::from_loc(untyped_array.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(untyped_array.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(untyped_array.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(untyped_array.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2922,11 +2922,11 @@ impl Resolver {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 array_type: Some(array_type),
                 elements: typed_elements,
-                loc: SourceLoc::from_loc(arr.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(arr.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(arr.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(arr.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2939,11 +2939,11 @@ impl Resolver {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
                 op: bin.op.clone(),
-                loc: SourceLoc::from_loc(bin.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(bin.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(bin.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(bin.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2954,11 +2954,11 @@ impl Resolver {
             kind: TypedExprKind::Prefix(TypedPrefixExpr {
                 operand: Box::new(operand),
                 op: prefix.op.clone(),
-                loc: SourceLoc::from_loc(prefix.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(prefix.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(prefix.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(prefix.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -2978,11 +2978,11 @@ impl Resolver {
             kind: TypedExprKind::Cast(TypedCastExpr {
                 operand: Box::new(operand),
                 target_type,
-                loc: SourceLoc::from_loc(cast.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(cast.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(cast.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(cast.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3012,7 +3012,7 @@ impl Resolver {
                     kind: TypedExprKind::SemanticType(sema_ty.clone()),
                     mloc: MemoryLocation::RValue,
                     sema_ty: Some(sema_ty),
-                    loc: SourceLoc::from_loc(loc, self.current_file_path()),
+                    loc: Loc::from_loc(loc, self.current_file_path()),
                 });
             }
         };
@@ -3024,7 +3024,7 @@ impl Resolver {
             ),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(loc, self.current_file_path()),
+            loc: Loc::from_loc(loc, self.current_file_path()),
         })
     }
 
@@ -3037,11 +3037,11 @@ impl Resolver {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
                 kind: assignment.kind.clone(),
-                loc: SourceLoc::from_loc(assignment.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(assignment.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(assignment.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(assignment.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3081,7 +3081,7 @@ impl Resolver {
                             Some(SemanticType::Array(TypedArrayType {
                                 element_type: Box::new(SemanticType::PlainType(PlainType::Char)),
                                 capacity: TypedArrayCapacity::Fixed(Box::new(len_expr)),
-                                loc: SourceLoc::from_loc(literal.loc.clone(), self.current_file_path()),
+                                loc: Loc::from_loc(literal.loc.clone(), self.current_file_path()),
                             }))
                         }
                         StringPrefix::C => Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
@@ -3104,7 +3104,7 @@ impl Resolver {
         let typed_literal = TypedLiteralExpr {
             ty: literal_type,
             kind: literal.kind.clone(),
-            loc: SourceLoc::from_loc(literal.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(literal.loc.clone(), self.current_file_path()),
         };
 
         Some(TypedExprStmt {
@@ -3122,11 +3122,11 @@ impl Resolver {
             kind: TypedExprKind::Unary(TypedUnaryExpr {
                 op: unary.op.clone(),
                 operand: Box::new(operand),
-                loc: SourceLoc::from_loc(unary.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(unary.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(unary.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(unary.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3138,11 +3138,11 @@ impl Resolver {
             kind: TypedExprKind::ArrayIndex(TypedArrayIndexExpr {
                 operand: Box::new(operand),
                 index: Box::new(index),
-                loc: SourceLoc::from_loc(array_index.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(array_index.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(array_index.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(array_index.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3152,11 +3152,11 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
                 operand: Box::new(operand),
-                loc: SourceLoc::from_loc(address_of.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(address_of.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(address_of.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(address_of.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3166,11 +3166,11 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Deref(TypedDerefExpr {
                 operand: Box::new(operand),
-                loc: SourceLoc::from_loc(dereference.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(dereference.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(dereference.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(dereference.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3208,7 +3208,7 @@ impl Resolver {
                 name: field.field_name.value.clone(),
                 ty: field_ty,
                 field_value: Box::new(field_value),
-                loc: SourceLoc::from_loc(field.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(field.loc.clone(), self.current_file_path()),
             });
         }
 
@@ -3217,11 +3217,11 @@ impl Resolver {
                 fields,
                 repr_attr: unnamed_struct_value.repr_attr.clone(),
                 align: unnamed_struct_value.align.clone(),
-                loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(unnamed_struct_value.loc.clone(), self.current_file_path()),
         })
     }
 
@@ -3231,15 +3231,15 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::SizeOf(TypedSizeOfExpr {
                 operand: Box::new(typed_expr),
-                loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.current_file_path()),
+                loc: Loc::from_loc(size_of_expression.loc.clone(), self.current_file_path()),
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.current_file_path()),
+            loc: Loc::from_loc(size_of_expression.loc.clone(), self.current_file_path()),
         })
     }
 
-    fn duplicate_symbol(&mut self, module_id: ModuleID, symbol_name: String, loc: SourceLoc) -> bool {
+    fn duplicate_symbol(&mut self, module_id: ModuleID, symbol_name: String, loc: Loc) -> bool {
         match self.lookup_symbol_id(module_id, &symbol_name) {
             Some(..) => {
                 self.reporter.report(Diag {

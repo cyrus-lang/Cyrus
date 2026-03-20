@@ -66,7 +66,7 @@ pub enum CIRStmt {
 pub struct CIRExpr {
     pub kind: CIRExprKind,
     pub ty: CIRTy,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -103,7 +103,7 @@ pub struct CIRDynamicExpr {
     pub method_decls: Vec<CIRFuncDeclStmt>,
     pub global_var_id: IRValueID,
     pub vtable_abi_name: String,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +114,7 @@ pub struct CIRLambda {
     pub inline: bool,
     pub body: Box<CIRBlockStmt>,
     pub abi_func_info: ABIFunctionInfo,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +182,7 @@ pub struct CIRTupleAccessExpr {
 #[derive(Debug, Clone)]
 pub struct CIRTupleExpr {
     pub elements: Vec<CIRExpr>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -195,7 +195,7 @@ pub struct CIRArrayIndexExpr {
 pub struct CIRArrayExpr {
     pub ty: CIRTy,
     pub elements: Vec<CIRExpr>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -281,7 +281,7 @@ pub struct CIRGlobalVarStmt {
     pub ty: CIRTy,
     pub expr: Option<CIRExpr>,
     pub modifiers: GlobalVarModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -290,7 +290,7 @@ pub struct CIRVarStmt {
     pub name: String,
     pub ty: CIRTy,
     pub expr: Option<CIRExpr>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -302,7 +302,7 @@ pub struct CIRFuncDefStmt {
     pub ret: CIRTy,
     pub modifiers: FuncModifiers,
     pub abi_func_info: Option<ABIFunctionInfo>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -313,7 +313,7 @@ pub struct CIRFuncDeclStmt {
     pub ret: CIRTy,
     pub modifiers: FuncModifiers,
     pub abi_func_info: Option<ABIFunctionInfo>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -321,7 +321,7 @@ pub struct CIRFuncParam {
     pub name: Option<String>,
     pub irv_id: IRValueID,
     pub ty: CIRTy,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -334,7 +334,7 @@ pub struct CIRFuncParams {
 pub struct CIRBlockStmt {
     pub stmts: Vec<CIRStmt>,
     pub defers: Vec<CIRStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -342,7 +342,7 @@ pub struct CIRIfStmt {
     pub cond: CIRExpr,
     pub then_block: Box<CIRBlockStmt>,
     pub else_block: Option<Box<CIRBlockStmt>>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -351,14 +351,14 @@ pub struct CIRForStmt {
     pub cond: Option<CIRExpr>,
     pub increment: Option<CIRExpr>,
     pub body: Box<CIRBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRWhileStmt {
     pub cond: Box<CIRExpr>,
     pub body: Box<CIRBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -367,7 +367,7 @@ pub struct CIRSwitchStmt {
     pub cases: Vec<CIRSwitchCase>,
     pub default: Option<CIRBlockStmt>,
     pub all_cases_covered: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -381,7 +381,7 @@ pub struct CIRSwitchOnEnumStmt {
     pub value: CIRExpr,
     pub cases: Vec<CIRSwitchOnEnumCase>,
     pub default: Option<CIRBlockStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -418,7 +418,7 @@ impl CIRSwitchOnEnumPattern {
 #[derive(Debug, Clone)]
 pub struct CIRReturnStmt {
     pub arg: Option<CIRExpr>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -428,7 +428,7 @@ pub struct CIRStructStmt {
     pub fields_info: Vec<(String, SourceLoc)>,
     pub align: Option<usize>,
     pub modifiers: StructModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -438,7 +438,7 @@ pub struct CIREnumStmt {
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRTy>>,
     pub modifiers: EnumModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -490,26 +490,26 @@ pub struct CIRUnionStmt {
     pub fields_info: Vec<(String, SourceLoc)>,
     pub align: Option<usize>,
     pub modifiers: UnionModifiers,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRLabelStmt {
     pub name: String,
     pub label_id: LabelID,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRGotoStmt {
     pub label_id: LabelID,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRDeferStmt {
     pub operand: Box<CIRStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 pub fn cir_expr_as_const_integer_value(expr: &CIRExpr) -> Option<i128> {

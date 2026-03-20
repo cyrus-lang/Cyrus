@@ -19,8 +19,9 @@ use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_source_loc::SourceMap;
-use std::env;
+use std::{env, sync::Arc};
 
+// FIXME: Move to cyrusc_compiler/driver.rs
 pub fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = args[1].clone();
@@ -29,9 +30,9 @@ pub fn main() {
     let mut source_map = SourceMap::new();
     let file_id = source_map.add_file(file_name, file_content);
     let source_file = source_map.get_file(file_id).unwrap();
-    let mut reporter = DiagReporter::new(&source_map);
+    let reporter = Arc::new(DiagReporter::new(&source_map));
 
-    let mut lexer = Lexer::new(&mut reporter, &source_file);
+    let mut lexer = Lexer::new(&reporter, &source_file);
     let tokens = lexer.tokenize();
 
     dbg!(tokens.clone());

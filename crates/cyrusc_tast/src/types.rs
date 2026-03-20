@@ -91,7 +91,7 @@ pub enum ResolvedSymbol {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
     pub type_list: Vec<SemanticType>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +101,7 @@ pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub return_type: Box<SemanticType>,
     pub is_public: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
@@ -140,21 +140,21 @@ pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType>
 pub struct InterfaceType {
     pub symbol_id: SymbolID,
     pub methods: Vec<FuncSig>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct DynamicType {
     pub interface_symbol_id: SymbolID,
     pub vtable_id: VTableID,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedArrayType {
     pub element_type: Box<SemanticType>,
     pub capacity: TypedArrayCapacity,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -168,7 +168,7 @@ pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -176,7 +176,7 @@ pub struct TypedUnnamedUnionType {
     pub fields: Vec<TypedUnnamedUnionTypeField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -185,7 +185,7 @@ pub struct TypedUnnamedEnumType {
     pub repr_attr: Option<ReprAttr>,
     pub tag_type: Option<Box<SemanticType>>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -198,21 +198,21 @@ pub enum TypedUnnamedEnumVariant {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedEnumValuedField {
     pub ty: SemanticType,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedStructTypeField {
     pub name: String,
     pub ty: Box<SemanticType>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedUnionTypeField {
     pub name: String,
     pub ty: Box<SemanticType>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> InterfaceType {
@@ -230,7 +230,7 @@ pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> Interfac
     }
 }
 
-pub fn enum_sig_as_unnamed_enum_type(enum_sig: &EnumSig, loc: SourceLoc) -> TypedUnnamedEnumType {
+pub fn enum_sig_as_unnamed_enum_type(enum_sig: &EnumSig, loc: Loc) -> TypedUnnamedEnumType {
     let variants = enum_sig
         .variants
         .iter()
@@ -261,7 +261,7 @@ pub fn enum_sig_as_unnamed_enum_type(enum_sig: &EnumSig, loc: SourceLoc) -> Type
     }
 }
 
-pub fn union_sig_as_unnamed_union_type(union_sig: &UnionSig, loc: SourceLoc) -> TypedUnnamedUnionType {
+pub fn union_sig_as_unnamed_union_type(union_sig: &UnionSig, loc: Loc) -> TypedUnnamedUnionType {
     let fields = union_sig
         .fields
         .iter()

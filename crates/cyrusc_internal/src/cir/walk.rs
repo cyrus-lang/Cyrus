@@ -1597,11 +1597,11 @@ impl<'resolver> CIRWalk<'resolver> {
             field_access.operand = Box::new(TypedExprStmt {
                 kind: TypedExprKind::Deref(TypedDerefExpr {
                     operand: field_access.operand.clone(),
-                    loc: SourceLoc::default(),
+                    loc: Loc::default(),
                 }),
                 sema_ty: Some(field_access.operand.sema_ty.clone().unwrap().pointer_inner().clone()),
                 mloc: MemoryLocation::LValue,
-                loc: SourceLoc::default(),
+                loc: Loc::default(),
             })
         }
 

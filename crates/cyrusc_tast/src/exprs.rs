@@ -38,7 +38,7 @@ pub struct TypedExprStmt {
     pub kind: TypedExprKind,
     pub sema_ty: Option<SemanticType>,
     pub mloc: MemoryLocation,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -81,20 +81,20 @@ pub struct TypedDynamicExpr {
     pub operand: Box<TypedExprStmt>,
     pub object_name: Option<String>,
     pub vtable_id: Option<VTableID>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedTupleAccessExpr {
     pub operand: Box<TypedExprStmt>,
     pub index: usize,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedTupleExpr {
     pub elements: Vec<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -103,20 +103,20 @@ pub struct TypedLambdaExpr {
     pub body: Box<TypedBlockStmt>,
     pub return_type: SemanticType,
     pub inline: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedSizeOfExpr {
     pub operand: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedLiteralExpr {
     pub ty: Option<SemanticType>,
     pub kind: LiteralKind,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 impl TypedLiteralExpr {
@@ -191,28 +191,28 @@ impl TypedExprKind {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedSelfType {
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedIdentifier {
     pub name: String,
     pub symbol_id: SymbolID,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedPrefixExpr {
     pub op: PrefixOperator,
     pub operand: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnaryExpr {
     pub operand: Box<TypedExprStmt>,
     pub op: UnaryOperator,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,7 +220,7 @@ pub struct TypedInfixExpr {
     pub op: InfixOperator,
     pub lhs: Box<TypedExprStmt>,
     pub rhs: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,40 +228,40 @@ pub struct TypedAssignExpr {
     pub lhs: Box<TypedExprStmt>,
     pub rhs: Box<TypedExprStmt>,
     pub kind: AssignKind,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedCastExpr {
     pub operand: Box<TypedExprStmt>,
     pub target_type: SemanticType,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayExpr {
     pub array_type: Option<SemanticType>,
     pub elements: Vec<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayIndexExpr {
     pub operand: Box<TypedExprStmt>,
     pub index: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedAddrOfExpr {
     pub operand: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedDerefExpr {
     pub operand: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -270,14 +270,14 @@ pub struct TypedStructInitExpr {
     pub type_args: Option<TypedTypeArgs>,
     pub fields: Vec<TypedStructFieldInit>,
     pub is_const: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructFieldInit {
     pub name: String,
     pub value: TypedExprStmt,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -287,7 +287,7 @@ pub struct TypedFuncCall {
     pub type_args: Option<TypedTypeArgs>,
     pub return_type: Option<SemanticType>,
     pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic func
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -299,7 +299,7 @@ pub struct TypedFieldAccess {
     pub field_ty: Option<SemanticType>,
     pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -326,7 +326,7 @@ pub struct TypedMethodCall {
 
     // only used when calling a generic method
     pub monomorph_key: Option<MonomorphKey>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -334,7 +334,7 @@ pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -343,7 +343,7 @@ pub struct TypedUnnamedUnionValue {
     pub field_value: Box<TypedExprStmt>,
     pub union_ty: Option<TypedUnnamedUnionType>,
     pub is_const: bool,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -351,7 +351,7 @@ pub struct TypedUnnamedEnumValue {
     pub ident: Ident,
     pub kind: TypedUnnamedEnumValueKind,
     pub enum_ty: Option<TypedUnnamedEnumValueTy>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -370,7 +370,7 @@ pub struct TypedUnnamedStructValueField {
     pub name: String,
     pub ty: Option<SemanticType>,
     pub field_value: Box<TypedExprStmt>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 impl TypedUnnamedStructValue {
@@ -419,7 +419,7 @@ impl PartialEq for TypedExprStmt {
 
 impl std::hash::Hash for TypedSelfType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // fixed discriminant
+        // fixed tag
         0xDEAD_BEEF_u64.hash(state);
     }
 }
@@ -443,7 +443,7 @@ impl TypedExprStmt {
     }
 }
 
-pub fn literal_expr_from_const_int(value: i128, loc: SourceLoc) -> TypedExprStmt {
+pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExprStmt {
     TypedExprStmt {
         kind: TypedExprKind::Literal(TypedLiteralExpr {
             kind: LiteralKind::Integer(value, None),

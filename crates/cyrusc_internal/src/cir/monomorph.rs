@@ -43,7 +43,7 @@ pub struct CIRMonomorphFuncEntry {
     pub func_params: CIRFuncParams,
     pub func_body: CIRMonomorphFuncBody,
     pub abi_func_info: ABIFunctionInfo,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]

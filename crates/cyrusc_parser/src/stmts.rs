@@ -26,10 +26,10 @@ use cyrusc_ast::modifiers::FuncModifiers;
 use cyrusc_ast::modifiers::StructModifiers;
 use cyrusc_ast::modifiers::UnionModifiers;
 use cyrusc_ast::*;
-use cyrusc_diagcentral::DiagLevel;
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 
-impl Parser {
+impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     pub(crate) fn parse_stmt(
         &mut self,
         grouped_modifiers: Option<UnresolvedModifiers>,
@@ -58,7 +58,7 @@ impl Parser {
         }
 
         let modifiers = grouped_modifiers.clone().unwrap_or(self.parse_unresolved_modifiers()?);
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
 
         if toplevel && self.current_token_is(TokenKind::LeftBrace) {
             if grouped_modifiers.is_some() {
@@ -69,26 +69,24 @@ impl Parser {
         }
 
         if self.current_token_is(TokenKind::Function) {
-            let func_modifiers = modifiers.into_func_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            let func_modifiers = modifiers.into_func_modifiers(loc)?;
             return Ok(vec![self.parse_func(func_modifiers)?]);
         } else if self.current_token_is(TokenKind::Struct) {
-            let struct_modifiers = modifiers.into_struct_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            let struct_modifiers = modifiers.into_struct_modifiers(loc)?;
             return Ok(vec![self.parse_struct(struct_modifiers, false)?]);
         } else if self.current_token_is(TokenKind::Enum) {
-            let enum_modifiers = modifiers.into_enum_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            let enum_modifiers = modifiers.into_enum_modifiers(loc)?;
             return Ok(vec![self.parse_enum(enum_modifiers)?]);
         } else if self.current_token_is(TokenKind::Union) {
-            let union_modifiers = modifiers.into_union_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            let union_modifiers = modifiers.into_union_modifiers(loc)?;
             return Ok(vec![self.parse_union(union_modifiers)?]);
         } else if self.current_token_is(TokenKind::Typedef) {
-            let typedef_modifiers =
-                modifiers.into_typedef_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            let typedef_modifiers = modifiers.into_typedef_modifiers(loc)?;
             return Ok(vec![self.parse_typedef(typedef_modifiers.vis)?]);
         } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
             return Ok(vec![self.parse_global_var(modifiers.clone())?]);
         } else if self.current_token_is(TokenKind::Interface) {
-            let interface_modifiers =
-                modifiers.into_interface_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
+            let interface_modifiers = modifiers.into_interface_modifiers(loc)?;
             return Ok(vec![self.parse_interface(interface_modifiers.vis)?]);
         }
 
@@ -98,8 +96,8 @@ impl Parser {
 
             let stmt = match self.current_token().kind {
                 TokenKind::Var | TokenKind::Const => self.parse_variable(),
-                TokenKind::Defer => self.parse_defer_stmt(),
-                TokenKind::If => self.parse_if_stmt(),
+                TokenKind::Defer => self.parse_defer(),
+                TokenKind::If => self.parse_if(),
                 TokenKind::Return => self.parse_return(),
                 TokenKind::For => self.parse_for_loop(),
                 TokenKind::While => self.parse_while_loop(),
@@ -109,14 +107,14 @@ impl Parser {
                 TokenKind::Switch => self.parse_switch(),
                 TokenKind::Goto => self.parse_goto(),
                 TokenKind::LeftBrace => {
-                    let block_stmt = self.parse_block_stmt()?;
+                    let block_stmt = self.parse_block()?;
                     Ok(Stmt::BlockStmt(block_stmt))
                 }
                 _ => {
                     if matches!(self.current_token().kind, TokenKind::Ident { .. })
                         && self.peek_token_is(TokenKind::Colon)
                     {
-                        return Ok(vec![self.parse_label_stmt()?]);
+                        return Ok(vec![self.parse_label()?]);
                     }
 
                     self.parse_expr_stmt()
@@ -136,7 +134,7 @@ impl Parser {
 
     pub(crate) fn parse_builtin(&mut self) -> Result<Builtin, Diag> {
         let start = self.current_token().loc.start;
-        let loc = self.current_token().loc;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // consume at
 
@@ -145,27 +143,29 @@ impl Parser {
 
         self.must_be_left_paren()?;
 
-        let args = self.parse_expr_series(TokenKind::RightParen)?.0;
+        let args = self.parse_expr_series(TokenKind::RightParen)?;
         self.must_be_right_paren()?;
 
         if self.peek_token_is(TokenKind::LeftBrace) {
             self.next_token(); // consume right paren
-            let block = self.parse_block_stmt()?;
+            let block = self.parse_block()?;
+
+            let end = self.current_token().loc.end;
 
             Ok(Builtin::BuiltinScope(BuiltinScope {
                 name: ident,
                 args,
                 block: Box::new(block),
-                span: Span::new(start, self.current_token().loc.end),
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }))
         } else {
+            let end = self.current_token().loc.end;
+
             Ok(Builtin::BuiltinFunc(BuiltinFunc {
                 name: ident,
                 args,
                 child_stmt: None,
-                span: Span::new(start, self.current_token().loc.end),
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }))
         }
     }
@@ -215,27 +215,30 @@ impl Parser {
 
         self.expect_peek_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Goto(Goto {
             name: label,
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    pub(crate) fn parse_label_stmt(&mut self) -> Result<Stmt, Diag> {
+    pub(crate) fn parse_label(&mut self) -> Result<Stmt, Diag> {
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
+
         let name = self.parse_ident()?;
-        let start = name.span.start;
-        let loc = name.loc.clone();
         self.expect_peek(TokenKind::Colon)?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::Label(Label {
             name,
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    pub(crate) fn parse_block_stmt(&mut self) -> Result<BlockStmt, Diag> {
+    pub(crate) fn parse_block(&mut self) -> Result<BlockStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -247,15 +250,13 @@ impl Parser {
 
         let mut block_stmt: Vec<Stmt> = Vec::new();
 
+        // detect empty block
         if self.current_token_is(TokenKind::RightBrace) {
-            // detected empty block statement
+            let end = self.current_token().loc.end;
+
             return Ok(BlockStmt {
                 exprs: block_stmt,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             });
         }
 
@@ -272,19 +273,22 @@ impl Parser {
         }
 
         self.expect_peek(TokenKind::RightBrace)?;
+
         let end = self.current_token().loc.end;
 
         Ok(BlockStmt {
             exprs: block_stmt,
-            span: Span { start, end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         })
     }
 
     pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, Diag> {
-        let token = self.current_token();
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.expect_current(TokenKind::LeftParen)?;
+
+        let params_start_token = self.current_token();
 
         let mut variadic: Option<FuncVariadicParams> = None;
         let mut list: Vec<FuncParamKind> = Vec::new();
@@ -307,7 +311,9 @@ impl Parser {
                     break;
                 }
                 TokenKind::Ampersand => {
+                    let token = self.current_token();
                     self.next_token(); // ampersand
+
                     let ident = self.parse_ident()?;
                     self.next_token(); // consume ident
 
@@ -317,30 +323,34 @@ impl Parser {
                         );
                     }
 
-                    self_modifier_count += 1;
+                    let end = self.current_token().loc.end;
+
                     list.push(FuncParamKind::SelfModifier(SelfModifier {
                         kind: SelfModifierKind::Referenced,
-                        loc: token.loc.clone(),
-                        span: Span::new(token.span.start, self.current_token().loc.end),
+                        loc: Loc::new(self.file_id(), line, start, end),
                     }));
+
+                    self_modifier_count += 1;
                 }
                 TokenKind::Ident(_) => {
-                    let param_loc = self.current_token().loc.clone();
                     let start = self.current_token().loc.start;
+                    let line = self.current_token().loc.line;
+
                     let ident = self.parse_ident()?;
                     self.next_token(); // consume the ident
 
                     if ident.value == "self" {
-                        self_modifier_count += 1;
+                        let end = self.current_token().loc.end;
+
                         list.push(FuncParamKind::SelfModifier(SelfModifier {
                             kind: SelfModifierKind::Copied,
-                            loc: param_loc,
-                            span: Span::new(start, self.current_token().loc.end),
+                            loc: Loc::new(self.file_id(), line, start, end),
                         }));
-                    } else {
-                        // get the var type
 
+                        self_modifier_count += 1;
+                    } else {
                         let mut var_type: Option<TypeSpecifier> = None;
+
                         if self.current_token_is(TokenKind::Colon) {
                             self.next_token(); // consume the colon
 
@@ -358,24 +368,19 @@ impl Parser {
                             }
                         }
 
+                        let end = self.current_token().loc.end;
+
                         list.push(FuncParamKind::FuncParam(FuncParam {
                             ident,
                             ty: var_type,
-                            span: Span {
-                                start: start,
-                                end: self.current_token().loc.end,
-                            },
-                            loc: param_loc,
+                            loc: Loc::new(self.file_id(), line, start, end),
                         }));
                     }
                 }
                 _ => {
-                    return Err(self.error_at_token(
-                        &token,
-                        ParserDiagKind::ExpectedIdentifier {
-                            got: self.current_token().kind.to_string(),
-                        },
-                    ));
+                    return Err(self.error_at_current(ParserDiagKind::ExpectedIdentifier {
+                        got: self.current_token().kind.to_string(),
+                    }));
                 }
             }
 
@@ -387,13 +392,13 @@ impl Parser {
                     break;
                 }
                 _ => {
-                    return Err(self.error_at_token(&token, ParserDiagKind::MissingComma));
+                    return Err(self.error_at_current(ParserDiagKind::MissingComma));
                 }
             }
         }
 
         if self_modifier_count > 1 {
-            return Err(self.error_at_token(&token, ParserDiagKind::SeveralSelfModifierUsed));
+            return Err(self.error_at_token(&params_start_token, ParserDiagKind::SeveralSelfModifierUsed));
         }
 
         self.expect_current(TokenKind::RightParen)?;
@@ -402,24 +407,27 @@ impl Parser {
     }
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, Diag> {
-        let expr = self.parse_expr(Precedence::Lowest)?.0;
+        let expr = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek_semicolon()?;
         Ok(Stmt::Expr(expr))
     }
 
-    fn parse_enum_field(&mut self) -> Result<EnumVariant, Diag> {
-        let variant_name = self.parse_ident()?;
+    fn parse_enum_variant(&mut self) -> Result<EnumVariant, Diag> {
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
+
+        let ident = self.parse_ident()?;
         self.next_token();
 
-        let mut variant_fields: Vec<EnumValuedField> = Vec::new();
+        let mut valued_fields: Vec<EnumValuedField> = Vec::new();
 
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(EnumVariant::Ident(variant_name));
+            return Ok(EnumVariant::Ident(ident));
         } else if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
-            let value = self.parse_expr(Precedence::Lowest)?.0;
+            let value = self.parse_expr(Precedence::Lowest)?;
             self.next_token(); // consume last token of the expression
-            return Ok(EnumVariant::Valued(variant_name, Box::new(value)));
+            return Ok(EnumVariant::Valued(ident, Box::new(value)));
         } else if self.current_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume left paren
 
@@ -432,11 +440,15 @@ impl Parser {
                     ));
                 }
 
-                let line = self.current_token().loc.line;
-                let field_ty = self.parse_type_specifier()?;
+                let field_type = self.parse_type_specifier()?;
                 self.next_token();
 
-                variant_fields.push(EnumValuedField { ty: field_ty, loc });
+                let end = self.current_token().loc.end;
+
+                valued_fields.push(EnumValuedField {
+                    ty: field_type,
+                    loc: Loc::new(self.file_id(), line, start, end),
+                });
 
                 if self.current_token_is(TokenKind::RightParen) {
                     self.next_token();
@@ -448,10 +460,10 @@ impl Parser {
             }
         }
 
-        if variant_fields.is_empty() {
-            Ok(EnumVariant::Ident(variant_name))
+        if valued_fields.is_empty() {
+            Ok(EnumVariant::Ident(ident))
         } else {
-            Ok(EnumVariant::Variant(variant_name, variant_fields))
+            Ok(EnumVariant::Variant(ident, valued_fields))
         }
     }
 
@@ -467,14 +479,12 @@ impl Parser {
         let type_token = self.parse_type_specifier()?;
         self.next_token();
 
+        let end = self.current_token().loc.end;
+
         let field = UnionField {
             ident,
             ty: type_token,
-            loc,
-            span: Span {
-                start,
-                end: self.current_token().loc.end,
-            },
+            loc: Loc::new(self.file_id(), line, start, end),
         };
 
         self.expect_semicolon()?;
@@ -482,6 +492,7 @@ impl Parser {
         Ok(field)
     }
 
+    // FIXME: Make method_parsing helper methods.
     fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<Stmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
@@ -493,18 +504,21 @@ impl Parser {
 
         let align = self.parse_align_specifier()?;
 
-        let generic_params;
-        if self.current_token_is(TokenKind::LessThan) {
-            generic_params = Some(self.parse_generic_params()?);
-        } else {
-            generic_params = None;
-        }
+        let generic_params = {
+            if self.current_token_is(TokenKind::LessThan) {
+                Some(self.parse_generic_params()?)
+            } else {
+                None
+            }
+        };
 
         let impls = self.parse_object_impls()?;
 
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::Union(Union {
                 ident,
                 methods: Vec::new(),
@@ -513,8 +527,7 @@ impl Parser {
                 align,
                 impls,
                 modifiers,
-                loc,
-                span: Span::new(start, self.current_token().loc.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
@@ -522,45 +535,41 @@ impl Parser {
         let mut methods: Vec<FuncDef> = Vec::new();
 
         loop {
-            match self.current_token().kind {
-                TokenKind::RightBrace => {
-                    break;
-                }
-                TokenKind::EOF => {
-                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-                }
-                TokenKind::Function => {
-                    if let Stmt::FuncDef(method) = self.parse_func(FuncModifiers::default())? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        return Err(self.error_at_current(ParserDiagKind::MethodMustHaveABody));
-                    }
-                }
-                TokenKind::Ident { .. } => {
-                    let field = self.parse_union_field()?;
-                    fields.push(field);
-                }
-                _ => {
-                    let modifiers = self.parse_unresolved_modifiers()?;
-                    let line = self.current_token().loc.line;
-
-                    if self.current_token_is(TokenKind::Function) {
-                        let func_modifiers =
-                            modifiers.into_method_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-
-                        if let Stmt::FuncDef(method) = self.parse_func(func_modifiers)? {
-                            self.next_token(); // consume right brace
-                            methods.push(method);
-                        } else {
-                            return Err(self.error_invalid_token());
-                        }
-                    } else {
-                        break;
-                    }
-                }
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
             }
+
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
+
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let field = self.parse_union_field()?;
+                fields.push(field);
+                continue;
+            }
+
+            if self.current_token_is(TokenKind::Function) {
+                let func_modifiers = FuncModifiers::default();
+                let method = self.parse_method(func_modifiers)?;
+                methods.push(method);
+                continue;
+            }
+
+            let modifiers = self.parse_unresolved_modifiers()?;
+            let loc = self.current_token().loc;
+
+            if self.current_token_is(TokenKind::Function) {
+                let func_modifiers = modifiers.into_method_modifiers(loc)?;
+                let method = self.parse_method(func_modifiers)?;
+                methods.push(method);
+                continue;
+            }
+
+            break;
         }
+
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::Union(Union {
             ident,
@@ -570,21 +579,20 @@ impl Parser {
             modifiers,
             align,
             impls,
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_enum(&mut self, modifiers: EnumModifiers) -> Result<Stmt, Diag> {
-        let line = self.current_token().loc.line;
         let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
 
         self.next_token(); // parse enum keyword
 
-        let enum_name = self.parse_ident()?;
+        let ident = self.parse_ident()?;
         self.next_token(); // consume enum name
 
-        let tag_type = self.parse_enum_discriminant_type()?;
+        let tag_type = self.parse_enum_tag_type()?;
         let align = self.parse_align_specifier()?;
 
         let generic_params;
@@ -598,24 +606,25 @@ impl Parser {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut enum_fields: Vec<EnumVariant> = Vec::new();
+        let mut variants: Vec<EnumVariant> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::Enum(Enum {
-                ident: enum_name,
-                variants: enum_fields,
+                ident,
+                variants,
                 tag_type: tag_type,
                 generic_params,
                 methods: Vec::new(),
                 align,
                 modifiers,
                 impls,
-                loc,
-                span: Span::new(start, self.current_token().loc.end),
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
-        enum_fields.push(self.parse_enum_field()?);
+        variants.push(self.parse_enum_variant()?);
 
         while self.current_token_is(TokenKind::Comma) {
             self.expect_current(TokenKind::Comma)?;
@@ -624,7 +633,7 @@ impl Parser {
                 break;
             }
 
-            enum_fields.push(self.parse_enum_field()?);
+            variants.push(self.parse_enum_variant()?);
             if self.peek_token_is(TokenKind::RightBrace)
                 || self.peek_token_is(TokenKind::Function)
                 || self.peek_token_is(TokenKind::Extern)
@@ -643,64 +652,153 @@ impl Parser {
         let mut methods: Vec<FuncDef> = Vec::new();
 
         loop {
-            match self.current_token().kind {
-                TokenKind::Function => {
-                    if let Stmt::FuncDef(method) = self.parse_func(FuncModifiers::default())? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        return Err(Diag {
-                            kind: Box::new(ParserDiagKind::MethodMustHaveABody),
-                            level: DiagLevel::Error,
-                            loc: Some(DiagLoc::new(SourceLoc::from_loc(
-                                self.current_token().loc,
-                                self.file_name.clone(),
-                            ))),
-                            hint: None,
-                        });
-                    }
-                }
-                _ => {
-                    let modifiers = self.parse_unresolved_modifiers()?;
-                    let line = self.current_token().loc.line;
-
-                    if self.current_token_is(TokenKind::Function) {
-                        let func_modifiers =
-                            modifiers.into_method_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-
-                        if let Stmt::FuncDef(method) = self.parse_func(func_modifiers)? {
-                            self.next_token(); // consume right brace
-                            methods.push(method);
-                        } else {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidToken(self.current_token().kind)),
-                                level: DiagLevel::Error,
-                                loc: Some(DiagLoc::new(SourceLoc::from_loc(
-                                    self.current_token().loc,
-                                    self.file_name.clone(),
-                                ))),
-                                hint: None,
-                            });
-                        }
-                    } else {
-                        break;
-                    }
-                }
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
             }
+
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
+
+            if self.current_token_is(TokenKind::Function) {
+                let func_modifiers = FuncModifiers::default();
+                let method = self.parse_method(func_modifiers)?;
+                methods.push(method);
+                continue;
+            }
+
+            let loc = self.current_token().loc;
+            let modifiers = self.parse_unresolved_modifiers()?;
+
+            if self.current_token_is(TokenKind::Function) {
+                let func_modifiers = modifiers.into_method_modifiers(loc)?;
+                let method = self.parse_method(func_modifiers)?;
+                methods.push(method);
+                continue;
+            }
+
+            break;
         }
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Enum(Enum {
-            ident: enum_name,
-            variants: enum_fields,
+            ident,
+            variants,
             tag_type: tag_type,
             generic_params,
             methods,
             modifiers,
             align,
             impls,
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
+    }
+
+    fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+
+        self.next_token(); // consume struct/bits token
+
+        let struct_name = self.parse_ident()?;
+        self.next_token(); // consume struct name
+
+        let align = self.parse_align_specifier()?;
+
+        let generic_params = {
+            if self.current_token_is(TokenKind::LessThan) {
+                Some(self.parse_generic_params()?)
+            } else {
+                None
+            }
+        };
+
+        let impls = self.parse_object_impls()?;
+
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut fields: Vec<StructField> = Vec::new();
+        let mut methods: Vec<FuncDef> = Vec::new();
+
+        loop {
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
+            }
+
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let field = self.parse_struct_field(None)?;
+                fields.push(field);
+                continue;
+            }
+
+            if self.current_token_is(TokenKind::EOF) {
+                return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+            }
+
+            let modifiers = self.parse_unresolved_modifiers()?;
+
+            if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+                let field_modifiers = modifiers.into_field_modifiers(loc)?;
+                let field = self.parse_struct_field(Some(field_modifiers.vis))?;
+                fields.push(field);
+                continue;
+            }
+
+            let func_modifiers = modifiers.into_method_modifiers(loc)?;
+            let method = self.parse_method(func_modifiers)?;
+            methods.push(method);
+        }
+
+        let end = self.current_token().loc.end;
+
+        Ok(Stmt::Struct(Struct {
+            ident: struct_name,
+            generic_params,
+            impls,
+            modifiers,
+            fields,
+            methods,
+            align,
+            is_packed,
+            loc: Loc::new(self.file_id(), line, start, end),
+        }))
+    }
+
+    fn parse_method(&mut self, modifiers: FuncModifiers) -> Result<FuncDef, Diag> {
+        if let Stmt::FuncDef(func_def) = self.parse_func(modifiers)? {
+            self.next_token(); // consume right brace
+
+            Ok(func_def)
+        } else {
+            Err(self.error_at_current(ParserDiagKind::MethodMustHaveABody))
+        }
+    }
+
+    fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
+        let start = self.current_token().loc.start;
+        let line = self.current_token().loc.line;
+
+        let ident = self.parse_ident()?;
+        self.next_token(); // consume ident
+
+        self.expect_current(TokenKind::Colon)?;
+
+        let type_token = self.parse_type_specifier()?;
+        self.next_token();
+
+        let end = self.current_token().loc.end;
+
+        let field = StructField {
+            ident,
+            ty: type_token,
+            vis: vis.unwrap_or_default(),
+            loc: Loc::new(self.file_id(), line, start, end),
+        };
+
+        self.expect_semicolon()?;
+        Ok(field)
     }
 
     fn parse_object_impls(&mut self) -> Result<Vec<TypeSpecifier>, Diag> {
@@ -724,120 +822,6 @@ impl Parser {
         Ok(impls)
     }
 
-    fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
-        let line = self.current_token().loc.line;
-        let struct_start = self.current_token().loc.start.clone();
-
-        self.next_token(); // consume struct/bits token
-
-        let struct_name = self.parse_ident()?;
-        self.next_token(); // consume struct name
-
-        let align = self.parse_align_specifier()?;
-
-        let generic_params;
-        if self.current_token_is(TokenKind::LessThan) {
-            generic_params = Some(self.parse_generic_params()?);
-        } else {
-            generic_params = None;
-        }
-
-        let impls = self.parse_object_impls()?;
-
-        self.expect_current(TokenKind::LeftBrace)?;
-
-        let mut fields: Vec<StructField> = Vec::new();
-        let mut methods: Vec<FuncDef> = Vec::new();
-
-        loop {
-            match self.current_token().kind {
-                TokenKind::RightBrace => {
-                    break;
-                }
-                TokenKind::EOF => {
-                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
-                }
-                TokenKind::Function => {
-                    if let Stmt::FuncDef(method) = self.parse_func(FuncModifiers::default())? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
-                    } else {
-                        return Err(self.error_at_current(ParserDiagKind::MethodMustHaveABody));
-                    }
-                }
-                TokenKind::Ident { .. } => {
-                    let field = self.parse_struct_field(None)?;
-                    fields.push(field);
-                }
-                _ => {
-                    let modifiers = self.parse_unresolved_modifiers()?;
-                    let line = self.current_token().loc.line;
-
-                    if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
-                        let field_modifiers =
-                            modifiers.into_field_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-
-                        let field = self.parse_struct_field(Some(field_modifiers.vis))?;
-                        fields.push(field);
-                    } else {
-                        let func_modifiers =
-                            modifiers.into_method_modifiers(SourceLoc::from_loc(loc, self.file_name.clone()))?;
-
-                        if let Stmt::FuncDef(method) = self.parse_func(func_modifiers)? {
-                            self.next_token(); // consume right brace
-                            methods.push(method);
-                        } else {
-                            return Err(self.error_invalid_token());
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(Stmt::Struct(Struct {
-            ident: struct_name,
-            generic_params,
-            impls,
-            modifiers,
-            fields,
-            methods,
-            align,
-            is_packed,
-            loc,
-            span: Span {
-                start: struct_start,
-                end: self.current_token().loc.end,
-            },
-        }))
-    }
-
-    fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
-
-        let ident = self.parse_ident()?;
-        self.next_token(); // consume ident
-
-        self.expect_current(TokenKind::Colon)?;
-
-        let type_token = self.parse_type_specifier()?;
-        self.next_token();
-
-        let field = StructField {
-            ident,
-            ty: type_token,
-            vis: vis.unwrap_or_default(),
-            loc,
-            span: Span {
-                start,
-                end: self.current_token().loc.end,
-            },
-        };
-
-        self.expect_semicolon()?;
-        Ok(field)
-    }
-
     fn parse_break(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
@@ -845,9 +829,10 @@ impl Parser {
         self.next_token(); // consume break
         self.must_be_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Break(Break {
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -858,9 +843,10 @@ impl Parser {
         self.next_token(); // consume continue
         self.must_be_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Continue(Continue {
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -922,13 +908,14 @@ impl Parser {
         let mut methods: Vec<FuncDecl> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::Interface(Interface {
                 ident,
                 methods,
-                loc,
-                vis,
                 generic_params,
-                span: Span::new(start, self.current_token().loc.end),
+                vis,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
@@ -956,13 +943,14 @@ impl Parser {
 
         self.expect_peek(TokenKind::RightBrace)?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Interface(Interface {
             ident,
             methods,
-            loc,
-            vis,
             generic_params,
-            span: Span::new(start, self.current_token().loc.end),
+            vis,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1010,20 +998,18 @@ impl Parser {
 
         self.must_be_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         return Ok(Stmt::Import(Import {
             paths,
-            span: Span {
-                start,
-                end: self.current_token().loc.end,
-            },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }));
     }
 
     fn parse_for_loop_body(&mut self) -> Result<Box<BlockStmt>, Diag> {
         let body: Box<BlockStmt>;
         if self.current_token_is(TokenKind::LeftBrace) {
-            body = Box::new(self.parse_block_stmt()?);
+            body = Box::new(self.parse_block()?);
 
             if self.peek_token_is(TokenKind::Semicolon) {
                 self.next_token();
@@ -1054,20 +1040,21 @@ impl Parser {
 
         self.expect_current(TokenKind::In)?;
 
-        let expr = self.parse_expr(Precedence::Lowest)?.0;
+        let expr = self.parse_expr(Precedence::Lowest)?;
         self.next_token();
 
         self.expect_current(TokenKind::RightParen)?;
 
-        let body = self.parse_block_stmt()?;
+        let body = self.parse_block()?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::Foreach(Foreach {
             item: item_identifier,
             index: index_identifier,
             expr,
             body: Box::new(body),
-            span: Span::new(start, self.current_token().loc.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1077,17 +1064,18 @@ impl Parser {
 
         self.next_token(); // consume while token
         self.expect_current(TokenKind::LeftParen)?;
-        let condition = self.parse_expr(Precedence::Lowest)?.0;
+        let condition = self.parse_expr(Precedence::Lowest)?;
         self.next_token();
         self.expect_current(TokenKind::RightParen)?;
 
-        let body = self.parse_block_stmt()?;
+        let body = self.parse_block()?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::While(While {
             condition,
             body: Box::new(body),
-            span: Span::new(start, self.current_token().loc.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1101,7 +1089,7 @@ impl Parser {
         if self.current_token_is(TokenKind::LeftBrace) {
             let body: Box<BlockStmt>;
             if self.current_token_is(TokenKind::LeftBrace) {
-                body = Box::new(self.parse_block_stmt()?);
+                body = Box::new(self.parse_block()?);
 
                 if self.peek_token_is(TokenKind::Semicolon) {
                     self.next_token();
@@ -1110,16 +1098,14 @@ impl Parser {
                 return Err(self.error_at_current(ParserDiagKind::MissingOpeningBrace));
             }
 
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::For(For {
                 initializer: None,
                 condition: None,
                 increment: None,
                 body,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
@@ -1139,42 +1125,39 @@ impl Parser {
             self.expect_current(TokenKind::RightParen)?;
 
             let body = self.parse_for_loop_body()?;
+
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::For(For {
                 initializer,
                 condition: None,
                 increment: None,
                 body,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
-        let condition = self.parse_expr(Precedence::Lowest)?.0;
+        let condition = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek_semicolon()?;
         self.next_token();
 
         let mut increment: Option<Expr> = None;
         if !self.current_token_is(TokenKind::RightParen) {
-            increment = Some(self.parse_expr(Precedence::Lowest)?.0);
+            increment = Some(self.parse_expr(Precedence::Lowest)?);
             self.next_token(); // consume increment token
         }
 
         self.expect_current(TokenKind::RightParen)?;
         let body = self.parse_for_loop_body()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::For(For {
             initializer,
             condition: Some(condition),
             increment,
             body,
-            span: Span {
-                start,
-                end: self.current_token().loc.end,
-            },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1275,33 +1258,32 @@ impl Parser {
         }
 
         if self.peek_token_is(TokenKind::Semicolon) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::ExportTuple(ExportTuple {
                 pattern,
                 ty: variable_type,
                 rhs: None,
                 is_const,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
         self.expect_peek(TokenKind::Assign)?;
         self.next_token(); // consume assign
 
-        let (expr, span) = self.parse_expr(Precedence::Lowest)?;
+        let expr = self.parse_expr(Precedence::Lowest)?;
 
         self.expect_peek_semicolon()?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::ExportTuple(ExportTuple {
             pattern,
             rhs: Some(expr),
             ty: variable_type,
             is_const,
-            span: Span { start, end: span.end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1342,30 +1324,29 @@ impl Parser {
         }
 
         if self.current_token_is(TokenKind::Semicolon) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::Variable(Variable {
                 ident,
                 ty: variable_type,
                 rhs: None,
                 is_const,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
         self.expect_current(TokenKind::Assign)?;
 
-        let (expr, span) = self.parse_expr(Precedence::Lowest)?;
+        let expr = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek_semicolon()?;
+
+        let end = self.current_token().loc.end;
 
         Ok(Stmt::Variable(Variable {
             ident,
             rhs: Some(expr),
             ty: variable_type,
             is_const,
-            span: Span { start, end: span.end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1392,6 +1373,8 @@ impl Parser {
         if self.current_token_is(TokenKind::LeftBrace) {
             return_type = None;
         } else if self.current_token_is(TokenKind::Semicolon) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::FuncDecl(FuncDecl {
                 ident: func_name,
                 generic_params,
@@ -1399,16 +1382,15 @@ impl Parser {
                 return_type: None,
                 modifiers,
                 renamed_as: None,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
-            self.next_token();
+            self.next_token(); // consume as
+
             let renamed_as = self.parse_ident()?;
             self.next_token();
+
+            let end = self.current_token().loc.end;
 
             return Ok(Stmt::FuncDecl(FuncDecl {
                 ident: func_name,
@@ -1417,11 +1399,7 @@ impl Parser {
                 return_type: None,
                 modifiers,
                 renamed_as: Some(renamed_as),
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         } else {
             return_type = Some(self.parse_type_specifier()?);
@@ -1429,6 +1407,8 @@ impl Parser {
         }
 
         if self.current_token_is(TokenKind::Semicolon) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::FuncDecl(FuncDecl {
                 ident: func_name,
                 generic_params,
@@ -1436,11 +1416,7 @@ impl Parser {
                 return_type,
                 modifiers,
                 renamed_as: None,
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
             self.next_token();
@@ -1458,6 +1434,8 @@ impl Parser {
                 ));
             }
 
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::FuncDecl(FuncDecl {
                 ident: func_name,
                 generic_params,
@@ -1465,15 +1443,12 @@ impl Parser {
                 return_type,
                 modifiers,
                 renamed_as: Some(renamed_as),
-                span: Span {
-                    start,
-                    end: self.current_token().loc.end,
-                },
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
-        let body = Box::new(self.parse_block_stmt()?);
+        let body = Box::new(self.parse_block()?);
+
         let end = self.current_token().loc.end;
 
         return Ok(Stmt::FuncDef(FuncDef {
@@ -1483,8 +1458,7 @@ impl Parser {
             body,
             return_type,
             modifiers,
-            span: Span { start, end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }));
     }
 
@@ -1495,42 +1469,43 @@ impl Parser {
         self.next_token(); // consume return token
 
         if self.current_token_is(TokenKind::Semicolon) {
+            let end = self.current_token().loc.end;
+
             return Ok(Stmt::Return(Return {
                 argument: None,
-                span: Span::new(start, self.current_token().loc.end),
-                loc,
+                loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
 
-        let argument = self.parse_expr(Precedence::Lowest)?.0;
+        let argument = self.parse_expr(Precedence::Lowest)?;
         self.next_token();
 
         self.must_be_semicolon()?;
 
-        let end = self.peek_token().span.end;
+        let end = self.peek_token().loc.end;
 
         Ok(Stmt::Return(Return {
             argument: Some(argument),
-            span: Span { start, end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
     fn parse_global_var(&mut self, modifiers: UnresolvedModifiers) -> Result<Stmt, Diag> {
         let line = self.current_token().loc.line;
         let start = self.current_token().loc.start;
+        let loc = self.current_token().loc;
 
-        let is_const;
-        if self.current_token_is(TokenKind::Const) {
-            self.next_token();
-            is_const = true;
-        } else {
-            self.expect_current(TokenKind::Var)?;
-            is_const = false;
-        }
+        let is_const = {
+            if self.current_token_is(TokenKind::Const) {
+                self.next_token();
+                true
+            } else {
+                self.expect_current(TokenKind::Var)?;
+                false
+            }
+        };
 
-        let global_var_modifiers =
-            modifiers.into_global_var_modifiers(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))?;
+        let global_var_modifiers = modifiers.into_global_var_modifiers(loc)?;
 
         let ident = self.parse_ident()?;
         self.next_token();
@@ -1545,7 +1520,7 @@ impl Parser {
         let expr = {
             if self.current_token_is(TokenKind::Assign) {
                 self.next_token();
-                let expr = Some(self.parse_expr(Precedence::Lowest)?.0);
+                let expr = Some(self.parse_expr(Precedence::Lowest)?);
                 self.next_token();
                 expr
             } else {
@@ -1555,14 +1530,15 @@ impl Parser {
 
         self.must_be_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::GlobalVar(GlobalVar {
             ident,
             type_specifier,
             expr,
             is_const,
             modifiers: global_var_modifiers,
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1589,13 +1565,14 @@ impl Parser {
 
         self.must_be_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Typedef(Typedef {
             vis,
             ident,
             type_specifier,
             generic_params,
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
@@ -1605,8 +1582,10 @@ impl Parser {
 
         self.next_token();
         self.expect_current(TokenKind::LeftParen)?;
-        let operand = self.parse_expr(Precedence::Lowest)?.0;
+
+        let operand = self.parse_expr(Precedence::Lowest)?;
         self.next_token();
+
         self.expect_current(TokenKind::RightParen)?;
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -1614,6 +1593,8 @@ impl Parser {
         let mut default_case: Option<BlockStmt> = None;
 
         fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
+            let line = this.current_token().loc.line;
+
             let case_pattern = if this.current_token_is(TokenKind::Dot) {
                 this.next_token();
                 let ident = this.parse_ident()?;
@@ -1638,39 +1619,43 @@ impl Parser {
                     SwitchCasePattern::Ident(ident)
                 }
             } else {
-                let start = this.current_token().span.start;
-                let loc = this.current_token().loc.clone();
-                let expr = this.parse_expr(Precedence::Prefix)?.0;
+                let start = this.current_token().loc.start;
+
+                let expr = this.parse_expr(Precedence::Prefix)?;
                 this.next_token();
 
                 if this.current_token_is(TokenKind::TripleDot) {
                     // range (exclusive)
                     this.next_token();
+
                     let lower = expr;
-                    let upper = this.parse_expr(Precedence::Prefix)?.0;
+                    let upper = this.parse_expr(Precedence::Prefix)?;
                     this.next_token();
+
+                    let end = this.current_token().loc.end;
 
                     SwitchCasePattern::Range(Range {
                         lower,
                         upper,
                         inclusive_upper: false,
-                        loc,
-                        span: Span::new(start, this.current_token().span.end),
+                        loc: Loc::new(this.file_id(), line, start, end),
                     })
                 } else if this.current_token_is(TokenKind::DoubleDot) && this.peek_token_is(TokenKind::Assign) {
                     // range (inclusive)
                     this.next_token();
                     this.next_token();
+
                     let lower = expr;
-                    let upper = this.parse_expr(Precedence::Prefix)?.0;
+                    let upper = this.parse_expr(Precedence::Prefix)?;
                     this.next_token();
+
+                    let end = this.current_token().loc.end;
 
                     SwitchCasePattern::Range(Range {
                         lower,
                         upper,
                         inclusive_upper: true,
-                        loc,
-                        span: Span::new(start, this.current_token().span.end),
+                        loc: Loc::new(this.file_id(), line, start, end),
                     })
                 } else {
                     SwitchCasePattern::Expr(expr)
@@ -1681,8 +1666,9 @@ impl Parser {
 
         loop {
             if self.current_token_is(TokenKind::Case) {
-                let case_loc = self.current_token().loc.clone();
                 let case_start = self.current_token().loc.start;
+                let case_line = self.current_token().loc.line;
+
                 self.next_token();
 
                 let mut patterns: Vec<SwitchCasePattern> = Vec::new();
@@ -1700,20 +1686,23 @@ impl Parser {
 
                 self.expect_current(TokenKind::FatArrow)?;
 
-                let case_body = self.parse_block_stmt()?;
+                let case_body = self.parse_block()?;
                 self.next_token();
+
+                let end = self.current_token().loc.end;
 
                 cases.push(SwitchCase {
                     patterns,
                     body: case_body,
-                    span: Span::new(case_start, self.current_token().loc.end),
-                    loc: case_loc,
+                    loc: Loc::new(self.file_id(), case_line, case_start, end),
                 });
             } else if self.current_token_is(TokenKind::Default) {
                 self.next_token();
                 self.expect_current(TokenKind::FatArrow)?;
-                let case_body = self.parse_block_stmt()?;
+
+                let case_body = self.parse_block()?;
                 self.next_token();
+
                 default_case = Some(case_body);
                 break;
             } else {
@@ -1723,16 +1712,17 @@ impl Parser {
 
         self.must_be_right_brace()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Switch(Switch {
             operand,
             cases,
             default_case,
-            span: Span::new(start, self.current_token().loc.end),
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    fn parse_if_stmt(&mut self) -> Result<Stmt, Diag> {
+    fn parse_if(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1742,11 +1732,11 @@ impl Parser {
         self.expect_current(TokenKind::If)?;
         self.expect_current(TokenKind::LeftParen)?;
 
-        let condition = self.parse_expr(Precedence::Lowest)?.0;
+        let condition = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek(TokenKind::RightParen)?;
         self.next_token(); // consume right paren
 
-        let consequent = Box::new(self.parse_block_stmt()?);
+        let consequent = Box::new(self.parse_block()?);
 
         if self.peek_token_is(TokenKind::Else) {
             self.next_token(); // consume right brace
@@ -1756,15 +1746,17 @@ impl Parser {
             self.next_token(); // consume else token
 
             if self.current_token_is(TokenKind::If) {
-                let else_if_start = self.current_token().loc.start;
-                self.next_token(); // consume if token
+                let start = self.current_token().loc.start;
 
+                self.next_token(); // consume if token
                 self.expect_current(TokenKind::LeftParen)?;
-                let (condition, _) = self.parse_expr(Precedence::Lowest)?;
+
+                let cond = self.parse_expr(Precedence::Lowest)?;
                 self.next_token(); // consume last token of the expression
+
                 self.expect_current(TokenKind::RightParen)?;
 
-                let consequent = Box::new(self.parse_block_stmt()?);
+                let consequent = Box::new(self.parse_block()?);
 
                 if self.peek_token_is(TokenKind::Else) {
                     self.next_token(); // consume else token
@@ -1773,19 +1765,15 @@ impl Parser {
                 let end = self.current_token().loc.end;
 
                 branches.push(If {
-                    condition,
+                    condition: cond,
+                    alternate: None,
                     consequent,
                     branches: Vec::new(),
-                    alternate: None,
-                    span: Span {
-                        start: else_if_start,
-                        end,
-                    },
-                    loc: loc.clone(),
+                    loc: Loc::new(self.file_id(), line, start, end),
                 });
             } else {
                 // parse else block
-                alternate = Some(Box::new(self.parse_block_stmt()?));
+                alternate = Some(Box::new(self.parse_block()?));
 
                 if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                     return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
@@ -1802,24 +1790,24 @@ impl Parser {
             consequent,
             branches,
             alternate,
-            span: Span { start, end },
-            loc,
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    fn parse_defer_stmt(&mut self) -> Result<Stmt, Diag> {
+    fn parse_defer(&mut self) -> Result<Stmt, Diag> {
         let start = self.current_token().loc.start;
-        let loc = self.current_token().loc;
+        let line = self.current_token().loc.line;
 
         self.next_token();
         let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
 
         self.must_be_semicolon()?;
 
+        let end = self.current_token().loc.end;
+
         Ok(Stmt::Defer(Defer {
             operand: Box::new(stmt),
-            loc,
-            span: Span::new(start, self.current_token().loc.end),
+            loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 }

@@ -40,7 +40,7 @@ pub enum CIRTy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRTupleTy {
     pub elements: Vec<CIRTy>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +70,7 @@ pub struct CIRStructTy {
     pub fields_info: Vec<(String, SourceLoc)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,7 +80,7 @@ pub struct CIRUnionTy {
     pub fields_info: Vec<(String, SourceLoc)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,7 +90,7 @@ pub struct CIREnumTy {
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRTy>>,
-    pub loc: SourceLoc,
+    pub loc: Loc,
 }
 
 impl CIREnumTy {
