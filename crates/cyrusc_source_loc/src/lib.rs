@@ -15,14 +15,20 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+    path::Path,
+};
+
+use cyrusc_fs_utils::read_file;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileID(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct SourceMap {
-    files: HashMap<FileID, SourceFile>,
+    files: RefCell<HashMap<FileID, SourceFile>>,
     next_id: u32,
 }
 
@@ -45,7 +51,7 @@ impl SourceMap {
     /// Creates a new, empty SourceMap.
     pub fn new() -> Self {
         Self {
-            files: HashMap::new(),
+            files: RefCell::new(HashMap::new()),
             next_id: 0,
         }
     }
@@ -54,14 +60,24 @@ impl SourceMap {
     pub fn add_file(&mut self, name: String, content: String) -> FileID {
         let id = FileID(self.next_id);
         let source_file = SourceFile::new(id, name, content);
-        self.files.insert(id, source_file);
+        self.files.borrow_mut().insert(id, source_file);
         self.next_id += 1;
         id
     }
 
+    // Loads a file from disk and registers it in the SourceMap.
+    pub fn add_file_by_loading<P: AsRef<Path>>(&mut self, path: P) -> FileID {
+        let (content, name) = read_file(&path);
+        self.add_file(name, content)
+    }
+
     /// Retrieves a SourceFile by its FileID.
-    pub fn get_file(&self, id: FileID) -> Option<&SourceFile> {
-        self.files.get(&id)
+    pub fn get_file(&self, id: FileID) -> Option<Ref<'_, SourceFile>> {
+        if !self.files.borrow().contains_key(&id) {
+            return None;
+        }
+
+        Some(std::cell::Ref::map(self.files.borrow(), |m| m.get(&id).unwrap()))
     }
 }
 

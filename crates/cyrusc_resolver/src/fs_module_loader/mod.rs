@@ -14,15 +14,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::diagnostics::ModuleFSLoaderDiagKind;
 use cyrusc_ast::{
     Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string,
 };
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
+use cyrusc_internal::{module_loader::ModuleLoader, source_parser::SourceParser};
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
-use cyrusc_tokens::loc::Location;
+use cyrusc_source_loc::SourceMap;
 use std::{
     env,
     hash::{Hash, Hasher},
@@ -32,121 +34,41 @@ use std::{
 
 mod diagnostics;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ModuleAlias {
-    Group(String),
-    Single(Vec<ModuleSegmentSingle>),
-}
-
+/// Options controlling how modules are located on disk.
+/// Defines search roots for user code and optional standard library.
 #[derive(Debug)]
-pub struct ModuleLoaderOptions {
+pub struct FsModuleLoaderOptions {
     pub base_path: String,
     pub stdlib_path: Option<String>,
     pub source_dirs: Vec<String>,
 }
 
+/// Filesystem-backed module loader.
+/// Resolves module paths, loads files, and delegates parsing to a SourceParser.
 #[derive(Debug)]
-pub struct ModuleLoader {
-    pub opts: ModuleLoaderOptions,
+pub struct FsModuleLoader<'source_map> {
+    pub opts: FsModuleLoaderOptions,
+    pub source_parser: Box<dyn SourceParser>,
+    pub source_map: &'source_map mut SourceMap,
 }
 
-#[derive(Debug, Clone)]
-pub struct LoadedModule {
-    pub alias: ModuleAlias,
-    pub path: ModulePath,
-    pub file_path: PathBuf,
-    pub program: Rc<ProgramTree>,
-}
-
-// TODO: Consider to write comments for this section.
-impl ModuleLoader {
+impl FsModuleLoader {
     pub fn new(opts: ModuleLoaderOptions) -> Self {
         ModuleLoader { opts }
     }
 
-    pub fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, (ModuleFSLoaderDiagKind, Location)>> {
-        let mut loaded_modules_list: Vec<Result<LoadedModule, (ModuleFSLoaderDiagKind, Location)>> = Vec::new();
+    /// Computes the filesystem path for an imported module.
+    /// Handles stdlib redirection and resolves full module paths.
+    fn get_imported_module_file_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSLoaderDiagKind> {
+        let stdlib_path = self.opts.stdlib_path.map(|str| Path::new(&str));
+        let stdlib_modules_path = || get_stdlib_modules_path(stdlib_path).to_str().unwrap().to_string();
 
-        for sub_import in &import.paths {
-            let mut module_file_path = match self.imported_module_path(sub_import.segments.clone()) {
-                Ok(path) => path,
-                Err(diag) => {
-                    loaded_modules_list.push(Err((diag, sub_import.loc.clone())));
-                    continue;
-                }
-            };
-
-            let path_buf = Path::new(&module_file_path);
-            if path_buf.is_dir() {
-                let index_path = path_buf.join("index.cyrus");
-                if !index_path.exists() {
-                    loaded_modules_list.push(Err((
-                        ModuleFSLoaderDiagKind::ModuleIndexNotFound {
-                            module_name: module_segments_as_string(sub_import.segments.clone()),
-                        },
-                        sub_import.loc.clone(),
-                    )));
-                    continue;
-                }
-                module_file_path = index_path.to_str().unwrap().to_string();
-            }
-
-            let file_content = match std::fs::read_to_string(&module_file_path) {
-                Ok(content) => content,
-                Err(_) => {
-                    loaded_modules_list.push(Err((
-                        ModuleFSLoaderDiagKind::ModuleNotFound {
-                            module_name: module_segments_as_string(sub_import.segments.clone()),
-                        },
-                        sub_import.loc.clone(),
-                    )));
-                    continue;
-                }
-            };
-
-            let mut lexer = Lexer::new(file_content, module_file_path.clone());
-            let mut parser = Parser::new(lexer.tokenize(), module_file_path.clone());
-
-            match parser.parse() {
-                Ok(program_tree) => {
-                    let program_tree_rc = Rc::new(ProgramTree {
-                        body: Rc::clone(&program_tree.body),
-                    });
-
-                    let module_alias = match sub_import.segments.last().unwrap() {
-                        ModuleSegment::SubModule(ident) => {
-                            ModuleAlias::Group(sub_import.alias.clone().unwrap_or(ident.value.clone()))
-                        }
-                        ModuleSegment::Single(module_segment_singles) => {
-                            ModuleAlias::Single(module_segment_singles.clone())
-                        }
-                    };
-
-                    let loaded_module = LoadedModule {
-                        alias: module_alias,
-                        path: sub_import.clone(),
-                        program: program_tree_rc,
-                        file_path: Path::new(&module_file_path).to_path_buf(),
-                    };
-
-                    loaded_modules_list.push(Ok(loaded_module));
-                }
-                Err(errors) => {
-                    parser.display_parser_errors(errors.clone());
-                }
-            }
-        }
-
-        loaded_modules_list
-    }
-
-    fn imported_module_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSLoaderDiagKind> {
         let mut sources = self.opts.source_dirs.clone();
 
         let mut segments = segments;
         if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.value == "std") {
             segments.remove(0);
-            sources = vec![self.std_modules_path()];
+            sources = vec![stdlib_modules_path()];
         }
 
         // starting point
@@ -154,6 +76,8 @@ impl ModuleLoader {
         self.load_module_segments(&segments, sources, module_file_path)
     }
 
+    /// Walks through module segments to locate either a `.cyrus` file or
+    /// a directory containing `index.cyrus`. Reports missing or ambiguous modules.
     fn load_module_segments(
         &self,
         segments: &[ModuleSegment],
@@ -223,25 +147,76 @@ impl ModuleLoader {
 
         Ok(module_file_path)
     }
+}
 
-    fn std_modules_path(&self) -> String {
-        match self.opts.stdlib_path.clone() {
-            Some(stdlib_path) => stdlib_path,
-            None => match env::var("CYRUS_STDLIB_PATH") {
-                Ok(stdlib_path) => stdlib_path,
-                Err(_) => {
-                    exit_with_single_diag!(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ModuleFSLoaderDiagKind::StdlibNotFound),
-                        loc: None,
-                        hint: None
-                    });
+impl ModuleLoader for FsModuleLoader {
+    /// Loads all modules referenced in an import statement.
+    /// Phase 1: locate and parse each module.  
+    /// Phase 2: if all succeeded, construct LoadedModule entries.
+    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, (ModuleFSLoaderDiagKind, Loc)>> {
+        // phase 1: collect and parse all modules
+        let mut parsed_program_trees: Vec<(PathBuf, FileID, Rc<ProgramTree>, &ImportPath)> = Vec::new();
+        let mut loaded_modules_list: Vec<Result<LoadedModule, (ModuleFSLoaderDiagKind, Loc)>> = Vec::new();
+
+        for sub_import in &import.paths {
+            let module_file_path = match self.get_imported_module_file_path(sub_import.segments.clone()) {
+                Ok(path) => path,
+                Err(diag) => {
+                    loaded_modules_list.push(Err((diag, sub_import.loc.clone())));
+                    continue;
                 }
-            },
+            };
+
+            let file_id = self.source_map.add_file_by_loading(&module_file_path);
+
+            let Ok(program_tree) = self.source_parser.parse_program(file_id) else {
+                // parsing failed → record and continue parsing others
+                loaded_modules_list.push(Err((ModuleFSLoaderDiagKind::ParseFailed, sub_import.loc.clone())));
+                continue;
+            };
+
+            let program_tree_rc = Rc::new(ProgramTree {
+                body: Rc::clone(&program_tree.body),
+            });
+
+            parsed_program_trees.push((
+                Path::new(&module_file_path).to_path_buf(),
+                file_id,
+                program_tree_rc,
+                sub_import,
+            ));
         }
+
+        // if any module failed parsing/path resolution, stop immediately
+        if loaded_modules_list.iter().any(|r| r.is_err()) {
+            return loaded_modules_list;
+        }
+
+        // phase 2: construct LoadedModule objects
+        for (file_path, _file_id, program_tree_rc, sub_import) in parsed_program_trees {
+            let module_alias = match sub_import.segments.last().unwrap() {
+                ModuleSegment::SubModule(ident) => {
+                    ModuleAlias::Group(sub_import.alias.clone().unwrap_or(ident.value.clone()))
+                }
+                ModuleSegment::Single(module_segment_singles) => ModuleAlias::Single(module_segment_singles.clone()),
+            };
+
+            let loaded_module = LoadedModule {
+                alias: module_alias,
+                path: sub_import.clone(),
+                program: program_tree_rc,
+                file_path,
+            };
+
+            loaded_modules_list.push(Ok(loaded_module));
+        }
+
+        loaded_modules_list
     }
 }
 
+/// Forms a stable module name from a filesystem path.
+/// Strips extensions, normalizes separators, and prefixes stdlib modules.
 pub fn make_module_name_from_filepath<P: AsRef<Path>>(
     path: P,
     base_path: Option<&Path>,
@@ -292,6 +267,25 @@ pub fn make_module_name_from_filepath<P: AsRef<Path>>(
         .chars()
         .map(|ch| if ch.is_alphanumeric() || ch == '_' { ch } else { '_' })
         .collect()
+}
+
+/// Resolves the active stdlib directory.
+/// Uses explicit configuration first, then falls back to environment-variable(`CYRUS_STDLIB_PATH`).
+fn get_stdlib_modules_path(stdlib_path: Option<&Path>) -> &Path {
+    match stdlib_path {
+        Some(stdlib_path) => stdlib_path,
+        None => match env::var("CYRUS_STDLIB_PATH") {
+            Ok(stdlib_path) => Path::new(&stdlib_path),
+            Err(_) => {
+                exit_with_single_diag!(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ModuleFSLoaderDiagKind::StdlibNotFound),
+                    loc: None,
+                    hint: None
+                });
+            }
+        },
+    }
 }
 
 impl Hash for ModuleAlias {

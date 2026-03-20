@@ -289,7 +289,6 @@ dependencies = [
  "cyrusc_fs_utils",
  "cyrusc_internal",
  "cyrusc_lexer",
- "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_scaffold_parser",
@@ -335,6 +334,7 @@ version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
+ "cyrusc_source_loc",
  "cyrusc_tast",
  "cyrusc_tokens",
  "cyrusc_vtable_registry",
@@ -358,20 +358,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_modulefsloader"
-version = "0.1.0"
-dependencies = [
- "cyrusc_ast",
- "cyrusc_diagcentral",
- "cyrusc_fs_utils",
- "cyrusc_lexer",
- "cyrusc_parser",
- "cyrusc_tokens",
- "thiserror",
- "thiserror-impl",
-]
-
-[[package]]
 name = "cyrusc_parser"
 version = "0.1.0"
 dependencies = [
@@ -392,9 +378,10 @@ dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
+ "cyrusc_internal",
  "cyrusc_lexer",
- "cyrusc_modulefsloader",
  "cyrusc_parser",
+ "cyrusc_source_loc",
  "cyrusc_tast",
  "cyrusc_tokens",
  "rand",
@@ -428,7 +415,6 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_lexer",
- "cyrusc_modulefsloader",
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_strescape",
@@ -444,6 +430,9 @@ dependencies = [
 [[package]]
 name = "cyrusc_source_loc"
 version = "0.1.0"
+dependencies = [
+ "cyrusc_fs_utils",
+]
 
 [[package]]
 name = "cyrusc_strescape"

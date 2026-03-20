@@ -13,7 +13,6 @@ cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-cyrusc_modulefsloader = { path = "../cyrusc_modulefsloader", version = "*" }
 cyrusc_strescape = { path = "../cyrusc_strescape", version = "*" }
 cyrusc_const_eval = { path = "../cyrusc_const_eval", version = "*" }
 thiserror = "2.0.17"

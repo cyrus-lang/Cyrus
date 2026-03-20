@@ -16,7 +16,6 @@
  */
 use cyrusc_fs_utils::{get_directory_of_file, read_file};
 use cyrusc_lexer::Lexer;
-use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, VisitingModule, generate_module_id};
 use cyrusc_tast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};

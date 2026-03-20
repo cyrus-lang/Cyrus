@@ -15,9 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi;
-pub mod cir;
-pub mod scopes;
-pub mod symbols;
-pub mod module_loader;
-pub mod source_parser;
+use cyrusc_ast::ProgramTree;
+use cyrusc_diagcentral::DiagKind;
+use cyrusc_source_loc::Loc;
+
+pub trait SourceParser {
+    fn parse_program(&mut self, file_id: FileId) -> Result<ProgramTree, DiagKind>;
+}

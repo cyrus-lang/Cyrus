@@ -19,6 +19,7 @@ use crate::abi::{ReprAttr, Visibility};
 use crate::modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers};
 use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_source_loc::Loc;
+use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::{Token, literals::Literal};
 use std::{
     hash::{Hash, Hasher},
@@ -765,6 +766,19 @@ pub enum TypeArg {
 }
 
 pub type TypeArgs = Vec<TypeArg>;
+
+// Returns the provided return type, or constructs a default `void` type.
+///
+/// This utility is used by the parser when building the raw AST to ensure
+/// that functions without an explicit return type are assigned a `void`
+/// return type. The resulting `TypeSpecifier` preserves the provided
+/// source location and span for accurate diagnostics.
+pub fn return_type_or_default_void(return_type: Option<TypeSpecifier>, loc: Loc) -> TypeSpecifier {
+    return_type.unwrap_or(TypeSpecifier::TypeToken(Token {
+        kind: TokenKind::Void,
+        loc,
+    }))
+}
 
 impl ModuleSegment {
     pub fn as_identifier_opt(&self) -> Option<Ident> {

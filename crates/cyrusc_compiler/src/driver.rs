@@ -27,7 +27,6 @@ use cyrusc_internal::{
     cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel},
 };
 use cyrusc_lexer::Lexer;
-use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, VisitingModule, generate_module_id};
 use cyrusc_scaffold_parser::{

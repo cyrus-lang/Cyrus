@@ -33,7 +33,7 @@ pub struct SymbolEntry {
 #[derive(Debug, Clone)]
 pub enum SymbolEntryKind {
     Method(ResolvedMethod),
-    Func(ResolvedFunction),
+    Func(ResolvedFunc),
     Typedef(ResolvedTypedef),
     GlobalVar(ResolvedGlobalVar),
     Struct(ResolvedStruct),
@@ -80,7 +80,7 @@ pub struct ResolvedMethod {
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedFunction {
+pub struct ResolvedFunc {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
@@ -189,7 +189,7 @@ impl SymbolEntry {
         }
     }
 
-    pub fn as_func(&self) -> Option<&ResolvedFunction> {
+    pub fn as_func(&self) -> Option<&ResolvedFunc> {
         match &self.kind {
             SymbolEntryKind::Func(func) => Some(func),
             _ => None,

@@ -15,9 +15,25 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi;
-pub mod cir;
-pub mod scopes;
-pub mod symbols;
-pub mod module_loader;
-pub mod source_parser;
+use cyrusc_ast::{ModulePath, ProgramTree};
+use cyrusc_diagcentral::DiagKind;
+use cyrusc_source_loc::Loc;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone)]
+pub struct LoadedModule {
+    pub alias: ModuleAlias,
+    pub path: ModulePath,
+    pub file_path: PathBuf,
+    pub program: Rc<ProgramTree>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModuleAlias {
+    Group(String),
+    Single(Vec<ModuleSegmentSingle>),
+}
+
+pub trait ModuleLoader {
+    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, (DiagKind, Loc)>>;
+}

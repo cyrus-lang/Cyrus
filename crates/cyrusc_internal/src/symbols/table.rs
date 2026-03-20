@@ -15,10 +15,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::sync::Arc;
+
 pub trait ScopeQuery {
-    fn lookup_local(&self, scope: ScopeID, name: &str) -> Option<LocalSymbol>;
-    fn lookup_in_scope_chain(&self, scope: ScopeID, name: &str) -> Option<LocalOrGlobalSymbol>;
-    fn local_scope_of_decl(&self, decl: DeclID) -> Option<LocalScope>;
+    fn lookup_local(&self, scope: ScopeID, name: &str) -> Option<SymbolID>;
+    fn lookup_chain(&self, scope: ScopeID, name: &str) -> Option<SymbolID>;
 }
 
 pub trait GlobalSymbolQuery {
@@ -29,20 +30,22 @@ pub trait GlobalSymbolQuery {
 }
 
 pub trait SymbolQuery {
-    fn resolve_variable(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedVariable>;
-    fn resolve_method(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedMethod>;
-    fn resolve_function(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedFunction>;
-    fn resolve_typedef(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedTypedef>;
-    fn resolve_global_var(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedGlobalVar>;
-    fn resolve_interface(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedInterface>;
-    fn resolve_union(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedUnion>;
-    fn resolve_enum(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedEnum>;
-    fn resolve_struct(&self, scope: ScopeID, id: SymbolID) -> Option<ResolvedStruct>;
+    fn resolve_variable(&self, id: SymbolID) -> Option<ResolvedVariable>;
+    fn resolve_method(&self, id: SymbolID) -> Option<ResolvedMethod>;
+    fn resolve_func(&self, id: SymbolID) -> Option<ResolvedFunction>;
+    fn resolve_typedef(&self, id: SymbolID) -> Option<ResolvedTypedef>;
+    fn resolve_global_var(&self, id: SymbolID) -> Option<ResolvedGlobalVar>;
+    fn resolve_interface(&self, id: SymbolID) -> Option<ResolvedInterface>;
+    fn resolve_union(&self, id: SymbolID) -> Option<ResolvedUnion>;
+    fn resolve_enum(&self, id: SymbolID) -> Option<ResolvedEnum>;
+    fn resolve_struct(&self, id: SymbolID) -> Option<ResolvedStruct>;
 }
 
-#[derive(Debug)]
+/// A collection of symbols and their metadata within a specific scope or module.
 pub struct SymbolTable {
+    /// Mapping from unique symbol identifiers to their semantic entries.
     pub entries: HashMap<SymbolID, SymbolEntry>,
+    /// Mapping from symbol names to their identifiers for fast lookup.
     pub names: HashMap<String, SymbolID>,
 }
 

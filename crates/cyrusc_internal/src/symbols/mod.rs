@@ -15,9 +15,5 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi;
-pub mod cir;
-pub mod scopes;
 pub mod symbols;
-pub mod module_loader;
-pub mod source_parser;
+pub mod table;

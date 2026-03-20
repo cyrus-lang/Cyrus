@@ -15,12 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::Resolver;
 use cyrusc_ast::ProgramTree;
-use cyrusc_modulefsloader::ModuleAlias;
 use cyrusc_tast::{ModuleID, TypedProgramTree};
 use std::{cell::RefCell, collections::HashSet, path::PathBuf, rc::Rc};
-
-use crate::Resolver;
 
 // Track imported module + alias
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -31,9 +29,9 @@ pub(crate) struct ImportedModuleEntry {
 
 // Used to check import cycles.
 pub(crate) struct VisitingModule {
-    // stack of modules currently being resolved
+    // Stack of modules currently being resolved.
     pub active: HashSet<PathBuf>,
-    // modules fully resolved
+    // Modules fully resolved.
     pub done: HashSet<PathBuf>,
 }
 
@@ -48,20 +46,22 @@ impl VisitingModule {
 }
 
 impl Resolver {
-    /// Entry point for resolving a module.
+    /// Resolve a module and produce its typed program tree.
     ///
-    /// This function performs a full two-phase resolution of a module:
-    ///   1. **Declaration collection pass** – Collects symbol names (function/struct declarations, etc.)
-    ///      and registers them in the global symbol table for this module.
-    ///   2. **Definition resolution pass** – Resolves the actual definitions and types of the previously
-    ///      declared symbols, producing a fully typed program tree.
+    /// Performs a two‑phase semantic resolution:
     ///
-    /// It also ensures that:
-    ///   - Each module is only analyzed once (`analyzed_modules` set).
-    ///   - Imports are recursively resolved and linked.
-    ///   - The master (root) module is tracked and its typed tree stored in `program_trees`.
-    ///   - Active/done sets in `Visiting` prevent circular imports and track resolution state.
+    /// - Declaration pass: Collects symbol names (functions, structs, etc.)
+    ///   and registers them in the module's symbol table.
+    /// - Definition pass:  Resolves symbol definitions and types,
+    ///   producing the final typed representation of the module.
     ///
+    /// Responsibilities:
+    ///
+    /// - Ensures each module is analyzed only once via `analyzed_modules`.
+    /// - Recursively resolves and links imported modules.
+    /// - Initializes the module's symbol table in the global registry.
+    /// - Tracks module resolution state through `VisitingModule` to prevent circular imports.
+    /// - Records the typed program tree of the master module in `program_trees`.
     pub fn resolve_module(
         &mut self,
         module_id: ModuleID,
@@ -86,7 +86,7 @@ impl Resolver {
         drop(analyzed);
 
         // Initialize symbol table for this module
-        let mut global_symbols = self.global_symbols.lock().unwrap();
+        let mut global_symbols = self.global_symbols_registry.lock().unwrap();
         global_symbols.insert(module_id, SymbolTable::new());
         drop(global_symbols);
 
@@ -134,13 +134,6 @@ impl Resolver {
         Some(typed_program_tree.clone())
     }
 
-    fn skip_module_if_loaded_once(&self, file_path: PathBuf) -> bool {
-        let file_paths = self.file_paths.lock().unwrap();
-        let exists = file_paths.iter().find(|(_, fp)| **fp == file_path).is_some();
-        drop(file_paths);
-        exists
-    }
-
     /// Resolves a module import with duplicate and cycle detection.
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, visiting: &mut VisitingModule) {
         let current_module_file_path = self.resolve_module_file_path(parent_module_id).unwrap();
@@ -179,7 +172,7 @@ impl Resolver {
                 .unwrap_or_else(generate_module_id);
 
             {
-                let mut global_symbols = self.global_symbols.lock().unwrap();
+                let mut global_symbols = self.global_symbols_registry.lock().unwrap();
                 global_symbols.entry(module_id).or_insert_with(|| SymbolTable::new());
             }
 
@@ -307,6 +300,13 @@ impl Resolver {
         }
     }
 
+    fn skip_module_if_loaded_once(&self, file_path: PathBuf) -> bool {
+        let file_paths = self.file_paths.lock().unwrap();
+        let exists = file_paths.iter().find(|(_, fp)| **fp == file_path).is_some();
+        drop(file_paths);
+        exists
+    }
+
     fn load_module_import_singles(
         &mut self,
         parent_module_id: ModuleID,
@@ -341,11 +341,11 @@ impl Resolver {
                 // check symbol visibility
                 let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
                 let vis = symbol_entry.vis();
-                self.check_import_single_vis(actual_name.clone(), vis, loc.clone());
+                self.report_if_imported_private_symbol(actual_name.clone(), vis, loc.clone());
             }
 
             {
-                let mut global_symbols = self.global_symbols.lock().unwrap();
+                let mut global_symbols = self.global_symbols_registry.lock().unwrap();
                 let symbol_table = global_symbols
                     .get_mut(&parent_module_id)
                     .expect("Parent module should exist in global symbols.");
@@ -380,7 +380,7 @@ impl Resolver {
         }
     }
 
-    fn check_import_single_vis(&mut self, single_name: String, vis: Visibility, loc: Location) {
+    fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Location) {
         if vis.is_private() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -391,46 +391,6 @@ impl Resolver {
                 hint: None,
             });
         }
-    }
-
-    pub(crate) fn resolve_module_alias(&self, group_name: &ModuleGroupName) -> Option<ModuleID> {
-        let module_aliases = self.module_aliases.lock().unwrap();
-        let imported_modules = module_aliases.get(&self.current_module.unwrap()).unwrap();
-        let option = imported_modules.get(group_name).cloned();
-        drop(module_aliases);
-        option
-    }
-
-    pub(crate) fn resolve_module_id_by_file_path(&self, module_file_path: PathBuf) -> Option<ModuleID> {
-        let file_paths = self.file_paths.lock().unwrap();
-        let module_id_opt = match file_paths.iter().find(|(_, fp)| **fp == module_file_path) {
-            Some((module_id, _)) => Some(*module_id),
-            None => None,
-        };
-        drop(file_paths);
-        module_id_opt
-    }
-
-    pub(crate) fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: PathBuf) {
-        let mut file_paths = self.file_paths.lock().unwrap();
-        file_paths.insert(module_id, module_file_path);
-        drop(file_paths);
-    }
-
-    fn insert_imported_aliases_for_module(&mut self) {
-        let mut module_aliases = self.module_aliases.lock().unwrap();
-        module_aliases.insert(self.current_module.unwrap(), HashMap::new());
-        drop(module_aliases);
-    }
-
-    pub(crate) fn resolve_module_file_path(&self, module_id: ModuleID) -> Option<String> {
-        let file_paths = self.file_paths.lock().unwrap();
-        let file_path = match file_paths.get(&module_id) {
-            Some(module_file_path) => Some(module_file_path.clone()),
-            None => None,
-        };
-        drop(file_paths);
-        file_path.map(|path_buf| path_buf.to_string_lossy().to_string())
     }
 }
 

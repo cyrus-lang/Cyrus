@@ -545,7 +545,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(DiagLoc::new(
                     loc.clone()
                 )),
-                hint: Some("Consider adding an explicit cast to either the left-hand or right-hand operand to make their types compatible.".to_string()),
+                hint: Some("Consider adding an explicit cast to either the lhs or rhs operand to make their types compatible.".to_string()),
             });
             return None;
         }

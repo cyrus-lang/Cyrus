@@ -34,19 +34,19 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<Expr, Diag> {
         let mut lhs_start = self.current_token().loc.start;
         let mut lhs_line = self.current_token().loc.line;
-        let mut left = self.parse_prefix_expr()?;
+        let mut lhs = self.parse_prefix_expr()?;
 
         loop {
             if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
-                left = self.parse_array_index(left)?;
+                lhs = self.parse_array_index(lhs)?;
                 continue;
             }
 
             if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::ThinArrow) {
                 self.next_token();
 
-                left = self.parse_field_access(left)?;
+                lhs = self.parse_field_access(lhs)?;
                 continue;
             }
 
@@ -56,7 +56,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 let end = self.current_token().loc.end;
 
                 return Ok(Expr::Unary(UnaryExpr {
-                    operand: Box::new(left),
+                    operand: Box::new(lhs),
                     op: UnaryOperator::PostIncrement,
                     loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
                 }));
@@ -66,7 +66,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 let end = self.current_token().loc.end;
 
                 return Ok(Expr::Unary(UnaryExpr {
-                    operand: Box::new(left),
+                    operand: Box::new(lhs),
                     op: UnaryOperator::PostDecrement,
                     loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
                 }));
@@ -75,22 +75,22 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
             // infix handling (respect precedence)
             let peek_prec = token_precedence_of(self.peek_token().kind);
             if self.peek_token().kind != TokenKind::EOF && precedence < peek_prec {
-                match self.parse_infix_expr(left.clone(), lhs_line, lhs_start) {
+                match self.parse_infix_expr(lhs.clone(), lhs_line, lhs_start) {
                     Some(infix) => {
-                        left = infix?;
-                        if let Expr::Infix(infix_expr) = left.clone() {
+                        lhs = infix?;
+                        if let Expr::Infix(infix_expr) = lhs.clone() {
                             lhs_start = infix_expr.loc.start;
                             lhs_line = infix_expr.loc.line;
                         }
                     }
-                    None => return Ok(left),
+                    None => return Ok(lhs),
                 }
             } else {
                 break;
             }
         }
 
-        Ok(left)
+        Ok(lhs)
     }
 
     pub(crate) fn parse_module_import(&mut self) -> Result<ModuleImport, Diag> {

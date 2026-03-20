@@ -15,7 +15,6 @@ members = [
     "crates/cyrusc_compiler",
     "crates/cyrusc_buildmanifest",
     "crates/cyrusc_scaffold_parser",
-    "crates/cyrusc_modulefsloader",
     "crates/cyrusc_asan_wrapper",
     "crates/cyrusc_tokens",
     "crates/cyrusc_vtable_registry",

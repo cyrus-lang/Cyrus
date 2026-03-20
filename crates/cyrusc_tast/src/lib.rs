@@ -26,16 +26,21 @@ mod tests;
 pub mod types;
 pub mod vtable;
 
-pub type ScopeID = u32;
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ScopeID(u32);
+
+// FIXME: Optimization required here!
 pub type SymbolID = u32;
-pub type LabelID = u32;
 pub type ModuleID = u64;
 
+// FIXME: Consider to remove it after optimizing `SymbolID`.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct DeclID {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
 }
+
+pub type LabelID = u32;
 
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
