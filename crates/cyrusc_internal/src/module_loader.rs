@@ -15,10 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::{ModulePath, ProgramTree};
-use cyrusc_diagcentral::DiagKind;
-use cyrusc_source_loc::Loc;
-use std::path::PathBuf;
+use cyrusc_ast::{Import, ModulePath, ModuleSegmentSingle, ProgramTree};
+use std::{
+    hash::{Hash, Hasher},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 #[derive(Debug, Clone)]
 pub struct LoadedModule {
@@ -35,5 +37,24 @@ pub enum ModuleAlias {
 }
 
 pub trait ModuleLoader {
-    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, (DiagKind, Loc)>>;
+    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, ()>>;
+
+    /// Forms a stable module name from a filesystem path.
+    /// Strips extensions, normalizes separators, and prefixes stdlib modules.
+    fn module_name_from_file_path(&mut self, path: &Path) -> String;
+}
+
+impl Hash for ModuleAlias {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            ModuleAlias::Group(name) => {
+                0u8.hash(state);
+                name.hash(state);
+            }
+            ModuleAlias::Single(singles) => {
+                1u8.hash(state);
+                singles.hash(state);
+            }
+        }
+    }
 }

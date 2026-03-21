@@ -15,14 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::symbols::{symbols::LocalSymbol, *};
-use cyrusc_tast::{LabelID, ScopeID, SymbolID, stmts::TypedGenericParamsList};
+use cyrusc_tast::{LabelID, ScopeID, SymbolID};
 use std::collections::HashMap;
 
-/// Represents a local scope containing variable symbols and control flow labels.
+/// Represents a local scope containing symbols and control flow labels.
 #[derive(Debug, Clone)]
 pub struct LocalScope {
-    pub symbols: HashMap<String, LocalSymbol>,
+    pub symbols: HashMap<String, SymbolID>,
     pub parent: Option<ScopeID>,
     pub labels: HashMap<String, LabelID>,
 }

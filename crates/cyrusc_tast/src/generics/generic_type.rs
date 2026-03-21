@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     SymbolID,
     exprs::TypedIdentifier,
@@ -26,7 +27,8 @@ use crate::{
     stmts::{TypedGenericParamsList, TypedTypeArg, TypedTypeArgs},
     types::SemanticType,
 };
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
 use std::{
     cell::RefCell,
     fmt::Debug,
@@ -42,7 +44,6 @@ pub struct GenericType {
     pub mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
     pub mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub generic_params: TypedGenericParamsList,
-    pub is_const: bool,
     pub loc: Loc,
 }
 
@@ -53,7 +54,6 @@ impl GenericType {
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         generic_params: TypedGenericParamsList,
-        is_const: bool,
         loc: Loc,
     ) -> Self {
         debug_assert!(generic_params.list.is_empty() == false);
@@ -64,7 +64,6 @@ impl GenericType {
             mapping_ctx,
             mapping_ctx_arena,
             generic_params,
-            is_const,
             loc,
         }
     }
@@ -86,7 +85,7 @@ impl GenericType {
                     let generic_param = self.generic_params.lookup_positional(i).ok_or(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(GenericTypesDiagKind::UndefinedPositionalGenericParam { i }),
-                        loc: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(loc),
                         hint: None,
                     })?;
 
@@ -98,7 +97,7 @@ impl GenericType {
                         generic_param.param_name.name.clone(),
                         Some(ty.clone()),
                         format_symbol,
-                        loc.clone(),
+                        loc,
                     )?;
 
                     if let Some(target_generic_param) = ty.as_generic_param() {
@@ -122,7 +121,7 @@ impl GenericType {
                         key.clone(),
                         Some(ty.clone()),
                         format_symbol,
-                        loc.clone(),
+                        loc,
                     )?;
 
                     let typed_identifier = self
@@ -134,7 +133,7 @@ impl GenericType {
                             Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(GenericTypesDiagKind::UndefinedGenericParam { name: key.clone() }),
-                                loc: Some(DiagLoc::new(loc.clone())),
+                                loc: Some(loc),
                                 hint: None,
                             }
                         })?;
@@ -187,7 +186,7 @@ impl GenericType {
             return Err(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(GenericTypesDiagKind::RequiresExplicitTypeArgs { ty }),
-                loc: Some(DiagLoc::new(self.loc.clone())),
+                loc: Some(self.loc),
                 hint: Some(format!("Missing generic parameters: {}", missing_fmt)),
             });
         }
@@ -254,7 +253,6 @@ impl GenericType {
 
     pub fn format(&self, format_symbol: impl Fn(SymbolID) -> String) -> String {
         let base = format_symbol(self.base);
-        let is_const = if self.is_const { "const " } else { "" };
 
         let mut collected_type_args: Vec<String> = Vec::new();
 
@@ -274,8 +272,7 @@ impl GenericType {
         }
 
         format!(
-            "{}{}{}",
-            is_const,
+            "{}{}",
             base,
             if collected_type_args.len() > 0 {
                 format!("<{}>", collected_type_args.join(", "))
@@ -427,7 +424,6 @@ impl Debug for GenericType {
             .field("type_args", &self.type_args)
             .field("mapping_ctx", &self.mapping_ctx)
             .field("generic_params", &self.generic_params)
-            .field("is_const", &self.is_const)
             .field("loc", &self.loc)
             .finish()
     }

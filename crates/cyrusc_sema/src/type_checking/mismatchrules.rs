@@ -16,7 +16,7 @@
  */
 use crate::analyze::AnalysisContext;
 use cyrusc_const_eval::fold::ConstFolder;
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::Loc;
 use cyrusc_tast::{
     ScopeID,
     generics::{
@@ -233,7 +233,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
-                    if !self.check_type_mismatch(scope_id_opt, *field1.ty.clone(), *field2.ty.clone(), loc.clone()) {
+                    if !self.check_type_mismatch(scope_id_opt, *field1.ty.clone(), *field2.ty.clone(), loc) {
                         fields = false;
                         break;
                     }

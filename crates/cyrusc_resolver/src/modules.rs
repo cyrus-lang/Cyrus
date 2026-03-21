@@ -15,10 +15,24 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::Resolver;
-use cyrusc_ast::ProgramTree;
+use crate::{ProgramTreeEntry, Resolver, diagnostics::ResolverDiagKind};
+use cyrusc_ast::{Import, ModuleSegmentSingle, ProgramTree, abi::Visibility, format::format_module_segments};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::{
+    module_loader::ModuleAlias,
+    symbols::{
+        symbols::{SymbolEntry, SymbolEntryKind},
+        table::GlobalSymbolQuery,
+    },
+};
+use cyrusc_source_loc::Loc;
 use cyrusc_tast::{ModuleID, TypedProgramTree};
-use std::{cell::RefCell, collections::HashSet, path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashSet,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 // Track imported module + alias
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -45,7 +59,7 @@ impl VisitingModule {
     }
 }
 
-impl Resolver {
+impl<'diag> Resolver<'diag> {
     /// Resolve a module and produce its typed program tree.
     ///
     /// Performs a two‑phase semantic resolution:
@@ -74,7 +88,8 @@ impl Resolver {
         self.insert_imported_aliases_for_module();
 
         if is_master {
-            self.insert_module_file_path(module_id, self.master_module_file_path.clone());
+            self.module_file_map
+                .insert(module_id, self.master_module_file_path.clone());
             visiting.active.insert(self.master_module_file_path.clone());
         }
 
@@ -85,30 +100,24 @@ impl Resolver {
         analyzed.insert(module_id);
         drop(analyzed);
 
-        // Initialize symbol table for this module
-        let mut global_symbols = self.global_symbols_registry.lock().unwrap();
-        global_symbols.insert(module_id, SymbolTable::new());
-        drop(global_symbols);
-
-        // Collect symbol names (first pass).
+        // collect symbol names (first pass)
         self.resolve_decl_names(&ast);
 
         let parent_module_id = module_id;
 
-        // Analyze imports of this module
+        // analyze `import statements` of this module
         for import in ast.import_stmts() {
             self.resolve_import(parent_module_id, import, &mut visiting);
         }
 
         self.module_id = Some(parent_module_id);
 
-        // Collect exact definitions and details of the symbols (second pass).
+        // collect full definitions and details of the symbols (second pass)
         let typed_body = self.resolve_decl_full(&ast);
 
-        let base_path = Path::new(&self.module_loader.opts.base_path);
-        let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
-        let module_name =
-            make_module_name_from_filepath(module_file_path.clone(), Some(base_path), stdlib_path.as_deref());
+        let module_name = self
+            .module_loader
+            .module_name_from_file_path(Path::new(&module_file_path));
 
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree {
             module_name: module_name.clone(),
@@ -136,45 +145,27 @@ impl Resolver {
 
     /// Resolves a module import with duplicate and cycle detection.
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, visiting: &mut VisitingModule) {
-        let current_module_file_path = self.resolve_module_file_path(parent_module_id).unwrap();
+        let current_module_file_path = self.module_file_map.get(parent_module_id).unwrap();
         let loaded_modules_list = self.module_loader.load_module(&import);
 
         for loaded_module in loaded_modules_list {
-            let loaded_module = match loaded_module {
-                Ok(m) => m,
-                Err((diag, loc)) => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(diag),
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, current_module_file_path.clone()))),
-                        hint: None,
-                    });
-                    continue;
-                }
-            };
+            let Ok(loaded_module) = loaded_module else { continue };
 
             // check for self-import
             if loaded_module.file_path == current_module_file_path {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::ModuleCannotImportItself),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        current_module_file_path.clone(),
-                    ))),
+                    loc: Some(import.loc),
                     hint: None,
                 });
                 continue;
             }
 
             let module_id = self
-                .resolve_module_id_by_file_path(loaded_module.file_path.clone())
-                .unwrap_or_else(generate_module_id);
-
-            {
-                let mut global_symbols = self.global_symbols_registry.lock().unwrap();
-                global_symbols.entry(module_id).or_insert_with(|| SymbolTable::new());
-            }
+                .module_file_map
+                .get_file_path(&loaded_module.file_path)
+                .expect("module id missing for loaded module");
 
             // check duplicates using module file + alias
             let import_key = ImportedModuleEntry {
@@ -191,10 +182,7 @@ impl Resolver {
                     kind: Box::new(ResolverDiagKind::ImportCycle {
                         module_names: visiting.active_paths_str(),
                     }),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        current_module_file_path.clone(),
-                    ))),
+                    loc: Some(import.loc),
                     hint: Some("Break the cycle by removing one import.".to_string()),
                 });
                 continue;
@@ -206,14 +194,15 @@ impl Resolver {
             if visiting.done.contains(&loaded_module.file_path) {
                 match loaded_module.alias {
                     ModuleAlias::Group(group_name) => {
-                        self.insert_module_alias(parent_module_id, group_name, module_id);
+                        self.module_aliases
+                            .insert_module_alias(parent_module_id, group_name, module_id);
                     }
                     ModuleAlias::Single(ref module_segment_singles) => {
                         self.load_module_import_singles(
                             parent_module_id,
                             module_id,
                             module_segment_singles,
-                            import.loc.clone(),
+                            import.loc,
                         );
                     }
                 }
@@ -224,19 +213,20 @@ impl Resolver {
             if self.skip_module_if_loaded_once(loaded_module.file_path.clone()) {
                 match loaded_module.alias {
                     ModuleAlias::Group(group_name) => {
-                        self.insert_module_alias(parent_module_id, group_name, module_id);
+                        self.module_aliases
+                            .insert_module_alias(parent_module_id, group_name, module_id);
                     }
                     ModuleAlias::Single(ref module_segment_singles) => {
                         self.load_module_import_singles(
                             parent_module_id,
                             module_id,
                             module_segment_singles,
-                            import.loc.clone(),
+                            import.loc,
                         );
                     }
                 }
             } else {
-                self.insert_module_file_path(module_id, loaded_module.file_path.clone());
+                self.module_file_map.insert(module_id, loaded_module.file_path.clone());
 
                 if let Some(typed_program_tree) = self.resolve_module(
                     module_id,
@@ -245,16 +235,14 @@ impl Resolver {
                     false,
                     loaded_module.file_path.clone(),
                 ) {
-                    let module_file_path = self.current_file_path();
+                    let module_file_path_buf = self.current_module_file_path();
+                    let module_file_path = Path::new(&module_file_path_buf);
+
                     let mut program_trees = self.program_trees.lock().unwrap();
 
-                    let base_path = Path::new(&self.module_loader.opts.base_path);
-                    let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
-                    let module_name = make_module_name_from_filepath(
-                        module_file_path.clone(),
-                        Some(base_path),
-                        stdlib_path.as_deref(),
-                    );
+                    let module_name = self
+                        .module_loader
+                        .module_name_from_file_path(module_file_path);
 
                     program_trees.push(Rc::new(ProgramTreeEntry {
                         module_name,
@@ -266,14 +254,15 @@ impl Resolver {
 
                     match loaded_module.alias {
                         ModuleAlias::Group(group_name) => {
-                            self.insert_module_alias(parent_module_id, group_name, module_id);
+                            self.module_aliases
+                                .insert_module_alias(parent_module_id, group_name, module_id);
                         }
                         ModuleAlias::Single(ref module_segment_singles) => {
                             self.load_module_import_singles(
                                 parent_module_id,
                                 module_id,
                                 module_segment_singles,
-                                import.loc.clone(),
+                                import.loc,
                             );
                         }
                     }
@@ -288,12 +277,9 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::ImportTwice {
-                        module_name: module_segments_as_string(loaded_module.path.segments.clone()),
+                        module_name: format_module_segments(loaded_module.path.segments.clone()),
                     }),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        current_module_file_path.clone(),
-                    ))),
+                    loc: Some(import.loc),
                     hint: Some("Consider removing the previous declaration.".to_string()),
                 });
             }
@@ -301,10 +287,7 @@ impl Resolver {
     }
 
     fn skip_module_if_loaded_once(&self, file_path: PathBuf) -> bool {
-        let file_paths = self.file_paths.lock().unwrap();
-        let exists = file_paths.iter().find(|(_, fp)| **fp == file_path).is_some();
-        drop(file_paths);
-        exists
+        self.module_file_map.get_file_path(&file_path).is_some()
     }
 
     fn load_module_import_singles(
@@ -312,7 +295,7 @@ impl Resolver {
         parent_module_id: ModuleID,
         imported_module_id: ModuleID,
         singles: &[ModuleSegmentSingle],
-        loc: Location,
+        loc: Loc,
     ) {
         let mut imported_symbol_ids = Vec::new();
 
@@ -326,10 +309,7 @@ impl Resolver {
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
                         name: renamed_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        loc.clone(),
-                        self.resolve_module_file_path(parent_module_id).unwrap(),
-                    ))),
+                    loc: Some(loc),
                     hint: None,
                 });
                 continue;
@@ -341,31 +321,31 @@ impl Resolver {
                 // check symbol visibility
                 let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
                 let vis = symbol_entry.vis();
-                self.report_if_imported_private_symbol(actual_name.clone(), vis, loc.clone());
+                self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
             }
 
             {
-                let mut global_symbols = self.global_symbols_registry.lock().unwrap();
-                let symbol_table = global_symbols
-                    .get_mut(&parent_module_id)
-                    .expect("Parent module should exist in global symbols.");
+                // let mut global_symbols = self.global_symbols_registry.lock().unwrap();
+                // let symbol_table = global_symbols
+                //     .get_mut(&parent_module_id)
+                //     .expect("Parent module should exist in global symbols.");
 
-                if symbol_table.names.contains_key(&actual_name) {
+                let exists = self.lookup_symbol_id(parent_module_id, &actual_name).is_some();
+
+                if exists {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(ResolverDiagKind::DuplicateSymbol {
                             symbol_name: renamed_name.clone(),
                         }),
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            loc.clone(),
-                            self.resolve_module_file_path(parent_module_id).unwrap(),
-                        ))),
+                        loc: Some(loc),
                         hint: None,
                     });
                     continue;
                 }
 
                 let proxy_symbol_id = generate_symbol_id();
+
                 symbol_table.names.insert(renamed_name.clone(), proxy_symbol_id);
                 symbol_table.entries.insert(
                     proxy_symbol_id,
@@ -380,14 +360,14 @@ impl Resolver {
         }
     }
 
-    fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Location) {
+    fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Loc) {
         if vis.is_private() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::ImportSinglePrivateSymbol {
                     symbol_name: single_name,
                 }),
-                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.current_file_path()))),
+                loc: Some(loc),
                 hint: None,
             });
         }

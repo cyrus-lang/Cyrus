@@ -39,7 +39,7 @@ impl Clone for Diag {
         Self {
             level: self.level.clone(),
             kind: self.kind.clone(),
-            loc: self.loc.clone(),
+            loc: self.loc,
             hint: self.hint.clone(),
         }
     }

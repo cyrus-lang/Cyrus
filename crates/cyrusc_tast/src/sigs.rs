@@ -30,7 +30,7 @@ use cyrusc_ast::{
     abi::Visibility,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
@@ -155,7 +155,7 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
         return_type: func_decl.return_type.clone(),
         is_func_decl: true,
         modifiers: func_decl.modifiers.clone(),
-        loc: func_decl.loc.clone(),
+        loc: func_decl.loc,
     }
 }
 
@@ -168,7 +168,7 @@ pub fn typed_func_decl_from_func_sig(sig: &FuncSig) -> TypedFuncDeclStmt {
         params: sig.params.clone(),
         return_type: sig.return_type.clone(),
         modifiers: sig.modifiers.clone(),
-        loc: sig.loc.clone(),
+        loc: sig.loc,
         renamed_as: None,
     }
 }
@@ -183,7 +183,7 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
         return_type: func_def.return_type.clone(),
         is_func_decl: false,
         modifiers: func_def.modifiers.clone(),
-        loc: func_def.loc.clone(),
+        loc: func_def.loc,
     }
 }
 
@@ -194,7 +194,7 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
         params: typed_func_params_as_func_type_params(&func_sig.params),
         return_type: Box::new(func_sig.return_type.clone()),
         is_public: func_sig.modifiers.vis.is_public(),
-        loc: func_sig.loc.clone(),
+        loc: func_sig.loc,
     }
 }
 
@@ -207,7 +207,7 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
         generic_params: typed_struct.generic_params.clone(),
         modifiers: typed_struct.modifiers.clone(),
         align: typed_struct.align.clone(),
-        loc: typed_struct.loc.clone(),
+        loc: typed_struct.loc,
     }
 }
 
@@ -221,7 +221,7 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
         modifiers: typed_enum.modifiers.clone(),
         tag_type: typed_enum.tag_type.clone(),
         align: typed_enum.align.clone(),
-        loc: typed_enum.loc.clone(),
+        loc: typed_enum.loc,
     }
 }
 
@@ -234,7 +234,7 @@ pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
         generic_params: typed_union.generic_params.clone(),
         modifiers: typed_union.modifiers.clone(),
         align: typed_union.align.clone(),
-        loc: typed_union.loc.clone(),
+        loc: typed_union.loc,
     }
 }
 
@@ -267,6 +267,15 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
     TypedFuncTypeParams { list, variadic }
 }
 
+impl StructSig {
+    pub fn is_packed(&self) -> bool {
+        match &self.modifiers.repr_attr {
+            Some(repr_attr) => repr_attr.is_packed(),
+            None => false,
+        }
+    }
+}
+
 impl FuncSig {
     pub fn is_instance_method(&self) -> bool {
         match self.params.list.first() {
@@ -274,15 +283,6 @@ impl FuncSig {
                 TypedFuncParamKind::FuncParam(..) => false,
                 TypedFuncParamKind::SelfModifier(..) => true,
             },
-            None => false,
-        }
-    }
-}
-
-impl StructSig {
-    pub fn is_packed(&self) -> bool {
-        match &self.modifiers.repr_attr {
-            Some(repr_attr) => repr_attr.is_packed(),
             None => false,
         }
     }

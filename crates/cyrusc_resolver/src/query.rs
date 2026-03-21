@@ -18,17 +18,17 @@
 use crate::Resolver;
 use cyrusc_internal::symbols::{
     symbols::{
-        ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedStruct, ResolvedTypedef,
-        ResolvedUnion, SymbolEntry,
+        ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct,
+        ResolvedTypedef, ResolvedUnion, ResolvedVar, SymbolEntry, SymbolEntryKind,
     },
     table::{GlobalSymbolQuery, SymbolQuery},
 };
-use cyrusc_tast::ModuleID;
+use cyrusc_tast::{ModuleID, SymbolID};
 
-impl GlobalSymbolQuery for Resolver {
+impl<'diag> GlobalSymbolQuery for Resolver<'diag> {
     /// Look up a symbol identifier by name within a specific module.
     fn lookup_symbol_id(&self, module: ModuleID, name: &str) -> Option<SymbolID> {
-        let registry = self.global_symbols.inner.lock().unwrap();
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
         registry.get(&module)?.names.get(name).cloned()
     }
 
@@ -40,7 +40,7 @@ impl GlobalSymbolQuery for Resolver {
 
     /// Retrieve the semantic entry for a specific symbol identifier.
     fn resolve_global_symbol(&self, symbol: SymbolID) -> Option<SymbolEntry> {
-        let registry = self.global_symbols.inner.lock().unwrap();
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
 
         for table in registry.values() {
             if let Some(entry) = table.entries.get(&symbol) {
@@ -54,84 +54,84 @@ impl GlobalSymbolQuery for Resolver {
     fn resolve_global_symbol_deep(&self, symbol: SymbolID) -> Option<SymbolEntry> {
         let mut current_entry = self.resolve_global_symbol(symbol)?;
 
-        // Example: If the entry is an Alias, resolve what it points to.
-        while let SymbolEntry::Alias(target_id) = current_entry {
-            current_entry = self.resolve_global_symbol(target_id)?;
+        // if the entry is an Alias, resolve what it points to.
+        while let SymbolEntryKind::ProxiedSymbol(module_id, symbol_id) = &current_entry.kind {
+            current_entry = self.resolve_global_symbol(*symbol_id)?;
         }
 
         Some(current_entry)
     }
 }
 
-impl SymbolQuery for Resolver {
+impl<'diag> SymbolQuery for Resolver<'diag> {
     /// Resolve a symbol ID to a variable within the given scope.
-    fn resolve_variable(&self, id: SymbolID) -> Option<ResolvedVariable> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Variable(v) => Some(v),
+    fn resolve_var(&self, id: SymbolID) -> Option<ResolvedVar> {
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Var(resolved_var) => Some(resolved_var),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to a method definition.
     fn resolve_method(&self, id: SymbolID) -> Option<ResolvedMethod> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Method(m) => Some(m),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to a global function.
     fn resolve_func(&self, id: SymbolID) -> Option<ResolvedFunc> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Function(f) => Some(f),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Func(resolved_func) => Some(resolved_func),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to a type definition (typedef).
     fn resolve_typedef(&self, id: SymbolID) -> Option<ResolvedTypedef> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Typedef(t) => Some(t),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to a global variable.
     fn resolve_global_var(&self, id: SymbolID) -> Option<ResolvedGlobalVar> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::GlobalVar(gv) => Some(gv),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::GlobalVar(resolved_global_var) => Some(resolved_global_var),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to an interface/trait definition.
     fn resolve_interface(&self, id: SymbolID) -> Option<ResolvedInterface> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Interface(i) => Some(i),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to a union definition.
     fn resolve_union(&self, id: SymbolID) -> Option<ResolvedUnion> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Union(u) => Some(u),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Union(resolved_union) => Some(resolved_union),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to an enum definition.
     fn resolve_enum(&self, id: SymbolID) -> Option<ResolvedEnum> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Enum(e) => Some(e),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum),
             _ => None,
         }
     }
 
     /// Resolve a symbol ID to a struct definition.
     fn resolve_struct(&self, id: SymbolID) -> Option<ResolvedStruct> {
-        match self.resolve_global_symbol(id)? {
-            SymbolEntry::Struct(s) => Some(s),
+        match self.resolve_global_symbol(id)?.kind {
+            SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),
             _ => None,
         }
     }

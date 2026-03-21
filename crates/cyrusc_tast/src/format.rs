@@ -16,14 +16,14 @@
  */
 use crate::{
     SymbolID,
-    exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedUnnamedEnumValueKind},
+    exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{
         ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
         TypedUnnamedStructType, TypedUnnamedUnionType,
     },
 };
-use cyrusc_ast::{AssignKind, format::format_stmts, operators::UnaryOperator};
+use cyrusc_ast::{AssignKind, operators::UnaryOperator};
 use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
 
 pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
@@ -36,7 +36,7 @@ pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, format_symbol: &(dyn F
 
 pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match &typed_expr.kind {
-        TypedExprKind::Symbol(symbol_id, ..) => format_symbol(*symbol_id),
+        TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => format_symbol(*symbol_id),
         TypedExprKind::Literal(typed_literal) => match &typed_literal.kind {
             LiteralKind::Integer(value, token_kind_opt) => {
                 let mut fmt = String::new();

@@ -56,7 +56,7 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
                 let literal = TypedLiteralExpr {
                     ty: expr.sema_ty.clone(),
                     kind: LiteralKind::Integer(int_value, None),
-                    loc: expr.loc.clone(),
+                    loc: expr.loc,
                 };
 
                 expr.kind = TypedExprKind::Literal(literal);

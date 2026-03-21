@@ -140,7 +140,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
                 TokenKind::Ident(name) => {
                     segments.push(ModuleSegment::SubModule(Ident {
                         value: name.clone(),
-                        loc: ident_token.loc.clone(),
+                        loc: ident_token.loc,
                     }));
                 }
                 _ => {
@@ -737,7 +737,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
 
         loop {
             let field_name = self.parse_ident()?;
-            let field_loc = self.current_token().loc.clone();
+            let field_loc = self.current_token().loc;
 
             self.next_token(); // consume ident
 

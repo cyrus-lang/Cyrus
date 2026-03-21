@@ -15,19 +15,18 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::{
+    abi::args::ABIFunctionInfo,
+    cir::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy},
+};
 use cyrusc_ast::{
     abi::ReprKind,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey};
 use std::fmt::Debug;
-
-use crate::{
-    abi::args::ABIFunctionInfo,
-    cir::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy},
-};
 
 pub type IRValueID = u32;
 pub type CIRBlockID = u32;
@@ -58,8 +57,8 @@ pub enum CIRStmt {
     Label(CIRLabelStmt),
     Goto(CIRGotoStmt),
     Defer(CIRDeferStmt),
-    Continue(SourceLoc),
-    Break(SourceLoc),
+    Continue(Loc),
+    Break(Loc),
 }
 
 #[derive(Debug, Clone)]
@@ -425,7 +424,7 @@ pub struct CIRReturnStmt {
 pub struct CIRStructStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
-    pub fields_info: Vec<(String, SourceLoc)>,
+    pub fields_info: Vec<(String, Loc)>,
     pub align: Option<usize>,
     pub modifiers: StructModifiers,
     pub loc: Loc,
@@ -487,7 +486,7 @@ pub enum CIREnumInitVariant {
 pub struct CIRUnionStmt {
     pub name: String,
     pub fields: Vec<CIRTy>,
-    pub fields_info: Vec<(String, SourceLoc)>,
+    pub fields_info: Vec<(String, Loc)>,
     pub align: Option<usize>,
     pub modifiers: UnionModifiers,
     pub loc: Loc,
@@ -530,7 +529,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
         ret: func_def.ret.clone(),
         modifiers: func_def.modifiers.clone(),
         abi_func_info: func_def.abi_func_info.clone(),
-        loc: func_def.loc.clone(),
+        loc: func_def.loc,
     }
 }
 
@@ -551,7 +550,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
         fields_info: struct_stmt.fields_info.clone(),
         repr_attr: struct_stmt.modifiers.repr_attr.clone(),
         align: struct_stmt.align.clone(),
-        loc: struct_stmt.loc.clone(),
+        loc: struct_stmt.loc,
     }
 }
 
@@ -562,7 +561,7 @@ pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
         tag_type: enum_stmt.tag_type.clone(),
         repr_attr: enum_stmt.modifiers.repr_attr.clone(),
         align: enum_stmt.align.clone(),
-        loc: enum_stmt.loc.clone(),
+        loc: enum_stmt.loc,
     }
 }
 
@@ -573,7 +572,7 @@ pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
         fields_info: union_stmt.fields_info.clone(),
         repr_attr: union_stmt.modifiers.repr_attr.clone(),
         align: union_stmt.align.clone(),
-        loc: union_stmt.loc.clone(),
+        loc: union_stmt.loc,
     }
 }
 
@@ -602,7 +601,7 @@ impl CIREnumTy {
 }
 
 impl CIRStmt {
-    pub fn loc(&self) -> &SourceLoc {
+    pub fn loc(&self) -> &Loc {
         match self {
             CIRStmt::Variable(var_stmt) => &var_stmt.loc,
             CIRStmt::GlobalVar(global_var_stmt) => &global_var_stmt.loc,

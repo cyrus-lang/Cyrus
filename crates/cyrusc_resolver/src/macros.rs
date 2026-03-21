@@ -58,7 +58,7 @@ macro_rules! scope_required {
         //         level: cyrusc_diagcentral::DiagLevel::Error,
         //         kind: Box::new(crate::diagnostics::ResolverDiagKind::RequiresLocalScope),
         //         location: Some(cyrusc_diagcentral::DiagLoc::new(
-        //             cyrusc_diagcentral::source_loc::SourceLoc::from_loc($loc, $self.current_file_path()),
+        //             cyrusc_diagcentral::source_loc::Loc::from_loc($loc, $self.current_file_path()),
         //         )),
         //         hint: None,
         //     });

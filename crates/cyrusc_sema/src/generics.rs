@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_scope_id};
 use cyrusc_tast::{
     ScopeID, SymbolID,
@@ -171,7 +171,7 @@ impl<'a> AnalysisContext<'a> {
         generic_type: &GenericType,
         // only used for methods (optional)
         self_modifier_ty: Option<SemanticType>,
-        func_call_loc: &SourceLoc,
+        func_call_loc: &Loc,
     ) -> Option<MonomorphKey> {
         let current_diag_len = self.reporter.diags.len();
 
@@ -508,7 +508,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         };
 
-                        sema_ty = match self.normalize_sema_type(scope_id_opt, sema_ty, target_generic_type.loc.clone())
+                        sema_ty = match self.normalize_sema_type(scope_id_opt, sema_ty, target_generic_type.loc)
                         {
                             Some(sema_ty) => sema_ty,
                             None => continue,
@@ -541,7 +541,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         macro_rules! check_type_mismatch {
             ($lhs:expr, $rhs:expr) => {
-                if !self.check_type_mismatch(scope_id_opt, $lhs.clone(), $rhs.clone(), loc.clone()) {
+                if !self.check_type_mismatch(scope_id_opt, $lhs.clone(), $rhs.clone(), loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {

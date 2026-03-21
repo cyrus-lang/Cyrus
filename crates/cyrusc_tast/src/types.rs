@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::sigs::{EnumSig, FuncSig, InterfaceSig, UnionSig, typed_func_decl_as_func_sig};
@@ -22,7 +23,7 @@ use crate::vtable::VTableID;
 use crate::{ModuleID, SymbolID};
 use cyrusc_ast::Ident;
 use cyrusc_ast::abi::{ReprAttr, ReprKind};
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -226,7 +227,7 @@ pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> Interfac
     InterfaceType {
         symbol_id: interface_sig.symbol_id,
         methods,
-        loc: interface_sig.loc.clone(),
+        loc: interface_sig.loc,
     }
 }
 
@@ -244,7 +245,7 @@ pub fn enum_sig_as_unnamed_enum_type(enum_sig: &EnumSig, loc: Loc) -> TypedUnnam
                     .iter()
                     .map(|field| TypedUnnamedEnumValuedField {
                         ty: field.ty.clone(),
-                        loc: field.loc.clone(),
+                        loc: field.loc,
                     })
                     .collect();
                 TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields)
@@ -268,7 +269,7 @@ pub fn union_sig_as_unnamed_union_type(union_sig: &UnionSig, loc: Loc) -> TypedU
         .map(|field| TypedUnnamedUnionTypeField {
             name: field.name.clone(),
             ty: Box::new(field.ty.clone()),
-            loc: field.loc.clone(),
+            loc: field.loc,
         })
         .collect();
 

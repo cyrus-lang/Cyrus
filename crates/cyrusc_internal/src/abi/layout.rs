@@ -166,7 +166,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                     CIREnumTyVariant::Fielded(_, field_types) => {
                         let tuple_type = CIRTupleTy {
                             elements: field_types.clone(),
-                            loc: enum_ty.loc.clone(),
+                            loc: enum_ty.loc,
                         };
                         let tuple_struct_type = tuple_type.as_struct_ty();
 
@@ -176,7 +176,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                             fields_info: tuple_struct_type.fields_info.clone(),
                             repr_attr: None,
                             align: None,
-                            loc: enum_ty.loc.clone(),
+                            loc: enum_ty.loc,
                         };
 
                         let layout = type_layout(info, &CIRTy::Struct(struct_ty));

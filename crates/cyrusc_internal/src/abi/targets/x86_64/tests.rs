@@ -18,7 +18,7 @@
 #[cfg(test)]
 mod tests {
     use cyrusc_ast::abi::CallConv;
-    use cyrusc_diagcentral::source_loc::SourceLoc;
+    use cyrusc_source_loc::{FileID, Loc};
     use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
     use crate::{
@@ -72,7 +72,7 @@ mod tests {
             fields_info: Vec::new(), // won't be used
             repr_attr: None,
             align: None,
-            loc: Loc::default(),
+            loc: Loc::default(FileID(0)),
         })
     }
 
@@ -85,7 +85,7 @@ mod tests {
             fields_info: Vec::new(), // won't be used
             align: None,
             repr_attr: None,
-            loc: Loc::default(),
+            loc: Loc::default(FileID(0)),
         })
     }
 

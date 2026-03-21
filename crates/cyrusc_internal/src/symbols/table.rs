@@ -15,7 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use crate::symbols::symbols::{
+    ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
+    ResolvedUnion, ResolvedVar, SymbolEntry,
+};
+use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
 
 pub trait ScopeQuery {
     fn lookup_local(&self, scope: ScopeID, name: &str) -> Option<SymbolID>;
@@ -23,22 +28,22 @@ pub trait ScopeQuery {
 }
 
 pub trait GlobalSymbolQuery {
-    fn lookup_symbol_id(&self, module: ModuleID, name: &str) -> Option<SymbolID>;
-    fn resolve_symbol_entry(&self, module: ModuleID, name: &str) -> Option<SymbolEntry>;
+    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
+    fn resolve_symbol_entry(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry>;
     fn resolve_global_symbol(&self, symbol: SymbolID) -> Option<SymbolEntry>;
     fn resolve_global_symbol_deep(&self, symbol: SymbolID) -> Option<SymbolEntry>;
 }
 
 pub trait SymbolQuery {
-    fn resolve_variable(&self, id: SymbolID) -> Option<ResolvedVariable>;
-    fn resolve_method(&self, id: SymbolID) -> Option<ResolvedMethod>;
-    fn resolve_func(&self, id: SymbolID) -> Option<ResolvedFunction>;
-    fn resolve_typedef(&self, id: SymbolID) -> Option<ResolvedTypedef>;
+    fn resolve_var(&self, id: SymbolID) -> Option<ResolvedVar>;
     fn resolve_global_var(&self, id: SymbolID) -> Option<ResolvedGlobalVar>;
-    fn resolve_interface(&self, id: SymbolID) -> Option<ResolvedInterface>;
+    fn resolve_method(&self, id: SymbolID) -> Option<ResolvedMethod>;
+    fn resolve_func(&self, id: SymbolID) -> Option<ResolvedFunc>;
+    fn resolve_typedef(&self, id: SymbolID) -> Option<ResolvedTypedef>;
     fn resolve_union(&self, id: SymbolID) -> Option<ResolvedUnion>;
     fn resolve_enum(&self, id: SymbolID) -> Option<ResolvedEnum>;
     fn resolve_struct(&self, id: SymbolID) -> Option<ResolvedStruct>;
+    fn resolve_interface(&self, id: SymbolID) -> Option<ResolvedInterface>;
 }
 
 /// A collection of symbols and their metadata within a specific scope or module.

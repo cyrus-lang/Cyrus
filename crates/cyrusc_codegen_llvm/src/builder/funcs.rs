@@ -31,7 +31,7 @@ use crate::{
     },
 };
 use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::Loc;
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
@@ -660,7 +660,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             ret: lambda.ret.clone(),
             modifiers: FuncModifiers::default(),
             abi_func_info: None,
-            loc: lambda.loc.clone(),
+            loc: lambda.loc,
         };
 
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
@@ -728,7 +728,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         abi_func_info: &ABIFunctionInfo,
         cir_block: &CIRBlockStmt,
         func_metadata: LLVMMetadataRef,
-        loc: &SourceLoc,
+        loc: &Loc,
     ) {
         unsafe { reset_debug_location(self.llvmbuilder) };
         debug_assert!(self.cur_func.is_some());

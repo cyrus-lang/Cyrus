@@ -82,8 +82,8 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         self.finalize_program_parse(program)
     }
 
-    #[inline]
     /// Finalizes the program parse by checking for errors.
+    #[inline]
     fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, ()> {
         if !self.reporter.has_errors() {
             Ok(program)

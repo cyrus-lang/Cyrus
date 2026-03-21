@@ -823,7 +823,7 @@ impl ModulePath {
     pub fn as_module_import(&self) -> ModuleImport {
         ModuleImport {
             segments: self.segments.clone(),
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }
@@ -837,7 +837,7 @@ impl FuncDef {
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
             renamed_as: None,
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }
@@ -887,32 +887,32 @@ impl Stmt {
 
     pub fn loc(&self) -> Loc {
         match self {
-            Stmt::Interface(interface) => interface.loc.clone(),
-            Stmt::Variable(variable) => variable.loc.clone(),
-            Stmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
-            Stmt::If(if_stmt) => if_stmt.loc.clone(),
-            Stmt::Return(ret) => ret.loc.clone(),
-            Stmt::FuncDef(func_def) => func_def.loc.clone(),
-            Stmt::FuncDecl(func_decl) => func_decl.loc.clone(),
-            Stmt::For(for_stmt) => for_stmt.loc.clone(),
-            Stmt::While(while_stmt) => while_stmt.loc.clone(),
-            Stmt::Foreach(foreach) => foreach.loc.clone(),
-            Stmt::Switch(switch) => switch.loc.clone(),
-            Stmt::Struct(struct_stmt) => struct_stmt.loc.clone(),
-            Stmt::Import(import) => import.loc.clone(),
-            Stmt::BlockStmt(block_stmt) => block_stmt.loc.clone(),
-            Stmt::Enum(enum_stmt) => enum_stmt.loc.clone(),
-            Stmt::Union(union) => union.loc.clone(),
-            Stmt::Break(brk) => brk.loc.clone(),
-            Stmt::Continue(cont) => cont.loc.clone(),
-            Stmt::Typedef(typedef) => typedef.loc.clone(),
-            Stmt::GlobalVar(global_variable) => global_variable.loc.clone(),
-            Stmt::Defer(defer) => defer.loc.clone(),
-            Stmt::Label(label) => label.loc.clone(),
-            Stmt::Goto(goto) => goto.loc.clone(),
+            Stmt::Interface(interface) => interface.loc,
+            Stmt::Variable(variable) => variable.loc,
+            Stmt::ExportTuple(export_tuple_values) => export_tuple_values.loc,
+            Stmt::If(if_stmt) => if_stmt.loc,
+            Stmt::Return(ret) => ret.loc,
+            Stmt::FuncDef(func_def) => func_def.loc,
+            Stmt::FuncDecl(func_decl) => func_decl.loc,
+            Stmt::For(for_stmt) => for_stmt.loc,
+            Stmt::While(while_stmt) => while_stmt.loc,
+            Stmt::Foreach(foreach) => foreach.loc,
+            Stmt::Switch(switch) => switch.loc,
+            Stmt::Struct(struct_stmt) => struct_stmt.loc,
+            Stmt::Import(import) => import.loc,
+            Stmt::BlockStmt(block_stmt) => block_stmt.loc,
+            Stmt::Enum(enum_stmt) => enum_stmt.loc,
+            Stmt::Union(union) => union.loc,
+            Stmt::Break(brk) => brk.loc,
+            Stmt::Continue(cont) => cont.loc,
+            Stmt::Typedef(typedef) => typedef.loc,
+            Stmt::GlobalVar(global_variable) => global_variable.loc,
+            Stmt::Defer(defer) => defer.loc,
+            Stmt::Label(label) => label.loc,
+            Stmt::Goto(goto) => goto.loc,
             Stmt::Builtin(builtin) => match builtin {
-                Builtin::BuiltinFunc(builtin_func) => builtin_func.loc.clone(),
-                Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc.clone(),
+                Builtin::BuiltinFunc(builtin_func) => builtin_func.loc,
+                Builtin::BuiltinScope(builtin_scope) => builtin_scope.loc,
             },
             Stmt::Expr(..) => unreachable!(),
         }

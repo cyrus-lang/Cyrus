@@ -20,7 +20,7 @@ use crate::{
     cir::cir::{CIREnumTyVariant, cir_expr_as_const_integer_value},
 };
 use cyrusc_ast::abi::{CallConv, ReprAttr};
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use cyrusc_tast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,7 +67,7 @@ pub struct CIRFuncTy {
 pub struct CIRStructTy {
     pub name: Option<String>,
     pub fields: Vec<CIRTy>,
-    pub fields_info: Vec<(String, SourceLoc)>,
+    pub fields_info: Vec<(String, Loc)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: Loc,
@@ -77,7 +77,7 @@ pub struct CIRStructTy {
 pub struct CIRUnionTy {
     pub name: Option<String>,
     pub fields: Vec<CIRTy>,
-    pub fields_info: Vec<(String, SourceLoc)>,
+    pub fields_info: Vec<(String, Loc)>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: Loc,
@@ -368,7 +368,7 @@ impl CIRTupleTy {
             .elements
             .iter()
             .enumerate()
-            .map(|(i, _)| (i.to_string(), self.loc.clone()))
+            .map(|(i, _)| (i.to_string(), self.loc))
             .collect();
 
         CIRStructTy {
@@ -377,7 +377,7 @@ impl CIRTupleTy {
             fields_info,
             repr_attr: None,
             align: None,
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }

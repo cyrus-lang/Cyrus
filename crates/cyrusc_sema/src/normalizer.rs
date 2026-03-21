@@ -18,7 +18,7 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_const_eval::value::is_comptime_valid;
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
 use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
     update_global_symbol, update_local_symbol,
@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                loc: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -91,7 +91,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
-                loc: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
         }
@@ -114,7 +114,7 @@ impl<'a> AnalysisContext<'a> {
             self.check_unnamed_union_type(scope_id_opt, unnamed_union_type);
         }
 
-        self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc.clone());
+        self.check_sema_ty_for_missing_type_args(scope_id_opt, &sema_ty, loc);
         Some(sema_ty)
     }
 
@@ -135,12 +135,12 @@ impl<'a> AnalysisContext<'a> {
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &mut unnamed_union_type.fields {
-            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc) {
                 Some(sema_ty) => Box::new(sema_ty),
                 None => continue,
             };
 
-            self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc.clone());
+            self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc);
 
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
@@ -149,7 +149,7 @@ impl<'a> AnalysisContext<'a> {
                         object_name: union_name.clone(),
                         field_name: field.name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(field.loc.clone())),
+                    loc: Some(DiagLoc::new(field.loc)),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
                 continue;
@@ -176,12 +176,12 @@ impl<'a> AnalysisContext<'a> {
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &mut unnamed_struct_type.fields {
-            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc) {
                 Some(sema_ty) => Box::new(sema_ty),
                 None => continue,
             };
 
-            self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc.clone());
+            self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc);
 
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
@@ -190,7 +190,7 @@ impl<'a> AnalysisContext<'a> {
                         object_name: struct_name.clone(),
                         field_name: field.name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(field.loc.clone())),
+                    loc: Some(DiagLoc::new(field.loc)),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
                 continue;
@@ -231,8 +231,8 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            loc: Some(DiagLoc::new(SourceLoc::from_loc(
-                                ident.loc.clone(),
+                            loc: Some(DiagLoc::new(Loc::from_loc(
+                                ident.loc,
                                 unnamed_enum_type.loc.file_path.clone(),
                             ))),
                             hint: None,
@@ -247,8 +247,8 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            loc: Some(DiagLoc::new(SourceLoc::from_loc(
-                                ident.loc.clone(),
+                            loc: Some(DiagLoc::new(Loc::from_loc(
+                                ident.loc,
                                 unnamed_enum_type.loc.file_path.clone(),
                             ))),
                             hint: None,
@@ -257,12 +257,12 @@ impl<'a> AnalysisContext<'a> {
                     }
 
                     for field in typed_enum_valued_fields {
-                        field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                        field.ty = match self.normalize_sema_type(scope_id_opt, field.ty.clone(), field.loc) {
                             Some(sema_ty) => sema_ty,
                             None => continue,
                         };
 
-                        self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc.clone());
+                        self.validate_field_type(scope_id_opt, 0, &field.ty, field.loc);
                     }
                     ident
                 }
@@ -275,8 +275,8 @@ impl<'a> AnalysisContext<'a> {
                         enum_name: enum_name.clone(),
                         variant_name: variant_ident.value.clone(),
                     }),
-                    loc: Some(DiagLoc::new(SourceLoc::from_loc(
-                        variant_ident.loc.clone(),
+                    loc: Some(DiagLoc::new(Loc::from_loc(
+                        variant_ident.loc,
                         unnamed_enum_type.loc.file_path.clone(),
                     ))),
                     hint: Some("Consider to rename the variant to a different name.".to_string()),
@@ -296,8 +296,8 @@ impl<'a> AnalysisContext<'a> {
         sema_ty: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let sema_ty = self.normalize_sema_type(scope_id_opt, sema_ty, loc.clone())?;
-        self.check_sema_ty(scope_id_opt, sema_ty, loc.clone())
+        let sema_ty = self.normalize_sema_type(scope_id_opt, sema_ty, loc)?;
+        self.check_sema_ty(scope_id_opt, sema_ty, loc)
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
@@ -338,7 +338,7 @@ impl<'a> AnalysisContext<'a> {
         mut unnamed_union_type: TypedUnnamedUnionType,
     ) -> Option<SemanticType> {
         for field in &mut unnamed_union_type.fields {
-            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc) {
                 Some(sema_ty) => Box::new(sema_ty),
                 None => continue,
             };
@@ -352,7 +352,7 @@ impl<'a> AnalysisContext<'a> {
         mut unnamed_struct_type: TypedUnnamedStructType,
     ) -> Option<SemanticType> {
         for field in &mut unnamed_struct_type.fields {
-            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc.clone()) {
+            field.ty = match self.normalize_sema_type(scope_id_opt, *field.ty.clone(), field.loc) {
                 Some(sema_ty) => Box::new(sema_ty),
                 None => continue,
             };
@@ -370,7 +370,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedUnnamedEnumVariant::Ident(_) => continue,
                 TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
                     for valued_field in valued_fields {
-                        match self.normalize_sema_type(scope_id_opt, valued_field.ty.clone(), valued_field.loc.clone())
+                        match self.normalize_sema_type(scope_id_opt, valued_field.ty.clone(), valued_field.loc)
                         {
                             Some(sema_ty) => valued_field.ty = sema_ty,
                             None => continue,
@@ -395,7 +395,7 @@ impl<'a> AnalysisContext<'a> {
             .params
             .list
             .into_iter()
-            .filter_map(|param| self.normalize_sema_type(scope_id_opt, param, func_type.loc.clone()))
+            .filter_map(|param| self.normalize_sema_type(scope_id_opt, param, func_type.loc))
             .collect();
 
         if params.len() != params_len {
@@ -411,7 +411,7 @@ impl<'a> AnalysisContext<'a> {
                     func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle));
                 }
                 TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    if let Some(normalized) = self.normalize_sema_type(scope_id_opt, sema_ty, func_type.loc.clone()) {
+                    if let Some(normalized) = self.normalize_sema_type(scope_id_opt, sema_ty, func_type.loc) {
                         func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::Typed(normalized)));
                     } else {
                         return None;
@@ -420,7 +420,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let normalized_ret = self.normalize_sema_type(scope_id_opt, *func_type.return_type, func_type.loc.clone())?;
+        let normalized_ret = self.normalize_sema_type(scope_id_opt, *func_type.return_type, func_type.loc)?;
         func_type.return_type = Box::new(normalized_ret);
 
         Some(SemanticType::FuncType(func_type))
@@ -431,7 +431,7 @@ impl<'a> AnalysisContext<'a> {
         let type_list: Vec<_> = tuple_type
             .type_list
             .into_iter()
-            .filter_map(|sema_ty| self.normalize_sema_type(scope_id_opt, sema_ty, tuple_type.loc.clone()))
+            .filter_map(|sema_ty| self.normalize_sema_type(scope_id_opt, sema_ty, tuple_type.loc))
             .collect();
 
         // if we lost any types, return None
@@ -460,7 +460,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                        loc: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
                     return None;
@@ -469,7 +469,7 @@ impl<'a> AnalysisContext<'a> {
             TypedArrayCapacity::Dynamic => todo!(),
         }
 
-        arr.element_type = Box::new(self.normalize_sema_type(scope_id_opt, *arr.element_type, loc.clone())?);
+        arr.element_type = Box::new(self.normalize_sema_type(scope_id_opt, *arr.element_type, loc)?);
         Some(arr)
     }
 
@@ -479,7 +479,7 @@ impl<'a> AnalysisContext<'a> {
         arr: TypedArrayType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let normalized_arr = self.normalize_array_capacity(scope_id_opt, arr, loc.clone())?;
+        let normalized_arr = self.normalize_array_capacity(scope_id_opt, arr, loc)?;
         Some(SemanticType::Array(normalized_arr))
     }
 
@@ -489,7 +489,7 @@ impl<'a> AnalysisContext<'a> {
         inner: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let normalized = self.normalize_sema_type(scope_id_opt, inner, loc.clone())?;
+        let normalized = self.normalize_sema_type(scope_id_opt, inner, loc)?;
         Some(normalized.as_const())
     }
 
@@ -499,7 +499,7 @@ impl<'a> AnalysisContext<'a> {
         inner: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let normalized = self.normalize_sema_type(scope_id_opt, inner, loc.clone())?;
+        let normalized = self.normalize_sema_type(scope_id_opt, inner, loc)?;
         Some(SemanticType::Pointer(Box::new(normalized)))
     }
 
@@ -582,11 +582,11 @@ impl<'a> AnalysisContext<'a> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
         self.resolver.resolve_local_or_global_symbol(scope_opt, symbol_id);
 
-        if !self.check_generic_typedef_missing_args(scope_id_opt, symbol_id, loc.clone()) {
+        if !self.check_generic_typedef_missing_args(scope_id_opt, symbol_id, loc) {
             return None;
         }
 
-        let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
+        let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc)?;
         self.normalize_sema_type(scope_id_opt, resolved, loc)
     }
 
@@ -638,7 +638,7 @@ impl<'a> AnalysisContext<'a> {
                 scope_opt,
                 typedef,
                 generic_type.type_args,
-                typedef.typedef_sig.loc.clone(),
+                typedef.typedef_sig.loc,
             )
         } else if let Some(resolved_interface) = sym.as_interface() {
             if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
@@ -675,13 +675,13 @@ impl<'a> AnalysisContext<'a> {
         for type_arg in type_args {
             match type_arg {
                 TypedTypeArg::Positional { ty, loc, .. } => {
-                    *ty = match self.normalize_and_check_sema_ty(scope_id_opt, ty.clone(), loc.clone()) {
+                    *ty = match self.normalize_and_check_sema_ty(scope_id_opt, ty.clone(), loc) {
                         Some(sema_ty) => sema_ty,
                         None => continue,
                     };
                 }
                 TypedTypeArg::Named { ty, loc, .. } => {
-                    *ty = match self.normalize_and_check_sema_ty(scope_id_opt, ty.clone(), loc.clone()) {
+                    *ty = match self.normalize_and_check_sema_ty(scope_id_opt, ty.clone(), loc) {
                         Some(sema_ty) => sema_ty,
                         None => continue,
                     };
@@ -740,7 +740,7 @@ impl<'a> AnalysisContext<'a> {
         Some(SemanticType::Interface(InterfaceType {
             symbol_id: generic_type.base,
             methods,
-            loc: generic_type.loc.clone(),
+            loc: generic_type.loc,
         }))
     }
 
@@ -832,19 +832,19 @@ impl<'a> AnalysisContext<'a> {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
                     let normalized_type = self
-                        .normalize_sema_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
+                        .normalize_sema_type(None, typed_func_param.ty.clone(), typed_func_param.loc)
                         .unwrap();
 
                     typed_func_param.ty = normalized_type.clone();
 
-                    self.validate_param_type(None, &typed_func_param.ty, typed_func_param.loc.clone());
+                    self.validate_param_type(None, &typed_func_param.ty, typed_func_param.loc);
                 }
                 TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
                     let normalized_type = self
                         .normalize_sema_type(
                             None,
                             SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
-                            typed_self_modifier.loc.clone(),
+                            typed_self_modifier.loc,
                         )
                         .unwrap();
 
@@ -860,7 +860,7 @@ impl<'a> AnalysisContext<'a> {
                     self.validate_param_type(
                         None,
                         &typed_self_modifier.ty.as_ref().unwrap(),
-                        typed_self_modifier.loc.clone(),
+                        typed_self_modifier.loc,
                     );
                 }
             }
@@ -868,12 +868,12 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_params) = &mut params.variadic {
             if let TypedFuncVariadicParams::Typed(ident, sema_ty) = variadic_params {
-                let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
+                let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc) {
                     Some(sema_ty) => sema_ty,
                     None => return,
                 };
 
-                self.validate_param_type(None, &sema_ty, ident.loc.clone());
+                self.validate_param_type(None, &sema_ty, ident.loc);
                 *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_ty);
             }
         }
@@ -882,22 +882,22 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: Loc) {
         // analyze static arguments
         for param in params.list.iter_mut() {
-            let sema_ty = self.normalize_sema_type(None, param.clone(), loc.clone()).unwrap();
+            let sema_ty = self.normalize_sema_type(None, param.clone(), loc).unwrap();
             *param = sema_ty.clone();
 
-            self.validate_param_type(None, &sema_ty, loc.clone());
+            self.validate_param_type(None, &sema_ty, loc);
         }
 
         if let Some(variadic_params) = &mut params.variadic {
             match *variadic_params.clone() {
                 TypedFuncTypeVariadicParams::UntypedCStyle => {}
                 TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc.clone()) {
+                    let sema_ty = match self.normalize_sema_type(None, sema_ty.clone(), loc) {
                         Some(sema_ty) => sema_ty,
                         None => return,
                     };
 
-                    self.validate_param_type(None, &sema_ty, loc.clone());
+                    self.validate_param_type(None, &sema_ty, loc);
                     *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty));
                 }
             }
@@ -920,7 +920,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-                loc: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
             return None;
@@ -941,7 +941,7 @@ impl<'a> AnalysisContext<'a> {
             sema_ty_opt = self.resolve_symbol_type_internal(scope_id_opt, local_or_global);
 
             if let Some(ty) = sema_ty_opt.clone() {
-                sema_ty_opt = self.normalize_sema_type(scope_id_opt, ty, loc.clone());
+                sema_ty_opt = self.normalize_sema_type(scope_id_opt, ty, loc);
             }
         } else {
             return None;
@@ -968,7 +968,7 @@ impl<'a> AnalysisContext<'a> {
 
                     if let Some(sema_ty) = &resolved_var.ty {
                         let sema_ty =
-                            self.normalize_sema_type(scope_id_opt, sema_ty.clone(), resolved_var.loc.clone())?;
+                            self.normalize_sema_type(scope_id_opt, sema_ty.clone(), resolved_var.loc)?;
 
                         return Some(if resolved_var.is_const {
                             sema_ty.as_const()
@@ -1018,7 +1018,7 @@ impl<'a> AnalysisContext<'a> {
                 LocalSymbolKind::Interface(resolved_interface) => self.normalize_interface_type(
                     scope_id_opt,
                     resolved_interface.symbol_id,
-                    resolved_interface.interface_sig.loc.clone(),
+                    resolved_interface.interface_sig.loc,
                 ),
                 LocalSymbolKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
             },
@@ -1054,14 +1054,14 @@ impl<'a> AnalysisContext<'a> {
                     },
                     is_public: resolved_func.func_sig.modifiers.vis.is_public(),
                     return_type: Box::new(resolved_func.func_sig.return_type.clone()),
-                    loc: resolved_func.func_sig.loc.clone(),
+                    loc: resolved_func.func_sig.loc,
                 })),
                 SymbolEntryKind::GlobalVar(mut resolved_global_var) => {
                     let global_var_sig = &mut resolved_global_var.global_var_sig;
 
                     if let Some(sema_ty) = &global_var_sig.ty {
                         let sema_ty =
-                            self.normalize_sema_type(scope_id_opt, sema_ty.clone(), global_var_sig.loc.clone())?;
+                            self.normalize_sema_type(scope_id_opt, sema_ty.clone(), global_var_sig.loc)?;
 
                         return Some(if global_var_sig.is_const {
                             sema_ty.as_const()
@@ -1109,7 +1109,7 @@ impl<'a> AnalysisContext<'a> {
                 SymbolEntryKind::Interface(resolved_interface) => self.normalize_interface_type(
                     scope_id_opt,
                     resolved_interface.symbol_id,
-                    resolved_interface.interface_sig.loc.clone(),
+                    resolved_interface.interface_sig.loc,
                 ),
                 SymbolEntryKind::Typedef(resolved_typedef) => self.resolve_typedef_inner_type(&resolved_typedef),
                 SymbolEntryKind::ProxiedSymbol(_, symbol_id) => {

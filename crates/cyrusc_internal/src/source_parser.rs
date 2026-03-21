@@ -16,9 +16,10 @@
  */
 
 use cyrusc_ast::ProgramTree;
-use cyrusc_diagcentral::DiagKind;
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::FileID;
+use std::fmt::Debug;
 
-pub trait SourceParser {
-    fn parse_program(&mut self, file_id: FileId) -> Result<ProgramTree, DiagKind>;
+pub trait SourceParser: Debug + Sync + Send {
+    fn parse_program(&mut self, file_id: FileID) -> Result<ProgramTree, ()>;
+    fn display_errors(&self);
 }

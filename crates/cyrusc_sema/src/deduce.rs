@@ -75,11 +75,11 @@ impl<'a> AnalysisContext<'a> {
                     PlainType::Void,
                 )))),
                 kind: LiteralKind::Null,
-                loc: prefix_expr.loc.clone(),
+                loc: prefix_expr.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: prefix_expr.loc.clone(),
+            loc: prefix_expr.loc,
         };
 
         if operand_type.is_pointer() {
@@ -89,14 +89,14 @@ impl<'a> AnalysisContext<'a> {
                 op: InfixOperator::Equal,
                 lhs,
                 rhs: Box::new(null_literal_expr),
-                loc: prefix_expr.loc.clone(),
+                loc: prefix_expr.loc,
             });
 
             Some(TypedExprStmt {
                 kind: new_infix_expr,
                 mloc: MemoryLocation::RValue,
                 sema_ty: None,
-                loc: prefix_expr.loc.clone(),
+                loc: prefix_expr.loc,
             })
         } else {
             None
@@ -108,7 +108,7 @@ impl<'a> AnalysisContext<'a> {
             op: assign.kind.to_infix_operator(),
             lhs: assign.lhs.clone(),
             rhs: assign.rhs.clone(),
-            loc: assign.loc.clone(),
+            loc: assign.loc,
         });
 
         TypedExprKind::Assign(TypedAssignExpr {
@@ -116,11 +116,11 @@ impl<'a> AnalysisContext<'a> {
             rhs: Box::new(TypedExprStmt {
                 kind: infix_expr,
                 sema_ty: None,
-                loc: assign.loc.clone(),
+                loc: assign.loc,
                 mloc: MemoryLocation::RValue,
             }),
             kind: AssignKind::Default,
-            loc: assign.loc.clone(),
+            loc: assign.loc,
         })
     }
 }

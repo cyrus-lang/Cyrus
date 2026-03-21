@@ -594,7 +594,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             DerefMode::Store => self.emit_lvalue_address(&CIRExpr {
                 kind: CIRExprKind::Deref(deref.clone()),
                 ty: deref.operand.ty.pointer_inner().cloned().unwrap(),
-                loc: deref.operand.loc.clone(),
+                loc: deref.operand.loc,
             }),
         }
     }
@@ -1288,7 +1288,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             .elements
             .iter()
             .enumerate()
-            .map(|(i, _)| (i.to_string(), tuple.loc.clone()))
+            .map(|(i, _)| (i.to_string(), tuple.loc))
             .collect();
 
         let struct_value = self
@@ -1299,7 +1299,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     fields_info,
                     repr_attr: None,
                     align: None,
-                    loc: tuple.loc.clone(),
+                    loc: tuple.loc,
                 },
                 fields: tuple.elements.clone(),
             })
@@ -1309,7 +1309,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(
             CIRTy::Tuple(CIRTupleTy {
                 elements: element_types,
-                loc: tuple.loc.clone(),
+                loc: tuple.loc,
             }),
             InternalValueKind::RValue(struct_value.into()),
         )

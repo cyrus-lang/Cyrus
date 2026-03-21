@@ -20,14 +20,14 @@ mod tests {
         exprs::TypedIdentifier,
         stmts::{TypedGenericParam, TypedGenericParamsList},
     };
-    use cyrusc_diagcentral::source_loc::SourceLoc;
+    use cyrusc_source_loc::{FileID, Loc};
 
     fn make_param(name: &str) -> TypedGenericParam {
         TypedGenericParam {
             param_name: TypedIdentifier {
                 name: name.to_string(),
                 symbol_id: 1000,
-                loc: Loc::default(),
+                loc: Loc::default(FileID(0)),
             },
             bounds: None,
             default: None,

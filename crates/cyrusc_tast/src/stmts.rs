@@ -25,7 +25,6 @@ use cyrusc_ast::{
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
-use cyrusc_diagcentral::source_loc::SourceLoc;
 use cyrusc_source_loc::Loc;
 use std::{collections::HashMap, hash::Hash};
 
@@ -365,9 +364,9 @@ pub struct TypedSwitchCase {
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
     Range(TypedRange),
-    Expr(TypedExprStmt, SourceLoc),
-    Ident(String, SourceLoc),
-    EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
+    Expr(TypedExprStmt),
+    Ident(Ident),
+    EnumVariant(Ident, Vec<TypedIdentifier>, Loc),
 }
 
 #[derive(Debug, Clone)]
@@ -413,40 +412,40 @@ pub enum TypedTypeArg {
 }
 
 impl TypedStmt {
-    pub fn loc(&self) -> SourceLoc {
+    pub fn loc(&self) -> Loc {
         match self {
-            TypedStmt::Variable(typed_variable) => typed_variable.loc.clone(),
-            TypedStmt::Typedef(typed_typedef) => typed_typedef.loc.clone(),
-            TypedStmt::GlobalVar(typed_global_variable) => typed_global_variable.loc.clone(),
-            TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
-            TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
-            TypedStmt::BlockStmt(typed_block_statement) => typed_block_statement.loc.clone(),
-            TypedStmt::If(typed_if) => typed_if.loc.clone(),
-            TypedStmt::Return(typed_return) => typed_return.loc.clone(),
-            TypedStmt::Break(typed_break) => typed_break.loc.clone(),
-            TypedStmt::Continue(typed_continue) => typed_continue.loc.clone(),
-            TypedStmt::For(typed_for) => typed_for.loc.clone(),
-            TypedStmt::Switch(typed_switch) => typed_switch.loc.clone(),
-            TypedStmt::Struct(typed_struct) => typed_struct.loc.clone(),
-            TypedStmt::Enum(typed_enum) => typed_enum.loc.clone(),
-            TypedStmt::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStmt::Expr(typed_expr) => typed_expr.loc.clone(),
-            TypedStmt::While(while_stmt) => while_stmt.loc.clone(),
-            TypedStmt::Union(union_stmt) => union_stmt.loc.clone(),
-            TypedStmt::Defer(typed_defer) => typed_defer.loc.clone(),
-            TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc.clone(),
-            TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc.clone(),
-            TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc.clone(),
+            TypedStmt::Variable(typed_variable) => typed_variable.loc,
+            TypedStmt::Typedef(typed_typedef) => typed_typedef.loc,
+            TypedStmt::GlobalVar(typed_global_variable) => typed_global_variable.loc,
+            TypedStmt::FuncDef(typed_func_def) => typed_func_def.loc,
+            TypedStmt::FuncDecl(typed_func_decl) => typed_func_decl.loc,
+            TypedStmt::BlockStmt(typed_block_statement) => typed_block_statement.loc,
+            TypedStmt::If(typed_if) => typed_if.loc,
+            TypedStmt::Return(typed_return) => typed_return.loc,
+            TypedStmt::Break(typed_break) => typed_break.loc,
+            TypedStmt::Continue(typed_continue) => typed_continue.loc,
+            TypedStmt::For(typed_for) => typed_for.loc,
+            TypedStmt::Switch(typed_switch) => typed_switch.loc,
+            TypedStmt::Struct(typed_struct) => typed_struct.loc,
+            TypedStmt::Enum(typed_enum) => typed_enum.loc,
+            TypedStmt::Interface(typed_interface) => typed_interface.loc,
+            TypedStmt::Expr(typed_expr) => typed_expr.loc,
+            TypedStmt::While(while_stmt) => while_stmt.loc,
+            TypedStmt::Union(union_stmt) => union_stmt.loc,
+            TypedStmt::Defer(typed_defer) => typed_defer.loc,
+            TypedStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc,
+            TypedStmt::Label(typed_label_stmt) => typed_label_stmt.loc,
+            TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
             TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
         }
     }
 }
 
 impl TypedBuiltin {
-    pub fn loc(&self) -> SourceLoc {
+    pub fn loc(&self) -> Loc {
         match self {
-            TypedBuiltin::BuiltinFunc(builtin_func) => builtin_func.loc.clone(),
-            TypedBuiltin::BuiltinScope(builtin_scope) => builtin_scope.loc.clone(),
+            TypedBuiltin::BuiltinFunc(builtin_func) => builtin_func.loc,
+            TypedBuiltin::BuiltinScope(builtin_scope) => builtin_scope.loc,
         }
     }
 }
@@ -530,10 +529,10 @@ impl TypedFuncParamKind {
         }
     }
 
-    pub fn loc(&self) -> SourceLoc {
+    pub fn loc(&self) -> Loc {
         match self {
-            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc.clone(),
-            TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.loc.clone(),
+            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.loc,
+            TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.loc,
         }
     }
 
@@ -571,7 +570,7 @@ impl TypedSwitchStmt {
     pub fn includes_only_integer(&self) -> bool {
         self.cases.iter().any(|case| {
             case.patterns.iter().any(|p| match p {
-                TypedSwitchCasePattern::Expr(expr, _) => {
+                TypedSwitchCasePattern::Expr(expr, ..) => {
                     let sema_ty = expr.sema_ty.as_ref().unwrap();
                     sema_ty.is_char() || sema_ty.is_integer()
                 }

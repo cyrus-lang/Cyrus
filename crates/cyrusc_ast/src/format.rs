@@ -432,7 +432,7 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", module_segments_as_string(self.segments.clone()))
+        write!(f, "{}", format_module_segments(self.segments.clone()))
     }
 }
 
@@ -469,7 +469,7 @@ impl fmt::Display for UnnamedStructValue {
     }
 }
 
-pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
+pub fn format_module_segments(segments: Vec<ModuleSegment>) -> String {
     let mut out = String::new();
 
     for (i, item) in segments.iter().enumerate() {

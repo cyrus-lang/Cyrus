@@ -16,7 +16,7 @@
  */
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::SourceLoc};
+use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
 use cyrusc_resolver::symbols::LocalScopeRef;
 use cyrusc_tast::{
     ScopeID,
@@ -66,40 +66,40 @@ impl<'a> AnalysisContext<'a> {
                     return Some(sema_ty);
                 }
 
-                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone())
+                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
             }
             InfixOperator::Sub => {
                 if let Some(sema_ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, false) {
                     return Some(sema_ty);
                 }
 
-                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone())
+                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
             }
             InfixOperator::Mul | InfixOperator::Div | InfixOperator::Rem => {
-                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone())
+                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
             }
             InfixOperator::LessThan
             | InfixOperator::LessEqual
             | InfixOperator::GreaterThan
             | InfixOperator::GreaterEqual => {
-                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, false, infix_expr.loc.clone())
+                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, false, infix_expr.loc)
             }
             InfixOperator::Equal | InfixOperator::NotEqual => {
-                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, true, infix_expr.loc.clone())
+                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, true, infix_expr.loc)
             }
-            InfixOperator::Or => self.analyze_or_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone()),
-            InfixOperator::And => self.analyze_and_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone()),
+            InfixOperator::Or => self.analyze_or_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc),
+            InfixOperator::And => self.analyze_and_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc),
             InfixOperator::BitwiseAnd
             | InfixOperator::BitwiseOr
             | InfixOperator::BitwiseXor
             | InfixOperator::BitwiseAndNot => {
-                self.analyze_bitwise_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone())
+                self.analyze_bitwise_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
             }
             InfixOperator::ShiftLeft => {
-                self.analyze_left_shift_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone())
+                self.analyze_left_shift_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
             }
             InfixOperator::ShiftRight => {
-                self.analyze_right_shift_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone())
+                self.analyze_right_shift_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
             }
         }
     }
@@ -113,7 +113,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AddressOfRvalue),
-                loc: Some(DiagLoc::new(addr_of.loc.clone())),
+                loc: Some(DiagLoc::new(addr_of.loc)),
                 hint: None,
             });
             return None;
@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                loc: Some(DiagLoc::new(deref.loc.clone())),
+                loc: Some(DiagLoc::new(deref.loc)),
                 hint: None,
             });
             return None;
@@ -157,7 +157,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                    loc: Some(DiagLoc::new(deref.loc.clone())),
+                    loc: Some(DiagLoc::new(deref.loc)),
                     hint: None,
                 });
                 return None;
@@ -168,7 +168,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefVoidPointerValue),
-                loc: Some(DiagLoc::new(deref.loc.clone())),
+                loc: Some(DiagLoc::new(deref.loc)),
                 hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
             });
             return None;
@@ -188,7 +188,7 @@ impl<'a> AnalysisContext<'a> {
                 if let SemanticType::UnresolvedSymbol(symbol_id) = sema_ty {
                     *symbol_id
                 } else {
-                    self.normalize_sema_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc.clone())?;
+                    self.normalize_sema_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc)?;
                     return Some(SemanticType::PlainType(PlainType::USize));
                 }
             }
@@ -214,7 +214,7 @@ impl<'a> AnalysisContext<'a> {
             self.normalize_sema_type(
                 scope_id_opt,
                 SemanticType::UnresolvedSymbol(symbol_id),
-                sizeof_expr.loc.clone(),
+                sizeof_expr.loc,
             )?;
         }
 
@@ -253,7 +253,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type }),
-                            loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                            loc: Some(DiagLoc::new(prefix_expr.loc)),
                             hint: None,
                         });
                         return None;
@@ -280,7 +280,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixBangOnNonBool { operand_type }),
-                            loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                            loc: Some(DiagLoc::new(prefix_expr.loc)),
                             hint: None,
                         });
                         return None;
@@ -295,7 +295,7 @@ impl<'a> AnalysisContext<'a> {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::UnaryOperatorMinusOnUnsignedInteger),
-                                    loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                                    loc: Some(DiagLoc::new(prefix_expr.loc)),
                                     hint: Some(
                                         "Use a signed type if you need to represent negative values.".to_string(),
                                     ),
@@ -321,7 +321,7 @@ impl<'a> AnalysisContext<'a> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type }),
-                            loc: Some(DiagLoc::new(prefix_expr.loc.clone())),
+                            loc: Some(DiagLoc::new(prefix_expr.loc)),
                             hint: None,
                         });
                         return None;
@@ -346,7 +346,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
-                loc: Some(DiagLoc::new(unary_expr.loc.clone())),
+                loc: Some(DiagLoc::new(unary_expr.loc)),
                 hint: None,
             });
             return None;
@@ -358,7 +358,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary { operand_type }),
-                loc: Some(DiagLoc::new(unary_expr.loc.clone())),
+                loc: Some(DiagLoc::new(unary_expr.loc)),
                 hint: None,
             });
             return None;
@@ -457,7 +457,7 @@ impl<'a> AnalysisContext<'a> {
                         lhs_type: lhs_type_str,
                         rhs_type: rhs_type_str,
                     }),
-                    loc: Some(DiagLoc::new(loc.clone())),
+                    loc: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
                 return None;
@@ -477,13 +477,13 @@ impl<'a> AnalysisContext<'a> {
                             lhs_type: lhs_type_str,
                             rhs_type: rhs_type_str,
                         }),
-                        loc: Some(DiagLoc::new(loc.clone())),
+                        loc: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
                     return None;
                 }
             }
-        } else if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
+        } else if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc) {
             let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
@@ -493,7 +493,7 @@ impl<'a> AnalysisContext<'a> {
                     lhs_type: lhs_type_str,
                     rhs_type: rhs_type_str,
                 }),
-                loc: Some(DiagLoc::new(loc.clone())),
+                loc: Some(DiagLoc::new(loc)),
                 hint: None,
             });
             return None;
@@ -532,7 +532,7 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
+        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc) {
             let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
@@ -543,7 +543,7 @@ impl<'a> AnalysisContext<'a> {
                     rhs_type: rhs_type_str,
                 }),
                 loc: Some(DiagLoc::new(
-                    loc.clone()
+                    loc
                 )),
                 hint: Some("Consider adding an explicit cast to either the lhs or rhs operand to make their types compatible.".to_string()),
             });
@@ -657,7 +657,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             lhs_type.clone(),
             rhs_type.clone(),
-            loc.clone(),
+            loc,
             |this, lhs, rhs| {
                 if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
                     // rhs must be unsigned
@@ -665,7 +665,7 @@ impl<'a> AnalysisContext<'a> {
                         this.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger),
-                            loc: Some(DiagLoc::new(loc.clone())),
+                            loc: Some(DiagLoc::new(loc)),
                             hint: None,
                         });
                         return None;

@@ -23,7 +23,7 @@ use crate::{
     c,
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::Loc;
 use cyrusc_internal::{
     abi::{args::ABIRetInfoKind, layout::type_layout, types::ABIType},
     cir::{
@@ -317,14 +317,14 @@ impl<'ll> IRBuilderCtx<'ll> {
         variant_field_types: Vec<CIRTy>,
         payload_struct_ty: StructType<'ll>,
         exported_fields: &Vec<(TypedIdentifier, CIRTy)>,
-        loc: &SourceLoc,
+        loc: &Loc,
     ) {
         let mut irreg = self.irreg.borrow_mut();
 
         let elements: Vec<CIRTy> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
         let tuple_type = CIRTy::Tuple(CIRTupleTy {
             elements,
-            loc: loc.clone(),
+            loc: loc,
         });
         let layout = type_layout(&self.target.info, &tuple_type);
 
@@ -766,7 +766,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.blockreg.control_flow_stack.pop().unwrap();
     }
 
-    pub(crate) fn emit_break(&mut self, _: &SourceLoc) {
+    pub(crate) fn emit_break(&mut self, _: &Loc) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
 
         let CFEntry::Loop(cf_loop) = entry;
@@ -780,7 +780,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.blockreg.cur_block = None;
     }
 
-    pub(crate) fn emit_continue(&mut self, _: &SourceLoc) {
+    pub(crate) fn emit_continue(&mut self, _: &Loc) {
         let entry = self.blockreg.control_flow_stack.last().unwrap();
 
         let CFEntry::Loop(cf_loop) = entry;

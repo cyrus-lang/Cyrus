@@ -24,7 +24,7 @@ use cyrusc_diagcentral::{exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, walk::walk_program_trees_in_parallel},
+    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, traverse::walk_program_trees_in_parallel},
 };
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;

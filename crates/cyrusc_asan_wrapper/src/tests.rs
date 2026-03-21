@@ -14,19 +14,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 #[cfg(test)]
 mod tests {
+    use crate::{SanitizerOptions, run_sanitizers};
     use inkwell::OptimizationLevel;
     use inkwell::context::Context;
     use inkwell::targets::{InitializationConfig, Target, TargetTriple};
-
-    use crate::{SanitizerOptions, run_sanitizers};
 
     #[test]
     fn test_run_sanitizers_on_simple_module() {
         Target::initialize_native(&InitializationConfig::default()).unwrap();
         let triple = TargetTriple::create("x86_64-unknown-linux-gnu");
-        let target = Target::from_triple(&triple).expect("Could not find target");
+        let target = Target::from_triple(&triple).expect("could not find target");
         let tm = target
             .create_target_machine(
                 &triple,
@@ -36,7 +36,7 @@ mod tests {
                 inkwell::targets::RelocMode::Default,
                 inkwell::targets::CodeModel::Default,
             )
-            .expect("Could not create target machine");
+            .expect("could not create target machine");
 
         let context = Context::create();
         let module = context.create_module("asan_test_module");
@@ -63,6 +63,6 @@ mod tests {
 
         module
             .verify()
-            .expect("Module verification failed after sanitizer passes.");
+            .expect("module verification failed after sanitizer passes");
     }
 }

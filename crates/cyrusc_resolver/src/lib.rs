@@ -15,23 +15,18 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{diagnostics::ResolverDiagKind, modules::ImportedModuleEntry};
-use cyrusc_ast::abi::Visibility;
-use cyrusc_ast::format::module_segments_as_string;
-use cyrusc_ast::*;
-use cyrusc_diagcentral::source_loc::SourceLoc;
-use cyrusc_diagcentral::{reporter::DiagReporter, *};
+use crate::modules::ImportedModuleEntry;
+use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::module_loader::ModuleLoader;
-use cyrusc_internal::symbols::table::{GlobalSymbolRegistry, SymbolTable};
+use cyrusc_internal::symbols::symbols::SymbolEntry;
+use cyrusc_internal::symbols::table::SymbolTable;
 use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_tast::generics::monomorph::MonomorphRegistry;
 use cyrusc_tast::stmts::*;
 use cyrusc_tast::*;
-use cyrusc_tokens::loc::{Location, Span};
-use cyrusc_tokens::{Token, TokenKind};
-use rand::Rng;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -71,7 +66,7 @@ pub struct ModuleFileMap {
 /// A guard that manages the lifetime and context of a LocalScope.
 pub struct LocalScopeGuard<'a> {
     scope: LocalScope,
-    resolver: &'a mut Resolver, // Assume Resolver manages the global context in which scopes reside.
+    resolver: &'a mut Resolver<'a>, // Assume Resolver manages the global context in which scopes reside.
 }
 
 /// Semantic resolver responsible for symbol binding, module loading,
@@ -148,25 +143,23 @@ pub(crate) struct ProgramTreeEntry {
     pub program: Rc<RefCell<TypedProgramTree>>,
 }
 
-impl Resolver {
+impl<'diag> Resolver<'diag> {
     pub fn new(
-        opts: ModuleLoaderOptions,
+        module_loader: Box<dyn ModuleLoader>,
         reporter: &'diag DiagReporter<'diag>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         master_module_file_path: PathBuf,
     ) -> Self {
-        let file_paths = Arc::new(Mutex::new(HashMap::new()));
-
         Self {
             global_symbols_registry: GlobalSymbolRegistry::new(),
             module_aliases: ModuleAliasRegistry::new(),
             analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
             program_trees: Arc::new(Mutex::new(Vec::new())),
-            module_loader: ModuleLoader::new(opts),
             module_file_map: ModuleFileMap::new(),
             imported_modules: HashSet::new(),
             scopes: Vec::new(),
+            module_loader,
             current_object_generic_params: None,
             module_id: None,
             current_object: None,
@@ -194,15 +187,12 @@ impl Resolver {
     }
 
     #[inline]
-    pub fn current_file_path(&self) -> String {
-        let current_module_id = self.module_id.unwrap();
-        let file_paths = self.file_paths.lock().unwrap();
-        let file_path = match file_paths.get(&current_module_id) {
-            Some(child_module_file_path) => child_module_file_path.clone(),
+    pub fn current_module_file_path(&self) -> PathBuf {
+        let module_id = self.module_id.unwrap();
+        match self.module_file_map.get(module_id) {
+            Some(path_buf) => path_buf,
             None => self.master_module_file_path.clone(),
-        };
-        drop(file_paths);
-        file_path.to_string_lossy().to_string()
+        }
     }
 }
 
@@ -292,6 +282,7 @@ impl ModuleAliasRegistry {
 }
 
 impl ModuleFileMap {
+    #[inline]
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
@@ -301,6 +292,7 @@ impl ModuleFileMap {
     /// Associate a module with its file path.
     ///
     /// If the module already exists in the map, the path will be replaced.
+    #[inline]
     pub fn insert(&self, module_id: ModuleID, path: PathBuf) {
         let mut map = self.inner.lock().unwrap();
         map.insert(module_id, path);
@@ -309,18 +301,35 @@ impl ModuleFileMap {
     /// Retrieve the file path associated with a module.
     ///
     /// Returns `None` if the module is not registered.
+    #[inline]
     pub fn get(&self, module_id: ModuleID) -> Option<PathBuf> {
         let map = self.inner.lock().unwrap();
         map.get(&module_id).cloned()
     }
 
-    /// Check whether a module already has a registered file path.
-    pub fn contains(&self, module_id: ModuleID) -> bool {
+    /// Check and returns if file path already has a registered.
+    #[inline]
+    pub fn get_file_path(&self, file_path: &PathBuf) -> Option<ModuleID> {
         let map = self.inner.lock().unwrap();
-        map.contains_key(&module_id)
+        map.iter()
+            .find(|(_, path_buf)| **path_buf == *file_path)
+            .map(|(module_id, _)| *module_id)
+    }
+
+    /// Check whether a module already has a registered module id.
+    #[inline]
+    pub fn contains_module_id(&self, module_id: ModuleID) -> bool {
+        self.get(module_id).is_some()
+    }
+
+    /// Check whether a file path already has a registered.
+    #[inline]
+    pub fn contains_file_path(&self, file_path: &PathBuf) -> bool {
+        self.get_file_path(file_path).is_some()
     }
 
     /// Remove the file path entry for a module.
+    #[inline]
     pub fn remove(&self, module_id: ModuleID) {
         let mut map = self.inner.lock().unwrap();
         map.remove(&module_id);
@@ -329,20 +338,21 @@ impl ModuleFileMap {
 
 impl<'a> LocalScopeGuard<'a> {
     /// Constructs a new LocalScopeGuard, entering the new scope.
+    #[inline]
     pub fn new(resolver: &'a mut Resolver<'a>, parent: Option<ScopeID>) -> Self {
         let scope = LocalScope::new(parent);
-        // Entering the new scope in the resolver.
-        resolver.enter_scope(scope);
+        resolver.enter_scope(scope.clone());
         Self { scope, resolver }
     }
 }
 
 impl<'a> Drop for LocalScopeGuard<'a> {
+    #[inline]
     fn drop(&mut self) {
         // exiting the scope when the guard goes out of scope
         self.resolver.exit_scope();
     }
 }
 
-unsafe impl Send for Resolver {}
-unsafe impl Sync for Resolver {}
+unsafe impl<'diag> Send for Resolver<'diag> {}
+unsafe impl<'diag> Sync for Resolver<'diag> {}

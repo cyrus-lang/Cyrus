@@ -77,7 +77,7 @@ pub fn substitute_type(
             SemanticType::Array(TypedArrayType {
                 element_type: Box::new(elem_ty),
                 capacity: array_type.capacity,
-                loc: array_type.loc.clone(),
+                loc: array_type.loc,
             })
         }),
         SemanticType::Const(inner) => sub(*inner, &|sema_ty| {
@@ -128,7 +128,7 @@ pub fn substitute_type(
                     Some(TypedUnnamedStructTypeField {
                         name: f.name.clone(),
                         ty: Box::new(inner),
-                        loc: f.loc.clone(),
+                        loc: f.loc,
                     })
                 })
                 .collect::<Option<Vec<_>>>()?;
@@ -137,7 +137,7 @@ pub fn substitute_type(
                 fields,
                 repr_attr: unnamed_struct_type.repr_attr.clone(),
                 align: unnamed_struct_type.align.clone(),
-                loc: unnamed_struct_type.loc.clone(),
+                loc: unnamed_struct_type.loc,
             }))
         }
         other => Some(other),
@@ -199,7 +199,7 @@ pub fn substitute_func_sig(
         is_func_decl: sig.is_func_decl,
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),
-        loc: sig.loc.clone(),
+        loc: sig.loc,
     })
 }
 
@@ -227,7 +227,7 @@ pub fn substitute_struct_sig(
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),
         align: sig.align.clone(),
-        loc: sig.loc.clone(),
+        loc: sig.loc,
     })
 }
 
@@ -255,7 +255,7 @@ pub fn substitute_union_sig(
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),
         align: sig.align.clone(),
-        loc: sig.loc.clone(),
+        loc: sig.loc,
     })
 }
 
@@ -283,7 +283,7 @@ pub fn substitute_enum_sig(
                         let substituted = substitute_type(mapping_ctx_arena.clone(), field.ty.clone(), ctx.clone())?;
                         Some(TypedEnumValuedField {
                             ty: substituted,
-                            loc: field.loc.clone(),
+                            loc: field.loc,
                         })
                     })
                     .collect::<Option<Vec<_>>>()?;
@@ -301,6 +301,6 @@ pub fn substitute_enum_sig(
         tag_type: sig.tag_type.clone(),
         modifiers: sig.modifiers.clone(),
         align: sig.align.clone(),
-        loc: sig.loc.clone(),
+        loc: sig.loc,
     })
 }

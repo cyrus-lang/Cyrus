@@ -22,7 +22,7 @@ use crate::llvm::debug_info::{
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_diagcentral::source_loc::Loc;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
@@ -221,7 +221,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                                 CIREnumTyVariant::Fielded(_, elements) => {
                                     let tuple_type = CIRTupleTy {
                                         elements: elements.to_vec(),
-                                        loc: enum_ty.loc.clone(),
+                                        loc: enum_ty.loc,
                                     };
 
                                     let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRTy::Tuple(tuple_type));
@@ -327,7 +327,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy, loc: &SourceLoc) -> CIRTy {
+    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy, loc: &Loc) -> CIRTy {
         CIRTy::Struct(CIRStructTy {
             name: None,
             fields: vec![
@@ -335,12 +335,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                 CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
             ],
             fields_info: vec![
-                ("data_ptr".to_string(), loc.clone()),
-                ("vtable_ptr".to_string(), loc.clone()),
+                ("data_ptr".to_string(), loc),
+                ("vtable_ptr".to_string(), loc),
             ],
             align: None,
             repr_attr: None,
-            loc: loc.clone(),
+            loc: loc,
         })
     }
 
@@ -444,7 +444,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         let elements = variant.as_fielded()?.clone();
         let tuple_type = CIRTupleTy {
             elements,
-            loc: enum_ty.loc.clone(),
+            loc: enum_ty.loc,
         };
         let struct_tuple_type = tuple_type.as_struct_ty();
 
@@ -454,7 +454,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             fields_info: struct_tuple_type.fields_info,
             repr_attr: None,
             align: None,
-            loc: enum_ty.loc.clone(),
+            loc: enum_ty.loc,
         }))
     }
 

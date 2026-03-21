@@ -53,7 +53,7 @@ impl<'source_map> DiagReporter<'source_map> {
     }
 
     pub fn display(&self) {
-        let diags = self.diags.borrow();
+        let mut diags = self.diags.borrow_mut();
 
         for diag in diags.iter() {
             match diag.level {
@@ -62,6 +62,7 @@ impl<'source_map> DiagReporter<'source_map> {
             }
         }
 
+        diags.clear();
         drop(diags);
     }
 

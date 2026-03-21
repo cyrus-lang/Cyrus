@@ -388,7 +388,7 @@ impl TypedUnnamedStructValue {
                 TypedUnnamedStructTypeField {
                     name: field.name.clone(),
                     ty: Box::new(field.ty.clone().or(field.field_value.sema_ty.clone()).unwrap()),
-                    loc: field.loc.clone(),
+                    loc: field.loc,
                 }
             })
             .collect();
@@ -397,7 +397,7 @@ impl TypedUnnamedStructValue {
             fields,
             repr_attr: self.repr_attr.clone(),
             align: self.align.clone(),
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }
@@ -460,7 +460,7 @@ pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExprStmt {
         kind: TypedExprKind::Literal(TypedLiteralExpr {
             kind: LiteralKind::Integer(value, None),
             ty: None,
-            loc: loc.clone(),
+            loc: loc,
         }),
         sema_ty: None,
         mloc: MemoryLocation::RValue,
