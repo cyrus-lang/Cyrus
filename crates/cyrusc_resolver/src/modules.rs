@@ -70,7 +70,7 @@ impl Resolver {
         is_master: bool,
         module_file_path: PathBuf,
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
-        self.current_module = Some(module_id);
+        self.module_id = Some(module_id);
         self.insert_imported_aliases_for_module();
 
         if is_master {
@@ -91,7 +91,7 @@ impl Resolver {
         drop(global_symbols);
 
         // Collect symbol names (first pass).
-        self.resolve_decl_names(module_id, &ast);
+        self.resolve_decl_names(&ast);
 
         let parent_module_id = module_id;
 
@@ -100,10 +100,10 @@ impl Resolver {
             self.resolve_import(parent_module_id, import, &mut visiting);
         }
 
-        self.current_module = Some(parent_module_id);
+        self.module_id = Some(parent_module_id);
 
         // Collect exact definitions and details of the symbols (second pass).
-        let typed_body = self.resolve_decl(module_id, &ast);
+        let typed_body = self.resolve_decl_full(&ast);
 
         let base_path = Path::new(&self.module_loader.opts.base_path);
         let stdlib_path = self.module_loader.opts.stdlib_path.clone().map(PathBuf::from);
@@ -122,7 +122,7 @@ impl Resolver {
             program_trees.push(Rc::new(ProgramTreeEntry {
                 module_name,
                 module_path: module_file_path.clone(),
-                module_id: self.current_module.unwrap(),
+                module_id: self.module_id.unwrap(),
                 program: typed_program_tree.clone(),
             }));
             drop(program_trees);

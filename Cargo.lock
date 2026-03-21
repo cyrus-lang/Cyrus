@@ -448,6 +448,7 @@ version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
+ "cyrusc_source_loc",
  "cyrusc_tokens",
  "rand",
  "thiserror",

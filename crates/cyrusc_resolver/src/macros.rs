@@ -48,20 +48,28 @@ macro_rules! update_local_symbol {
     }};
 }
 
+// FIXME
 #[macro_export]
 macro_rules! scope_required {
-    ($self:expr, $scope_opt:expr, $loc:expr, $span_end:expr) => {{
-        if $scope_opt.is_none() {
-            $self.reporter.report(cyrusc_diagcentral::Diag {
-                level: cyrusc_diagcentral::DiagLevel::Error,
-                kind: Box::new(crate::diagnostics::ResolverDiagKind::RequiresLocalScope),
-                location: Some(cyrusc_diagcentral::DiagLoc::new(
-                    cyrusc_diagcentral::source_loc::SourceLoc::from_loc($loc, $self.current_file_path()),
-                )),
-                hint: None,
-            });
-        }
+    ($self:expr, $loc:expr) => {{
+        todo!();
+        // if $scope_opt.is_none() {
+        //     $self.reporter.report(cyrusc_diagcentral::Diag {
+        //         level: cyrusc_diagcentral::DiagLevel::Error,
+        //         kind: Box::new(crate::diagnostics::ResolverDiagKind::RequiresLocalScope),
+        //         location: Some(cyrusc_diagcentral::DiagLoc::new(
+        //             cyrusc_diagcentral::source_loc::SourceLoc::from_loc($loc, $self.current_file_path()),
+        //         )),
+        //         hint: None,
+        //     });
+        // }
+    }};
+}
 
-        $scope_opt.is_none()
+#[macro_export]
+macro_rules! with_local_scope {
+    ($resolver:expr, $parent:expr, $body:block) => {{
+        let _guard = LocalScopeGuard::new($resolver, $parent);
+        $body
     }};
 }

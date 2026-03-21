@@ -15,9 +15,24 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod abi;
-pub mod cir;
-pub mod local_scope;
-pub mod symbols;
-pub mod module_loader;
-pub mod source_parser;
+use crate::symbols::{symbols::LocalSymbol, *};
+use cyrusc_tast::{LabelID, ScopeID, SymbolID, stmts::TypedGenericParamsList};
+use std::collections::HashMap;
+
+/// Represents a local scope containing variable symbols and control flow labels.
+#[derive(Debug, Clone)]
+pub struct LocalScope {
+    pub symbols: HashMap<String, LocalSymbol>,
+    pub parent: Option<ScopeID>,
+    pub labels: HashMap<String, LabelID>,
+}
+
+impl LocalScope {
+    pub fn new(parent: Option<ScopeID>) -> Self {
+        Self {
+            labels: HashMap::new(),
+            symbols: HashMap::new(),
+            parent,
+        }
+    }
+}

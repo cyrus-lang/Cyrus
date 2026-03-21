@@ -26,6 +26,7 @@ use cyrusc_ast::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
@@ -133,7 +134,6 @@ pub struct TypedInterfaceStmt {
 pub struct TypedEnumStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
-    pub is_local: Option<ScopeID>,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
@@ -162,7 +162,6 @@ pub struct TypedEnumValuedField {
 pub struct TypedStructStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
-    pub is_local: Option<ScopeID>,
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub methods: HashMap<String, SymbolID>,
@@ -178,7 +177,6 @@ pub struct TypedStructStmt {
 pub struct TypedUnionStmt {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
-    pub is_local: Option<ScopeID>,
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
@@ -410,16 +408,8 @@ pub struct TypedBound {
 
 #[derive(Debug, Clone, Eq)]
 pub enum TypedTypeArg {
-    Positional {
-        i: usize,
-        ty: SemanticType,
-        loc: Loc,
-    },
-    Named {
-        key: String,
-        ty: SemanticType,
-        loc: Loc,
-    },
+    Positional { i: usize, ty: SemanticType, loc: Loc },
+    Named { key: String, ty: SemanticType, loc: Loc },
 }
 
 impl TypedStmt {

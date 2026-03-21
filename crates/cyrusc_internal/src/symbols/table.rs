@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 pub trait ScopeQuery {
     fn lookup_local(&self, scope: ScopeID, name: &str) -> Option<SymbolID>;
-    fn lookup_chain(&self, scope: ScopeID, name: &str) -> Option<SymbolID>;
+    // fn lookup_chain(&self, scope: ScopeID, name: &str) -> Option<SymbolID>;
 }
 
 pub trait GlobalSymbolQuery {

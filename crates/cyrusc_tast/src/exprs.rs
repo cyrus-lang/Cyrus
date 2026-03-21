@@ -30,7 +30,7 @@ use cyrusc_ast::{
     abi::ReprAttr,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
-use cyrusc_diagcentral::source_loc::SourceLoc;
+use cyrusc_source_loc::Loc;
 use cyrusc_tokens::literals::LiteralKind;
 
 #[derive(Debug, Clone)]
@@ -49,7 +49,7 @@ pub enum MemoryLocation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExprKind {
-    Symbol(SymbolID, SourceLoc),
+    Symbol(TypedSymbolExpr),
     Literal(TypedLiteralExpr),
     Prefix(TypedPrefixExpr),
     Infix(TypedInfixExpr),
@@ -74,6 +74,12 @@ pub enum TypedExprKind {
     Dynamic(TypedDynamicExpr),
     SemanticType(SemanticType),
     Builtin(TypedBuiltin),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedSymbolExpr {
+    pub symbol_id: SymbolID,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -153,7 +159,7 @@ impl TypedExprKind {
 
     pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            TypedExprKind::Symbol(symbol_id, _) => Some(*symbol_id),
+            TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => Some(*symbol_id),
             _ => None,
         }
     }
@@ -427,6 +433,12 @@ impl std::hash::Hash for TypedSelfType {
 impl PartialEq for TypedUnnamedUnionValue {
     fn eq(&self, other: &Self) -> bool {
         self.field_name == other.field_name && self.field_value == other.field_value
+    }
+}
+
+impl TypedSymbolExpr {
+    pub fn new(symbol_id: SymbolID, loc: Loc) -> Self {
+        Self { symbol_id, loc }
     }
 }
 

@@ -50,7 +50,7 @@ type ImportedModules = HashMap<ModuleGroupName, ModuleID>;
 /// GlobalSymbolRegistry wraps an Arc<Mutex<_>> to allow concurrent access
 /// across compilation units.
 pub struct GlobalSymbolRegistry {
-    pub inner: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
+    inner: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
 }
 
 /// Registry for module aliases within the current scope.
@@ -58,14 +58,20 @@ pub struct GlobalSymbolRegistry {
 /// Manages mappings from `ModuleGroupName` to `ModuleID` for imported modules,
 /// enabling alias resolution during semantic analysis.
 pub struct ModuleAliasRegistry {
-    pub inner: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
+    inner: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
 }
 
 /// Registry mapping modules to their source file paths.
 ///
 /// This is used to associate a `ModuleID` with the file it originated from.
 pub struct ModuleFileMap {
-    pub inner: Arc<Mutex<HashMap<ModuleID, PathBuf>>>,
+    inner: Arc<Mutex<HashMap<ModuleID, PathBuf>>>,
+}
+
+/// A guard that manages the lifetime and context of a LocalScope.
+pub struct LocalScopeGuard<'a> {
+    scope: LocalScope,
+    resolver: &'a mut Resolver, // Assume Resolver manages the global context in which scopes reside.
 }
 
 /// Semantic resolver responsible for symbol binding, module loading,
@@ -118,7 +124,7 @@ pub struct Resolver<'diag> {
     imported_modules: HashSet<ImportedModuleEntry>,
 
     /// Identifier of the module currently being resolved.
-    current_module: Option<ModuleID>,
+    module_id: Option<ModuleID>,
 
     /// Symbol representing the current object context (struct/trait/impl).
     /// Used to resolve `Self` and member references.
@@ -127,6 +133,12 @@ pub struct Resolver<'diag> {
     /// Generic parameters currently in scope for the active object.
     /// Used when resolving generic type references.
     current_object_generic_params: Option<TypedGenericParamsList>,
+
+    /// Stack of active `LocalScope`s representing the current nesting of lexical scopes
+    ///
+    /// This stack is manipulated internally by `LocalScopeGuard`, ensuring
+    /// automatic scope entry and exit based on lexical lifetime.
+    scopes: Vec<LocalScope>,
 }
 
 pub(crate) struct ProgramTreeEntry {
@@ -154,8 +166,9 @@ impl Resolver {
             module_loader: ModuleLoader::new(opts),
             module_file_map: ModuleFileMap::new(),
             imported_modules: HashSet::new(),
+            scopes: Vec::new(),
             current_object_generic_params: None,
-            current_module: None,
+            module_id: None,
             current_object: None,
             master_module_file_path,
             monomorph_registry,
@@ -164,9 +177,25 @@ impl Resolver {
         }
     }
 
+    /// Returns a reference to the current active scope, if any.
+    #[inline(always)]
+    pub fn current_scope(&self) -> Option<&LocalScope> {
+        self.scopes.last()
+    }
+
+    // Method to enter a new scope.
+    pub fn enter_scope(&mut self, scope: LocalScope) {
+        self.scopes.push(scope);
+    }
+
+    // Method to exit the current scope.
+    pub fn exit_scope(&mut self) {
+        self.scopes.pop();
+    }
+
     #[inline]
     pub fn current_file_path(&self) -> String {
-        let current_module_id = self.current_module.unwrap();
+        let current_module_id = self.module_id.unwrap();
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&current_module_id) {
             Some(child_module_file_path) => child_module_file_path.clone(),
@@ -211,7 +240,6 @@ impl GlobalSymbolRegistry {
             .expect("symbol table not initialized for module");
 
         symbol_table.names.insert(name.to_owned(), symbol_id);
-
         symbol_id
     }
 }
@@ -296,6 +324,23 @@ impl ModuleFileMap {
     pub fn remove(&self, module_id: ModuleID) {
         let mut map = self.inner.lock().unwrap();
         map.remove(&module_id);
+    }
+}
+
+impl<'a> LocalScopeGuard<'a> {
+    /// Constructs a new LocalScopeGuard, entering the new scope.
+    pub fn new(resolver: &'a mut Resolver<'a>, parent: Option<ScopeID>) -> Self {
+        let scope = LocalScope::new(parent);
+        // Entering the new scope in the resolver.
+        resolver.enter_scope(scope);
+        Self { scope, resolver }
+    }
+}
+
+impl<'a> Drop for LocalScopeGuard<'a> {
+    fn drop(&mut self) {
+        // exiting the scope when the guard goes out of scope
+        self.resolver.exit_scope();
     }
 }
 

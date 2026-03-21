@@ -853,6 +853,38 @@ impl FuncDecl {
 }
 
 impl Stmt {
+    #[inline]
+    pub fn decl_name(&self) -> Option<&Ident> {
+        match self {
+            Stmt::Variable(variable) => Some(&variable.ident),
+            Stmt::FuncDef(func_def) => Some(&func_def.ident),
+            Stmt::FuncDecl(func_decl) => Some(&func_decl.ident),
+            Stmt::Interface(interface) => Some(&interface.ident),
+            Stmt::Struct(struct_) => Some(&struct_.ident),
+            Stmt::Enum(enum_) => Some(&enum_.ident),
+            Stmt::Union(union_) => Some(&union_.ident),
+            Stmt::Typedef(typedef) => Some(&typedef.ident),
+            Stmt::GlobalVar(global_var) => Some(&global_var.ident),
+
+            Stmt::Import(_)
+            | Stmt::ExportTuple(_)
+            | Stmt::Expr(_)
+            | Stmt::If(_)
+            | Stmt::Return(_)
+            | Stmt::For(_)
+            | Stmt::While(_)
+            | Stmt::Foreach(_)
+            | Stmt::Switch(_)
+            | Stmt::BlockStmt(_)
+            | Stmt::Break(_)
+            | Stmt::Continue(_)
+            | Stmt::Defer(_)
+            | Stmt::Label(_)
+            | Stmt::Goto(_)
+            | Stmt::Builtin(_) => None,
+        }
+    }
+
     pub fn loc(&self) -> Loc {
         match self {
             Stmt::Interface(interface) => interface.loc.clone(),
