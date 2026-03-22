@@ -17,8 +17,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        exprs::TypedIdentifier,
-        stmts::{TypedGenericParam, TypedGenericParamsList},
+        SymbolID, exprs::TypedIdentifier, stmts::{TypedGenericParam, TypedGenericParamsList}
     };
     use cyrusc_source_loc::{FileID, Loc};
 
@@ -26,7 +25,7 @@ mod tests {
         TypedGenericParam {
             param_name: TypedIdentifier {
                 name: name.to_string(),
-                symbol_id: 1000,
+                symbol_id: SymbolID(100),
                 loc: Loc::default(FileID(0)),
             },
             bounds: None,

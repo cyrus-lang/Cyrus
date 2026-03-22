@@ -101,7 +101,7 @@ pub enum ParserDiagKind {
     GroupedModifiersCannotBeNested,
 }
 
-impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+impl<'source_file> Parser<'source_file> {
     pub(crate) fn error_invalid_token(&self) -> Diag {
         let token = self.current_token();
 

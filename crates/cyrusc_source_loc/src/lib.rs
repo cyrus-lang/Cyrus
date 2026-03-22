@@ -16,7 +16,7 @@
  */
 
 use std::{
-    cell::{Ref, RefCell},
+    cell::{Cell, Ref, RefCell},
     collections::HashMap,
     path::Path,
 };
@@ -29,7 +29,7 @@ pub struct FileID(pub u32);
 #[derive(Debug, Clone)]
 pub struct SourceMap {
     files: RefCell<HashMap<FileID, SourceFile>>,
-    next_id: u32,
+    next_id: Cell<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,21 +52,24 @@ impl SourceMap {
     pub fn new() -> Self {
         Self {
             files: RefCell::new(HashMap::new()),
-            next_id: 0,
+            next_id: Cell::new(0),
         }
     }
 
     /// Adds a new source file to the map and returns its assigned FileID.
-    pub fn add_file(&mut self, name: String, content: String) -> FileID {
-        let id = FileID(self.next_id);
+    pub fn add_file(&self, name: String, content: String) -> FileID {
+        let id_val = self.next_id.get();
+        self.next_id.set(id_val + 1);
+
+        let id = FileID(id_val);
         let source_file = SourceFile::new(id, name, content);
+
         self.files.borrow_mut().insert(id, source_file);
-        self.next_id += 1;
         id
     }
 
     // Loads a file from disk and registers it in the SourceMap.
-    pub fn add_file_by_loading<P: AsRef<Path>>(&mut self, path: P) -> FileID {
+    pub fn add_file_by_loading<P: AsRef<Path>>(&self, path: P) -> FileID {
         let (content, name) = read_file(&path);
         self.add_file(name, content)
     }

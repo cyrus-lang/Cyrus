@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{ProgramTreeEntry, Resolver, diagnostics::ResolverDiagKind};
+use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
 use cyrusc_ast::{Import, ModuleSegmentSingle, ProgramTree, abi::Visibility, format::format_module_segments};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::{
@@ -26,7 +26,7 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_tast::{ModuleID, TypedProgramTree};
+use cyrusc_tast::{ModuleID, SymbolID, TypedProgramTree};
 use std::{
     cell::RefCell,
     collections::HashSet,
@@ -42,7 +42,7 @@ pub(crate) struct ImportedModuleEntry {
 }
 
 // Used to check import cycles.
-pub(crate) struct VisitingModule {
+pub struct VisitingModule {
     // Stack of modules currently being resolved.
     pub active: HashSet<PathBuf>,
     // Modules fully resolved.
@@ -59,7 +59,7 @@ impl VisitingModule {
     }
 }
 
-impl<'diag> Resolver<'diag> {
+impl Resolver {
     /// Resolve a module and produce its typed program tree.
     ///
     /// Performs a two‑phase semantic resolution:
@@ -85,12 +85,11 @@ impl<'diag> Resolver<'diag> {
         module_file_path: PathBuf,
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.module_id = Some(module_id);
-        self.insert_imported_aliases_for_module();
 
         if is_master {
+            visiting.active.insert(self.master_module_file_path.clone());
             self.module_file_map
                 .insert(module_id, self.master_module_file_path.clone());
-            visiting.active.insert(self.master_module_file_path.clone());
         }
 
         let mut analyzed = self.analyzed_modules.lock().unwrap();
@@ -128,7 +127,7 @@ impl<'diag> Resolver<'diag> {
 
         if is_master {
             let mut program_trees = self.program_trees.lock().unwrap();
-            program_trees.push(Rc::new(ProgramTreeEntry {
+            program_trees.push(Rc::new(ResolvedProgramTree {
                 module_name,
                 module_path: module_file_path.clone(),
                 module_id: self.module_id.unwrap(),
@@ -165,7 +164,7 @@ impl<'diag> Resolver<'diag> {
             let module_id = self
                 .module_file_map
                 .get_file_path(&loaded_module.file_path)
-                .expect("module id missing for loaded module");
+                .unwrap_or(ModuleID::new());
 
             // check duplicates using module file + alias
             let import_key = ImportedModuleEntry {
@@ -240,11 +239,9 @@ impl<'diag> Resolver<'diag> {
 
                     let mut program_trees = self.program_trees.lock().unwrap();
 
-                    let module_name = self
-                        .module_loader
-                        .module_name_from_file_path(module_file_path);
+                    let module_name = self.module_loader.module_name_from_file_path(module_file_path);
 
-                    program_trees.push(Rc::new(ProgramTreeEntry {
+                    program_trees.push(Rc::new(ResolvedProgramTree {
                         module_name,
                         module_id,
                         program: typed_program_tree,
@@ -344,10 +341,13 @@ impl<'diag> Resolver<'diag> {
                     continue;
                 }
 
-                let proxy_symbol_id = generate_symbol_id();
+                let proxy_symbol_id = SymbolID::new();
 
-                symbol_table.names.insert(renamed_name.clone(), proxy_symbol_id);
-                symbol_table.entries.insert(
+                self.global_symbols_registry
+                    .insert_symbol_name(parent_module_id, &renamed_name);
+
+                self.global_symbols_registry.insert_symbol_entry(
+                    parent_module_id,
                     proxy_symbol_id,
                     SymbolEntry {
                         kind: SymbolEntryKind::ProxiedSymbol(parent_module_id, symbol_id),
@@ -355,7 +355,16 @@ impl<'diag> Resolver<'diag> {
                     },
                 );
 
-                drop(global_symbols);
+                // symbol_table.names.insert(renamed_name.clone(), proxy_symbol_id);
+                // symbol_table.entries.insert(
+                //     proxy_symbol_id,
+                //     SymbolEntry {
+                //         kind: SymbolEntryKind::ProxiedSymbol(parent_module_id, symbol_id),
+                //         used: false,
+                //     },
+                // );
+
+                // drop(global_symbols);
             }
         }
     }

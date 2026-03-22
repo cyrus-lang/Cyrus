@@ -17,16 +17,18 @@
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::Lexer;
     use cyrusc_diagcentral::reporter::DiagReporter;
     use cyrusc_source_loc::SourceMap;
     use cyrusc_tokens::{Token, TokenKind};
 
     fn lex(input: &str) -> Vec<Token> {
-        let mut source_map = SourceMap::new();
+        let source_map = Arc::new(SourceMap::new());
         let file_id = source_map.add_file("test".to_string(), input.to_string());
         let source_file = source_map.get_file(file_id).unwrap();
-        let mut reporter = DiagReporter::new(&source_map);
+        let mut reporter = DiagReporter::new(source_map.clone());
         let mut lexer = Lexer::new(&mut reporter, &source_file);
         lexer.tokenize()
     }

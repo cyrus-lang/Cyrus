@@ -20,7 +20,7 @@ use crate::{
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_diagcentral::{exit_with_single_diag, reporter::DiagReporter};
+use cyrusc_diagcentral::{exit_with_msg, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
@@ -28,12 +28,13 @@ use cyrusc_internal::{
 };
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
-use cyrusc_resolver::{Resolver, VisitingModule, generate_module_id};
+use cyrusc_resolver::{Resolver, VisitingModule, fs_module_loader::FsModuleLoader, generate_module_id};
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
     OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
 };
 use cyrusc_sema::analyze::AnalysisContext;
+use cyrusc_source_loc::SourceMap;
 use cyrusc_tast::{
     TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
@@ -106,7 +107,7 @@ pub fn create_compiler_context(
     let linker = match Linker::new(opts.clone()) {
         Ok(linker) => linker,
         Err(err) => {
-            exit_with_single_diag!(err);
+            exit_with_msg!(err);
         }
     };
 
@@ -140,10 +141,14 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
     let build_dir = get_final_build_directory_path(&opts.build_dir);
     ensure_build_dir_subs_exist(&base_path, build_dir.clone());
 
+    // create source map
+    let source_map = SourceMap::new();
+    source_map.add_file_by_loading(entry_file.clone());
+    
     // lex & parse
-    let file_content = read_file(entry_file.clone()).0;
-    let mut lexer = Lexer::new(file_content, entry_file.to_string_lossy().to_string());
-    let mut parser = Parser::new(lexer.tokenize(), entry_file.to_string_lossy().to_string());
+    // let mut lexer = Lexer::new(file_content, entry_file.to_string_lossy().to_string());
+    // let mut parser = Parser::new(lexer.tokenize(), entry_file.to_string_lossy().to_string());
+
     let program_tree = parser.parse().unwrap_or_else(|errors| {
         parser.display_parser_errors(errors);
         exit(1);
@@ -155,11 +160,14 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
         source_dirs: opts.source_dirs.clone(),
     };
 
+    let fs_module_loader = FsModuleLoader::new(&mut source_map, source_parser, module_loader_opts);
+
     let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
     let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
     let mut resolver = Resolver::new(
-        module_loader_opts,
+        Box::new(fs_module_loader),
+        reporter,
         monomorph_registry.clone(),
         mapping_ctx_arena.clone(),
         entry_file.clone(),
@@ -514,7 +522,7 @@ fn get_entry_module_file_path(
     // check if we found an unexpected file but not the expected one
     if found_unexpected.is_some() {
         if found_expected.is_none() {
-            exit_with_single_diag!(format!(
+            exit_with_msg!(format!(
                 "Project type mismatch: Found '{}' but expected '{}' for a {} project.\n\
                  \n\
                  Solutions:\n\
@@ -568,7 +576,7 @@ fn get_entry_module_file_path(
     let project_root_display = format_path_for_display(&project_root, &current_dir);
 
     // neither expected nor unexpected file found
-    exit_with_single_diag!(format!(
+    exit_with_msg!(format!(
         "No '{}' entry point found for {} project.\n\
          \n\
          Expected '{}' in one of these directories:\n{}\n\

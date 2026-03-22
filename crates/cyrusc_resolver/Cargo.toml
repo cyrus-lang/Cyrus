@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# FIXME: Later - used SourceParser trait instead.
+cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
+cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
+
 cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }

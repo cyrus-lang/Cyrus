@@ -32,7 +32,7 @@ pub(crate) struct TypeArgStartDetail {
     pub(crate) is_array_init: bool,
 }
 
-impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+impl<'source_file> Parser<'source_file> {
     /// Parses an identifier token.
     pub(crate) fn parse_ident(&mut self) -> Result<Ident, Diag> {
         let token = self.current_token();

@@ -14,7 +14,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::stmts::TypedStmt;
+use rand::Rng;
 use std::path::PathBuf;
 
 pub mod exprs;
@@ -30,8 +32,25 @@ pub mod vtable;
 pub struct ScopeID(u32);
 
 // FIXME: Optimization required here!
-pub type SymbolID = u32;
-pub type ModuleID = u64;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SymbolID(u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ModuleID(u64);
+
+impl SymbolID {
+    pub fn new() -> Self {
+        let mut rng = rand::rng();
+        Self(rng.random::<u32>())
+    }
+}
+
+impl ModuleID {
+    pub fn new() -> Self {
+        let mut rng = rand::rng();
+        Self(rng.random::<u64>())
+    }
+}
 
 // FIXME: Consider to remove it after optimizing `SymbolID`.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]

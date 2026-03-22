@@ -16,6 +16,7 @@
  */
 
 use cyrusc_ast::{Import, ModulePath, ModuleSegmentSingle, ProgramTree};
+use cyrusc_diagcentral::DiagKind;
 use std::{
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
@@ -37,7 +38,7 @@ pub enum ModuleAlias {
 }
 
 pub trait ModuleLoader {
-    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, ()>>;
+    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, Box<dyn DiagKind>>>;
 
     /// Forms a stable module name from a filesystem path.
     /// Strips extensions, normalizes separators, and prefixes stdlib modules.

@@ -1072,7 +1072,7 @@
 //             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(scope_id_opt, lambda_expr),
 //             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(scope_id_opt, tuple_expr),
 //             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(scope_id_opt, tuple_access_expr),
-//             TypedExprKind::Dynamic(dynamic_expr) => self.lower_dynamic_expr(scope_id_opt, dynamic_expr),
+//             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic_expr(scope_id_opt, dynamic),
 //             TypedExprKind::SemanticType(..) => unreachable!(),
 //         };
 
@@ -1177,19 +1177,19 @@
 //         }
 //     }
 
-//     fn lower_dynamic_expr(&mut self, scope_id_opt: Option<ScopeID>, dynamic_expr: &TypedDynamicExpr) -> CIRExprKind {
-//         let operand = self.lower_expr(scope_id_opt, &dynamic_expr.operand);
+//     fn lower_dynamic_expr(&mut self, scope_id_opt: Option<ScopeID>, dynamic: &TypedDynamicExpr) -> CIRExprKind {
+//         let operand = self.lower_expr(scope_id_opt, &dynamic.operand);
 //         let data_ptr = CIRExpr {
 //             kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
 //                 operand: Box::new(operand),
 //             }),
 //             ty: CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
-//             loc: dynamic_expr.loc,
+//             loc: dynamic.loc,
 //         };
 
 //         let vtable_info = {
 //             let vtable_registry = self.vtable_registry.lock().unwrap();
-//             vtable_registry.info(dynamic_expr.vtable_id.unwrap()).clone()
+//             vtable_registry.info(dynamic.vtable_id.unwrap()).clone()
 //         };
 
 //         let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
@@ -1199,7 +1199,7 @@
 //             .map(|mut func_sig| {
 //                 let mangled_name = mangle_method(
 //                     &self.module_name_by_module_id(func_sig.module_id).unwrap(),
-//                     &dynamic_expr.object_name.as_ref().unwrap(),
+//                     &dynamic.object_name.as_ref().unwrap(),
 //                     &func_sig.name,
 //                 );
 
@@ -1209,8 +1209,8 @@
 //             .collect();
 
 //         let vtable_abi_name = DEFAULT_ABI.vtable_name(
-//             &dynamic_expr.object_name.clone().unwrap(),
-//             &dynamic_expr.vtable_id.unwrap().to_string(),
+//             &dynamic.object_name.clone().unwrap(),
+//             &dynamic.vtable_id.unwrap().to_string(),
 //         );
 
 //         CIRExprKind::Dynamic(CIRDynamicExpr {
@@ -1218,7 +1218,7 @@
 //             method_decls,
 //             global_var_id: vtable_info.global_var_id,
 //             vtable_abi_name,
-//             loc: dynamic_expr.loc,
+//             loc: dynamic.loc,
 //         })
 //     }
 

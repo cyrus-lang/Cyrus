@@ -27,10 +27,10 @@ pub fn main() {
     let file_path = args[1].clone();
     let (file_content, file_name) = read_file(file_path.clone());
 
-    let mut source_map = SourceMap::new();
+    let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file(file_name, file_content);
     let source_file = source_map.get_file(file_id).unwrap();
-    let reporter = Arc::new(DiagReporter::new(&source_map));
+    let reporter = Arc::new(DiagReporter::new(source_map.clone()));
 
     let mut lexer = Lexer::new(&reporter, &source_file);
     let tokens = lexer.tokenize();

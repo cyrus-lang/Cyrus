@@ -1958,7 +1958,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// # Parameters
     /// - scope_id_opt: Scope for type analysis and symbol resolution.
-    /// - dynamic_expr: The dynamic expression to analyze (modified in-place).
+    /// - dynamic: The dynamic expression to analyze (modified in-place).
     /// - expected_type: Optional expected semantic type (must be an interface type).
     ///
     /// # Returns
@@ -1968,16 +1968,16 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_dynamic_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        dynamic_expr: &mut TypedDynamicExpr,
+        dynamic: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic_expr.operand, None)?;
+        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic.operand, None)?;
 
-        if dynamic_expr.operand.kind.is_dynamic_expr() {
+        if dynamic.operand.kind.is_dynamic_expr() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidMultipleDynamicType),
-                loc: Some(DiagLoc::new(dynamic_expr.loc)),
+                loc: Some(DiagLoc::new(dynamic.loc)),
                 hint: None,
             });
             return None;
@@ -1987,7 +1987,7 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotInferDynamicInterfaceType),
-                loc: Some(DiagLoc::new(dynamic_expr.loc)),
+                loc: Some(DiagLoc::new(dynamic.loc)),
                 hint: None,
             });
             return None;
@@ -1996,7 +1996,7 @@ impl<'a> AnalysisContext<'a> {
         let interface_name = (self.symbol_formatter)(scope_id_opt)(interface_type.symbol_id);
 
         interface_type.methods.iter_mut().for_each(|func_sig| {
-            set_self_modifier_type_in_func_sig(func_sig, &dynamic_expr.operand.sema_ty.as_ref().unwrap());
+            set_self_modifier_type_in_func_sig(func_sig, &dynamic.operand.sema_ty.as_ref().unwrap());
             set_self_modifier_symbol_id_in_func_sig(func_sig, 0);
         });
 
@@ -2009,15 +2009,15 @@ impl<'a> AnalysisContext<'a> {
                 interface_type.methods,
             );
 
-            dynamic_expr.vtable_id = Some(vtable_id);
-            dynamic_expr.object_name = Some((self.symbol_formatter)(scope_id_opt)(
-                dynamic_expr.operand.sema_ty.as_ref().unwrap().symbol_id().unwrap(),
+            dynamic.vtable_id = Some(vtable_id);
+            dynamic.object_name = Some((self.symbol_formatter)(scope_id_opt)(
+                dynamic.operand.sema_ty.as_ref().unwrap().symbol_id().unwrap(),
             ));
 
             Some(SemanticType::DynamicType(DynamicType {
                 interface_symbol_id: interface_type.symbol_id,
                 vtable_id,
-                loc: dynamic_expr.loc,
+                loc: dynamic.loc,
             }))
         }
     }

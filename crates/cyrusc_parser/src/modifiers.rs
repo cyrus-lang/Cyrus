@@ -54,7 +54,7 @@ pub(crate) struct FieldModifiers {
     pub vis: Visibility,
 }
 
-impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_unresolved_modifiers(&mut self) -> Result<UnresolvedModifiers, Diag> {
         let mut mods = UnresolvedModifiers {
             visibility: None,

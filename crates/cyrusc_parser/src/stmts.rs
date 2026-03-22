@@ -29,7 +29,7 @@ use cyrusc_ast::*;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 
-impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_stmt(
         &mut self,
         grouped_modifiers: Option<UnresolvedModifiers>,

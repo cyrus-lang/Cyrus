@@ -30,7 +30,7 @@ use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::Literal;
 use cyrusc_tokens::literals::LiteralKind;
 
-impl<'diag, 'source_file> Parser<'diag, 'source_file> {
+impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<Expr, Diag> {
         let mut lhs_start = self.current_token().loc.start;
         let mut lhs_line = self.current_token().loc.line;

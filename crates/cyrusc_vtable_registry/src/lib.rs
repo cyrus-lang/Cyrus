@@ -1,5 +1,21 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 use cyrusc_tast::{SymbolID, sigs::FuncSig, types::SemanticType, vtable::VTableID};
-use rand::Rng;
 use std::collections::HashMap;
 
 pub type GlobalVarID = u32;
@@ -8,7 +24,7 @@ pub type GlobalVarID = u32;
 ///   (concrete type, interface).
 ///
 /// This key is created **during type checking**, after it has been
-/// proven that `concrete_type` implements `interface_symbol_id`.
+/// proven that `sema_ty` implements `interface_symbol_id`.
 ///
 /// IMPORTANT INVARIANT:
 /// - Two identical keys must always map to the same vtable.
@@ -19,7 +35,7 @@ pub struct VTableKey {
     ///
     /// This must be a *concrete* semantic type, never an interface,
     /// never `Self`, never an unresolved generic.
-    pub concrete_type: SemanticType,
+    pub sema_ty: SemanticType,
 
     /// The symbol ID of the interface being implemented.
     pub interface_symbol_id: SymbolID,
@@ -49,7 +65,7 @@ pub struct VTableRegistry {
 #[derive(Debug, Clone)]
 pub struct VTableInfo {
     /// The concrete type implementing the interface.
-    pub concrete_type: SemanticType,
+    pub sema_ty: SemanticType,
 
     /// The interface being implemented.
     pub interface_symbol_id: SymbolID,
@@ -93,7 +109,7 @@ impl VTableRegistry {
     /// attempts to change the method layout.
     pub fn register(
         &mut self,
-        concrete_type: SemanticType,
+        sema_ty: SemanticType,
         interface_symbol_id: SymbolID,
         interface_name: String,
         methods: Vec<FuncSig>,
@@ -101,7 +117,7 @@ impl VTableRegistry {
         assert!(!methods.is_empty(), "vtable must contain at least one method");
 
         let key = VTableKey {
-            concrete_type: concrete_type.clone(),
+            sema_ty: sema_ty.clone(),
             interface_symbol_id,
         };
 
@@ -121,7 +137,7 @@ impl VTableRegistry {
         let global_var_id = generate_global_var_id();
 
         self.tables.push(VTableInfo {
-            concrete_type,
+            sema_ty,
             interface_symbol_id,
             interface_name,
             methods,
@@ -139,9 +155,9 @@ impl VTableRegistry {
     /// # Panics
     ///
     /// Panics if the vtable was not registered during type checking.
-    pub fn get(&self, concrete_type: &SemanticType, interface_symbol_id: SymbolID) -> VTableID {
+    pub fn get(&self, sema_ty: &SemanticType, interface_symbol_id: SymbolID) -> VTableID {
         let key = VTableKey {
-            concrete_type: concrete_type.clone(),
+            sema_ty: sema_ty.clone(),
             interface_symbol_id,
         };
 
@@ -168,7 +184,6 @@ impl VTableRegistry {
 unsafe impl Sync for VTableRegistry {}
 unsafe impl Send for VTableRegistry {}
 
-fn generate_global_var_id() -> GlobalVarID {
-    let mut rng = rand::rng();
-    rng.random::<u32>()
+fn generate_global_var_id() -> SymbolID {
+    SymbolID::new()
 }

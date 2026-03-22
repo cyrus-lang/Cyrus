@@ -25,7 +25,7 @@ use cyrusc_internal::symbols::{
 };
 use cyrusc_tast::{ModuleID, SymbolID};
 
-impl<'diag> GlobalSymbolQuery for Resolver<'diag> {
+impl GlobalSymbolQuery for Resolver {
     /// Look up a symbol identifier by name within a specific module.
     fn lookup_symbol_id(&self, module: ModuleID, name: &str) -> Option<SymbolID> {
         let registry = self.global_symbols_registry.inner.lock().unwrap();
@@ -63,7 +63,7 @@ impl<'diag> GlobalSymbolQuery for Resolver<'diag> {
     }
 }
 
-impl<'diag> SymbolQuery for Resolver<'diag> {
+impl SymbolQuery for Resolver {
     /// Resolve a symbol ID to a variable within the given scope.
     fn resolve_var(&self, id: SymbolID) -> Option<ResolvedVar> {
         match self.resolve_global_symbol(id)?.kind {

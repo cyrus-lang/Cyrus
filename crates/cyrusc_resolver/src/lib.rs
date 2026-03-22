@@ -66,12 +66,12 @@ pub struct ModuleFileMap {
 /// A guard that manages the lifetime and context of a LocalScope.
 pub struct LocalScopeGuard<'a> {
     scope: LocalScope,
-    resolver: &'a mut Resolver<'a>, // Assume Resolver manages the global context in which scopes reside.
+    resolver: &'a mut Resolver,
 }
 
 /// Semantic resolver responsible for symbol binding, module loading,
 /// and building the typed representation of the program.
-pub struct Resolver<'diag> {
+pub struct Resolver {
     /// Global symbol table shared across all modules.
     /// Stores all declared symbols and their associated metadata.
     pub global_symbols_registry: GlobalSymbolRegistry,
@@ -82,14 +82,14 @@ pub struct Resolver<'diag> {
 
     /// Program trees of successfully analyzed modules.
     /// Acts as the semantic output collected during resolution.
-    pub program_trees: Arc<Mutex<Vec<Rc<ProgramTreeEntry>>>>,
+    pub program_trees: Arc<Mutex<Vec<Rc<ResolvedProgramTree>>>>,
 
     /// Maps module identifiers to their originating file paths.
     /// Used for diagnostics and module identity tracking.
     pub module_file_map: ModuleFileMap,
 
     /// Diagnostic reporter used to emit compiler errors and warnings.
-    pub reporter: &'diag DiagReporter<'diag>,
+    pub reporter: Arc<DiagReporter>,
 
     /// Module loader responsible for locating and parsing modules.
     /// Typically backed by a filesystem implementation.
@@ -136,17 +136,17 @@ pub struct Resolver<'diag> {
     scopes: Vec<LocalScope>,
 }
 
-pub(crate) struct ProgramTreeEntry {
+pub struct ResolvedProgramTree {
     pub module_id: ModuleID,
     pub module_name: String,
     pub module_path: PathBuf,
     pub program: Rc<RefCell<TypedProgramTree>>,
 }
 
-impl<'diag> Resolver<'diag> {
+impl Resolver {
     pub fn new(
         module_loader: Box<dyn ModuleLoader>,
-        reporter: &'diag DiagReporter<'diag>,
+        reporter: Arc<DiagReporter>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         master_module_file_path: PathBuf,
@@ -206,13 +206,10 @@ impl GlobalSymbolRegistry {
     /// Insert a symbol entry into the symbol table of the given module.
     ///
     /// Associates `symbol_id` with its corresponding `SymbolEntry`.
-    /// The module must already have an initialized symbol table.
     pub fn insert_symbol_entry(&self, module_id: ModuleID, symbol_id: SymbolID, entry: SymbolEntry) {
         let mut registry = self.inner.lock().unwrap();
 
-        let symbol_table = registry
-            .get_mut(&module_id)
-            .expect("symbol table not initialized for module");
+        let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
 
         symbol_table.entries.insert(symbol_id, entry);
     }
@@ -220,14 +217,11 @@ impl GlobalSymbolRegistry {
     /// Insert a symbol name into the module's symbol table and allocate a new `SymbolID`.
     ///
     /// Returns the generated symbol identifier associated with the name.
-    /// The module must already have an initialized symbol table.
     pub fn insert_symbol_name(&self, module_id: ModuleID, name: &str) -> SymbolID {
-        let symbol_id = generate_symbol_id();
+        let symbol_id = SymbolID::new();
 
         let mut registry = self.inner.lock().unwrap();
-        let symbol_table = registry
-            .get_mut(&module_id)
-            .expect("symbol table not initialized for module");
+        let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
 
         symbol_table.names.insert(name.to_owned(), symbol_id);
         symbol_id
@@ -339,7 +333,7 @@ impl ModuleFileMap {
 impl<'a> LocalScopeGuard<'a> {
     /// Constructs a new LocalScopeGuard, entering the new scope.
     #[inline]
-    pub fn new(resolver: &'a mut Resolver<'a>, parent: Option<ScopeID>) -> Self {
+    pub fn new(resolver: &'a mut Resolver, parent: Option<ScopeID>) -> Self {
         let scope = LocalScope::new(parent);
         resolver.enter_scope(scope.clone());
         Self { scope, resolver }
@@ -354,5 +348,5 @@ impl<'a> Drop for LocalScopeGuard<'a> {
     }
 }
 
-unsafe impl<'diag> Send for Resolver<'diag> {}
-unsafe impl<'diag> Sync for Resolver<'diag> {}
+unsafe impl Send for Resolver {}
+unsafe impl Sync for Resolver {}

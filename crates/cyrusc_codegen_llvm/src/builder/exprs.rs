@@ -92,7 +92,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 self.emit_monomorph_func_instance_call(monomorph_func_instance_call)
             }
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
-            CIRExprKind::Dynamic(dynamic_expr) => self.emit_dynamic_expr(dynamic_expr),
+            CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
             CIRExprKind::InterfaceMethodCall(interface_method_call) => {
                 self.emit_interface_method_call(interface_method_call)
             }
@@ -111,9 +111,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         value
     }
 
-    fn emit_dynamic_expr(&mut self, dynamic_expr: &CIRDynamicExpr) -> InternalValue<'ll> {
+    fn emit_dynamic_expr(&mut self, dynamic: &CIRDynamicExpr) -> InternalValue<'ll> {
         {
-            let data_value = self.emit_lvalue_address(&dynamic_expr.data_expr).as_basic_value();
+            let data_value = self.emit_lvalue_address(&dynamic.data_expr).as_basic_value();
 
             let data_ptr = {
                 if data_value.is_pointer_value() {
@@ -131,11 +131,11 @@ impl<'ll> IRBuilderCtx<'ll> {
             let vtable_global_var_ptr = {
                 if let Some(local_ir_value) = {
                     let irreg = self.irreg.borrow();
-                    irreg.get(dynamic_expr.global_var_id)
+                    irreg.get(dynamic.global_var_id)
                 } {
                     local_ir_value.as_global().unwrap().as_pointer_value()
                 } else {
-                    let methods: Vec<BasicValueEnum<'ll>> = dynamic_expr
+                    let methods: Vec<BasicValueEnum<'ll>> = dynamic
                         .method_decls
                         .iter()
                         .map(|func_decl| {
@@ -148,7 +148,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let llvmmodule = self.llvmmodule.borrow_mut();
 
-                    let global_value = llvmmodule.add_global(vtable_type, None, &dynamic_expr.vtable_abi_name);
+                    let global_value = llvmmodule.add_global(vtable_type, None, &dynamic.vtable_abi_name);
 
                     global_value.set_initializer(&vtable_type.const_named_struct(&methods));
                     global_value.as_pointer_value()
@@ -175,7 +175,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .into_struct_value();
 
             InternalValue::new(
-                self.cir_dynamic_ty(dynamic_expr.data_expr.ty.clone(), &dynamic_expr.loc),
+                self.cir_dynamic_ty(dynamic.data_expr.ty.clone(), &dynamic.loc),
                 InternalValueKind::RValue(dynamic_struct_value.as_basic_value_enum()),
             )
         }

@@ -19,7 +19,7 @@ use cyrusc_fs_utils::read_file;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::Parser;
 use cyrusc_source_loc::SourceMap;
-use std::env;
+use std::{env, sync::Arc};
 
 // FIXME: Move to cyrusc_compiler/driver.rs
 pub fn main() {
@@ -27,19 +27,19 @@ pub fn main() {
     let file_path = args[1].clone();
     let (file_content, file_name) = read_file(file_path.clone());
 
-    let mut source_map = SourceMap::new();
+    let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file(file_name, file_content);
     let source_file = source_map.get_file(file_id).unwrap();
 
-    let reporter = DiagReporter::new(&source_map);
+    let reporter = Arc::new(DiagReporter::new(source_map.clone()));
 
     let mut lexer = Lexer::new(&reporter, &source_file);
     let tokens = lexer.tokenize();
     reporter.display_and_exit_if_has_errors();
 
-    let mut parser = Parser::new(&reporter, &source_file, tokens);
+    let mut parser = Parser::new(reporter.clone(), &source_file, tokens);
 
-    match parser.parse_program() {
+    match parser.parse() {
         Ok(program_tree) => {
             dbg!(program_tree);
         }

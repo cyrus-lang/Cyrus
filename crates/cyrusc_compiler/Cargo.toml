@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }
 cyrusc_buildmanifest = { path = "../cyrusc_buildmanifest", version = "*" }
 cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }

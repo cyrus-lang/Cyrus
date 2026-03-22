@@ -20,4 +20,3 @@ pub mod cir;
 pub mod local_scope;
 pub mod symbols;
 pub mod module_loader;
-pub mod source_parser;

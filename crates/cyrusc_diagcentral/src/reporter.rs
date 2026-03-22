@@ -20,18 +20,18 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_strescape::spaces;
-use std::{cell::RefCell, fmt, process::exit};
+use std::{cell::RefCell, fmt, process::exit, sync::Arc};
 
 const PANEL_LENGTH: usize = 2;
 const TAB_WIDTH: usize = 4;
 
-pub struct DiagReporter<'source_map> {
-    pub source_map: Option<&'source_map SourceMap>,
+pub struct DiagReporter {
+    pub source_map: Option<Arc<SourceMap>>,
     pub diags: RefCell<Vec<Diag>>,
 }
 
-impl<'source_map> DiagReporter<'source_map> {
-    pub fn new(source_map: &'source_map SourceMap) -> Self {
+impl DiagReporter {
+    pub fn new(source_map: Arc<SourceMap>) -> Self {
         Self {
             source_map: Some(source_map),
             diags: RefCell::new(Vec::new()),
@@ -81,7 +81,7 @@ impl<'source_map> DiagReporter<'source_map> {
     }
 }
 
-impl<'source_map> DiagReporter<'source_map> {
+impl DiagReporter {
     pub(crate) fn render(&self, diag: &Diag) -> String {
         let mut out = String::new();
 
@@ -104,8 +104,9 @@ impl<'source_map> DiagReporter<'source_map> {
         }
 
         let loc = diag.loc.unwrap();
-        let sm = self.source_map.unwrap();
-        let file = match sm.get_file(loc.id) {
+        let source_map = self.source_map.as_ref().unwrap();
+
+        let file = match source_map.get_file(loc.id) {
             Some(f) => f,
             None => {
                 return out;

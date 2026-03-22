@@ -19,9 +19,10 @@ use crate::diagnostics::ParserDiagKind;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_lexer::Lexer;
 use cyrusc_source_loc::{FileID, Loc, SourceFile};
 use cyrusc_tokens::{Token, TokenKind};
-use std::rc::Rc;
+use std::{fmt, rc::Rc, sync::Arc};
 
 mod common;
 mod diagnostics;
@@ -30,20 +31,42 @@ mod modifiers;
 mod prec;
 mod stmts;
 
-pub struct Parser<'diag, 'source_file> {
+pub struct Parser<'source_file> {
     source_file: &'source_file SourceFile,
-    reporter: &'diag DiagReporter<'diag>,
+    reporter: Arc<DiagReporter>,
     tokens: Vec<Token>,
     pos: usize,
     last_loc: Loc,
 }
 
-impl<'diag, 'source_file> Parser<'diag, 'source_file> {
-    pub fn new(
-        reporter: &'diag DiagReporter<'diag>,
-        source_file: &'source_file SourceFile,
-        tokens: Vec<Token>,
-    ) -> Self {
+pub struct SourceParser {
+    reporter: Arc<DiagReporter>,
+}
+
+impl SourceParser {
+    #[inline]
+    pub fn parse_program(&self, source_file: &SourceFile) -> Result<ProgramTree, ()> {
+        let mut lexer = Lexer::new(&self.reporter, source_file);
+        let tokens = lexer.tokenize();
+
+        let mut parser = Parser::new(self.reporter.clone(), source_file, tokens);
+        parser.parse()
+    }
+
+    #[inline]
+    pub fn display_errors(&self) {
+        self.reporter.display();
+    }
+}
+
+impl SourceParser {
+    pub fn new(reporter: Arc<DiagReporter>) -> Self {
+        Self { reporter }
+    }
+}
+
+impl<'source_file> Parser<'source_file> {
+    pub fn new(reporter: Arc<DiagReporter>, source_file: &'source_file SourceFile, tokens: Vec<Token>) -> Self {
         let initial_loc = Loc::default(source_file.id);
 
         Parser {
@@ -65,7 +88,7 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<ProgramTree, ()> {
+    pub fn parse(&mut self) -> Result<ProgramTree, ()> {
         let mut body: Vec<Stmt> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
@@ -274,3 +297,23 @@ impl<'diag, 'source_file> Parser<'diag, 'source_file> {
         self.tokens[self.pos - 1].clone()
     }
 }
+
+impl<'source_file> fmt::Debug for Parser<'source_file> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Parser")
+            .field("source_file", &self.source_file)
+            .field("tokens", &self.tokens)
+            .field("pos", &self.pos)
+            .field("last_loc", &self.last_loc)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SourceParser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SourceParser").finish()
+    }
+}
+
+unsafe impl<'source_file> Send for Parser<'source_file> {}
+unsafe impl<'source_file> Sync for Parser<'source_file> {}

@@ -15,15 +15,23 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{Resolver, scope_required};
+use std::collections::HashMap;
+
+use crate::Resolver;
+use crate::diagnostics::ResolverDiagKind;
+use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::*;
+use cyrusc_diagcentral::Diag;
+use cyrusc_diagcentral::DiagLevel;
+use cyrusc_internal::symbols::symbols::ResolvedTypedef;
 use cyrusc_internal::symbols::table::GlobalSymbolQuery;
+use cyrusc_source_loc::Loc;
 use cyrusc_tast::exprs::*;
+use cyrusc_tast::sigs::TypedefSig;
 use cyrusc_tast::stmts::*;
+use cyrusc_tast::types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayType};
 use cyrusc_tast::*;
-use cyrusc_tokens::literals::Literal;
-use cyrusc_tokens::loc::Loc;
-use cyrusc_tokens::loc::Location;
+use cyrusc_tokens::literals::{Literal, LiteralKind, StringPrefix};
 
 // Resolver endpoints.
 impl Resolver {
@@ -39,9 +47,7 @@ impl Resolver {
                 continue;
             };
 
-            let loc = Loc::from_loc(stmt.loc(), file_path.clone());
-
-            if self.report_if_duplicate_symbol(decl_name.as_string(), loc) {
+            if self.report_if_duplicate_symbol(decl_name.as_string(), stmt.loc()) {
                 continue;
             }
 
@@ -71,12 +77,10 @@ impl Resolver {
 
                 // invalid top-level statements
                 _ => {
-                    let loc = Loc::from_loc(stmt.loc(), file_path.clone());
-
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(ResolverDiagKind::InvalidTopLevelStatement),
-                        location: Some(DiagLoc::new(loc)),
+                        loc: Some(stmt.loc()),
                         hint: None,
                     });
 
@@ -92,64 +96,70 @@ impl Resolver {
         typed_body
     }
 
+    // FIXME
     fn resolve_local_module_import(&mut self, module_import: &ModuleImport) -> Option<SymbolID> {
-        let module_id = self.module_id.unwrap();
+        todo!();
 
-        if let Some(ident) = module_import.as_identifier() {
-            if let Some(scope_rc) = scope_opt {
-                let scope = scope_rc.borrow();
-                if let Some(local_symbol) = scope.resolve(&ident.value) {
-                    return Some(local_symbol.symbol_id());
-                }
-            }
+        // let module_id = self.module_id.unwrap();
 
-            if ident.as_string() == "Self" {
-                return Some(self.current_object.unwrap());
-            }
+        // if let Some(ident) = module_import.as_identifier() {
+        //     if let Some(scope_rc) = scope_opt {
+        //         let scope = scope_rc.borrow();
+        //         if let Some(local_symbol) = scope.resolve(&ident.value) {
+        //             return Some(local_symbol.symbol_id());
+        //         }
+        //     }
 
-            if let Some(symbol_id) = self.lookup_symbol_id(module_id, &ident.value) {
-                return Some(symbol_id);
-            }
+        //     if ident.as_string() == "Self" {
+        //         return Some(self.current_object.unwrap());
+        //     }
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                    name: ident.value.clone(),
-                }),
-                location: Some(DiagLoc::new(Loc::from_loc(ident.loc, self.current_module_file_path()))),
-                hint: None,
-            });
-            return None;
-        }
+        //     if let Some(symbol_id) = self.lookup_symbol_id(module_id, &ident.value) {
+        //         return Some(symbol_id);
+        //     }
 
-        self.resolve_module_import(module_import.clone())
-            .map(|symbol_id| symbol_id)
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(ResolverDiagKind::SymbolNotFound {
+        //             name: ident.value.clone(),
+        //         }),
+        //         loc: Some(DiagLoc::new(Loc::from_loc(ident.loc, self.current_module_file_path()))),
+        //         hint: None,
+        //     });
+        //     return None;
+        // }
+
+        // self.resolve_module_import(module_import.clone())
+        //     .map(|symbol_id| symbol_id)
     }
 
+    // FIXME
     fn resolve_ident(&mut self, ident: &Ident) -> Option<SymbolID> {
-        let module_id = self.module_id.unwrap();
+        todo!();
 
-        if let Some(scope_rc) = &scope_opt {
-            let scope = scope_rc.borrow();
-            if let Some(local_symbol) = scope.resolve(&ident.value) {
-                return Some(local_symbol.symbol_id());
-            }
-        }
+        // let module_id = self.module_id.unwrap();
 
-        if let Some(symbol_id) = self.lookup_symbol_id(module_id, &ident.value) {
-            return Some(symbol_id);
-        }
+        // if let Some(scope_rc) = &scope_opt {
+        //     let scope = scope_rc.borrow();
+        //     if let Some(local_symbol) = scope.resolve(&ident.value) {
+        //         return Some(local_symbol.symbol_id());
+        //     }
+        // }
 
-        self.reporter.report(Diag {
-            level: DiagLevel::Error,
-            kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                name: ident.value.clone(),
-            }),
-            location: Some(DiagLoc::new(Loc::from_loc(ident.loc, self.current_module_file_path()))),
-            hint: None,
-        });
+        // if let Some(symbol_id) = self.lookup_symbol_id(module_id, &ident.value) {
+        //     return Some(symbol_id);
+        // }
 
-        None
+        // self.reporter.report(Diag {
+        //     level: DiagLevel::Error,
+        //     kind: Box::new(ResolverDiagKind::SymbolNotFound {
+        //         name: ident.value.clone(),
+        //     }),
+        //     loc: Some(DiagLoc::new(Loc::from_loc(ident.loc, self.current_module_file_path()))),
+        //     hint: None,
+        // });
+
+        // None
     }
 
     fn resolve_module_import(&mut self, mut module_import: ModuleImport) -> Option<SymbolID> {
@@ -166,17 +176,14 @@ impl Resolver {
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
                         name: ident.value.clone(),
                     }),
-                    location: Some(DiagLoc::new(Loc::from_loc(ident.loc, self.current_module_file_path()))),
+                    loc: Some(ident.loc),
                     hint: None,
                 });
             } else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
-                    location: Some(DiagLoc::new(Loc::from_loc(
-                        module_import.loc,
-                        self.current_module_file_path(),
-                    ))),
+                    loc: Some(module_import.loc),
                     hint: Some("Import path must include at least one symbol.".into()),
                 });
             }
@@ -187,10 +194,7 @@ impl Resolver {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
-                location: Some(DiagLoc::new(Loc::from_loc(
-                    module_import.loc,
-                    self.current_module_file_path(),
-                ))),
+                loc: Some(module_import.loc),
                 hint: Some("Import path must include at least one symbol.".into()),
             });
             return None;
@@ -200,10 +204,7 @@ impl Resolver {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
-                location: Some(DiagLoc::new(Loc::from_loc(
-                    module_import.loc,
-                    self.current_module_file_path(),
-                ))),
+                loc: Some(module_import.loc),
                 hint: Some("The last part of an import path must be a symbol name.".into()),
             });
             return None;
@@ -211,17 +212,15 @@ impl Resolver {
 
         let symbol_name = symbol_ident.value;
 
-        let module_alias = module_segments_as_string(module_import.segments);
-        let Some(target_module_id) = self.resolve_module_alias(&module_alias) else {
+        let module_alias = format_module_segments(module_import.segments);
+
+        let Some(target_module_id) = self.module_aliases.resolve_module_alias(Some(module_id), &module_alias) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::ModuleImportNotFound {
                     module_name: module_alias,
                 }),
-                location: Some(DiagLoc::new(Loc::from_loc(
-                    module_import.loc,
-                    self.current_module_file_path(),
-                ))),
+                loc: Some(module_import.loc),
                 hint: None,
             });
             return None;
@@ -234,10 +233,7 @@ impl Resolver {
                     symbol_name,
                     module_name: module_alias,
                 }),
-                location: Some(DiagLoc::new(Loc::from_loc(
-                    module_import.loc,
-                    self.current_module_file_path(),
-                ))),
+                loc: Some(module_import.loc),
                 hint: None,
             });
             return None;
@@ -253,7 +249,7 @@ impl Resolver {
             kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, ident.loc)),
             sema_ty: None,
             mloc: MemoryLocation::LValue,
-            loc,
+            loc: ident.loc,
         })
     }
 
@@ -277,7 +273,7 @@ impl Resolver {
             Expr::Lambda(lambda) => self.resolve_lambda_expr(lambda),
             Expr::Tuple(tuple_value) => self.resolve_tuple_expr(tuple_value),
             Expr::TupleAccess(tuple_member_access) => self.resolve_tuple_member_access(tuple_member_access),
-            Expr::Dynamic(dynamic_expr) => self.resolve_dynamic_expr(dynamic_expr),
+            Expr::Dynamic(dynamic) => self.resolve_dynamic_expr(dynamic),
             Expr::UnnamedStructValue(unnamed_struct_value) => self.resolve_unnamed_struct_value(unnamed_struct_value),
             Expr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
             Expr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
@@ -290,7 +286,7 @@ impl Resolver {
                         kind,
                         sema_ty: None,
                         mloc: MemoryLocation::RValue,
-                        loc: Loc::from_loc(builtin.loc(), self.current_module_file_path()),
+                        loc: builtin.loc(),
                     })
                 }
                 None => None,
@@ -536,7 +532,7 @@ impl Resolver {
         //         self.reporter.report(Diag {
         //             level: DiagLevel::Error,
         //             kind: Box::new(kind),
-        //             location: Some(DiagLoc::new(Loc::from_loc(loc, self.current_file_path()))),
+        //             loc: Some(DiagLoc::new(Loc::from_loc(loc, self.current_file_path()))),
         //             hint: None,
         //         });
         //         None
@@ -566,7 +562,7 @@ impl Resolver {
                     Some(TypedTypeArg::Named {
                         key: key.as_string(),
                         ty,
-                        loc: Loc::from_loc(key.loc, self.current_module_file_path()),
+                        loc: key.loc,
                     })
                 }
             })
@@ -657,7 +653,7 @@ impl Resolver {
         let module_id = self.module_id.unwrap();
         let symbol_id = self
             .lookup_symbol_id(module_id, &typedef.ident.value)
-            .unwrap_or_else(|| generate_symbol_id());
+            .unwrap_or_else(|| SymbolID::new());
 
         let generic_params = typedef
             .generic_params
@@ -671,22 +667,24 @@ impl Resolver {
             generic_params,
             ty: sema_ty.clone(),
             vis: typedef.vis.clone(),
-            loc: Loc::from_loc(typedef.loc, self.current_module_file_path()),
+            loc: typedef.loc,
         };
 
         let resolved_typedef = ResolvedTypedef {
+            module_id,
             symbol_id,
             typedef_sig: typedef_sig.clone(),
         };
 
-        if let Some(scope_rc) = &scope_opt {
-            scope_rc.borrow_mut().insert(
-                typedef.ident.value.clone(),
-                LocalSymbol::new(LocalSymbolKind::Typedef(resolved_typedef)),
-            );
-        } else {
-            self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Typedef(resolved_typedef)));
-        }
+        // FIXME: Insert symbol into scope
+        // if let Some(scope_rc) = &scope_opt {
+        //     scope_rc.borrow_mut().insert(
+        //         typedef.ident.value.clone(),
+        //         LocalSymbol::new(LocalSymbolKind::Typedef(resolved_typedef)),
+        //     );
+        // } else {
+        //     self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Typedef(resolved_typedef)));
+        // }
 
         let generic_params = typedef
             .generic_params
@@ -745,320 +743,329 @@ impl Resolver {
         todo!();
     }
 
+    // FIXME
     fn resolve_interface_stmt(&mut self, interface: &Interface) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
-        let symbol_id = scope_opt
-            .as_ref()
-            .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.ident.value).unwrap());
+        todo!();
 
-        let generic_params = interface
-            .generic_params
-            .clone()
-            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+        // let module_id = self.module_id.unwrap();
+        // let symbol_id = scope_opt
+        //     .as_ref()
+        //     .map(|_| generate_symbol_id())
+        //     .unwrap_or_else(|| self.lookup_symbol_id(module_id, &interface.ident.value).unwrap());
 
-        self.current_object_generic_params = generic_params.clone();
+        // let generic_params = interface
+        //     .generic_params
+        //     .clone()
+        //     .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        let typed_methods: Vec<TypedFuncDeclStmt> = interface
-            .methods
-            .iter()
-            .filter_map(|func_decl| {
-                if func_decl.renamed_as.is_some() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::RenameInterfaceMethod),
-                        location: Some(DiagLoc::new(Loc::from_loc(
-                            func_decl.loc,
-                            self.current_module_file_path(),
-                        ))),
-                        hint: None,
-                    });
-                }
+        // self.current_object_generic_params = generic_params.clone();
 
-                let (return_type, typed_func_params, typed_variadic_param, generic_params) =
-                    self.resolve_func(func_decl)?;
+        // let typed_methods: Vec<TypedFuncDeclStmt> = interface
+        //     .methods
+        //     .iter()
+        //     .filter_map(|func_decl| {
+        //         if func_decl.renamed_as.is_some() {
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: Box::new(ResolverDiagKind::RenameInterfaceMethod),
+        //                 loc: Some(DiagLoc::new(Loc::from_loc(
+        //                     func_decl.loc,
+        //                     self.current_module_file_path(),
+        //                 ))),
+        //                 hint: None,
+        //             });
+        //         }
 
-                Some(TypedFuncDeclStmt {
-                    module_id: self.module_id.unwrap(),
-                    symbol_id,
-                    name: func_decl.ident.value.clone(),
-                    generic_params,
-                    params: TypedFuncParams {
-                        list: typed_func_params,
-                        variadic: typed_variadic_param,
-                    },
-                    return_type,
-                    modifiers: func_decl.modifiers.clone(),
-                    renamed_as: None,
-                    loc: Loc::from_loc(func_decl.loc, self.current_module_file_path()),
-                })
-            })
-            .collect();
+        //         let (return_type, typed_func_params, typed_variadic_param, generic_params) =
+        //             self.resolve_func(func_decl)?;
 
-        let resolved_interface = ResolvedInterface {
-            symbol_id,
-            interface_sig: InterfaceSig {
-                symbol_id,
-                name: interface.ident.value.clone(),
-                methods: typed_methods.clone(),
-                generic_params: generic_params.clone(),
-                vis: interface.vis.clone(),
-                loc: Loc::from_loc(interface.loc, self.current_module_file_path()),
-            },
-        };
+        //         Some(TypedFuncDeclStmt {
+        //             module_id: self.module_id.unwrap(),
+        //             symbol_id,
+        //             name: func_decl.ident.value.clone(),
+        //             generic_params,
+        //             params: TypedFuncParams {
+        //                 list: typed_func_params,
+        //                 variadic: typed_variadic_param,
+        //             },
+        //             return_type,
+        //             modifiers: func_decl.modifiers.clone(),
+        //             renamed_as: None,
+        //             loc: Loc::from_loc(func_decl.loc, self.current_module_file_path()),
+        //         })
+        //     })
+        //     .collect();
 
-        match scope_opt {
-            Some(scope_rc) => {
-                scope_rc.borrow_mut().insert(
-                    interface.ident.value.clone(),
-                    LocalSymbol::new(LocalSymbolKind::Interface(resolved_interface)),
-                );
-            }
-            None => {
-                self.insert_symbol_entry(
-                    symbol_id,
-                    SymbolEntry::new(SymbolEntryKind::Interface(resolved_interface)),
-                );
-            }
-        }
+        // let resolved_interface = ResolvedInterface {
+        //     symbol_id,
+        //     interface_sig: InterfaceSig {
+        //         symbol_id,
+        //         name: interface.ident.value.clone(),
+        //         methods: typed_methods.clone(),
+        //         generic_params: generic_params.clone(),
+        //         vis: interface.vis.clone(),
+        //         loc: Loc::from_loc(interface.loc, self.current_module_file_path()),
+        //     },
+        // };
 
-        Some(TypedStmt::Interface(TypedInterfaceStmt {
-            name: interface.ident.value.clone(),
-            symbol_id,
-            methods: typed_methods,
-            generic_params,
-            vis: interface.vis.clone(),
-            loc: Loc::from_loc(interface.loc, self.current_module_file_path()),
-        }))
+        // match scope_opt {
+        //     Some(scope_rc) => {
+        //         scope_rc.borrow_mut().insert(
+        //             interface.ident.value.clone(),
+        //             LocalSymbol::new(LocalSymbolKind::Interface(resolved_interface)),
+        //         );
+        //     }
+        //     None => {
+        //         self.insert_symbol_entry(
+        //             symbol_id,
+        //             SymbolEntry::new(SymbolEntryKind::Interface(resolved_interface)),
+        //         );
+        //     }
+        // }
+
+        // Some(TypedStmt::Interface(TypedInterfaceStmt {
+        //     name: interface.ident.value.clone(),
+        //     symbol_id,
+        //     methods: typed_methods,
+        //     generic_params,
+        //     vis: interface.vis.clone(),
+        //     loc: Loc::from_loc(interface.loc, self.current_module_file_path()),
+        // }))
     }
 
+    // FIXME
     fn resolve_union_stmt(&mut self, union_decl: &Union) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
-        let symbol_id = scope_opt
-            .as_ref()
-            .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &union_decl.ident.value).unwrap());
+        todo!();
+        // let module_id = self.module_id.unwrap();
+        // let symbol_id = scope_opt
+        //     .as_ref()
+        //     .map(|_| generate_symbol_id())
+        //     .unwrap_or_else(|| self.lookup_symbol_id(module_id, &union_decl.ident.value).unwrap());
 
-        self.current_object = Some(symbol_id);
+        // self.current_object = Some(symbol_id);
 
-        let mut typed_union_fields: Vec<TypedUnionField> = Vec::new();
+        // let mut typed_union_fields: Vec<TypedUnionField> = Vec::new();
 
-        let generic_params = union_decl
-            .generic_params
-            .clone()
-            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+        // let generic_params = union_decl
+        //     .generic_params
+        //     .clone()
+        //     .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        self.current_object_generic_params = generic_params.clone();
+        // self.current_object_generic_params = generic_params.clone();
 
-        for field in &union_decl.fields {
-            match self.resolve_type(&generic_params, field.ty.clone(), field.loc) {
-                Some(sema_ty) => {
-                    typed_union_fields.push(TypedUnionField {
-                        name: field.ident.value.clone(),
-                        ty: sema_ty,
-                        loc: Loc::from_loc(field.loc, self.current_module_file_path()),
-                    });
-                }
-                None => continue,
-            }
-        }
+        // for field in &union_decl.fields {
+        //     match self.resolve_type(&generic_params, field.ty.clone(), field.loc) {
+        //         Some(sema_ty) => {
+        //             typed_union_fields.push(TypedUnionField {
+        //                 name: field.ident.value.clone(),
+        //                 ty: sema_ty,
+        //                 loc: Loc::from_loc(field.loc, self.current_module_file_path()),
+        //             });
+        //         }
+        //         None => continue,
+        //     }
+        // }
 
-        self.check_duplicate_method_names(&union_decl.ident.value, union_decl.methods.clone());
+        // self.check_duplicate_method_names(&union_decl.ident.value, union_decl.methods.clone());
 
-        let methods = match self.resolve_methods(&union_decl.methods, symbol_id, generic_params.is_some()) {
-            Some(methods) => methods,
-            None => return None,
-        };
+        // let methods = match self.resolve_methods(&union_decl.methods, symbol_id, generic_params.is_some()) {
+        //     Some(methods) => methods,
+        //     None => return None,
+        // };
 
-        let resolved_union = ResolvedUnion {
-            symbol_id,
-            union_sig: UnionSig {
-                symbol_id,
-                name: union_decl.ident.value.clone(),
-                fields: typed_union_fields.clone(),
-                methods: methods.clone(),
-                generic_params: generic_params.clone(),
-                modifiers: union_decl.modifiers.clone(),
-                align: union_decl.align.clone(),
-                loc: Loc::from_loc(union_decl.loc, self.current_module_file_path()),
-            },
-        };
+        // let resolved_union = ResolvedUnion {
+        //     symbol_id,
+        //     union_sig: UnionSig {
+        //         symbol_id,
+        //         name: union_decl.ident.value.clone(),
+        //         fields: typed_union_fields.clone(),
+        //         methods: methods.clone(),
+        //         generic_params: generic_params.clone(),
+        //         modifiers: union_decl.modifiers.clone(),
+        //         align: union_decl.align.clone(),
+        //         loc: Loc::from_loc(union_decl.loc, self.current_module_file_path()),
+        //     },
+        // };
 
-        if let Some(scope_rc) = &scope_opt {
-            let mut scope = scope_rc.borrow_mut();
-            scope.insert(
-                union_decl.ident.value.clone(),
-                LocalSymbol::new(LocalSymbolKind::Union(resolved_union)),
-            );
-            drop(scope);
-        } else {
-            self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Union(resolved_union)));
-        }
+        // if let Some(scope_rc) = &scope_opt {
+        //     let mut scope = scope_rc.borrow_mut();
+        //     scope.insert(
+        //         union_decl.ident.value.clone(),
+        //         LocalSymbol::new(LocalSymbolKind::Union(resolved_union)),
+        //     );
+        //     drop(scope);
+        // } else {
+        //     self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Union(resolved_union)));
+        // }
 
-        let impls = self.resolve_object_impls(&union_decl.impls, union_decl.loc);
+        // let impls = self.resolve_object_impls(&union_decl.impls, union_decl.loc);
 
-        Some(TypedStmt::Union(TypedUnionStmt {
-            symbol_id,
-            module_id,
-            name: union_decl.ident.value.clone(),
-            fields: typed_union_fields,
-            methods,
-            generic_params,
-            modifiers: union_decl.modifiers.clone(),
-            impls,
-            loc: Loc::from_loc(union_decl.ident.loc, self.current_module_file_path()),
-            align: union_decl.align.clone(),
-        }))
+        // Some(TypedStmt::Union(TypedUnionStmt {
+        //     symbol_id,
+        //     module_id,
+        //     name: union_decl.ident.value.clone(),
+        //     fields: typed_union_fields,
+        //     methods,
+        //     generic_params,
+        //     modifiers: union_decl.modifiers.clone(),
+        //     impls,
+        //     loc: Loc::from_loc(union_decl.ident.loc, self.current_module_file_path()),
+        //     align: union_decl.align.clone(),
+        // }))
     }
 
+    // FIXME
     fn resolve_enum_stmt(&mut self, enum_decl: &Enum) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
-        let symbol_id = scope_opt
-            .as_ref()
-            .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &enum_decl.ident.value).unwrap());
+        todo!();
+        // let module_id = self.module_id.unwrap();
+        // let symbol_id = scope_opt
+        //     .as_ref()
+        //     .map(|_| generate_symbol_id())
+        //     .unwrap_or_else(|| self.lookup_symbol_id(module_id, &enum_decl.ident.value).unwrap());
 
-        self.current_object = Some(symbol_id);
+        // self.current_object = Some(symbol_id);
 
-        let mut variants: Vec<TypedEnumVariant> = Vec::new();
+        // let mut variants: Vec<TypedEnumVariant> = Vec::new();
 
-        let generic_params = enum_decl
-            .generic_params
-            .clone()
-            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+        // let generic_params = enum_decl
+        //     .generic_params
+        //     .clone()
+        //     .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        self.current_object_generic_params = generic_params.clone();
+        // self.current_object_generic_params = generic_params.clone();
 
-        for variant in &enum_decl.variants {
-            let typed_variant = match variant {
-                EnumVariant::Ident(ident) => TypedEnumVariant::Ident(ident.clone()),
-                EnumVariant::Variant(ident, enum_valued_fields) => {
-                    let mut fields: Vec<TypedEnumValuedField> = Vec::new();
+        // for variant in &enum_decl.variants {
+        //     let typed_variant = match variant {
+        //         EnumVariant::Ident(ident) => TypedEnumVariant::Ident(ident.clone()),
+        //         EnumVariant::Variant(ident, enum_valued_fields) => {
+        //             let mut fields: Vec<TypedEnumValuedField> = Vec::new();
 
-                    for valued_field in enum_valued_fields {
-                        let ty = match self.resolve_type(&generic_params, valued_field.ty.clone(), valued_field.loc) {
-                            Some(sema_ty) => sema_ty,
-                            None => continue,
-                        };
+        //             for valued_field in enum_valued_fields {
+        //                 let ty = match self.resolve_type(&generic_params, valued_field.ty.clone(), valued_field.loc) {
+        //                     Some(sema_ty) => sema_ty,
+        //                     None => continue,
+        //                 };
 
-                        fields.push(TypedEnumValuedField {
-                            ty,
-                            loc: Loc::from_loc(valued_field.loc, self.current_module_file_path()),
-                        });
-                    }
-                    TypedEnumVariant::Variant(ident.clone(), fields)
-                }
-                EnumVariant::Valued(ident, expr) => match self.resolve_expr(expr) {
-                    Some(typed_expr) => TypedEnumVariant::Valued(ident.clone(), Box::new(typed_expr)),
-                    None => continue,
-                },
-            };
+        //                 fields.push(TypedEnumValuedField {
+        //                     ty,
+        //                     loc: Loc::from_loc(valued_field.loc, self.current_module_file_path()),
+        //                 });
+        //             }
+        //             TypedEnumVariant::Variant(ident.clone(), fields)
+        //         }
+        //         EnumVariant::Valued(ident, expr) => match self.resolve_expr(expr) {
+        //             Some(typed_expr) => TypedEnumVariant::Valued(ident.clone(), Box::new(typed_expr)),
+        //             None => continue,
+        //         },
+        //     };
 
-            variants.push(typed_variant);
-        }
+        //     variants.push(typed_variant);
+        // }
 
-        self.check_duplicate_method_names(&enum_decl.ident.value, enum_decl.methods.clone());
+        // self.check_duplicate_method_names(&enum_decl.ident.value, enum_decl.methods.clone());
 
-        let methods = match self.resolve_methods(&enum_decl.methods, symbol_id, generic_params.is_some()) {
-            Some(methods) => methods,
-            None => return None,
-        };
+        // let methods = match self.resolve_methods(&enum_decl.methods, symbol_id, generic_params.is_some()) {
+        //     Some(methods) => methods,
+        //     None => return None,
+        // };
 
-        let tag_type = if let Some(type_specifier) = enum_decl.tag_type.clone() {
-            self.resolve_type(&None, type_specifier, enum_decl.loc)
-        } else {
-            None
-        };
+        // let tag_type = if let Some(type_specifier) = enum_decl.tag_type.clone() {
+        //     self.resolve_type(&None, type_specifier, enum_decl.loc)
+        // } else {
+        //     None
+        // };
 
-        let resolved_enum = ResolvedEnum {
-            symbol_id,
-            enum_sig: EnumSig {
-                symbol_id,
-                name: enum_decl.ident.value.clone(),
-                methods: methods.clone(),
-                variants: variants.clone(),
-                generic_params: generic_params.clone(),
-                tag_type,
-                modifiers: enum_decl.modifiers.clone(),
-                align: enum_decl.align.clone(),
-                loc: enum_decl.loc,
-            },
-        };
+        // let resolved_enum = ResolvedEnum {
+        //     symbol_id,
+        //     enum_sig: EnumSig {
+        //         symbol_id,
+        //         name: enum_decl.ident.value.clone(),
+        //         methods: methods.clone(),
+        //         variants: variants.clone(),
+        //         generic_params: generic_params.clone(),
+        //         tag_type,
+        //         modifiers: enum_decl.modifiers.clone(),
+        //         align: enum_decl.align.clone(),
+        //         loc: enum_decl.loc,
+        //     },
+        // };
 
-        if let Some(scope_rc) = &scope_opt {
-            let mut scope = scope_rc.borrow_mut();
-            scope.insert(
-                enum_decl.ident.value.clone(),
-                LocalSymbol::new(LocalSymbolKind::Enum(resolved_enum)),
-            );
-            drop(scope);
-        } else {
-            self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Enum(resolved_enum)));
-        }
+        // if let Some(scope_rc) = &scope_opt {
+        //     let mut scope = scope_rc.borrow_mut();
+        //     scope.insert(
+        //         enum_decl.ident.value.clone(),
+        //         LocalSymbol::new(LocalSymbolKind::Enum(resolved_enum)),
+        //     );
+        //     drop(scope);
+        // } else {
+        //     self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Enum(resolved_enum)));
+        // }
 
-        let impls = self.resolve_object_impls(&enum_decl.impls, enum_decl.loc);
+        // let impls = self.resolve_object_impls(&enum_decl.impls, enum_decl.loc);
 
-        let tag_type = if let Some(type_specifier) = &enum_decl.tag_type {
-            self.resolve_type(&None, type_specifier.clone(), enum_decl.loc)
-        } else {
-            None
-        };
+        // let tag_type = if let Some(type_specifier) = &enum_decl.tag_type {
+        //     self.resolve_type(&None, type_specifier.clone(), enum_decl.loc)
+        // } else {
+        //     None
+        // };
 
-        Some(TypedStmt::Enum(TypedEnumStmt {
-            symbol_id,
-            module_id,
-            name: enum_decl.ident.value.clone(),
-            variants,
-            methods,
-            generic_params,
-            impls,
-            tag_type,
-            modifiers: enum_decl.modifiers.clone(),
-            align: enum_decl.align.clone(),
-            loc: enum_decl.loc,
-        }))
+        // Some(TypedStmt::Enum(TypedEnumStmt {
+        //     symbol_id,
+        //     module_id,
+        //     name: enum_decl.ident.value.clone(),
+        //     variants,
+        //     methods,
+        //     generic_params,
+        //     impls,
+        //     tag_type,
+        //     modifiers: enum_decl.modifiers.clone(),
+        //     align: enum_decl.align.clone(),
+        //     loc: enum_decl.loc,
+        // }))
     }
 
+    // FIXME
     fn resolve_global_var_stmt(&mut self, global_var: &GlobalVar) -> Option<TypedStmt> {
-        let sema_ty = global_var
-            .type_specifier
-            .clone()
-            .and_then(|ty| self.resolve_type(&None, ty, global_var.loc));
+        todo!();
+        // let sema_ty = global_var
+        //     .type_specifier
+        //     .clone()
+        //     .and_then(|ty| self.resolve_type(&None, ty, global_var.loc));
 
-        let typed_expr = global_var.expr.as_ref().and_then(|expr| self.resolve_expr(expr));
+        // let typed_expr = global_var.expr.as_ref().and_then(|expr| self.resolve_expr(expr));
 
-        let module_id = self.module_id.unwrap();
-        let symbol_id = self.lookup_symbol_id(module_id, &global_var.ident.value).unwrap();
+        // let module_id = self.module_id.unwrap();
+        // let symbol_id = self.lookup_symbol_id(module_id, &global_var.ident.value).unwrap();
 
-        let resolved_global_var = ResolvedGlobalVar {
-            symbol_id,
-            global_var_sig: GlobalVarSig {
-                symbol_id,
-                name: global_var.ident.value.clone(),
-                ty: sema_ty.clone(),
-                rhs: typed_expr.clone(),
-                analyzed: true,
-                is_const: global_var.is_const,
-                modifiers: global_var.modifiers.clone(),
-                loc: Loc::from_loc(global_var.loc, self.current_module_file_path()),
-            },
-        };
+        // let resolved_global_var = ResolvedGlobalVar {
+        //     symbol_id,
+        //     global_var_sig: GlobalVarSig {
+        //         symbol_id,
+        //         name: global_var.ident.value.clone(),
+        //         ty: sema_ty.clone(),
+        //         rhs: typed_expr.clone(),
+        //         analyzed: true,
+        //         is_const: global_var.is_const,
+        //         modifiers: global_var.modifiers.clone(),
+        //         loc: Loc::from_loc(global_var.loc, self.current_module_file_path()),
+        //     },
+        // };
 
-        self.insert_symbol_entry(
-            symbol_id,
-            SymbolEntry::new(SymbolEntryKind::GlobalVar(resolved_global_var)),
-        );
+        // self.insert_symbol_entry(
+        //     symbol_id,
+        //     SymbolEntry::new(SymbolEntryKind::GlobalVar(resolved_global_var)),
+        // );
 
-        Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
-            symbol_id,
-            module_id,
-            name: global_var.ident.value.clone(),
-            ty: sema_ty,
-            expr: typed_expr,
-            modifiers: global_var.modifiers.clone(),
-            is_const: global_var.is_const,
-            loc: Loc::from_loc(global_var.loc, self.current_module_file_path()),
-        }))
+        // Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
+        //     symbol_id,
+        //     module_id,
+        //     name: global_var.ident.value.clone(),
+        //     ty: sema_ty,
+        //     expr: typed_expr,
+        //     modifiers: global_var.modifiers.clone(),
+        //     is_const: global_var.is_const,
+        //     loc: Loc::from_loc(global_var.loc, self.current_module_file_path()),
+        // }))
     }
 
     fn check_duplicate_method_names(&mut self, struct_name: &str, methods_list: Vec<FuncDef>) {
@@ -1074,10 +1081,7 @@ impl Resolver {
                         struct_name: struct_name.to_string(),
                         method_name: method_name.clone(),
                     }),
-                    location: Some(DiagLoc::new(Loc::from_loc(
-                        func_def.loc,
-                        self.current_module_file_path(),
-                    ))),
+                    loc: Some(func_def.loc),
                     hint: Some("Consider to rename the method to a different name.".to_string()),
                 });
                 continue;
@@ -1088,6 +1092,7 @@ impl Resolver {
     }
 
     // FIXME
+    // FIXME: Why used HashMap<String, SymbolID> directly? Use abstraction! (Maybe called it MethodTable)
     fn resolve_methods(
         &mut self,
         methods_list: &[FuncDef],
@@ -1208,7 +1213,7 @@ impl Resolver {
         // Some(methods)
     }
 
-    fn resolve_object_impls(&mut self, impls: &Vec<TypeSpecifier>, loc: Location) -> Vec<TypedImplementInterface> {
+    fn resolve_object_impls(&mut self, impls: &Vec<TypeSpecifier>, loc: Loc) -> Vec<TypedImplementInterface> {
         let mut symbol_ids: Vec<TypedImplementInterface> = Vec::new();
 
         for type_specifier in impls {
@@ -1228,8 +1233,6 @@ impl Resolver {
                     (symbol_id, None)
                 }
                 TypeSpecifier::GenericInst(generic_inst) => {
-                    let (loc) = type_specifier.loc();
-
                     let base_symbol_id = match self
                         .resolve_type(&None, *generic_inst.base.clone(), loc)
                         .and_then(|sema_ty| sema_ty.as_unresolved_symbol())
@@ -1239,7 +1242,7 @@ impl Resolver {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(ResolverDiagKind::InvalidImplementInterface),
-                                location: Some(DiagLoc::new(Loc::from_loc(loc, self.current_module_file_path()))),
+                                loc: Some(loc),
                                 hint: None,
                             });
                             return symbol_ids;
@@ -1254,7 +1257,7 @@ impl Resolver {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(ResolverDiagKind::InvalidImplementInterface),
-                        location: Some(DiagLoc::new(Loc::from_loc(loc, self.current_module_file_path()))),
+                        loc: Some(loc),
                         hint: None,
                     });
                     return symbol_ids;
@@ -1264,87 +1267,86 @@ impl Resolver {
             symbol_ids.push(TypedImplementInterface {
                 symbol_id,
                 type_args,
-                loc: Loc::from_loc(
-                    type_specifier.loc().0,
-                    self.resolve_module_file_path(module_id).unwrap(),
-                ),
+                loc,
             });
         }
 
         symbol_ids
     }
 
+    // FIXME
     fn resolve_struct_stmt(&mut self, struct_decl: &Struct) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
-        let symbol_id = scope_opt
-            .as_ref()
-            .map(|_| generate_symbol_id())
-            .unwrap_or_else(|| self.lookup_symbol_id(module_id, &struct_decl.ident.value).unwrap());
+        todo!();
+        // let module_id = self.module_id.unwrap();
+        // let symbol_id = scope_opt
+        //     .as_ref()
+        //     .map(|_| generate_symbol_id())
+        //     .unwrap_or_else(|| self.lookup_symbol_id(module_id, &struct_decl.ident.value).unwrap());
 
-        self.current_object = Some(symbol_id);
+        // self.current_object = Some(symbol_id);
 
-        let generic_params = struct_decl
-            .generic_params
-            .clone()
-            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+        // let generic_params = struct_decl
+        //     .generic_params
+        //     .clone()
+        //     .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        self.current_object_generic_params = generic_params.clone();
+        // self.current_object_generic_params = generic_params.clone();
 
-        let typed_struct_fields: Vec<TypedStructField> = struct_decl
-            .fields
-            .iter()
-            .filter_map(|field| {
-                self.resolve_type(&generic_params, field.ty.clone(), field.loc)
-                    .map(|ty| TypedStructField {
-                        name: field.ident.value.clone(),
-                        vis: field.vis.clone(),
-                        ty,
-                        loc: Loc::from_loc(field.loc, self.current_module_file_path()),
-                    })
-            })
-            .collect();
+        // let typed_struct_fields: Vec<TypedStructField> = struct_decl
+        //     .fields
+        //     .iter()
+        //     .filter_map(|field| {
+        //         self.resolve_type(&generic_params, field.ty.clone(), field.loc)
+        //             .map(|ty| TypedStructField {
+        //                 name: field.ident.value.clone(),
+        //                 vis: field.vis.clone(),
+        //                 ty,
+        //                 loc: Loc::from_loc(field.loc, self.current_module_file_path()),
+        //             })
+        //     })
+        //     .collect();
 
-        self.check_duplicate_method_names(&struct_decl.ident.value, struct_decl.methods.clone());
+        // self.check_duplicate_method_names(&struct_decl.ident.value, struct_decl.methods.clone());
 
-        let methods = self.resolve_methods(&struct_decl.methods, symbol_id, generic_params.is_some())?;
-        let impls = self.resolve_object_impls(&struct_decl.impls, struct_decl.loc);
+        // let methods = self.resolve_methods(&struct_decl.methods, symbol_id, generic_params.is_some())?;
+        // let impls = self.resolve_object_impls(&struct_decl.impls, struct_decl.loc);
 
-        let resolved_struct = ResolvedStruct {
-            symbol_id,
-            struct_sig: StructSig {
-                name: struct_decl.ident.value.clone(),
-                fields: typed_struct_fields.clone(),
-                generic_params,
-                impls: impls.clone(),
-                methods: methods.clone(),
-                modifiers: struct_decl.modifiers.clone(),
-                align: struct_decl.align.clone(),
-                loc: Loc::from_loc(struct_decl.loc, self.current_module_file_path()),
-            },
-        };
+        // let resolved_struct = ResolvedStruct {
+        //     symbol_id,
+        //     struct_sig: StructSig {
+        //         name: struct_decl.ident.value.clone(),
+        //         fields: typed_struct_fields.clone(),
+        //         generic_params,
+        //         impls: impls.clone(),
+        //         methods: methods.clone(),
+        //         modifiers: struct_decl.modifiers.clone(),
+        //         align: struct_decl.align.clone(),
+        //         loc: Loc::from_loc(struct_decl.loc, self.current_module_file_path()),
+        //     },
+        // };
 
-        if let Some(scope_rc) = scope_opt {
-            scope_rc.borrow_mut().insert(
-                struct_decl.ident.value.clone(),
-                LocalSymbol::new(LocalSymbolKind::Struct(resolved_struct)),
-            );
-        } else {
-            self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Struct(resolved_struct)));
-        }
+        // if let Some(scope_rc) = scope_opt {
+        //     scope_rc.borrow_mut().insert(
+        //         struct_decl.ident.value.clone(),
+        //         LocalSymbol::new(LocalSymbolKind::Struct(resolved_struct)),
+        //     );
+        // } else {
+        //     self.insert_symbol_entry(symbol_id, SymbolEntry::new(SymbolEntryKind::Struct(resolved_struct)));
+        // }
 
-        Some(TypedStmt::Struct(TypedStructStmt {
-            module_id,
-            symbol_id,
-            name: struct_decl.ident.value.clone(),
-            fields: typed_struct_fields,
-            methods,
-            generic_params,
-            impls,
-            modifiers: struct_decl.modifiers.clone(),
-            align: struct_decl.align.clone(),
-            is_packed: struct_decl.is_packed,
-            loc: Loc::from_loc(struct_decl.loc, self.current_module_file_path()),
-        }))
+        // Some(TypedStmt::Struct(TypedStructStmt {
+        //     module_id,
+        //     symbol_id,
+        //     name: struct_decl.ident.value.clone(),
+        //     fields: typed_struct_fields,
+        //     methods,
+        //     generic_params,
+        //     impls,
+        //     modifiers: struct_decl.modifiers.clone(),
+        //     align: struct_decl.align.clone(),
+        //     is_packed: struct_decl.is_packed,
+        //     loc: Loc::from_loc(struct_decl.loc, self.current_module_file_path()),
+        // }))
     }
 
     fn resolve_func(
@@ -1397,7 +1399,7 @@ impl Resolver {
         //                     self.reporter.report(Diag {
         //                         level: DiagLevel::Error,
         //                         kind: Box::new(ResolverDiagKind::InvalidUntypedFuncParam),
-        //                         location: Some(DiagLoc::new(Loc::from_loc(
+        //                         loc: Some(DiagLoc::new(Loc::from_loc(
         //                             func_param.loc,
         //                             self.current_file_path(),
         //                         ))),
@@ -1708,7 +1710,7 @@ impl Resolver {
         //             kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
         //                 symbol_name: ident.value.clone(),
         //             }),
-        //             location: Some(DiagLoc::new(Loc::from_loc(
+        //             loc: Some(DiagLoc::new(Loc::from_loc(
         //                 ident.loc,
         //                 this.current_file_path(),
         //             ))),
@@ -2034,7 +2036,7 @@ impl Resolver {
         //         self.reporter.report(Diag {
         //             level: DiagLevel::Error,
         //             kind: Box::new(ResolverDiagKind::InvalidStatement),
-        //             location: Some(DiagLoc::new(Loc::from_loc(stmt.loc(), self.current_file_path()))),
+        //             loc: Some(DiagLoc::new(Loc::from_loc(stmt.loc(), self.current_file_path()))),
         //             hint: None,
         //         });
         //         None
@@ -2051,7 +2053,7 @@ impl Resolver {
         Some(TypedStmt::Goto(TypedGotoStmt {
             name: goto.name.as_string(),
             label_id: None,
-            loc: Loc::from_loc(goto.loc, self.current_module_file_path()),
+            loc: goto.loc,
         }))
     }
 
@@ -2068,7 +2070,7 @@ impl Resolver {
         //             kind: Box::new(ResolverDiagKind::LabelAlreadyDefined {
         //                 label_name: label.name.to_string(),
         //             }),
-        //             location: Some(DiagLoc::new(Loc::from_loc(
+        //             loc: Some(DiagLoc::new(Loc::from_loc(
         //                 label.loc,
         //                 self.current_file_path(),
         //             ))),
@@ -2101,7 +2103,7 @@ impl Resolver {
                     kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, module_import.loc)),
                     sema_ty: None,
                     mloc: MemoryLocation::LValue,
-                    loc: Loc::from_loc(module_import.loc, self.current_module_file_path()),
+                    loc: module_import.loc,
                 })
         }
     }
@@ -2114,14 +2116,14 @@ impl Resolver {
             field_value: Box::new(field_value),
             union_ty: None,
             is_const: unnamed_union_value.is_const,
-            loc: Loc::from_loc(unnamed_union_value.loc, self.current_module_file_path()),
+            loc: unnamed_union_value.loc,
         });
 
         Some(TypedExprStmt {
             kind,
             sema_ty: None,
             mloc: MemoryLocation::RValue,
-            loc: Loc::from_loc(unnamed_union_value.loc, self.current_module_file_path()),
+            loc: unnamed_union_value.loc,
         })
     }
 
@@ -2145,27 +2147,27 @@ impl Resolver {
                 ident: unnamed_enum_value.ident.clone(),
                 kind,
                 enum_ty: None,
-                loc: Loc::from_loc(unnamed_enum_value.loc, self.current_module_file_path()),
+                loc: unnamed_enum_value.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: Loc::from_loc(unnamed_enum_value.loc, self.current_module_file_path()),
+            loc: unnamed_enum_value.loc,
         })
     }
 
-    fn resolve_dynamic_expr(&mut self, dynamic_expr: &Dynamic) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(&dynamic_expr.operand)?;
+    fn resolve_dynamic_expr(&mut self, dynamic: &Dynamic) -> Option<TypedExprStmt> {
+        let operand = self.resolve_expr(&dynamic.operand)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Dynamic(TypedDynamicExpr {
                 operand: Box::new(operand),
                 vtable_id: None,
                 object_name: None,
-                loc: Loc::from_loc(dynamic_expr.loc, self.current_module_file_path()),
+                loc: dynamic.loc,
             }),
             sema_ty: None,
             mloc: MemoryLocation::RValue,
-            loc: Loc::from_loc(dynamic_expr.loc, self.current_module_file_path()),
+            loc: dynamic.loc,
         })
     }
 
@@ -2176,11 +2178,11 @@ impl Resolver {
             kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
                 operand: Box::new(operand),
                 index: tuple_member_access.index,
-                loc: Loc::from_loc(tuple_member_access.loc, self.current_module_file_path()),
+                loc: tuple_member_access.loc,
             }),
             sema_ty: None,
             mloc: MemoryLocation::LValue,
-            loc: Loc::from_loc(tuple_member_access.loc, self.current_module_file_path()),
+            loc: tuple_member_access.loc,
         })
     }
 
@@ -2197,42 +2199,45 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Tuple(TypedTupleExpr {
                 elements,
-                loc: Loc::from_loc(tuple_value.loc, self.current_module_file_path()),
+                loc: tuple_value.loc,
             }),
             sema_ty: None,
             mloc: MemoryLocation::RValue,
-            loc: Loc::from_loc(tuple_value.loc, self.current_module_file_path()),
+            loc: tuple_value.loc,
         })
     }
 
+    // FIXME
     fn resolve_lambda_expr(&mut self, lambda: &Lambda) -> Option<TypedExprStmt> {
-        let scope_id = generate_scope_id();
-        let scope_rc = LocalScope::new(None);
-        self.insert_scope_ref(scope_id, scope_rc.clone());
+        todo!();
 
-        let (list, variadic) = self.resolve_func_params(&None, &lambda.params)?;
+        // let scope_id = generate_scope_id();
+        // let scope_rc = LocalScope::new(None);
+        // self.insert_scope_ref(scope_id, scope_rc.clone());
 
-        let body = match self.resolve_block_stmt(&lambda.body) {
-            Some(typed_block) => Box::new(typed_block),
-            None => return None,
-        };
+        // let (list, variadic) = self.resolve_func_params(&None, &lambda.params)?;
 
-        let return_type = self.resolve_type(&None, lambda.return_type.clone(), lambda.loc)?;
+        // let body = match self.resolve_block_stmt(&lambda.body) {
+        //     Some(typed_block) => Box::new(typed_block),
+        //     None => return None,
+        // };
 
-        let loc = Loc::from_loc(lambda.loc, self.current_module_file_path());
+        // let return_type = self.resolve_type(&None, lambda.return_type.clone(), lambda.loc)?;
 
-        Some(TypedExprStmt {
-            kind: TypedExprKind::Lambda(TypedLambdaExpr {
-                params: TypedFuncParams { list, variadic },
-                body,
-                return_type,
-                inline: lambda.inline,
-                loc: loc,
-            }),
-            sema_ty: None,
-            mloc: MemoryLocation::RValue,
-            loc,
-        })
+        // let loc = Loc::from_loc(lambda.loc, self.current_module_file_path());
+
+        // Some(TypedExprStmt {
+        //     kind: TypedExprKind::Lambda(TypedLambdaExpr {
+        //         params: TypedFuncParams { list, variadic },
+        //         body,
+        //         return_type,
+        //         inline: lambda.inline,
+        //         loc: loc,
+        //     }),
+        //     sema_ty: None,
+        //     mloc: MemoryLocation::RValue,
+        //     loc,
+        // })
     }
 
     fn resolve_field_access(&mut self, field_access: &FieldAccess) -> Option<TypedExprStmt> {
@@ -2252,11 +2257,11 @@ impl Resolver {
                 field_ty: None,
                 object_symbol_id: None,
                 type_args,
-                loc: Loc::from_loc(field_access.loc, self.current_module_file_path()),
+                loc: field_access.loc,
             }),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
-            loc: Loc::from_loc(field_access.loc, self.current_module_file_path()),
+            loc: field_access.loc,
         })
     }
 
@@ -2286,12 +2291,12 @@ impl Resolver {
                 self_ty: None,
                 enum_const: None,
                 method_call_on_interface: None,
-                loc: Loc::from_loc(method_call.loc, self.current_module_file_path()),
+                loc: method_call.loc,
                 args,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: Loc::from_loc(method_call.loc, self.current_module_file_path()),
+            loc: method_call.loc,
         })
     }
 
@@ -2305,7 +2310,7 @@ impl Resolver {
                 self.resolve_expr(&field_init.value).map(|value| TypedStructFieldInit {
                     name: field_init.ident.value.clone(),
                     value,
-                    loc: Loc::from_loc(field_init.loc, self.current_module_file_path()),
+                    loc: field_init.loc,
                 })
             })
             .collect();
@@ -2321,41 +2326,45 @@ impl Resolver {
                 fields: field_inits,
                 type_args,
                 is_const: struct_init.is_const,
-                loc: Loc::from_loc(struct_init.loc, self.current_module_file_path()),
+                loc: struct_init.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: Loc::from_loc(struct_init.loc, self.current_module_file_path()),
+            loc: struct_init.loc,
         })
     }
 
+    // FIXME
     fn resolve_func_call(&mut self, func_call: &FuncCall) -> Option<TypedExprStmt> {
-        if scope_required!(self, func_call.loc) {
-            return None;
-        }
+        todo!();
 
-        let operand = self.resolve_expr(&func_call.operand)?;
+        // FIXME
+        // if scope_required!(self, func_call.loc) {
+        //     return None;
+        // }
 
-        let typed_args: Vec<TypedExprStmt> = func_call.args.iter().filter_map(|arg| self.resolve_expr(arg)).collect();
+        // let operand = self.resolve_expr(&func_call.operand)?;
 
-        let type_args = func_call
-            .type_args
-            .clone()
-            .and_then(|type_args| self.resolve_type_args(&None, &type_args, func_call.loc));
+        // let typed_args: Vec<TypedExprStmt> = func_call.args.iter().filter_map(|arg| self.resolve_expr(arg)).collect();
 
-        Some(TypedExprStmt {
-            kind: TypedExprKind::FuncCall(TypedFuncCall {
-                operand: Box::new(operand),
-                args: typed_args,
-                type_args,
-                return_type: None,
-                monomorph_key: None,
-                loc: Loc::from_loc(func_call.loc, self.current_module_file_path()),
-            }),
-            mloc: MemoryLocation::RValue,
-            sema_ty: None,
-            loc: Loc::from_loc(func_call.loc, self.current_module_file_path()),
-        })
+        // let type_args = func_call
+        //     .type_args
+        //     .clone()
+        //     .and_then(|type_args| self.resolve_type_args(&None, &type_args, func_call.loc));
+
+        // Some(TypedExprStmt {
+        //     kind: TypedExprKind::FuncCall(TypedFuncCall {
+        //         operand: Box::new(operand),
+        //         args: typed_args,
+        //         type_args,
+        //         return_type: None,
+        //         monomorph_key: None,
+        //         loc: Loc::from_loc(func_call.loc, self.current_module_file_path()),
+        //     }),
+        //     mloc: MemoryLocation::RValue,
+        //     sema_ty: None,
+        //     loc: Loc::from_loc(func_call.loc, self.current_module_file_path()),
+        // })
     }
 
     fn resolve_untyped_array_expr(&mut self, untyped_array: &UntypedArray) -> Option<TypedExprStmt> {
@@ -2369,29 +2378,32 @@ impl Resolver {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 array_type: None,
                 elements,
-                loc: Loc::from_loc(untyped_array.loc, self.current_module_file_path()),
+                loc: untyped_array.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: Loc::from_loc(untyped_array.loc, self.current_module_file_path()),
+            loc: untyped_array.loc,
         })
     }
 
-    fn resolve_array_expr(&mut self, arr: &Array) -> Option<TypedExprStmt> {
-        let array_type = self.resolve_type(&None, arr.data_type.clone(), arr.loc)?;
+    fn resolve_array_expr(&mut self, array: &Array) -> Option<TypedExprStmt> {
+        let array_type = self.resolve_type(&None, array.data_type.clone(), array.loc)?;
 
-        let typed_elements: Vec<TypedExprStmt> =
-            arr.elements.iter().filter_map(|item| self.resolve_expr(item)).collect();
+        let typed_elements: Vec<TypedExprStmt> = array
+            .elements
+            .iter()
+            .filter_map(|item| self.resolve_expr(item))
+            .collect();
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Array(TypedArrayExpr {
                 array_type: Some(array_type),
                 elements: typed_elements,
-                loc: Loc::from_loc(arr.loc, self.current_module_file_path()),
+                loc: array.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: Loc::from_loc(arr.loc, self.current_module_file_path()),
+            loc: array.loc,
         })
     }
 
@@ -2439,7 +2451,7 @@ impl Resolver {
                     kind: TypedExprKind::SemanticType(sema_ty.clone()),
                     mloc: MemoryLocation::RValue,
                     sema_ty: Some(sema_ty),
-                    loc: Loc::from_loc(loc, self.current_module_file_path()),
+                    loc,
                 });
             }
         };
@@ -2479,7 +2491,7 @@ impl Resolver {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(ResolverDiagKind::InvalidLiteralSuffix),
-                                location: Some(literal.loc),
+                                loc: Some(literal.loc),
                                 hint: None,
                             });
                             return None;
@@ -2540,11 +2552,11 @@ impl Resolver {
             kind: TypedExprKind::Unary(TypedUnaryExpr {
                 op: unary.op.clone(),
                 operand: Box::new(operand),
-                loc: Loc::from_loc(unary.loc, self.current_module_file_path()),
+                loc: unary.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_ty: None,
-            loc: Loc::from_loc(unary.loc, self.current_module_file_path()),
+            loc: unary.loc,
         })
     }
 
@@ -2564,17 +2576,17 @@ impl Resolver {
         })
     }
 
-    fn resolve_address_of_expr(&mut self, address_of: &AddrOf) -> Option<TypedExprStmt> {
-        let operand = self.resolve_expr(&address_of.expr)?;
+    fn resolve_address_of_expr(&mut self, addr_of: &AddrOf) -> Option<TypedExprStmt> {
+        let operand = self.resolve_expr(&addr_of.expr)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::AddrOf(TypedAddrOfExpr {
                 operand: Box::new(operand),
-                loc: Loc::from_loc(address_of.loc, self.current_module_file_path()),
+                loc: addr_of.loc,
             }),
             mloc: MemoryLocation::LValue,
             sema_ty: None,
-            loc: Loc::from_loc(address_of.loc, self.current_module_file_path()),
+            loc: addr_of.loc,
         })
     }
 
@@ -2635,64 +2647,64 @@ impl Resolver {
 }
 
 // Resolver helper methods.
-impl<'diag> Resolver<'diag> {
+impl Resolver {
     // FIXME: Rename function and write comment for it.
-    fn declare_local_variable(&mut self, scope_rc: LocalScopeRef, variable: &Variable) -> Option<TypedVarStmt> {
-        todo!();
-        // if scope_rc.borrow().resolve(&variable.ident.value).is_some() {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
-        //             symbol_name: variable.ident.value.clone(),
-        //         }),
-        //         location: Some(DiagLoc::new(Loc::from_loc(
-        //             variable.loc,
-        //             self.current_file_path(),
-        //         ))),
-        //         hint: None,
-        //     });
-        //     return None;
-        // }
+    // fn declare_local_variable(&mut self, scope_rc: LocalScopeRef, variable: &Variable) -> Option<TypedVarStmt> {
+    //     todo!();
+    // if scope_rc.borrow().resolve(&variable.ident.value).is_some() {
+    //     self.reporter.report(Diag {
+    //         level: DiagLevel::Error,
+    //         kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
+    //             symbol_name: variable.ident.value.clone(),
+    //         }),
+    //         loc: Some(DiagLoc::new(Loc::from_loc(
+    //             variable.loc,
+    //             self.current_file_path(),
+    //         ))),
+    //         hint: None,
+    //     });
+    //     return None;
+    // }
 
-        // let var_type = variable.ty.as_ref().and_then(|ty_spec| {
-        //     self.resolve_type(
-        //         &None,
-        //         Some(scope_rc.clone()),
-        //         ty_spec.clone(),
-        //         variable.loc,
-        //         variable.span.end,
-        //     )
-        // });
+    // let var_type = variable.ty.as_ref().and_then(|ty_spec| {
+    //     self.resolve_type(
+    //         &None,
+    //         Some(scope_rc.clone()),
+    //         ty_spec.clone(),
+    //         variable.loc,
+    //         variable.span.end,
+    //     )
+    // });
 
-        // let typed_rhs = variable
-        //     .rhs
-        //     .as_ref()
-        //     .and_then(|expr| self.resolve_expr(Some(scope_rc.clone()), expr));
+    // let typed_rhs = variable
+    //     .rhs
+    //     .as_ref()
+    //     .and_then(|expr| self.resolve_expr(Some(scope_rc.clone()), expr));
 
-        // let symbol_id = generate_symbol_id();
+    // let symbol_id = generate_symbol_id();
 
-        // let typed_variable = TypedVarStmt {
-        //     symbol_id,
-        //     name: variable.ident.value.clone(),
-        //     ty: var_type.clone(),
-        //     rhs: typed_rhs.clone(),
-        //     is_const: variable.is_const,
-        //     analyzed: typed_rhs.is_some(),
-        //     loc: Loc::from_loc(variable.loc, self.current_file_path()),
-        // };
+    // let typed_variable = TypedVarStmt {
+    //     symbol_id,
+    //     name: variable.ident.value.clone(),
+    //     ty: var_type.clone(),
+    //     rhs: typed_rhs.clone(),
+    //     is_const: variable.is_const,
+    //     analyzed: typed_rhs.is_some(),
+    //     loc: Loc::from_loc(variable.loc, self.current_file_path()),
+    // };
 
-        // let resolved_var = ResolvedVariable {
-        //     symbol_id,
-        //     typed_variable: typed_variable.clone(),
-        // };
+    // let resolved_var = ResolvedVariable {
+    //     symbol_id,
+    //     typed_variable: typed_variable.clone(),
+    // };
 
-        // scope_rc.borrow_mut().insert(
-        //     variable.ident.value.clone(),
-        //     LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
-        // );
+    // scope_rc.borrow_mut().insert(
+    //     variable.ident.value.clone(),
+    //     LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
+    // );
 
-        // Some(typed_variable)
-    }
+    // Some(typed_variable)
+    // }
 
     fn report_if_duplicate_symbol(&mut self, symbol_name: String, loc: Loc) -> bool {
         let module_id = self.module_id.unwrap();
@@ -2702,7 +2714,7 @@ impl<'diag> Resolver<'diag> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::DuplicateSymbol { symbol_name }),
-                    location: Some(DiagLoc::new(loc)),
+                    loc: Some(loc),
                     hint: None,
                 });
 

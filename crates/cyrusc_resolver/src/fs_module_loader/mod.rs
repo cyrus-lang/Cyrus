@@ -16,17 +16,16 @@
  */
 
 use cyrusc_ast::{Import, ModulePath, ModuleSegment, ProgramTree, format::format_module_segments};
-use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag};
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
-use cyrusc_internal::{
-    module_loader::{LoadedModule, ModuleAlias, ModuleLoader},
-    source_parser::SourceParser,
-};
+use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader};
+use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::{FileID, SourceMap};
 use std::{
     env,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 
 use crate::fs_module_loader::diagnostics::ModuleFSLoaderDiagKind;
@@ -45,18 +44,14 @@ pub struct FsModuleLoaderOptions {
 /// Filesystem-backed module loader.
 /// Resolves module paths, loads files, and delegates parsing to a SourceParser.
 #[derive(Debug)]
-pub struct FsModuleLoader<'source_map> {
-    pub source_map: &'source_map mut SourceMap,
-    pub source_parser: Box<dyn SourceParser>,
+pub struct FsModuleLoader {
+    pub source_map: Arc<SourceMap>,
+    pub source_parser: Arc<SourceParser>,
     pub opts: FsModuleLoaderOptions,
 }
 
-impl<'source_map> FsModuleLoader<'source_map> {
-    pub fn new(
-        source_map: &'source_map mut SourceMap,
-        source_parser: Box<dyn SourceParser>,
-        opts: FsModuleLoaderOptions,
-    ) -> Self {
+impl FsModuleLoader {
+    pub fn new(source_map: Arc<SourceMap>, source_parser: Arc<SourceParser>, opts: FsModuleLoaderOptions) -> Self {
         Self {
             source_map,
             source_parser,
@@ -161,30 +156,55 @@ impl<'source_map> FsModuleLoader<'source_map> {
     }
 }
 
-impl<'source_map> ModuleLoader for FsModuleLoader<'source_map> {
+impl ModuleLoader for FsModuleLoader {
     /// Loads all modules referenced in an import statement.
     /// Phase 1: locate and parse each module.  
     /// Phase 2: if all succeeded, construct LoadedModule entries.
-    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, ()>> {
+    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, Box<dyn DiagKind>>> {
         // phase 1: collect and parse all modules
         let mut parsed_program_trees: Vec<(PathBuf, FileID, Rc<ProgramTree>, &ModulePath)> = Vec::new();
-        let mut loaded_modules_list: Vec<Result<LoadedModule, ()>> = Vec::new();
+        let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKind>>> = Vec::new();
 
         for sub_import in &import.paths {
-            let module_file_path = match self.get_imported_module_file_path(sub_import.segments.clone()) {
+            let file_path = match self.get_imported_module_file_path(sub_import.segments.clone()) {
                 Ok(path) => path,
-                Err(_) => {
-                    loaded_modules_list.push(Err(()));
+                Err(diag) => {
+                    loaded_modules_list.push(Err(Box::new(diag)));
                     continue;
                 }
             };
 
-            let file_id = self.source_map.add_file_by_loading(&module_file_path);
+            // handle directory imports -> index.cyrus
+            let mut module_file_path = Path::new(&file_path).to_path_buf();
 
-            let Ok(program_tree) = self.source_parser.parse_program(file_id) else {
-                // parsing failed, display errors and continue parsing others
+            if module_file_path.is_dir() {
+                let index_path = module_file_path.join("index.cyrus");
+
+                if !index_path.exists() {
+                    loaded_modules_list.push(Err(Box::new(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
+                        module_name: format_module_segments(sub_import.segments.clone()),
+                    })));
+                    continue;
+                }
+
+                module_file_path = index_path;
+            }
+
+            // verify file exists
+            if std::fs::read_to_string(&module_file_path).is_err() {
+                loaded_modules_list.push(Err(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
+                    module_name: format_module_segments(sub_import.segments.clone()),
+                })));
+                continue;
+            }
+
+            // register file in SourceMap
+            let file_id = self.source_map.add_file_by_loading(module_file_path.clone());
+
+            let source_file = self.source_map.get_file(file_id).unwrap();
+
+            let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {
                 self.source_parser.display_errors();
-                loaded_modules_list.push(Err(()));
                 continue;
             };
 
@@ -192,12 +212,7 @@ impl<'source_map> ModuleLoader for FsModuleLoader<'source_map> {
                 body: Rc::clone(&program_tree.body),
             });
 
-            parsed_program_trees.push((
-                Path::new(&module_file_path).to_path_buf(),
-                file_id,
-                program_tree_rc,
-                sub_import,
-            ));
+            parsed_program_trees.push((module_file_path.to_path_buf(), file_id, program_tree_rc, sub_import));
         }
 
         // if any module failed parsing/path resolution, stop immediately
@@ -227,15 +242,11 @@ impl<'source_map> ModuleLoader for FsModuleLoader<'source_map> {
         loaded_modules_list
     }
 
+    // FIXME
     fn module_name_from_file_path(&mut self, path: &Path) -> String {
-        let path = path.canonicalize().unwrap_or_else(|_| PathBuf::from(path_ref));
+        let path_buf = path.canonicalize().unwrap_or_else(|_| PathBuf::from(path));
 
-        // try to strip the base path if provided
-        let relative_path = if let Some(base) = base_path {
-            path.strip_prefix(base).unwrap_or(&path).to_path_buf()
-        } else {
-            path.clone()
-        };
+        let relative_path = Path::new(&self.opts.base_path).to_path_buf();
 
         let mut parts: Vec<String> = relative_path
             .iter()
@@ -253,7 +264,12 @@ impl<'source_map> ModuleLoader for FsModuleLoader<'source_map> {
         }
 
         // detect if path belongs to stdlib
-        let is_stdlib = stdlib_path.map(|s| path.starts_with(s)).unwrap_or(false);
+
+        // FIXME We need a better mechanism to determine that it's stdlib_path or not!
+        let stdlib_path = self.opts.stdlib_path.clone().map(|path| Path::new(&path).to_path_buf());
+        let is_stdlib = stdlib_path
+            .map(|path_buf| path_buf.starts_with(path_buf.to_str().unwrap()))
+            .unwrap_or(false);
 
         let mut module_name = parts.join("_");
 
