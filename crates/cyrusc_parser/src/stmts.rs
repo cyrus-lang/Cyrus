@@ -1766,8 +1766,8 @@ impl<'source_file> Parser<'source_file> {
 
                 branches.push(If {
                     condition: cond,
-                    alternate: None,
-                    consequent,
+                    else_block: None,
+                    then_block: consequent,
                     branches: Vec::new(),
                     loc: Loc::new(self.file_id(), line, start, end),
                 });
@@ -1787,9 +1787,9 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(Stmt::If(If {
             condition,
-            consequent,
+            then_block: consequent,
             branches,
-            alternate,
+            else_block: alternate,
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }

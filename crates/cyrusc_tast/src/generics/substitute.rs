@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     generics::{mapping_ctx::GenericMappingCtx, mapping_ctx_arena::GenericMappingCtxArena},
     sigs::{EnumSig, FuncSig, StructSig, UnionSig},
@@ -86,12 +87,12 @@ pub fn substitute_type(
         .map(|sema_ty| sema_ty.as_const()),
         SemanticType::Tuple(tuple_type) => {
             let list = tuple_type
-                .type_list
+                .elements
                 .into_iter()
                 .map(|t| substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone()))
                 .collect::<Option<Vec<_>>>()?;
             Some(SemanticType::Tuple(TypedTupleType {
-                type_list: list,
+                elements: list,
                 loc: tuple_type.loc,
             }))
         }
@@ -293,6 +294,7 @@ pub fn substitute_enum_sig(
         .collect::<Option<Vec<_>>>()?;
 
     Some(EnumSig {
+        module_id: sig.module_id,
         symbol_id: sig.symbol_id,
         name: sig.name.clone(),
         methods: sig.methods.clone(),

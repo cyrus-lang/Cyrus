@@ -72,6 +72,7 @@ pub struct FuncSig {
 
 #[derive(Debug, Clone)]
 pub struct EnumSig {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub methods: HashMap<String, SymbolID>,
@@ -213,6 +214,7 @@ pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
 
 pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
     EnumSig {
+        module_id: typed_enum.module_id,
         symbol_id: typed_enum.symbol_id,
         name: typed_enum.name.clone(),
         methods: typed_enum.methods.clone(),

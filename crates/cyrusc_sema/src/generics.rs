@@ -442,11 +442,11 @@ impl<'a> AnalysisContext<'a> {
                 );
             }
             (SemanticType::Tuple(target_tuple), SemanticType::Tuple(expr_tuple)) => {
-                if target_tuple.type_list.len() != expr_tuple.type_list.len() {
+                if target_tuple.elements.len() != expr_tuple.elements.len() {
                     return;
                 }
 
-                for (target_ty, expr_ty) in target_tuple.type_list.iter().zip(&expr_tuple.type_list) {
+                for (target_ty, expr_ty) in target_tuple.elements.iter().zip(&expr_tuple.elements) {
                     self.unify_generic_types(scope_id_opt, mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
                 }
             }

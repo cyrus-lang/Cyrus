@@ -17,7 +17,7 @@
 
 use crate::stmts::TypedStmt;
 use rand::Rng;
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 pub mod exprs;
 pub mod format;
@@ -28,22 +28,14 @@ mod tests;
 pub mod types;
 pub mod vtable;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ScopeID(u32);
-
-// FIXME: Optimization required here!
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolID(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleID(u64);
 
-impl SymbolID {
-    pub fn new() -> Self {
-        let mut rng = rand::rng();
-        Self(rng.random::<u32>())
-    }
-}
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct LabelID(u32);
 
 impl ModuleID {
     pub fn new() -> Self {
@@ -52,14 +44,19 @@ impl ModuleID {
     }
 }
 
-// FIXME: Consider to remove it after optimizing `SymbolID`.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct DeclID {
-    pub module_id: ModuleID,
-    pub symbol_id: SymbolID,
+impl SymbolID {
+    pub fn new() -> Self {
+        let mut rng = rand::rng();
+        Self(rng.random::<u32>())
+    }
 }
 
-pub type LabelID = u32;
+impl LabelID {
+    pub fn new() -> Self {
+        let mut rng = rand::rng();
+        Self(rng.random::<u32>())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
@@ -71,3 +68,21 @@ pub struct TypedProgramTree {
 
 unsafe impl Send for TypedProgramTree {}
 unsafe impl Sync for TypedProgramTree {}
+
+impl fmt::Display for ModuleID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for SymbolID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for LabelID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}

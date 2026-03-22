@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    LabelID, ModuleID, ScopeID, SymbolID,
+    LabelID, ModuleID, SymbolID,
     exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
@@ -231,7 +231,6 @@ pub struct TypedTypedefStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedBlockStmt {
-    pub scope_id: ScopeID,
     pub stmts: Vec<TypedStmt>,
     pub defers: Vec<TypedDeferStmt>,
     pub loc: Loc,
@@ -492,9 +491,8 @@ impl TypedEnumVariant {
 }
 
 impl TypedBlockStmt {
-    pub fn new_empty(scope_id: ScopeID, loc: Loc) -> Self {
+    pub fn new_empty(loc: Loc) -> Self {
         Self {
-            scope_id,
             stmts: Vec::new(),
             defers: Vec::new(),
             loc,

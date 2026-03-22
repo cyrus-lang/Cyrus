@@ -22,6 +22,7 @@ mod tests {
     use crate::reporter::*;
     use crate::*;
     use std::fmt;
+    use std::sync::Arc;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum DummyDiagKind {
@@ -47,10 +48,10 @@ mod tests {
             hint: Some("A simple example of hint message.".to_string()),
         };
 
-        let mut source_map = SourceMap::new();
+        let source_map = Arc::new(SourceMap::new());
         source_map.add_file("main.cyrus".to_string(), "   ABCD".to_string());
 
-        let diag_reporter = DiagReporter::new(&source_map);
+        let diag_reporter = DiagReporter::new(source_map);
         let output = diag_reporter.render(&diag);
 
         assert!(output.contains("error"));

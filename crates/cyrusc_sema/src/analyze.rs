@@ -322,7 +322,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let tuple_patterns = export_tuple.pattern.into_tuple();
-        for (i, (pattern, sema_ty)) in tuple_patterns.iter().zip(tuple_type.type_list.iter()).enumerate() {
+        for (i, (pattern, sema_ty)) in tuple_patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
             self.analyze_tuple_pattern(
                 scope_id_opt,
                 export_tuple.is_const,
@@ -361,7 +361,7 @@ impl<'a> AnalysisContext<'a> {
                             index: i,
                             loc: loc,
                         }),
-                        sema_ty: Some(tuple_type.type_list.get(i).unwrap().clone()),
+                        sema_ty: Some(tuple_type.elements.get(i).unwrap().clone()),
                         mloc: MemoryLocation::LValue,
                         loc: loc,
                     };
@@ -371,7 +371,7 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExportPattern::Tuple(patterns) => {
                 if let Some(tuple_type) = sema_ty.as_tuple_type() {
-                    if patterns.len() != tuple_type.type_list.len() {
+                    if patterns.len() != tuple_type.elements.len() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
@@ -380,7 +380,7 @@ impl<'a> AnalysisContext<'a> {
                         });
                         return;
                     }
-                    for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.type_list).enumerate() {
+                    for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.elements).enumerate() {
                         let mut new_path = access_path.clone();
                         new_path.push(i);
                         self.analyze_tuple_pattern(

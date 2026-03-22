@@ -178,6 +178,7 @@ impl ModuleLoader for FsModuleLoader {
             let mut module_file_path = Path::new(&file_path).to_path_buf();
 
             if module_file_path.is_dir() {
+                // REVIEW: Abstract away index module resolution.
                 let index_path = module_file_path.join("index.cyrus");
 
                 if !index_path.exists() {

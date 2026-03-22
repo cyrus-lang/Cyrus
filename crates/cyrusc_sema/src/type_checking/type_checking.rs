@@ -457,7 +457,7 @@ impl<'a> AnalysisContext<'a> {
         for (i, expr) in &mut tuple_value.elements.iter_mut().enumerate() {
             let mut expected_type: Option<SemanticType> = None;
             if let Some(tuple_type) = &tuple_type_opt {
-                expected_type = tuple_type.type_list.get(i).cloned();
+                expected_type = tuple_type.elements.get(i).cloned();
             }
 
             match self.analyze_expr(scope_id_opt, expr, expected_type) {
@@ -467,7 +467,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(SemanticType::Tuple(TypedTupleType {
-            type_list,
+            elements: type_list,
             loc: tuple_value.loc,
         }))
     }
@@ -4105,12 +4105,12 @@ impl<'a> AnalysisContext<'a> {
 
         // inbounds check for tuple type
 
-        if tuple_member_access.index > (tuple_type.type_list.len() - 1) {
+        if tuple_member_access.index > (tuple_type.elements.len() - 1) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::TupleIndexOutOfRange {
                     index: tuple_member_access.index.try_into().unwrap(),
-                    length: tuple_type.type_list.len(),
+                    length: tuple_type.elements.len(),
                 }),
                 loc: Some(DiagLoc::new(tuple_member_access.loc)),
                 hint: None,
@@ -4118,7 +4118,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let element_type = tuple_type.type_list.get(tuple_member_access.index).unwrap();
+        let element_type = tuple_type.elements.get(tuple_member_access.index).unwrap();
 
         Some(element_type.clone())
     }

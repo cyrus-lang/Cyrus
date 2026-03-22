@@ -63,12 +63,6 @@ pub struct ModuleFileMap {
     inner: Arc<Mutex<HashMap<ModuleID, PathBuf>>>,
 }
 
-/// A guard that manages the lifetime and context of a LocalScope.
-pub struct LocalScopeGuard<'a> {
-    scope: LocalScope,
-    resolver: &'a mut Resolver,
-}
-
 /// Semantic resolver responsible for symbol binding, module loading,
 /// and building the typed representation of the program.
 pub struct Resolver {
@@ -171,19 +165,35 @@ impl Resolver {
     }
 
     /// Returns a reference to the current active scope, if any.
-    #[inline(always)]
+    #[inline]
     pub fn current_scope(&self) -> Option<&LocalScope> {
         self.scopes.last()
     }
 
+    /// Returns a mutable reference to the current active scope, if any.
+    #[inline]
+    pub fn current_scope_mut(&mut self) -> Option<&mut LocalScope> {
+        self.scopes.last_mut()
+    }
+
     // Method to enter a new scope.
+    #[inline]
     pub fn enter_scope(&mut self, scope: LocalScope) {
         self.scopes.push(scope);
     }
 
     // Method to exit the current scope.
+    #[inline]
     pub fn exit_scope(&mut self) {
         self.scopes.pop();
+    }
+
+    /// Returns an iterator over the active scope stack.
+    ///
+    /// The iterator yields scopes from the innermost scope outward toward
+    /// the outermost scope.
+    pub fn scopes_into_iter(&self) -> impl Iterator<Item = &LocalScope> {
+        self.scopes.iter().rev()
     }
 
     #[inline]
@@ -206,12 +216,12 @@ impl GlobalSymbolRegistry {
     /// Insert a symbol entry into the symbol table of the given module.
     ///
     /// Associates `symbol_id` with its corresponding `SymbolEntry`.
-    pub fn insert_symbol_entry(&self, module_id: ModuleID, symbol_id: SymbolID, entry: SymbolEntry) {
+    pub fn insert_symbol_entry(&self, module_id: ModuleID, symbol_id: SymbolID, symbol_entry: SymbolEntry) {
         let mut registry = self.inner.lock().unwrap();
 
         let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
 
-        symbol_table.entries.insert(symbol_id, entry);
+        symbol_table.entries.insert(symbol_id, symbol_entry);
     }
 
     /// Insert a symbol name into the module's symbol table and allocate a new `SymbolID`.
@@ -327,24 +337,6 @@ impl ModuleFileMap {
     pub fn remove(&self, module_id: ModuleID) {
         let mut map = self.inner.lock().unwrap();
         map.remove(&module_id);
-    }
-}
-
-impl<'a> LocalScopeGuard<'a> {
-    /// Constructs a new LocalScopeGuard, entering the new scope.
-    #[inline]
-    pub fn new(resolver: &'a mut Resolver, parent: Option<ScopeID>) -> Self {
-        let scope = LocalScope::new(parent);
-        resolver.enter_scope(scope.clone());
-        Self { scope, resolver }
-    }
-}
-
-impl<'a> Drop for LocalScopeGuard<'a> {
-    #[inline]
-    fn drop(&mut self) {
-        // exiting the scope when the guard goes out of scope
-        self.resolver.exit_scope();
     }
 }
 

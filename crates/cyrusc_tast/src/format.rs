@@ -460,7 +460,7 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, format_symbol: &(dyn Fn(SymbolI
             format!(
                 "({})",
                 tuple_type
-                    .type_list
+                    .elements
                     .iter()
                     .map(|t| format_sema_ty(t.clone(), format_symbol))
                     .collect::<Vec<String>>()

@@ -26,37 +26,52 @@ use cyrusc_internal::symbols::{
 use cyrusc_tast::{ModuleID, SymbolID};
 
 impl GlobalSymbolQuery for Resolver {
-    /// Look up a symbol identifier by name within a specific module.
-    fn lookup_symbol_id(&self, module: ModuleID, name: &str) -> Option<SymbolID> {
-        let registry = self.global_symbols_registry.inner.lock().unwrap();
-        registry.get(&module)?.names.get(name).cloned()
-    }
-
-    /// Retrieve the full semantic entry for a symbol by its name.
-    fn resolve_symbol_entry(&self, module: ModuleID, name: &str) -> Option<SymbolEntry> {
-        let symbol_id = self.lookup_symbol_id(module, name)?;
-        self.resolve_global_symbol(symbol_id)
-    }
-
-    /// Retrieve the semantic entry for a specific symbol identifier.
-    fn resolve_global_symbol(&self, symbol: SymbolID) -> Option<SymbolEntry> {
+    /// Look up a symbol identifier by name.
+    fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID> {
         let registry = self.global_symbols_registry.inner.lock().unwrap();
 
         for table in registry.values() {
-            if let Some(entry) = table.entries.get(&symbol) {
+            if let Some(symbol_id) = table.names.get(name) {
+                return Some(*symbol_id);
+            }
+        }
+
+        None
+    }
+
+    /// Look up a symbol identifier by name within a specific module.
+    fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
+        let table = registry.get(&module_id)?;
+        table.names.get(name).copied()
+    }
+
+    /// Retrieve the full semantic entry for a symbol by its name.
+    fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry> {
+        let symbol_id = self.lookup_symbol_id(name)?;
+        self.lookup_global_symbol(symbol_id)
+    }
+
+    /// Retrieve the semantic entry for a specific symbol identifier.
+    fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
+
+        for table in registry.values() {
+            if let Some(entry) = table.entries.get(&symbol_id) {
                 return Some(entry.clone());
             }
         }
+
         None
     }
 
     /// Perform a deep resolution of a symbol, following aliases or redirects.
-    fn resolve_global_symbol_deep(&self, symbol: SymbolID) -> Option<SymbolEntry> {
-        let mut current_entry = self.resolve_global_symbol(symbol)?;
+    fn lookup_global_symbol_deep(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        let mut current_entry = self.lookup_global_symbol(symbol_id)?;
 
-        // if the entry is an Alias, resolve what it points to.
-        while let SymbolEntryKind::ProxiedSymbol(module_id, symbol_id) = &current_entry.kind {
-            current_entry = self.resolve_global_symbol(*symbol_id)?;
+        // if the entry is an alias, resolve what it points to
+        while let SymbolEntryKind::ProxiedSymbol(_, symbol_id) = &current_entry.kind {
+            current_entry = self.lookup_global_symbol(*symbol_id)?;
         }
 
         Some(current_entry)
@@ -64,75 +79,91 @@ impl GlobalSymbolQuery for Resolver {
 }
 
 impl SymbolQuery for Resolver {
-    /// Resolve a symbol ID to a variable within the given scope.
-    fn resolve_var(&self, id: SymbolID) -> Option<ResolvedVar> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a variable within the given scope.
+    fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Var(resolved_var) => Some(resolved_var),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to a method definition.
-    fn resolve_method(&self, id: SymbolID) -> Option<ResolvedMethod> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a method definition.
+    fn lookup_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to a global function.
-    fn resolve_func(&self, id: SymbolID) -> Option<ResolvedFunc> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a global function.
+    fn lookup_func(&self, symbol_di: SymbolID) -> Option<ResolvedFunc> {
+        match self.lookup_global_symbol(symbol_di)?.kind {
             SymbolEntryKind::Func(resolved_func) => Some(resolved_func),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to a type definition (typedef).
-    fn resolve_typedef(&self, id: SymbolID) -> Option<ResolvedTypedef> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a type definition (typedef).
+    fn lookup_typedef(&self, symbol_id: SymbolID) -> Option<ResolvedTypedef> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to a global variable.
-    fn resolve_global_var(&self, id: SymbolID) -> Option<ResolvedGlobalVar> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a global variable.
+    fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::GlobalVar(resolved_global_var) => Some(resolved_global_var),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to an interface/trait definition.
-    fn resolve_interface(&self, id: SymbolID) -> Option<ResolvedInterface> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to an interface/trait definition.
+    fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to a union definition.
-    fn resolve_union(&self, id: SymbolID) -> Option<ResolvedUnion> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a union definition.
+    fn lookup_union(&self, symbol_id: SymbolID) -> Option<ResolvedUnion> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Union(resolved_union) => Some(resolved_union),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to an enum definition.
-    fn resolve_enum(&self, id: SymbolID) -> Option<ResolvedEnum> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to an enum definition.
+    fn lookup_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum),
             _ => None,
         }
     }
 
-    /// Resolve a symbol ID to a struct definition.
-    fn resolve_struct(&self, id: SymbolID) -> Option<ResolvedStruct> {
-        match self.resolve_global_symbol(id)?.kind {
+    /// Resolve a symbol id to a struct definition.
+    fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
             SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),
             _ => None,
         }
+    }
+}
+
+impl Resolver {
+    /// Resolves a symbol by searching the active scope stack.
+    ///
+    /// Lookup proceeds from the innermost scope outward until a matching
+    /// symbol binding is found.
+    pub(crate) fn resolve_scope_symbol(&self, name: &str) -> Option<SymbolID> {
+        for scope in self.scopes_into_iter() {
+            if let Some(symbol_id) = scope.resolve(name) {
+                return Some(symbol_id);
+            }
+        }
+
+        None
     }
 }

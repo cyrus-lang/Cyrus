@@ -737,9 +737,9 @@ pub enum FuncVariadicParams {
 #[derive(Debug, Clone)]
 pub struct If {
     pub condition: Expr,
-    pub consequent: Box<BlockStmt>,
+    pub then_block: Box<BlockStmt>,
     pub branches: Vec<If>,
-    pub alternate: Option<Box<BlockStmt>>,
+    pub else_block: Option<Box<BlockStmt>>,
 
     pub loc: Loc,
 }
@@ -953,7 +953,7 @@ impl Ident {
 }
 
 impl ModuleImport {
-    pub fn as_identifier(&self) -> Option<Ident> {
+    pub fn as_ident(&self) -> Option<Ident> {
         if self.segments.len() == 1 {
             match self.segments.last()? {
                 ModuleSegment::SubModule(ident) => Some(ident.clone()),

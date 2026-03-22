@@ -427,9 +427,9 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_tuple(&mut self, scope_id_opt: Option<ScopeID>, tuple_type: TypedTupleType) -> Option<SemanticType> {
-        let type_list_len = tuple_type.type_list.len();
+        let type_list_len = tuple_type.elements.len();
         let type_list: Vec<_> = tuple_type
-            .type_list
+            .elements
             .into_iter()
             .filter_map(|sema_ty| self.normalize_sema_type(scope_id_opt, sema_ty, tuple_type.loc))
             .collect();
@@ -440,7 +440,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(SemanticType::Tuple(TypedTupleType {
-            type_list,
+            elements: type_list,
             loc: tuple_type.loc,
         }))
     }

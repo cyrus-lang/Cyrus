@@ -52,9 +52,6 @@ pub enum ResolverDiagKind {
     #[error("Function parameter must have a type.")]
     InvalidUntypedFuncParam,
 
-    #[error("No local scope found here. This expression must be inside a function or block scope.")]
-    RequiresLocalScope,
-
     #[error("Module '{module_name}' not found.")]
     ModuleImportNotFound { module_name: String },
 

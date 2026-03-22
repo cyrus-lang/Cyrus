@@ -300,7 +300,7 @@ impl Resolver {
             let actual_name = single.ident.as_string();
             let renamed_name = single.renamed.as_ref().unwrap_or(&single.ident).as_string();
 
-            let Some(symbol_id) = self.lookup_symbol_id(imported_module_id, &actual_name) else {
+            let Some(symbol_id) = self.lookup_symbol_id_in_module(imported_module_id, &actual_name) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
@@ -316,18 +316,15 @@ impl Resolver {
 
             {
                 // check symbol visibility
-                let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
+                let symbol_entry = self.lookup_global_symbol(symbol_id).unwrap();
                 let vis = symbol_entry.vis();
                 self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
             }
 
             {
-                // let mut global_symbols = self.global_symbols_registry.lock().unwrap();
-                // let symbol_table = global_symbols
-                //     .get_mut(&parent_module_id)
-                //     .expect("Parent module should exist in global symbols.");
-
-                let exists = self.lookup_symbol_id(parent_module_id, &actual_name).is_some();
+                let exists = self
+                    .lookup_symbol_id_in_module(parent_module_id, &actual_name)
+                    .is_some();
 
                 if exists {
                     self.reporter.report(Diag {
@@ -354,17 +351,6 @@ impl Resolver {
                         used: false,
                     },
                 );
-
-                // symbol_table.names.insert(renamed_name.clone(), proxy_symbol_id);
-                // symbol_table.entries.insert(
-                //     proxy_symbol_id,
-                //     SymbolEntry {
-                //         kind: SymbolEntryKind::ProxiedSymbol(parent_module_id, symbol_id),
-                //         used: false,
-                //     },
-                // );
-
-                // drop(global_symbols);
             }
         }
     }

@@ -18,7 +18,7 @@
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
 use cyrusc_lexer::Lexer;
-use cyrusc_parser::{Parser, SourceParser};
+use cyrusc_parser::SourceParser;
 use cyrusc_resolver::{
     Resolver,
     fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
@@ -100,7 +100,7 @@ pub fn main() {
                     Path::new(&file_path).to_path_buf(),
                 )
                 .unwrap();
-            
+
             if resolver.reporter.has_errors() {
                 resolver.reporter.display();
                 exit(1);

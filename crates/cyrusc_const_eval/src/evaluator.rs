@@ -19,9 +19,9 @@ use crate::diagnostics::ConstEvalError;
 use crate::resolver::ConstResolver;
 use crate::value::ConstValue;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
+use cyrusc_tast::SymbolID;
 use cyrusc_tast::exprs::*;
 use cyrusc_tast::types::SemanticType;
-use cyrusc_tast::{ScopeID, SymbolID};
 use cyrusc_tokens::literals::LiteralKind;
 use std::collections::HashMap;
 

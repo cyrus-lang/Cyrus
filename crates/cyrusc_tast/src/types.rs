@@ -91,7 +91,7 @@ pub enum ResolvedSymbol {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
-    pub type_list: Vec<SemanticType>,
+    pub elements: Vec<SemanticType>,
     pub loc: Loc,
 }
 
@@ -792,7 +792,7 @@ impl Hash for TypedFuncType {
 
 impl Hash for TypedTupleType {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.type_list.hash(state);
+        self.elements.hash(state);
     }
 }
 
@@ -902,7 +902,7 @@ impl PartialEq for TypedFuncType {
 
 impl PartialEq for TypedTupleType {
     fn eq(&self, other: &Self) -> bool {
-        self.type_list == other.type_list
+        self.elements == other.elements
     }
 }
 
