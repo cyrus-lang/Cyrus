@@ -274,7 +274,6 @@ dependencies = [
  "cyrusc_sema",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
- "cyrusc_vtable_registry",
  "inkwell",
  "rayon",
 ]
@@ -296,7 +295,6 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
- "cyrusc_vtable_registry",
  "inkwell",
  "serde",
  "which",
@@ -338,7 +336,6 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
- "cyrusc_vtable_registry",
  "num_cpus",
  "once_cell",
  "rayon",
@@ -422,7 +419,6 @@ dependencies = [
  "cyrusc_strescape",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
- "cyrusc_vtable_registry",
  "fx-hash",
  "smallvec",
  "thiserror",
@@ -470,14 +466,6 @@ dependencies = [
  "rand",
  "thiserror",
  "thiserror-impl",
-]
-
-[[package]]
-name = "cyrusc_vtable_registry"
-version = "0.1.0"
-dependencies = [
- "cyrusc_typed_ast",
- "rand",
 ]
 
 [[package]]

@@ -1,8 +1,0 @@
-[package]
-name = "cyrusc_vtable_registry"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
-rand = "0.9.0"

@@ -257,9 +257,7 @@ impl ModuleAliasRegistry {
     ) {
         let mut registry = self.inner.lock().unwrap();
 
-        let imported_modules = registry
-            .get_mut(&parent_module_id)
-            .expect("parent module id not found in alias registry");
+        let imported_modules = registry.entry(parent_module_id).or_insert_with(HashMap::new);
 
         imported_modules.insert(group_name, imported_module_id);
     }

@@ -17,7 +17,6 @@
 
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
-use cyrusc_lexer::Lexer;
 use cyrusc_parser::SourceParser;
 use cyrusc_resolver::{
     Resolver,

@@ -8,7 +8,6 @@ cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
-cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 rayon = "1.11.0"
 num_cpus = "1.17.0"

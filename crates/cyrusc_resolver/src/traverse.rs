@@ -26,6 +26,9 @@ use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::symbols::symbols::*;
 use cyrusc_internal::symbols::table::*;
 use cyrusc_source_loc::Loc;
+use cyrusc_tokens::Token;
+use cyrusc_tokens::TokenKind;
+use cyrusc_tokens::literals::{ASTLiteralExpr, LiteralKind, StringPrefix};
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::generics::generic_type::GenericType;
 use cyrusc_typed_ast::generics::mapping_ctx::GenericMappingCtx;
@@ -33,9 +36,6 @@ use cyrusc_typed_ast::sigs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
-use cyrusc_tokens::Token;
-use cyrusc_tokens::TokenKind;
-use cyrusc_tokens::literals::{ASTLiteralExpr, LiteralKind, StringPrefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -48,7 +48,7 @@ impl Resolver {
         let module_id = self.module_id.unwrap();
 
         for stmt in ast.body.as_ref() {
-            // skip statements that if it's not a declaration symbol.
+            // skip statement if it's not a declaration symbol
             let Some(decl_name) = stmt.decl_name() else {
                 continue;
             };
@@ -273,7 +273,9 @@ impl Resolver {
             ASTExpr::Tuple(tuple_value) => self.resolve_tuple_expr(tuple_value),
             ASTExpr::TupleAccess(tuple_member_access) => self.resolve_tuple_member_access(tuple_member_access),
             ASTExpr::Dynamic(dynamic) => self.resolve_dynamic_expr(dynamic),
-            ASTExpr::UnnamedStructValue(unnamed_struct_value) => self.resolve_unnamed_struct_value(unnamed_struct_value),
+            ASTExpr::UnnamedStructValue(unnamed_struct_value) => {
+                self.resolve_unnamed_struct_value(unnamed_struct_value)
+            }
             ASTExpr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
             ASTExpr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
             ASTExpr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(untyped_array),
@@ -843,7 +845,7 @@ impl Resolver {
         // Install these as active for method resolution
         self.current_object_generic_params = Some(resolved_generic_params.clone());
 
-        let symbol_id = SymbolID::new();
+        let symbol_id = self.lookup_symbol_id(&name).unwrap();
 
         let mut typed_methods = Vec::with_capacity(interface.methods.len());
 
@@ -859,7 +861,7 @@ impl Resolver {
                 continue;
             }
 
-            let resolved = self.resolve_func(func_decl)?;
+            let resolved = self.resolve_func(func_decl, true)?;
             let (resolved_return_type, resolved_params_list, resolved_variadic_param, resolved_func_generic_params) =
                 resolved;
 
@@ -910,9 +912,9 @@ impl Resolver {
     }
 
     fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
-        let symbol_id = SymbolID::new();
         let name = union_decl.ident.value.clone();
+        let module_id = self.module_id.unwrap();
+        let symbol_id = self.lookup_symbol_id(&name).unwrap();
         let loc = union_decl.loc;
 
         self.current_object = Some(symbol_id);
@@ -981,9 +983,9 @@ impl Resolver {
     }
 
     fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
+        let name = enum_decl.ident.as_string();
         let module_id = self.module_id.unwrap();
-        let symbol_id = SymbolID::new();
-        let name = enum_decl.ident.value.clone();
+        let symbol_id = self.lookup_symbol_id(&name).unwrap();
         let loc = enum_decl.loc;
 
         self.current_object = Some(symbol_id);
@@ -1170,8 +1172,9 @@ impl Resolver {
         for func_def in methods_list {
             let scope = LocalScope::new();
 
-            let (return_type, mut params, variadic, generic_params) = match self.resolve_func(&func_def.as_func_decl())
-            {
+            let (return_type, mut params, variadic, generic_params) = match with_local_scope!(self, scope.clone(), {
+                self.resolve_func(&func_def.as_func_decl(), false)
+            }) {
                 Some(v) => v,
                 None => continue,
             };
@@ -1350,8 +1353,9 @@ impl Resolver {
     }
 
     fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
+        let name = struct_decl.ident.as_string();
         let module_id = self.module_id.unwrap();
-        let symbol_id = SymbolID::new();
+        let symbol_id = self.lookup_symbol_id(&name).unwrap();
 
         self.current_object = Some(symbol_id);
 
@@ -1421,6 +1425,7 @@ impl Resolver {
     fn resolve_func(
         &mut self,
         func_decl: &ASTFuncDeclStmt,
+        is_decl: bool,
     ) -> Option<(
         SemanticType,
         Vec<TypedFuncParamKind>,
@@ -1436,7 +1441,8 @@ impl Resolver {
 
         let typed_return_type = self.resolve_type(&generic_params, return_type, func_decl.loc)?;
 
-        let (typed_func_params, typed_variadic_param) = self.resolve_func_params(&generic_params, &func_decl.params)?;
+        let (typed_func_params, typed_variadic_param) =
+            self.resolve_func_params(&generic_params, &func_decl.params, is_decl)?;
 
         Some((
             typed_return_type,
@@ -1450,24 +1456,25 @@ impl Resolver {
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
         params: &FuncParams,
+        is_decl: bool,
     ) -> Option<(Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
         let mut typed_params = Vec::with_capacity(params.list.len());
 
         for param in &params.list {
             match param {
-                FuncParamKind::FuncParam(p) => {
-                    let typed = self.resolve_func_param(generic_params, p)?;
+                FuncParamKind::FuncParam(func_param) => {
+                    let typed = self.resolve_func_param(generic_params, func_param, is_decl)?;
                     typed_params.push(TypedFuncParamKind::FuncParam(typed));
                 }
-                FuncParamKind::SelfModifier(s) => {
-                    let typed = self.resolve_self_modifier_param(s);
+                FuncParamKind::SelfModifier(self_modifier) => {
+                    let typed = self.resolve_self_modifier_param(self_modifier);
                     typed_params.push(TypedFuncParamKind::SelfModifier(typed));
                 }
             }
         }
 
         let variadic = match &params.variadic {
-            Some(v) => self.resolve_func_variadic_param(v)?,
+            Some(variadic) => self.resolve_func_variadic_param(variadic)?,
             None => None,
         };
 
@@ -1478,9 +1485,8 @@ impl Resolver {
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
         param: &FuncParam,
+        is_decl: bool,
     ) -> Option<TypedFuncParam> {
-        let module_id = self.module_id.unwrap();
-
         let ty = match &param.ty {
             Some(spec) => self.resolve_type(generic_params, spec.clone(), param.loc)?,
             None => {
@@ -1494,30 +1500,16 @@ impl Resolver {
             }
         };
 
-        let symbol_id = SymbolID::new();
+        // FIXME
+        let is_const_param = false;
 
-        let resolved_var = ResolvedVar {
-            symbol_id,
-            module_id,
-            variable: TypedVarStmt {
-                symbol_id,
-                name: param.ident.value.clone(),
-                ty: Some(ty.clone()),
-                rhs: None,
-                is_const: false,
-                analyzed: true,
-                loc: param.loc,
-            },
+        let symbol_id = {
+            if !is_decl {
+                self.insert_variable(&param.ident, Some(ty.clone()), is_const_param)?
+            } else {
+                SymbolID::new()
+            }
         };
-
-        let symbol_entry = SymbolEntry::new(SymbolEntryKind::Var(resolved_var));
-
-        self.current_scope_mut()
-            .unwrap()
-            .insert(param.ident.as_string(), symbol_id);
-
-        self.global_symbols_registry
-            .insert_symbol_entry(module_id, symbol_id, symbol_entry);
 
         Some(TypedFuncParam {
             symbol_id,
@@ -1541,36 +1533,12 @@ impl Resolver {
         &mut self,
         variadic: &FuncVariadicParams,
     ) -> Option<Option<TypedFuncVariadicParams>> {
-        let module_id = self.module_id.unwrap();
-
         match variadic {
             FuncVariadicParams::UntypedCStyle => Some(Some(TypedFuncVariadicParams::UntypedCStyle)),
-
             FuncVariadicParams::Typed(ident, type_spec) => {
                 let ty = self.resolve_type(&None, type_spec.clone(), ident.loc)?;
 
-                let symbol_id = SymbolID::new();
-
-                let resolved_var = ResolvedVar {
-                    symbol_id,
-                    module_id,
-                    variable: TypedVarStmt {
-                        symbol_id,
-                        name: ident.value.clone(),
-                        ty: Some(ty.clone()),
-                        rhs: None,
-                        is_const: false,
-                        analyzed: true,
-                        loc: ident.loc,
-                    },
-                };
-
-                let symbol_entry = SymbolEntry::new(SymbolEntryKind::Var(resolved_var));
-
-                self.current_scope_mut().unwrap().insert(ident.as_string(), symbol_id);
-
-                self.global_symbols_registry
-                    .insert_symbol_entry(module_id, symbol_id, symbol_entry);
+                let symbol_id = self.insert_variable(ident, Some(ty.clone()), false)?;
 
                 Some(Some(TypedFuncVariadicParams::Typed(
                     TypedIdentifier {
@@ -1585,19 +1553,17 @@ impl Resolver {
     }
 
     fn resolve_func_decl(&mut self, func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
+        let name = func_decl.usable_name();
         let module_id = self.module_id.unwrap();
-        let symbol_id = SymbolID::new();
+        let symbol_id = self.lookup_symbol_id(&name).unwrap();
 
-        self.current_scope_mut()
-            .unwrap()
-            .insert(func_decl.ident.as_string(), symbol_id);
-
-        let (return_type, typed_func_params, typed_variadic_param, generic_params) = self.resolve_func(func_decl)?;
+        let (return_type, typed_func_params, typed_variadic_param, generic_params) =
+            self.resolve_func(func_decl, true)?;
 
         let func_sig = FuncSig {
             module_id,
             symbol_id: Some(symbol_id),
-            name: func_decl.ident.value.clone(),
+            name,
             is_func_decl: true,
             generic_params: generic_params.clone(),
             params: TypedFuncParams {
@@ -1645,7 +1611,7 @@ impl Resolver {
         self.enter_scope(scope);
 
         let (return_type, typed_func_params, typed_variadic_param, generic_params) =
-            self.resolve_func(&func_def.as_func_decl())?;
+            self.resolve_func(&func_def.as_func_decl(), false)?;
 
         let func_sig = FuncSig {
             module_id,
@@ -1772,7 +1738,7 @@ impl Resolver {
 
         let pattern = match &export_tuple.pattern {
             ExportPattern::Ident(ident) => {
-                let symbol_id = self.insert_variable(ident, export_tuple.is_const)?;
+                let symbol_id = self.insert_variable(ident, None, export_tuple.is_const)?;
 
                 TypedExportPattern::Ident(symbol_id)
             }
@@ -1782,7 +1748,7 @@ impl Resolver {
                 for sub_pattern in patterns {
                     match sub_pattern {
                         ExportPattern::Ident(ident) => {
-                            let symbol_id = self.insert_variable(ident, export_tuple.is_const)?;
+                            let symbol_id = self.insert_variable(ident, None, export_tuple.is_const)?;
 
                             typed_patterns.push(TypedExportPattern::Ident(symbol_id));
                         }
@@ -1960,7 +1926,7 @@ impl Resolver {
                 let mut fields = Vec::with_capacity(valued_fields.len());
 
                 for ident in valued_fields {
-                    let symbol_id = self.insert_variable(ident, false)?;
+                    let symbol_id = self.insert_variable(ident, None, false)?;
 
                     fields.push(TypedIdentifier {
                         name: ident.as_string(),
@@ -2005,7 +1971,7 @@ impl Resolver {
 
         let typed_rhs = variable.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
 
-        let symbol_id = self.insert_variable(&variable.ident, variable.is_const)?;
+        let symbol_id = self.insert_variable(&variable.ident, ty.clone(), variable.is_const)?;
 
         Some(TypedVarStmt {
             symbol_id,
@@ -2188,7 +2154,7 @@ impl Resolver {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
-            let (list, variadic) = self.resolve_func_params(&None, &lambda.params)?;
+            let (list, variadic) = self.resolve_func_params(&None, &lambda.params, false)?;
 
             let body = match self.resolve_block_stmt(&lambda.body) {
                 Some(block) => Box::new(block),
@@ -2599,7 +2565,10 @@ impl Resolver {
         })
     }
 
-    fn resolve_unnamed_struct_value(&mut self, unnamed_struct_value: &ASTUnnamedStructValueExpr) -> Option<TypedExprStmt> {
+    fn resolve_unnamed_struct_value(
+        &mut self,
+        unnamed_struct_value: &ASTUnnamedStructValueExpr,
+    ) -> Option<TypedExprStmt> {
         let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
 
         for field in &unnamed_struct_value.fields {
@@ -2643,7 +2612,7 @@ impl Resolver {
 
 // Resolver helper methods.
 impl Resolver {
-    fn insert_variable(&mut self, ident: &Ident, is_const: bool) -> Option<SymbolID> {
+    fn insert_variable(&mut self, ident: &Ident, ty: Option<SemanticType>, is_const: bool) -> Option<SymbolID> {
         let module_id = self.module_id.unwrap();
         let symbol_id = SymbolID::new();
         let name = ident.as_string();
@@ -2666,7 +2635,7 @@ impl Resolver {
         let typed_variable = TypedVarStmt {
             symbol_id,
             name: name.clone(),
-            ty: None,
+            ty,
             rhs: None,
             is_const,
             analyzed: false,

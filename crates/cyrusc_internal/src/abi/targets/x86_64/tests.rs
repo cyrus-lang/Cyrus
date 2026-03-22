@@ -19,7 +19,7 @@
 mod tests {
     use cyrusc_ast::abi::CallConv;
     use cyrusc_source_loc::{FileID, Loc};
-    use cyrusc_typed_ast::{types::PlainType, vtable::VTableID};
+    use cyrusc_typed_ast::{VTableID, types::PlainType};
 
     use crate::{
         abi::{
@@ -259,9 +259,24 @@ mod tests {
     }
 
     #[test]
+    fn classify_return_dynamic_interface_object() {
+        let abi = abi();
+        let ty = CIRTy::Dynamic(CIRDynamicTy { vtable_id: VTableID::new(1) });
+
+        let ret = abi.classify_return(&ty);
+
+        match ret.kind {
+            ABIRetInfoKind::DirectPair { .. } => {}
+            _ => panic!("dynamic must return two pointers"),
+        }
+    }
+
+    #[test]
     fn classify_dynamic_two_pointers() {
         let abi = abi();
-        let ty = CIRTy::Dynamic(CIRDynamicTy { vtable_id: VTableID(0) });
+        let ty = CIRTy::Dynamic(CIRDynamicTy {
+            vtable_id: VTableID::new(0),
+        });
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);
 
@@ -597,19 +612,6 @@ mod tests {
         match ret.kind {
             ABIRetInfoKind::Indirect { sret: true } => {}
             _ => panic!("large union must use sret"),
-        }
-    }
-
-    #[test]
-    fn classify_return_dynamic_interface_object() {
-        let abi = abi();
-        let ty = CIRTy::Dynamic(CIRDynamicTy { vtable_id: VTableID(1) });
-
-        let ret = abi.classify_return(&ty);
-
-        match ret.kind {
-            ABIRetInfoKind::DirectPair { .. } => {}
-            _ => panic!("dynamic must return two pointers"),
         }
     }
 

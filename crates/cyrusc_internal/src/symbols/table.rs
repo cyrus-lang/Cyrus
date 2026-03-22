@@ -43,6 +43,7 @@ pub trait SymbolQuery {
 }
 
 /// A collection of symbols and their metadata within a specific scope or module.
+#[derive(Debug)]
 pub struct SymbolTable {
     /// Mapping from unique symbol identifiers to their semantic entries.
     pub entries: HashMap<SymbolID, SymbolEntry>,
