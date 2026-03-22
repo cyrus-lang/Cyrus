@@ -34,7 +34,7 @@ impl<'source_file> Parser<'source_file> {
         &mut self,
         grouped_modifiers: Option<UnresolvedModifiers>,
         toplevel: bool,
-    ) -> Result<Vec<Stmt>, Diag> {
+    ) -> Result<Vec<ASTStmt>, Diag> {
         if self.current_token_is(TokenKind::At) {
             let mut builtin = self.parse_builtin()?;
 
@@ -54,7 +54,7 @@ impl<'source_file> Parser<'source_file> {
                 }
             }
 
-            return Ok(vec![Stmt::Builtin(builtin)]);
+            return Ok(vec![ASTStmt::Builtin(builtin)]);
         }
 
         let modifiers = grouped_modifiers.clone().unwrap_or(self.parse_unresolved_modifiers()?);
@@ -108,7 +108,7 @@ impl<'source_file> Parser<'source_file> {
                 TokenKind::Goto => self.parse_goto(),
                 TokenKind::LeftBrace => {
                     let block_stmt = self.parse_block()?;
-                    Ok(Stmt::BlockStmt(block_stmt))
+                    Ok(ASTStmt::BlockStmt(block_stmt))
                 }
                 _ => {
                     if matches!(self.current_token().kind, TokenKind::Ident { .. })
@@ -174,7 +174,7 @@ impl<'source_file> Parser<'source_file> {
         &mut self,
         grouped_modifiers: Option<UnresolvedModifiers>,
         toplevel: bool,
-    ) -> Result<Vec<Stmt>, Diag> {
+    ) -> Result<Vec<ASTStmt>, Diag> {
         if !toplevel {
             return Err(self.error_at_current(ParserDiagKind::InvalidGroupedModifiers));
         }
@@ -185,7 +185,7 @@ impl<'source_file> Parser<'source_file> {
             return Ok(Vec::new());
         }
 
-        let mut group_stmts: Vec<Stmt> = Vec::new();
+        let mut group_stmts: Vec<ASTStmt> = Vec::new();
 
         loop {
             let inner_modifiers = self.parse_unresolved_modifiers()?;
@@ -206,7 +206,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(group_stmts)
     }
 
-    pub(crate) fn parse_goto(&mut self) -> Result<Stmt, Diag> {
+    pub(crate) fn parse_goto(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -217,13 +217,13 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Goto(Goto {
+        Ok(ASTStmt::Goto(ASTGotoStmt {
             name: label,
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    pub(crate) fn parse_label(&mut self) -> Result<Stmt, Diag> {
+    pub(crate) fn parse_label(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -232,13 +232,13 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Label(Label {
+        Ok(ASTStmt::Label(ASTLabelStmt {
             name,
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    pub(crate) fn parse_block(&mut self) -> Result<BlockStmt, Diag> {
+    pub(crate) fn parse_block(&mut self) -> Result<ASTBlockStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -248,13 +248,13 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut block_stmt: Vec<Stmt> = Vec::new();
+        let mut block_stmt: Vec<ASTStmt> = Vec::new();
 
         // detect empty block
         if self.current_token_is(TokenKind::RightBrace) {
             let end = self.current_token().loc.end;
 
-            return Ok(BlockStmt {
+            return Ok(ASTBlockStmt {
                 exprs: block_stmt,
                 loc: Loc::new(self.file_id(), line, start, end),
             });
@@ -276,7 +276,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(BlockStmt {
+        Ok(ASTBlockStmt {
             exprs: block_stmt,
             loc: Loc::new(self.file_id(), line, start, end),
         })
@@ -406,10 +406,10 @@ impl<'source_file> Parser<'source_file> {
         Ok(FuncParams { list, variadic })
     }
 
-    fn parse_expr_stmt(&mut self) -> Result<Stmt, Diag> {
+    fn parse_expr_stmt(&mut self) -> Result<ASTStmt, Diag> {
         let expr = self.parse_expr(Precedence::Lowest)?;
         self.expect_peek_semicolon()?;
-        Ok(Stmt::Expr(expr))
+        Ok(ASTStmt::Expr(expr))
     }
 
     fn parse_enum_variant(&mut self) -> Result<EnumVariant, Diag> {
@@ -493,7 +493,7 @@ impl<'source_file> Parser<'source_file> {
     }
 
     // FIXME: Make method_parsing helper methods.
-    fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<Stmt, Diag> {
+    fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -519,7 +519,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::RightBrace) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::Union(Union {
+            return Ok(ASTStmt::Union(ASTUnionStmt {
                 ident,
                 methods: Vec::new(),
                 fields: Vec::new(),
@@ -532,7 +532,7 @@ impl<'source_file> Parser<'source_file> {
         }
 
         let mut fields: Vec<UnionField> = Vec::new();
-        let mut methods: Vec<FuncDef> = Vec::new();
+        let mut methods: Vec<ASTFuncDefStmt> = Vec::new();
 
         loop {
             if self.current_token_is(TokenKind::RightBrace) {
@@ -571,7 +571,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Union(Union {
+        Ok(ASTStmt::Union(ASTUnionStmt {
             ident,
             methods,
             fields,
@@ -583,7 +583,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_enum(&mut self, modifiers: EnumModifiers) -> Result<Stmt, Diag> {
+    fn parse_enum(&mut self, modifiers: EnumModifiers) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -611,7 +611,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::RightBrace) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::Enum(Enum {
+            return Ok(ASTStmt::Enum(ASTEnumStmt {
                 ident,
                 variants,
                 tag_type: tag_type,
@@ -649,7 +649,7 @@ impl<'source_file> Parser<'source_file> {
             self.next_token();
         }
 
-        let mut methods: Vec<FuncDef> = Vec::new();
+        let mut methods: Vec<ASTFuncDefStmt> = Vec::new();
 
         loop {
             if self.current_token_is(TokenKind::RightBrace) {
@@ -682,7 +682,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Enum(Enum {
+        Ok(ASTStmt::Enum(ASTEnumStmt {
             ident,
             variants,
             tag_type: tag_type,
@@ -695,7 +695,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<Stmt, Diag> {
+    fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
         let loc = self.current_token().loc;
@@ -720,7 +720,7 @@ impl<'source_file> Parser<'source_file> {
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<StructField> = Vec::new();
-        let mut methods: Vec<FuncDef> = Vec::new();
+        let mut methods: Vec<ASTFuncDefStmt> = Vec::new();
 
         loop {
             if self.current_token_is(TokenKind::RightBrace) {
@@ -753,7 +753,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Struct(Struct {
+        Ok(ASTStmt::Struct(ASTStructStmt {
             ident: struct_name,
             generic_params,
             impls,
@@ -766,8 +766,8 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_method(&mut self, modifiers: FuncModifiers) -> Result<FuncDef, Diag> {
-        if let Stmt::FuncDef(func_def) = self.parse_func(modifiers)? {
+    fn parse_method(&mut self, modifiers: FuncModifiers) -> Result<ASTFuncDefStmt, Diag> {
+        if let ASTStmt::FuncDef(func_def) = self.parse_func(modifiers)? {
             self.next_token(); // consume right brace
 
             Ok(func_def)
@@ -822,7 +822,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(impls)
     }
 
-    fn parse_break(&mut self) -> Result<Stmt, Diag> {
+    fn parse_break(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -831,12 +831,12 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Break(Break {
+        Ok(ASTStmt::Break(ASTBreakStmt {
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    fn parse_continue(&mut self) -> Result<Stmt, Diag> {
+    fn parse_continue(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -845,7 +845,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Continue(Continue {
+        Ok(ASTStmt::Continue(ASTContinueStmt {
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
@@ -888,7 +888,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_interface(&mut self, vis: Visibility) -> Result<Stmt, Diag> {
+    fn parse_interface(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -905,12 +905,12 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut methods: Vec<FuncDecl> = Vec::new();
+        let mut methods: Vec<ASTFuncDeclStmt> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::Interface(Interface {
+            return Ok(ASTStmt::Interface(ASTInterfaceStmt {
                 ident,
                 methods,
                 generic_params,
@@ -923,7 +923,7 @@ impl<'source_file> Parser<'source_file> {
             match self.current_token().kind {
                 TokenKind::Function => {
                     let func_decl = match self.parse_func(FuncModifiers::default())? {
-                        Stmt::FuncDecl(func_decl) => func_decl,
+                        ASTStmt::FuncDecl(func_decl) => func_decl,
                         _ => {
                             return Err(self.error_invalid_token());
                         }
@@ -945,7 +945,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Interface(Interface {
+        Ok(ASTStmt::Interface(ASTInterfaceStmt {
             ident,
             methods,
             generic_params,
@@ -954,7 +954,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_import(&mut self) -> Result<Stmt, Diag> {
+    fn parse_import(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1000,14 +1000,14 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        return Ok(Stmt::Import(Import {
+        return Ok(ASTStmt::Import(ASTImportStmt {
             paths,
             loc: Loc::new(self.file_id(), line, start, end),
         }));
     }
 
-    fn parse_for_loop_body(&mut self) -> Result<Box<BlockStmt>, Diag> {
-        let body: Box<BlockStmt>;
+    fn parse_for_loop_body(&mut self) -> Result<Box<ASTBlockStmt>, Diag> {
+        let body: Box<ASTBlockStmt>;
         if self.current_token_is(TokenKind::LeftBrace) {
             body = Box::new(self.parse_block()?);
 
@@ -1020,7 +1020,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(body)
     }
 
-    fn parse_foreach(&mut self) -> Result<Stmt, Diag> {
+    fn parse_foreach(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.end;
         let line = self.current_token().loc.line;
 
@@ -1049,7 +1049,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Foreach(Foreach {
+        Ok(ASTStmt::Foreach(ASTForeachStmt {
             item: item_identifier,
             index: index_identifier,
             expr,
@@ -1058,7 +1058,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_while_loop(&mut self) -> Result<Stmt, Diag> {
+    fn parse_while_loop(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1072,14 +1072,14 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::While(While {
+        Ok(ASTStmt::While(ASTWhileStmt {
             condition,
             body: Box::new(body),
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    fn parse_for_loop(&mut self) -> Result<Stmt, Diag> {
+    fn parse_for_loop(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1087,7 +1087,7 @@ impl<'source_file> Parser<'source_file> {
 
         // Check for non-conditional for loop
         if self.current_token_is(TokenKind::LeftBrace) {
-            let body: Box<BlockStmt>;
+            let body: Box<ASTBlockStmt>;
             if self.current_token_is(TokenKind::LeftBrace) {
                 body = Box::new(self.parse_block()?);
 
@@ -1100,7 +1100,7 @@ impl<'source_file> Parser<'source_file> {
 
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::For(For {
+            return Ok(ASTStmt::For(ASTForStmt {
                 initializer: None,
                 condition: None,
                 increment: None,
@@ -1111,9 +1111,9 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::LeftParen)?;
 
-        let mut initializer: Option<Variable> = None;
+        let mut initializer: Option<ASTVarStmt> = None;
         if !self.current_token_is(TokenKind::Semicolon) {
-            if let Stmt::Variable(var) = self.parse_variable()? {
+            if let ASTStmt::Variable(var) = self.parse_variable()? {
                 initializer = Some(var);
             }
         }
@@ -1128,7 +1128,7 @@ impl<'source_file> Parser<'source_file> {
 
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::For(For {
+            return Ok(ASTStmt::For(ASTForStmt {
                 initializer,
                 condition: None,
                 increment: None,
@@ -1141,7 +1141,7 @@ impl<'source_file> Parser<'source_file> {
         self.expect_peek_semicolon()?;
         self.next_token();
 
-        let mut increment: Option<Expr> = None;
+        let mut increment: Option<ASTExpr> = None;
         if !self.current_token_is(TokenKind::RightParen) {
             increment = Some(self.parse_expr(Precedence::Lowest)?);
             self.next_token(); // consume increment token
@@ -1152,7 +1152,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::For(For {
+        Ok(ASTStmt::For(ASTForStmt {
             initializer,
             condition: Some(condition),
             increment,
@@ -1205,7 +1205,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<Stmt, Diag> {
+    fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1260,7 +1260,7 @@ impl<'source_file> Parser<'source_file> {
         if self.peek_token_is(TokenKind::Semicolon) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::ExportTuple(ExportTuple {
+            return Ok(ASTStmt::ExportTuple(ASTExportTupleStmt {
                 pattern,
                 ty: variable_type,
                 rhs: None,
@@ -1278,7 +1278,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::ExportTuple(ExportTuple {
+        Ok(ASTStmt::ExportTuple(ASTExportTupleStmt {
             pattern,
             rhs: Some(expr),
             ty: variable_type,
@@ -1287,7 +1287,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_variable(&mut self) -> Result<Stmt, Diag> {
+    fn parse_variable(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1326,7 +1326,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::Semicolon) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::Variable(Variable {
+            return Ok(ASTStmt::Variable(ASTVarStmt {
                 ident,
                 ty: variable_type,
                 rhs: None,
@@ -1341,7 +1341,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Variable(Variable {
+        Ok(ASTStmt::Variable(ASTVarStmt {
             ident,
             rhs: Some(expr),
             ty: variable_type,
@@ -1350,7 +1350,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_func(&mut self, modifiers: FuncModifiers) -> Result<Stmt, Diag> {
+    fn parse_func(&mut self, modifiers: FuncModifiers) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1375,7 +1375,7 @@ impl<'source_file> Parser<'source_file> {
         } else if self.current_token_is(TokenKind::Semicolon) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::FuncDecl(FuncDecl {
+            return Ok(ASTStmt::FuncDecl(ASTFuncDeclStmt {
                 ident: func_name,
                 generic_params,
                 params,
@@ -1392,7 +1392,7 @@ impl<'source_file> Parser<'source_file> {
 
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::FuncDecl(FuncDecl {
+            return Ok(ASTStmt::FuncDecl(ASTFuncDeclStmt {
                 ident: func_name,
                 generic_params,
                 params,
@@ -1409,7 +1409,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::Semicolon) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::FuncDecl(FuncDecl {
+            return Ok(ASTStmt::FuncDecl(ASTFuncDeclStmt {
                 ident: func_name,
                 generic_params,
                 params,
@@ -1436,7 +1436,7 @@ impl<'source_file> Parser<'source_file> {
 
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::FuncDecl(FuncDecl {
+            return Ok(ASTStmt::FuncDecl(ASTFuncDeclStmt {
                 ident: func_name,
                 generic_params,
                 params,
@@ -1451,7 +1451,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        return Ok(Stmt::FuncDef(FuncDef {
+        return Ok(ASTStmt::FuncDef(ASTFuncDefStmt {
             ident: func_name,
             generic_params,
             params,
@@ -1462,7 +1462,7 @@ impl<'source_file> Parser<'source_file> {
         }));
     }
 
-    fn parse_return(&mut self) -> Result<Stmt, Diag> {
+    fn parse_return(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1471,7 +1471,7 @@ impl<'source_file> Parser<'source_file> {
         if self.current_token_is(TokenKind::Semicolon) {
             let end = self.current_token().loc.end;
 
-            return Ok(Stmt::Return(Return {
+            return Ok(ASTStmt::Return(ASTReturnStmt {
                 argument: None,
                 loc: Loc::new(self.file_id(), line, start, end),
             }));
@@ -1484,13 +1484,13 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.peek_token().loc.end;
 
-        Ok(Stmt::Return(Return {
+        Ok(ASTStmt::Return(ASTReturnStmt {
             argument: Some(argument),
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
 
-    fn parse_global_var(&mut self, modifiers: UnresolvedModifiers) -> Result<Stmt, Diag> {
+    fn parse_global_var(&mut self, modifiers: UnresolvedModifiers) -> Result<ASTStmt, Diag> {
         let line = self.current_token().loc.line;
         let start = self.current_token().loc.start;
         let loc = self.current_token().loc;
@@ -1532,7 +1532,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::GlobalVar(GlobalVar {
+        Ok(ASTStmt::GlobalVar(ASTGlobalVarStmt {
             ident,
             type_spec,
             expr,
@@ -1542,7 +1542,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_typedef(&mut self, vis: Visibility) -> Result<Stmt, Diag> {
+    fn parse_typedef(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
         self.expect_current(TokenKind::Typedef)?;
 
         let ident = self.parse_ident()?;
@@ -1567,7 +1567,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Typedef(Typedef {
+        Ok(ASTStmt::Typedef(ASTTypedefStmt {
             vis,
             ident,
             type_spec,
@@ -1576,7 +1576,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_switch(&mut self) -> Result<Stmt, Diag> {
+    fn parse_switch(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1590,7 +1590,7 @@ impl<'source_file> Parser<'source_file> {
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut cases: Vec<SwitchCase> = Vec::new();
-        let mut default_case: Option<BlockStmt> = None;
+        let mut default_case: Option<ASTBlockStmt> = None;
 
         fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
             let line = this.current_token().loc.line;
@@ -1714,7 +1714,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Switch(Switch {
+        Ok(ASTStmt::Switch(ASTSwitchStmt {
             operand,
             cases,
             default_case,
@@ -1722,12 +1722,12 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_if(&mut self) -> Result<Stmt, Diag> {
+    fn parse_if(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
-        let mut branches: Vec<If> = Vec::new();
-        let mut alternate: Option<Box<BlockStmt>> = None;
+        let mut branches: Vec<ASTIfStmt> = Vec::new();
+        let mut alternate: Option<Box<ASTBlockStmt>> = None;
 
         self.expect_current(TokenKind::If)?;
         self.expect_current(TokenKind::LeftParen)?;
@@ -1764,7 +1764,7 @@ impl<'source_file> Parser<'source_file> {
 
                 let end = self.current_token().loc.end;
 
-                branches.push(If {
+                branches.push(ASTIfStmt {
                     condition: cond,
                     else_block: None,
                     then_block: consequent,
@@ -1785,7 +1785,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::If(If {
+        Ok(ASTStmt::If(ASTIfStmt {
             condition,
             then_block: consequent,
             branches,
@@ -1794,7 +1794,7 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_defer(&mut self) -> Result<Stmt, Diag> {
+    fn parse_defer(&mut self) -> Result<ASTStmt, Diag> {
         let start = self.current_token().loc.start;
         let line = self.current_token().loc.line;
 
@@ -1805,7 +1805,7 @@ impl<'source_file> Parser<'source_file> {
 
         let end = self.current_token().loc.end;
 
-        Ok(Stmt::Defer(Defer {
+        Ok(ASTStmt::Defer(ASTDeferStmt {
             operand: Box::new(stmt),
             loc: Loc::new(self.file_id(), line, start, end),
         }))

@@ -20,7 +20,7 @@ use cyrusc_source_loc::Loc;
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub struct Literal {
+pub struct ASTLiteralExpr {
     pub kind: LiteralKind,
     pub loc: Loc,
 }
@@ -41,7 +41,7 @@ pub enum StringPrefix {
     B, // Bytes string
 }
 
-impl fmt::Display for Literal {
+impl fmt::Display for ASTLiteralExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             LiteralKind::Integer(integer, integer_type_opt) => {
@@ -74,10 +74,10 @@ impl fmt::Display for Literal {
     }
 }
 
-impl PartialEq for Literal {
+impl PartialEq for ASTLiteralExpr {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
     }
 }
 
-impl Eq for Literal {}
+impl Eq for ASTLiteralExpr {}

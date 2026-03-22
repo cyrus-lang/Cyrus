@@ -26,7 +26,6 @@ pub mod sigs;
 pub mod stmts;
 mod tests;
 pub mod types;
-pub mod vtable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolID(u32);
@@ -34,8 +33,11 @@ pub struct SymbolID(u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleID(u64);
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LabelID(u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VTableID(u32);
 
 impl ModuleID {
     pub fn new() -> Self {
@@ -55,6 +57,16 @@ impl LabelID {
     pub fn new() -> Self {
         let mut rng = rand::rng();
         Self(rng.random::<u32>())
+    }
+}
+
+impl VTableID {
+    pub fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> u32 {
+        self.0
     }
 }
 
@@ -84,5 +96,11 @@ impl fmt::Display for SymbolID {
 impl fmt::Display for LabelID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for VTableID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
     }
 }

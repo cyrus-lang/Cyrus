@@ -16,7 +16,7 @@
  */
 
 use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
-use cyrusc_ast::{Import, ModuleSegmentSingle, ProgramTree, abi::Visibility, format::format_module_segments};
+use cyrusc_ast::{ASTImportStmt, ModuleSegmentSingle, ProgramTree, abi::Visibility, format::format_module_segments};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::{
     module_loader::ModuleAlias,
@@ -143,7 +143,7 @@ impl Resolver {
     }
 
     /// Resolves a module import with duplicate and cycle detection.
-    fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, visiting: &mut VisitingModule) {
+    fn resolve_import(&mut self, parent_module_id: ModuleID, import: ASTImportStmt, visiting: &mut VisitingModule) {
         let current_module_file_path = self.module_file_map.get(parent_module_id).unwrap();
         let loaded_modules_list = self.module_loader.load_module(&import);
 

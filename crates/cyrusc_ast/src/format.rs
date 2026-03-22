@@ -17,7 +17,7 @@
 use crate::*;
 use core::fmt;
 
-impl fmt::Display for BlockStmt {
+impl fmt::Display for ASTBlockStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format_stmts(&self.exprs))
     }
@@ -40,7 +40,7 @@ impl fmt::Display for UnaryOperator {
     }
 }
 
-impl fmt::Display for FuncCall {
+impl fmt::Display for ASTFuncCallExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", self.operand, expr_series_to_string(self.args.clone()))
     }
@@ -274,10 +274,10 @@ impl fmt::Display for InfixOperator {
     }
 }
 
-impl fmt::Display for Expr {
+impl fmt::Display for ASTExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Lambda(lambda) => {
+            ASTExpr::Lambda(lambda) => {
                 write!(f, "fn(")?;
                 lambda.params.list.iter().for_each(|param| match param {
                     FuncParamKind::FuncParam(func_param) => {
@@ -294,31 +294,31 @@ impl fmt::Display for Expr {
                 write!(f, ") {}", lambda.return_type.clone())?;
                 write!(f, "{{ {} }}", format_stmts(&lambda.body.exprs))
             }
-            Expr::Unary(unary_expr) => {
+            ASTExpr::Unary(unary_expr) => {
                 write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
             }
-            Expr::Ident(ident) => write!(f, "{}", ident.value),
-            Expr::Literal(literal) => write!(f, "{}", literal.to_string()),
-            Expr::Prefix(prefix_expr) => {
+            ASTExpr::Ident(ident) => write!(f, "{}", ident.value),
+            ASTExpr::Literal(literal) => write!(f, "{}", literal.to_string()),
+            ASTExpr::Prefix(prefix_expr) => {
                 write!(f, "({}{})", prefix_expr.op.clone(), prefix_expr.operand.clone())
             }
-            Expr::Infix(infix_expr) => {
+            ASTExpr::Infix(infix_expr) => {
                 write!(f, "({} {} {})", infix_expr.lhs, infix_expr.op, infix_expr.rhs)
             }
-            Expr::FuncCall(func_call) => {
+            ASTExpr::FuncCall(func_call) => {
                 write!(f, "{}", func_call.to_string())
             }
-            Expr::Builtin(builtin) => {
+            ASTExpr::Builtin(builtin) => {
                 write!(f, "{}", builtin.to_string())
             }
-            Expr::FieldAccess(field_access) => {
+            ASTExpr::FieldAccess(field_access) => {
                 if field_access.is_fat_arrow {
                     write!(f, "{}->{}", field_access.operand, field_access.field_name)
                 } else {
                     write!(f, "{}.{}", field_access.operand, field_access.field_name)
                 }
             }
-            Expr::MethodCall(method_call) => {
+            ASTExpr::MethodCall(method_call) => {
                 write!(
                     f,
                     "{}.{}({})",
@@ -327,32 +327,32 @@ impl fmt::Display for Expr {
                     expr_series_to_string(method_call.args.clone())
                 )
             }
-            Expr::Array(array) => {
+            ASTExpr::Array(array) => {
                 write!(f, "[{}]", expr_series_to_string(array.elements.clone()))
             }
-            Expr::UntypedArray(untyped_array) => {
+            ASTExpr::UntypedArray(untyped_array) => {
                 write!(f, "[{}]", expr_series_to_string(untyped_array.elements.clone()))
             }
-            Expr::ArrayIndex(array_index) => {
+            ASTExpr::ArrayIndex(array_index) => {
                 write!(f, "{}[{}]", array_index.operand, array_index.index)
             }
-            Expr::Assign(assignment) => {
+            ASTExpr::Assign(assignment) => {
                 write!(f, "{} = {}", assignment.lhs, assignment.rhs)
             }
-            Expr::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
-            Expr::Deref(dereference) => write!(f, "(*{})", dereference.expr),
-            Expr::StructInit(struct_init) => {
+            ASTExpr::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
+            ASTExpr::Deref(dereference) => write!(f, "(*{})", dereference.expr),
+            ASTExpr::StructInit(struct_init) => {
                 write!(
                     f,
                     "{} {{",
-                    Expr::ModuleImport(struct_init.struct_name.clone()).to_string()
+                    ASTExpr::ModuleImport(struct_init.struct_name.clone()).to_string()
                 )?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.ident, field.value)?;
                 }
                 write!(f, "}}")
             }
-            Expr::UnnamedStructValue(unnamed_struct_value) => {
+            ASTExpr::UnnamedStructValue(unnamed_struct_value) => {
                 write!(f, "struct {{ ")?;
                 for (i, field) in unnamed_struct_value.fields.iter().enumerate() {
                     if let Some(field_ty) = &field.field_ty {
@@ -369,11 +369,11 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            Expr::ModuleImport(module_import) => {
+            ASTExpr::ModuleImport(module_import) => {
                 write!(f, "{}", module_import.to_string())
             }
-            Expr::TypeSpecifier(type_spec) => write!(f, "{}", type_spec),
-            Expr::Tuple(tuple_value) => {
+            ASTExpr::TypeSpecifier(type_spec) => write!(f, "{}", type_spec),
+            ASTExpr::Tuple(tuple_value) => {
                 write!(
                     f,
                     "({})",
@@ -385,11 +385,11 @@ impl fmt::Display for Expr {
                         .join(", ")
                 )
             }
-            Expr::TupleAccess(tuple_member_access) => {
+            ASTExpr::TupleAccess(tuple_member_access) => {
                 write!(f, "{}.{}", tuple_member_access.operand, tuple_member_access.index)
             }
-            Expr::Dynamic(dynamic) => write!(f, "dynamic {}", dynamic.operand),
-            Expr::UnnamedEnumValue(unnamed_enum_value) => {
+            ASTExpr::Dynamic(dynamic) => write!(f, "dynamic {}", dynamic.operand),
+            ASTExpr::UnnamedEnumValue(unnamed_enum_value) => {
                 write!(f, ".{}", unnamed_enum_value.ident.as_string())?;
 
                 match &unnamed_enum_value.kind {
@@ -401,7 +401,7 @@ impl fmt::Display for Expr {
 
                 Ok(())
             }
-            Expr::UnnamedUnionValue(unnamed_union_value) => {
+            ASTExpr::UnnamedUnionValue(unnamed_union_value) => {
                 if unnamed_union_value.is_const {
                     write!(f, "const ")?;
                 }
@@ -413,12 +413,12 @@ impl fmt::Display for Expr {
     }
 }
 
-fn expr_series_to_string(exprs: Vec<Expr>) -> String {
+fn expr_series_to_string(exprs: Vec<ASTExpr>) -> String {
     let str = exprs.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
     str
 }
 
-impl fmt::Display for Stmt {
+impl fmt::Display for ASTStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -430,13 +430,13 @@ impl fmt::Display for ProgramTree {
     }
 }
 
-impl fmt::Display for ModuleImport {
+impl fmt::Display for ASTModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", format_module_segments(self.segments.clone()))
     }
 }
 
-impl fmt::Display for UnnamedStructValue {
+impl fmt::Display for ASTUnnamedStructValueExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(repr_attr) = &self.repr_attr {
             write!(f, "{} ", repr_attr)?;
@@ -500,10 +500,10 @@ pub fn format_module_segments(segments: Vec<ModuleSegment>) -> String {
     out
 }
 
-pub fn format_exprs(exprs: &Vec<Expr>) -> String {
+pub fn format_exprs(exprs: &Vec<ASTExpr>) -> String {
     exprs.iter().map(|expr| expr.to_string()).collect()
 }
 
-pub fn format_stmts(stmts: &Vec<Stmt>) -> String {
+pub fn format_stmts(stmts: &Vec<ASTStmt>) -> String {
     stmts.iter().map(|stmt| stmt.to_string()).collect()
 }

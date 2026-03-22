@@ -17,7 +17,7 @@
 
 use cyrusc_source_loc::Loc;
 
-use crate::literals::Literal;
+use crate::literals::ASTLiteralExpr;
 use std::fmt;
 
 pub mod literals;
@@ -33,7 +33,7 @@ pub enum TokenKind {
     EOF,
     Invalid,
     Ident(String),
-    Literal(Literal),
+    Literal(ASTLiteralExpr),
 
     // Operators
     Plus,

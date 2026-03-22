@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{SymbolID, sigs::FuncSig, types::SemanticType, vtable::VTableID};
+use cyrusc_typed_ast::{SymbolID, VTableID, sigs::FuncSig, types::SemanticType};
 use std::collections::HashMap;
 
 pub type GlobalVarID = u32;
@@ -122,7 +122,7 @@ impl VTableRegistry {
         };
 
         if let Some(&existing_id) = self.map.get(&key) {
-            let existing = &self.tables[existing_id.0 as usize];
+            let existing = &self.tables[existing_id.value() as usize];
 
             // Hard invariant: layout must be identical
             assert_eq!(
@@ -133,7 +133,7 @@ impl VTableRegistry {
             return existing_id;
         }
 
-        let vtable_id = VTableID(self.tables.len() as u32);
+        let vtable_id = VTableID::new(self.tables.len() as u32);
         let global_var_id = generate_global_var_id();
 
         self.tables.push(VTableInfo {
@@ -168,8 +168,8 @@ impl VTableRegistry {
     }
 
     /// Returns metadata for a previously registered vtable.
-    pub fn info(&self, id: VTableID) -> &VTableInfo {
-        &self.tables[id.0 as usize]
+    pub fn info(&self, vtable_id: VTableID) -> &VTableInfo {
+        &self.tables[vtable_id.value() as usize]
     }
 
     /// Returns an iterator over all registered vtables.

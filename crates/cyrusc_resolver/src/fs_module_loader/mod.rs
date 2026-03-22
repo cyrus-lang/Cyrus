@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::{Import, ModulePath, ModuleSegment, ProgramTree, format::format_module_segments};
+use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree, format::format_module_segments};
 use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader};
@@ -160,7 +160,7 @@ impl ModuleLoader for FsModuleLoader {
     /// Loads all modules referenced in an import statement.
     /// Phase 1: locate and parse each module.  
     /// Phase 2: if all succeeded, construct LoadedModule entries.
-    fn load_module(&mut self, import: &Import) -> Vec<Result<LoadedModule, Box<dyn DiagKind>>> {
+    fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKind>>> {
         // phase 1: collect and parse all modules
         let mut parsed_program_trees: Vec<(PathBuf, FileID, Rc<ProgramTree>, &ModulePath)> = Vec::new();
         let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKind>>> = Vec::new();

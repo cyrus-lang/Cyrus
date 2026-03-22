@@ -57,8 +57,8 @@ pub enum CIRStmt {
     Label(CIRLabelStmt),
     Goto(CIRGotoStmt),
     Defer(CIRDeferStmt),
-    Continue(Loc),
-    Break(Loc),
+    Continue(Loc), // FIXME Let it have it's own DS
+    Break(Loc), // FIXME Let it have it's own DS
 }
 
 #[derive(Debug, Clone)]

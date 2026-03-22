@@ -35,7 +35,7 @@ use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
-use cyrusc_tokens::literals::{Literal, LiteralKind, StringPrefix};
+use cyrusc_tokens::literals::{ASTLiteralExpr, LiteralKind, StringPrefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -68,16 +68,16 @@ impl Resolver {
 
         for stmt in ast.body.as_ref() {
             let typed_stmt = match stmt {
-                Stmt::Import(..) | Stmt::Expr(..) => continue,
-                Stmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
-                Stmt::GlobalVar(global_var) => self.resolve_global_var_stmt(global_var),
-                Stmt::Typedef(typedef) => self.resolve_typedef(typedef),
-                Stmt::FuncDef(func_def) => self.resolve_func_def(func_def),
-                Stmt::FuncDecl(func_decl) => self.resolve_func_decl(func_decl),
-                Stmt::Struct(struct_) => self.resolve_struct_stmt(struct_),
-                Stmt::Enum(enum_) => self.resolve_enum_stmt(enum_),
-                Stmt::Union(union_) => self.resolve_union_stmt(union_),
-                Stmt::Interface(interface) => self.resolve_interface_stmt(interface),
+                ASTStmt::Import(..) | ASTStmt::Expr(..) => continue,
+                ASTStmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
+                ASTStmt::GlobalVar(global_var) => self.resolve_global_var_stmt(global_var),
+                ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
+                ASTStmt::FuncDef(func_def) => self.resolve_func_def(func_def),
+                ASTStmt::FuncDecl(func_decl) => self.resolve_func_decl(func_decl),
+                ASTStmt::Struct(struct_) => self.resolve_struct_stmt(struct_),
+                ASTStmt::Enum(enum_) => self.resolve_enum_stmt(enum_),
+                ASTStmt::Union(union_) => self.resolve_union_stmt(union_),
+                ASTStmt::Interface(interface) => self.resolve_interface_stmt(interface),
 
                 // invalid top-level statements
                 _ => {
@@ -138,7 +138,7 @@ impl Resolver {
     ///
     /// This is equivalent to resolving the identifier within the
     /// current lexical and module scope.
-    fn resolve_local_module_import(&mut self, module_import: &ModuleImport) -> Option<SymbolID> {
+    fn resolve_local_module_import(&mut self, module_import: &ASTModuleImport) -> Option<SymbolID> {
         if let Some(ident) = module_import.as_ident() {
             return self.resolve_ident(&ident);
         }
@@ -159,7 +159,7 @@ impl Resolver {
     /// 3. Look up the symbol within the resolved module.
     ///
     /// Errors are reported if the module or symbol cannot be found.
-    fn resolve_module_import(&mut self, mut module_import: ModuleImport) -> Option<SymbolID> {
+    fn resolve_module_import(&mut self, mut module_import: ASTModuleImport) -> Option<SymbolID> {
         let module_id = self.module_id.unwrap();
 
         if module_import.segments.len() == 1 {
@@ -252,32 +252,32 @@ impl Resolver {
         })
     }
 
-    fn resolve_expr(&mut self, expr: &Expr) -> Option<TypedExprStmt> {
+    fn resolve_expr(&mut self, expr: &ASTExpr) -> Option<TypedExprStmt> {
         match expr {
-            Expr::Ident(ident) => self.resolve_ident_expr(ident),
-            Expr::Infix(infix_expr) => self.resolve_infix_expr(infix_expr),
-            Expr::Prefix(prefix_expr) => self.resolve_prefix_expr(prefix_expr),
-            Expr::Unary(unary) => self.resolve_unary_expr(unary),
-            Expr::Assign(assignment) => self.resolve_assign_expr(assignment),
-            Expr::FieldAccess(field_access) => self.resolve_field_access(field_access),
-            Expr::MethodCall(method_call) => self.resolve_method_call(method_call),
-            Expr::StructInit(struct_init) => self.resolve_struct_init(struct_init),
-            Expr::ModuleImport(module_import) => self.resolve_module_import_expr(module_import),
-            Expr::FuncCall(func_call) => self.resolve_func_call(func_call),
-            Expr::Array(array) => self.resolve_array_expr(array),
-            Expr::Literal(literal) => self.resolve_literal_expr(literal),
-            Expr::ArrayIndex(array_index) => self.resolve_array_index_expr(array_index),
-            Expr::AddrOf(address_of) => self.resolve_addr_of_expr(address_of),
-            Expr::Deref(dereference) => self.resolve_deref_expr(dereference),
-            Expr::Lambda(lambda) => self.resolve_lambda_expr(lambda),
-            Expr::Tuple(tuple_value) => self.resolve_tuple_expr(tuple_value),
-            Expr::TupleAccess(tuple_member_access) => self.resolve_tuple_member_access(tuple_member_access),
-            Expr::Dynamic(dynamic) => self.resolve_dynamic_expr(dynamic),
-            Expr::UnnamedStructValue(unnamed_struct_value) => self.resolve_unnamed_struct_value(unnamed_struct_value),
-            Expr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
-            Expr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
-            Expr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(untyped_array),
-            Expr::Builtin(builtin) => match self.resolve_builtin(builtin) {
+            ASTExpr::Ident(ident) => self.resolve_ident_expr(ident),
+            ASTExpr::Infix(infix_expr) => self.resolve_infix_expr(infix_expr),
+            ASTExpr::Prefix(prefix_expr) => self.resolve_prefix_expr(prefix_expr),
+            ASTExpr::Unary(unary) => self.resolve_unary_expr(unary),
+            ASTExpr::Assign(assignment) => self.resolve_assign_expr(assignment),
+            ASTExpr::FieldAccess(field_access) => self.resolve_field_access(field_access),
+            ASTExpr::MethodCall(method_call) => self.resolve_method_call(method_call),
+            ASTExpr::StructInit(struct_init) => self.resolve_struct_init(struct_init),
+            ASTExpr::ModuleImport(module_import) => self.resolve_module_import_expr(module_import),
+            ASTExpr::FuncCall(func_call) => self.resolve_func_call(func_call),
+            ASTExpr::Array(array) => self.resolve_array_expr(array),
+            ASTExpr::Literal(literal) => self.resolve_literal_expr(literal),
+            ASTExpr::ArrayIndex(array_index) => self.resolve_array_index_expr(array_index),
+            ASTExpr::AddrOf(address_of) => self.resolve_addr_of_expr(address_of),
+            ASTExpr::Deref(dereference) => self.resolve_deref_expr(dereference),
+            ASTExpr::Lambda(lambda) => self.resolve_lambda_expr(lambda),
+            ASTExpr::Tuple(tuple_value) => self.resolve_tuple_expr(tuple_value),
+            ASTExpr::TupleAccess(tuple_member_access) => self.resolve_tuple_member_access(tuple_member_access),
+            ASTExpr::Dynamic(dynamic) => self.resolve_dynamic_expr(dynamic),
+            ASTExpr::UnnamedStructValue(unnamed_struct_value) => self.resolve_unnamed_struct_value(unnamed_struct_value),
+            ASTExpr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
+            ASTExpr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
+            ASTExpr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(untyped_array),
+            ASTExpr::Builtin(builtin) => match self.resolve_builtin(builtin) {
                 Some(typed_builtin) => {
                     let kind = TypedExprKind::Builtin(typed_builtin);
 
@@ -290,7 +290,7 @@ impl Resolver {
                 }
                 None => None,
             },
-            Expr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
+            ASTExpr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
         }
     }
 
@@ -397,7 +397,7 @@ impl Resolver {
         None
     }
 
-    fn resolve_module_import_type(&mut self, module_import: ModuleImport) -> Option<SemanticType> {
+    fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemanticType> {
         self.resolve_module_import(module_import.clone())
             .map(SemanticType::UnresolvedSymbol)
             .or_else(|| {
@@ -737,7 +737,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_typedef(&mut self, typedef: &Typedef) -> Option<TypedStmt> {
+    fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = self
             .lookup_symbol_id(&typedef.ident.value)
@@ -830,7 +830,7 @@ impl Resolver {
         todo!();
     }
 
-    fn resolve_interface_stmt(&mut self, interface: &Interface) -> Option<TypedStmt> {
+    fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let name = interface.ident.value.clone();
         let loc = interface.loc;
@@ -909,7 +909,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_union_stmt(&mut self, union_decl: &Union) -> Option<TypedStmt> {
+    fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = SymbolID::new();
         let name = union_decl.ident.value.clone();
@@ -980,7 +980,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_enum_stmt(&mut self, enum_decl: &Enum) -> Option<TypedStmt> {
+    fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = SymbolID::new();
         let name = enum_decl.ident.value.clone();
@@ -1081,7 +1081,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_global_var_stmt(&mut self, global_var: &GlobalVar) -> Option<TypedStmt> {
+    fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(&global_var.ident.value).unwrap();
 
@@ -1132,7 +1132,7 @@ impl Resolver {
         }))
     }
 
-    fn check_duplicate_method_names(&mut self, struct_name: &str, methods_list: Vec<FuncDef>) {
+    fn check_duplicate_method_names(&mut self, struct_name: &str, methods_list: Vec<ASTFuncDefStmt>) {
         let mut method_names: Vec<String> = Vec::new();
 
         for func_def in methods_list {
@@ -1157,14 +1157,14 @@ impl Resolver {
 
     fn resolve_methods(
         &mut self,
-        methods_list: &[FuncDef],
+        methods_list: &[ASTFuncDefStmt],
         object_symbol_id: SymbolID,
         generic_object: bool,
     ) -> Option<HashMap<String, SymbolID>> {
         let module_id = self.module_id.unwrap();
 
         let mut methods = HashMap::with_capacity(methods_list.len());
-        let mut method_bodies: HashMap<SymbolID, (LocalScope, &BlockStmt, bool)> =
+        let mut method_bodies: HashMap<SymbolID, (LocalScope, &ASTBlockStmt, bool)> =
             HashMap::with_capacity(methods_list.len());
 
         for func_def in methods_list {
@@ -1349,7 +1349,7 @@ impl Resolver {
         symbol_ids
     }
 
-    fn resolve_struct_stmt(&mut self, struct_decl: &Struct) -> Option<TypedStmt> {
+    fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = SymbolID::new();
 
@@ -1420,7 +1420,7 @@ impl Resolver {
 
     fn resolve_func(
         &mut self,
-        func_decl: &FuncDecl,
+        func_decl: &ASTFuncDeclStmt,
     ) -> Option<(
         SemanticType,
         Vec<TypedFuncParamKind>,
@@ -1584,7 +1584,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_func_decl(&mut self, func_decl: &FuncDecl) -> Option<TypedStmt> {
+    fn resolve_func_decl(&mut self, func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = SymbolID::new();
 
@@ -1636,7 +1636,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_func_def(&mut self, func_def: &FuncDef) -> Option<TypedStmt> {
+    fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(&func_def.ident.value)?;
 
@@ -1697,7 +1697,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_if_stmt(&mut self, if_stmt: &If) -> Option<TypedIfStmt> {
+    fn resolve_if_stmt(&mut self, if_stmt: &ASTIfStmt) -> Option<TypedIfStmt> {
         let cond = self.resolve_expr(&if_stmt.condition)?;
 
         let then_scope = LocalScope::new();
@@ -1733,13 +1733,13 @@ impl Resolver {
         })
     }
 
-    fn resolve_block_stmt(&mut self, block_stmt: &BlockStmt) -> Option<TypedBlockStmt> {
+    fn resolve_block_stmt(&mut self, block_stmt: &ASTBlockStmt) -> Option<TypedBlockStmt> {
         let mut typed_body: Vec<TypedStmt> = Vec::new();
         let mut defers: Vec<TypedDeferStmt> = Vec::new();
 
         for stmt in &block_stmt.exprs {
             match stmt {
-                Stmt::Defer(defer) => {
+                ASTStmt::Defer(defer) => {
                     if let Some(typed_stmt) = self.resolve_stmt(&defer.operand) {
                         defers.push(TypedDeferStmt {
                             operand: Box::new(typed_stmt),
@@ -1762,7 +1762,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_export_tuple_stmt(&mut self, export_tuple: &ExportTuple) -> Option<TypedStmt> {
+    fn resolve_export_tuple_stmt(&mut self, export_tuple: &ASTExportTupleStmt) -> Option<TypedStmt> {
         let var_type = export_tuple
             .ty
             .as_ref()
@@ -1787,7 +1787,7 @@ impl Resolver {
                             typed_patterns.push(TypedExportPattern::Ident(symbol_id));
                         }
                         ExportPattern::Tuple(inner) => {
-                            let inner_stmt = self.resolve_export_tuple_stmt(&ExportTuple {
+                            let inner_stmt = self.resolve_export_tuple_stmt(&ASTExportTupleStmt {
                                 pattern: ExportPattern::Tuple(inner.clone()),
                                 ty: None,
                                 rhs: None,
@@ -1816,28 +1816,28 @@ impl Resolver {
         }))
     }
 
-    fn resolve_stmt(&mut self, stmt: &Stmt) -> Option<TypedStmt> {
+    fn resolve_stmt(&mut self, stmt: &ASTStmt) -> Option<TypedStmt> {
         match stmt {
-            Stmt::ExportTuple(export_tuple) => self.resolve_export_tuple_stmt(export_tuple),
-            Stmt::Variable(variable) => self.resolve_var(variable).map(TypedStmt::Variable),
-            Stmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
-            Stmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmt::Expr),
-            Stmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmt::If),
-            Stmt::For(for_stmt) => self.resolve_for_stmt(for_stmt).map(TypedStmt::For),
-            Stmt::While(while_stmt) => self.resolve_while_stmt(while_stmt).map(TypedStmt::While),
-            Stmt::Switch(switch_stmt) => self.resolve_switch_stmt(switch_stmt).map(TypedStmt::Switch),
-            Stmt::Enum(enum_decl) => self.resolve_enum_stmt(enum_decl),
-            Stmt::Union(union_decl) => self.resolve_union_stmt(union_decl),
-            Stmt::Interface(interface) => self.resolve_interface_stmt(interface),
-            Stmt::Struct(struct_decl) => self.resolve_struct_stmt(struct_decl),
-            Stmt::BlockStmt(block) => self.resolve_block_stmt(block).map(TypedStmt::BlockStmt),
-            Stmt::Return(return_stmt) => self.resolve_return_stmt(return_stmt).map(TypedStmt::Return),
-            Stmt::Break(break_stmt) => self.resolve_break_stmt(break_stmt).map(TypedStmt::Break),
-            Stmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
-            Stmt::Typedef(typedef) => self.resolve_typedef(typedef),
-            Stmt::Label(label) => self.resolve_label_stmt(label),
-            Stmt::Goto(goto) => self.resolve_goto_stmt(goto),
-            Stmt::GlobalVar(_) | Stmt::FuncDef(_) | Stmt::FuncDecl(_) | Stmt::Import(_) => {
+            ASTStmt::ExportTuple(export_tuple) => self.resolve_export_tuple_stmt(export_tuple),
+            ASTStmt::Variable(variable) => self.resolve_var(variable).map(TypedStmt::Variable),
+            ASTStmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
+            ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmt::Expr),
+            ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmt::If),
+            ASTStmt::For(for_stmt) => self.resolve_for_stmt(for_stmt).map(TypedStmt::For),
+            ASTStmt::While(while_stmt) => self.resolve_while_stmt(while_stmt).map(TypedStmt::While),
+            ASTStmt::Switch(switch_stmt) => self.resolve_switch_stmt(switch_stmt).map(TypedStmt::Switch),
+            ASTStmt::Enum(enum_decl) => self.resolve_enum_stmt(enum_decl),
+            ASTStmt::Union(union_decl) => self.resolve_union_stmt(union_decl),
+            ASTStmt::Interface(interface) => self.resolve_interface_stmt(interface),
+            ASTStmt::Struct(struct_decl) => self.resolve_struct_stmt(struct_decl),
+            ASTStmt::BlockStmt(block) => self.resolve_block_stmt(block).map(TypedStmt::BlockStmt),
+            ASTStmt::Return(return_stmt) => self.resolve_return_stmt(return_stmt).map(TypedStmt::Return),
+            ASTStmt::Break(break_stmt) => self.resolve_break_stmt(break_stmt).map(TypedStmt::Break),
+            ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
+            ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
+            ASTStmt::Label(label) => self.resolve_label_stmt(label),
+            ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
+            ASTStmt::GlobalVar(_) | ASTStmt::FuncDef(_) | ASTStmt::FuncDecl(_) | ASTStmt::Import(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::InvalidStatement),
@@ -1846,12 +1846,12 @@ impl Resolver {
                 });
                 None
             }
-            Stmt::Defer(_) => unreachable!(),
-            Stmt::Foreach(_foreach_stmt) => unimplemented!(),
+            ASTStmt::Defer(_) => unreachable!(),
+            ASTStmt::Foreach(_foreach_stmt) => unimplemented!(),
         }
     }
 
-    fn resolve_for_stmt(&mut self, for_stmt: &For) -> Option<TypedForStmt> {
+    fn resolve_for_stmt(&mut self, for_stmt: &ASTForStmt) -> Option<TypedForStmt> {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
@@ -1885,7 +1885,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_while_stmt(&mut self, while_stmt: &While) -> Option<TypedWhileStmt> {
+    fn resolve_while_stmt(&mut self, while_stmt: &ASTWhileStmt) -> Option<TypedWhileStmt> {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
@@ -1900,7 +1900,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_switch_stmt(&mut self, switch: &Switch) -> Option<TypedSwitchStmt> {
+    fn resolve_switch_stmt(&mut self, switch: &ASTSwitchStmt) -> Option<TypedSwitchStmt> {
         let operand = self.resolve_expr(&switch.operand)?;
         let cases = self.resolve_switch_cases(&switch.cases)?;
         let default_case = self.resolve_switch_default_case(&switch.default_case)?;
@@ -1986,7 +1986,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_switch_default_case(&mut self, default_case: &Option<BlockStmt>) -> Option<Option<TypedBlockStmt>> {
+    fn resolve_switch_default_case(&mut self, default_case: &Option<ASTBlockStmt>) -> Option<Option<TypedBlockStmt>> {
         if let Some(default_case) = default_case {
             let scope = LocalScope::new();
             let body = with_local_scope!(self, scope, { self.resolve_block_stmt(default_case) })?;
@@ -1997,7 +1997,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_var(&mut self, variable: &Variable) -> Option<TypedVarStmt> {
+    fn resolve_var(&mut self, variable: &ASTVarStmt) -> Option<TypedVarStmt> {
         let ty = variable
             .ty
             .as_ref()
@@ -2018,15 +2018,15 @@ impl Resolver {
         })
     }
 
-    fn resolve_continue_stmt(&mut self, cont: &Continue) -> Option<TypedContinueStmt> {
+    fn resolve_continue_stmt(&mut self, cont: &ASTContinueStmt) -> Option<TypedContinueStmt> {
         Some(TypedContinueStmt { loc: cont.loc })
     }
 
-    fn resolve_break_stmt(&mut self, break_stmt: &Break) -> Option<TypedBreakStmt> {
+    fn resolve_break_stmt(&mut self, break_stmt: &ASTBreakStmt) -> Option<TypedBreakStmt> {
         Some(TypedBreakStmt { loc: break_stmt.loc })
     }
 
-    fn resolve_return_stmt(&mut self, ret: &Return) -> Option<TypedReturnStmt> {
+    fn resolve_return_stmt(&mut self, ret: &ASTReturnStmt) -> Option<TypedReturnStmt> {
         let arg = if let Some(argument) = &ret.argument {
             Some(self.resolve_expr(argument)?)
         } else {
@@ -2036,7 +2036,7 @@ impl Resolver {
         Some(TypedReturnStmt { arg, loc: ret.loc })
     }
 
-    fn resolve_goto_stmt(&self, goto: &Goto) -> Option<TypedStmt> {
+    fn resolve_goto_stmt(&self, goto: &ASTGotoStmt) -> Option<TypedStmt> {
         Some(TypedStmt::Goto(TypedGotoStmt {
             name: goto.name.as_string(),
             label_id: None,
@@ -2044,7 +2044,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_label_stmt(&mut self, label: &Label) -> Option<TypedStmt> {
+    fn resolve_label_stmt(&mut self, label: &ASTLabelStmt) -> Option<TypedStmt> {
         let name = label.name.as_string();
 
         if self.current_scope().unwrap().contains_label(&name) {
@@ -2071,7 +2071,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_module_import_expr(&mut self, module_import: &ModuleImport) -> Option<TypedExprStmt> {
+    fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExprStmt> {
         if let Some(ident) = module_import.as_ident() {
             self.resolve_ident_expr(&ident)
         } else {
@@ -2085,7 +2085,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &UnnamedUnionValue) -> Option<TypedExprStmt> {
+    fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExprStmt> {
         let field_value = self.resolve_expr(&unnamed_union_value.field_value)?;
 
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
@@ -2104,7 +2104,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_unnamed_enum_value(&mut self, unnamed_enum_value: &UnnamedEnumValue) -> Option<TypedExprStmt> {
+    fn resolve_unnamed_enum_value(&mut self, unnamed_enum_value: &ASTUnnamedEnumValueExpr) -> Option<TypedExprStmt> {
         let kind = match &unnamed_enum_value.kind {
             UnnamedEnumValueKind::Plain => TypedUnnamedEnumValueKind::Plain,
             UnnamedEnumValueKind::Fielded(exprs) => {
@@ -2132,7 +2132,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_dynamic_expr(&mut self, dynamic: &Dynamic) -> Option<TypedExprStmt> {
+    fn resolve_dynamic_expr(&mut self, dynamic: &ASTDynamicExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&dynamic.operand)?;
 
         Some(TypedExprStmt {
@@ -2148,7 +2148,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_tuple_member_access(&mut self, tuple_member_access: &TupleAccess) -> Option<TypedExprStmt> {
+    fn resolve_tuple_member_access(&mut self, tuple_member_access: &ASTTupleAccessExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&tuple_member_access.operand)?;
 
         Some(TypedExprStmt {
@@ -2163,7 +2163,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_tuple_expr(&mut self, tuple_value: &TupleValue) -> Option<TypedExprStmt> {
+    fn resolve_tuple_expr(&mut self, tuple_value: &ASTTupleValueExpr) -> Option<TypedExprStmt> {
         let mut elements: Vec<TypedExprStmt> = Vec::new();
 
         for expr in &tuple_value.elements {
@@ -2184,7 +2184,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_lambda_expr(&mut self, lambda: &Lambda) -> Option<TypedExprStmt> {
+    fn resolve_lambda_expr(&mut self, lambda: &ASTLambdaExpr) -> Option<TypedExprStmt> {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
@@ -2212,7 +2212,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_field_access(&mut self, field_access: &FieldAccess) -> Option<TypedExprStmt> {
+    fn resolve_field_access(&mut self, field_access: &ASTFieldAccessExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&field_access.operand)?;
 
         let type_args = field_access
@@ -2237,7 +2237,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_method_call(&mut self, method_call: &MethodCall) -> Option<TypedExprStmt> {
+    fn resolve_method_call(&mut self, method_call: &ASTMethodCallExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&method_call.operand)?;
 
         let args: Vec<TypedExprStmt> = method_call
@@ -2272,7 +2272,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_struct_init(&mut self, struct_init: &StructInit) -> Option<TypedExprStmt> {
+    fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_local_module_import(&struct_init.struct_name)?;
 
         let field_inits: Vec<TypedStructFieldInit> = struct_init
@@ -2306,7 +2306,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_func_call(&mut self, func_call: &FuncCall) -> Option<TypedExprStmt> {
+    fn resolve_func_call(&mut self, func_call: &ASTFuncCallExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&func_call.operand)?;
 
         let args: Vec<TypedExprStmt> = func_call.args.iter().filter_map(|arg| self.resolve_expr(arg)).collect();
@@ -2333,7 +2333,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_untyped_array_expr(&mut self, untyped_array: &UntypedArray) -> Option<TypedExprStmt> {
+    fn resolve_untyped_array_expr(&mut self, untyped_array: &ASTUntypedArrayExpr) -> Option<TypedExprStmt> {
         let elements: Vec<TypedExprStmt> = untyped_array
             .elements
             .iter()
@@ -2352,7 +2352,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_array_expr(&mut self, array: &Array) -> Option<TypedExprStmt> {
+    fn resolve_array_expr(&mut self, array: &ASTArrayExpr) -> Option<TypedExprStmt> {
         let array_type = self.resolve_type(&None, array.data_type.clone(), array.loc)?;
 
         let typed_elements: Vec<TypedExprStmt> = array
@@ -2373,7 +2373,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_infix_expr(&mut self, infix: &InfixExpr) -> Option<TypedExprStmt> {
+    fn resolve_infix_expr(&mut self, infix: &ASTInfixExpr) -> Option<TypedExprStmt> {
         let lhs = self.resolve_expr(&*infix.lhs)?;
         let rhs = self.resolve_expr(&*infix.rhs)?;
 
@@ -2390,7 +2390,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_prefix_expr(&mut self, prefix: &PrefixExpr) -> Option<TypedExprStmt> {
+    fn resolve_prefix_expr(&mut self, prefix: &ASTPrefixExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&*prefix.operand)?;
 
         Some(TypedExprStmt {
@@ -2430,7 +2430,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_assign_expr(&mut self, assign: &Assign) -> Option<TypedExprStmt> {
+    fn resolve_assign_expr(&mut self, assign: &ASTAssignExpr) -> Option<TypedExprStmt> {
         let lhs = self.resolve_expr(&assign.lhs)?;
         let rhs = self.resolve_expr(&assign.rhs)?;
 
@@ -2447,7 +2447,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_literal_expr(&mut self, literal: &Literal) -> Option<TypedExprStmt> {
+    fn resolve_literal_expr(&mut self, literal: &ASTLiteralExpr) -> Option<TypedExprStmt> {
         let literal_type = self.resolve_literal_type(literal)?;
 
         let typed_literal = TypedLiteralExpr {
@@ -2464,7 +2464,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_literal_type(&mut self, literal: &Literal) -> Option<Option<SemanticType>> {
+    fn resolve_literal_type(&mut self, literal: &ASTLiteralExpr) -> Option<Option<SemanticType>> {
         match &literal.kind {
             LiteralKind::Integer(_, suffix_opt) | LiteralKind::Float(_, suffix_opt) => {
                 self.resolve_number_literal_type(suffix_opt, literal.loc)
@@ -2540,7 +2540,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_unary_expr(&mut self, unary: &UnaryExpr) -> Option<TypedExprStmt> {
+    fn resolve_unary_expr(&mut self, unary: &ASTUnaryExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&*unary.operand)?;
 
         Some(TypedExprStmt {
@@ -2555,7 +2555,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_array_index_expr(&mut self, array_index: &ArrayIndex) -> Option<TypedExprStmt> {
+    fn resolve_array_index_expr(&mut self, array_index: &ASTArrayIndexExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&array_index.operand)?;
         let index = self.resolve_expr(&array_index.index)?;
 
@@ -2571,7 +2571,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_addr_of_expr(&mut self, addr_of: &AddrOf) -> Option<TypedExprStmt> {
+    fn resolve_addr_of_expr(&mut self, addr_of: &ASTAddrOfExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&addr_of.expr)?;
 
         Some(TypedExprStmt {
@@ -2585,7 +2585,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_deref_expr(&mut self, deref: &Deref) -> Option<TypedExprStmt> {
+    fn resolve_deref_expr(&mut self, deref: &ASTDerefExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&deref.expr)?;
 
         Some(TypedExprStmt {
@@ -2599,7 +2599,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_unnamed_struct_value(&mut self, unnamed_struct_value: &UnnamedStructValue) -> Option<TypedExprStmt> {
+    fn resolve_unnamed_struct_value(&mut self, unnamed_struct_value: &ASTUnnamedStructValueExpr) -> Option<TypedExprStmt> {
         let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
 
         for field in &unnamed_struct_value.fields {

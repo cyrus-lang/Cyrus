@@ -262,7 +262,7 @@ impl<'source_file> Parser<'source_file> {
     ///
     /// This function resolves the ambiguity between `<` as a generic opener vs. a comparison operator.
     /// It's crucial for correctly parsing expressions like `x < y > z` (comparison) vs `T<U>` (generics).
-    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: Expr) -> TypeArgStartDetail {
+    pub(crate) fn is_type_arg_start(&mut self, last_parsed_expr: ASTExpr) -> TypeArgStartDetail {
         // do we even have a '<' token at the current position?
         // if there's no '<', this can't possibly be the start of type arguments
         if !self.peek_token_is(TokenKind::LessThan) {
@@ -991,7 +991,7 @@ impl<'source_file> Parser<'source_file> {
     /// Checks if the parsed expression is a path or symbol.
     ///
     /// Path-like expressions include identifiers and module-qualified paths like `foo` or `std::foo`.
-    fn current_expr_is_path_like(&self, last_parsed_expr: Expr) -> bool {
-        matches!(last_parsed_expr, Expr::Ident(..) | Expr::ModuleImport(..))
+    fn current_expr_is_path_like(&self, last_parsed_expr: ASTExpr) -> bool {
+        matches!(last_parsed_expr, ASTExpr::Ident(..) | ASTExpr::ModuleImport(..))
     }
 }

@@ -16,14 +16,13 @@
  */
 
 use crate::{
-    SymbolID,
+    SymbolID, VTableID,
     generics::monomorph::MonomorphKey,
     sigs::{EnumSig, FuncSig},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{
         SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedStructTypeField, TypedUnnamedUnionType,
     },
-    vtable::VTableID,
 };
 use cyrusc_ast::{
     AssignKind, Ident,

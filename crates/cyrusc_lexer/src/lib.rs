@@ -21,7 +21,7 @@ use cyrusc_source_loc::{FileID, Loc, SourceFile};
 use cyrusc_strescape::unescape_string;
 use cyrusc_tokens::{
     Token, TokenKind,
-    literals::{Literal, LiteralKind, StringPrefix},
+    literals::{ASTLiteralExpr, LiteralKind, StringPrefix},
 };
 
 mod diagnostics;
@@ -421,7 +421,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
 
         self.read_char(); // consume closing quote
 
-        TokenKind::Literal(Literal {
+        TokenKind::Literal(ASTLiteralExpr {
             kind: LiteralKind::Char(value),
             loc: Loc::new(self.file_id(), line, start, self.pos),
         })
@@ -481,7 +481,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             }
         };
 
-        TokenKind::Literal(Literal {
+        TokenKind::Literal(ASTLiteralExpr {
             kind: LiteralKind::String(unescaped, prefix),
             loc: Loc::new(self.file_id(), line, start, self.pos),
         })
@@ -610,7 +610,7 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             LiteralKind::Integer(value, suffix)
         };
 
-        TokenKind::Literal(Literal {
+        TokenKind::Literal(ASTLiteralExpr {
             kind: token_kind,
             loc: Loc::new(self.file_id(), line, start, self.pos),
         })

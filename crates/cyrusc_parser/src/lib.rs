@@ -89,7 +89,7 @@ impl<'source_file> Parser<'source_file> {
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
     pub fn parse(&mut self) -> Result<ProgramTree, ()> {
-        let mut body: Vec<Stmt> = Vec::new();
+        let mut body: Vec<ASTStmt> = Vec::new();
 
         while self.current_token().kind != TokenKind::EOF {
             match self.parse_stmt(None, true) {
