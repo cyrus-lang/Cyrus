@@ -111,8 +111,8 @@ impl fmt::Display for TypeSpecifier {
                 if let Some(variadic) = &func_type.params.variadic {
                     match variadic {
                         FuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
-                        FuncTypeVariadicParams::Typed(type_specifier) => {
-                            params.push_str(&format!(", {}...", type_specifier.to_string()))
+                        FuncTypeVariadicParams::Typed(type_spec) => {
+                            params.push_str(&format!(", {}...", type_spec.to_string()))
                         }
                     }
                 }
@@ -122,8 +122,8 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::TypeToken(token) => write!(f, "{}", token.kind),
             TypeSpecifier::Ident(ident) => write!(f, "{}", ident),
             TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
-            TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
-            TypeSpecifier::Deref(type_specifier) => write!(f, "{}*", type_specifier),
+            TypeSpecifier::Const(type_spec) => write!(f, "const {}", type_spec),
+            TypeSpecifier::Deref(type_spec) => write!(f, "{}*", type_spec),
             TypeSpecifier::Array(array_type_specifier) => {
                 write!(
                     f,
@@ -210,7 +210,7 @@ impl fmt::Display for TypeSpecifier {
                     .type_args
                     .iter()
                     .map(|type_arg| match type_arg {
-                        TypeArg::Positional(type_specifier) => type_specifier.to_string(),
+                        TypeArg::Positional(type_spec) => type_spec.to_string(),
                         TypeArg::Named { ty, .. } => ty.to_string(),
                     })
                     .collect::<Vec<String>>()
@@ -372,7 +372,7 @@ impl fmt::Display for Expr {
             Expr::ModuleImport(module_import) => {
                 write!(f, "{}", module_import.to_string())
             }
-            Expr::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
+            Expr::TypeSpecifier(type_spec) => write!(f, "{}", type_spec),
             Expr::Tuple(tuple_value) => {
                 write!(
                     f,

@@ -24,7 +24,7 @@ use crate::{
     },
     cir::{cir::CIREnumTyVariant, types::CIRTy},
 };
-use cyrusc_tast::types::PlainType;
+use cyrusc_typed_ast::types::PlainType;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Registers {

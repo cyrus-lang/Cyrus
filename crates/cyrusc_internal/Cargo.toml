@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
-cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }

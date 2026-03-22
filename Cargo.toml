@@ -5,7 +5,7 @@ members = [
     "crates/cyrusc_ast",
     "crates/cyrusc_scaffold",
     "crates/cyrusc_diagcentral",
-    "crates/cyrusc_tast",
+    "crates/cyrusc_typed_ast",
     "crates/cyrusc_cli",
     "crates/cyrusc_sema",
     "crates/cyrusc_resolver",

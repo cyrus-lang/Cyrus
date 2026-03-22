@@ -807,10 +807,10 @@ impl<'source_file> Parser<'source_file> {
             self.next_token();
 
             loop {
-                let type_specifier = self.parse_type_specifier()?;
+                let type_spec = self.parse_type_specifier()?;
                 self.next_token();
 
-                impls.push(type_specifier);
+                impls.push(type_spec);
 
                 if self.current_token_is(TokenKind::Comma) {
                     continue;
@@ -1510,10 +1510,10 @@ impl<'source_file> Parser<'source_file> {
         let ident = self.parse_ident()?;
         self.next_token();
 
-        let mut type_specifier: Option<TypeSpecifier> = None;
+        let mut type_spec: Option<TypeSpecifier> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
-            type_specifier = Some(self.parse_type_specifier()?);
+            type_spec = Some(self.parse_type_specifier()?);
             self.next_token();
         }
 
@@ -1534,7 +1534,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(Stmt::GlobalVar(GlobalVar {
             ident,
-            type_specifier,
+            type_spec,
             expr,
             is_const,
             modifiers: global_var_modifiers,
@@ -1560,7 +1560,7 @@ impl<'source_file> Parser<'source_file> {
         let line = self.current_token().loc.line;
         let start = self.current_token().loc.start;
 
-        let type_specifier = self.parse_type_specifier()?;
+        let type_spec = self.parse_type_specifier()?;
         self.next_token();
 
         self.must_be_semicolon()?;
@@ -1570,7 +1570,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(Stmt::Typedef(Typedef {
             vis,
             ident,
-            type_specifier,
+            type_spec,
             generic_params,
             loc: Loc::new(self.file_id(), line, start, end),
         }))

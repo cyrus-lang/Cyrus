@@ -17,7 +17,7 @@
 use crate::analyze::AnalysisContext;
 use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::source_loc::Loc;
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ScopeID,
     generics::{
         mapping_ctx::mapping_ctx_eq_refcell,

@@ -19,7 +19,7 @@
 mod tests {
     use cyrusc_ast::abi::CallConv;
     use cyrusc_source_loc::{FileID, Loc};
-    use cyrusc_tast::{types::PlainType, vtable::VTableID};
+    use cyrusc_typed_ast::{types::PlainType, vtable::VTableID};
 
     use crate::{
         abi::{

@@ -18,7 +18,7 @@ use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
 use cyrusc_resolver::symbols::LocalScopeRef;
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ScopeID,
     exprs::*,
     format::format_sema_ty,

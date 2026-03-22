@@ -25,7 +25,7 @@ use crate::{
         types::{CIRStructTy, CIRTupleTy, CIRTy},
     },
 };
-use cyrusc_tast::types::PlainType;
+use cyrusc_typed_ast::types::PlainType;
 
 #[derive(Debug, Clone)]
 pub struct ABITypeLayout {

@@ -22,18 +22,18 @@
 // use crate::cir::types::*;
 // use cyrusc_ast::abi::{CallConv, Linkage};
 // use cyrusc_ast::operators::InfixOperator;
-// use cyrusc_tast::generics::generic_type::GenericType;
-// use cyrusc_tast::generics::mapping_ctx_arena::GenericMappingCtxArena;
-// use cyrusc_tast::generics::substitute::{
+// use cyrusc_typed_ast::generics::generic_type::GenericType;
+// use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
+// use cyrusc_typed_ast::generics::substitute::{
 //     substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_union_sig,
 // };
-// use cyrusc_tast::sigs::{EnumSig, FuncSig, GlobalVarSig, StructSig, UnionSig, typed_func_decl_from_func_sig};
-// use cyrusc_tast::types::{
+// use cyrusc_typed_ast::sigs::{EnumSig, FuncSig, GlobalVarSig, StructSig, UnionSig, typed_func_decl_from_func_sig};
+// use cyrusc_typed_ast::types::{
 //     PlainType, ResolvedSymbol, TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedUnionType,
 //     enum_sig_as_unnamed_enum_type,
 // };
-// use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
-// use cyrusc_tast::{
+// use cyrusc_typed_ast::{ModuleID, ScopeID, SymbolID};
+// use cyrusc_typed_ast::{
 //     TypedProgramTree,
 //     exprs::*,
 //     stmts::*,

@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }

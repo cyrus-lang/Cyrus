@@ -44,7 +44,7 @@ use cyrusc_internal::{
         types::{CIRFuncTy, CIRTy},
     },
 };
-use cyrusc_tast::generics::monomorph::MonomorphKey;
+use cyrusc_typed_ast::generics::monomorph::MonomorphKey;
 use inkwell::{
     context::AsContextRef,
     llvm_sys::{

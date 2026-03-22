@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_tast::{SymbolID, exprs::TypedExprStmt};
+use cyrusc_typed_ast::{SymbolID, exprs::TypedExprStmt};
 
 pub trait ConstResolver {
     fn symbol_is_const(&mut self, symbol: SymbolID) -> bool;

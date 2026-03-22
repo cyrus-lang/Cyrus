@@ -272,8 +272,8 @@ dependencies = [
  "cyrusc_internal",
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
- "cyrusc_tast",
  "cyrusc_tui_utils",
+ "cyrusc_typed_ast",
  "cyrusc_vtable_registry",
  "inkwell",
  "rayon",
@@ -294,8 +294,8 @@ dependencies = [
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
  "cyrusc_source_loc",
- "cyrusc_tast",
  "cyrusc_tui_utils",
+ "cyrusc_typed_ast",
  "cyrusc_vtable_registry",
  "inkwell",
  "serde",
@@ -307,8 +307,8 @@ name = "cyrusc_const_eval"
 version = "0.1.0"
 dependencies = [
  "cyrusc_ast",
- "cyrusc_tast",
  "cyrusc_tokens",
+ "cyrusc_typed_ast",
 ]
 
 [[package]]
@@ -336,8 +336,8 @@ dependencies = [
  "cyrusc_ast",
  "cyrusc_diagcentral",
  "cyrusc_source_loc",
- "cyrusc_tast",
  "cyrusc_tokens",
+ "cyrusc_typed_ast",
  "cyrusc_vtable_registry",
  "num_cpus",
  "once_cell",
@@ -384,8 +384,8 @@ dependencies = [
  "cyrusc_lexer",
  "cyrusc_parser",
  "cyrusc_source_loc",
- "cyrusc_tast",
  "cyrusc_tokens",
+ "cyrusc_typed_ast",
  "rand",
  "thiserror",
  "thiserror-impl",
@@ -420,8 +420,8 @@ dependencies = [
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_strescape",
- "cyrusc_tast",
  "cyrusc_tokens",
+ "cyrusc_typed_ast",
  "cyrusc_vtable_registry",
  "fx-hash",
  "smallvec",
@@ -445,19 +445,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_tast"
-version = "0.1.0"
-dependencies = [
- "cyrusc_ast",
- "cyrusc_diagcentral",
- "cyrusc_source_loc",
- "cyrusc_tokens",
- "rand",
- "thiserror",
- "thiserror-impl",
-]
-
-[[package]]
 name = "cyrusc_tokens"
 version = "0.1.0"
 dependencies = [
@@ -473,10 +460,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_typed_ast"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_source_loc",
+ "cyrusc_tokens",
+ "rand",
+ "thiserror",
+ "thiserror-impl",
+]
+
+[[package]]
 name = "cyrusc_vtable_registry"
 version = "0.1.0"
 dependencies = [
- "cyrusc_tast",
+ "cyrusc_typed_ast",
  "rand",
 ]
 

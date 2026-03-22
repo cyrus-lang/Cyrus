@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 rand = "0.9.0"

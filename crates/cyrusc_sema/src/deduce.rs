@@ -19,7 +19,7 @@ use cyrusc_ast::{
     AssignKind,
     operators::{InfixOperator, PrefixOperator},
 };
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ScopeID,
     exprs::{
         MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr,

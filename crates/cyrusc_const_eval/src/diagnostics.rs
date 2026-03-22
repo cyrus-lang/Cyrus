@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_tast::SymbolID;
+use cyrusc_typed_ast::SymbolID;
 
 #[derive(Debug)]
 pub enum ConstEvalError {

@@ -34,7 +34,7 @@ use cyrusc_internal::{
         types::{CIREnumTy, CIRTupleTy, CIRTy},
     },
 };
-use cyrusc_tast::exprs::TypedIdentifier;
+use cyrusc_typed_ast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,

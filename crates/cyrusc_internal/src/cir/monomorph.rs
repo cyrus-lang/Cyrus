@@ -24,7 +24,7 @@
 //     },
 // };
 // use cyrusc_source_loc::Loc;
-// use cyrusc_tast::{
+// use cyrusc_typed_ast::{
 //     ScopeID,
 //     generics::monomorph::{MonomorphEntry, MonomorphFuncEntry, MonomorphKey},
 //     sigs::FuncSig,

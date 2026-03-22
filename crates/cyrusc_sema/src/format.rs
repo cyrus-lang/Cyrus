@@ -19,7 +19,7 @@ use cyrusc_resolver::{
     Resolver,
     symbols::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},
 };
-use cyrusc_tast::{ModuleID, ScopeID, SymbolID};
+use cyrusc_typed_ast::{ModuleID, ScopeID, SymbolID};
 
 type SymbolFormatterFn<'a> = Box<dyn Fn(SymbolID) -> String + 'a>;
 

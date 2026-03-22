@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     sigs::StructSig,
     types::{SemanticType, TypedUnnamedStructType},
 };

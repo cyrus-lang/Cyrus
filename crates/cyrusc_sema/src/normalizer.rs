@@ -23,7 +23,7 @@ use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedTypedef, SymbolEntryKind},
     update_global_symbol, update_local_symbol,
 };
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ScopeID, SymbolID,
     exprs::TypedSelfType,
     format::{format_unnamed_enum_ty, format_unnamed_struct_ty, format_unnamed_union_ty},

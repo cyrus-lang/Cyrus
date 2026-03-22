@@ -460,7 +460,7 @@ pub struct Interface {
 #[derive(Debug, Clone)]
 pub struct GlobalVar {
     pub ident: Ident,
-    pub type_specifier: Option<TypeSpecifier>,
+    pub type_spec: Option<TypeSpecifier>,
     pub expr: Option<Expr>,
     pub is_const: bool,
     pub modifiers: GlobalVarModifiers,
@@ -470,7 +470,7 @@ pub struct GlobalVar {
 #[derive(Debug, Clone)]
 pub struct Typedef {
     pub ident: Ident,
-    pub type_specifier: TypeSpecifier,
+    pub type_spec: TypeSpecifier,
     pub generic_params: Option<GenericParamsList>,
     pub vis: Visibility,
     pub loc: Loc,
@@ -995,7 +995,7 @@ impl TypeSpecifier {
             TypeSpecifier::Const(inner) => inner.loc(),
             TypeSpecifier::Array(array) => array.loc,
             TypeSpecifier::ModuleImport(module_import) => module_import.loc,
-            TypeSpecifier::Deref(type_specifier) => type_specifier.loc(),
+            TypeSpecifier::Deref(type_spec) => type_spec.loc(),
             TypeSpecifier::UnnamedStruct(unnamed_struct_type) => unnamed_struct_type.loc,
             TypeSpecifier::UnnamedUnion(unnamed_union_type) => unnamed_union_type.loc,
             TypeSpecifier::UnnamedEnum(unnamed_enum_type) => unnamed_enum_type.loc,

@@ -25,7 +25,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_tast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey};
+use cyrusc_typed_ast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphKey};
 use std::fmt::Debug;
 
 pub type IRValueID = u32;

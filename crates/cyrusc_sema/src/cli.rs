@@ -21,7 +21,7 @@ use cyrusc_modulefsloader::ModuleLoaderOptions;
 use cyrusc_parser::Parser;
 use cyrusc_resolver::{Resolver, VisitingModule, generate_module_id};
 use cyrusc_sema::analyze::AnalysisContext;
-use cyrusc_tast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
+use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     env,

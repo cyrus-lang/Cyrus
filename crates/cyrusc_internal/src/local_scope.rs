@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_tast::{LabelID, SymbolID};
+use cyrusc_typed_ast::{LabelID, SymbolID};
 use std::collections::HashMap;
 
 /// Represents a lexical local scope.

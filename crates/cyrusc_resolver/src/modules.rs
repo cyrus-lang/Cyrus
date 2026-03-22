@@ -26,7 +26,7 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_tast::{ModuleID, SymbolID, TypedProgramTree};
+use cyrusc_typed_ast::{ModuleID, SymbolID, TypedProgramTree};
 use std::{
     cell::RefCell,
     collections::HashSet,

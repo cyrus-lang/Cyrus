@@ -32,7 +32,7 @@ use cyrusc_resolver::{
     symbols::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     update_global_symbol, update_local_symbol,
 };
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
     format::{format_sema_ty, format_unnamed_enum_ty},
     generics::{

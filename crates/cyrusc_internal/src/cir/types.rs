@@ -21,7 +21,7 @@ use crate::{
 };
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_source_loc::Loc;
-use cyrusc_tast::{types::PlainType, vtable::VTableID};
+use cyrusc_typed_ast::{types::PlainType, vtable::VTableID};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CIRTy {

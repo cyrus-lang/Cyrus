@@ -29,7 +29,7 @@ use cyrusc_resolver::{
     update_global_symbol,
 };
 use cyrusc_strescape::unescape_string;
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     exprs::*,
     format::{format_func_ty, format_sema_ty, format_typed_expr, format_unnamed_enum_ty},
     generics::{

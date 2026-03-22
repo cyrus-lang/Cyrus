@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_tast::exprs::{TypedExprKind, TypedUnnamedEnumValueKind};
+use cyrusc_typed_ast::exprs::{TypedExprKind, TypedUnnamedEnumValueKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstValue {

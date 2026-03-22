@@ -17,7 +17,7 @@
 
 use cyrusc_ast::abi::Visibility;
 use cyrusc_source_loc::Loc;
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ModuleID, SymbolID,
     sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig},
     stmts::{TypedBlockStmt, TypedVarStmt},

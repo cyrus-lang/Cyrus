@@ -16,7 +16,7 @@
  */
 
 use crate::abi::target::ABITargetInfo;
-use cyrusc_tast::types::PlainType;
+use cyrusc_typed_ast::types::PlainType;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum X86_64TargetDependentType {

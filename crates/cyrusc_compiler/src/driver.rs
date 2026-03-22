@@ -35,7 +35,7 @@ use cyrusc_scaffold_parser::{
 };
 use cyrusc_sema::analyze::AnalysisContext;
 use cyrusc_source_loc::SourceMap;
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };

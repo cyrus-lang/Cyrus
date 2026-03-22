@@ -27,7 +27,7 @@ use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
 use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
-use cyrusc_tast::types::PlainType;
+use cyrusc_typed_ast::types::PlainType;
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
     AddressSpace,

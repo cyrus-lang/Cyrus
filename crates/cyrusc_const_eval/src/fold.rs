@@ -16,7 +16,7 @@
  */
 
 use crate::{evaluator::ConstEvaluator, resolver::ConstResolver};
-use cyrusc_tast::{ScopeID, exprs::*};
+use cyrusc_typed_ast::{ScopeID, exprs::*};
 use cyrusc_tokens::literals::LiteralKind;
 
 pub struct ConstFolder<'a, R: ConstResolver> {

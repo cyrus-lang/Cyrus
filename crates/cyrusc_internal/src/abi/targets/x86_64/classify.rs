@@ -27,7 +27,7 @@ use crate::{
     is_integer_type,
 };
 use cyrusc_ast::abi::CallConv;
-use cyrusc_tast::types::PlainType;
+use cyrusc_typed_ast::types::PlainType;
 
 const MIN_ABI_STACK_ALIGN: u32 = 16;
 

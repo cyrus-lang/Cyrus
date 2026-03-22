@@ -26,13 +26,13 @@ use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::symbols::symbols::*;
 use cyrusc_internal::symbols::table::*;
 use cyrusc_source_loc::Loc;
-use cyrusc_tast::exprs::*;
-use cyrusc_tast::generics::generic_type::GenericType;
-use cyrusc_tast::generics::mapping_ctx::GenericMappingCtx;
-use cyrusc_tast::sigs::*;
-use cyrusc_tast::stmts::*;
-use cyrusc_tast::types::*;
-use cyrusc_tast::*;
+use cyrusc_typed_ast::exprs::*;
+use cyrusc_typed_ast::generics::generic_type::GenericType;
+use cyrusc_typed_ast::generics::mapping_ctx::GenericMappingCtx;
+use cyrusc_typed_ast::sigs::*;
+use cyrusc_typed_ast::stmts::*;
+use cyrusc_typed_ast::types::*;
+use cyrusc_typed_ast::*;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::{Literal, LiteralKind, StringPrefix};
@@ -290,17 +290,17 @@ impl Resolver {
                 }
                 None => None,
             },
-            Expr::TypeSpecifier(type_specifier) => self.resolve_type_specifier_expr(type_specifier),
+            Expr::TypeSpecifier(type_spec) => self.resolve_type_specifier_expr(type_spec),
         }
     }
 
     fn resolve_type(
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
-        type_specifier: TypeSpecifier,
+        type_spec: TypeSpecifier,
         loc: Loc,
     ) -> Option<SemanticType> {
-        match type_specifier {
+        match type_spec {
             TypeSpecifier::GenericInst(inst) => self.resolve_generic_inst_type(generic_params, inst, loc),
             TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(generic_params, tuple),
             TypeSpecifier::FuncType(func) => self.resolve_func_type(generic_params, *func, loc),
@@ -662,9 +662,9 @@ impl Resolver {
             .iter()
             .enumerate()
             .map(|(i, type_arg)| match type_arg {
-                TypeArg::Positional(type_specifier) => {
-                    let loc = type_specifier.loc();
-                    let ty = self.resolve_type(generic_params, type_specifier.clone(), loc)?;
+                TypeArg::Positional(type_spec) => {
+                    let loc = type_spec.loc();
+                    let ty = self.resolve_type(generic_params, type_spec.clone(), loc)?;
 
                     Some(TypedTypeArg::Positional { i, ty, loc })
                 }
@@ -748,7 +748,7 @@ impl Resolver {
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        let sema_ty = self.resolve_type(&generic_params, typedef.type_specifier.clone(), typedef.loc)?;
+        let sema_ty = self.resolve_type(&generic_params, typedef.type_spec.clone(), typedef.loc)?;
 
         let typedef_sig = TypedefSig {
             name: typedef.ident.value.clone(),
@@ -1088,7 +1088,7 @@ impl Resolver {
         let name = global_var.ident.value.clone();
         let loc = global_var.loc;
 
-        let sema_ty = match &global_var.type_specifier {
+        let sema_ty = match &global_var.type_spec {
             Some(ty) => self.resolve_type(&None, ty.clone(), loc),
             None => None,
         };
@@ -1291,8 +1291,8 @@ impl Resolver {
     fn resolve_object_impls(&mut self, impls: &Vec<TypeSpecifier>, loc: Loc) -> Vec<TypedImplementInterface> {
         let mut symbol_ids: Vec<TypedImplementInterface> = Vec::new();
 
-        for type_specifier in impls {
-            let (symbol_id, type_args) = match type_specifier {
+        for type_spec in impls {
+            let (symbol_id, type_args) = match type_spec {
                 TypeSpecifier::ModuleImport(module_import) => {
                     let Some(symbol_id) = self.resolve_local_module_import(module_import) else {
                         continue;
@@ -2405,14 +2405,14 @@ impl Resolver {
         })
     }
 
-    fn resolve_type_specifier_expr(&mut self, type_specifier: &TypeSpecifier) -> Option<TypedExprStmt> {
-        let loc = type_specifier.loc();
+    fn resolve_type_specifier_expr(&mut self, type_spec: &TypeSpecifier) -> Option<TypedExprStmt> {
+        let loc = type_spec.loc();
 
-        let symbol_id = match type_specifier {
+        let symbol_id = match type_spec {
             TypeSpecifier::Ident(ident) => self.resolve_ident(&ident)?,
             TypeSpecifier::ModuleImport(module_import) => self.resolve_module_import(module_import.clone())?,
             _ => {
-                let sema_ty = self.resolve_type(&None, type_specifier.clone(), loc)?;
+                let sema_ty = self.resolve_type(&None, type_spec.clone(), loc)?;
                 return Some(TypedExprStmt {
                     kind: TypedExprKind::SemanticType(sema_ty.clone()),
                     mloc: MemoryLocation::RValue,
@@ -2605,8 +2605,8 @@ impl Resolver {
         for field in &unnamed_struct_value.fields {
             let name = field.field_name.as_string();
 
-            let ty = if let Some(type_specifier) = &field.field_ty {
-                match self.resolve_type(&None, type_specifier.clone(), field.loc) {
+            let ty = if let Some(type_spec) = &field.field_ty {
+                match self.resolve_type(&None, type_spec.clone(), field.loc) {
                     Some(sema_ty) => Some(sema_ty),
                     None => continue,
                 }

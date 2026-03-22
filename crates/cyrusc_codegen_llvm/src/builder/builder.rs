@@ -44,7 +44,7 @@ use cyrusc_internal::{
         monomorph::CIRMonomorphRegistry,
     },
 };
-use cyrusc_tast::LabelID;
+use cyrusc_typed_ast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
 use inkwell::{
     basic_block::BasicBlock,

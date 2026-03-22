@@ -25,7 +25,7 @@ use cyrusc_resolver::{
     modules::VisitingModule,
 };
 use cyrusc_source_loc::SourceMap;
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ModuleID,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };

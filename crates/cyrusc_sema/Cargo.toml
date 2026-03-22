@@ -7,7 +7,7 @@ edition = "2024"
 cyrusc_vtable_registry = { path = "../cyrusc_vtable_registry", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
-cyrusc_tast = { path = "../cyrusc_tast", version = "*" }
+cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }

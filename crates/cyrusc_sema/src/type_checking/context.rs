@@ -1,4 +1,4 @@
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     SymbolID,
     types::{SemanticType, TypedFuncType},
 };

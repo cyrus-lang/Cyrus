@@ -19,7 +19,7 @@ use crate::symbols::symbols::{
     ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
     ResolvedUnion, ResolvedVar, SymbolEntry,
 };
-use cyrusc_tast::{ModuleID, SymbolID};
+use cyrusc_typed_ast::{ModuleID, SymbolID};
 use std::collections::HashMap;
 
 pub trait GlobalSymbolQuery {

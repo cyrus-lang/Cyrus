@@ -337,14 +337,14 @@ impl<'source_file> Parser<'source_file> {
             }
             TokenKind::LeftBrace => self.parse_untyped_array()?,
             _ => {
-                let type_specifier = self.parse_type_specifier()?;
+                let type_spec = self.parse_type_specifier()?;
 
                 if self.peek_token_is(TokenKind::LeftBrace) {
                     self.next_token();
-                    return self.parse_array(type_specifier);
+                    return self.parse_array(type_spec);
                 }
 
-                Expr::TypeSpecifier(type_specifier)
+                Expr::TypeSpecifier(type_spec)
             }
         };
 
@@ -357,9 +357,9 @@ impl<'source_file> Parser<'source_file> {
                 type_args_opt = Some(self.parse_type_arg_list()?);
             } else {
                 // handle generic array init
-                let type_specifier = self.parse_type_specifier()?;
+                let type_spec = self.parse_type_specifier()?;
                 self.next_token();
-                return Ok(self.parse_array(type_specifier)?);
+                return Ok(self.parse_array(type_spec)?);
             }
         }
 
@@ -883,7 +883,7 @@ impl<'source_file> Parser<'source_file> {
                 match expr.clone() {
                     Expr::Ident(ident) => TypeSpecifier::Ident(ident),
                     Expr::ModuleImport(module_import) => TypeSpecifier::ModuleImport(module_import),
-                    Expr::TypeSpecifier(type_specifier) => type_specifier,
+                    Expr::TypeSpecifier(type_spec) => type_spec,
                     _ => {
                         return Err(self.error_invalid_token());
                     }
@@ -935,11 +935,11 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_array(&mut self, type_specifier: TypeSpecifier) -> Result<Expr, Diag> {
+    fn parse_array(&mut self, type_spec: TypeSpecifier) -> Result<Expr, Diag> {
         let line = self.current_token().loc.line;
         let start = self.current_token().loc.start;
 
-        if !matches!(type_specifier, TypeSpecifier::Array(..)) {
+        if !matches!(type_spec, TypeSpecifier::Array(..)) {
             return Err(self.error_at_current(ParserDiagKind::NonArrayDataTypeForArrayConstruction));
         }
 
@@ -953,7 +953,7 @@ impl<'source_file> Parser<'source_file> {
 
             return Ok(Expr::Array(Array {
                 elements,
-                data_type: type_specifier,
+                data_type: type_spec,
                 loc: Loc::new(self.file_id(), line, start, end),
             }));
         }
@@ -982,7 +982,7 @@ impl<'source_file> Parser<'source_file> {
                     }
                 }
 
-                if let TypeSpecifier::Array(inner_type_specifier, ..) = type_specifier.clone() {
+                if let TypeSpecifier::Array(inner_type_specifier, ..) = type_spec.clone() {
                     let end = self.current_token().loc.end;
 
                     let data_type = TypeSpecifier::Array(ArrayType {
@@ -1026,7 +1026,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(Expr::Array(Array {
             elements,
-            data_type: type_specifier,
+            data_type: type_spec,
             loc: Loc::new(self.file_id(), line, start, end),
         }))
     }
@@ -1075,10 +1075,10 @@ impl<'source_file> Parser<'source_file> {
                         if self.current_token_is(TokenKind::Colon) {
                             self.next_token();
 
-                            let type_specifier = self.parse_type_specifier()?;
+                            let type_spec = self.parse_type_specifier()?;
                             self.next_token();
 
-                            field_ty = Some(type_specifier);
+                            field_ty = Some(type_spec);
                         }
 
                         self.expect_current(TokenKind::Assign)?;

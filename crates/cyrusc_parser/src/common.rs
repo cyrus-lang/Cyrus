@@ -178,9 +178,9 @@ impl<'source_file> Parser<'source_file> {
 
         let default = if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
-            let type_specifier = self.parse_type_specifier()?;
+            let type_spec = self.parse_type_specifier()?;
             self.next_token();
-            Some(type_specifier)
+            Some(type_spec)
         } else {
             None
         };
@@ -720,20 +720,20 @@ impl<'source_file> Parser<'source_file> {
         // Start with base type `int`, then wrap with outer dimensions.
         //
         // Example: `int[3][4]` builds as:
-        // 1. `type_specifier = int`
-        // 2. `type_specifier = Array(4, element=int)`
-        // 3. `type_specifier = Array(3, element=Array(4, element=int))`
-        let mut type_specifier = base_type.clone();
+        // 1. `type_spec = int`
+        // 2. `type_spec = Array(4, element=int)`
+        // 3. `type_spec = Array(3, element=Array(4, element=int))`
+        let mut type_spec = base_type.clone();
 
         for array_capacity in dims.iter().rev() {
-            type_specifier = TypeSpecifier::Array(ArrayType {
+            type_spec = TypeSpecifier::Array(ArrayType {
                 size: array_capacity.clone(),
-                element_type: Box::new(type_specifier),
+                element_type: Box::new(type_spec),
                 loc: Loc::new(self.file_id(), line, start, end),
             });
         }
 
-        Ok(type_specifier)
+        Ok(type_spec)
     }
 
     fn parse_array_capacity(&mut self) -> Result<ArrayCapacity, Diag> {

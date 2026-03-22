@@ -17,7 +17,7 @@
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
 use cyrusc_resolver::symbols::{LocalScopeRef, generate_scope_id};
-use cyrusc_tast::{
+use cyrusc_typed_ast::{
     ScopeID, SymbolID,
     format::format_sema_ty,
     generics::{

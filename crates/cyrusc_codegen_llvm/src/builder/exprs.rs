@@ -39,7 +39,7 @@ use cyrusc_internal::{
         types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy},
     },
 };
-use cyrusc_tast::types::PlainType;
+use cyrusc_typed_ast::types::PlainType;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, StructType},

@@ -23,7 +23,7 @@ use cyrusc_internal::symbols::{
     },
     table::{GlobalSymbolQuery, SymbolQuery},
 };
-use cyrusc_tast::{ModuleID, SymbolID};
+use cyrusc_typed_ast::{ModuleID, SymbolID};
 
 impl GlobalSymbolQuery for Resolver {
     /// Look up a symbol identifier by name.
