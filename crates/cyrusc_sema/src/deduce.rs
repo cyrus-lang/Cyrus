@@ -29,7 +29,7 @@ use cyrusc_typed_ast::{
 };
 use cyrusc_tokens::literals::LiteralKind;
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn deduce_special_exprs(
         &mut self,
         scope_id_opt: Option<ScopeID>,

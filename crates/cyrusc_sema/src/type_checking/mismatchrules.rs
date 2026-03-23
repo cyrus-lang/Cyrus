@@ -14,11 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::analyze::AnalysisContext;
 use cyrusc_const_eval::fold::ConstFolder;
-use cyrusc_diagcentral::source_loc::Loc;
+use cyrusc_internal::symbols::table::SymbolEntryMut;
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    ScopeID,
     generics::{
         mapping_ctx::mapping_ctx_eq_refcell,
         substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig},
@@ -31,10 +32,9 @@ use cyrusc_typed_ast::{
     },
 };
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn check_type_mismatch(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         value_type: SemanticType,
         target_type: SemanticType,
         loc: Loc,
@@ -86,23 +86,23 @@ impl<'a> AnalysisContext<'a> {
             }
             (
                 SemanticType::UnnamedEnum(unnamed_enum_type),
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
             ) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, struct_id)
                     .unwrap();
                 let resolved_enum = sym.as_enum().unwrap();
 
                 self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
             }
             (
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
                 SemanticType::UnnamedEnum(unnamed_enum_type),
             ) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, struct_id)
                     .unwrap();
                 let resolved_enum = sym.as_enum().unwrap();
 
@@ -159,23 +159,23 @@ impl<'a> AnalysisContext<'a> {
             }
             (
                 SemanticType::UnnamedUnion(unnamed_union_type),
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
             ) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, union_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, union_id)
                     .unwrap();
                 let resolved_union = sym.as_union().unwrap();
 
                 self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
             }
             (
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
                 SemanticType::UnnamedUnion(unnamed_union_type),
             ) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, union_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, union_id)
                     .unwrap();
                 let resolved_union = sym.as_union().unwrap();
 
@@ -242,11 +242,11 @@ impl<'a> AnalysisContext<'a> {
             }
             (
                 SemanticType::UnnamedStruct(unnamed_struct_type),
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
             ) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, struct_id)
                     .unwrap();
                 let resolved_struct = sym.as_struct().unwrap();
 
@@ -256,12 +256,12 @@ impl<'a> AnalysisContext<'a> {
                 )
             }
             (
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
                 SemanticType::UnnamedStruct(unnamed_struct_type),
             ) => {
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, struct_id)
                     .unwrap();
                 let resolved_struct = sym.as_struct().unwrap();
 
@@ -328,7 +328,7 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
             (SemanticType::DynamicType(dynamic_type), SemanticType::Interface(interface_type)) => {
-                dynamic_type.interface_symbol_id == interface_type.symbol_id
+                dynamic_type.interface_id == interface_type.symbol_id
             }
             (SemanticType::Interface(interface_type1), SemanticType::Interface(interface_type2)) => {
                 interface_type1.symbol_id == interface_type2.symbol_id
@@ -557,7 +557,7 @@ impl<'a> AnalysisContext<'a> {
             // through the cast builtin implementation.
             //
             (
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)),
                 SemanticType::PlainType(plain_type),
             ) => {
                 let scope_opt =
@@ -565,7 +565,7 @@ impl<'a> AnalysisContext<'a> {
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, enum_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, enum_id)
                     .unwrap();
 
                 sym.as_enum().is_some() && plain_type.is_integer_or_bool()
@@ -573,14 +573,14 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
             (
                 SemanticType::PlainType(plain_type),
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)),
             ) => {
                 let scope_opt =
                     scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
                 let sym = self
                     .resolver
-                    .resolve_local_or_global_symbol(scope_opt, enum_symbol_id)
+                    .resolve_local_or_global_symbol(scope_opt, enum_id)
                     .unwrap();
 
                 sym.as_enum().is_some() && plain_type.is_integer_or_bool()

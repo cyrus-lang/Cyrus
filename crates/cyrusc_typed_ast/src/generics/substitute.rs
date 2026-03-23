@@ -109,7 +109,7 @@ pub fn substitute_type(
                 .collect::<Option<Vec<_>>>()?;
             let ret_ty = Box::new(substitute_type(
                 mapping_ctx_arena,
-                *func_type.return_type,
+                *func_type.ret_type,
                 mapping_ctx.clone(),
             )?);
             Some(SemanticType::FuncType(TypedFuncType {
@@ -120,7 +120,7 @@ pub fn substitute_type(
                     variadic: func_type.params.variadic,
                 },
                 is_public: func_type.is_public,
-                return_type: ret_ty,
+                ret_type: ret_ty,
                 loc: func_type.loc,
             }))
         }
@@ -193,14 +193,14 @@ pub fn substitute_func_sig(
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<FuncSig> {
     let params = substitute_func_params(mapping_ctx_arena.clone(), &sig.params, ctx.clone())?;
-    let return_type = substitute_type(mapping_ctx_arena.clone(), sig.return_type.clone(), ctx)?;
+    let ret_type = substitute_type(mapping_ctx_arena.clone(), sig.ret_type.clone(), ctx)?;
 
     Some(FuncSig {
         name: sig.name.clone(),
         module_id: sig.module_id,
         symbol_id: sig.symbol_id,
         params,
-        return_type,
+        ret_type,
         is_func_decl: sig.is_func_decl,
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),

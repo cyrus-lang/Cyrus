@@ -593,7 +593,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(TypeSpecifier::FuncType(Box::new(FuncType {
             params,
-            return_type: Box::new(ret),
+            ret_type: Box::new(ret),
             vis_opt: None,
             loc: Loc::new(self.file_id(), line, start, end),
         })))

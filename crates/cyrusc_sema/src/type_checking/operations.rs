@@ -26,7 +26,7 @@ use cyrusc_typed_ast::{
     types::{PlainType, SemanticType},
 };
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_pointer_arithmetic_type(
         &mut self,
         lhs_type: &SemanticType,
@@ -248,7 +248,7 @@ impl<'a> AnalysisContext<'a> {
                 match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_type, fmt_symbol);
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -275,7 +275,7 @@ impl<'a> AnalysisContext<'a> {
                 match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_type, fmt_symbol);
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -316,7 +316,7 @@ impl<'a> AnalysisContext<'a> {
                 match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
+                        let operand_type = format_sema_ty(operand_type, fmt_symbol);
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -353,7 +353,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if !(operand_type.is_integer() && unary_expr.operand.is_lvalue()) {
-            let operand_type = format_sema_ty(operand_type, &(self.symbol_formatter)(scope_id_opt));
+            let operand_type = format_sema_ty(operand_type, fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -448,8 +448,8 @@ impl<'a> AnalysisContext<'a> {
                 .is_some();
 
             if !(is_enum && equal_mapping_ctx && equal_base) {
-                let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-                let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
+                let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -465,8 +465,8 @@ impl<'a> AnalysisContext<'a> {
                 return Some(SemanticType::PlainType(PlainType::Bool));
             }
         } else if lhs_type.is_enum() && rhs_type.is_enum() {
-            let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
+            let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
 
             match self.analyze_compare_enums(scope_opt, lhs_type.clone(), rhs_type.clone()) {
                 Some(sema_ty) => return Some(sema_ty),
@@ -484,8 +484,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc) {
-            let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
+            let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -533,8 +533,8 @@ impl<'a> AnalysisContext<'a> {
         let rhs_type = rhs_type.const_inner();
 
         if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc) {
-            let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
+            let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -553,8 +553,8 @@ impl<'a> AnalysisContext<'a> {
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
             Some(sema_ty) => Some(sema_ty),
             None => {
-                let lhs_type_str = format_sema_ty(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-                let rhs_type_str = format_sema_ty(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
+                let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

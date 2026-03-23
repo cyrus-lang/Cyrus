@@ -99,7 +99,7 @@ pub struct TypedFuncType {
     pub symbol_id: Option<SymbolID>,
     pub def_module_id: Option<ModuleID>,
     pub params: TypedFuncTypeParams,
-    pub return_type: Box<SemanticType>,
+    pub ret_type: Box<SemanticType>,
     pub is_public: bool,
     pub loc: Loc,
 }
@@ -145,7 +145,7 @@ pub struct InterfaceType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct DynamicType {
-    pub interface_symbol_id: SymbolID,
+    pub interface_id: SymbolID,
     pub vtable_id: VTableID,
     pub loc: Loc,
 }
@@ -785,7 +785,7 @@ impl Hash for TypedArrayType {
 impl Hash for TypedFuncType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.params.hash(state);
-        self.return_type.hash(state);
+        self.ret_type.hash(state);
     }
 }
 
@@ -877,7 +877,7 @@ impl PartialEq for TypedArrayType {
 
 impl PartialEq for DynamicType {
     fn eq(&self, other: &Self) -> bool {
-        self.interface_symbol_id == other.interface_symbol_id
+        self.interface_id == other.interface_id
     }
 }
 
@@ -895,7 +895,7 @@ impl PartialEq for TypedUnnamedStructTypeField {
 
 impl PartialEq for TypedFuncType {
     fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.return_type == other.return_type
+        self.params == other.params && self.ret_type == other.ret_type
     }
 }
 

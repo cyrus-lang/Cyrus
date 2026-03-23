@@ -439,13 +439,13 @@ impl Resolver {
             None => None,
         };
 
-        let return_type = self.resolve_type(generic_params, *func.return_type, loc)?;
+        let ret_type = self.resolve_type(generic_params, *func.ret_type, loc)?;
 
         Some(SemanticType::FuncType(TypedFuncType {
             symbol_id: None,
             def_module_id: None,
             params: TypedFuncTypeParams { list: params, variadic },
-            return_type: Box::new(return_type),
+            ret_type: Box::new(ret_type),
             is_public: true,
             loc,
         }))
@@ -874,7 +874,7 @@ impl Resolver {
                     list: resolved_params_list,
                     variadic: resolved_variadic_param,
                 },
-                return_type: resolved_return_type,
+                ret_type: resolved_return_type,
                 modifiers: func_decl.modifiers.clone(),
                 renamed_as: None,
                 loc: func_decl.loc,
@@ -1172,7 +1172,7 @@ impl Resolver {
         for func_def in methods_list {
             let scope = LocalScope::new();
 
-            let (return_type, mut params, variadic, generic_params) = match with_local_scope!(self, scope.clone(), {
+            let (ret_type, mut params, variadic, generic_params) = match with_local_scope!(self, scope.clone(), {
                 self.resolve_func(&func_def.as_func_decl(), false)
             }) {
                 Some(v) => v,
@@ -1188,42 +1188,42 @@ impl Resolver {
                 }
             }
 
-            let method_symbol_id = self.global_symbols_registry.insert_symbol_name(module_id, &unique_name);
-            methods.insert(original_name.clone(), method_symbol_id);
+            let method_id = self.global_symbols_registry.insert_symbol_name(module_id, &unique_name);
+            methods.insert(original_name.clone(), method_id);
 
             let func_sig = FuncSig {
                 module_id,
-                symbol_id: Some(method_symbol_id),
+                symbol_id: Some(method_id),
                 name: original_name,
                 is_func_decl: false,
                 generic_params: generic_params.clone(),
                 params: TypedFuncParams { list: params, variadic },
-                return_type,
+                ret_type,
                 modifiers: func_def.modifiers.clone(),
                 loc: func_def.loc,
             };
 
-            let is_generic = func_sig.generic_params.is_some() || generic_object;
+            let is_generic = func_sig.is_generic() || generic_object;
 
             let resolved_method = ResolvedMethod {
                 module_id,
-                symbol_id: method_symbol_id,
+                symbol_id: method_id,
                 func_sig,
                 func_body: None,
             };
 
             self.global_symbols_registry.insert_symbol_entry(
                 module_id,
-                method_symbol_id,
+                method_id,
                 SymbolEntry::new(SymbolEntryKind::Method(resolved_method)),
             );
 
-            method_bodies.insert(method_symbol_id, (scope, &func_def.body, is_generic));
+            method_bodies.insert(method_id, (scope, &func_def.body, is_generic));
         }
 
-        for (method_symbol_id, (scope, body, is_generic)) in method_bodies {
+        for (method_id, (scope, body, is_generic)) in method_bodies {
             let SymbolEntryKind::Method(mut resolved_method) =
-                self.lookup_global_symbol(method_symbol_id).unwrap().kind
+                self.lookup_global_symbol(method_id).unwrap().kind
             else {
                 unreachable!();
             };
@@ -1231,8 +1231,8 @@ impl Resolver {
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_symbol_id = SymbolID::new();
-                        self_modifier.self_symbol_id = Some(self_symbol_id);
+                        let self_id = SymbolID::new();
+                        self_modifier.self_id = Some(self_id);
 
                         let ty = match self_modifier.kind {
                             SelfModifierKind::Copied => Some(SemanticType::UnresolvedSymbol(object_symbol_id)),
@@ -1243,11 +1243,11 @@ impl Resolver {
 
                         let self_name = "self";
 
-                        let self_variable = ResolvedVar {
+                        let self_var = ResolvedVar {
                             module_id,
-                            symbol_id: self_symbol_id,
+                            symbol_id: self_id,
                             variable: TypedVarStmt {
-                                symbol_id: self_symbol_id,
+                                symbol_id: self_id,
                                 name: self_name.to_string(),
                                 ty,
                                 rhs: None,
@@ -1257,14 +1257,14 @@ impl Resolver {
                             },
                         };
 
-                        let self_symbol_entry = SymbolEntry::new(SymbolEntryKind::Var(self_variable));
+                        let symbol_entry = SymbolEntry::new(SymbolEntryKind::Var(self_var));
 
                         self.current_scope_mut()
                             .unwrap()
-                            .insert(self_name.to_string().clone(), self_symbol_id);
+                            .insert(self_name.to_string().clone(), self_id);
 
                         self.global_symbols_registry
-                            .insert_symbol_entry(module_id, self_symbol_id, self_symbol_entry);
+                            .insert_symbol_entry(module_id, self_id, symbol_entry);
                     }
                 }
 
@@ -1274,7 +1274,7 @@ impl Resolver {
 
                 if is_generic {
                     monomorph_registry!(self, ctx, {
-                        ctx.register_template(method_symbol_id, typed_body);
+                        ctx.register_template(method_id, typed_body);
                     });
                 } else {
                     resolved_method.func_body = Some(Box::new(typed_body));
@@ -1282,7 +1282,7 @@ impl Resolver {
 
                 self.global_symbols_registry.insert_symbol_entry(
                     module_id,
-                    method_symbol_id,
+                    method_id,
                     SymbolEntry::new(SymbolEntryKind::Method(resolved_method)),
                 );
             });
@@ -1432,14 +1432,14 @@ impl Resolver {
         Option<TypedFuncVariadicParams>,
         Option<TypedGenericParamsList>,
     )> {
-        let return_type = return_type_or_default_void(func_decl.return_type.clone(), func_decl.loc);
+        let ret_type = return_type_or_default_void(func_decl.ret_type.clone(), func_decl.loc);
 
         let generic_params = func_decl
             .generic_params
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        let typed_return_type = self.resolve_type(&generic_params, return_type, func_decl.loc)?;
+        let typed_return_type = self.resolve_type(&generic_params, ret_type, func_decl.loc)?;
 
         let (typed_func_params, typed_variadic_param) =
             self.resolve_func_params(&generic_params, &func_decl.params, is_decl)?;
@@ -1522,7 +1522,7 @@ impl Resolver {
     fn resolve_self_modifier_param(&mut self, self_modifier: &SelfModifier) -> TypedSelfModifier {
         TypedSelfModifier {
             symbol_id: None,
-            self_symbol_id: None,
+            self_id: None,
             ty: None,
             kind: self_modifier.kind.clone(),
             loc: self_modifier.loc,
@@ -1557,8 +1557,7 @@ impl Resolver {
         let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(&name).unwrap();
 
-        let (return_type, typed_func_params, typed_variadic_param, generic_params) =
-            self.resolve_func(func_decl, true)?;
+        let (ret_type, typed_func_params, typed_variadic_param, generic_params) = self.resolve_func(func_decl, true)?;
 
         let func_sig = FuncSig {
             module_id,
@@ -1570,7 +1569,7 @@ impl Resolver {
                 list: typed_func_params.clone(),
                 variadic: typed_variadic_param.clone(),
             },
-            return_type: return_type.clone(),
+            ret_type: ret_type.clone(),
             modifiers: func_decl.modifiers.clone(),
             loc: func_decl.loc,
         };
@@ -1595,7 +1594,7 @@ impl Resolver {
                 list: typed_func_params,
                 variadic: typed_variadic_param,
             },
-            return_type,
+            ret_type,
             modifiers: func_decl.modifiers.clone(),
             renamed_as: func_decl.renamed_as.as_ref().map(|id| id.as_string()),
             loc: func_decl.loc,
@@ -1610,7 +1609,7 @@ impl Resolver {
 
         self.enter_scope(scope);
 
-        let (return_type, typed_func_params, typed_variadic_param, generic_params) =
+        let (ret_type, typed_func_params, typed_variadic_param, generic_params) =
             self.resolve_func(&func_def.as_func_decl(), false)?;
 
         let func_sig = FuncSig {
@@ -1623,7 +1622,7 @@ impl Resolver {
                 list: typed_func_params.clone(),
                 variadic: typed_variadic_param.clone(),
             },
-            return_type: return_type.clone(),
+            ret_type: ret_type.clone(),
             modifiers: func_def.modifiers.clone(),
             loc: func_def.loc,
         };
@@ -1656,7 +1655,7 @@ impl Resolver {
                 list: typed_func_params,
                 variadic: typed_variadic_param,
             },
-            return_type,
+            ret_type,
             modifiers: func_def.modifiers.clone(),
             loc: func_def.loc,
             body: Box::new(typed_func_body),
@@ -2161,13 +2160,13 @@ impl Resolver {
                 None => return None,
             };
 
-            let return_type = self.resolve_type(&None, lambda.return_type.clone(), lambda.loc)?;
+            let ret_type = self.resolve_type(&None, lambda.ret_type.clone(), lambda.loc)?;
 
             Some(TypedExprStmt {
                 kind: TypedExprKind::Lambda(TypedLambdaExpr {
                     params: TypedFuncParams { list, variadic },
                     body,
-                    return_type,
+                    ret_type,
                     inline: lambda.inline,
                     loc: lambda.loc,
                 }),
@@ -2289,7 +2288,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 args,
                 type_args,
-                return_type: None,
+                ret_type: None,
                 monomorph_key: None,
                 loc,
             }),

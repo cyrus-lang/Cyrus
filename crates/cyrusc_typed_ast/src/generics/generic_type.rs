@@ -18,7 +18,7 @@
 use crate::{
     SymbolID,
     exprs::TypedIdentifier,
-    format::format_sema_ty,
+    format::{SymbolFormatterFn, format_sema_ty},
     generics::{
         diagnostics::GenericTypesDiagKind,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
@@ -49,6 +49,8 @@ pub struct GenericType {
 
 impl GenericType {
     pub fn new_unresolved(
+        // FIXME: Get base: Option<SymbolID>
+        // because sometimes we need to have a temporary generic types, (e.g. generic typedef).
         base: SymbolID,
         type_args: Option<TypedTypeArgs>,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
@@ -71,7 +73,7 @@ impl GenericType {
     pub fn init(
         &mut self,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-        format_symbol: &impl Fn(SymbolID) -> String,
+        fmt_symbol: SymbolFormatterFn,
     ) -> Result<(), Diag> {
         debug_assert!(self.generic_params.list.is_empty() == false);
 
@@ -96,7 +98,7 @@ impl GenericType {
                         &mapping_ctx,
                         generic_param.param_name.name.clone(),
                         Some(ty.clone()),
-                        format_symbol,
+                        fmt_symbol,
                         loc,
                     )?;
 
@@ -120,7 +122,7 @@ impl GenericType {
                         &mapping_ctx,
                         key.clone(),
                         Some(ty.clone()),
-                        format_symbol,
+                        fmt_symbol,
                         loc,
                     )?;
 
@@ -151,7 +153,7 @@ impl GenericType {
         &self,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         template: TypedGenericParamsList,
-        format_symbol: impl Fn(SymbolID) -> String,
+        fmt_symbol: impl Fn(SymbolID) -> String,
     ) -> Result<&Self, Diag> {
         // fill defaults
         {
@@ -175,7 +177,7 @@ impl GenericType {
         let missing = self.collect_unresolved_generic_params(mapping_ctx_arena, &template);
 
         if !missing.is_empty() {
-            let ty = self.format(&format_symbol);
+            let ty = self.format(&fmt_symbol);
 
             let missing_fmt = missing
                 .iter()
@@ -200,7 +202,7 @@ impl GenericType {
         child_mapping_ctx: &GenericMappingCtx,
         generic_param_name: String,
         type_arg_sema_ty: Option<SemanticType>,
-        format_symbol: &impl Fn(SymbolID) -> String,
+        fmt_symbol: SymbolFormatterFn,
         loc: Loc,
     ) -> Result<(), Diag> {
         if let Some(parent_id) = child_mapping_ctx.parent_id() {
@@ -220,7 +222,7 @@ impl GenericType {
                         level: DiagLevel::Error,
                         kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
                             generic_param: generic_param_name.clone(),
-                            already_inferred_as: format_sema_ty(parent_sema_ty, &format_symbol),
+                            already_inferred_as: format_sema_ty(parent_sema_ty, &fmt_symbol),
                         }),
                         loc: Some(loc),
                         hint: None,
@@ -251,8 +253,8 @@ impl GenericType {
             .collect()
     }
 
-    pub fn format(&self, format_symbol: impl Fn(SymbolID) -> String) -> String {
-        let base = format_symbol(self.base);
+    pub fn format(&self, fmt_symbol: SymbolFormatterFn) -> String {
+        let base = fmt_symbol(self.base);
 
         let mut collected_type_args: Vec<String> = Vec::new();
 
@@ -265,7 +267,7 @@ impl GenericType {
                         mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name);
 
                     if let Some(sema_ty) = sema_ty_opt {
-                        collected_type_args.push(format_sema_ty(sema_ty, &format_symbol));
+                        collected_type_args.push(format_sema_ty(sema_ty, &fmt_symbol));
                     }
                 }
             }
@@ -303,19 +305,19 @@ impl PartialEq for GenericType {
 pub fn debug_generic_type<'a>(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     generic_type: &GenericType,
-    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
+    fmt_symbol: SymbolFormatterFn,
 ) {
     use crate::types::SemanticType;
 
     println!("-----------------------");
-    println!("Base: {}", format_symbol(generic_type.base));
+    println!("Base: {}", fmt_symbol(generic_type.base));
 
     println!("Generic Params: ");
 
     for generic_param in &generic_type.generic_params.list {
         print!("{}", generic_param.param_name.name.clone());
         if let Some(default) = &generic_param.default {
-            print!(" default({})", format_sema_ty(*default.clone(), format_symbol));
+            print!(" default({})", format_sema_ty(*default.clone(), fmt_symbol));
         }
         if let Some(bounds) = &generic_param.bounds {
             print!(
@@ -328,10 +330,10 @@ pub fn debug_generic_type<'a>(
                             .iter()
                             .map(|type_arg| match type_arg {
                                 TypedTypeArg::Positional { i, ty, .. } => {
-                                    format!("  {}:{}\n", i, format_sema_ty(ty.clone(), format_symbol))
+                                    format!("  {}:{}\n", i, format_sema_ty(ty.clone(), fmt_symbol))
                                 }
                                 TypedTypeArg::Named { key, ty, .. } => {
-                                    format!("  {}:{}\n", key, format_sema_ty(ty.clone(), format_symbol))
+                                    format!("  {}:{}\n", key, format_sema_ty(ty.clone(), fmt_symbol))
                                 }
                             })
                             .collect::<Vec<String>>()
@@ -352,10 +354,10 @@ pub fn debug_generic_type<'a>(
         for type_arg in type_args {
             match type_arg {
                 TypedTypeArg::Positional { i, ty, .. } => {
-                    println!("  {}:{}", i, format_sema_ty(ty.clone(), format_symbol));
+                    println!("  {}:{}", i, format_sema_ty(ty.clone(), fmt_symbol));
                 }
                 TypedTypeArg::Named { key, ty, .. } => {
-                    println!("  {}:{}", key, format_sema_ty(ty.clone(), format_symbol));
+                    println!("  {}:{}", key, format_sema_ty(ty.clone(), fmt_symbol));
                 }
             }
         }
@@ -370,7 +372,7 @@ pub fn debug_generic_type<'a>(
                 println!(
                     "{} -> {}",
                     entry.name.clone(),
-                    format_sema_ty(sema_ty.clone(), format_symbol)
+                    format_sema_ty(sema_ty.clone(), fmt_symbol)
                 );
             }
         };
@@ -404,7 +406,7 @@ pub fn debug_generic_type<'a>(
 
     println!(
         "Inline Format: {}",
-        format_sema_ty(SemanticType::GenericType(generic_type.clone()), format_symbol)
+        format_sema_ty(SemanticType::GenericType(generic_type.clone()), fmt_symbol)
     );
 
     println!("-----------------------");

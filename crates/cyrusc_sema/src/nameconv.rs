@@ -26,7 +26,7 @@ enum NamingConvDeclKind {
     Union,
 }
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn check_name(&mut self, decl_kind: NamingConvDeclKind, name: &str, loc: Loc) {
         let valid = is_pascal_case(name);
 

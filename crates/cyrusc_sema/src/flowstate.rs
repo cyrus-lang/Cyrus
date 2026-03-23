@@ -33,7 +33,7 @@ pub(crate) enum FlowState {
     Returns,
 }
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn merge_flow_state(&self, a: FlowState, b: FlowState) -> FlowState {
         match (a, b) {
             (FlowState::Returns, FlowState::Returns) => FlowState::Returns,

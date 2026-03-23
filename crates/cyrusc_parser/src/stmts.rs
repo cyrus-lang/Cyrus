@@ -1367,11 +1367,11 @@ impl<'source_file> Parser<'source_file> {
 
         let params = self.parse_func_params()?;
 
-        let return_type: Option<TypeSpecifier>;
+        let ret_type: Option<TypeSpecifier>;
 
         // parse return type
         if self.current_token_is(TokenKind::LeftBrace) {
-            return_type = None;
+            ret_type = None;
         } else if self.current_token_is(TokenKind::Semicolon) {
             let end = self.current_token().loc.end;
 
@@ -1379,7 +1379,7 @@ impl<'source_file> Parser<'source_file> {
                 ident: func_name,
                 generic_params,
                 params,
-                return_type: None,
+                ret_type: None,
                 modifiers,
                 renamed_as: None,
                 loc: Loc::new(self.file_id(), line, start, end),
@@ -1396,13 +1396,13 @@ impl<'source_file> Parser<'source_file> {
                 ident: func_name,
                 generic_params,
                 params,
-                return_type: None,
+                ret_type: None,
                 modifiers,
                 renamed_as: Some(renamed_as),
                 loc: Loc::new(self.file_id(), line, start, end),
             }));
         } else {
-            return_type = Some(self.parse_type_specifier()?);
+            ret_type = Some(self.parse_type_specifier()?);
             self.next_token();
         }
 
@@ -1413,7 +1413,7 @@ impl<'source_file> Parser<'source_file> {
                 ident: func_name,
                 generic_params,
                 params,
-                return_type,
+                ret_type,
                 modifiers,
                 renamed_as: None,
                 loc: Loc::new(self.file_id(), line, start, end),
@@ -1440,7 +1440,7 @@ impl<'source_file> Parser<'source_file> {
                 ident: func_name,
                 generic_params,
                 params,
-                return_type,
+                ret_type,
                 modifiers,
                 renamed_as: Some(renamed_as),
                 loc: Loc::new(self.file_id(), line, start, end),
@@ -1456,7 +1456,7 @@ impl<'source_file> Parser<'source_file> {
             generic_params,
             params,
             body,
-            return_type,
+            ret_type,
             modifiers,
             loc: Loc::new(self.file_id(), line, start, end),
         }));

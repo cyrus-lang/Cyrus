@@ -22,9 +22,6 @@ use crate::symbols::symbols::{
 use cyrusc_typed_ast::{ModuleID, SymbolID};
 use std::collections::HashMap;
 
-pub type SymbolFormatterFn<'a> = &'a dyn Fn(SymbolID) -> String;
-pub type BoxedSymbolFormatterFn = Box<dyn Fn(SymbolID) -> String + Send + Sync + 'static>;
-
 pub trait SymbolQuery {
     fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
     fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar>;

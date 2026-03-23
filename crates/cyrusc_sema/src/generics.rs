@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
-    format::format_sema_ty,
+    format::{SymbolFormatterFn, format_sema_ty},
     generics::{
         generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
@@ -37,7 +37,7 @@ use std::{
     rc::Rc,
 };
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn merge_generic_type(&self, generic_type1: &GenericType, generic_type2: &GenericType) -> GenericType {
         let mut merged_generic_type = generic_type1.clone();
 
@@ -154,9 +154,10 @@ impl<'a> AnalysisContext<'a> {
             .as_ref()
             .and_then(|sema_ty| sema_ty.as_generic_type().cloned())
         {
-            let is_generic_mapping_ctx_empty = { generic_type.mapping_ctx.borrow().is_empty() };
+            // is generic mapping ctx empty?
+            let is_empty = { generic_type.mapping_ctx.borrow().is_empty() };
 
-            if is_generic_mapping_ctx_empty {
+            if is_empty {
                 None
             } else {
                 inferred_sema_ty
@@ -217,9 +218,9 @@ impl<'a> AnalysisContext<'a> {
 
         self.tctx.current_func = Some(typed_func_type_from_func_sig(func_sig));
         self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
-        func_sig.return_type = substitute_type(
+        func_sig.ret_type = substitute_type(
             self.mapping_ctx_arena.clone(),
-            func_sig.return_type.clone(),
+            func_sig.ret_type.clone(),
             Rc::new(RefCell::new(mapping_ctx.clone())),
         )
         .unwrap();
@@ -237,7 +238,7 @@ impl<'a> AnalysisContext<'a> {
 
         let mut analyzed_body = template_body.clone();
 
-        self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
+        self.analyze_func_body(&mut analyzed_body, &func_sig.ret_type);
 
         {
             let diag_len = self.reporter.len();
@@ -331,23 +332,21 @@ impl<'a> AnalysisContext<'a> {
         type_args: &mut Option<TypedTypeArgs>,
         parent_mapping_ctx: Option<Rc<GenericMappingCtx>>,
         generic_params: Option<&TypedGenericParamsList>,
-        is_const: bool,
         loc: Loc,
     ) -> Result<Option<(SymbolID, Option<GenericType>)>, Diag> {
-        self.normalize_type_args(scope_id_opt, type_args.as_mut());
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt, symbol_id)
-            .unwrap();
+        self.normalize_type_args(type_args.as_mut());
+
+        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
 
         // get genera params from symbol entry if not specified explicitly
-        let symbol_generic_params = sym.symbol_generic_params();
+        let symbol_generic_params = symbol_entry.symbol_generic_params();
         let generic_params = match generic_params.or(symbol_generic_params.as_ref()) {
             Some(generic_params) => generic_params,
             None => {
                 if type_args.is_none() {
-                    return Ok(Some((sym.symbol_id(), None)));
+                    return Ok(Some((symbol_id, None)));
                 } else {
                     return Err(Diag {
                         level: DiagLevel::Error,
@@ -378,17 +377,16 @@ impl<'a> AnalysisContext<'a> {
         ));
 
         let mut generic_type = GenericType::new_unresolved(
-            sym.symbol_id(),
+            symbol_id,
             type_args.clone(),
             mapping_ctx,
             self.mapping_ctx_arena.clone(),
             generic_params.clone(),
-            is_const,
             loc,
         );
 
-        generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))?;
-        Ok(Some((sym.symbol_id(), Some(generic_type))))
+        generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol)?;
+        Ok(Some((symbol_id, Some(generic_type))))
     }
 
     pub(crate) fn unify_generic_types_from_expected_type(
@@ -468,8 +466,8 @@ impl<'a> AnalysisContext<'a> {
                 self.unify_generic_types(
                     mapping_ctx,
                     expr_mapping_ctx_opt,
-                    &expr_func_type.return_type,
-                    &target_func_type.return_type,
+                    &expr_func_type.ret_type,
+                    &target_func_type.ret_type,
                 );
             }
             (SemanticType::GenericType(target_generic_type), SemanticType::GenericType(expr_generic_type)) => {
@@ -538,8 +536,8 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty($lhs, &(self.symbol_formatter)(scope_id_opt)),
-                            rhs_type: format_sema_ty($rhs, &(self.symbol_formatter)(scope_id_opt)),
+                            lhs_type: format_sema_ty($lhs, fmt_symbol),
+                            rhs_type: format_sema_ty($rhs, fmt_symbol),
                         }),
                         loc: Some(loc),
                         hint: None,
@@ -663,10 +661,10 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn merge_generic_operand_with_expected_type(
         &self,
-        operand_ty: SemanticType,
+        operand_type: SemanticType,
         expected_type: Option<SemanticType>,
     ) -> Option<GenericType> {
-        let Some(generic_type) = operand_ty.as_generic_type() else {
+        let Some(generic_type) = operand_type.as_generic_type() else {
             return expected_type.and_then(|sema_ty| sema_ty.as_generic_type().cloned());
         };
 

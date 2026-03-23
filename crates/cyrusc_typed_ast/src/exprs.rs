@@ -106,7 +106,7 @@ pub struct TypedTupleExpr {
 pub struct TypedLambdaExpr {
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStmt>,
-    pub return_type: SemanticType,
+    pub ret_type: SemanticType,
     pub inline: bool,
     pub loc: Loc,
 }
@@ -290,7 +290,7 @@ pub struct TypedFuncCall {
     pub operand: Box<TypedExprStmt>,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
-    pub return_type: Option<SemanticType>,
+    pub ret_type: Option<SemanticType>,
     pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic func
     pub loc: Loc,
 }

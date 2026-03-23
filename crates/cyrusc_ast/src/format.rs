@@ -117,7 +117,7 @@ impl fmt::Display for TypeSpecifier {
                     }
                 }
 
-                write!(f, "fn ({}) {}", params, func_type.return_type.to_string())
+                write!(f, "fn ({}) {}", params, func_type.ret_type.to_string())
             }
             TypeSpecifier::TypeToken(token) => write!(f, "{}", token.kind),
             TypeSpecifier::Ident(ident) => write!(f, "{}", ident),
@@ -291,7 +291,7 @@ impl fmt::Display for ASTExpr {
                     }
                     FuncParamKind::SelfModifier(..) => unreachable!(),
                 });
-                write!(f, ") {}", lambda.return_type.clone())?;
+                write!(f, ") {}", lambda.ret_type.clone())?;
                 write!(f, "{{ {} }}", format_stmts(&lambda.body.exprs))
             }
             ASTExpr::Unary(unary_expr) => {

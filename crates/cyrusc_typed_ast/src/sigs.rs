@@ -64,7 +64,7 @@ pub struct FuncSig {
     pub name: String,
     pub params: TypedFuncParams,
     pub generic_params: Option<TypedGenericParamsList>,
-    pub return_type: SemanticType,
+    pub ret_type: SemanticType,
     pub is_func_decl: bool,
     pub modifiers: FuncModifiers,
     pub loc: Loc,
@@ -141,7 +141,7 @@ pub fn set_self_modifier_symbol_id_in_func_sig(func_sig: &mut FuncSig, symbol_id
 
     if let Some(func_param_kind) = first_param {
         if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
-            self_modifier.self_symbol_id = Some(symbol_id);
+            self_modifier.self_id = Some(symbol_id);
         }
     }
 }
@@ -153,7 +153,7 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
         name: func_decl.name.clone(),
         generic_params: func_decl.generic_params.clone(),
         params: func_decl.params.clone(),
-        return_type: func_decl.return_type.clone(),
+        ret_type: func_decl.ret_type.clone(),
         is_func_decl: true,
         modifiers: func_decl.modifiers.clone(),
         loc: func_decl.loc,
@@ -167,7 +167,7 @@ pub fn typed_func_decl_from_func_sig(sig: &FuncSig) -> TypedFuncDeclStmt {
         name: sig.name.clone(),
         generic_params: sig.generic_params.clone(),
         params: sig.params.clone(),
-        return_type: sig.return_type.clone(),
+        ret_type: sig.ret_type.clone(),
         modifiers: sig.modifiers.clone(),
         loc: sig.loc,
         renamed_as: None,
@@ -181,7 +181,7 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
         name: func_def.name.clone(),
         generic_params: func_def.generic_params.clone(),
         params: func_def.params.clone(),
-        return_type: func_def.return_type.clone(),
+        ret_type: func_def.ret_type.clone(),
         is_func_decl: false,
         modifiers: func_def.modifiers.clone(),
         loc: func_def.loc,
@@ -193,7 +193,7 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
         symbol_id: func_sig.symbol_id,
         def_module_id: Some(func_sig.module_id),
         params: typed_func_params_as_func_type_params(&func_sig.params),
-        return_type: Box::new(func_sig.return_type.clone()),
+        ret_type: Box::new(func_sig.ret_type.clone()),
         is_public: func_sig.modifiers.vis.is_public(),
         loc: func_sig.loc,
     }
@@ -288,6 +288,10 @@ impl FuncSig {
             None => false,
         }
     }
+
+    pub fn is_generic(&self) -> bool {
+        self.generic_params.is_some()
+    }
 }
 
 impl Hash for FuncSig {
@@ -302,6 +306,6 @@ impl PartialEq for FuncSig {
         let self_params = self.params.list.iter().collect::<Vec<_>>();
         let other_params = other.params.list.iter().collect::<Vec<_>>();
 
-        self.name == other.name && self_params == other_params && self.return_type == other.return_type
+        self.name == other.name && self_params == other_params && self.ret_type == other.ret_type
     }
 }

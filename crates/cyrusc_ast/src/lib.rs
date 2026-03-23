@@ -356,7 +356,7 @@ pub struct ASTUnaryExpr {
 #[derive(Debug, Clone)]
 pub struct FuncType {
     pub params: FuncTypeParams,
-    pub return_type: Box<TypeSpecifier>,
+    pub ret_type: Box<TypeSpecifier>,
     pub vis_opt: Option<Visibility>,
     pub loc: Loc,
 }
@@ -616,7 +616,7 @@ pub struct Range {
 pub struct ASTLambdaExpr {
     pub params: FuncParams,
     pub body: Box<ASTBlockStmt>,
-    pub return_type: TypeSpecifier,
+    pub ret_type: TypeSpecifier,
     pub inline: bool,
     pub loc: Loc,
 }
@@ -627,7 +627,7 @@ pub struct ASTFuncDefStmt {
     pub generic_params: Option<GenericParamsList>,
     pub params: FuncParams,
     pub body: Box<ASTBlockStmt>,
-    pub return_type: Option<TypeSpecifier>,
+    pub ret_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
     pub loc: Loc,
 }
@@ -637,7 +637,7 @@ pub struct ASTFuncDeclStmt {
     pub ident: Ident,
     pub generic_params: Option<GenericParamsList>,
     pub params: FuncParams,
-    pub return_type: Option<TypeSpecifier>,
+    pub ret_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
     pub renamed_as: Option<Ident>,
     pub loc: Loc,
@@ -773,8 +773,8 @@ pub type TypeArgs = Vec<TypeArg>;
 /// that functions without an explicit return type are assigned a `void`
 /// return type. The resulting `TypeSpecifier` preserves the provided
 /// source location and span for accurate diagnostics.
-pub fn return_type_or_default_void(return_type: Option<TypeSpecifier>, loc: Loc) -> TypeSpecifier {
-    return_type.unwrap_or(TypeSpecifier::TypeToken(Token {
+pub fn return_type_or_default_void(ret_type: Option<TypeSpecifier>, loc: Loc) -> TypeSpecifier {
+    ret_type.unwrap_or(TypeSpecifier::TypeToken(Token {
         kind: TokenKind::Void,
         loc,
     }))
@@ -834,7 +834,7 @@ impl ASTFuncDefStmt {
             ident: self.ident.clone(),
             generic_params: self.generic_params.clone(),
             params: self.params.clone(),
-            return_type: self.return_type.clone(),
+            ret_type: self.ret_type.clone(),
             modifiers: self.modifiers.clone(),
             renamed_as: None,
             loc: self.loc,
@@ -1095,7 +1095,7 @@ impl PartialEq for UnnamedUnionTypeField {
 
 impl PartialEq for FuncType {
     fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.return_type == other.return_type
+        self.params == other.params && self.ret_type == other.ret_type
     }
 }
 
@@ -1246,7 +1246,7 @@ impl PartialEq for UnnamedEnumValueKind {
 
 impl PartialEq for ASTLambdaExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.return_type == other.return_type && self.inline == other.inline
+        self.params == other.params && self.ret_type == other.ret_type && self.inline == other.inline
     }
 }
 

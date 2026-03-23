@@ -18,7 +18,7 @@ use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, exit_with_single_diag, source_loc::Loc};
 use std::sync::{Arc, Mutex};
 
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub fn check_entry_points(entry_points_arc: Arc<Mutex<Vec<Loc>>>) {
         let entry_points = entry_points_arc.lock().unwrap();
         let mut entry_points_clone = entry_points.clone();

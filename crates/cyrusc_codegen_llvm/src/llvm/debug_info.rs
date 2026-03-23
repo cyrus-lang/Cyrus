@@ -613,12 +613,12 @@ pub unsafe fn debug_struct_type(
 
 pub unsafe fn debug_func_type(
     dctx: &DebugContext,
-    return_type: Option<LLVMMetadataRef>,
+    ret_type: Option<LLVMMetadataRef>,
     params: &[LLVMMetadataRef],
 ) -> LLVMMetadataRef {
     let mut types: Vec<LLVMMetadataRef> = Vec::new();
 
-    if let Some(ret) = return_type {
+    if let Some(ret) = ret_type {
         types.push(ret);
     }
 

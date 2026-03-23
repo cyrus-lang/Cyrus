@@ -264,7 +264,7 @@ pub struct TypedFuncDefStmt {
     pub params: TypedFuncParams,
     pub generic_params: Option<TypedGenericParamsList>,
     pub body: Box<TypedBlockStmt>,
-    pub return_type: SemanticType,
+    pub ret_type: SemanticType,
     pub modifiers: FuncModifiers,
     pub loc: Loc,
 }
@@ -276,7 +276,7 @@ pub struct TypedFuncDeclStmt {
     pub name: String,
     pub generic_params: Option<TypedGenericParamsList>,
     pub params: TypedFuncParams,
-    pub return_type: SemanticType,
+    pub ret_type: SemanticType,
     pub modifiers: FuncModifiers,
     pub renamed_as: Option<String>,
     pub loc: Loc,
@@ -315,7 +315,7 @@ pub enum TypedFuncParamKind {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
-    pub self_symbol_id: Option<SymbolID>,
+    pub self_id: Option<SymbolID>,
     pub ty: Option<SemanticType>,
     pub kind: SelfModifierKind,
     pub loc: Loc,
@@ -587,6 +587,12 @@ impl Hash for TypedGenericParam {
     }
 }
 
+impl TypedFuncDefStmt {
+    pub fn is_generic(&self) -> bool {
+        self.generic_params.is_some()
+    }
+}
+
 impl TypedGenericParamsList {
     pub fn new() -> Self {
         Self { list: Vec::new() }
@@ -684,7 +690,7 @@ impl PartialEq for TypedSelfModifier {
 
 impl PartialEq for TypedLambdaExpr {
     fn eq(&self, other: &Self) -> bool {
-        self.params == other.params && self.return_type == other.return_type
+        self.params == other.params && self.ret_type == other.ret_type
     }
 }
 

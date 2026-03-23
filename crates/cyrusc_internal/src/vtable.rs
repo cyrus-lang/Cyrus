@@ -24,7 +24,7 @@ pub type GlobalVarID = u32;
 ///   (concrete type, interface).
 ///
 /// This key is created **during type checking**, after it has been
-/// proven that `sema_ty` implements `interface_symbol_id`.
+/// proven that `sema_ty` implements `interface_id`.
 ///
 /// IMPORTANT INVARIANT:
 /// - Two identical keys must always map to the same vtable.
@@ -38,7 +38,7 @@ pub struct VTableKey {
     pub sema_ty: SemanticType,
 
     /// The symbol ID of the interface being implemented.
-    pub interface_symbol_id: SymbolID,
+    pub interface_id: SymbolID,
 }
 
 /// Compile-time registry of all vtables required by the program.
@@ -68,7 +68,7 @@ pub struct VTableInfo {
     pub sema_ty: SemanticType,
 
     /// The interface being implemented.
-    pub interface_symbol_id: SymbolID,
+    pub interface_id: SymbolID,
     pub interface_name: String,
 
     /// Ordered list of method symbols.
@@ -110,7 +110,7 @@ impl VTableRegistry {
     pub fn register(
         &mut self,
         sema_ty: SemanticType,
-        interface_symbol_id: SymbolID,
+        interface_id: SymbolID,
         interface_name: String,
         methods: Vec<FuncSig>,
     ) -> VTableID {
@@ -118,7 +118,7 @@ impl VTableRegistry {
 
         let key = VTableKey {
             sema_ty: sema_ty.clone(),
-            interface_symbol_id,
+            interface_id,
         };
 
         if let Some(&existing_id) = self.map.get(&key) {
@@ -138,7 +138,7 @@ impl VTableRegistry {
 
         self.tables.push(VTableInfo {
             sema_ty,
-            interface_symbol_id,
+            interface_id,
             interface_name,
             methods,
             global_var_id,
@@ -155,10 +155,10 @@ impl VTableRegistry {
     /// # Panics
     ///
     /// Panics if the vtable was not registered during type checking.
-    pub fn get(&self, sema_ty: &SemanticType, interface_symbol_id: SymbolID) -> VTableID {
+    pub fn get(&self, sema_ty: &SemanticType, interface_id: SymbolID) -> VTableID {
         let key = VTableKey {
             sema_ty: sema_ty.clone(),
-            interface_symbol_id,
+            interface_id,
         };
 
         *self

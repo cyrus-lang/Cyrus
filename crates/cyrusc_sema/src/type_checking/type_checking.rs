@@ -62,7 +62,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 // These functions are the primary entry points for type checking different
 // expression categories. They handle top-level analysis and dispatch to
 // specialized helpers for detailed checking.
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Entry point for expression type analysis with pre-validation and generic handling.
     ///
     /// This function serves as the public entry point for type checking expressions.
@@ -406,13 +406,13 @@ impl<'a> AnalysisContext<'a> {
         let current_func_clone = self.tctx.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
-        lambda.return_type = self.normalize_sema_type(scope_id_opt, lambda.return_type.clone(), lambda.loc)?;
+        lambda.ret_type = self.normalize_sema_type(scope_id_opt, lambda.ret_type.clone(), lambda.loc)?;
         let params = typed_func_params_as_func_type_params(&lambda.params);
         let func_type = TypedFuncType {
             symbol_id: None,
             def_module_id: Some(self.module_id),
             params,
-            return_type: Box::new(lambda.return_type.clone()),
+            ret_type: Box::new(lambda.ret_type.clone()),
             is_public: true,
             loc: lambda.loc,
         };
@@ -479,8 +479,8 @@ impl<'a> AnalysisContext<'a> {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let unnamed_union_type = match expected_type.as_ref().and_then(|sema_ty| {
-            if let Some(union_symbol_id) = sema_ty.as_union_symbol_id() {
-                let sym_opt = self.resolver.resolve_local_or_global_symbol(scope_opt, union_symbol_id);
+            if let Some(union_id) = sema_ty.as_union_symbol_id() {
+                let sym_opt = self.resolver.resolve_local_or_global_symbol(scope_opt, union_id);
 
                 if let Some(sym) = sym_opt {
                     if let Some(resolved_union) = sym.as_union() {
@@ -531,7 +531,7 @@ impl<'a> AnalysisContext<'a> {
             .find(|field| field.name == unnamed_union_value.field_name.as_string())
             .cloned()
         else {
-            let object_name = format_sema_ty(expected_type.unwrap(), &(self.symbol_formatter)(scope_id_opt));
+            let object_name = format_sema_ty(expected_type.unwrap(), fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -754,9 +754,9 @@ impl<'a> AnalysisContext<'a> {
                         }
                         None => None,
                     };
-                } else if let Some(enum_symbol_id) = sema_ty.as_enum_symbol_id() {
+                } else if let Some(enum_id) = sema_ty.as_enum_symbol_id() {
                     let resolved_enum_opt =
-                        match self.resolver.resolve_local_or_global_symbol(scope_opt, enum_symbol_id) {
+                        match self.resolver.resolve_local_or_global_symbol(scope_opt, enum_id) {
                             Some(sym) => sym.as_enum().cloned(),
                             None => None,
                         };
@@ -868,8 +868,8 @@ impl<'a> AnalysisContext<'a> {
                     explicit_field_ty.clone(),
                     field.loc,
                 ) {
-                    let lhs_type = format_sema_ty(explicit_field_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
-                    let rhs_type = format_sema_ty(field_value_type, &(self.symbol_formatter)(scope_id_opt));
+                    let lhs_type = format_sema_ty(explicit_field_ty.clone(), fmt_symbol);
+                    let rhs_type = format_sema_ty(field_value_type, fmt_symbol);
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
@@ -948,7 +948,7 @@ impl<'a> AnalysisContext<'a> {
             .and_then(|b| Some(b.is_integer()))
             .is_some()
         {
-            let found_type = format_sema_ty(index_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+            let found_type = format_sema_ty(index_concrete_type, fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1090,9 +1090,9 @@ impl<'a> AnalysisContext<'a> {
 
         // for thin-arrow field access, unwrap const and pointer layers
         // to obtain the underlying pointee type used as the operand.
-        let operand_ty = sema_ty.const_inner().pointer_inner();
+        let operand_type = sema_ty.const_inner().pointer_inner();
 
-        let generic_type_opt = operand_ty.as_generic_type();
+        let generic_type_opt = operand_type.as_generic_type();
 
         let (return_sema_ty, is_generic) = match self.resolve_field_access_kind(
             scope_id_opt,
@@ -1228,7 +1228,7 @@ impl<'a> AnalysisContext<'a> {
             // array initialization attempt. Normalization ensures we report the
             // actual resolved type rather than a placeholder.
             let normalized = self.normalize_sema_type(scope_id_opt, sema_ty, struct_init.loc)?;
-            let symbol_name = format_sema_ty(normalized, &(self.symbol_formatter)(scope_id_opt));
+            let symbol_name = format_sema_ty(normalized, fmt_symbol);
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::NonStructSymbol { symbol_name }),
@@ -1325,18 +1325,18 @@ impl<'a> AnalysisContext<'a> {
         func_call: &mut TypedFuncCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_ty = self.analyze_expr_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
+        let operand_type = self.analyze_expr_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
         #[allow(unused_assignments)]
         let mut generic_type_opt: Option<GenericType> = None;
         let mut func_sig: FuncSig;
 
-        if let Some(mut func_type) = operand_ty.const_inner().as_func_type().cloned() {
+        if let Some(mut func_type) = operand_type.const_inner().as_func_type().cloned() {
             if !func_type.is_public && func_type.def_module_id != Some(self.module_id) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::PrivateFunctionCall {
-                        name: format_typed_expr(&func_call.operand, &(self.symbol_formatter)(scope_id_opt)),
+                        name: format_typed_expr(&func_call.operand, fmt_symbol),
                     }),
                     loc: Some(DiagLoc::new(func_call.loc)),
                     hint: None,
@@ -1368,7 +1368,7 @@ impl<'a> AnalysisContext<'a> {
                     &mut func_call.type_args,
                     expected_mapping_ctx,
                     func_sig.generic_params.as_ref(),
-                    operand_ty.is_const(),
+                    operand_type.is_const(),
                     func_call.loc,
                 ) {
                     Ok(opt) => opt?,
@@ -1393,14 +1393,14 @@ impl<'a> AnalysisContext<'a> {
                 // normalize if is lambda call
                 self.normalize_func_type_params(&mut func_type.params, func_call.loc);
 
-                let return_type =
+                let ret_type =
                     self.check_func_type_call(scope_id_opt, &mut func_type, &mut func_call.args, func_call.loc)?;
 
-                func_call.return_type = Some(return_type.clone());
-                return Some(return_type);
+                func_call.ret_type = Some(ret_type.clone());
+                return Some(ret_type);
             }
         } else {
-            let symbol_name = format_sema_ty(operand_ty, &(self.symbol_formatter)(scope_id_opt));
+            let symbol_name = format_sema_ty(operand_type, fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1425,7 +1425,7 @@ impl<'a> AnalysisContext<'a> {
         update_global_symbol!(self, func_sig.module_id, func_sig.symbol_id.unwrap(),
             SymbolEntryKind::Func(resolved_func) => resolved_func, {
                 resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
-                resolved_func.func_sig.return_type = func_sig.return_type.clone();
+                resolved_func.func_sig.ret_type = func_sig.ret_type.clone();
             }
         );
 
@@ -1462,8 +1462,8 @@ impl<'a> AnalysisContext<'a> {
             );
         }
 
-        func_call.return_type = Some(func_sig.return_type.clone());
-        Some(func_sig.return_type)
+        func_call.ret_type = Some(func_sig.ret_type.clone());
+        Some(func_sig.ret_type)
     }
 
     /// Analyzes method call expressions, handling both static and instance methods.
@@ -1546,7 +1546,7 @@ impl<'a> AnalysisContext<'a> {
             });
 
         let object_symbol_id = {
-            let operand_ty = method_call_operand_ty
+            let operand_type = method_call_operand_ty
                 .symbol_id()
                 .and_then(|symbol_id| {
                     self.analyze_var_or_global_var_type(scope_id_opt, scope_opt.clone(), symbol_id, method_call.loc)
@@ -1554,7 +1554,7 @@ impl<'a> AnalysisContext<'a> {
                 .or(self.analyze_expr_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone()))
                 .map(|sema_ty| sema_ty.const_inner().clone())?;
 
-            match operand_ty {
+            match operand_type {
                 SemanticType::Interface(interface_type) => interface_type.symbol_id,
                 SemanticType::GenericType(generic_type) => generic_type.base,
                 SemanticType::ResolvedSymbol(resolved_symbol) => resolved_symbol.symbol_id(),
@@ -1797,10 +1797,10 @@ impl<'a> AnalysisContext<'a> {
                 };
 
             if !self.check_type_mismatch(scope_id_opt, argument_type.clone(), element_type, argument.loc) {
-                let element_type = format_sema_ty(argument_type, &(self.symbol_formatter)(scope_id_opt));
+                let element_type = format_sema_ty(argument_type, fmt_symbol);
                 let expected_type = format_sema_ty(
                     *array_type!().element_type.clone(),
-                    &(self.symbol_formatter)(scope_id_opt),
+                    fmt_symbol,
                 );
 
                 self.reporter.report(Diag {
@@ -1888,8 +1888,8 @@ impl<'a> AnalysisContext<'a> {
         if !(self.check_type_mismatch(scope_id_opt, operand.clone(), cast.target_type.clone(), cast.loc)
             || self.check_explicit_typecast(scope_id_opt, operand.clone(), cast.target_type.clone()))
         {
-            let lhs_type = format_sema_ty(cast.target_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-            let rhs_type = format_sema_ty(operand, &(self.symbol_formatter)(scope_id_opt));
+            let lhs_type = format_sema_ty(cast.target_type.clone(), fmt_symbol);
+            let rhs_type = format_sema_ty(operand, fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1940,7 +1940,7 @@ impl<'a> AnalysisContext<'a> {
         dynamic: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_ty = self.analyze_expr(scope_id_opt, &mut dynamic.operand, None)?;
+        let operand_type = self.analyze_expr(scope_id_opt, &mut dynamic.operand, None)?;
 
         if dynamic.operand.kind.is_dynamic_expr() {
             self.reporter.report(Diag {
@@ -1972,7 +1972,7 @@ impl<'a> AnalysisContext<'a> {
         {
             let mut vtable_registry = self.vtable_registry.lock().unwrap();
             let vtable_id = vtable_registry.register(
-                operand_ty,
+                operand_type,
                 interface_type.symbol_id,
                 interface_name,
                 interface_type.methods,
@@ -1984,7 +1984,7 @@ impl<'a> AnalysisContext<'a> {
             ));
 
             Some(SemanticType::DynamicType(DynamicType {
-                interface_symbol_id: interface_type.symbol_id,
+                interface_id: interface_type.symbol_id,
                 vtable_id,
                 loc: dynamic.loc,
             }))
@@ -1995,7 +1995,7 @@ impl<'a> AnalysisContext<'a> {
 // ============================================================
 // Helper Functions
 // ============================================================
-impl<'a> AnalysisContext<'a> {
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn check_generic_typedef_missing_args(&mut self, symbol_id: SymbolID, loc: Loc) -> bool {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
@@ -2042,7 +2042,7 @@ impl<'a> AnalysisContext<'a> {
             let is_generic_type = sema_ty.as_generic_type().is_some() || is_generic_interface;
 
             if is_generic_object && !is_generic_type {
-                let type_name = format_sema_ty(sema_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let type_name = format_sema_ty(sema_ty.clone(), fmt_symbol);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -2079,7 +2079,7 @@ impl<'a> AnalysisContext<'a> {
             method_sig: func_sig.clone(),
         });
 
-        let return_type = self.check_func_call(
+        let ret_type = self.check_func_call(
             scope_id_opt,
             &mut func_sig,
             &None,
@@ -2089,7 +2089,7 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         method_call.func_sig = Some(func_sig.clone());
-        Some(return_type)
+        Some(ret_type)
     }
 
     /// Analyzes regular method calls on objects (structs, enums, unions).
@@ -2126,7 +2126,7 @@ impl<'a> AnalysisContext<'a> {
         scope_opt: Option<LocalScopeRef>,
         method_call: &mut TypedMethodCall,
         object_id: SymbolID,
-        operand_ty: SemanticType,
+        operand_type: SemanticType,
         is_instance_method_operand: bool,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -2165,9 +2165,9 @@ impl<'a> AnalysisContext<'a> {
         macro_rules! lookup_object_method {
             () => {{
                 match object_methods.as_ref().unwrap().get(&method_call.method_name) {
-                    Some(method_symbol_id) => self
+                    Some(method_id) => self
                         .resolver
-                        .lookup_symbol_entry_with_id(*method_symbol_id)
+                        .lookup_symbol_entry_with_id(*method_id)
                         .and_then(|sym| Some(sym.as_method().unwrap().clone().func_sig)),
                     None => None,
                 }
@@ -2271,7 +2271,7 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(DiagLoc::new(method_call.loc)),
                 hint: Some(format!(
                     "Call it on a value of type '{}', or declare it as a static function if no instance is required.",
-                    format_sema_ty(operand_ty, &(self.symbol_formatter)(scope_id_opt))
+                    format_sema_ty(operand_type, fmt_symbol)
                 )),
             });
             return None;
@@ -2281,7 +2281,7 @@ impl<'a> AnalysisContext<'a> {
             scope_id_opt,
             object_id,
             &method_call.method_name,
-            operand_ty.clone(),
+            operand_type.clone(),
             method_call.is_fat_arrow,
             method_call.method_call_on_interface.is_some(),
             first_param_opt,
@@ -2298,7 +2298,7 @@ impl<'a> AnalysisContext<'a> {
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
 
-        let mut operand_generic_type_opt = { operand_ty.pointer_inner().as_generic_type().cloned() };
+        let mut operand_generic_type_opt = { operand_type.pointer_inner().as_generic_type().cloned() };
 
         let mut method_generic_type_opt = {
             match self.init_generic_type_with_symbol_id(
@@ -2325,7 +2325,7 @@ impl<'a> AnalysisContext<'a> {
             let mut merged_generic_type = self.merge_generic_type(generic_method, generic_operand);
 
             if let Err(diag) =
-                merged_generic_type.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+                merged_generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol)
             {
                 self.reporter.report(diag);
                 return None;
@@ -2344,7 +2344,7 @@ impl<'a> AnalysisContext<'a> {
         // 2. Generic Method, Concrete Operand
         else if let (Some(generic_method), None) = (&mut method_generic_type_opt, &operand_generic_type_opt) {
             if let Err(diag) =
-                generic_method.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+                generic_method.init(self.mapping_ctx_arena.clone(), fmt_symbol)
             {
                 self.reporter.report(diag);
                 return None;
@@ -2361,7 +2361,7 @@ impl<'a> AnalysisContext<'a> {
             method_generic_type_opt = match generic_method.finalize(
                 self.mapping_ctx_arena.clone(),
                 func_sig.generic_params.clone().unwrap(),
-                &(self.symbol_formatter)(scope_id_opt),
+                fmt_symbol,
             ) {
                 Ok(generic_type) => Some(generic_type.clone()),
                 Err(diag) => {
@@ -2373,7 +2373,7 @@ impl<'a> AnalysisContext<'a> {
         // 3. Concrete Method, Generic Operand
         else if let (None, Some(generic_operand)) = (&method_generic_type_opt, &mut operand_generic_type_opt) {
             if let Err(diag) =
-                generic_operand.init(self.mapping_ctx_arena.clone(), &(self.symbol_formatter)(scope_id_opt))
+                generic_operand.init(self.mapping_ctx_arena.clone(), fmt_symbol)
             {
                 self.reporter.report(diag);
                 return None;
@@ -2410,7 +2410,7 @@ impl<'a> AnalysisContext<'a> {
             let method_mapping_ctx_sema_ty =
                 method_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type));
 
-            self.merge_generic_operand_with_expected_type(operand_ty.clone(), method_mapping_ctx_sema_ty.clone())
+            self.merge_generic_operand_with_expected_type(operand_type.clone(), method_mapping_ctx_sema_ty.clone())
         };
 
         if let Some(generic_type) = &merged_generic_type_opt {
@@ -2419,9 +2419,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         // instance self type
-        self.set_ty_ctx_self_type(method_call, &operand_ty);
+        self.set_ty_ctx_self_type(method_call, &operand_type);
 
-        func_sig.return_type = self.check_func_call(
+        func_sig.ret_type = self.check_func_call(
             scope_id_opt,
             &mut func_sig,
             &operand_generic_type_opt,
@@ -2431,9 +2431,9 @@ impl<'a> AnalysisContext<'a> {
         )?;
 
         if let Some(generic_type) = &merged_generic_type_opt {
-            func_sig.return_type = substitute_type(
+            func_sig.ret_type = substitute_type(
                 self.mapping_ctx_arena.clone(),
-                func_sig.return_type.clone(),
+                func_sig.ret_type.clone(),
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
@@ -2476,7 +2476,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if instance_method_call {
-            let self_modifier_type = self_modifier_param_type(&func_sig.params, operand_ty).unwrap();
+            let self_modifier_type = self_modifier_param_type(&func_sig.params, operand_type).unwrap();
 
             set_self_modifier_type_in_func_sig(&mut func_sig, &self_modifier_type);
 
@@ -2495,7 +2495,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         method_call.func_sig = Some(func_sig.clone());
-        Some(func_sig.return_type.clone())
+        Some(func_sig.ret_type.clone())
     }
 
     /// Extracts the pure symbol ID from a type, normalizing it first.
@@ -2623,8 +2623,8 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_sema_ty(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                        argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                        param_type: format_sema_ty(param_type.clone(), fmt_symbol),
+                        argument_type: format_sema_ty(arg_type, fmt_symbol),
                         argument_idx: param_idx as u32,
                     }),
                     loc: Some(DiagLoc::new(loc)),
@@ -2633,7 +2633,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.normalize_sema_type(scope_id_opt, func_sig.return_type.clone(), loc)
+        self.normalize_sema_type(scope_id_opt, func_sig.ret_type.clone(), loc)
     }
 
     /// Validates variadic arguments in function calls, ensuring type compatibility and proper analysis.
@@ -2684,9 +2684,9 @@ impl<'a> AnalysisContext<'a> {
                                     kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
                                         param_type: format_sema_ty(
                                             variadic_param_type.clone(),
-                                            &(self.symbol_formatter)(scope_id_opt),
+                                            fmt_symbol,
                                         ),
-                                        argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                                        argument_type: format_sema_ty(arg_type, fmt_symbol),
                                         argument_idx: (i + static_params_len) as u32,
                                     }),
                                     loc: Some(DiagLoc::new(loc)),
@@ -2730,7 +2730,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
-        let func_name = format_func_ty(func_type, &(self.symbol_formatter)(scope_id_opt));
+        let func_name = format_func_ty(func_type, fmt_symbol);
 
         // check argument count
         if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
@@ -2768,11 +2768,11 @@ impl<'a> AnalysisContext<'a> {
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
                                             param_type: format_sema_ty(
                                                 variadic_param_type.clone(),
-                                                &(self.symbol_formatter)(scope_id_opt),
+                                                fmt_symbol,
                                             ),
                                             argument_type: format_sema_ty(
                                                 arg_type,
-                                                &(self.symbol_formatter)(scope_id_opt),
+                                                fmt_symbol,
                                             ),
                                             argument_idx: (i + static_params_len) as u32,
                                         }),
@@ -2813,8 +2813,8 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_sema_ty(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
-                        argument_type: format_sema_ty(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                        param_type: format_sema_ty(param_type.clone(), fmt_symbol),
+                        argument_type: format_sema_ty(arg_type, fmt_symbol),
                         argument_idx: param_idx as u32,
                     }),
                     loc: Some(DiagLoc::new(loc)),
@@ -2823,7 +2823,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        Some(*func_type.return_type.clone())
+        Some(*func_type.ret_type.clone())
     }
 
     /// Extracts and normalizes the semantic type from a function parameter.
@@ -2936,10 +2936,10 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_sema_ty(field.ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        lhs_type: format_sema_ty(field.ty.clone(), fmt_symbol),
                         rhs_type: format_sema_ty(
                             field_init.value.sema_ty.clone().unwrap(),
-                            &(self.symbol_formatter)(scope_id_opt),
+                            fmt_symbol,
                         ),
                     }),
                     loc: Some(DiagLoc::new(field_init.value.loc)),
@@ -3102,10 +3102,10 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty(field.ty.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                            lhs_type: format_sema_ty(field.ty.clone(), fmt_symbol),
                             rhs_type: format_sema_ty(
                                 field_init.value.sema_ty.clone().unwrap(),
-                                &(self.symbol_formatter)(scope_id_opt),
+                                fmt_symbol,
                             ),
                         }),
                         loc: Some(DiagLoc::new(field_init.value.loc)),
@@ -3179,7 +3179,7 @@ impl<'a> AnalysisContext<'a> {
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis.
     /// - `scope_opt`: Local scope for symbol resolution.
-    /// - `operand_ty`: Type of the operand (should be an enum type).
+    /// - `operand_type`: Type of the operand (should be an enum type).
     /// - `field_access`: The field access AST node to reinterpret.
     /// - `expected_type`: Optional type context for generic inference.
     ///
@@ -3192,11 +3192,11 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
 
         scope_opt: Option<LocalScopeRef>,
-        operand_ty: SemanticType,
+        operand_type: SemanticType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> (bool, Option<SemanticType>) {
-        let Some(symbol_id) = operand_ty.maybe_generic_base_symbol_id() else {
+        let Some(symbol_id) = operand_type.maybe_generic_base_symbol_id() else {
             return (false, None);
         };
 
@@ -3210,7 +3210,7 @@ impl<'a> AnalysisContext<'a> {
 
         {
             let (generic_params, mapping_ctx) = self.extract_and_merge_generic_context(
-                &operand_ty,
+                &operand_type,
                 resolved_enum.enum_sig.generic_params.as_ref(),
                 expected_type,
             );
@@ -3236,7 +3236,7 @@ impl<'a> AnalysisContext<'a> {
     /// # Parameters
     /// - `scope_id_opt`: Scope for type analysis.
     /// - `scope_opt`: Local scope for symbol resolution.
-    /// - `operand_ty`: Type of the operand (should be an enum type).
+    /// - `operand_type`: Type of the operand (should be an enum type).
     /// - `method_call`: The method call AST node to reinterpret.
     /// - `expected_type`: Optional type context for generic inference.
     ///
@@ -3249,11 +3249,11 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
 
         scope_opt: Option<LocalScopeRef>,
-        operand_ty: SemanticType,
+        operand_type: SemanticType,
         method_call: &mut TypedMethodCall,
         expected_type: Option<SemanticType>,
     ) -> (bool, Option<SemanticType>) {
-        let Some(symbol_id) = operand_ty.maybe_generic_base_symbol_id() else {
+        let Some(symbol_id) = operand_type.maybe_generic_base_symbol_id() else {
             return (false, None);
         };
 
@@ -3276,7 +3276,7 @@ impl<'a> AnalysisContext<'a> {
         // method_call.object_symbol_id = Some(resolved_enum.symbol_id);
 
         let (generic_params, mapping_ctx) = self.extract_and_merge_generic_context(
-            &operand_ty,
+            &operand_type,
             resolved_enum.enum_sig.generic_params.as_ref(),
             expected_type,
         );
@@ -3394,7 +3394,7 @@ impl<'a> AnalysisContext<'a> {
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
                         struct_name: format_sema_ty(
                             SemanticType::UnnamedUnion(unnamed_union_type.clone()),
-                            &(self.symbol_formatter)(scope_id_opt),
+                            fmt_symbol,
                         ),
                         field_name: field_access.field_name.clone(),
                     }),
@@ -3466,7 +3466,7 @@ impl<'a> AnalysisContext<'a> {
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
                         struct_name: format_sema_ty(
                             SemanticType::UnnamedStruct(unnamed_struct_type.clone()),
-                            &(self.symbol_formatter)(scope_id_opt),
+                            fmt_symbol,
                         ),
                         field_name: field_access.field_name.clone(),
                     }),
@@ -3507,7 +3507,7 @@ impl<'a> AnalysisContext<'a> {
     /// - `struct_name`: Name of the struct type for error messages.
     /// - `struct_fields`: List of fields defined on the struct.
     /// - `struct_methods`: Methods of the struct for visibility context.
-    /// - `struct_symbol_id`: Symbol ID of the struct type.
+    /// - `struct_id`: Symbol ID of the struct type.
     ///
     /// # Returns
     /// - `Some(SemanticType)`: The normalized type of the accessed struct field.
@@ -3520,7 +3520,7 @@ impl<'a> AnalysisContext<'a> {
         struct_name: String,
         struct_fields: Vec<TypedStructField>,
         struct_methods: HashMap<String, SymbolID>,
-        struct_symbol_id: SymbolID,
+        struct_id: SymbolID,
     ) -> Option<SemanticType> {
         let field_index = match struct_fields
             .iter()
@@ -3559,7 +3559,7 @@ impl<'a> AnalysisContext<'a> {
 
         field_access.field_index = Some(field_index);
         field_access.field_ty = Some(typed_struct_field.ty.clone());
-        field_access.object_symbol_id = Some(struct_symbol_id);
+        field_access.object_symbol_id = Some(struct_id);
 
         Some(typed_struct_field.ty.clone())
     }
@@ -3653,11 +3653,11 @@ impl<'a> AnalysisContext<'a> {
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
                             lhs_type: format_sema_ty(
                                 enum_valued_field.ty.clone(),
-                                &(self.symbol_formatter)(scope_id_opt),
+                                fmt_symbol,
                             ),
                             rhs_type: format_sema_ty(
                                 typed_expr.sema_ty.clone().unwrap(),
-                                &(self.symbol_formatter)(scope_id_opt),
+                                fmt_symbol,
                             ),
                         }),
                         loc: Some(DiagLoc::new(typed_expr.loc)),
@@ -4110,7 +4110,7 @@ impl<'a> AnalysisContext<'a> {
                     SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_ty)),
                 };
 
-                scope_ref.with_symbol_id_mut(self_modifier.self_symbol_id.unwrap(), |local_symbol| {
+                scope_ref.with_symbol_id_mut(self_modifier.self_id.unwrap(), |local_symbol| {
                     let resolved_var = local_symbol.as_variable_mut().unwrap();
                     resolved_var.typed_variable.ty = Some(new_self_modifier_ty);
                 });
@@ -4379,17 +4379,17 @@ impl<'a> AnalysisContext<'a> {
     /// - Use '->' for pointer-to-union access: `union_ptr->field`
     ///
     /// # Parameters
-    /// - `operand_ty`: The semantic type of the union operand.
+    /// - `operand_type`: The semantic type of the union operand.
     /// - `field_access`: The field access AST node to validate.
     ///
     /// # Returns
     /// - `true`: If the operator usage is correct.
     /// - `false`: If the wrong operator is used (errors are reported via diagnostics).
     ///
-    fn validate_union_field_access(&mut self, operand_ty: SemanticType, field_access: &TypedFieldAccess) -> bool {
+    fn validate_union_field_access(&mut self, operand_type: SemanticType, field_access: &TypedFieldAccess) -> bool {
         let mut result = true;
 
-        if operand_ty.is_pointer() && !field_access.is_fat_arrow {
+        if operand_type.is_pointer() && !field_access.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UseThinArrow),
@@ -4397,7 +4397,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: Some("Use '->' when accessing through a pointer.".to_string()),
             });
             result = false;
-        } else if !operand_ty.is_pointer() && field_access.is_fat_arrow {
+        } else if !operand_type.is_pointer() && field_access.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
@@ -4591,10 +4591,10 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(unnamed_struct_type) = sema_ty.as_unnamed_struct() {
             unnamed_struct_type_as_inference_ctx(&unnamed_struct_type)
-        } else if let Some(struct_symbol_id) = sema_ty.as_struct_symbol_id() {
+        } else if let Some(struct_id) = sema_ty.as_struct_symbol_id() {
             let sym = self
                 .resolver
-                .resolve_local_or_global_symbol(scope_opt, struct_symbol_id)
+                .resolve_local_or_global_symbol(scope_opt, struct_id)
                 .unwrap();
             let resolved_struct = sym.as_struct().unwrap();
 

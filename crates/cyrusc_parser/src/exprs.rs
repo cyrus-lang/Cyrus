@@ -466,7 +466,7 @@ impl<'source_file> Parser<'source_file> {
 
         self.next_token(); // consume function
         let params = self.parse_func_params()?;
-        let return_type = self.parse_type_specifier()?;
+        let ret_type = self.parse_type_specifier()?;
         self.next_token(); // last token of return type
 
         let body = self.parse_block()?;
@@ -476,7 +476,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(ASTExpr::Lambda(ASTLambdaExpr {
             params,
             body: Box::new(body),
-            return_type,
+            ret_type,
             inline,
             loc: Loc::new(self.file_id(), line, start, end),
         }))

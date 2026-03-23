@@ -14,10 +14,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     SymbolID,
     exprs::TypedIdentifier,
-    format::format_sema_ty,
+    format::{SymbolFormatterFn, format_sema_ty},
     generics::mapping_ctx_arena::{GenericMappingCtxArena, ParentGenericMappingCtxID},
     stmts::TypedGenericParamsList,
     types::SemanticType,
@@ -262,11 +263,11 @@ impl GenericMappingCtx {
         Self { named, links, parent }
     }
 
-    pub fn format(&self, format_symbol: &impl Fn(SymbolID) -> String) -> String {
+    pub fn format(&self, fmt_symbol: SymbolFormatterFn) -> String {
         let mut parts = Vec::new();
 
         for (entry, sema_ty) in &self.named {
-            let type_str = format_sema_ty(sema_ty.clone(), format_symbol);
+            let type_str = format_sema_ty(sema_ty.clone(), fmt_symbol);
             parts.push(format!("{} = {}", entry, type_str));
         }
 

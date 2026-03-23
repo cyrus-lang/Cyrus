@@ -237,7 +237,7 @@
 //             params: resolved_method.func_sig.params.clone(),
 //             generic_params: resolved_method.func_sig.generic_params.clone(),
 //             body: func_body,
-//             return_type: resolved_method.func_sig.return_type.clone(),
+//             ret_type: resolved_method.func_sig.ret_type.clone(),
 //             modifiers: resolved_method.func_sig.modifiers.clone(),
 //             loc: resolved_method.func_sig.loc,
 //         };
@@ -365,11 +365,11 @@
 
 //     fn lower_switch(&mut self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
 //         let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
-//         let operand_ty = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
+//         let operand_type = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
 
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-//         let unnamed_enum_type_opt = operand_ty
+//         let unnamed_enum_type_opt = operand_type
 //             .as_enum_symbol_id()
 //             .and_then(|symbol_id| {
 //                 self.resolver
@@ -379,7 +379,7 @@
 //                     .cloned()
 //                     .map(|resolved_enum| enum_sig_as_unnamed_enum_type(&resolved_enum.enum_sig, switch_stmt.loc))
 //             })
-//             .or(operand_ty.as_generic_type().and_then(|generic_type| {
+//             .or(operand_type.as_generic_type().and_then(|generic_type| {
 //                 Some(
 //                     self.resolver
 //                         .resolve_local_or_global_symbol(scope_opt.clone(), generic_type.base)
@@ -399,7 +399,7 @@
 //                         .unwrap(),
 //                 )
 //             }))
-//             .or(operand_ty.as_unnamed_enum());
+//             .or(operand_type.as_unnamed_enum());
 
 //         let default = switch_stmt
 //             .default_case
@@ -934,7 +934,7 @@
 //         let params = self.lower_func_params(scope_id_opt, &func_def.params);
 
 //         let body = self.lower_body(&func_def.body);
-//         let ret = self.lower_sema_ty(scope_id_opt, &func_def.return_type);
+//         let ret = self.lower_sema_ty(scope_id_opt, &func_def.ret_type);
 
 //         let mut cir_func_def = CIRFuncDefStmt {
 //             irv_id: func_def.symbol_id,
@@ -969,7 +969,7 @@
 //         mangle_name: bool,
 //     ) -> CIRFuncDeclStmt {
 //         let params = self.lower_func_params(scope_id_opt, &func_decl.params);
-//         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.return_type);
+//         let ret = self.lower_sema_ty(scope_id_opt, &func_decl.ret_type);
 
 //         let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
 
@@ -999,7 +999,7 @@
 //         func_sig: &FuncSig,
 //     ) -> CIRFuncDeclStmt {
 //         let params = self.lower_func_params(scope_id_opt, &func_sig.params);
-//         let ret = self.lower_sema_ty(scope_id_opt, &func_sig.return_type);
+//         let ret = self.lower_sema_ty(scope_id_opt, &func_sig.ret_type);
 
 //         let mut cir_func_decl = CIRFuncDeclStmt {
 //             irv_id,
@@ -1391,7 +1391,7 @@
 //     fn lower_lambda(&mut self, scope_id_opt: Option<ScopeID>, lambda: &TypedLambdaExpr) -> CIRExprKind {
 //         let params = self.lower_func_params(scope_id_opt, &lambda.params);
 //         let body = Box::new(self.lower_body(&lambda.body));
-//         let ret = self.lower_sema_ty(scope_id_opt, &lambda.return_type);
+//         let ret = self.lower_sema_ty(scope_id_opt, &lambda.ret_type);
 
 //         let cir_func_type = CIRFuncTy {
 //             params: params.list.iter().map(|param| param.ty.clone()).collect(),
@@ -1429,7 +1429,7 @@
 
 //         let ret_ty = self.lower_sema_ty(
 //             scope_id_opt,
-//             &method_call.func_sig.as_ref().unwrap().return_type.clone(),
+//             &method_call.func_sig.as_ref().unwrap().ret_type.clone(),
 //         );
 
 //         let interface_method_call_metadata = method_call.method_call_on_interface.as_ref().unwrap();
@@ -1481,7 +1481,7 @@
 //             .map(|arg| self.lower_expr(scope_id_opt, arg))
 //             .collect::<Vec<CIRExpr>>();
 
-//         let ret_ty = self.lower_sema_ty(scope_id_opt, &func_sig.return_type.clone());
+//         let ret_ty = self.lower_sema_ty(scope_id_opt, &func_sig.ret_type.clone());
 
 //         let cir_expr_kind;
 //         if let Some(monomorph_key) = &method_call.monomorph_key {
@@ -1573,10 +1573,10 @@
 //     fn lower_method_call(&mut self, scope_id_opt: Option<ScopeID>, method_call: &TypedMethodCall) -> CIRExprKind {
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-//         if let Some(enum_symbol_id) = method_call.enum_const {
+//         if let Some(enum_id) = method_call.enum_const {
 //             let sym = self
 //                 .resolver
-//                 .resolve_local_or_global_symbol(scope_opt.clone(), enum_symbol_id)
+//                 .resolve_local_or_global_symbol(scope_opt.clone(), enum_id)
 //                 .unwrap();
 
 //             if let Some(resolved_enum) = sym.as_enum() {
@@ -1684,7 +1684,7 @@
 //             .map(|arg| self.lower_expr(scope_id_opt, arg))
 //             .collect();
 
-//         let ret_ty = self.lower_sema_ty(scope_id_opt, &func_call.return_type.clone().unwrap());
+//         let ret_ty = self.lower_sema_ty(scope_id_opt, &func_call.ret_type.clone().unwrap());
 
 //         if let Some(monomorph_key) = &func_call.monomorph_key {
 //             let monomorph_func_entry = self.resolve_monomorph_func_entry(monomorph_key).unwrap();
@@ -1902,7 +1902,7 @@
 //                 })
 //             }
 //             SemanticType::FuncType(func_type) => {
-//                 let ret = Box::new(self.lower_sema_ty(scope_id_opt, &func_type.return_type));
+//                 let ret = Box::new(self.lower_sema_ty(scope_id_opt, &func_type.ret_type));
 //                 let params = self.lower_func_type_params(scope_id_opt, &func_type.params);
 
 //                 let mut cir_type = CIRFuncTy {

@@ -219,56 +219,63 @@ impl SymbolEntry {
 
     pub fn method_generic_params(&self) -> Option<&TypedGenericParamsList> {
         match &self.kind {
-            SymbolEntryKind::Method(resolved_methods) => resolved_methods.func_sig.generic_params.as_ref(),
+            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.generic_params.as_ref(),
             _ => None,
         }
     }
 
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match &self.kind {
-            SymbolEntryKind::Struct(struct_) => Some(struct_),
+            SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),
             _ => None,
         }
     }
 
     pub fn as_enum(&self) -> Option<&ResolvedEnum> {
         match &self.kind {
-            SymbolEntryKind::Enum(enum_) => Some(enum_),
+            SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum),
             _ => None,
         }
     }
 
     pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
         match &self.kind {
-            SymbolEntryKind::Typedef(typedef) => Some(typedef),
+            SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),
             _ => None,
         }
     }
 
     pub fn as_func(&self) -> Option<&ResolvedFunc> {
         match &self.kind {
-            SymbolEntryKind::Func(func) => Some(func),
+            SymbolEntryKind::Func(resolved_func) => Some(resolved_func),
             _ => None,
         }
     }
 
     pub fn as_global_var(&self) -> Option<&ResolvedGlobalVar> {
         match &self.kind {
-            SymbolEntryKind::GlobalVar(global_var) => Some(global_var),
+            SymbolEntryKind::GlobalVar(resolved_global_var) => Some(resolved_global_var),
+            _ => None,
+        }
+    }
+
+    pub fn as_var(&self) -> Option<&ResolvedVar> {
+        match &self.kind {
+            SymbolEntryKind::Var(resolved_var) => Some(resolved_var),
             _ => None,
         }
     }
 
     pub fn as_interface(&self) -> Option<&ResolvedInterface> {
         match &self.kind {
-            SymbolEntryKind::Interface(interface) => Some(interface),
+            SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface),
             _ => None,
         }
     }
 
     pub fn as_method(&self) -> Option<&ResolvedMethod> {
         match &self.kind {
-            SymbolEntryKind::Method(method) => Some(method),
+            SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
             _ => None,
         }
     }
