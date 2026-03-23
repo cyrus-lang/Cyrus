@@ -19,8 +19,11 @@ use crate::modules::ImportedModuleEntry;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::module_loader::ModuleLoader;
-use cyrusc_internal::symbols::symbols::SymbolEntry;
-use cyrusc_internal::symbols::table::SymbolTable;
+use cyrusc_internal::symbols::symbols::{
+    ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
+    ResolvedUnion, ResolvedVar, SymbolEntry, SymbolEntryKind,
+};
+use cyrusc_internal::symbols::table::{SymbolEntryMut, SymbolQuery, SymbolTable};
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_typed_ast::generics::monomorph::MonomorphRegistry;
 use cyrusc_typed_ast::stmts::*;
@@ -34,7 +37,6 @@ mod diagnostics;
 pub mod fs_module_loader;
 pub mod macros;
 pub mod modules;
-pub(crate) mod query;
 pub mod traverse;
 
 type ModuleGroupName = String;
@@ -204,6 +206,35 @@ impl Resolver {
             None => self.master_module_file_path.clone(),
         }
     }
+
+    fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut SymbolEntry) -> R,
+    {
+        let mut registry = self.global_symbols_registry.inner.lock().unwrap();
+
+        for table in registry.values_mut() {
+            if let Some(entry) = table.entries.get_mut(&symbol_id) {
+                return Some(f(entry));
+            }
+        }
+
+        None
+    }
+
+    /// Resolves a symbol by searching the active scope stack.
+    ///
+    /// Lookup proceeds from the innermost scope outward until a matching
+    /// symbol binding is found.
+    pub(crate) fn resolve_scope_symbol(&self, name: &str) -> Option<SymbolID> {
+        for scope in self.scopes_into_iter() {
+            if let Some(symbol_id) = scope.resolve(name) {
+                return Some(symbol_id);
+            }
+        }
+
+        None
+    }
 }
 
 impl GlobalSymbolRegistry {
@@ -335,6 +366,230 @@ impl ModuleFileMap {
     pub fn remove(&self, module_id: ModuleID) {
         let mut map = self.inner.lock().unwrap();
         map.remove(&module_id);
+    }
+}
+
+impl SymbolQuery for Resolver {
+    /// Resolve a symbol id to a variable within the given scope.
+    fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Var(resolved_var) => Some(resolved_var),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to a method definition.
+    fn lookup_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to a global function.
+    fn lookup_func(&self, symbol_di: SymbolID) -> Option<ResolvedFunc> {
+        match self.lookup_global_symbol(symbol_di)?.kind {
+            SymbolEntryKind::Func(resolved_func) => Some(resolved_func),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to a type definition (typedef).
+    fn lookup_typedef(&self, symbol_id: SymbolID) -> Option<ResolvedTypedef> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to a global variable.
+    fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::GlobalVar(resolved_global_var) => Some(resolved_global_var),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to an interface/trait definition.
+    fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to a union definition.
+    fn lookup_union(&self, symbol_id: SymbolID) -> Option<ResolvedUnion> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Union(resolved_union) => Some(resolved_union),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to an enum definition.
+    fn lookup_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum),
+            _ => None,
+        }
+    }
+
+    /// Resolve a symbol id to a struct definition.
+    fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct> {
+        match self.lookup_global_symbol(symbol_id)?.kind {
+            SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),
+            _ => None,
+        }
+    }
+
+    /// Look up a symbol identifier by name.
+    fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID> {
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
+
+        for table in registry.values() {
+            if let Some(symbol_id) = table.names.get(name) {
+                return Some(*symbol_id);
+            }
+        }
+
+        None
+    }
+
+    /// Look up a symbol identifier by name within a specific module.
+    fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
+        let table = registry.get(&module_id)?;
+        table.names.get(name).copied()
+    }
+
+    /// Retrieve the full semantic entry for a symbol by its name.
+    fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry> {
+        let symbol_id = self.lookup_symbol_id(name)?;
+        self.lookup_global_symbol(symbol_id)
+    }
+
+    /// Retrieve the semantic entry for a specific symbol identifier.
+    fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        let registry = self.global_symbols_registry.inner.lock().unwrap();
+
+        for table in registry.values() {
+            if let Some(entry) = table.entries.get(&symbol_id) {
+                return Some(entry.clone());
+            }
+        }
+
+        None
+    }
+
+    /// Perform a deep resolution of a symbol, following aliases or redirects.
+    fn lookup_global_symbol_deep(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        let mut current_entry = self.lookup_global_symbol(symbol_id)?;
+
+        // if the entry is an alias, resolve what it points to
+        while let SymbolEntryKind::ProxiedSymbol(_, symbol_id) = &current_entry.kind {
+            current_entry = self.lookup_global_symbol(*symbol_id)?;
+        }
+
+        Some(current_entry)
+    }
+
+    fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
+        match self.lookup_global_symbol(symbol_id) {
+            Some(symbol_entry) => symbol_entry.decl_name(),
+            None => "<UNRESOLVED_SYMBOL>".to_string(),
+        }
+    }
+}
+
+impl SymbolEntryMut for Resolver {
+    fn with_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedVar) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Var(resolved_var) => Some(f(resolved_var)),
+            _ => None,
+        })?
+    }
+
+    fn with_global_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedGlobalVar) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::GlobalVar(resolved_global_var) => Some(f(resolved_global_var)),
+            _ => None,
+        })?
+    }
+
+    fn with_method_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedMethod) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Method(resolved_method) => Some(f(resolved_method)),
+            _ => None,
+        })?
+    }
+
+    fn with_func_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedFunc) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Func(resolved_func) => Some(f(resolved_func)),
+            _ => None,
+        })?
+    }
+
+    fn with_typedef_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedTypedef) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Typedef(resolved_typedef) => Some(f(resolved_typedef)),
+            _ => None,
+        })?
+    }
+
+    fn with_union_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedUnion) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Union(resolved_union) => Some(f(resolved_union)),
+            _ => None,
+        })?
+    }
+
+    fn with_enum_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedEnum) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Enum(resolved_enum) => Some(f(resolved_enum)),
+            _ => None,
+        })?
+    }
+
+    fn with_struct_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedStruct) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Struct(resolved_struct) => Some(f(resolved_struct)),
+            _ => None,
+        })?
+    }
+
+    fn with_interface_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedInterface) -> R,
+    {
+        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
+            SymbolEntryKind::Interface(resolved_interface) => Some(f(resolved_interface)),
+            _ => None,
+        })?
     }
 }
 

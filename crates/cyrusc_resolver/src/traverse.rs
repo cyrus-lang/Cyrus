@@ -125,7 +125,7 @@ impl Resolver {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                name: ident.value.clone(),
+                name: ident.as_string(),
             }),
             loc: Some(ident.loc),
             hint: None,
@@ -173,7 +173,7 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                        name: ident.value.clone(),
+                        name: ident.as_string(),
                     }),
                     loc: Some(ident.loc),
                     hint: None,
@@ -364,7 +364,7 @@ impl Resolver {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(ResolverDiagKind::TypeNotFound {
-                name: ident.value.clone(),
+                name: ident.as_string(),
             }),
             loc: Some(ident.loc),
             hint: None,
@@ -753,7 +753,7 @@ impl Resolver {
         let sema_ty = self.resolve_type(&generic_params, typedef.type_spec.clone(), typedef.loc)?;
 
         let typedef_sig = TypedefSig {
-            name: typedef.ident.value.clone(),
+            name: typedef.ident.as_string(),
             generic_params,
             ty: sema_ty.clone(),
             vis: typedef.vis.clone(),
@@ -778,7 +778,7 @@ impl Resolver {
 
         Some(TypedStmt::Typedef(TypedTypedefStmt {
             symbol_id,
-            name: typedef.ident.value.clone(),
+            name: typedef.ident.as_string(),
             ty: sema_ty,
             generic_params,
             vis: typedef.vis.clone(),
@@ -834,7 +834,7 @@ impl Resolver {
 
     fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {
         let module_id = self.module_id.unwrap();
-        let name = interface.ident.value.clone();
+        let name = interface.ident.as_string();
         let loc = interface.loc;
 
         let resolved_generic_params = match &interface.generic_params {
@@ -868,7 +868,7 @@ impl Resolver {
             typed_methods.push(TypedFuncDeclStmt {
                 module_id,
                 symbol_id,
-                name: func_decl.ident.value.clone(),
+                name: func_decl.ident.as_string(),
                 generic_params: resolved_func_generic_params,
                 params: TypedFuncParams {
                     list: resolved_params_list,
@@ -912,7 +912,7 @@ impl Resolver {
     }
 
     fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
-        let name = union_decl.ident.value.clone();
+        let name = union_decl.ident.as_string();
         let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(&name).unwrap();
         let loc = union_decl.loc;
@@ -935,7 +935,7 @@ impl Resolver {
             };
 
             typed_union_fields.push(TypedUnionField {
-                name: field.ident.value.clone(),
+                name: field.ident.as_string(),
                 ty: sema_ty,
                 loc: field.loc,
             });
@@ -1087,7 +1087,7 @@ impl Resolver {
         let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(&global_var.ident.value).unwrap();
 
-        let name = global_var.ident.value.clone();
+        let name = global_var.ident.as_string();
         let loc = global_var.loc;
 
         let sema_ty = match &global_var.type_spec {
@@ -1138,7 +1138,7 @@ impl Resolver {
         let mut method_names: Vec<String> = Vec::new();
 
         for func_def in methods_list {
-            let method_name = func_def.ident.value.clone();
+            let method_name = func_def.ident.as_string();
 
             if method_names.contains(&method_name) {
                 self.reporter.report(Diag {
@@ -1179,7 +1179,7 @@ impl Resolver {
                 None => continue,
             };
 
-            let original_name = func_def.ident.value.clone();
+            let original_name = func_def.ident.as_string();
             let unique_name = unique_object_method_name(object_symbol_id, original_name.clone());
 
             for param in &mut params {
@@ -1372,7 +1372,7 @@ impl Resolver {
             .filter_map(|field| {
                 self.resolve_type(&generic_params, field.ty.clone(), field.loc)
                     .map(|ty| TypedStructField {
-                        name: field.ident.value.clone(),
+                        name: field.ident.as_string(),
                         vis: field.vis.clone(),
                         ty,
                         loc: field.loc,
@@ -1390,7 +1390,7 @@ impl Resolver {
             symbol_id,
             module_id,
             struct_sig: StructSig {
-                name: struct_decl.ident.value.clone(),
+                name: struct_decl.ident.as_string(),
                 fields: typed_struct_fields.clone(),
                 generic_params: generic_params.clone(),
                 impls: impls.clone(),
@@ -1410,7 +1410,7 @@ impl Resolver {
         Some(TypedStmt::Struct(TypedStructStmt {
             module_id,
             symbol_id,
-            name: struct_decl.ident.value.clone(),
+            name: struct_decl.ident.as_string(),
             fields: typed_struct_fields,
             methods,
             generic_params,
@@ -1513,7 +1513,7 @@ impl Resolver {
 
         Some(TypedFuncParam {
             symbol_id,
-            name: param.ident.value.clone(),
+            name: param.ident.as_string(),
             ty,
             loc: param.loc,
         })
@@ -1589,7 +1589,7 @@ impl Resolver {
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
             module_id,
             symbol_id,
-            name: func_decl.ident.value.clone(),
+            name: func_decl.ident.as_string(),
             generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
@@ -1616,7 +1616,7 @@ impl Resolver {
         let func_sig = FuncSig {
             module_id,
             symbol_id: Some(symbol_id),
-            name: func_def.ident.value.clone(),
+            name: func_def.ident.as_string(),
             generic_params: generic_params.clone(),
             is_func_decl: false,
             params: TypedFuncParams {
@@ -1650,7 +1650,7 @@ impl Resolver {
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
             module_id,
             symbol_id,
-            name: func_def.ident.value.clone(),
+            name: func_def.ident.as_string(),
             generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
@@ -2246,7 +2246,7 @@ impl Resolver {
             .iter()
             .filter_map(|field_init| {
                 self.resolve_expr(&field_init.value).map(|value| TypedStructFieldInit {
-                    name: field_init.ident.value.clone(),
+                    name: field_init.ident.as_string(),
                     value,
                     loc: field_init.loc,
                 })
@@ -2621,7 +2621,7 @@ impl Resolver {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
-                    symbol_name: ident.value.clone(),
+                    symbol_name: ident.as_string(),
                 }),
                 loc: Some(ident.loc),
                 hint: None,

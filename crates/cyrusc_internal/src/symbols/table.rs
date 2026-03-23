@@ -22,13 +22,8 @@ use crate::symbols::symbols::{
 use cyrusc_typed_ast::{ModuleID, SymbolID};
 use std::collections::HashMap;
 
-pub trait GlobalSymbolQuery {
-    fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry>;
-    fn lookup_global_symbol(&self, symbol: SymbolID) -> Option<SymbolEntry>;
-    fn lookup_global_symbol_deep(&self, symbol: SymbolID) -> Option<SymbolEntry>;
-}
+pub type SymbolFormatterFn<'a> = &'a dyn Fn(SymbolID) -> String;
+pub type BoxedSymbolFormatterFn = Box<dyn Fn(SymbolID) -> String + Send + Sync + 'static>;
 
 pub trait SymbolQuery {
     fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
@@ -40,6 +35,56 @@ pub trait SymbolQuery {
     fn lookup_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum>;
     fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct>;
     fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface>;
+
+    fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID>;
+    fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
+    fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry>;
+    fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
+    fn lookup_global_symbol_deep(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
+
+    /// Returns the declaration name of a symbol visible from the given module
+    /// and optional local scope.
+    ///
+    /// If the symbol cannot be resolved, a fallback string is returned.
+    fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
+}
+
+pub trait SymbolEntryMut {
+    fn with_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedVar) -> R;
+
+    fn with_global_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedGlobalVar) -> R;
+
+    fn with_method_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedMethod) -> R;
+
+    fn with_func_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedFunc) -> R;
+
+    fn with_typedef_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedTypedef) -> R;
+
+    fn with_union_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedUnion) -> R;
+
+    fn with_enum_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedEnum) -> R;
+
+    fn with_struct_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedStruct) -> R;
+
+    fn with_interface_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ResolvedInterface) -> R;
 }
 
 /// A collection of symbols and their metadata within a specific scope or module.

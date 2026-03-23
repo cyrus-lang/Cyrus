@@ -15,20 +15,15 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::fs_module_loader::diagnostics::ModuleFSLoaderDiagKind;
 use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree, format::format_module_segments};
-use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel, exit_with_single_diag};
+use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader};
 use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::{FileID, SourceMap};
-use std::{
-    env,
-    path::{Path, PathBuf},
-    rc::Rc,
-    sync::Arc,
-};
-
-use crate::fs_module_loader::diagnostics::ModuleFSLoaderDiagKind;
+use std::path::{Component, Path, PathBuf};
+use std::{env, rc::Rc, sync::Arc};
 
 mod diagnostics;
 
@@ -160,10 +155,10 @@ impl ModuleLoader for FsModuleLoader {
     /// Loads all modules referenced in an import statement.
     /// Phase 1: locate and parse each module.  
     /// Phase 2: if all succeeded, construct LoadedModule entries.
-    fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKind>>> {
+    fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> {
         // phase 1: collect and parse all modules
         let mut parsed_program_trees: Vec<(PathBuf, FileID, Rc<ProgramTree>, &ModulePath)> = Vec::new();
-        let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKind>>> = Vec::new();
+        let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> = Vec::new();
 
         for sub_import in &import.paths {
             let file_path = match self.get_imported_module_file_path(sub_import.segments.clone()) {
@@ -243,51 +238,69 @@ impl ModuleLoader for FsModuleLoader {
         loaded_modules_list
     }
 
-    // FIXME
     fn module_name_from_file_path(&mut self, path: &Path) -> String {
-        let path_buf = path.canonicalize().unwrap_or_else(|_| PathBuf::from(path));
+        // canonicalize for consistent behavior
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 
-        let relative_path = Path::new(&self.opts.base_path).to_path_buf();
+        // canonical base path
+        let base_path = Path::new(&self.opts.base_path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(&self.opts.base_path));
 
-        let mut parts: Vec<String> = relative_path
-            .iter()
-            .filter_map(|c| {
-                let s = c.to_string_lossy();
-                if s.is_empty() { None } else { Some(s.to_string()) }
+        // compute relative path (fallback to canonical_path if unrelated)
+        let relative = canonical_path
+            .strip_prefix(&base_path)
+            .unwrap_or(&canonical_path)
+            .to_path_buf();
+
+        // extract usable parts from the relative path
+        let mut parts: Vec<String> = relative
+            .components()
+            .filter_map(|c| match c {
+                Component::Normal(os) => os.to_str().map(|s| s.to_string()),
+                _ => None,
             })
             .collect();
 
-        // remove extension from last component
+        // remove file extension from the last component
         if let Some(last) = parts.last_mut() {
             if let Some(stripped) = last.strip_suffix(".cyrus") {
                 *last = stripped.to_string();
+            } else if let Some((name, _ext)) = last.rsplit_once('.') {
+                *last = name.to_string();
             }
         }
 
-        // detect if path belongs to stdlib
+        // detect if this file is in stdlib
+        let is_stdlib = self.opts.stdlib_path.as_ref().map_or(false, |path_str| {
+            if let Ok(path_buf) = Path::new(path_str).canonicalize() {
+                canonical_path.starts_with(path_buf)
+            } else {
+                false
+            }
+        });
 
-        // FIXME We need a better mechanism to determine that it's stdlib_path or not!
-        let stdlib_path = self.opts.stdlib_path.clone().map(|path| Path::new(&path).to_path_buf());
-        let is_stdlib = stdlib_path
-            .map(|path_buf| path_buf.starts_with(path_buf.to_str().unwrap()))
-            .unwrap_or(false);
-
+        // construct module name
         let mut module_name = parts.join("_");
 
-        // avoid double `stdlib_stdlib` prefix
-        if module_name.starts_with("stdlib_") && is_stdlib {
-            // already prefixed
-        } else if is_stdlib {
+        // prefix stdlib modules
+        if is_stdlib && !module_name.starts_with("stdlib_") {
             module_name = format!("stdlib_{}", module_name);
         }
 
         // remove leading underscores
         module_name = module_name.trim_start_matches('_').to_string();
 
-        // sanitize
+        // sanitize to valid identifier
         module_name
             .chars()
-            .map(|ch| if ch.is_alphanumeric() || ch == '_' { ch } else { '_' })
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || ch == '_' {
+                    ch
+                } else {
+                    '_'
+                }
+            })
             .collect()
     }
 }

@@ -15,26 +15,39 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{
-    SymbolID,
-    types::{SemanticType, TypedFuncType},
-};
-
 #[derive(Debug, Clone)]
-pub(crate) struct TypeContext {
-    pub(crate) current_func: Option<TypedFuncType>,
-    pub(crate) current_self: Option<SemanticType>,
-    pub(crate) current_obj_operand_ty: Option<SemanticType>,
-    pub(crate) current_method_symbol_id: Option<SymbolID>,
+pub struct AnalyzerConfig {
+    pub warnings: WarningConfig,
+    pub strict_mode: bool,
 }
 
-impl TypeContext {
-    pub fn new() -> Self {
+#[derive(Debug, Clone)]
+pub struct WarningConfig {
+    pub enabled: bool,
+    pub warnings_as_errors: bool,
+
+    pub unused_variables: bool,
+    pub unreachable_code: bool,
+    pub dead_code: bool,
+}
+
+impl Default for WarningConfig {
+    fn default() -> Self {
         Self {
-            current_func: None,
-            current_self: None,
-            current_obj_operand_ty: None,
-            current_method_symbol_id: None,
+            enabled: true,
+            warnings_as_errors: false,
+            unused_variables: true,
+            unreachable_code: true,
+            dead_code: true,
+        }
+    }
+}
+
+impl Default for AnalyzerConfig {
+    fn default() -> Self {
+        Self {
+            warnings: WarningConfig::default(),
+            strict_mode: false,
         }
     }
 }

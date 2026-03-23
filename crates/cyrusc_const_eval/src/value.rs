@@ -87,5 +87,8 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::Dynamic(_)
         | TypedExprKind::SemanticType(_)
         | TypedExprKind::AddrOf(_) => false,
+
+        // TODO
+        TypedExprKind::Builtin(_typed_builtin) => todo!(),
     }
 }

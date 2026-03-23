@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
+cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }

@@ -33,11 +33,15 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Recursively substitute generic type parameters within a semantic type.
+/// Performs substitution for every nested type form (array, pointer, tuple, etc.)
+/// using the provided generic mapping context.
 pub fn substitute_type(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     sema_ty: SemanticType,
     mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<SemanticType> {
+    /// Small helper to apply a substitution callback on an inner type.
     fn sub<F>(inner: SemanticType, f: &F) -> Option<SemanticType>
     where
         F: Fn(SemanticType) -> Option<SemanticType>,
@@ -237,7 +241,7 @@ pub fn substitute_union_sig(
     sig: &UnionSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<UnionSig> {
-    let new_fields = sig
+    let fields = sig
         .fields
         .iter()
         .map(|f| {
@@ -251,7 +255,7 @@ pub fn substitute_union_sig(
     Some(UnionSig {
         symbol_id: sig.symbol_id,
         name: sig.name.clone(),
-        fields: new_fields,
+        fields,
         methods: sig.methods.clone(),
         generic_params: sig.generic_params.clone(),
         modifiers: sig.modifiers.clone(),
@@ -265,7 +269,7 @@ pub fn substitute_enum_sig(
     sig: &EnumSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<EnumSig> {
-    let new_variants = sig
+    let variants = sig
         .variants
         .iter()
         .map(|v| match v {
@@ -298,7 +302,7 @@ pub fn substitute_enum_sig(
         symbol_id: sig.symbol_id,
         name: sig.name.clone(),
         methods: sig.methods.clone(),
-        variants: new_variants,
+        variants,
         generic_params: sig.generic_params.clone(),
         tag_type: sig.tag_type.clone(),
         modifiers: sig.modifiers.clone(),

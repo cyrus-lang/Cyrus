@@ -23,9 +23,6 @@ pub enum ModuleFSLoaderDiagKind {
     #[error("Module '{module_name}' couldn't be found in any of the specified source directories.")]
     ModuleNotFound { module_name: String },
 
-    #[error("Module '{module_name}' not found.")]
-    ModuleImportNotFound { module_name: String },
-
     #[error(
         "Couldn't find stdlib anywhere. You can set it with 'CYRUS_STDLIB_PATH' environment variable or '--stdlib' command line argument."
     )]

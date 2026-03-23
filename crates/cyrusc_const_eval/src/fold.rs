@@ -16,8 +16,8 @@
  */
 
 use crate::{evaluator::ConstEvaluator, resolver::ConstResolver};
-use cyrusc_typed_ast::{ScopeID, exprs::*};
 use cyrusc_tokens::literals::LiteralKind;
+use cyrusc_typed_ast::exprs::*;
 
 pub struct ConstFolder<'a, R: ConstResolver> {
     evaluator: ConstEvaluator<'a, R>,
@@ -30,28 +30,28 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         }
     }
 
-    pub fn fold_expr(&mut self, scope: Option<ScopeID>, expr: &mut TypedExprStmt) {
+    pub fn fold_expr(&mut self, expr: &mut TypedExprStmt) {
         match &mut expr.kind {
-            TypedExprKind::Prefix(e) => {
-                self.fold_expr(scope, &mut e.operand);
+            TypedExprKind::Prefix(prefix) => {
+                self.fold_expr(&mut prefix.operand);
             }
-            TypedExprKind::Infix(e) => {
-                self.fold_expr(scope, &mut e.lhs);
-                self.fold_expr(scope, &mut e.rhs);
+            TypedExprKind::Infix(infix) => {
+                self.fold_expr(&mut infix.lhs);
+                self.fold_expr(&mut infix.rhs);
             }
-            TypedExprKind::ArrayIndex(e) => {
-                self.fold_expr(scope, &mut e.operand);
-                self.fold_expr(scope, &mut e.index);
+            TypedExprKind::ArrayIndex(array_index) => {
+                self.fold_expr(&mut array_index.operand);
+                self.fold_expr(&mut array_index.index);
             }
-            TypedExprKind::Array(arr) => {
-                for el in &mut arr.elements {
-                    self.fold_expr(scope, el);
+            TypedExprKind::Array(array) => {
+                for element in &mut array.elements {
+                    self.fold_expr(element);
                 }
             }
             _ => {}
         }
 
-        if let Ok(const_value) = self.evaluator.eval_expr(scope, expr) {
+        if let Ok(const_value) = self.evaluator.eval_expr(expr) {
             if let Some(int_value) = const_value.as_int() {
                 let literal = TypedLiteralExpr {
                     ty: expr.sema_ty.clone(),
@@ -64,14 +64,14 @@ impl<'a, R: ConstResolver> ConstFolder<'a, R> {
         }
     }
 
-    pub fn expr_as_const_int(&mut self, scope: Option<ScopeID>, expr: &TypedExprStmt) -> Option<i128> {
-        if let TypedExprKind::Literal(lit) = &expr.kind {
-            if let LiteralKind::Integer(v, ..) = &lit.kind {
-                return Some(*v);
+    pub fn expr_as_const_int(&mut self, expr: &TypedExprStmt) -> Option<i128> {
+        if let TypedExprKind::Literal(literal) = &expr.kind {
+            if let LiteralKind::Integer(value, ..) = &literal.kind {
+                return Some(*value);
             }
         }
 
         // try const evaluation
-        self.evaluator.eval_expr(scope, expr).ok()?.as_int()
+        self.evaluator.eval_expr(expr).ok()?.as_int()
     }
 }

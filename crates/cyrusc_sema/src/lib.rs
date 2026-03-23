@@ -16,6 +16,7 @@
  */
 
 pub mod analyze;
+pub mod config;
 mod deduce;
 mod diagnostics;
 mod entrypoints;

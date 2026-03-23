@@ -19,10 +19,10 @@ use crate::diagnostics::ConstEvalError;
 use crate::resolver::ConstResolver;
 use crate::value::ConstValue;
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
+use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::SymbolID;
 use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::types::SemanticType;
-use cyrusc_tokens::literals::LiteralKind;
 use std::collections::HashMap;
 
 pub struct ConstEvaluator<'a, R: ConstResolver> {
@@ -40,12 +40,12 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
     }
 
-    pub fn eval_expr(&mut self, scope: Option<ScopeID>, expr: &TypedExprStmt) -> Result<ConstValue, ConstEvalError> {
+    pub fn eval_expr(&mut self, expr: &TypedExprStmt) -> Result<ConstValue, ConstEvalError> {
         let raw = match &expr.kind {
-            TypedExprKind::Symbol(symbol, _) => self.eval_symbol(*symbol),
+            TypedExprKind::Symbol(symbol) => self.eval_symbol(symbol.symbol_id),
             TypedExprKind::Literal(lit) => self.eval_literal(lit),
-            TypedExprKind::Prefix(prefix) => self.eval_prefix(scope, prefix),
-            TypedExprKind::Infix(infix) => self.eval_infix(scope, infix),
+            TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),
+            TypedExprKind::Infix(infix) => self.eval_infix(infix),
             _ => Err(ConstEvalError::UnsupportedExpr),
         }?;
 
@@ -61,36 +61,36 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
     }
 
-    fn eval_symbol(&mut self, symbol: SymbolID) -> Result<ConstValue, ConstEvalError> {
-        if let Some(const_value) = self.cache.get(&symbol) {
+    fn eval_symbol(&mut self, symbol_id: SymbolID) -> Result<ConstValue, ConstEvalError> {
+        if let Some(const_value) = self.cache.get(&symbol_id) {
             return Ok(const_value.clone());
         }
 
-        if self.evaluating.contains_key(&symbol) {
-            return Err(ConstEvalError::CyclicConst(symbol));
+        if self.evaluating.contains_key(&symbol_id) {
+            return Err(ConstEvalError::CyclicConst(symbol_id));
         }
 
-        if !self.resolver.symbol_is_const(symbol) {
-            return Err(ConstEvalError::NonConstSymbol(symbol));
+        if !self.resolver.symbol_is_const(symbol_id) {
+            return Err(ConstEvalError::NonConstSymbol(symbol_id));
         }
 
-        self.evaluating.insert(symbol, ());
+        self.evaluating.insert(symbol_id, ());
 
         let expr = self
             .resolver
-            .resolve_symbol_expr(symbol)
+            .resolve_symbol_expr(symbol_id)
             .ok_or(ConstEvalError::UnsupportedExpr)?;
 
-        let const_value = self.eval_expr(None, &expr)?;
+        let const_value = self.eval_expr(&expr)?;
 
-        self.cache.insert(symbol, const_value.clone());
-        self.evaluating.remove(&symbol);
+        self.cache.insert(symbol_id, const_value.clone());
+        self.evaluating.remove(&symbol_id);
 
         Ok(const_value)
     }
 
-    fn eval_prefix(&mut self, scope: Option<ScopeID>, expr: &TypedPrefixExpr) -> Result<ConstValue, ConstEvalError> {
-        let const_value = self.eval_expr(scope, &expr.operand)?;
+    fn eval_prefix(&mut self, expr: &TypedPrefixExpr) -> Result<ConstValue, ConstEvalError> {
+        let const_value = self.eval_expr(&expr.operand)?;
 
         match expr.op {
             PrefixOperator::Minus => match const_value {
@@ -109,9 +109,9 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         }
     }
 
-    fn eval_infix(&mut self, scope: Option<ScopeID>, expr: &TypedInfixExpr) -> Result<ConstValue, ConstEvalError> {
-        let lhs = self.eval_expr(scope, &expr.lhs)?;
-        let rhs = self.eval_expr(scope, &expr.rhs)?;
+    fn eval_infix(&mut self, expr: &TypedInfixExpr) -> Result<ConstValue, ConstEvalError> {
+        let lhs = self.eval_expr(&expr.lhs)?;
+        let rhs = self.eval_expr(&expr.rhs)?;
 
         if let (Some(lhs), Some(rhs)) = (lhs.as_float(), rhs.as_float()) {
             let result = match expr.op {

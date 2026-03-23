@@ -29,6 +29,10 @@ use cyrusc_resolver::{
     update_global_symbol,
 };
 use cyrusc_strescape::unescape_string;
+use cyrusc_tokens::{
+    TokenKind,
+    literals::{LiteralKind, StringPrefix},
+};
 use cyrusc_typed_ast::{
     exprs::*,
     format::{format_func_ty, format_sema_ty, format_typed_expr, format_unnamed_enum_ty},
@@ -49,10 +53,6 @@ use cyrusc_typed_ast::{
     },
     types::*,
     *,
-};
-use cyrusc_tokens::{
-    TokenKind,
-    literals::{LiteralKind, StringPrefix},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -93,7 +93,6 @@ impl<'a> AnalysisContext<'a> {
     ///
     pub(crate) fn analyze_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
         mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -165,7 +164,6 @@ impl<'a> AnalysisContext<'a> {
     ///
     pub(crate) fn analyze_expr_non_terminal(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExprStmt,
         mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -404,8 +402,8 @@ impl<'a> AnalysisContext<'a> {
     /// # Returns
     /// - `Some(SemanticType)`: The function type of the lambda expression.
     /// - `None`: If type normalization fails (errors reported during normalization).
-    fn analyze_lambda(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
-        let current_func_clone = self.ty_ctx.current_func.clone();
+    fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
+        let current_func_clone = self.tctx.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
         lambda.return_type = self.normalize_sema_type(scope_id_opt, lambda.return_type.clone(), lambda.loc)?;
@@ -419,10 +417,10 @@ impl<'a> AnalysisContext<'a> {
             loc: lambda.loc,
         };
 
-        self.ty_ctx.current_func = Some(func_type.clone());
+        self.tctx.current_func = Some(func_type.clone());
         self.analyze_block_stmt(&mut lambda.body);
 
-        self.ty_ctx.current_func = current_func_clone;
+        self.tctx.current_func = current_func_clone;
         Some(SemanticType::FuncType(func_type))
     }
 
@@ -443,7 +441,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_tuple_value(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         tuple_value: &mut TypedTupleExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -474,7 +472,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_unnamed_union_value(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         unnamed_union_value: &mut TypedUnnamedUnionValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -508,10 +506,7 @@ impl<'a> AnalysisContext<'a> {
                         )
                         .unwrap();
 
-                        return Some(union_sig_as_unnamed_union_type(
-                            &union_sig,
-                            unnamed_union_value.loc,
-                        ));
+                        return Some(union_sig_as_unnamed_union_type(&union_sig, unnamed_union_value.loc));
                     }
                 }
             }
@@ -581,7 +576,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_unnamed_enum_value(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -841,7 +836,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_unnamed_struct_value(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         unnamed_struct_value: &mut TypedUnnamedStructValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -922,11 +917,7 @@ impl<'a> AnalysisContext<'a> {
     /// - `Some(SemanticType)`: The element type (const-qualified if operand is const).
     /// - `None`: If operand isn't indexable, index isn't integer, or void pointer dereference.
     ///
-    fn analyze_array_index(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        array_index: &mut TypedArrayIndexExpr,
-    ) -> Option<SemanticType> {
+    fn analyze_array_index(&mut self, array_index: &mut TypedArrayIndexExpr) -> Option<SemanticType> {
         let operand_type = match self.analyze_expr(scope_id_opt, &mut array_index.operand, None) {
             Some(sema_ty) => sema_ty,
             None => return None,
@@ -1022,7 +1013,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_field_access_type(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -1211,7 +1202,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_struct_init(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         struct_init: &mut TypedStructInitExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -1222,11 +1213,7 @@ impl<'a> AnalysisContext<'a> {
             .resolve_local_or_global_symbol(scope_opt.clone(), struct_init.symbol_id)
             .unwrap();
 
-        self.check_unexpected_type_args(
-            &sym.symbol_generic_params(),
-            &struct_init.type_args,
-            struct_init.loc,
-        );
+        self.check_unexpected_type_args(&sym.symbol_generic_params(), &struct_init.type_args, struct_init.loc);
 
         let mut sema_ty = self.resolve_symbol_type(scope_id_opt, sym.symbol_id(), struct_init.loc)?;
 
@@ -1334,7 +1321,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_func_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         func_call: &mut TypedFuncCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -1368,11 +1355,7 @@ impl<'a> AnalysisContext<'a> {
 
                 func_sig = sym.as_func().unwrap().func_sig.clone();
 
-                if self.check_unexpected_type_args(
-                    &func_sig.generic_params,
-                    &func_call.type_args,
-                    func_call.loc,
-                ) {
+                if self.check_unexpected_type_args(&func_sig.generic_params, &func_call.type_args, func_call.loc) {
                     return None;
                 }
 
@@ -1410,12 +1393,8 @@ impl<'a> AnalysisContext<'a> {
                 // normalize if is lambda call
                 self.normalize_func_type_params(&mut func_type.params, func_call.loc);
 
-                let return_type = self.check_func_type_call(
-                    scope_id_opt,
-                    &mut func_type,
-                    &mut func_call.args,
-                    func_call.loc,
-                )?;
+                let return_type =
+                    self.check_func_type_call(scope_id_opt, &mut func_type, &mut func_call.args, func_call.loc)?;
 
                 func_call.return_type = Some(return_type.clone());
                 return Some(return_type);
@@ -1512,7 +1491,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_method_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         method_call: &mut TypedMethodCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -1570,12 +1549,7 @@ impl<'a> AnalysisContext<'a> {
             let operand_ty = method_call_operand_ty
                 .symbol_id()
                 .and_then(|symbol_id| {
-                    self.analyze_var_or_global_var_type(
-                        scope_id_opt,
-                        scope_opt.clone(),
-                        symbol_id,
-                        method_call.loc,
-                    )
+                    self.analyze_var_or_global_var_type(scope_id_opt, scope_opt.clone(), symbol_id, method_call.loc)
                 })
                 .or(self.analyze_expr_non_terminal(scope_id_opt, &mut method_call.operand, expected_type.clone()))
                 .map(|sema_ty| sema_ty.const_inner().clone())?;
@@ -1738,7 +1712,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_array(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         typed_array: &mut TypedArrayExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -1817,8 +1791,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
             let element_type =
-                match self.normalize_sema_type(scope_id_opt, *array_type!().element_type.clone(), argument.loc)
-                {
+                match self.normalize_sema_type(scope_id_opt, *array_type!().element_type.clone(), argument.loc) {
                     Some(sema_ty) => sema_ty,
                     None => continue,
                 };
@@ -1900,7 +1873,7 @@ impl<'a> AnalysisContext<'a> {
     /// - `Some(SemanticType)`: The target type if cast is valid.
     /// - `None`: If cast is invalid (type mismatch and no explicit conversion).
     ///
-    fn analyze_cast(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCastExpr) -> Option<SemanticType> {
+    fn analyze_cast(&mut self, cast: &mut TypedCastExpr) -> Option<SemanticType> {
         let operand = match self.analyze_expr(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
             Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
@@ -1912,12 +1885,8 @@ impl<'a> AnalysisContext<'a> {
             .const_inner()
             .clone();
 
-        if !(self.check_type_mismatch(
-            scope_id_opt,
-            operand.clone(),
-            cast.target_type.clone(),
-            cast.loc,
-        ) || self.check_explicit_typecast(scope_id_opt, operand.clone(), cast.target_type.clone()))
+        if !(self.check_type_mismatch(scope_id_opt, operand.clone(), cast.target_type.clone(), cast.loc)
+            || self.check_explicit_typecast(scope_id_opt, operand.clone(), cast.target_type.clone()))
         {
             let lhs_type = format_sema_ty(cast.target_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type = format_sema_ty(operand, &(self.symbol_formatter)(scope_id_opt));
@@ -1967,7 +1936,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_dynamic_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         dynamic: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -2027,12 +1996,7 @@ impl<'a> AnalysisContext<'a> {
 // Helper Functions
 // ============================================================
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn check_generic_typedef_missing_args(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        symbol_id: SymbolID,
-        loc: Loc,
-    ) -> bool {
+    pub(crate) fn check_generic_typedef_missing_args(&mut self, symbol_id: SymbolID, loc: Loc) -> bool {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         let sym = self
@@ -2064,12 +2028,7 @@ impl<'a> AnalysisContext<'a> {
     /// Checks whether a semantic type which might have generic params
     /// has the required type arguments specified. Reports an error if type args
     /// are used without type arguments in a context where they're mandatory.
-    pub(crate) fn check_sema_ty_for_missing_type_args(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        sema_ty: &SemanticType,
-        loc: Loc,
-    ) {
+    pub(crate) fn check_sema_ty_for_missing_type_args(&mut self, sema_ty: &SemanticType, loc: Loc) {
         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let Some(symbol_id) = sema_ty.maybe_generic_base_symbol_id() {
@@ -2098,7 +2057,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_interface_method_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         method_call: &mut TypedMethodCall,
         interface_type: &InterfaceType,
     ) -> Option<SemanticType> {
@@ -2163,7 +2122,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_regular_method_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         method_call: &mut TypedMethodCall,
         object_id: SymbolID,
@@ -2293,11 +2252,7 @@ impl<'a> AnalysisContext<'a> {
         // object name used later to make mangled abi name
         method_call.object_name = Some(object_name.clone());
 
-        if self.check_unexpected_type_args(
-            &func_sig.generic_params,
-            &method_call.type_args,
-            method_call.loc,
-        ) {
+        if self.check_unexpected_type_args(&func_sig.generic_params, &method_call.type_args, method_call.loc) {
             return None;
         }
 
@@ -2338,7 +2293,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        self.ty_ctx.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
+        self.tctx.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
 
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
@@ -2558,12 +2513,7 @@ impl<'a> AnalysisContext<'a> {
     /// - `Some(u32)`: The pure symbol ID if the type resolves to a named type.
     /// - `None`: If normalization fails or the type doesn't have a pure symbol ID.
     ///
-    fn extract_object_symbol_id<'b>(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        var_type: SemanticType,
-        loc: Loc,
-    ) -> Option<u32> {
+    fn extract_object_symbol_id<'b>(&mut self, var_type: SemanticType, loc: Loc) -> Option<u32> {
         self.normalize_sema_type(scope_id_opt, var_type, loc)?
             .maybe_generic_base_symbol_id()
     }
@@ -2595,7 +2545,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn check_func_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         func_sig: &mut FuncSig,
         generic_type_opt: &Option<GenericType>,
         args: &mut Vec<TypedExprStmt>,
@@ -2714,13 +2664,7 @@ impl<'a> AnalysisContext<'a> {
     /// - Untyped C-style: Performs semantic analysis without type enforcement.
     /// - No Variadic: No-op if function has no variadic parameters.
     ///
-    fn check_func_variadic_arguments(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        func_sig: &FuncSig,
-        args: &mut Vec<TypedExprStmt>,
-        loc: Loc,
-    ) {
+    fn check_func_variadic_arguments(&mut self, func_sig: &FuncSig, args: &mut Vec<TypedExprStmt>, loc: Loc) {
         let static_params_len = func_sig.params.list.len();
         let variadic_args = &mut args[static_params_len..];
 
@@ -2779,7 +2723,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn check_func_type_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         func_type: &mut TypedFuncType,
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
@@ -2858,9 +2802,7 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let param_type = self
-                .normalize_sema_type(scope_id_opt, param.clone(), loc)
-                .unwrap();
+            let param_type = self.normalize_sema_type(scope_id_opt, param.clone(), loc).unwrap();
 
             let arg_type = match self.analyze_expr(scope_id_opt, arg, Some(param_type.clone())) {
                 Some(sema_ty) => sema_ty,
@@ -2898,11 +2840,7 @@ impl<'a> AnalysisContext<'a> {
     /// - `Some(SemanticType)`: The normalized type of the parameter.
     /// - `None`: If type normalization fails.
     ///
-    fn func_param_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        param: &mut TypedFuncParamKind,
-    ) -> Option<SemanticType> {
+    fn func_param_type(&mut self, param: &mut TypedFuncParamKind) -> Option<SemanticType> {
         match param {
             TypedFuncParamKind::FuncParam(param) => {
                 let normalized = self.normalize_sema_type(scope_id_opt, param.ty.clone(), param.loc)?;
@@ -2910,11 +2848,8 @@ impl<'a> AnalysisContext<'a> {
                 Some(normalized)
             }
             TypedFuncParamKind::SelfModifier(self_modifier) => {
-                let normalized = self.normalize_sema_type(
-                    scope_id_opt,
-                    self_modifier.ty.clone().unwrap(),
-                    self_modifier.loc,
-                )?;
+                let normalized =
+                    self.normalize_sema_type(scope_id_opt, self_modifier.ty.clone().unwrap(), self_modifier.loc)?;
                 Some(normalized)
             }
         }
@@ -2943,7 +2878,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_regular_union_init(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         struct_init: &mut TypedStructInitExpr,
         resolved_union: &ResolvedUnion,
         generic_type_opt: &Option<GenericType>,
@@ -3076,7 +3011,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_regular_struct_init(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         struct_init: &mut TypedStructInitExpr,
         resolved_struct: &ResolvedStruct,
         generic_type_opt: &Option<GenericType>,
@@ -3119,8 +3054,7 @@ impl<'a> AnalysisContext<'a> {
                 .find(|field| field.name == field_init.name)
             {
                 Some(mut field) => {
-                    field.ty =
-                        self.normalize_sema_type(scope_id_opt, field.ty.clone(), field_init.value.loc)?;
+                    field.ty = self.normalize_sema_type(scope_id_opt, field.ty.clone(), field_init.value.loc)?;
                     field
                 }
                 None => {
@@ -3256,7 +3190,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn maybe_enum_variant_constructor_from_field_access(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         field_access: &mut TypedFieldAccess,
@@ -3313,7 +3247,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn maybe_enum_variant_constructor_from_method_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         operand_ty: SemanticType,
         method_call: &mut TypedMethodCall,
@@ -3385,7 +3319,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_union_field_access(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         union_sig: &UnionSig,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
@@ -3436,7 +3370,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_unnamed_union_field_access(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         unnamed_union_type: &TypedUnnamedUnionType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
@@ -3508,7 +3442,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_unnamed_struct_field_access(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         unnamed_struct_type: &TypedUnnamedStructType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
@@ -3581,7 +3515,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_struct_field_access(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         field_access: &mut TypedFieldAccess,
         struct_name: String,
         struct_fields: Vec<TypedStructField>,
@@ -3658,7 +3592,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_enum_variant(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         mut enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
@@ -3794,7 +3728,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_enum_fielded_variant<'b>(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         mut enum_variant: &'b mut TypedEnumVariant,
         method_call: &TypedMethodCall,
     ) -> Option<Vec<TypedEnumValuedField>> {
@@ -3861,7 +3795,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_enum_variant_no_field(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
@@ -3995,7 +3929,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn resolve_field_access_kind(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         operand: &mut TypedExprStmt,
         expected_type: Option<SemanticType>,
@@ -4085,7 +4019,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_tuple_member_access(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         tuple_member_access: &mut TypedTupleAccessExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -4138,8 +4072,8 @@ impl<'a> AnalysisContext<'a> {
     /// - `method_call`: The method call AST node to annotate with self type.
     /// - `sema_ty`: The semantic type of the 'self' parameter (may include const/pointer qualifiers).
     pub(crate) fn set_ty_ctx_self_type(&mut self, method_call: &mut TypedMethodCall, sema_ty: &SemanticType) {
-        self.ty_ctx.current_obj_operand_ty = Some(sema_ty.const_inner().pointer_inner().const_inner().clone());
-        self.ty_ctx.current_self = Some(sema_ty.clone());
+        self.tctx.current_obj_operand_ty = Some(sema_ty.const_inner().pointer_inner().const_inner().clone());
+        self.tctx.current_self = Some(sema_ty.clone());
         method_call.self_ty = Some(sema_ty.clone());
     }
 
@@ -4298,7 +4232,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn analyze_var_or_global_var_type(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         scope_opt: Option<LocalScopeRef>,
         instance_symbol_id: SymbolID,
         loc: Loc,
@@ -4330,9 +4264,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if sema_ty.is_some() {
-            let normalized_type = self
-                .normalize_sema_type(scope_id_opt, sema_ty.unwrap(), loc)
-                .unwrap();
+            let normalized_type = self.normalize_sema_type(scope_id_opt, sema_ty.unwrap(), loc).unwrap();
 
             Some(normalized_type)
         } else {
@@ -4377,7 +4309,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> bool {
         let mut result = true;
 
-        let access_violation = if let Some(current_method_symbol_id) = self.ty_ctx.current_method_symbol_id {
+        let access_violation = if let Some(current_method_symbol_id) = self.tctx.current_method_symbol_id {
             let method_symbol_ids = struct_methods.values().cloned().collect::<Vec<SymbolID>>();
 
             if method_symbol_ids.contains(&current_method_symbol_id) {
@@ -4515,7 +4447,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     fn validate_method_call(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         instance_symbol_id: SymbolID,
         method_name: &String,
         method_call_operand_ty: SemanticType,
@@ -4530,7 +4462,7 @@ impl<'a> AnalysisContext<'a> {
         let mut result = true;
         let method_vis = &func_sig.modifiers.vis;
 
-        let access_violation = if let Some(current_method_symbol_id) = self.ty_ctx.current_method_symbol_id {
+        let access_violation = if let Some(current_method_symbol_id) = self.tctx.current_method_symbol_id {
             let object_contains_method = {
                 if let Some(object_methods) = object_methods_opt {
                     object_methods

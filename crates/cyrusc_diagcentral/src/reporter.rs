@@ -26,7 +26,7 @@ const PANEL_LENGTH: usize = 2;
 const TAB_WIDTH: usize = 4;
 
 pub struct DiagReporter {
-    pub source_map: Option<Arc<SourceMap>>,
+    source_map: Option<Arc<SourceMap>>,
     pub diags: RefCell<Vec<Diag>>,
 }
 
@@ -78,6 +78,10 @@ impl DiagReporter {
 
     pub fn has_errors(&self) -> bool {
         self.diags.borrow().iter().any(|d| matches!(d.level, DiagLevel::Error))
+    }
+
+    pub fn len(&self) -> usize {
+        self.diags.borrow().len()
     }
 }
 

@@ -14,11 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
-use cyrusc_resolver::symbols::{LocalScopeRef, generate_scope_id};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    ScopeID, SymbolID,
+    SymbolID,
     format::format_sema_ty,
     generics::{
         generic_type::GenericType,
@@ -173,7 +174,7 @@ impl<'a> AnalysisContext<'a> {
         self_modifier_ty: Option<SemanticType>,
         func_call_loc: &Loc,
     ) -> Option<MonomorphKey> {
-        let current_diag_len = self.reporter.diags.len();
+        let current_diag_len = self.reporter.len();
 
         let (mut template_body, mapping_ctx, base_symbol) = {
             let monomorph_registry = self.monomorph_registry.lock().unwrap();
@@ -214,7 +215,7 @@ impl<'a> AnalysisContext<'a> {
                 .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
         };
 
-        self.ty_ctx.current_func = Some(typed_func_type_from_func_sig(func_sig));
+        self.tctx.current_func = Some(typed_func_type_from_func_sig(func_sig));
         self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
         func_sig.return_type = substitute_type(
             self.mapping_ctx_arena.clone(),
@@ -239,7 +240,7 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_func_body(&mut analyzed_body, &func_sig.return_type);
 
         {
-            let diag_len = self.reporter.diags.len();
+            let diag_len = self.reporter.len();
             if diag_len > current_diag_len {
                 self.apply_error_originated_from_on_diag_range(current_diag_len..=diag_len, |diag| {
                     diag.hint = Some(format!(
@@ -267,7 +268,7 @@ impl<'a> AnalysisContext<'a> {
     where
         F: FnMut(&mut Diag),
     {
-        let len = self.reporter.diags.len();
+        let len = self.reporter.len();
         let start = *range.start();
         let end_inclusive = *range.end();
 
@@ -326,8 +327,6 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn init_generic_type_with_symbol_id(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
-        scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
         type_args: &mut Option<TypedTypeArgs>,
         parent_mapping_ctx: Option<Rc<GenericMappingCtx>>,
@@ -394,7 +393,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn unify_generic_types_from_expected_type(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         generic_type: &GenericType,
         expected_type_opt: Option<SemanticType>,
     ) -> Option<()> {
@@ -419,7 +418,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn unify_generic_types(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         mapping_ctx: &mut GenericMappingCtx,
         expr_mapping_ctx_opt: &Option<GenericMappingCtx>,
         expr_ty: &SemanticType,
@@ -434,7 +433,6 @@ impl<'a> AnalysisContext<'a> {
             }
             (SemanticType::Pointer(target_pointer_inner), SemanticType::Pointer(expr_pointer_inner)) => {
                 self.unify_generic_types(
-                    scope_id_opt,
                     mapping_ctx,
                     expr_mapping_ctx_opt,
                     &expr_pointer_inner,
@@ -447,12 +445,12 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for (target_ty, expr_ty) in target_tuple.elements.iter().zip(&expr_tuple.elements) {
-                    self.unify_generic_types(scope_id_opt, mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
+                    self.unify_generic_types(mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
                 }
             }
             (SemanticType::FuncType(target_func_type), SemanticType::FuncType(expr_func_type)) => {
                 for (target_ty, expr_ty) in target_func_type.params.list.iter().zip(&expr_func_type.params.list) {
-                    self.unify_generic_types(scope_id_opt, mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
+                    self.unify_generic_types(mapping_ctx, expr_mapping_ctx_opt, &expr_ty, target_ty);
                 }
 
                 if let (Some(target_variadic_type), Some(expr_variadic_type)) = (
@@ -460,7 +458,6 @@ impl<'a> AnalysisContext<'a> {
                     expr_func_type.params.as_typed_variadic(),
                 ) {
                     self.unify_generic_types(
-                        scope_id_opt,
                         mapping_ctx,
                         expr_mapping_ctx_opt,
                         &expr_variadic_type,
@@ -469,7 +466,6 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 self.unify_generic_types(
-                    scope_id_opt,
                     mapping_ctx,
                     expr_mapping_ctx_opt,
                     &expr_func_type.return_type,
@@ -485,7 +481,6 @@ impl<'a> AnalysisContext<'a> {
 
                     for i in 0..len {
                         self.unify_generic_types(
-                            scope_id_opt,
                             mapping_ctx,
                             expr_mapping_ctx_opt,
                             expr_args[i].ty(),
@@ -508,8 +503,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         };
 
-                        sema_ty = match self.normalize_sema_type(scope_id_opt, sema_ty, target_generic_type.loc)
-                        {
+                        sema_ty = match self.normalize_sema_type(scope_id_opt, sema_ty, target_generic_type.loc) {
                             Some(sema_ty) => sema_ty,
                             None => continue,
                         };
@@ -533,7 +527,6 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn infer_generic_param(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         generic_type_opt: Option<&GenericType>,
         target_ty: SemanticType,
         expr_ty: Option<SemanticType>,
@@ -548,7 +541,7 @@ impl<'a> AnalysisContext<'a> {
                             lhs_type: format_sema_ty($lhs, &(self.symbol_formatter)(scope_id_opt)),
                             rhs_type: format_sema_ty($rhs, &(self.symbol_formatter)(scope_id_opt)),
                         }),
-                        location: Some(DiagLoc::new(loc)),
+                        loc: Some(loc),
                         hint: None,
                     });
                     return None;

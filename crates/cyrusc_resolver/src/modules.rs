@@ -22,7 +22,7 @@ use cyrusc_internal::{
     module_loader::ModuleAlias,
     symbols::{
         symbols::{SymbolEntry, SymbolEntryKind},
-        table::GlobalSymbolQuery,
+        table::SymbolQuery,
     },
 };
 use cyrusc_source_loc::Loc;
@@ -147,8 +147,20 @@ impl Resolver {
         let current_module_file_path = self.module_file_map.get(parent_module_id).unwrap();
         let loaded_modules_list = self.module_loader.load_module(&import);
 
-        for loaded_module in loaded_modules_list {
-            let Ok(loaded_module) = loaded_module else { continue };
+        for loaded_module_result in loaded_modules_list {
+            let loaded_module = match loaded_module_result {
+                Ok(loaded_module) => loaded_module,
+                Err(diag_kind) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: diag_kind,
+                        loc: Some(import.loc),
+                        hint: None,
+                    });
+
+                    continue;
+                }
+            };
 
             // check for self-import
             if loaded_module.file_path == current_module_file_path {
