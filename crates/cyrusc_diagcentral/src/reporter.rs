@@ -110,7 +110,7 @@ impl DiagReporter {
         let loc = diag.loc.unwrap();
         let source_map = self.source_map.as_ref().unwrap();
 
-        let file = match source_map.get_file(loc.id) {
+        let file = match source_map.get_file(loc.file_id) {
             Some(f) => f,
             None => {
                 return out;
@@ -162,7 +162,7 @@ impl DiagReporter {
     }
 
     fn render_header(&self, file: &str, loc: Loc) -> String {
-        format!("       --> {}:{}:{}\n\n", file, loc.line, loc.start + 1)
+        format!("       --> {}:{}:{}\n\n", file, loc.line, loc.column + 1)
     }
 
     fn render_line_number(&self, line: usize) -> String {

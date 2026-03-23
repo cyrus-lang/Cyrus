@@ -133,8 +133,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     pub(crate) fn parse_builtin(&mut self) -> Result<Builtin, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume at
 
@@ -156,7 +156,7 @@ impl<'source_file> Parser<'source_file> {
                 name: ident,
                 args,
                 block: Box::new(block),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         } else {
             let end = self.current_token().loc.end;
@@ -165,7 +165,7 @@ impl<'source_file> Parser<'source_file> {
                 name: ident,
                 args,
                 child_stmt: None,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         }
     }
@@ -207,8 +207,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     pub(crate) fn parse_goto(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::Goto)?;
         let label = self.parse_ident()?;
@@ -219,13 +219,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTStmt::Goto(ASTGotoStmt {
             name: label,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     pub(crate) fn parse_label(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let name = self.parse_ident()?;
         self.expect_peek(TokenKind::Colon)?;
@@ -234,13 +234,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTStmt::Label(ASTLabelStmt {
             name,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     pub(crate) fn parse_block(&mut self) -> Result<ASTBlockStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         if self.peek_token_is(TokenKind::EOF) {
             return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
@@ -256,7 +256,7 @@ impl<'source_file> Parser<'source_file> {
 
             return Ok(ASTBlockStmt {
                 exprs: block_stmt,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
 
@@ -278,13 +278,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTBlockStmt {
             exprs: block_stmt,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }
 
     pub(crate) fn parse_func_params(&mut self) -> Result<FuncParams, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -327,7 +327,7 @@ impl<'source_file> Parser<'source_file> {
 
                     list.push(FuncParamKind::SelfModifier(SelfModifier {
                         kind: SelfModifierKind::Referenced,
-                        loc: Loc::new(self.file_id(), line, start, end),
+                        loc: Loc::new(self.file_id(), line, column, start, end),
                     }));
 
                     self_modifier_count += 1;
@@ -344,7 +344,7 @@ impl<'source_file> Parser<'source_file> {
 
                         list.push(FuncParamKind::SelfModifier(SelfModifier {
                             kind: SelfModifierKind::Copied,
-                            loc: Loc::new(self.file_id(), line, start, end),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
                         }));
 
                         self_modifier_count += 1;
@@ -373,7 +373,7 @@ impl<'source_file> Parser<'source_file> {
                         list.push(FuncParamKind::FuncParam(FuncParam {
                             ident,
                             ty: var_type,
-                            loc: Loc::new(self.file_id(), line, start, end),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
                         }));
                     }
                 }
@@ -413,8 +413,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_enum_variant(&mut self) -> Result<EnumVariant, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let ident = self.parse_ident()?;
         self.next_token();
@@ -447,7 +447,7 @@ impl<'source_file> Parser<'source_file> {
 
                 valued_fields.push(EnumValuedField {
                     ty: field_type,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
 
                 if self.current_token_is(TokenKind::RightParen) {
@@ -468,8 +468,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_union_field(&mut self) -> Result<UnionField, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let ident = self.parse_ident()?;
         self.next_token(); // consume ident
@@ -484,7 +484,7 @@ impl<'source_file> Parser<'source_file> {
         let field = UnionField {
             ident,
             ty: type_token,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         };
 
         self.expect_semicolon()?;
@@ -494,8 +494,8 @@ impl<'source_file> Parser<'source_file> {
 
     // FIXME: Make method_parsing helper methods.
     fn parse_union(&mut self, modifiers: UnionModifiers) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::Union)?;
 
@@ -527,7 +527,7 @@ impl<'source_file> Parser<'source_file> {
                 align,
                 impls,
                 modifiers,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -579,13 +579,13 @@ impl<'source_file> Parser<'source_file> {
             modifiers,
             align,
             impls,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_enum(&mut self, modifiers: EnumModifiers) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // parse enum keyword
 
@@ -620,7 +620,7 @@ impl<'source_file> Parser<'source_file> {
                 align,
                 modifiers,
                 impls,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -691,13 +691,13 @@ impl<'source_file> Parser<'source_file> {
             modifiers,
             align,
             impls,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_struct(&mut self, modifiers: StructModifiers, is_packed: bool) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
         let loc = self.current_token().loc;
 
         self.next_token(); // consume struct/bits token
@@ -762,7 +762,7 @@ impl<'source_file> Parser<'source_file> {
             methods,
             align,
             is_packed,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -777,8 +777,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_struct_field(&mut self, vis: Option<Visibility>) -> Result<StructField, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let ident = self.parse_ident()?;
         self.next_token(); // consume ident
@@ -794,7 +794,7 @@ impl<'source_file> Parser<'source_file> {
             ident,
             ty: type_token,
             vis: vis.unwrap_or_default(),
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         };
 
         self.expect_semicolon()?;
@@ -823,8 +823,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_break(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume break
         self.must_be_semicolon()?;
@@ -832,13 +832,13 @@ impl<'source_file> Parser<'source_file> {
         let end = self.current_token().loc.end;
 
         Ok(ASTStmt::Break(ASTBreakStmt {
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_continue(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume continue
         self.must_be_semicolon()?;
@@ -846,7 +846,7 @@ impl<'source_file> Parser<'source_file> {
         let end = self.current_token().loc.end;
 
         Ok(ASTStmt::Continue(ASTContinueStmt {
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -889,8 +889,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_interface(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token();
 
@@ -915,7 +915,7 @@ impl<'source_file> Parser<'source_file> {
                 methods,
                 generic_params,
                 vis,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -950,13 +950,13 @@ impl<'source_file> Parser<'source_file> {
             methods,
             generic_params,
             vis,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_import(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume import keyword
 
@@ -1002,7 +1002,7 @@ impl<'source_file> Parser<'source_file> {
 
         return Ok(ASTStmt::Import(ASTImportStmt {
             paths,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }));
     }
 
@@ -1021,8 +1021,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_foreach(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.end;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume foreach
         self.expect_current(TokenKind::LeftParen)?;
@@ -1054,13 +1054,13 @@ impl<'source_file> Parser<'source_file> {
             index: index_identifier,
             expr,
             body: Box::new(body),
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_while_loop(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume while token
         self.expect_current(TokenKind::LeftParen)?;
@@ -1075,13 +1075,13 @@ impl<'source_file> Parser<'source_file> {
         Ok(ASTStmt::While(ASTWhileStmt {
             condition,
             body: Box::new(body),
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_for_loop(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume for token
 
@@ -1105,7 +1105,7 @@ impl<'source_file> Parser<'source_file> {
                 condition: None,
                 increment: None,
                 body,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -1133,7 +1133,7 @@ impl<'source_file> Parser<'source_file> {
                 condition: None,
                 increment: None,
                 body,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -1157,7 +1157,7 @@ impl<'source_file> Parser<'source_file> {
             condition: Some(condition),
             increment,
             body,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -1206,8 +1206,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -1265,7 +1265,7 @@ impl<'source_file> Parser<'source_file> {
                 ty: variable_type,
                 rhs: None,
                 is_const,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -1283,13 +1283,13 @@ impl<'source_file> Parser<'source_file> {
             rhs: Some(expr),
             ty: variable_type,
             is_const,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_variable(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let is_const;
         if self.current_token_is(TokenKind::Const) {
@@ -1331,7 +1331,7 @@ impl<'source_file> Parser<'source_file> {
                 ty: variable_type,
                 rhs: None,
                 is_const,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
         self.expect_current(TokenKind::Assign)?;
@@ -1346,13 +1346,13 @@ impl<'source_file> Parser<'source_file> {
             rhs: Some(expr),
             ty: variable_type,
             is_const,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_func(&mut self, modifiers: FuncModifiers) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::Function)?;
 
@@ -1382,7 +1382,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type: None,
                 modifiers,
                 renamed_as: None,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
             self.next_token(); // consume as
@@ -1399,7 +1399,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type: None,
                 modifiers,
                 renamed_as: Some(renamed_as),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else {
             ret_type = Some(self.parse_type_specifier()?);
@@ -1416,7 +1416,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type,
                 modifiers,
                 renamed_as: None,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else if self.current_token_is(TokenKind::As) {
             self.next_token();
@@ -1443,7 +1443,7 @@ impl<'source_file> Parser<'source_file> {
                 ret_type,
                 modifiers,
                 renamed_as: Some(renamed_as),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -1458,13 +1458,13 @@ impl<'source_file> Parser<'source_file> {
             body,
             ret_type,
             modifiers,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }));
     }
 
     fn parse_return(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume return token
 
@@ -1473,7 +1473,7 @@ impl<'source_file> Parser<'source_file> {
 
             return Ok(ASTStmt::Return(ASTReturnStmt {
                 argument: None,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -1486,14 +1486,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTStmt::Return(ASTReturnStmt {
             argument: Some(argument),
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_global_var(&mut self, modifiers: UnresolvedModifiers) -> Result<ASTStmt, Diag> {
-        let line = self.current_token().loc.line;
-        let start = self.current_token().loc.start;
         let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let is_const = {
             if self.current_token_is(TokenKind::Const) {
@@ -1538,11 +1537,14 @@ impl<'source_file> Parser<'source_file> {
             expr,
             is_const,
             modifiers: global_var_modifiers,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_typedef(&mut self, vis: Visibility) -> Result<ASTStmt, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
         self.expect_current(TokenKind::Typedef)?;
 
         let ident = self.parse_ident()?;
@@ -1557,9 +1559,6 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::Assign)?;
 
-        let line = self.current_token().loc.line;
-        let start = self.current_token().loc.start;
-
         let type_spec = self.parse_type_specifier()?;
         self.next_token();
 
@@ -1572,13 +1571,13 @@ impl<'source_file> Parser<'source_file> {
             ident,
             type_spec,
             generic_params,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_switch(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token();
         self.expect_current(TokenKind::LeftParen)?;
@@ -1619,7 +1618,9 @@ impl<'source_file> Parser<'source_file> {
                     SwitchCasePattern::Ident(ident)
                 }
             } else {
-                let start = this.current_token().loc.start;
+                let loc = this.current_token().loc;
+                let start = loc.start;
+                let column = loc.column;
 
                 let expr = this.parse_expr(Precedence::Prefix)?;
                 this.next_token();
@@ -1638,7 +1639,7 @@ impl<'source_file> Parser<'source_file> {
                         lower,
                         upper,
                         inclusive_upper: false,
-                        loc: Loc::new(this.file_id(), line, start, end),
+                        loc: Loc::new(this.file_id(), line, column, start, end),
                     })
                 } else if this.current_token_is(TokenKind::DoubleDot) && this.peek_token_is(TokenKind::Assign) {
                     // range (inclusive)
@@ -1655,7 +1656,7 @@ impl<'source_file> Parser<'source_file> {
                         lower,
                         upper,
                         inclusive_upper: true,
-                        loc: Loc::new(this.file_id(), line, start, end),
+                        loc: Loc::new(this.file_id(), line, column, start, end),
                     })
                 } else {
                     SwitchCasePattern::Expr(expr)
@@ -1666,8 +1667,8 @@ impl<'source_file> Parser<'source_file> {
 
         loop {
             if self.current_token_is(TokenKind::Case) {
-                let case_start = self.current_token().loc.start;
-                let case_line = self.current_token().loc.line;
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
 
                 self.next_token();
 
@@ -1694,7 +1695,7 @@ impl<'source_file> Parser<'source_file> {
                 cases.push(SwitchCase {
                     patterns,
                     body: case_body,
-                    loc: Loc::new(self.file_id(), case_line, case_start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
             } else if self.current_token_is(TokenKind::Default) {
                 self.next_token();
@@ -1718,13 +1719,13 @@ impl<'source_file> Parser<'source_file> {
             operand,
             cases,
             default_case,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_if(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut branches: Vec<ASTIfStmt> = Vec::new();
         let mut alternate: Option<Box<ASTBlockStmt>> = None;
@@ -1769,7 +1770,7 @@ impl<'source_file> Parser<'source_file> {
                     else_block: None,
                     then_block: consequent,
                     branches: Vec::new(),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
             } else {
                 // parse else block
@@ -1790,13 +1791,13 @@ impl<'source_file> Parser<'source_file> {
             then_block: consequent,
             branches,
             else_block: alternate,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_defer(&mut self) -> Result<ASTStmt, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token();
         let stmt = self.parse_stmt(None, false)?.first().unwrap().clone();
@@ -1807,7 +1808,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTStmt::Defer(ASTDeferStmt {
             operand: Box::new(stmt),
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 }

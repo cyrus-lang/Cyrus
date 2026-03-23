@@ -32,8 +32,9 @@ use cyrusc_tokens::literals::LiteralKind;
 
 impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_expr(&mut self, precedence: Precedence) -> Result<ASTExpr, Diag> {
-        let mut lhs_start = self.current_token().loc.start;
-        let mut lhs_line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (mut lhs_line, mut lhs_column, mut lhs_start) = (loc.line, loc.column, loc.start);
+
         let mut lhs = self.parse_prefix_expr()?;
 
         loop {
@@ -58,7 +59,7 @@ impl<'source_file> Parser<'source_file> {
                 return Ok(ASTExpr::Unary(ASTUnaryExpr {
                     operand: Box::new(lhs),
                     op: UnaryOperator::PostIncrement,
-                    loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
                 }));
             } else if self.peek_token_is(TokenKind::Decrement) {
                 self.next_token();
@@ -68,19 +69,20 @@ impl<'source_file> Parser<'source_file> {
                 return Ok(ASTExpr::Unary(ASTUnaryExpr {
                     operand: Box::new(lhs),
                     op: UnaryOperator::PostDecrement,
-                    loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
                 }));
             }
 
             // infix handling (respect precedence)
             let peek_prec = token_precedence_of(self.peek_token().kind);
             if self.peek_token().kind != TokenKind::EOF && precedence < peek_prec {
-                match self.parse_infix_expr(lhs.clone(), lhs_line, lhs_start) {
+                match self.parse_infix_expr(lhs.clone(), lhs_line, lhs_column, lhs_start) {
                     Some(infix) => {
                         lhs = infix?;
                         if let ASTExpr::Infix(infix_expr) = lhs.clone() {
                             lhs_start = infix_expr.loc.start;
                             lhs_line = infix_expr.loc.line;
+                            lhs_column = infix_expr.loc.column;
                         }
                     }
                     None => return Ok(lhs),
@@ -94,8 +96,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     pub(crate) fn parse_module_import(&mut self) -> Result<ASTModuleImport, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut segments = {
             let end = self.current_token().loc.end;
@@ -104,7 +106,7 @@ impl<'source_file> Parser<'source_file> {
                 TokenKind::Ident(ident) => {
                     vec![ModuleSegment::SubModule(Ident {
                         value: ident.clone(),
-                        loc: Loc::new(self.file_id(), line, start, end),
+                        loc: Loc::new(self.file_id(), line, column, start, end),
                     })]
                 }
                 _ => {
@@ -121,7 +123,7 @@ impl<'source_file> Parser<'source_file> {
 
             return Ok(ASTModuleImport {
                 segments,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
 
@@ -164,13 +166,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTModuleImport {
             segments,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }
 
     pub(crate) fn parse_module_path(&mut self) -> Result<ModulePath, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut segments = Vec::new();
         let mut alias = None;
@@ -201,13 +203,13 @@ impl<'source_file> Parser<'source_file> {
         Ok(ModulePath {
             alias,
             segments,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }
 
     fn parse_prefix_expr(&mut self) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let expr = match &self.current_token().kind {
             TokenKind::At => {
@@ -227,7 +229,7 @@ impl<'source_file> Parser<'source_file> {
                             "Repr attribute cannot be applied to unnamed union values.".to_string(),
                         )),
                         level: DiagLevel::Error,
-                        loc: Some(Loc::new(self.file_id(), line, start, end)),
+                        loc: Some(Loc::new(self.file_id(), line, column, start, end)),
                         hint: None,
                     });
                 } else {
@@ -263,7 +265,7 @@ impl<'source_file> Parser<'source_file> {
 
                 ASTExpr::AddrOf(ASTAddrOfExpr {
                     expr: Box::new(self.parse_expr(Precedence::Prefix)?),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
             TokenKind::Asterisk => {
@@ -273,7 +275,7 @@ impl<'source_file> Parser<'source_file> {
 
                 ASTExpr::Deref(ASTDerefExpr {
                     expr: Box::new(self.parse_expr(Precedence::Prefix)?),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
             TokenKind::Null => {
@@ -281,7 +283,7 @@ impl<'source_file> Parser<'source_file> {
 
                 ASTExpr::Literal(ASTLiteralExpr {
                     kind: LiteralKind::Null,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
@@ -295,7 +297,7 @@ impl<'source_file> Parser<'source_file> {
 
                 ASTExpr::Literal(ASTLiteralExpr {
                     kind: LiteralKind::Bool(value),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
             TokenKind::Literal(value) => ASTExpr::Literal(value.clone()),
@@ -317,7 +319,7 @@ impl<'source_file> Parser<'source_file> {
                 ASTExpr::Prefix(ASTPrefixExpr {
                     op: prefix_operator,
                     operand: Box::new(expr),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 })
             }
             TokenKind::LeftParen => {
@@ -385,8 +387,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_unnamed_enum_value(&mut self) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume dot
 
@@ -401,7 +403,7 @@ impl<'source_file> Parser<'source_file> {
             Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
                 ident,
                 kind: UnnamedEnumValueKind::Fielded(field_values),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         } else {
             let end = self.current_token().loc.end;
@@ -409,14 +411,14 @@ impl<'source_file> Parser<'source_file> {
             Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
                 ident,
                 kind: UnnamedEnumValueKind::Plain,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         }
     }
 
     fn parse_dynamic_expr(&mut self) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.end;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token();
         let expr = self.parse_expr(Precedence::Lowest)?;
@@ -425,13 +427,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTExpr::Dynamic(ASTDynamicExpr {
             operand: Box::new(expr),
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_tuple_value(&mut self, first_expr: ASTExpr) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut elements: Vec<ASTExpr> = vec![first_expr];
 
@@ -456,13 +458,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTExpr::Tuple(ASTTupleValueExpr {
             elements,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_lambda_expr(&mut self, inline: bool) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume function
         let params = self.parse_func_params()?;
@@ -478,11 +480,17 @@ impl<'source_file> Parser<'source_file> {
             body: Box::new(body),
             ret_type,
             inline,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
-    fn parse_infix_expr(&mut self, lhs: ASTExpr, lhs_line: usize, lhs_start: usize) -> Option<Result<ASTExpr, Diag>> {
+    fn parse_infix_expr(
+        &mut self,
+        lhs: ASTExpr,
+        lhs_line: usize,
+        lhs_column: usize,
+        lhs_start: usize,
+    ) -> Option<Result<ASTExpr, Diag>> {
         // NOTE: disambiguate confusion when facing `>>`. when it used as expressions the token must be lowered
         // into shift-right but otherwise, it's interpreted as separate greater-than tokens. For instance in generic types args:
         // Generic<A, Generic<B, C>>
@@ -497,7 +505,7 @@ impl<'source_file> Parser<'source_file> {
                     peek_token_idx,
                     Token {
                         kind: TokenKind::ShiftLeft,
-                        loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
+                        loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
                     },
                 );
             }
@@ -584,7 +592,7 @@ impl<'source_file> Parser<'source_file> {
                     op,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
-                    loc: Loc::new(self.file_id(), lhs_line, lhs_start, end),
+                    loc: Loc::new(self.file_id(), lhs_line, lhs_column, lhs_start, end),
                 })))
             }
             _ => None,
@@ -621,8 +629,9 @@ impl<'source_file> Parser<'source_file> {
         method_name: Ident,
         is_fat_arrow: bool,
         type_args: Option<TypeArgs>,
-        start: usize,
         line: usize,
+        column: usize,
+        start: usize,
     ) -> Result<ASTExpr, Diag> {
         self.must_be_left_paren()?;
 
@@ -637,13 +646,13 @@ impl<'source_file> Parser<'source_file> {
             method_name,
             type_args,
             args,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_field_access(&mut self, operand: ASTExpr) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let is_fat_arrow = {
             if self.current_token_is(TokenKind::ThinArrow) {
@@ -669,7 +678,7 @@ impl<'source_file> Parser<'source_file> {
             if self.peek_token_is(TokenKind::LeftParen) {
                 self.next_token(); // consume ident
 
-                self.parse_method_call(operand, ident, is_fat_arrow, type_args, start, line)
+                self.parse_method_call(operand, ident, is_fat_arrow, type_args, line, column, start)
             } else {
                 let end = self.current_token().loc.end;
 
@@ -678,7 +687,7 @@ impl<'source_file> Parser<'source_file> {
                     operand: Box::new(operand),
                     field_name: ident,
                     type_args,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 }))
             }
         } else {
@@ -688,14 +697,14 @@ impl<'source_file> Parser<'source_file> {
             Ok(ASTExpr::TupleAccess(ASTTupleAccessExpr {
                 operand: Box::new(operand),
                 index: index.try_into().unwrap(),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }))
         }
     }
 
     fn parse_func_call(&mut self, operand: ASTExpr, type_args: Option<TypeArgs>) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_peek(TokenKind::LeftParen)?;
 
@@ -708,7 +717,7 @@ impl<'source_file> Parser<'source_file> {
             operand: Box::new(operand),
             args,
             type_args,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -717,8 +726,8 @@ impl<'source_file> Parser<'source_file> {
         struct_name: ASTModuleImport,
         type_args: Option<TypeArgs>,
     ) -> Result<ASTStructInitExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut field_inits: Vec<FieldInit> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
@@ -731,7 +740,7 @@ impl<'source_file> Parser<'source_file> {
                 field_inits,
                 type_args,
                 is_const: false,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
 
@@ -789,7 +798,7 @@ impl<'source_file> Parser<'source_file> {
             field_inits,
             type_args,
             is_const: false,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }
 
@@ -810,7 +819,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_assign(&mut self, lhs: ASTExpr, kind: AssignKind, start: usize) -> Result<ASTExpr, Diag> {
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column) = (loc.line, loc.column);
 
         self.expect_current(TokenKind::Assign)?;
         let rhs = self.parse_expr(Precedence::Lowest)?;
@@ -821,7 +831,7 @@ impl<'source_file> Parser<'source_file> {
             lhs,
             rhs,
             kind,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })))
     }
 
@@ -838,8 +848,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_array_index(&mut self, expr: ASTExpr) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let index_expr = self.parse_single_array_index()?;
         let mut indexes_backup: Vec<ASTExpr> = vec![index_expr.clone()];
@@ -850,7 +860,7 @@ impl<'source_file> Parser<'source_file> {
             ASTExpr::ArrayIndex(ASTArrayIndexExpr {
                 operand: Box::new(expr.clone()),
                 index: Box::new(index_expr.clone()),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             })
         };
 
@@ -867,7 +877,7 @@ impl<'source_file> Parser<'source_file> {
             base_index = ASTExpr::ArrayIndex(ASTArrayIndexExpr {
                 operand: Box::new(base_index),
                 index: Box::new(index_expr.clone()),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             });
 
             indexes_backup.push(index_expr);
@@ -896,7 +906,7 @@ impl<'source_file> Parser<'source_file> {
                 ArrayType {
                     size: ArrayCapacity::Fixed(Box::new(indexes_backup.remove(0))),
                     element_type: Box::new(element_type),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 }
             };
 
@@ -906,7 +916,7 @@ impl<'source_file> Parser<'source_file> {
                 base_array = ArrayType {
                     size: ArrayCapacity::Fixed(Box::new(index.clone())),
                     element_type: Box::new(TypeSpecifier::Array(base_array)),
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 };
             }
 
@@ -921,8 +931,9 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_untyped_array(&mut self) -> Result<ASTExpr, Diag> {
-        let line = self.current_token().loc.line;
-        let start = self.current_token().loc.start;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
         let elements = self.parse_expr_series(TokenKind::RightBrace)?;
 
         self.must_be_right_brace()?;
@@ -931,13 +942,13 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTExpr::UntypedArray(ASTUntypedArrayExpr {
             elements,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_array(&mut self, type_spec: TypeSpecifier) -> Result<ASTExpr, Diag> {
-        let line = self.current_token().loc.line;
-        let start = self.current_token().loc.start;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         if !matches!(type_spec, TypeSpecifier::Array(..)) {
             return Err(self.error_at_current(ParserDiagKind::NonArrayDataTypeForArrayConstruction));
@@ -954,7 +965,7 @@ impl<'source_file> Parser<'source_file> {
             return Ok(ASTExpr::Array(ASTArrayExpr {
                 elements,
                 data_type: type_spec,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -988,16 +999,16 @@ impl<'source_file> Parser<'source_file> {
                     let data_type = TypeSpecifier::Array(ArrayType {
                         size: ArrayCapacity::Fixed(Box::new(ASTExpr::Literal(ASTLiteralExpr {
                             kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
-                            loc: Loc::new(self.file_id(), line, start, end),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
                         }))),
                         element_type: inner_type_specifier.element_type,
-                        loc: Loc::new(self.file_id(), line, start, end),
+                        loc: Loc::new(self.file_id(), line, column, start, end),
                     });
 
                     elements.push(ASTExpr::Array(ASTArrayExpr {
                         data_type,
                         elements: untyped_array,
-                        loc: Loc::new(self.file_id(), line, start, end),
+                        loc: Loc::new(self.file_id(), line, column, start, end),
                     }));
                 } else {
                     unreachable!()
@@ -1027,13 +1038,13 @@ impl<'source_file> Parser<'source_file> {
         Ok(ASTExpr::Array(ASTArrayExpr {
             elements,
             data_type: type_spec,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume struct
 
@@ -1068,7 +1079,7 @@ impl<'source_file> Parser<'source_file> {
                             field_name: ident.clone(),
                             field_ty: None,
                             field_value: Box::new(ident_expr),
-                            loc: Loc::new(self.file_id(), line, start, end),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     } else {
                         let mut field_ty: Option<TypeSpecifier> = None;
@@ -1091,7 +1102,7 @@ impl<'source_file> Parser<'source_file> {
                             field_name: ident.clone(),
                             field_ty,
                             field_value: Box::new(field_value),
-                            loc: Loc::new(self.file_id(), line, start, end),
+                            loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     }
 
@@ -1113,13 +1124,13 @@ impl<'source_file> Parser<'source_file> {
             fields,
             repr_attr,
             align,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_unnamed_union_value(&mut self, is_const: bool) -> Result<ASTExpr, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume union
 
@@ -1141,7 +1152,7 @@ impl<'source_file> Parser<'source_file> {
                 field_name: ident,
                 field_value: Box::new(ident_expr),
                 is_const,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else {
             self.expect_current(TokenKind::Assign)?;
@@ -1157,7 +1168,7 @@ impl<'source_file> Parser<'source_file> {
                 field_name: ident,
                 field_value: Box::new(field_value),
                 is_const,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
     }

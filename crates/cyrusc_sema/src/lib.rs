@@ -17,9 +17,8 @@
 
 pub mod analyze;
 pub mod config;
-mod deduce;
+mod lower;
 mod diagnostics;
-mod entrypoints;
 mod flowstate;
 mod format;
 mod generics;

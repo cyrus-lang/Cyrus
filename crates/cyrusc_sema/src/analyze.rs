@@ -16,23 +16,19 @@
  */
 
 use crate::{
-    config::AnalyzerConfig,
-    diagnostics::AnalyzerDiagKind,
-    flowstate::{ControlContext, FlowState},
-    normalizer::TypeCache,
-    type_checking::context::TypeContext,
+    config::AnalyzerConfig, diagnostics::AnalyzerDiagKind, flowstate::{ControlContext, FlowState}, format::format_loc, normalizer::TypeCache, type_checking::context::TypeContext
 };
 use cyrusc_ast::{
     AssignKind,
     abi::{ReprAttr, ReprKind},
 };
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_comptime_valid};
-use cyrusc_diagcentral::{Diag, DiagLevel, reporter::DiagReporter};
+use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_internal::{
     symbols::table::{SymbolEntryMut, SymbolQuery},
     vtable::VTableRegistry,
 };
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_typed_ast::{
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
     format::{SymbolFormatterFn, format_sema_ty, format_unnamed_enum_ty},
@@ -147,11 +143,36 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.program_tree.borrow_mut().body = body;
     }
+
+    /// Validates that the program defines exactly one entry point and reports an
+    /// error if none or multiple entry points are found.
+    pub fn check_entry_points(source_map: &'a SourceMap, entry_points_arc: Arc<Mutex<Vec<Loc>>>) {
+        let entry_points = entry_points_arc.lock().unwrap();
+
+        if entry_points.len() == 1 {
+            // valid
+        } else if entry_points.len() == 0 {
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
+                loc: None,
+                hint: None,
+            });
+        } else {
+            let hint_loc = entry_points.get(entry_points.len().saturating_sub(2)).copied();
+
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
+                loc: entry_points.last().copied(),
+                hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(source_map, loc))),
+            });
+        }
+    }
 }
 
-// ============================================================
 // Analysis Entry Points
-// ============================================================
+//
 // These functions are the primary entry points for type checking different
 // expression categories. They handle top-level analysis and dispatch to
 // specialized helpers for detailed checking.
@@ -2063,7 +2084,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         folder.fold_expr(expr);
     }
 
-    fn resolve_any_variable_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
+    fn resolve_variable_rhs_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
         let symbol_entry = self.query.lookup_global_symbol(symbol_id)?;
 
         if let Some(resolved_var) = symbol_entry.as_var() {
@@ -2078,12 +2099,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
 impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
     fn resolve_symbol_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
-        let resolved = self.resolve_any_variable_expr(symbol_id)?;
+        let resolved = self.resolve_variable_rhs_expr(symbol_id)?;
         Some(resolved)
     }
 
     fn symbol_is_const(&mut self, symbol_id: SymbolID) -> bool {
-        let resolved = self.resolve_any_variable_expr(symbol_id);
+        let resolved = self.resolve_variable_rhs_expr(symbol_id);
 
         match resolved {
             Some(expr) => expr.sema_ty.as_ref().map(|t| t.is_const()).unwrap_or(false),

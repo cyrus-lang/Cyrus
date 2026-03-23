@@ -17,6 +17,7 @@
 
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
@@ -157,11 +158,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // is generic mapping ctx empty?
             let is_empty = { generic_type.mapping_ctx.borrow().is_empty() };
 
-            if is_empty {
-                None
-            } else {
-                inferred_sema_ty
-            }
+            if is_empty { None } else { inferred_sema_ty }
         } else {
             inferred_sema_ty
         }

@@ -15,9 +15,16 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_source_loc::{Loc, SourceMap};
+
 pub(crate) fn format_missing_fields(list: &Vec<String>) -> String {
     list.iter()
         .map(|str| format!("'{str}'"))
         .collect::<Vec<String>>()
         .join(", ")
+}
+
+pub(crate) fn format_loc(source_map: &SourceMap, loc: Loc) -> String {
+    let source_file = source_map.get_file(loc.file_id).unwrap();
+    format!("{}:{}:{}", source_file.name, loc.line, loc.column)
 }

@@ -170,8 +170,9 @@ impl<'source_file> Parser<'source_file> {
                 Token {
                     kind: TokenKind::EOF,
                     loc: Loc {
-                        id: self.last_loc.id,
+                        file_id: self.last_loc.file_id,
                         line: self.last_loc.line,
+                        column: self.last_loc.column,
                         start: self.last_loc.end,
                         end: self.last_loc.end,
                     },
@@ -189,8 +190,9 @@ impl<'source_file> Parser<'source_file> {
                 Token {
                     kind: TokenKind::EOF,
                     loc: Loc {
-                        id: self.last_loc.id,
+                        file_id: self.last_loc.file_id,
                         line: self.last_loc.line,
+                        column: self.last_loc.column,
                         start: self.last_loc.end,
                         end: self.last_loc.end,
                     },

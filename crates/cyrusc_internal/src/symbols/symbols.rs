@@ -224,6 +224,10 @@ impl SymbolEntry {
         }
     }
 
+    pub fn is_kind_of_variable(&self) -> bool {
+        self.as_var().is_some() || self.as_global_var().is_some()
+    }
+
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match &self.kind {
             SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),

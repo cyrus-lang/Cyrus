@@ -17,6 +17,7 @@
 
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 
 enum NamingConvDeclKind {

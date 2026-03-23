@@ -1,3 +1,5 @@
+use cyrusc_internal::symbols::table::SymbolEntryMut;
+
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -14,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::analyze::AnalysisContext;
 
 #[derive(Debug)]

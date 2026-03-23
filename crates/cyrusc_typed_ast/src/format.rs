@@ -121,13 +121,6 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolForma
             fmt.push_str(&format_typed_expr(&typed_assign.rhs, fmt_symbol));
             fmt
         }
-        TypedExprKind::Cast(typed_cast) => {
-            let mut fmt = String::new();
-            let operand_fmt = &format_typed_expr(&typed_cast.operand, fmt_symbol);
-            let target_type_fmt = format_sema_ty(typed_cast.target_type.clone(), fmt_symbol);
-            fmt.push_str(&format!("cast({}, {})", operand_fmt, target_type_fmt));
-            fmt
-        }
         TypedExprKind::Array(typed_array) => {
             let mut fmt = String::new();
             let array_type_fmt = typed_array
@@ -268,10 +261,6 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolForma
 
             fmt
         }
-        TypedExprKind::SizeOf(typed_size_of_expr) => {
-            let operand_fmt = &format_typed_expr(&typed_size_of_expr.operand, fmt_symbol);
-            format!("sizeof({})", operand_fmt)
-        }
         TypedExprKind::SemanticType(sema_ty) => format_sema_ty(sema_ty.clone(), fmt_symbol),
         TypedExprKind::Lambda(typed_lambda) => format_lambda(typed_lambda, fmt_symbol),
         TypedExprKind::Tuple(tuple_value) => {
@@ -286,10 +275,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolForma
             )
         }
         TypedExprKind::Dynamic(typed_dynamic_expr) => {
-            format!(
-                "dynamic {}",
-                format_typed_expr(&typed_dynamic_expr.operand, fmt_symbol)
-            )
+            format!("dynamic {}", format_typed_expr(&typed_dynamic_expr.operand, fmt_symbol))
         }
         TypedExprKind::Builtin(builtin) => match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
@@ -374,10 +360,7 @@ pub fn format_unnamed_struct_ty<'a>(
     fmt
 }
 
-pub fn format_unnamed_enum_ty<'a>(
-    unnamed_enum_type: &TypedUnnamedEnumType,
-    fmt_symbol: SymbolFormatterFn,
-) -> String {
+pub fn format_unnamed_enum_ty<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fmt_symbol: SymbolFormatterFn) -> String {
     let mut fmt = String::new();
 
     if let Some(repr_attr) = &unnamed_enum_type.repr_attr {
@@ -453,9 +436,7 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, fmt_symbol: SymbolFormatterFn) 
         SemanticType::Pointer(sema_ty) => {
             format!("{}*", format_sema_ty(*sema_ty, fmt_symbol))
         }
-        SemanticType::UnnamedStruct(unnamed_struct_type) => {
-            format_unnamed_struct_ty(&unnamed_struct_type, fmt_symbol)
-        }
+        SemanticType::UnnamedStruct(unnamed_struct_type) => format_unnamed_struct_ty(&unnamed_struct_type, fmt_symbol),
         SemanticType::UnnamedUnion(unnamed_union_type) => format_unnamed_union_ty(&unnamed_union_type, fmt_symbol),
         SemanticType::UnnamedEnum(unnamed_enum_type) => format_unnamed_enum_ty(&unnamed_enum_type, fmt_symbol),
         SemanticType::FuncType(func_type) => format_func_ty(&func_type, fmt_symbol),

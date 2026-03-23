@@ -103,8 +103,8 @@ impl<'source_file> Parser<'source_file> {
     pub(crate) fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, Diag> {
         let mut base_type = self.parse_base_type_token()?;
 
-        let start = base_type.loc().start;
-        let line = base_type.loc().line;
+        let loc = base_type.loc();
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         loop {
             if self.peek_token_is(TokenKind::Asterisk) {
@@ -124,7 +124,7 @@ impl<'source_file> Parser<'source_file> {
                 base_type = TypeSpecifier::GenericInst(GenericInst {
                     base: Box::new(base_type),
                     type_args,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
             } else {
                 break;
@@ -581,8 +581,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_func_type(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume function
 
@@ -595,13 +595,13 @@ impl<'source_file> Parser<'source_file> {
             params,
             ret_type: Box::new(ret),
             vis_opt: None,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         })))
     }
 
     fn parse_tuple(&mut self) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -632,7 +632,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(TypeSpecifier::Tuple(TupleType {
             type_list,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -696,8 +696,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_array_type(&mut self, base_type: TypeSpecifier) -> Result<TypeSpecifier, Diag> {
-        let start = base_type.loc().start;
-        let line = base_type.loc().line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         let mut dims: Vec<ArrayCapacity> = Vec::new();
 
@@ -729,7 +729,7 @@ impl<'source_file> Parser<'source_file> {
             type_spec = TypeSpecifier::Array(ArrayType {
                 size: array_capacity.clone(),
                 element_type: Box::new(type_spec),
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
 
@@ -750,8 +750,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_unnamed_struct_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume struct 
 
@@ -771,8 +771,8 @@ impl<'source_file> Parser<'source_file> {
             }
 
             if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
-                let start = self.current_token().loc.start;
-                let line = self.current_token().loc.line;
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
 
                 let field_name = self.parse_ident()?;
                 self.next_token(); // consume ident
@@ -787,7 +787,7 @@ impl<'source_file> Parser<'source_file> {
                 fields.push(UnnamedStructTypeField {
                     field_name,
                     field_ty: field_type_specifier,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
 
                 if self.current_token_is(TokenKind::RightBrace) {
@@ -808,13 +808,13 @@ impl<'source_file> Parser<'source_file> {
             fields,
             repr_attr,
             align,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
     fn parse_unnamed_union_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
-        let start = self.current_token().loc.start;
-        let line = self.current_token().loc.line;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // consume union 
 
@@ -834,8 +834,8 @@ impl<'source_file> Parser<'source_file> {
             }
 
             if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
-                let start = self.current_token().loc.start;
-                let line = self.current_token().loc.line;
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
 
                 let field_name = self.parse_ident()?;
                 self.next_token(); // consume ident
@@ -850,7 +850,7 @@ impl<'source_file> Parser<'source_file> {
                 fields.push(UnnamedUnionTypeField {
                     field_name,
                     field_ty: field_type_specifier,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
 
                 if self.current_token_is(TokenKind::RightBrace) {
@@ -871,7 +871,7 @@ impl<'source_file> Parser<'source_file> {
             fields,
             repr_attr,
             align,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 
@@ -902,8 +902,8 @@ impl<'source_file> Parser<'source_file> {
                     ));
                 }
 
-                let start = self.current_token().loc.start;
-                let line = self.current_token().loc.line;
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
 
                 let ty = self.parse_type_specifier()?;
                 self.next_token();
@@ -912,7 +912,7 @@ impl<'source_file> Parser<'source_file> {
 
                 variant_fields.push(UnnamedEnumValuedField {
                     ty,
-                    loc: Loc::new(self.file_id(), line, start, end),
+                    loc: Loc::new(self.file_id(), line, column, start, end),
                 });
 
                 if self.current_token_is(TokenKind::RightParen) {
@@ -933,8 +933,8 @@ impl<'source_file> Parser<'source_file> {
     }
 
     fn parse_unnamed_enum_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
-        let line = self.current_token().loc.line;
-        let start = self.current_token().loc.start;
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
 
         self.next_token(); // parse enum keyword
 
@@ -953,7 +953,7 @@ impl<'source_file> Parser<'source_file> {
                 repr_attr,
                 tag_type: tag_type,
                 align,
-                loc: Loc::new(self.file_id(), line, start, end),
+                loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         }
 
@@ -984,7 +984,7 @@ impl<'source_file> Parser<'source_file> {
             tag_type: tag_type,
             repr_attr,
             align,
-            loc: Loc::new(self.file_id(), line, start, end),
+            loc: Loc::new(self.file_id(), line, column, start, end),
         }))
     }
 

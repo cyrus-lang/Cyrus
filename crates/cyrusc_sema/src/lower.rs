@@ -14,40 +14,36 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::analyze::AnalysisContext;
 use cyrusc_ast::{
     AssignKind,
     operators::{InfixOperator, PrefixOperator},
 };
+use cyrusc_internal::symbols::table::SymbolEntryMut;
+use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::{
-    ScopeID,
     exprs::{
         MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr,
         TypedPrefixExpr,
     },
     types::{PlainType, SemanticType},
 };
-use cyrusc_tokens::literals::LiteralKind;
 
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
-    pub(crate) fn deduce_special_exprs(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_expr: &mut TypedExprStmt,
-        expected_type: Option<SemanticType>,
-    ) {
+    /// Rewrites special expression forms (e.g. compound assignments, pointer negation)
+    /// into their canonical AST representation.
+    pub(crate) fn lower_special_exprs(&mut self, typed_expr: &mut TypedExprStmt, expected_type: Option<SemanticType>) {
         match &mut typed_expr.kind {
-            TypedExprKind::Assign(typed_assignment) => {
-                if typed_assignment.kind != AssignKind::Default {
-                    typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
+            TypedExprKind::Assign(assign) => {
+                if assign.kind != AssignKind::Default {
+                    typed_expr.kind = self.lower_assign_to_infix_expr(assign);
                 }
             }
-            TypedExprKind::Prefix(prefix_expr) => {
-                match prefix_expr.op {
+            TypedExprKind::Prefix(prefix) => {
+                match prefix.op {
                     PrefixOperator::Bang => {
-                        if let Some(lowered_typed_expr) =
-                            self.deduce_prefix_not_pointer(scope_id_opt, expected_type.clone(), prefix_expr)
-                        {
+                        if let Some(lowered_typed_expr) = self.lower_prefix_not_pointer(expected_type.clone(), prefix) {
                             *typed_expr = lowered_typed_expr;
                         }
                     }
@@ -58,13 +54,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         };
     }
 
-    fn deduce_prefix_not_pointer(
+    /// Lowers a logical negation on a pointer operand into a null comparison.
+    fn lower_prefix_not_pointer(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         expected_type: Option<SemanticType>,
         prefix_expr: &mut TypedPrefixExpr,
     ) -> Option<TypedExprStmt> {
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
+        let operand_type = match self.analyze_expr(&mut prefix_expr.operand, expected_type.clone()) {
             Some(sema_ty) => sema_ty,
             None => return None,
         };
@@ -103,6 +99,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
+    /// Lowers a compound assignment into an equivalent infix expression assignment.
     pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignExpr) -> TypedExprKind {
         let infix_expr = TypedExprKind::Infix(TypedInfixExpr {
             op: assign.kind.to_infix_operator(),

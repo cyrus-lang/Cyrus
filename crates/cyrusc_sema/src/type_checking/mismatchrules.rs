@@ -39,8 +39,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         target_type: SemanticType,
         loc: Loc,
     ) -> bool {
-        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-
         match (value_type.const_inner().clone(), target_type.const_inner().clone()) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
@@ -49,15 +47,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.check_plain_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
-                let valid_capacity =
-                    self.check_const_str_to_array_assign(scope_id_opt, array_type1.clone(), array_type2.clone());
+                let valid_capacity = self.check_const_str_to_array_assign(array_type1.clone(), array_type2.clone());
 
-                valid_capacity
-                    && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
+                valid_capacity && self.check_type_mismatch(*array_type1.element_type, *array_type2.element_type, loc)
             }
             (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
                 (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
-                    || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
+                    || self.check_type_mismatch(*inner_concrete_type1, *inner_concrete_type2, loc)
             }
             (SemanticType::UnnamedEnum(unnamed_enum1), SemanticType::UnnamedEnum(unnamed_enum2)) => {
                 let mut variants = true;
@@ -88,10 +84,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::UnnamedEnum(unnamed_enum_type),
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
             ) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(struct_id).unwrap();
                 let resolved_enum = sym.as_enum().unwrap();
 
                 self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
@@ -100,19 +93,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
                 SemanticType::UnnamedEnum(unnamed_enum_type),
             ) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(struct_id).unwrap();
                 let resolved_enum = sym.as_enum().unwrap();
 
                 self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
             }
             (SemanticType::UnnamedEnum(unnamed_enum_type), SemanticType::GenericType(generic_type)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(generic_type.base).unwrap();
 
                 match sym.as_enum().cloned() {
                     Some(mut resolved_enum) => {
@@ -132,10 +119,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedEnum(unnamed_enum_type)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(generic_type.base).unwrap();
 
                 match sym.as_enum().cloned() {
                     Some(mut resolved_enum) => {
@@ -161,10 +145,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::UnnamedUnion(unnamed_union_type),
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
             ) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, union_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(union_id).unwrap();
                 let resolved_union = sym.as_union().unwrap();
 
                 self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
@@ -173,19 +154,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
                 SemanticType::UnnamedUnion(unnamed_union_type),
             ) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, union_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(union_id).unwrap();
                 let resolved_union = sym.as_union().unwrap();
 
                 self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
             }
             (SemanticType::UnnamedUnion(unnamed_union_type), SemanticType::GenericType(generic_type)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(generic_type.base).unwrap();
 
                 match sym.as_union().cloned() {
                     Some(mut resolved_union) => {
@@ -205,10 +180,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedUnion(unnamed_union_type)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(generic_type.base).unwrap();
 
                 match sym.as_union().cloned() {
                     Some(mut resolved_union) => {
@@ -233,7 +205,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
-                    if !self.check_type_mismatch(scope_id_opt, *field1.ty.clone(), *field2.ty.clone(), loc) {
+                    if !self.check_type_mismatch(*field1.ty.clone(), *field2.ty.clone(), loc) {
                         fields = false;
                         break;
                     }
@@ -244,10 +216,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::UnnamedStruct(unnamed_struct_type),
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
             ) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(struct_id).unwrap();
                 let resolved_struct = sym.as_struct().unwrap();
 
                 self.check_unnamed_struct_and_named_struct_type_mismatch(
@@ -259,10 +228,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
                 SemanticType::UnnamedStruct(unnamed_struct_type),
             ) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, struct_id)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(struct_id).unwrap();
                 let resolved_struct = sym.as_struct().unwrap();
 
                 self.check_unnamed_struct_and_named_struct_type_mismatch(
@@ -271,10 +237,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 )
             }
             (SemanticType::UnnamedStruct(unnamed_struct_type), SemanticType::GenericType(generic_type)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(generic_type.base).unwrap();
 
                 match sym.as_struct().cloned() {
                     Some(mut resolved_struct) => {
@@ -294,10 +257,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedStruct(unnamed_struct)) => {
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                    .unwrap();
+                let sym = self.resolver.resolve_local_or_global_symbol(generic_type.base).unwrap();
 
                 match sym.as_struct().cloned() {
                     Some(mut resolved_struct) => {
@@ -467,18 +427,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn check_const_str_to_array_assign(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        value_type: TypedArrayType,
-        target_type: TypedArrayType,
-    ) -> bool {
+    fn check_const_str_to_array_assign(&mut self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
         match (value_type.capacity, target_type.capacity) {
             (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
                 let mut folder = ConstFolder::new(self);
 
-                let value_capacity = folder.expr_as_const_int(scope_id_opt, &value_capacity_expr).unwrap();
-                let target_capacity = folder.expr_as_const_int(scope_id_opt, &target_capacity_expr).unwrap();
+                let value_capacity = folder.expr_as_const_int(&value_capacity_expr).unwrap();
+                let target_capacity = folder.expr_as_const_int(&target_capacity_expr).unwrap();
 
                 value_capacity == target_capacity
             }
@@ -486,12 +441,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    pub(crate) fn check_explicit_typecast(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        value_type: SemanticType,
-        target_type: SemanticType,
-    ) -> bool {
+    pub(crate) fn check_explicit_typecast(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
         match (value_type, target_type) {
             // Any integer to any integer
             (SemanticType::PlainType(value), SemanticType::PlainType(target))
@@ -556,32 +506,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // point we perform the precise lowering (and any required compile‑time validation)
             // through the cast builtin implementation.
             //
-            (
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)),
-                SemanticType::PlainType(plain_type),
-            ) => {
-                let scope_opt =
-                    scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, enum_id)
-                    .unwrap();
+            (SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)), SemanticType::PlainType(plain_type)) => {
+                let sym = self.resolver.resolve_local_or_global_symbol(enum_id).unwrap();
 
                 sym.as_enum().is_some() && plain_type.is_integer_or_bool()
             }
             (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
-            (
-                SemanticType::PlainType(plain_type),
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)),
-            ) => {
-                let scope_opt =
-                    scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-
-                let sym = self
-                    .resolver
-                    .resolve_local_or_global_symbol(scope_opt, enum_id)
-                    .unwrap();
+            (SemanticType::PlainType(plain_type), SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id))) => {
+                let sym = self.resolver.resolve_local_or_global_symbol(enum_id).unwrap();
 
                 sym.as_enum().is_some() && plain_type.is_integer_or_bool()
             }

@@ -41,8 +41,9 @@ pub struct SourceFile {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Loc {
-    pub id: FileID,
+    pub file_id: FileID,
     pub line: usize,
+    pub column: usize,
     pub start: usize,
     pub end: usize,
 }
@@ -91,10 +92,11 @@ impl SourceFile {
 }
 
 impl Loc {
-    pub fn new(file_id: FileID, line: usize, start: usize, end: usize) -> Self {
+    pub fn new(file_id: FileID, line: usize, column: usize, start: usize, end: usize) -> Self {
         Self {
-            id: file_id,
+            file_id,
             line,
+            column,
             start,
             end,
         }
@@ -102,8 +104,9 @@ impl Loc {
 
     pub fn default(id: FileID) -> Self {
         Self {
-            id,
+            file_id: id,
             line: 0,
+            column: 0,
             start: 0,
             end: 0,
         }

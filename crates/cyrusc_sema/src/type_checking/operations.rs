@@ -14,14 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
-use cyrusc_diagcentral::{Diag, DiagLevel, DiagLoc, source_loc::Loc};
-use cyrusc_resolver::symbols::LocalScopeRef;
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::symbols::table::SymbolEntryMut;
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    ScopeID,
     exprs::*,
-    format::format_sema_ty,
+    format::{SymbolFormatterFn, format_sema_ty},
     generics::mapping_ctx::mapping_ctx_eq_refcell,
     types::{PlainType, SemanticType},
 };
@@ -46,81 +47,69 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     pub(crate) fn analyze_infix_expr_type(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
-        infix_expr: &mut TypedInfixExpr,
+        infix: &mut TypedInfixExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let lhs_type = match self.analyze_expr(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
+        let lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
             Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
-        let rhs_type = match self.analyze_expr(scope_id_opt, &mut infix_expr.rhs, Some(lhs_type.clone())) {
+        let rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
             Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
-        match infix_expr.op {
+        match infix.op {
             InfixOperator::Add => {
                 if let Some(sema_ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, true) {
                     return Some(sema_ty);
                 }
 
-                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
+                self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
             }
             InfixOperator::Sub => {
                 if let Some(sema_ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, false) {
                     return Some(sema_ty);
                 }
 
-                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
+                self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
             }
             InfixOperator::Mul | InfixOperator::Div | InfixOperator::Rem => {
-                self.analyze_arithmetic_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
+                self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
             }
             InfixOperator::LessThan
             | InfixOperator::LessEqual
             | InfixOperator::GreaterThan
-            | InfixOperator::GreaterEqual => {
-                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, false, infix_expr.loc)
-            }
+            | InfixOperator::GreaterEqual => self.analyze_compare_expr(lhs_type, rhs_type, false, infix.loc),
             InfixOperator::Equal | InfixOperator::NotEqual => {
-                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, true, infix_expr.loc)
+                self.analyze_compare_expr(lhs_type, rhs_type, true, infix.loc)
             }
-            InfixOperator::Or => self.analyze_or_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc),
-            InfixOperator::And => self.analyze_and_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc),
+            InfixOperator::Or => self.analyze_or_expr(lhs_type, rhs_type, infix.loc),
+            InfixOperator::And => self.analyze_and_expr(lhs_type, rhs_type, infix.loc),
             InfixOperator::BitwiseAnd
             | InfixOperator::BitwiseOr
             | InfixOperator::BitwiseXor
-            | InfixOperator::BitwiseAndNot => {
-                self.analyze_bitwise_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
-            }
-            InfixOperator::ShiftLeft => {
-                self.analyze_left_shift_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
-            }
-            InfixOperator::ShiftRight => {
-                self.analyze_right_shift_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc)
-            }
+            | InfixOperator::BitwiseAndNot => self.analyze_bitwise_expr(lhs_type, rhs_type, infix.loc),
+            InfixOperator::ShiftLeft => self.analyze_left_shift_expr(lhs_type, rhs_type, infix.loc),
+            InfixOperator::ShiftRight => self.analyze_right_shift_expr(lhs_type, rhs_type, infix.loc),
         }
     }
 
-    pub(crate) fn analyze_addr_of_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        addr_of: &mut TypedAddrOfExpr,
-    ) -> Option<SemanticType> {
+    pub(crate) fn analyze_addr_of_expr_type(&mut self, addr_of: &mut TypedAddrOfExpr) -> Option<SemanticType> {
         if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AddressOfRvalue),
-                loc: Some(DiagLoc::new(addr_of.loc)),
+                loc: Some(addr_of.loc),
                 hint: None,
             });
             return None;
         }
 
-        let operand_inner_type = addr_of.operand.sema_ty.clone();
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut addr_of.operand, operand_inner_type) {
+        let expected_type = addr_of.operand.sema_ty.clone();
+
+        let operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
             Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
@@ -128,13 +117,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Some(SemanticType::Pointer(Box::new(operand_type)))
     }
 
-    pub(crate) fn analyze_deref_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        deref: &mut TypedDerefExpr,
-    ) -> Option<SemanticType> {
-        let operand_inner_type = deref.operand.sema_ty.clone();
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut deref.operand, operand_inner_type) {
+    pub(crate) fn analyze_deref_expr_type(&mut self, deref: &mut TypedDerefExpr) -> Option<SemanticType> {
+        let expected_type = deref.operand.sema_ty.clone();
+
+        let operand_type = match self.analyze_expr(&mut deref.operand, expected_type) {
             Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
@@ -145,94 +131,51 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                loc: Some(DiagLoc::new(deref.loc)),
+                loc: Some(deref.loc),
                 hint: None,
             });
             return None;
         }
 
-        let inner_ty = match operand_type {
+        let inner_type = match operand_type {
             SemanticType::Pointer(sema_ty) => *sema_ty,
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DerefNonPointerValue),
-                    loc: Some(DiagLoc::new(deref.loc)),
+                    loc: Some(deref.loc),
                     hint: None,
                 });
                 return None;
             }
         };
 
-        if inner_ty.is_void() {
+        if inner_type.is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::DerefVoidPointerValue),
-                loc: Some(DiagLoc::new(deref.loc)),
+                loc: Some(deref.loc),
                 hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
             });
             return None;
         }
 
-        Some(inner_ty)
-    }
-
-    pub(crate) fn analyze_sizeof_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        sizeof_expr: &mut TypedSizeOfExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        let symbol_id = match &sizeof_expr.operand.kind {
-            TypedExprKind::SemanticType(sema_ty) => {
-                if let SemanticType::UnresolvedSymbol(symbol_id) = sema_ty {
-                    *symbol_id
-                } else {
-                    self.normalize_sema_type(scope_id_opt, sema_ty.clone(), sizeof_expr.loc)?;
-                    return Some(SemanticType::PlainType(PlainType::USize));
-                }
-            }
-            TypedExprKind::Symbol(symbol_id, ..) => *symbol_id,
-            _ => {
-                self.analyze_expr(scope_id_opt, &mut sizeof_expr.operand, expected_type);
-                return Some(SemanticType::PlainType(PlainType::USize));
-            }
-        };
-
-        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-
-        let sym = self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt, symbol_id)
-            .unwrap();
-
-        if sym.as_global_var().is_some() || sym.as_variable().is_some() {
-            // consider as expr
-            self.analyze_expr(scope_id_opt, &mut sizeof_expr.operand, expected_type);
-        } else {
-            // consider as type
-            self.normalize_sema_type(
-                scope_id_opt,
-                SemanticType::UnresolvedSymbol(symbol_id),
-                sizeof_expr.loc,
-            )?;
-        }
-
-        Some(SemanticType::PlainType(PlainType::USize))
+        Some(inner_type)
     }
 
     pub(crate) fn analyze_prefix_expr_type(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
-        prefix_expr: &mut TypedPrefixExpr,
+        prefix: &mut TypedPrefixExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut prefix_expr.operand, expected_type) {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
+        let operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
             Some(sema_ty) => sema_ty.const_inner().clone(),
             None => return None,
         };
 
-        match prefix_expr.op {
+        match prefix.op {
             PrefixOperator::BitwiseNot => {
                 let valid_plain_type = match &operand_type {
                     SemanticType::PlainType(plain_type) => {
@@ -253,7 +196,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type }),
-                            loc: Some(DiagLoc::new(prefix_expr.loc)),
+                            loc: Some(prefix.loc),
                             hint: None,
                         });
                         return None;
@@ -280,7 +223,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixBangOnNonBool { operand_type }),
-                            loc: Some(DiagLoc::new(prefix_expr.loc)),
+                            loc: Some(prefix.loc),
                             hint: None,
                         });
                         return None;
@@ -295,7 +238,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::UnaryOperatorMinusOnUnsignedInteger),
-                                    loc: Some(DiagLoc::new(prefix_expr.loc)),
+                                    loc: Some(prefix.loc),
                                     hint: Some(
                                         "Use a signed type if you need to represent negative values.".to_string(),
                                     ),
@@ -316,12 +259,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 match valid_plain_type {
                     Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
                     None => {
-                        let operand_type = format_sema_ty(operand_type, fmt_symbol);
-
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type }),
-                            loc: Some(DiagLoc::new(prefix_expr.loc)),
+                            kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger {
+                                operand_type: format_sema_ty(operand_type, fmt_symbol),
+                            }),
+                            loc: Some(prefix.loc),
                             hint: None,
                         });
                         return None;
@@ -331,34 +274,29 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    pub(crate) fn analyze_unary_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        unary_expr: &mut TypedUnaryExpr,
-    ) -> Option<SemanticType> {
-        let operand_inner_type = unary_expr.operand.sema_ty.clone();
-        let operand_type = match self.analyze_expr(scope_id_opt, &mut unary_expr.operand, operand_inner_type) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
-            None => return None,
-        };
+    pub(crate) fn analyze_unary_expr_type(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
+        let expected_type = unary.operand.sema_ty.clone();
+        let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
 
         if operand_type.is_const() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),
-                loc: Some(DiagLoc::new(unary_expr.loc)),
+                loc: Some(unary.loc),
                 hint: None,
             });
             return None;
         }
 
-        if !(operand_type.is_integer() && unary_expr.operand.is_lvalue()) {
-            let operand_type = format_sema_ty(operand_type, fmt_symbol);
-
+        if !(operand_type.is_integer() && unary.operand.is_lvalue()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::InvalidUnary { operand_type }),
-                loc: Some(DiagLoc::new(unary_expr.loc)),
+                kind: Box::new(AnalyzerDiagKind::InvalidUnary {
+                    operand_type: format_sema_ty(operand_type, fmt_symbol),
+                }),
+                loc: Some(unary.loc),
                 hint: None,
             });
             return None;
@@ -369,12 +307,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_arithmetic_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
+        self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             let valid = (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float());
 
             if valid {
@@ -391,27 +328,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         })
     }
 
-    fn analyze_compare_enums(
-        &mut self,
-        scope_opt: Option<LocalScopeRef>,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
-    ) -> Option<SemanticType> {
-        let enum_symbol_id1 = lhs_type.const_inner().as_enum_symbol_id().unwrap();
-        let enum_symbol_id2 = rhs_type.const_inner().as_enum_symbol_id().unwrap();
+    fn analyze_compare_enums(&mut self, lhs_type: SemanticType, rhs_type: SemanticType) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let local_or_global_symbol1 = self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt.clone(), enum_symbol_id1)
-            .unwrap();
+        let enum_id1 = lhs_type.const_inner().as_enum_symbol_id().unwrap();
+        let enum_id2 = rhs_type.const_inner().as_enum_symbol_id().unwrap();
 
-        let local_or_global_symbol2 = self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt, enum_symbol_id2)
-            .unwrap();
-
-        let resolved_enum1 = local_or_global_symbol1.as_enum()?;
-        let resolved_enum2 = local_or_global_symbol2.as_enum()?;
+        let resolved_enum1 = self.query.lookup_enum(enum_id1)?;
+        let resolved_enum2 = self.query.lookup_enum(enum_id2)?;
 
         if resolved_enum1.symbol_id == resolved_enum2.symbol_id {
             Some(SemanticType::PlainType(PlainType::Bool))
@@ -422,16 +346,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_compare_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         cmp_eq: bool,
         loc: Loc,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
-
-        let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
         if let (Some(generic_type1), Some(generic_type2)) = (lhs_type.as_generic_type(), rhs_type.as_generic_type()) {
             let equal_mapping_ctx = mapping_ctx_eq_refcell(
@@ -441,23 +364,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 &generic_type2.generic_params,
                 &generic_type2.mapping_ctx,
             );
+
             let equal_base = generic_type1.base == generic_type2.base;
-            let is_enum = self
-                .resolver
-                .resolve_enum_symbol(scope_opt.clone(), generic_type1.base)
-                .is_some();
+            let is_enum = self.query.lookup_enum(generic_type1.base).is_some();
 
             if !(is_enum && equal_mapping_ctx && equal_base) {
-                let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
-                let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                        lhs_type: lhs_type_str,
-                        rhs_type: rhs_type_str,
+                        lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
+                        rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
                     }),
-                    loc: Some(DiagLoc::new(loc)),
+                    loc: Some(loc),
                     hint: None,
                 });
                 return None;
@@ -465,41 +383,35 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 return Some(SemanticType::PlainType(PlainType::Bool));
             }
         } else if lhs_type.is_enum() && rhs_type.is_enum() {
-            let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
-            let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
-
-            match self.analyze_compare_enums(scope_opt, lhs_type.clone(), rhs_type.clone()) {
+            match self.analyze_compare_enums(lhs_type.clone(), rhs_type.clone()) {
                 Some(sema_ty) => return Some(sema_ty),
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                            lhs_type: lhs_type_str,
-                            rhs_type: rhs_type_str,
+                            lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
+                            rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
                         }),
-                        loc: Some(DiagLoc::new(loc)),
+                        loc: Some(loc),
                         hint: None,
                     });
                     return None;
                 }
             }
-        } else if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc) {
-            let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
-            let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
-
+        } else if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                    lhs_type: lhs_type_str,
-                    rhs_type: rhs_type_str,
+                    lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
+                    rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
                 }),
-                loc: Some(DiagLoc::new(loc)),
+                loc: Some(loc),
                 hint: None,
             });
             return None;
         }
 
-        self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
+        self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float()) {
                 Some(SemanticType::PlainType(PlainType::Bool))
             } else if cmp_eq {
@@ -523,29 +435,29 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_binary_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         loc: Loc,
         type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<SemanticType>,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc) {
-            let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
-            let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
-
+        if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                    lhs_type: lhs_type_str,
-                    rhs_type: rhs_type_str,
+                    lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
+                    rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
                 }),
-                loc: Some(DiagLoc::new(
-                    loc
-                )),
-                hint: Some("Consider adding an explicit cast to either the lhs or rhs operand to make their types compatible.".to_string()),
+                loc: Some(loc),
+                hint: Some(
+                    "Consider adding an explicit cast to either the lhs or rhs operand to make their types compatible."
+                        .to_string(),
+                ),
             });
             return None;
         }
@@ -553,14 +465,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
             Some(sema_ty) => Some(sema_ty),
             None => {
-                let lhs_type_str = format_sema_ty(lhs_type.clone(), fmt_symbol);
-                let rhs_type_str = format_sema_ty(rhs_type.clone(), fmt_symbol);
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                        lhs_type: lhs_type_str,
-                        rhs_type: rhs_type_str,
+                        lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
+                        rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
                     }),
                     loc: Some(loc),
                     hint: None,
@@ -570,13 +479,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn analyze_or_expr(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
-        loc: Loc,
-    ) -> Option<SemanticType> {
+    fn analyze_or_expr(&mut self, lhs_type: SemanticType, rhs_type: SemanticType, loc: Loc) -> Option<SemanticType> {
         match (lhs_type.clone(), rhs_type.clone()) {
             (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(inner_pointer_type)) => {
                 Some(SemanticType::Pointer(inner_pointer_type))
@@ -591,11 +494,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     None
                 }
             }
-            (
-                null_sema_ty @ SemanticType::PlainType(PlainType::Null),
-                SemanticType::PlainType(PlainType::Null),
-            ) => Some(null_sema_ty),
-            _ => self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
+            (null_sema_ty @ SemanticType::PlainType(PlainType::Null), SemanticType::PlainType(PlainType::Null)) => {
+                Some(null_sema_ty)
+            }
+            _ => self.analyze_binary_expr(lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
                 (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic))
                     if lhs_basic.is_bool() && rhs_basic.is_bool() =>
                 {
@@ -606,14 +508,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn analyze_and_expr(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
-        loc: Loc,
-    ) -> Option<SemanticType> {
-        self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
+    fn analyze_and_expr(&mut self, lhs_type: SemanticType, rhs_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+        self.analyze_binary_expr(lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
             (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic))
                 if lhs_basic.is_bool() && rhs_basic.is_bool() =>
             {
@@ -625,12 +521,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_left_shift_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
+        self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
                     Some(SemanticType::PlainType(PlainType::widen_type(
@@ -648,52 +543,45 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_right_shift_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        self.analyze_binary_expr(
-            scope_id_opt,
-            lhs_type.clone(),
-            rhs_type.clone(),
-            loc,
-            |this, lhs, rhs| {
-                if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
-                    // rhs must be unsigned
-                    if rhs_basic.is_signed() {
-                        this.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger),
-                            loc: Some(DiagLoc::new(loc)),
-                            hint: None,
-                        });
-                        return None;
-                    }
+        self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |this, lhs, rhs| {
+            if let (SemanticType::PlainType(lhs_basic), SemanticType::PlainType(rhs_basic)) = (&lhs, &rhs) {
+                // rhs must be unsigned
+                if rhs_basic.is_signed() {
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                    return None;
+                }
 
-                    if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                        Some(SemanticType::PlainType(PlainType::widen_type(
-                            lhs_basic.clone(),
-                            rhs_basic.clone(),
-                        )?))
-                    } else {
-                        None
-                    }
+                if lhs_basic.is_integer() && rhs_basic.is_integer() {
+                    Some(SemanticType::PlainType(PlainType::widen_type(
+                        lhs_basic.clone(),
+                        rhs_basic.clone(),
+                    )?))
                 } else {
                     None
                 }
-            },
-        )
+            } else {
+                None
+            }
+        })
     }
 
     fn analyze_bitwise_expr(
         &mut self,
-        scope_id_opt: Option<ScopeID>,
+
         lhs_type: SemanticType,
         rhs_type: SemanticType,
         loc: Loc,
     ) -> Option<SemanticType> {
-        self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
+        self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             // only allow integer types
             if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_basic_type(), rhs.as_basic_type()) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
