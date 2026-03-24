@@ -2307,7 +2307,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Array(TypedArrayExpr {
-                array_type: None,
+                ty: None,
                 elements,
                 loc: untyped_array.loc,
             }),
@@ -2328,7 +2328,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Array(TypedArrayExpr {
-                array_type: Some(array_type),
+                ty: Some(array_type),
                 elements: typed_elements,
                 loc: array.loc,
             }),

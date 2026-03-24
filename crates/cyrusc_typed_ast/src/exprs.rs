@@ -241,7 +241,7 @@ pub struct TypedCastExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayExpr {
-    pub array_type: Option<SemanticType>,
+    pub ty: Option<SemanticType>,
     pub elements: Vec<TypedExprStmt>,
     pub loc: Loc,
 }

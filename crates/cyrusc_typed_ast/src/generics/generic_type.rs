@@ -215,7 +215,7 @@ impl GenericType {
                 // NOTE: complain only and only if overrode type is not the same!
                 // situations come that type args may always presented explicitly, so we should not complain about that.
                 if type_arg_sema_ty
-                    .map(|inferred_ty| inferred_ty != parent_sema_ty)
+                    .map(|inferred_type| inferred_type != parent_sema_ty)
                     .unwrap_or(false)
                 {
                     return Err(Diag {

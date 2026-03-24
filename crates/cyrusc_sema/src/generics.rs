@@ -297,13 +297,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     TypedFuncParamKind::FuncParam(typed_func_param) => {
                         scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.typed_variable.ty = Some(typed_func_param.ty.clone());
+                            resolved_var.variable.ty = Some(typed_func_param.ty.clone());
                         });
                     }
                     TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
                         scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.typed_variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
+                            resolved_var.variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
                         });
                     }
                 }
@@ -314,7 +314,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     TypedFuncVariadicParams::Typed(ident, sema_ty) => {
                         scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.typed_variable.ty = Some(sema_ty.clone());
+                            resolved_var.variable.ty = Some(sema_ty.clone());
                         });
                     }
                     TypedFuncVariadicParams::UntypedCStyle => {}

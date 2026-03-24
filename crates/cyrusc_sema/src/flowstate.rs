@@ -1,5 +1,3 @@
-use cyrusc_internal::symbols::table::SymbolEntryMut;
-
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -16,8 +14,6 @@ use cyrusc_internal::symbols::table::SymbolEntryMut;
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-
-use crate::analyze::AnalysisContext;
 
 #[derive(Debug)]
 pub(crate) enum ControlContext {
@@ -36,9 +32,9 @@ pub(crate) enum FlowState {
     Returns,
 }
 
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
-    pub(crate) fn merge_flow_state(&self, a: FlowState, b: FlowState) -> FlowState {
-        match (a, b) {
+impl FlowState {
+    pub fn merge(&self, other: FlowState) -> FlowState {
+        match (self, other) {
             (FlowState::Returns, FlowState::Returns) => FlowState::Returns,
             (FlowState::Unreachable, FlowState::Unreachable) => FlowState::Unreachable,
             _ => FlowState::Reachable,

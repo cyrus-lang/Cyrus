@@ -58,7 +58,6 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         TypedExprKind::Prefix(prefix) => is_comptime_valid(&prefix.operand.kind),
         TypedExprKind::Infix(infix) => is_comptime_valid(&infix.lhs.kind) && is_comptime_valid(&infix.rhs.kind),
         TypedExprKind::Unary(unary) => is_comptime_valid(&unary.operand.kind),
-        TypedExprKind::Cast(cast) => is_comptime_valid(&cast.operand.kind),
         TypedExprKind::Array(array) => array.elements.iter().all(|expr| is_comptime_valid(&expr.kind)),
         TypedExprKind::StructInit(struct_init) => struct_init
             .fields
@@ -83,7 +82,6 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         | TypedExprKind::MethodCall(_)
         | TypedExprKind::FuncCall(_)
         | TypedExprKind::Assign(_)
-        | TypedExprKind::SizeOf(_)
         | TypedExprKind::Dynamic(_)
         | TypedExprKind::SemanticType(_)
         | TypedExprKind::AddrOf(_) => false,
