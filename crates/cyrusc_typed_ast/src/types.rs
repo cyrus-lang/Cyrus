@@ -465,22 +465,22 @@ impl SemanticType {
 
     pub fn pointer_inner(&self) -> &SemanticType {
         match self {
-            SemanticType::Pointer(sema_ty) => sema_ty,
+            SemanticType::Pointer(sema_type) => sema_type,
             ty @ _ => ty,
         }
     }
 
     pub fn const_inner(&self) -> &SemanticType {
         match self {
-            SemanticType::Const(sema_ty) => sema_ty,
-            sema_ty @ _ => sema_ty,
+            SemanticType::Const(sema_type) => sema_type,
+            sema_type @ _ => sema_type,
         }
     }
 
     pub fn const_inner_mut(&mut self) -> &mut SemanticType {
         match self {
-            SemanticType::Const(sema_ty) => sema_ty,
-            sema_ty @ _ => sema_ty,
+            SemanticType::Const(sema_type) => sema_type,
+            sema_type @ _ => sema_type,
         }
     }
 

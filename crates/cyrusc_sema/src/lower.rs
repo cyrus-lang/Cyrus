@@ -61,7 +61,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         prefix_expr: &mut TypedPrefixExpr,
     ) -> Option<TypedExprStmt> {
         let operand_type = match self.analyze_expr(&mut prefix_expr.operand, expected_type.clone()) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_type) => sema_type,
             None => return None,
         };
 
@@ -74,7 +74,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 loc: prefix_expr.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: prefix_expr.loc,
         };
 
@@ -91,7 +91,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             Some(TypedExprStmt {
                 kind: new_infix_expr,
                 mloc: MemoryLocation::RValue,
-                sema_ty: None,
+                sema_type: None,
                 loc: prefix_expr.loc,
             })
         } else {
@@ -112,7 +112,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             lhs: assign.lhs.clone(),
             rhs: Box::new(TypedExprStmt {
                 kind: infix_expr,
-                sema_ty: None,
+                sema_type: None,
                 loc: assign.loc,
                 mloc: MemoryLocation::RValue,
             }),

@@ -233,7 +233,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
         match typed_stmt {
             TypedStmt::Expr(typed_expr) => {
-                self.analyze_expr(typed_expr, typed_expr.sema_ty.clone());
+                self.analyze_expr(typed_expr, typed_expr.sema_type.clone());
                 FlowState::Reachable
             }
             TypedStmt::Variable(typed_variable) => {
@@ -282,10 +282,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let mut explicit_sema_ty: Option<SemanticType> = None;
 
-        if let Some(sema_ty) = &export_tuple.ty {
-            match self.normalize_and_check_sema_ty(sema_ty.clone(), export_tuple.loc) {
-                Some(sema_ty) => {
-                    explicit_sema_ty = Some(sema_ty);
+        if let Some(sema_type) = &export_tuple.ty {
+            match self.normalize_and_check_sema_ty(sema_type.clone(), export_tuple.loc) {
+                Some(sema_type) => {
+                    explicit_sema_ty = Some(sema_type);
                 }
                 None => return None,
             }
@@ -336,11 +336,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         let tuple_patterns = export_tuple.pattern.into_tuple();
-        for (i, (pattern, sema_ty)) in tuple_patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
+        for (i, (pattern, sema_type)) in tuple_patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
             self.analyze_tuple_pattern(
                 export_tuple.is_const,
                 pattern,
-                sema_ty,
+                sema_type,
                 &export_tuple.rhs.as_mut().unwrap(),
                 export_tuple.loc,
                 vec![i],
@@ -356,7 +356,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         is_const: bool,
         pattern: &TypedExportPattern,
-        sema_ty: &SemanticType,
+        sema_type: &SemanticType,
         expr: &TypedExprStmt,
         loc: Loc,
         access_path: Vec<usize>,
@@ -364,7 +364,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         match pattern {
             TypedExportPattern::Ident(symbol_id) => {
                 let mut rhs = expr.clone();
-                let rhs_ty = rhs.sema_ty.clone().unwrap();
+                let rhs_ty = rhs.sema_type.clone().unwrap();
                 let tuple_type = rhs_ty.as_tuple_type().unwrap();
 
                 for &i in &access_path {
@@ -374,16 +374,16 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             index: i,
                             loc: loc,
                         }),
-                        sema_ty: Some(tuple_type.elements.get(i).unwrap().clone()),
+                        sema_type: Some(tuple_type.elements.get(i).unwrap().clone()),
                         mloc: MemoryLocation::LValue,
                         loc: loc,
                     };
                 }
 
-                self.analyze_tuple_ident_pattern(*symbol_id, sema_ty, &rhs, is_const);
+                self.analyze_tuple_ident_pattern(*symbol_id, sema_type, &rhs, is_const);
             }
             TypedExportPattern::Tuple(patterns) => {
-                if let Some(tuple_type) = sema_ty.as_tuple_type() {
+                if let Some(tuple_type) = sema_type.as_tuple_type() {
                     if patterns.len() != tuple_type.elements.len() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -514,7 +514,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                                 {
                                     enum_valued_field.ty =
                                         match self.normalize_sema_type(enum_valued_field.ty.clone(), ident.loc) {
-                                            Some(sema_ty) => sema_ty,
+                                            Some(sema_type) => sema_type,
                                             None => continue 'patterns,
                                         };
 
@@ -540,13 +540,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                                 let valued_field = valued_fields.first().unwrap();
 
-                                valued.sema_ty = match self.analyze_expr(valued, None) {
-                                    Some(sema_ty) => Some(sema_ty),
+                                valued.sema_type = match self.analyze_expr(valued, None) {
+                                    Some(sema_type) => Some(sema_type),
                                     None => continue 'patterns,
                                 };
 
                                 self.symbol_mut.with_var_mut(valued_field.symbol_id, |resolved_var| {
-                                    resolved_var.variable.ty = Some(valued.sema_ty.clone().unwrap());
+                                    resolved_var.variable.ty = Some(valued.sema_type.clone().unwrap());
                                 });
                             }
                             TypedUnnamedEnumVariant::Ident(ident) => {
@@ -608,7 +608,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         let operand_type = match self.analyze_expr(&mut switch_stmt.operand, None) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
+            Some(sema_type) => sema_type.const_inner().clone(),
             None => return FlowState::Reachable,
         };
 
@@ -832,9 +832,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
-        if let Some(sema_ty) = self.analyze_expr(&mut typed_while.cond, Some(SemanticType::PlainType(PlainType::Bool)))
+        if let Some(sema_type) = self.analyze_expr(&mut typed_while.cond, Some(SemanticType::PlainType(PlainType::Bool)))
         {
-            self.check_expr_type_must_be_condition(sema_ty, typed_while.loc);
+            self.check_expr_type_must_be_condition(sema_type, typed_while.loc);
         }
 
         self.control_stack.push(ControlContext::While);
@@ -850,8 +850,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         if let Some(typed_expr) = &mut typed_for.cond {
-            if let Some(sema_ty) = self.analyze_expr(typed_expr, Some(SemanticType::PlainType(PlainType::Bool))) {
-                self.check_expr_type_must_be_condition(sema_ty, typed_for.loc);
+            if let Some(sema_type) = self.analyze_expr(typed_expr, Some(SemanticType::PlainType(PlainType::Bool))) {
+                self.check_expr_type_must_be_condition(sema_type, typed_for.loc);
             }
         }
 
@@ -880,13 +880,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut ret.arg {
-            if let Some(sema_ty) = self.analyze_expr(typed_expr, Some(ret_type.clone())) {
-                if !self.check_type_mismatch(sema_ty.clone(), ret_type.clone(), ret.loc) {
+            if let Some(sema_type) = self.analyze_expr(typed_expr, Some(ret_type.clone())) {
+                if !self.check_type_mismatch(sema_type.clone(), ret_type.clone(), ret.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
                             expected: format_sema_ty(ret_type.const_inner().clone(), fmt_symbol),
-                            got: format_sema_ty(sema_ty.const_inner().clone(), fmt_symbol),
+                            got: format_sema_ty(sema_type.const_inner().clone(), fmt_symbol),
                         }),
                         loc: Some(ret.loc),
                         hint: None,
@@ -963,7 +963,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         if let Some(mut expr) = global_var.expr.clone() {
             match self.analyze_expr(&mut expr, global_var.ty.clone()) {
-                Some(sema_ty) => Some(sema_ty),
+                Some(sema_type) => Some(sema_type),
                 None => return,
             };
 
@@ -981,9 +981,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         global_var.ty = match &global_var.ty {
-            Some(sema_ty) => self.normalize_and_check_sema_ty(sema_ty.clone(), global_var.loc),
-            None => match global_var.expr.as_ref().and_then(|expr| expr.sema_ty.clone()) {
-                Some(sema_ty) => Some(sema_ty),
+            Some(sema_type) => self.normalize_and_check_sema_ty(sema_type.clone(), global_var.loc),
+            None => match global_var.expr.as_ref().and_then(|expr| expr.sema_type.clone()) {
+                Some(sema_type) => Some(sema_type),
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -996,8 +996,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             },
         };
 
-        if let Some(sema_ty) = &global_var.ty {
-            self.validate_variable_type(sema_ty, global_var.expr.is_some(), global_var.loc);
+        if let Some(sema_type) = &global_var.ty {
+            self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc);
         }
 
         if global_var.is_const && !matches!(global_var.ty, Some(SemanticType::Const(..))) {
@@ -1024,7 +1024,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         if let Some(expr) = &mut global_var.expr {
             if let Some(target_type) = &global_var.ty {
-                let expr_type = expr.sema_ty.clone().unwrap();
+                let expr_type = expr.sema_type.clone().unwrap();
 
                 if *expr_type.const_inner() != *target_type.const_inner() {
                     self.reporter.report(Diag {
@@ -1192,7 +1192,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         );
 
         func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_type) => sema_type,
             None => return,
         };
 
@@ -1246,7 +1246,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_typedef(&mut self, typed_typedef: &mut TypedTypedefStmt) {
         typed_typedef.ty = match self.normalize_sema_type(typed_typedef.ty.clone(), typed_typedef.loc) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_type) => sema_type,
             None => return,
         };
     }
@@ -1254,8 +1254,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        if let Some(sema_ty) = &var.ty {
-            var.ty = self.normalize_sema_type(sema_ty.clone(), var.loc);
+        if let Some(sema_type) = &var.ty {
+            var.ty = self.normalize_sema_type(sema_type.clone(), var.loc);
         }
 
         if let Some(rhs) = &mut var.rhs {
@@ -1288,18 +1288,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if let Some(sema_ty) = &var.ty {
-            self.validate_variable_type(sema_ty, var.rhs.is_some(), var.loc);
+        if let Some(sema_type) = &var.ty {
+            self.validate_variable_type(sema_type, var.rhs.is_some(), var.loc);
         }
 
         if let Some(expr) = &mut var.rhs {
             if let Some(target_type) = &var.ty {
-                if !self.check_type_mismatch(expr.sema_ty.clone().unwrap(), target_type.clone(), var.loc) {
+                if !self.check_type_mismatch(expr.sema_type.clone().unwrap(), target_type.clone(), var.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
                             lhs_type: format_sema_ty(target_type.clone(), fmt_symbol),
-                            rhs_type: format_sema_ty(expr.sema_ty.clone().unwrap(), fmt_symbol),
+                            rhs_type: format_sema_ty(expr.sema_type.clone().unwrap(), fmt_symbol),
                         }),
                         loc: Some(var.loc),
                         hint: None,
@@ -1313,12 +1313,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let lhs_type = match self.analyze_expr(&mut assign.lhs, None) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_type) => sema_type,
             None => return,
         };
 
         let rhs_type = match self.analyze_expr(&mut assign.rhs, Some(lhs_type.clone())) {
-            Some(sema_ty) => sema_ty,
+            Some(sema_type) => sema_type,
             None => return,
         };
 
@@ -1531,12 +1531,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             let variant_ident = match variant {
                 TypedEnumVariant::Ident(ident) => ident,
                 TypedEnumVariant::Valued(ident, typed_expr) => {
-                    typed_expr.sema_ty = match self.analyze_expr(typed_expr, None) {
-                        Some(sema_ty) => Some(sema_ty),
+                    typed_expr.sema_type = match self.analyze_expr(typed_expr, None) {
+                        Some(sema_type) => Some(sema_type),
                         None => continue,
                     };
 
-                    if is_repr_c && !typed_expr.sema_ty.as_ref().unwrap().is_integer() {
+                    if is_repr_c && !typed_expr.sema_type.as_ref().unwrap().is_integer() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
@@ -1561,7 +1561,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                     for field in typed_enum_valued_fields {
                         field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                            Some(sema_ty) => sema_ty,
+                            Some(sema_type) => sema_type,
                             None => continue,
                         };
 
@@ -1606,7 +1606,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
 
             field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                Some(sema_ty) => sema_ty,
+                Some(sema_type) => sema_type,
                 None => continue,
             };
 
@@ -1632,8 +1632,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
 
             match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                Some(sema_ty) => {
-                    field.ty = sema_ty;
+                Some(sema_type) => {
+                    field.ty = sema_type;
                 }
                 None => continue,
             }
@@ -1647,11 +1647,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_tuple_ident_pattern(
         &mut self,
         symbol_id: SymbolID,
-        sema_ty: &SemanticType,
+        sema_type: &SemanticType,
         rhs: &TypedExprStmt,
         is_const: bool,
     ) {
-        let mut ty = sema_ty.clone();
+        let mut ty = sema_type.clone();
 
         if is_const && !matches!(ty, SemanticType::Const(..)) {
             ty = ty.as_const();
@@ -1760,7 +1760,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //     self.normalize_func_params(&mut func_sig.params, func_sig.loc);
 
         //     func_sig.ret_type = match self.normalize_sema_type( func_sig.ret_type.clone(), func_sig.loc) {
-        //         Some(sema_ty) => sema_ty,
+        //         Some(sema_type) => sema_type,
         //         None => return,
         //     };
 
@@ -1834,8 +1834,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    pub(crate) fn validate_variable_type(&mut self, sema_ty: &SemanticType, is_init: bool, loc: Loc) {
-        if sema_ty.const_inner().is_void() {
+    pub(crate) fn validate_variable_type(&mut self, sema_type: &SemanticType, is_init: bool, loc: Loc) {
+        if sema_type.const_inner().is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidVariableType),
@@ -1844,7 +1844,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_ty.const_inner().is_const() && !is_init {
+        if sema_type.const_inner().is_const() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
@@ -1853,7 +1853,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_ty.const_inner().is_func_type() && !is_init {
+        if sema_type.const_inner().is_func_type() && !is_init {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
@@ -1862,15 +1862,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        self.check_sema_ty(sema_ty.clone(), loc);
+        self.check_sema_ty(sema_type.clone(), loc);
     }
 
-    pub(crate) fn validate_field_type(&mut self, object_id_opt: Option<SymbolID>, sema_ty: &SemanticType, loc: Loc) {
+    pub(crate) fn validate_field_type(&mut self, object_id_opt: Option<SymbolID>, sema_type: &SemanticType, loc: Loc) {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let sema_ty = sema_ty.const_inner();
+        let sema_type = sema_type.const_inner();
 
-        if sema_ty.is_void() {
+        if sema_type.is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidFieldType),
@@ -1879,7 +1879,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_ty.count_const_layers() >= 1 {
+        if sema_type.count_const_layers() >= 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
@@ -1888,11 +1888,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        let sema_ty_as_symbol_id_opt = sema_ty.maybe_generic_base_symbol_id();
+        let sema_ty_as_symbol_id_opt = sema_type.maybe_generic_base_symbol_id();
 
         if let Some(object_id) = object_id_opt {
             if sema_ty_as_symbol_id_opt.map(|symbol_id| symbol_id == object_id) == Some(true) {
-                let type_name = format_sema_ty(sema_ty.clone(), fmt_symbol);
+                let type_name = format_sema_ty(sema_type.clone(), fmt_symbol);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1904,13 +1904,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        self.check_sema_ty(sema_ty.clone(), loc);
+        self.check_sema_ty(sema_type.clone(), loc);
     }
 
-    pub(crate) fn validate_param_type(&mut self, sema_ty: &SemanticType, loc: Loc) {
-        let sema_ty = sema_ty.const_inner();
+    pub(crate) fn validate_param_type(&mut self, sema_type: &SemanticType, loc: Loc) {
+        let sema_type = sema_type.const_inner();
 
-        if sema_ty.is_void() {
+        if sema_type.is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VoidParameterType),
@@ -1919,7 +1919,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_ty.count_const_layers() >= 1 {
+        if sema_type.count_const_layers() >= 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
@@ -1928,7 +1928,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        self.check_sema_ty(sema_ty.clone(), loc);
+        self.check_sema_ty(sema_type.clone(), loc);
     }
 
     pub(crate) fn validate_struct_repr_attr(&mut self, repr_attr: &Option<ReprAttr>, fields_count: usize, loc: Loc) {
@@ -2121,7 +2121,7 @@ impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
         let resolved = self.resolve_variable_rhs_expr(symbol_id);
 
         match resolved {
-            Some(expr) => expr.sema_ty.as_ref().map(|t| t.is_const()).unwrap_or(false),
+            Some(expr) => expr.sema_type.as_ref().map(|t| t.is_const()).unwrap_or(false),
 
             None => false,
         }

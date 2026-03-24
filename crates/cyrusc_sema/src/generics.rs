@@ -74,7 +74,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// 3. Preserving the parent relationship in the mapping context hierarchy
     ///
     /// # Parameters
-    /// - `sema_ty`: The semantic type to extract generics from (usually the actual/declared type)
+    /// - `sema_type`: The semantic type to extract generics from (usually the actual/declared type)
     /// - `declared_generic_params`: Optional generic parameters from the declaration context
     /// - `expected_type`: Optional expected/contextual type for additional generic merging
     ///
@@ -84,7 +84,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// - `Option<Rc<GenericMappingCtx>>`: Combined mapping context with parent relationships
     pub(crate) fn extract_and_merge_generic_context(
         &mut self,
-        sema_ty: &SemanticType,
+        sema_type: &SemanticType,
         generic_params: Option<&TypedGenericParamsList>,
         expected_type: Option<SemanticType>,
     ) -> (Option<TypedGenericParamsList>, Option<Rc<GenericMappingCtx>>) {
@@ -92,7 +92,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let mut mapping_ctx = None;
         let mut params = None;
 
-        if let Some(generic_type) = sema_ty.as_generic_type() {
+        if let Some(generic_type) = sema_type.as_generic_type() {
             if let Some(generic_params) = generic_params.cloned().or(Some(generic_type.generic_params.clone())) {
                 params = Some(generic_params);
                 mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
@@ -100,8 +100,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         // merge expected-type generics if present
-        if let Some(expected_ty) = expected_type {
-            if let Some(expected_generic_ty) = expected_ty.as_generic_type() {
+        if let Some(expected_type) = expected_type {
+            if let Some(expected_generic_ty) = expected_type.as_generic_type() {
                 let parent_generic_mapping_id = {
                     let mut mapping_ctx_arena = self.mapping_ctx_arena.lock().unwrap();
                     mapping_ctx_arena.insert(expected_generic_ty.mapping_ctx.borrow().clone())
@@ -129,14 +129,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     pub(crate) fn try_infer_generic_param_as_expected_type(
         &self,
-        sema_ty: SemanticType,
+        sema_type: SemanticType,
         generic_type_opt: &Option<GenericType>,
     ) -> Option<SemanticType> {
         let Some(generic_type) = generic_type_opt.clone() else {
             return None;
         };
 
-        let Some(generic_param) = sema_ty.as_generic_param() else {
+        let Some(generic_param) = sema_type.as_generic_param() else {
             return None;
         };
 
@@ -145,7 +145,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             mapping_ctx
                 .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
-                .or(generic_param.default.clone().map(|sema_ty| *sema_ty))
+                .or(generic_param.default.clone().map(|sema_type| *sema_type))
         };
 
         // NOTE: here we check that if generic mapping ctx is empty,
@@ -153,7 +153,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // intended to prevent redundant nested parent mapping ctx insertion into arena.
         if let Some(generic_type) = inferred_sema_ty
             .as_ref()
-            .and_then(|sema_ty| sema_ty.as_generic_type().cloned())
+            .and_then(|sema_type| sema_type.as_generic_type().cloned())
         {
             // is generic mapping ctx empty?
             let is_empty = { generic_type.mapping_ctx.borrow().is_empty() };
@@ -222,8 +222,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         )
         .unwrap();
 
-        if let Some(sema_ty) = self_modifier_ty {
-            self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_ty);
+        if let Some(sema_type) = self_modifier_ty {
+            self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_type);
         }
 
         let monomorph_key = {
@@ -311,10 +311,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             if let Some(variadic) = &params.variadic {
                 match variadic {
-                    TypedFuncVariadicParams::Typed(ident, sema_ty) => {
+                    TypedFuncVariadicParams::Typed(ident, sema_type) => {
                         scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
                             let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.variable.ty = Some(sema_ty.clone());
+                            resolved_var.variable.ty = Some(sema_type.clone());
                         });
                     }
                     TypedFuncVariadicParams::UntypedCStyle => {}
@@ -492,18 +492,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     };
 
                     for generic_param in &target_generic_type.generic_params.list {
-                        let Some(mut sema_ty) = expr_mapping_ctx
+                        let Some(mut sema_type) = expr_mapping_ctx
                             .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
                         else {
                             continue;
                         };
 
-                        sema_ty = match self.normalize_sema_type(scope_id_opt, sema_ty, target_generic_type.loc) {
-                            Some(sema_ty) => sema_ty,
+                        sema_type = match self.normalize_sema_type(scope_id_opt, sema_type, target_generic_type.loc) {
+                            Some(sema_type) => sema_type,
                             None => continue,
                         };
 
-                        mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_ty);
+                        mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_type);
                     }
                 }
             }
@@ -662,7 +662,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         expected_type: Option<SemanticType>,
     ) -> Option<GenericType> {
         let Some(generic_type) = operand_type.as_generic_type() else {
-            return expected_type.and_then(|sema_ty| sema_ty.as_generic_type().cloned());
+            return expected_type.and_then(|sema_type| sema_type.as_generic_type().cloned());
         };
 
         let parent_id_opt = expected_type
@@ -685,8 +685,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         &self,
         expected_type: Option<SemanticType>,
     ) -> Option<Rc<GenericMappingCtx>> {
-        expected_type.and_then(|sema_ty| {
-            sema_ty
+        expected_type.and_then(|sema_type| {
+            sema_type
                 .as_generic_type()
                 .map(|g| Rc::new(g.mapping_ctx.borrow().clone()))
         })

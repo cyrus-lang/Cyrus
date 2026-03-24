@@ -81,6 +81,12 @@ pub struct TypedProgramTree {
 unsafe impl Send for TypedProgramTree {}
 unsafe impl Sync for TypedProgramTree {}
 
+impl From<u32> for SymbolID {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
 impl fmt::Display for ModuleID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)

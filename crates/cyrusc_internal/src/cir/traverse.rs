@@ -198,11 +198,11 @@
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
 //         for module_id in methods.values() {
-//             let sym = self
+//             let symbol_entry = self
 //                 .resolver
 //                 .resolve_local_or_global_symbol(scope_opt.clone(), *module_id)
 //                 .unwrap();
-//             let resolved_method = sym.as_method().unwrap();
+//             let resolved_method = symbol_entry.as_method().unwrap();
 
 //             let lowered_method = self.lower_method(scope_id_opt, resolved_method, object_name);
 
@@ -365,7 +365,7 @@
 
 //     fn lower_switch(&mut self, scope_id_opt: Option<ScopeID>, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
 //         let operand = self.lower_expr(scope_id_opt, &switch_stmt.operand);
-//         let operand_type = switch_stmt.operand.sema_ty.as_ref().unwrap().const_inner();
+//         let operand_type = switch_stmt.operand.sema_type.as_ref().unwrap().const_inner();
 
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
@@ -799,8 +799,8 @@
 //         let ty = global_var
 //             .ty
 //             .as_ref()
-//             .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.sema_ty.as_ref()))
-//             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+//             .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.sema_type.as_ref()))
+//             .map(|sema_type| self.lower_sema_ty(scope_id_opt, sema_type))
 //             .unwrap_or_else(|| {
 //                 panic!(
 //                     "Global var '{}' has neither explicit type nor valid initializer type.",
@@ -838,8 +838,8 @@
 //         let ty = global_var_sig
 //             .ty
 //             .as_ref()
-//             .or_else(|| global_var_sig.rhs.as_ref().and_then(|expr| expr.sema_ty.as_ref()))
-//             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+//             .or_else(|| global_var_sig.rhs.as_ref().and_then(|expr| expr.sema_type.as_ref()))
+//             .map(|sema_type| self.lower_sema_ty(scope_id_opt, sema_type))
 //             .unwrap_or_else(|| {
 //                 panic!(
 //                     "Global var '{}' has neither explicit type nor valid initializer type.",
@@ -861,7 +861,7 @@
 //         let ty = var
 //             .ty
 //             .as_ref()
-//             .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.sema_ty.as_ref()))
+//             .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.sema_type.as_ref()))
 //             .map(|ty| self.lower_sema_ty(scope_id_opt, ty))
 //             .unwrap_or_else(|| {
 //                 panic!(
@@ -892,7 +892,7 @@
 //         func_type_params
 //             .list
 //             .iter()
-//             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+//             .map(|sema_type| self.lower_sema_ty(scope_id_opt, sema_type))
 //             .collect()
 //     }
 
@@ -1035,13 +1035,13 @@
 
 //     fn lower_expr(&mut self, scope_id_opt: Option<ScopeID>, expr: &TypedExprStmt) -> CIRExpr {
 //         if cfg!(debug_assertions) {
-//             if expr.sema_ty.is_none() {
+//             if expr.sema_type.is_none() {
 //                 dbg!(expr.clone());
 //             }
-//             debug_assert!(expr.sema_ty.is_some());
+//             debug_assert!(expr.sema_type.is_some());
 //         }
 
-//         let ty = self.lower_sema_ty(scope_id_opt, &expr.sema_ty.clone().unwrap());
+//         let ty = self.lower_sema_ty(scope_id_opt, &expr.sema_type.clone().unwrap());
 
 //         let kind = match &expr.kind {
 //             TypedExprKind::Symbol(symbol_id, ..) => self.lower_load_symbol(scope_id_opt, *symbol_id),
@@ -1224,12 +1224,12 @@
 
 //     pub(crate) fn lower_load_symbol(&mut self, scope_id_opt: Option<ScopeID>, symbol_id: SymbolID) -> CIRExprKind {
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-//         let sym = self
+//         let symbol_entry = self
 //             .resolver
 //             .resolve_local_or_global_symbol(scope_opt, symbol_id)
 //             .unwrap();
 
-//         if let Some(resolved_func) = sym.as_func() {
+//         if let Some(resolved_func) = symbol_entry.as_func() {
 //             let mut cir_func_decl = self.lower_func_sig(scope_id_opt, resolved_func.symbol_id, &resolved_func.func_sig);
 
 //             let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
@@ -1247,7 +1247,7 @@
 //                 irv_id: resolved_func.symbol_id,
 //                 kind: CIRValueKind::Func(Box::new(cir_func_decl)),
 //             })
-//         } else if let Some(resolved_global_var) = sym.as_global_var() {
+//         } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
 //             let mut global_var_stmt = self.lower_global_var_sig(
 //                 scope_id_opt,
 //                 resolved_global_var.symbol_id,
@@ -1272,7 +1272,7 @@
 //                 irv_id: resolved_global_var.symbol_id,
 //                 kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
 //             })
-//         } else if let Some(resolved_variable) = sym.as_variable() {
+//         } else if let Some(resolved_variable) = symbol_entry.as_variable() {
 //             CIRExprKind::Load(CIRValue {
 //                 irv_id: resolved_variable.symbol_id,
 //                 kind: CIRValueKind::LocalVariable,
@@ -1298,16 +1298,16 @@
 //         struct_init_expr: &TypedStructInitExpr,
 //     ) -> CIRExprKind {
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-//         let sym = self
+//         let symbol_entry = self
 //             .resolver
 //             .resolve_local_or_global_symbol(scope_opt, struct_init_expr.symbol_id)
 //             .unwrap();
 
-//         if let Some(resolved_struct) = sym.as_struct() {
+//         if let Some(resolved_struct) = symbol_entry.as_struct() {
 //             let fields = struct_init_expr
 //                 .fields
 //                 .iter()
-//                 .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+//                 .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_type.clone().unwrap()))
 //                 .collect();
 
 //             let fields_info = struct_init_expr
@@ -1332,11 +1332,11 @@
 //                 .collect();
 
 //             CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
-//         } else if let Some(resolved_union) = sym.as_union() {
+//         } else if let Some(resolved_union) = symbol_entry.as_union() {
 //             let fields = struct_init_expr
 //                 .fields
 //                 .iter()
-//                 .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_ty.clone().unwrap()))
+//                 .map(|field| self.lower_sema_ty(scope_id_opt, &field.value.sema_type.clone().unwrap()))
 //                 .collect();
 
 //             let fields_info = struct_init_expr
@@ -1459,11 +1459,11 @@
 //             return self.lower_interface_method_call(scope_id_opt, method_call);
 //         }
 
-//         self.current_obj_operand_ty = Some(method_call.operand.sema_ty.clone().unwrap());
+//         self.current_obj_operand_ty = Some(method_call.operand.sema_type.clone().unwrap());
 //         self.current_self_ty = method_call
 //             .self_ty
 //             .clone()
-//             .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty));
+//             .map(|sema_type| self.lower_sema_ty(scope_id_opt, &sema_type));
 
 //         let mut func_sig = method_call.func_sig.as_ref().unwrap().clone();
 
@@ -1518,7 +1518,7 @@
 //         enum_sig: &EnumSig,
 //         method_call: &TypedMethodCall,
 //     ) -> CIRExprKind {
-//         let sema_ty = method_call.operand.sema_ty.as_ref().unwrap();
+//         let sema_type = method_call.operand.sema_type.as_ref().unwrap();
 
 //         let variant_idx_opt = enum_sig
 //             .variants
@@ -1536,7 +1536,7 @@
 
 //         let variant: CIREnumInitVariant;
 //         let enum_ty: CIREnumTy;
-//         if let Some(generic_type) = sema_ty.as_generic_type() {
+//         if let Some(generic_type) = sema_type.as_generic_type() {
 //             let enum_sig = substitute_enum_sig(
 //                 self.mapping_ctx_arena.clone(),
 //                 &enum_sig,
@@ -1574,12 +1574,12 @@
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
 //         if let Some(enum_id) = method_call.enum_const {
-//             let sym = self
+//             let symbol_entry = self
 //                 .resolver
 //                 .resolve_local_or_global_symbol(scope_opt.clone(), enum_id)
 //                 .unwrap();
 
-//             if let Some(resolved_enum) = sym.as_enum() {
+//             if let Some(resolved_enum) = symbol_entry.as_enum() {
 //                 return self.lower_enum_init(scope_id_opt, &resolved_enum.enum_sig, method_call);
 //             }
 //         }
@@ -1596,14 +1596,14 @@
 //                     operand: field_access.operand.clone(),
 //                     loc: Loc::default(),
 //                 }),
-//                 sema_ty: Some(field_access.operand.sema_ty.clone().unwrap().pointer_inner().clone()),
+//                 sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
 //                 mloc: MemoryLocation::LValue,
 //                 loc: Loc::default(),
 //             })
 //         }
 
-//         if let Some(sema_ty) = &field_access.operand.sema_ty {
-//             if sema_ty.as_unnamed_struct().is_some() {
+//         if let Some(sema_type) = &field_access.operand.sema_type {
+//             if sema_type.as_unnamed_struct().is_some() {
 //                 return CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
 //                     operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
 //                     field_idx: field_access.field_index.unwrap(),
@@ -1611,7 +1611,7 @@
 //                 });
 //             }
 
-//             if sema_ty.as_unnamed_union().is_some() {
+//             if sema_type.as_unnamed_union().is_some() {
 //                 return CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
 //                     operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
 //                     field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
@@ -1619,28 +1619,28 @@
 //             }
 //         }
 
-//         let sym = self
+//         let symbol_entry = self
 //             .resolver
 //             .resolve_local_or_global_symbol(scope_opt, field_access.object_symbol_id.unwrap())
 //             .unwrap();
 
-//         if sym.as_struct().is_some() {
+//         if symbol_entry.as_struct().is_some() {
 //             CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
 //                 operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
 //                 field_idx: field_access.field_index.unwrap(),
 //                 field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
 //             })
-//         } else if sym.as_union().is_some() {
+//         } else if symbol_entry.as_union().is_some() {
 //             CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
 //                 operand: Box::new(self.lower_expr(scope_id_opt, &field_access.operand)),
 //                 field_ty: self.lower_sema_ty(scope_id_opt, &field_access.field_ty.as_ref().unwrap()),
 //             })
-//         } else if let Some(mut resolved_enum) = sym.as_enum().cloned() {
-//             let sema_ty = field_access.operand.sema_ty.as_ref().unwrap();
+//         } else if let Some(mut resolved_enum) = symbol_entry.as_enum().cloned() {
+//             let sema_type = field_access.operand.sema_type.as_ref().unwrap();
 
 //             let variant: CIREnumInitVariant;
 //             let enum_ty: CIREnumTy;
-//             if let Some(generic_type) = sema_ty.as_generic_type() {
+//             if let Some(generic_type) = sema_type.as_generic_type() {
 //                 resolved_enum.enum_sig = substitute_enum_sig(
 //                     self.mapping_ctx_arena.clone(),
 //                     &resolved_enum.enum_sig,
@@ -1692,15 +1692,15 @@
 //             let scope_opt =
 //                 scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
 
-//             let sym = self
+//             let symbol_entry = self
 //                 .resolver
 //                 .resolve_local_or_global_symbol(scope_opt, monomorph_func_entry.base_symbol)
 //                 .unwrap();
 
-//             let mut func_sig = sym
+//             let mut func_sig = symbol_entry
 //                 .as_func()
 //                 .map(|resolved_func| resolved_func.func_sig.clone())
-//                 .or(sym.as_method().map(|resolved_method| resolved_method.func_sig.clone()))
+//                 .or(symbol_entry.as_method().map(|resolved_method| resolved_method.func_sig.clone()))
 //                 .expect("Monomorphizaton not supported for the symbol.");
 
 //             func_sig = substitute_func_sig(
@@ -1794,12 +1794,12 @@
 //     }
 
 //     fn lower_size_of(&mut self, scope_id_opt: Option<ScopeID>, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
-//         let sema_ty = match &sizeof.operand.kind {
-//             TypedExprKind::SemanticType(sema_ty) => sema_ty.clone(),
-//             _ => sizeof.operand.sema_ty.clone().unwrap(),
+//         let sema_type = match &sizeof.operand.kind {
+//             TypedExprKind::SemanticType(sema_type) => sema_type.clone(),
+//             _ => sizeof.operand.sema_type.clone().unwrap(),
 //         };
 
-//         let ty = self.lower_sema_ty(scope_id_opt, &sema_ty);
+//         let ty = self.lower_sema_ty(scope_id_opt, &sema_type);
 //         CIRExprKind::SizeOf(CIRSizeOfExpr { ty })
 //     }
 
@@ -1861,8 +1861,8 @@
 
 //     // types
 
-//     fn lower_sema_ty(&mut self, scope_id_opt: Option<ScopeID>, sema_ty: &SemanticType) -> CIRTy {
-//         match sema_ty {
+//     fn lower_sema_ty(&mut self, scope_id_opt: Option<ScopeID>, sema_type: &SemanticType) -> CIRTy {
+//         match sema_type {
 //             SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(scope_id_opt, resolved_symbol),
 //             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
 //             SemanticType::Array(array_type) => {
@@ -1877,8 +1877,8 @@
 //                     len: len.try_into().unwrap(),
 //                 })
 //             }
-//             SemanticType::Const(sema_ty) => CIRTy::Const(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
-//             SemanticType::Pointer(sema_ty) => CIRTy::Pointer(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_ty))),
+//             SemanticType::Const(sema_type) => CIRTy::Const(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_type))),
+//             SemanticType::Pointer(sema_type) => CIRTy::Pointer(Box::new(self.lower_sema_ty(scope_id_opt, &*sema_type))),
 //             SemanticType::UnnamedStruct(unnamed_struct_type) => {
 //                 let fields = unnamed_struct_type
 //                     .fields
@@ -1920,7 +1920,7 @@
 //                 let elements: Vec<CIRTy> = tuple_type
 //                     .type_list
 //                     .iter()
-//                     .map(|sema_ty| self.lower_sema_ty(scope_id_opt, sema_ty))
+//                     .map(|sema_type| self.lower_sema_ty(scope_id_opt, sema_type))
 //                     .collect();
 
 //                 CIRTy::Tuple(CIRTupleTy {
@@ -1938,14 +1938,14 @@
 //                 }
 //             }
 //             SemanticType::GenericParam(generic_param) => {
-//                 if let Some(sema_ty) = self.current_obj_operand_ty.clone() {
-//                     if let Some(generic_type) = sema_ty.as_generic_type() {
+//                 if let Some(sema_type) = self.current_obj_operand_ty.clone() {
+//                     if let Some(generic_type) = sema_type.as_generic_type() {
 //                         {
 //                             let mapping_ctx = generic_type.mapping_ctx.borrow();
 
 //                             let cir_ty = mapping_ctx
 //                                 .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
-//                                 .map(|sema_ty| self.lower_sema_ty(scope_id_opt, &sema_ty))
+//                                 .map(|sema_type| self.lower_sema_ty(scope_id_opt, &sema_type))
 //                                 .unwrap();
 
 //                             return cir_ty;
@@ -2024,7 +2024,7 @@
 //         let tag_type = unnamed_enum_type
 //             .tag_type
 //             .clone()
-//             .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
+//             .map(|sema_type| Box::new(self.lower_sema_ty(scope_id_opt, &sema_type)));
 
 //         CIREnumTy {
 //             name: None,
@@ -2058,7 +2058,7 @@
 
 //     fn lower_generic_type(&mut self, scope_id_opt: Option<ScopeID>, mut generic_type: GenericType) -> CIRTy {
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-//         let sym = self
+//         let symbol_entry = self
 //             .resolver
 //             .resolve_local_or_global_symbol(scope_opt, generic_type.base)
 //             .unwrap();
@@ -2067,7 +2067,7 @@
 //             eprintln!("Failed to init generic type: {:?}.", err.kind.to_string())
 //         }
 
-//         if let Some(resolved_struct) = sym.as_struct() {
+//         if let Some(resolved_struct) = symbol_entry.as_struct() {
 //             let struct_sig = substitute_struct_sig(
 //                 self.mapping_ctx_arena.clone(),
 //                 &resolved_struct.struct_sig,
@@ -2077,7 +2077,7 @@
 
 //             let cir_struct_ty = self.lower_struct_sig_as_struct_ty(scope_id_opt, &struct_sig);
 //             CIRTy::Struct(cir_struct_ty)
-//         } else if let Some(resolved_enum) = sym.as_enum() {
+//         } else if let Some(resolved_enum) = symbol_entry.as_enum() {
 //             let enum_sig = substitute_enum_sig(
 //                 self.mapping_ctx_arena.clone(),
 //                 &resolved_enum.enum_sig,
@@ -2087,7 +2087,7 @@
 
 //             let cir_enum_ty = self.lower_enum_sig_as_enum_ty(scope_id_opt, &enum_sig);
 //             CIRTy::Enum(cir_enum_ty)
-//         } else if let Some(resolved_union) = sym.as_union() {
+//         } else if let Some(resolved_union) = symbol_entry.as_union() {
 //             let union_sig = substitute_union_sig(
 //                 self.mapping_ctx_arena.clone(),
 //                 &resolved_union.union_sig,
@@ -2151,7 +2151,7 @@
 //         let tag_type = enum_sig
 //             .tag_type
 //             .clone()
-//             .map(|sema_ty| Box::new(self.lower_sema_ty(scope_id_opt, &sema_ty)));
+//             .map(|sema_type| Box::new(self.lower_sema_ty(scope_id_opt, &sema_type)));
 
 //         CIREnumTy {
 //             name: Some(enum_sig.name.clone()),
@@ -2188,16 +2188,16 @@
 
 //     fn lower_resolved_symbol(&mut self, scope_id_opt: Option<ScopeID>, resolved_symbol: &ResolvedSymbol) -> CIRTy {
 //         let scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.resolve_local_scope(self.module_id, scope_id));
-//         let sym = self
+//         let symbol_entry = self
 //             .resolver
 //             .resolve_local_or_global_symbol(scope_opt, resolved_symbol.symbol_id())
 //             .unwrap();
 
-//         if let Some(resolved_struct) = sym.as_struct() {
+//         if let Some(resolved_struct) = symbol_entry.as_struct() {
 //             CIRTy::Struct(self.lower_struct_sig_as_struct_ty(scope_id_opt, &resolved_struct.struct_sig))
-//         } else if let Some(resolved_union) = sym.as_union() {
+//         } else if let Some(resolved_union) = symbol_entry.as_union() {
 //             CIRTy::Union(self.lower_union_sig_as_union_ty(scope_id_opt, &resolved_union.union_sig))
-//         } else if let Some(resolved_enum) = sym.as_enum() {
+//         } else if let Some(resolved_enum) = symbol_entry.as_enum() {
 //             CIRTy::Enum(self.lower_enum_sig_as_enum_ty(scope_id_opt, &resolved_enum.enum_sig))
 //         } else {
 //             unreachable!()

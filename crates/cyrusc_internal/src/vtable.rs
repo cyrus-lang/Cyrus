@@ -24,7 +24,7 @@ pub type GlobalVarID = u32;
 ///   (concrete type, interface).
 ///
 /// This key is created **during type checking**, after it has been
-/// proven that `sema_ty` implements `interface_id`.
+/// proven that `sema_type` implements `interface_id`.
 ///
 /// IMPORTANT INVARIANT:
 /// - Two identical keys must always map to the same vtable.
@@ -35,7 +35,7 @@ pub struct VTableKey {
     ///
     /// This must be a *concrete* semantic type, never an interface,
     /// never `Self`, never an unresolved generic.
-    pub sema_ty: SemanticType,
+    pub sema_type: SemanticType,
 
     /// The symbol ID of the interface being implemented.
     pub interface_id: SymbolID,
@@ -65,7 +65,7 @@ pub struct VTableRegistry {
 #[derive(Debug, Clone)]
 pub struct VTableInfo {
     /// The concrete type implementing the interface.
-    pub sema_ty: SemanticType,
+    pub sema_type: SemanticType,
 
     /// The interface being implemented.
     pub interface_id: SymbolID,
@@ -109,7 +109,7 @@ impl VTableRegistry {
     /// attempts to change the method layout.
     pub fn register(
         &mut self,
-        sema_ty: SemanticType,
+        sema_type: SemanticType,
         interface_id: SymbolID,
         interface_name: String,
         methods: Vec<FuncSig>,
@@ -117,7 +117,7 @@ impl VTableRegistry {
         assert!(!methods.is_empty(), "vtable must contain at least one method");
 
         let key = VTableKey {
-            sema_ty: sema_ty.clone(),
+            sema_type: sema_type.clone(),
             interface_id,
         };
 
@@ -137,7 +137,7 @@ impl VTableRegistry {
         let global_var_id = generate_global_var_id();
 
         self.tables.push(VTableInfo {
-            sema_ty,
+            sema_type,
             interface_id,
             interface_name,
             methods,
@@ -155,9 +155,9 @@ impl VTableRegistry {
     /// # Panics
     ///
     /// Panics if the vtable was not registered during type checking.
-    pub fn get(&self, sema_ty: &SemanticType, interface_id: SymbolID) -> VTableID {
+    pub fn get(&self, sema_type: &SemanticType, interface_id: SymbolID) -> VTableID {
         let key = VTableKey {
-            sema_ty: sema_ty.clone(),
+            sema_type: sema_type.clone(),
             interface_id,
         };
 

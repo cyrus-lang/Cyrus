@@ -35,7 +35,7 @@ use cyrusc_tokens::literals::LiteralKind;
 #[derive(Debug, Clone)]
 pub struct TypedExprStmt {
     pub kind: TypedExprKind,
-    pub sema_ty: Option<SemanticType>,
+    pub sema_type: Option<SemanticType>,
     pub mloc: MemoryLocation,
     pub loc: Loc,
 }
@@ -382,7 +382,7 @@ impl TypedUnnamedStructValue {
             .map(|field| -> _ {
                 TypedUnnamedStructTypeField {
                     name: field.name.clone(),
-                    ty: Box::new(field.ty.clone().or(field.field_value.sema_ty.clone()).unwrap()),
+                    ty: Box::new(field.ty.clone().or(field.field_value.sema_type.clone()).unwrap()),
                     loc: field.loc,
                 }
             })
@@ -414,7 +414,7 @@ impl PartialEq for TypedUnnamedEnumValue {
 
 impl PartialEq for TypedExprStmt {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind && self.sema_ty == other.sema_ty
+        self.kind == other.kind && self.sema_type == other.sema_type
     }
 }
 
@@ -457,7 +457,7 @@ pub fn literal_expr_from_const_int(value: i128, loc: Loc) -> TypedExprStmt {
             ty: None,
             loc: loc,
         }),
-        sema_ty: None,
+        sema_type: None,
         mloc: MemoryLocation::RValue,
         loc,
     }

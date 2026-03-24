@@ -266,8 +266,8 @@ impl GenericType {
                     let sema_ty_opt =
                         mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name);
 
-                    if let Some(sema_ty) = sema_ty_opt {
-                        collected_type_args.push(format_sema_ty(sema_ty, &fmt_symbol));
+                    if let Some(sema_type) = sema_ty_opt {
+                        collected_type_args.push(format_sema_ty(sema_type, &fmt_symbol));
                     }
                 }
             }
@@ -368,11 +368,11 @@ pub fn debug_generic_type<'a>(
         println!("MappingCtx: ");
 
         let debug_mapping_ctx = |mapping_ctx: &GenericMappingCtx| {
-            for (entry, sema_ty) in mapping_ctx.named_mapping() {
+            for (entry, sema_type) in mapping_ctx.named_mapping() {
                 println!(
                     "{} -> {}",
                     entry.name.clone(),
-                    format_sema_ty(sema_ty.clone(), fmt_symbol)
+                    format_sema_ty(sema_type.clone(), fmt_symbol)
                 );
             }
         };

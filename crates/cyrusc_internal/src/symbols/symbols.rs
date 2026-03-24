@@ -242,6 +242,13 @@ impl SymbolEntry {
         }
     }
 
+    pub fn as_union(&self) -> Option<&ResolvedUnion> {
+        match &self.kind {
+            SymbolEntryKind::Union(resolved_union) => Some(resolved_union),
+            _ => None,
+        }
+    }
+
     pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
         match &self.kind {
             SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),

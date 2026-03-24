@@ -51,26 +51,26 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
+            Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
 
         let rhs_type = match self.analyze_expr(&mut infix.rhs, Some(lhs_type.clone())) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
+            Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
 
         match infix.op {
             InfixOperator::Add => {
-                if let Some(sema_ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, true) {
-                    return Some(sema_ty);
+                if let Some(sema_type) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, true) {
+                    return Some(sema_type);
                 }
 
                 self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
             }
             InfixOperator::Sub => {
-                if let Some(sema_ty) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, false) {
-                    return Some(sema_ty);
+                if let Some(sema_type) = self.analyze_pointer_arithmetic_type(&lhs_type, &rhs_type, false) {
+                    return Some(sema_type);
                 }
 
                 self.analyze_arithmetic_expr(lhs_type, rhs_type, infix.loc)
@@ -107,10 +107,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         }
 
-        let expected_type = addr_of.operand.sema_ty.clone();
+        let expected_type = addr_of.operand.sema_type.clone();
 
         let operand_type = match self.analyze_expr(&mut addr_of.operand, expected_type) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
+            Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
 
@@ -118,14 +118,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn analyze_deref_expr_type(&mut self, deref: &mut TypedDerefExpr) -> Option<SemanticType> {
-        let expected_type = deref.operand.sema_ty.clone();
+        let expected_type = deref.operand.sema_type.clone();
 
         let operand_type = match self.analyze_expr(&mut deref.operand, expected_type) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
+            Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
 
-        deref.operand.sema_ty = Some(operand_type.clone());
+        deref.operand.sema_type = Some(operand_type.clone());
 
         if (!deref.operand.is_lvalue() || operand_type.as_func_type().is_some()) && !operand_type.is_pointer() {
             self.reporter.report(Diag {
@@ -138,7 +138,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         let inner_type = match operand_type {
-            SemanticType::Pointer(sema_ty) => *sema_ty,
+            SemanticType::Pointer(sema_type) => *sema_type,
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -171,7 +171,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
-            Some(sema_ty) => sema_ty.const_inner().clone(),
+            Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
         };
 
@@ -189,7 +189,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
+                    Some(sema_type) => Some(SemanticType::PlainType(sema_type.clone())),
                     None => {
                         let operand_type = format_sema_ty(operand_type, fmt_symbol);
 
@@ -216,7 +216,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
+                    Some(sema_type) => Some(SemanticType::PlainType(sema_type.clone())),
                     None => {
                         let operand_type = format_sema_ty(operand_type, fmt_symbol);
 
@@ -257,7 +257,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_ty) => Some(SemanticType::PlainType(sema_ty.clone())),
+                    Some(sema_type) => Some(SemanticType::PlainType(sema_type.clone())),
                     None => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -277,7 +277,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn analyze_unary_expr_type(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let expected_type = unary.operand.sema_ty.clone();
+        let expected_type = unary.operand.sema_type.clone();
         let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
 
         if operand_type.is_const() {
@@ -384,7 +384,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         } else if lhs_type.is_enum() && rhs_type.is_enum() {
             match self.analyze_compare_enums(lhs_type.clone(), rhs_type.clone()) {
-                Some(sema_ty) => return Some(sema_ty),
+                Some(sema_type) => return Some(sema_type),
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -463,7 +463,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
-            Some(sema_ty) => Some(sema_ty),
+            Some(sema_type) => Some(sema_type),
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

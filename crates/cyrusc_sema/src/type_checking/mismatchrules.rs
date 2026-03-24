@@ -84,8 +84,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::UnnamedEnum(unnamed_enum_type),
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
             ) => {
-                let sym = self.queyr.lookup_global_symbol(struct_id).unwrap();
-                let resolved_enum = sym.as_enum().unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(struct_id).unwrap();
+                let resolved_enum = symbol_entry.as_enum().unwrap();
 
                 self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
             }
@@ -93,15 +93,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
                 SemanticType::UnnamedEnum(unnamed_enum_type),
             ) => {
-                let sym = self.queyr.lookup_global_symbol(struct_id).unwrap();
-                let resolved_enum = sym.as_enum().unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(struct_id).unwrap();
+                let resolved_enum = symbol_entry.as_enum().unwrap();
 
                 self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
             }
             (SemanticType::UnnamedEnum(unnamed_enum_type), SemanticType::GenericType(generic_type)) => {
-                let sym = self.queyr.lookup_global_symbol(generic_type.base).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
-                match sym.as_enum().cloned() {
+                match symbol_entry.as_enum().cloned() {
                     Some(mut resolved_enum) => {
                         resolved_enum.enum_sig = substitute_enum_sig(
                             self.mapping_ctx_arena.clone(),
@@ -119,9 +119,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedEnum(unnamed_enum_type)) => {
-                let sym = self.queyr.lookup_global_symbol(generic_type.base).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
-                match sym.as_enum().cloned() {
+                match symbol_entry.as_enum().cloned() {
                     Some(mut resolved_enum) => {
                         resolved_enum.enum_sig = substitute_enum_sig(
                             self.mapping_ctx_arena.clone(),
@@ -145,8 +145,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::UnnamedUnion(unnamed_union_type),
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
             ) => {
-                let sym = self.queyr.lookup_global_symbol(union_id).unwrap();
-                let resolved_union = sym.as_union().unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(union_id).unwrap();
+                let resolved_union = symbol_entry.as_union().unwrap();
 
                 self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
             }
@@ -154,15 +154,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
                 SemanticType::UnnamedUnion(unnamed_union_type),
             ) => {
-                let sym = self.queyr.lookup_global_symbol(union_id).unwrap();
-                let resolved_union = sym.as_union().unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(union_id).unwrap();
+                let resolved_union = symbol_entry.as_union().unwrap();
 
                 self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
             }
             (SemanticType::UnnamedUnion(unnamed_union_type), SemanticType::GenericType(generic_type)) => {
-                let sym = self.queyr.lookup_global_symbol(generic_type.base).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
-                match sym.as_union().cloned() {
+                match symbol_entry.as_union().cloned() {
                     Some(mut resolved_union) => {
                         resolved_union.union_sig = substitute_union_sig(
                             self.mapping_ctx_arena.clone(),
@@ -180,9 +180,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedUnion(unnamed_union_type)) => {
-                let sym = self.queyr.lookup_global_symbol(generic_type.base).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
-                match sym.as_union().cloned() {
+                match symbol_entry.as_union().cloned() {
                     Some(mut resolved_union) => {
                         resolved_union.union_sig = substitute_union_sig(
                             self.mapping_ctx_arena.clone(),
@@ -216,8 +216,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::UnnamedStruct(unnamed_struct_type),
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
             ) => {
-                let sym = self.queyr.lookup_global_symbol(struct_id).unwrap();
-                let resolved_struct = sym.as_struct().unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(struct_id).unwrap();
+                let resolved_struct = symbol_entry.as_struct().unwrap();
 
                 self.check_unnamed_struct_and_named_struct_type_mismatch(
                     &unnamed_struct_type,
@@ -228,8 +228,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
                 SemanticType::UnnamedStruct(unnamed_struct_type),
             ) => {
-                let sym = self.queyr.lookup_global_symbol(struct_id).unwrap();
-                let resolved_struct = sym.as_struct().unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(struct_id).unwrap();
+                let resolved_struct = symbol_entry.as_struct().unwrap();
 
                 self.check_unnamed_struct_and_named_struct_type_mismatch(
                     &unnamed_struct_type,
@@ -237,9 +237,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 )
             }
             (SemanticType::UnnamedStruct(unnamed_struct_type), SemanticType::GenericType(generic_type)) => {
-                let sym = self.queyr.lookup_global_symbol(generic_type.base).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
-                match sym.as_struct().cloned() {
+                match symbol_entry.as_struct().cloned() {
                     Some(mut resolved_struct) => {
                         resolved_struct.struct_sig = substitute_struct_sig(
                             self.mapping_ctx_arena.clone(),
@@ -257,9 +257,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             (SemanticType::GenericType(generic_type), SemanticType::UnnamedStruct(unnamed_struct)) => {
-                let sym = self.queyr.lookup_global_symbol(generic_type.base).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
-                match sym.as_struct().cloned() {
+                match symbol_entry.as_struct().cloned() {
                     Some(mut resolved_struct) => {
                         resolved_struct.struct_sig = substitute_struct_sig(
                             self.mapping_ctx_arena.clone(),
@@ -507,15 +507,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // through the cast builtin implementation.
             //
             (SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)), SemanticType::PlainType(plain_type)) => {
-                let sym = self.queyr.lookup_global_symbol(enum_id).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(enum_id).unwrap();
 
-                sym.as_enum().is_some() && plain_type.is_integer_or_bool()
+                symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
             }
             (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
             (SemanticType::PlainType(plain_type), SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id))) => {
-                let sym = self.queyr.lookup_global_symbol(enum_id).unwrap();
+                let symbol_entry = self.query.lookup_global_symbol(enum_id).unwrap();
 
-                sym.as_enum().is_some() && plain_type.is_integer_or_bool()
+                symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
             }
             (SemanticType::PlainType(plain_type), SemanticType::UnnamedEnum(_)) => plain_type.is_integer_or_bool(),
             // END

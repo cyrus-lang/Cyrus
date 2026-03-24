@@ -38,7 +38,7 @@ use std::{
 /// using the provided generic mapping context.
 pub fn substitute_type(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    sema_ty: SemanticType,
+    sema_type: SemanticType,
     mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<SemanticType> {
     /// Small helper to apply a substitution callback on an inner type.
@@ -49,18 +49,18 @@ pub fn substitute_type(
         f(inner)
     }
 
-    match sema_ty {
+    match sema_type {
         SemanticType::GenericParam(generic_param) => {
-            let mut sema_ty = {
+            let mut sema_type = {
                 let mapping_ctx_ref = mapping_ctx.borrow();
                 mapping_ctx_ref.resolve_with_name(mapping_ctx_arena, &generic_param.param_name.name)
             };
 
-            if let Some(SemanticType::GenericParam(generic_param)) = sema_ty {
-                sema_ty = generic_param.default.map(|sema_ty| *sema_ty);
+            if let Some(SemanticType::GenericParam(generic_param)) = sema_type {
+                sema_type = generic_param.default.map(|sema_type| *sema_type);
             }
 
-            sema_ty
+            sema_type
         }
         SemanticType::GenericType(mut generic_type) => {
             if let Some(type_args) = &mut generic_type.type_args {
@@ -85,10 +85,10 @@ pub fn substitute_type(
                 loc: array_type.loc,
             })
         }),
-        SemanticType::Const(inner) => sub(*inner, &|sema_ty| {
-            substitute_type(mapping_ctx_arena.clone(), sema_ty, mapping_ctx.clone())
+        SemanticType::Const(inner) => sub(*inner, &|sema_type| {
+            substitute_type(mapping_ctx_arena.clone(), sema_type, mapping_ctx.clone())
         })
-        .map(|sema_ty| sema_ty.as_const()),
+        .map(|sema_type| sema_type.as_const()),
         SemanticType::Tuple(tuple_type) => {
             let list = tuple_type
                 .elements
@@ -159,24 +159,24 @@ fn substitute_func_params(
         .iter()
         .map(|func_param_kind| match func_param_kind.clone() {
             TypedFuncParamKind::FuncParam(mut func_param) => {
-                if let Some(sema_ty) = substitute_type(mapping_ctx_arena.clone(), func_param.ty.clone(), ctx.clone()) {
-                    func_param.ty = sema_ty;
+                if let Some(sema_type) = substitute_type(mapping_ctx_arena.clone(), func_param.ty.clone(), ctx.clone()) {
+                    func_param.ty = sema_type;
                 }
                 TypedFuncParamKind::FuncParam(func_param)
             }
             TypedFuncParamKind::SelfModifier(mut self_modifier) => {
                 self_modifier.ty = self_modifier
                     .ty
-                    .and_then(|sema_ty| substitute_type(mapping_ctx_arena.clone(), sema_ty, ctx.clone()));
+                    .and_then(|sema_type| substitute_type(mapping_ctx_arena.clone(), sema_type, ctx.clone()));
                 TypedFuncParamKind::SelfModifier(self_modifier)
             }
         })
         .collect();
 
     let variadic = func_params.variadic.clone().and_then(|variadic| match &variadic {
-        unsubstituted_variadic_param @ TypedFuncVariadicParams::Typed(ident, sema_ty) => {
-            if let Some(sema_ty) = substitute_type(mapping_ctx_arena, sema_ty.clone(), ctx.clone()) {
-                Some(TypedFuncVariadicParams::Typed(ident.clone(), sema_ty))
+        unsubstituted_variadic_param @ TypedFuncVariadicParams::Typed(ident, sema_type) => {
+            if let Some(sema_type) = substitute_type(mapping_ctx_arena, sema_type.clone(), ctx.clone()) {
+                Some(TypedFuncVariadicParams::Typed(ident.clone(), sema_type))
             } else {
                 Some(unsubstituted_variadic_param.clone())
             }
@@ -276,9 +276,9 @@ pub fn substitute_enum_sig(
             TypedEnumVariant::Ident(ident) => Some(TypedEnumVariant::Ident(ident.clone())),
             TypedEnumVariant::Valued(ident, expr) => {
                 let substituted =
-                    substitute_type(mapping_ctx_arena.clone(), expr.sema_ty.clone().unwrap(), ctx.clone())?;
+                    substitute_type(mapping_ctx_arena.clone(), expr.sema_type.clone().unwrap(), ctx.clone())?;
                 let mut expr_v2 = *expr.clone();
-                expr_v2.sema_ty = Some(substituted);
+                expr_v2.sema_type = Some(substituted);
                 Some(TypedEnumVariant::Valued(ident.clone(), Box::new(expr_v2)))
             }
             TypedEnumVariant::Variant(ident, fields) => {

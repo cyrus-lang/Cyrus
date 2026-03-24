@@ -118,17 +118,17 @@ pub struct GlobalVarSig {
 }
 
 // FIXME: Make this method for FuncSig
-pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_ty: &SemanticType) {
+pub fn set_self_modifier_type_in_func_sig(func_sig: &mut FuncSig, sema_type: &SemanticType) {
     let first_param = func_sig.params.list.first_mut();
 
     if let Some(func_param_kind) = first_param {
         if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
             match self_modifier.kind {
                 SelfModifierKind::Copied => {
-                    self_modifier.ty = Some(sema_ty.clone());
+                    self_modifier.ty = Some(sema_type.clone());
                 }
                 SelfModifierKind::Referenced => {
-                    self_modifier.ty = Some(sema_ty.clone());
+                    self_modifier.ty = Some(sema_type.clone());
                 }
             }
         }
@@ -259,8 +259,8 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
     let variadic = match &params.variadic {
         Some(variadic) => match variadic {
             TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-            TypedFuncVariadicParams::Typed(_, sema_ty) => {
-                Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty.clone())))
+            TypedFuncVariadicParams::Typed(_, sema_type) => {
+                Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone())))
             }
         },
         None => None,

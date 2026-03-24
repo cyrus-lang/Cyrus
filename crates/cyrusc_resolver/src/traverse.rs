@@ -166,8 +166,8 @@ impl Resolver {
             let maybe_ident = module_import.as_ident();
 
             if let Some(ident) = maybe_ident {
-                if let Some(sym) = self.lookup_symbol_id(&ident.value) {
-                    return Some(sym);
+                if let Some(symbol_entry) = self.lookup_symbol_id(&ident.value) {
+                    return Some(symbol_entry);
                 }
 
                 self.reporter.report(Diag {
@@ -246,7 +246,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, ident.loc)),
-            sema_ty: None,
+            sema_type: None,
             mloc: MemoryLocation::LValue,
             loc: ident.loc,
         })
@@ -285,7 +285,7 @@ impl Resolver {
 
                     Some(TypedExprStmt {
                         kind,
-                        sema_ty: None,
+                        sema_type: None,
                         mloc: MemoryLocation::RValue,
                         loc: builtin.loc(),
                     })
@@ -750,12 +750,12 @@ impl Resolver {
             .clone()
             .and_then(|generic_params| self.resolve_generic_params(&generic_params));
 
-        let sema_ty = self.resolve_type(&generic_params, typedef.type_spec.clone(), typedef.loc)?;
+        let sema_type = self.resolve_type(&generic_params, typedef.type_spec.clone(), typedef.loc)?;
 
         let typedef_sig = TypedefSig {
             name: typedef.ident.as_string(),
             generic_params,
-            ty: sema_ty.clone(),
+            ty: sema_type.clone(),
             vis: typedef.vis.clone(),
             loc: typedef.loc,
         };
@@ -779,7 +779,7 @@ impl Resolver {
         Some(TypedStmt::Typedef(TypedTypedefStmt {
             symbol_id,
             name: typedef.ident.as_string(),
-            ty: sema_ty,
+            ty: sema_type,
             generic_params,
             vis: typedef.vis.clone(),
             loc: typedef_sig.loc,
@@ -929,14 +929,14 @@ impl Resolver {
         let mut typed_union_fields = Vec::with_capacity(union_decl.fields.len());
 
         for field in &union_decl.fields {
-            let sema_ty = match self.resolve_type(&generic_params, field.ty.clone(), field.loc) {
+            let sema_type = match self.resolve_type(&generic_params, field.ty.clone(), field.loc) {
                 Some(ty) => ty,
                 None => continue,
             };
 
             typed_union_fields.push(TypedUnionField {
                 name: field.ident.as_string(),
-                ty: sema_ty,
+                ty: sema_type,
                 loc: field.loc,
             });
         }
@@ -1090,7 +1090,7 @@ impl Resolver {
         let name = global_var.ident.as_string();
         let loc = global_var.loc;
 
-        let sema_ty = match &global_var.type_spec {
+        let sema_type = match &global_var.type_spec {
             Some(ty) => self.resolve_type(&None, ty.clone(), loc),
             None => None,
         };
@@ -1107,7 +1107,7 @@ impl Resolver {
                 module_id,
                 symbol_id,
                 name: name.clone(),
-                ty: sema_ty.clone(),
+                ty: sema_type.clone(),
                 rhs: typed_expr.clone(),
                 analyzed: true,
                 is_const: global_var.is_const,
@@ -1126,7 +1126,7 @@ impl Resolver {
             symbol_id,
             module_id,
             name,
-            ty: sema_ty,
+            ty: sema_type,
             expr: typed_expr,
             modifiers: global_var.modifiers.clone(),
             is_const: global_var.is_const,
@@ -1313,7 +1313,7 @@ impl Resolver {
                 TypeSpecifier::GenericInst(generic_inst) => {
                     let base_symbol_id = match self
                         .resolve_type(&None, *generic_inst.base.clone(), loc)
-                        .and_then(|sema_ty| sema_ty.as_unresolved_symbol())
+                        .and_then(|sema_type| sema_type.as_unresolved_symbol())
                     {
                         Some(symbol_id) => symbol_id,
                         None => {
@@ -2043,7 +2043,7 @@ impl Resolver {
             self.resolve_module_import(module_import.clone())
                 .map(|symbol_id| TypedExprStmt {
                     kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, module_import.loc)),
-                    sema_ty: None,
+                    sema_type: None,
                     mloc: MemoryLocation::LValue,
                     loc: module_import.loc,
                 })
@@ -2063,7 +2063,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind,
-            sema_ty: None,
+            sema_type: None,
             mloc: MemoryLocation::RValue,
             loc: unnamed_union_value.loc,
         })
@@ -2092,7 +2092,7 @@ impl Resolver {
                 loc: unnamed_enum_value.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: unnamed_enum_value.loc,
         })
     }
@@ -2107,7 +2107,7 @@ impl Resolver {
                 object_name: None,
                 loc: dynamic.loc,
             }),
-            sema_ty: None,
+            sema_type: None,
             mloc: MemoryLocation::RValue,
             loc: dynamic.loc,
         })
@@ -2122,7 +2122,7 @@ impl Resolver {
                 index: tuple_member_access.index,
                 loc: tuple_member_access.loc,
             }),
-            sema_ty: None,
+            sema_type: None,
             mloc: MemoryLocation::LValue,
             loc: tuple_member_access.loc,
         })
@@ -2143,7 +2143,7 @@ impl Resolver {
                 elements,
                 loc: tuple_value.loc,
             }),
-            sema_ty: None,
+            sema_type: None,
             mloc: MemoryLocation::RValue,
             loc: tuple_value.loc,
         })
@@ -2170,7 +2170,7 @@ impl Resolver {
                     inline: lambda.inline,
                     loc: lambda.loc,
                 }),
-                sema_ty: None,
+                sema_type: None,
                 mloc: MemoryLocation::RValue,
                 loc: lambda.loc,
             })
@@ -2197,7 +2197,7 @@ impl Resolver {
                 loc: field_access.loc,
             }),
             mloc: MemoryLocation::LValue,
-            sema_ty: None,
+            sema_type: None,
             loc: field_access.loc,
         })
     }
@@ -2232,7 +2232,7 @@ impl Resolver {
                 args,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: method_call.loc,
         })
     }
@@ -2266,7 +2266,7 @@ impl Resolver {
                 loc: struct_init.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: struct_init.loc,
         })
     }
@@ -2293,7 +2293,7 @@ impl Resolver {
                 loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc,
         })
     }
@@ -2312,7 +2312,7 @@ impl Resolver {
                 loc: untyped_array.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: untyped_array.loc,
         })
     }
@@ -2333,7 +2333,7 @@ impl Resolver {
                 loc: array.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: array.loc,
         })
     }
@@ -2350,7 +2350,7 @@ impl Resolver {
                 loc: infix.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: infix.loc,
         })
     }
@@ -2365,7 +2365,7 @@ impl Resolver {
                 loc: prefix.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: prefix.loc,
         })
     }
@@ -2377,11 +2377,11 @@ impl Resolver {
             TypeSpecifier::Ident(ident) => self.resolve_ident(&ident)?,
             TypeSpecifier::ModuleImport(module_import) => self.resolve_module_import(module_import.clone())?,
             _ => {
-                let sema_ty = self.resolve_type(&None, type_spec.clone(), loc)?;
+                let sema_type = self.resolve_type(&None, type_spec.clone(), loc)?;
                 return Some(TypedExprStmt {
-                    kind: TypedExprKind::SemanticType(sema_ty.clone()),
+                    kind: TypedExprKind::SemanticType(sema_type.clone()),
                     mloc: MemoryLocation::RValue,
-                    sema_ty: Some(sema_ty),
+                    sema_type: Some(sema_type),
                     loc,
                 });
             }
@@ -2390,7 +2390,7 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, loc)),
             mloc: MemoryLocation::LValue,
-            sema_ty: None,
+            sema_type: None,
             loc,
         })
     }
@@ -2407,7 +2407,7 @@ impl Resolver {
                 loc: assign.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: assign.loc,
         })
     }
@@ -2423,7 +2423,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::Literal(typed_literal.clone()),
-            sema_ty: None,
+            sema_type: None,
             mloc: MemoryLocation::RValue,
             loc: typed_literal.loc,
         })
@@ -2450,7 +2450,7 @@ impl Resolver {
     ) -> Option<Option<SemanticType>> {
         if let Some(token_kind) = suffix_opt {
             match SemanticType::try_from(*token_kind.clone()) {
-                Ok(sema_ty) => Some(Some(sema_ty)),
+                Ok(sema_type) => Some(Some(sema_type)),
                 Err(_) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -2515,7 +2515,7 @@ impl Resolver {
                 loc: unary.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: unary.loc,
         })
     }
@@ -2531,7 +2531,7 @@ impl Resolver {
                 loc: array_index.loc,
             }),
             mloc: MemoryLocation::LValue,
-            sema_ty: None,
+            sema_type: None,
             loc: array_index.loc,
         })
     }
@@ -2545,7 +2545,7 @@ impl Resolver {
                 loc: addr_of.loc,
             }),
             mloc: MemoryLocation::LValue,
-            sema_ty: None,
+            sema_type: None,
             loc: addr_of.loc,
         })
     }
@@ -2559,7 +2559,7 @@ impl Resolver {
                 loc: deref.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: deref.loc,
         })
     }
@@ -2575,7 +2575,7 @@ impl Resolver {
 
             let ty = if let Some(type_spec) = &field.field_ty {
                 match self.resolve_type(&None, type_spec.clone(), field.loc) {
-                    Some(sema_ty) => Some(sema_ty),
+                    Some(sema_type) => Some(sema_type),
                     None => continue,
                 }
             } else {
@@ -2603,7 +2603,7 @@ impl Resolver {
                 loc: unnamed_struct_value.loc,
             }),
             mloc: MemoryLocation::RValue,
-            sema_ty: None,
+            sema_type: None,
             loc: unnamed_struct_value.loc,
         })
     }

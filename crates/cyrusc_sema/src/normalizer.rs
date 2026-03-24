@@ -73,10 +73,10 @@ impl TypeCache {
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Validate a semantic type.
     /// This does NOT normalize the type.
-    pub fn check_sema_ty(&mut self, mut sema_ty: SemanticType, loc: Loc) -> Option<SemanticType> {
+    pub fn check_sema_ty(&mut self, mut sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        if sema_ty.count_const_layers() > 1 {
+        if sema_type.count_const_layers() > 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
@@ -85,7 +85,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_ty.is_self_type() && self.tctx.current_self.is_none() {
+        if sema_type.is_self_type() && self.tctx.current_self.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -94,24 +94,24 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if let Some(generic_type) = sema_ty.as_generic_type_mut() {
+        if let Some(generic_type) = sema_type.as_generic_type_mut() {
             generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol).ok();
         }
 
-        if let Some(unnamed_enum_type) = sema_ty.as_unnamed_enum_mut() {
+        if let Some(unnamed_enum_type) = sema_type.as_unnamed_enum_mut() {
             self.check_unnamed_enum_type(unnamed_enum_type);
         }
 
-        if let Some(unnamed_struct_type) = sema_ty.as_unnamed_struct_mut() {
+        if let Some(unnamed_struct_type) = sema_type.as_unnamed_struct_mut() {
             self.check_unnamed_struct_type(unnamed_struct_type);
         }
 
-        if let Some(unnamed_union_type) = sema_ty.as_unnamed_union_mut() {
+        if let Some(unnamed_union_type) = sema_type.as_unnamed_union_mut() {
             self.check_unnamed_union_type(unnamed_union_type);
         }
 
-        self.check_sema_ty_for_missing_type_args(&sema_ty, loc);
-        Some(sema_ty)
+        self.check_sema_ty_for_missing_type_args(&sema_type, loc);
+        Some(sema_type)
     }
 
     fn check_unnamed_union_type(&mut self, unnamed_union_type: &mut TypedUnnamedUnionType) {
@@ -131,7 +131,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         for field in &mut unnamed_union_type.fields {
             field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_ty) => Box::new(sema_ty),
+                Some(sema_type) => Box::new(sema_type),
                 None => continue,
             };
 
@@ -171,7 +171,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         for field in &mut unnamed_struct_type.fields {
             field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_ty) => Box::new(sema_ty),
+                Some(sema_type) => Box::new(sema_type),
                 None => continue,
             };
 
@@ -206,7 +206,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.validate_align(&unnamed_enum_type.align, unnamed_enum_type.loc);
 
         self.validate_enum_tag_type(
-            &unnamed_enum_type.tag_type.clone().map(|sema_ty| *sema_ty),
+            &unnamed_enum_type.tag_type.clone().map(|sema_type| *sema_type),
             unnamed_enum_type.loc,
         );
 
@@ -219,12 +219,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             let variant_ident = match variant {
                 TypedUnnamedEnumVariant::Ident(ident) => ident,
                 TypedUnnamedEnumVariant::Valued(ident, typed_expr) => {
-                    typed_expr.sema_ty = match self.analyze_expr(typed_expr, None) {
-                        Some(sema_ty) => Some(sema_ty),
+                    typed_expr.sema_type = match self.analyze_expr(typed_expr, None) {
+                        Some(sema_type) => Some(sema_type),
                         None => continue,
                     };
 
-                    if is_repr_c && !typed_expr.sema_ty.as_ref().unwrap().is_integer() {
+                    if is_repr_c && !typed_expr.sema_type.as_ref().unwrap().is_integer() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
@@ -249,7 +249,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                     for field in typed_enum_valued_fields {
                         field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                            Some(sema_ty) => sema_ty,
+                            Some(sema_type) => sema_type,
                             None => continue,
                         };
 
@@ -278,9 +278,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     /// Fully normalize AND validate a type
     /// This is what we call when an explicit type is used
-    pub fn normalize_and_check_sema_ty(&mut self, sema_ty: SemanticType, loc: Loc) -> Option<SemanticType> {
-        let sema_ty = self.normalize_sema_type(sema_ty, loc)?;
-        self.check_sema_ty(sema_ty, loc)
+    pub fn normalize_and_check_sema_ty(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+        let sema_type = self.normalize_sema_type(sema_type, loc)?;
+        self.check_sema_ty(sema_type, loc)
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
@@ -309,7 +309,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_unnamed_union_ty(&mut self, mut unnamed_union_type: TypedUnnamedUnionType) -> Option<SemanticType> {
         for field in &mut unnamed_union_type.fields {
             field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_ty) => Box::new(sema_ty),
+                Some(sema_type) => Box::new(sema_type),
                 None => continue,
             };
         }
@@ -319,7 +319,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_unnamed_struct_ty(&mut self, mut unnamed_struct_type: TypedUnnamedStructType) -> Option<SemanticType> {
         for field in &mut unnamed_struct_type.fields {
             field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_ty) => Box::new(sema_ty),
+                Some(sema_type) => Box::new(sema_type),
                 None => continue,
             };
         }
@@ -333,7 +333,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
                     for valued_field in valued_fields {
                         match self.normalize_sema_type(valued_field.ty.clone(), valued_field.loc) {
-                            Some(sema_ty) => valued_field.ty = sema_ty,
+                            Some(sema_type) => valued_field.ty = sema_type,
                             None => continue,
                         }
                     }
@@ -367,8 +367,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 TypedFuncTypeVariadicParams::UntypedCStyle => {
                     func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle));
                 }
-                TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    if let Some(normalized) = self.normalize_sema_type(sema_ty, func_type.loc) {
+                TypedFuncTypeVariadicParams::Typed(sema_type) => {
+                    if let Some(normalized) = self.normalize_sema_type(sema_type, func_type.loc) {
                         func_type.params.variadic = Some(Box::new(TypedFuncTypeVariadicParams::Typed(normalized)));
                     } else {
                         return None;
@@ -388,7 +388,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let type_list: Vec<_> = tuple_type
             .elements
             .into_iter()
-            .filter_map(|sema_ty| self.normalize_sema_type(sema_ty, tuple_type.loc))
+            .filter_map(|sema_type| self.normalize_sema_type(sema_type, tuple_type.loc))
             .collect();
 
         // if we lost any types, return None
@@ -504,14 +504,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
         // try to resolve from current object operand context
-        if let Some(sema_ty) = &self.tctx.current_obj_operand_ty {
-            if let Some(generic_type) = sema_ty.as_generic_type() {
+        if let Some(sema_type) = &self.tctx.current_obj_operand_ty {
+            if let Some(generic_type) = sema_type.as_generic_type() {
                 let mapping_ctx = generic_type.mapping_ctx.borrow();
 
-                if let Some(sema_ty) =
+                if let Some(sema_type) =
                     mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
                 {
-                    return Some(sema_ty);
+                    return Some(sema_type);
                 }
             }
         }
@@ -569,13 +569,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             match type_arg {
                 TypedTypeArg::Positional { ty, loc, .. } => {
                     *ty = match self.normalize_and_check_sema_ty(ty.clone(), *loc) {
-                        Some(sema_ty) => sema_ty,
+                        Some(sema_type) => sema_type,
                         None => continue,
                     };
                 }
                 TypedTypeArg::Named { ty, loc, .. } => {
                     *ty = match self.normalize_and_check_sema_ty(ty.clone(), *loc) {
-                        Some(sema_ty) => sema_ty,
+                        Some(sema_type) => sema_type,
                         None => continue,
                     };
                 }
@@ -739,14 +739,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         if let Some(variadic_params) = &mut params.variadic {
-            if let TypedFuncVariadicParams::Typed(ident, sema_ty) = variadic_params {
-                let sema_ty = match self.normalize_sema_type(sema_ty.clone(), loc) {
-                    Some(sema_ty) => sema_ty,
+            if let TypedFuncVariadicParams::Typed(ident, sema_type) = variadic_params {
+                let sema_type = match self.normalize_sema_type(sema_type.clone(), loc) {
+                    Some(sema_type) => sema_type,
                     None => return,
                 };
 
-                self.validate_param_type(&sema_ty, ident.loc);
-                *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_ty);
+                self.validate_param_type(&sema_type, ident.loc);
+                *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_type);
             }
         }
     }
@@ -754,23 +754,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: Loc) {
         // analyze static arguments
         for param in params.list.iter_mut() {
-            let sema_ty = self.normalize_sema_type(param.clone(), loc).unwrap();
-            *param = sema_ty.clone();
+            let sema_type = self.normalize_sema_type(param.clone(), loc).unwrap();
+            *param = sema_type.clone();
 
-            self.validate_param_type(&sema_ty, loc);
+            self.validate_param_type(&sema_type, loc);
         }
 
         if let Some(variadic_params) = &mut params.variadic {
             match *variadic_params.clone() {
                 TypedFuncTypeVariadicParams::UntypedCStyle => {}
-                TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                    let sema_ty = match self.normalize_sema_type(sema_ty.clone(), loc) {
-                        Some(sema_ty) => sema_ty,
+                TypedFuncTypeVariadicParams::Typed(sema_type) => {
+                    let sema_type = match self.normalize_sema_type(sema_type.clone(), loc) {
+                        Some(sema_type) => sema_type,
                         None => return,
                     };
 
-                    self.validate_param_type(&sema_ty, loc);
-                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty));
+                    self.validate_param_type(&sema_type, loc);
+                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(sema_type));
                 }
             }
         }
@@ -822,13 +822,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let global_var_sig = &resolved_global_var.global_var_sig;
 
                 // explicit type
-                if let Some(sema_ty) = &global_var_sig.ty {
-                    let sema_ty = self.normalize_sema_type(sema_ty.clone(), global_var_sig.loc)?;
+                if let Some(sema_type) = &global_var_sig.ty {
+                    let sema_type = self.normalize_sema_type(sema_type.clone(), global_var_sig.loc)?;
 
                     return Some(if global_var_sig.is_const {
-                        sema_ty.as_const()
+                        sema_type.as_const()
                     } else {
-                        sema_ty
+                        sema_type
                     });
                 }
 
@@ -837,7 +837,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     let sema_ty_opt = global_var_sig
                         .ty
                         .clone()
-                        .or(global_var_sig.rhs.clone().and_then(|expr| expr.sema_ty));
+                        .or(global_var_sig.rhs.clone().and_then(|expr| expr.sema_type));
 
                     return if global_var_sig.is_const {
                         sema_ty_opt.map(|ty| ty.as_const())
@@ -866,14 +866,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let var_sig = &resolved_var.variable;
 
                 // explicit type
-                if let Some(sema_ty) = &var_sig.ty {
-                    let sema_ty = self.normalize_sema_type(sema_ty.clone(), var_sig.loc)?;
-                    return Some(if var_sig.is_const { sema_ty.as_const() } else { sema_ty });
+                if let Some(sema_type) = &var_sig.ty {
+                    let sema_type = self.normalize_sema_type(sema_type.clone(), var_sig.loc)?;
+                    return Some(if var_sig.is_const { sema_type.as_const() } else { sema_type });
                 }
 
                 // skip if already analyzed
                 if var_sig.analyzed {
-                    let sema_ty_opt = var_sig.ty.clone().or(var_sig.rhs.clone().and_then(|expr| expr.sema_ty));
+                    let sema_ty_opt = var_sig.ty.clone().or(var_sig.rhs.clone().and_then(|expr| expr.sema_type));
 
                     return if var_sig.is_const {
                         sema_ty_opt.map(|ty| ty.as_const())
@@ -913,8 +913,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 let params_variadic = resolved_func.func_sig.params.variadic.as_ref().map(|v| match v {
                     TypedFuncVariadicParams::UntypedCStyle => Box::new(TypedFuncTypeVariadicParams::UntypedCStyle),
-                    TypedFuncVariadicParams::Typed(_, sema_ty) => {
-                        Box::new(TypedFuncTypeVariadicParams::Typed(sema_ty.clone()))
+                    TypedFuncVariadicParams::Typed(_, sema_type) => {
+                        Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone()))
                     }
                 });
 

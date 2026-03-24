@@ -266,8 +266,8 @@ impl GenericMappingCtx {
     pub fn format(&self, fmt_symbol: SymbolFormatterFn) -> String {
         let mut parts = Vec::new();
 
-        for (entry, sema_ty) in &self.named {
-            let type_str = format_sema_ty(sema_ty.clone(), fmt_symbol);
+        for (entry, sema_type) in &self.named {
+            let type_str = format_sema_ty(sema_type.clone(), fmt_symbol);
             parts.push(format!("{} = {}", entry, type_str));
         }
 

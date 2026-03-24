@@ -126,7 +126,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolForma
             let array_type_fmt = typed_array
                 .ty
                 .as_ref()
-                .and_then(|sema_ty| Some(format_sema_ty(sema_ty.clone(), fmt_symbol)))
+                .and_then(|sema_type| Some(format_sema_ty(sema_type.clone(), fmt_symbol)))
                 .unwrap_or("".to_string());
             fmt.push_str(&format!(
                 "{}{{{}}}",
@@ -235,8 +235,8 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolForma
                     .map(|field| {
                         let mut lfmt = String::new();
                         lfmt.push_str(&field.name);
-                        if let Some(sema_ty) = &field.ty {
-                            let type_fmt = format_sema_ty(sema_ty.clone(), fmt_symbol);
+                        if let Some(sema_type) = &field.ty {
+                            let type_fmt = format_sema_ty(sema_type.clone(), fmt_symbol);
                             lfmt.push_str(": ");
                             lfmt.push_str(&type_fmt);
                         }
@@ -261,7 +261,7 @@ pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolForma
 
             fmt
         }
-        TypedExprKind::SemanticType(sema_ty) => format_sema_ty(sema_ty.clone(), fmt_symbol),
+        TypedExprKind::SemanticType(sema_type) => format_sema_ty(sema_type.clone(), fmt_symbol),
         TypedExprKind::Lambda(typed_lambda) => format_lambda(typed_lambda, fmt_symbol),
         TypedExprKind::Tuple(tuple_value) => {
             format!(
@@ -401,8 +401,8 @@ pub fn format_unnamed_enum_ty<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fmt_
     fmt
 }
 
-pub fn format_sema_ty<'a>(sema_ty: SemanticType, fmt_symbol: SymbolFormatterFn) -> String {
-    match sema_ty {
+pub fn format_sema_ty<'a>(sema_type: SemanticType, fmt_symbol: SymbolFormatterFn) -> String {
+    match sema_type {
         SemanticType::UnresolvedSymbol(..) => format!("<unresolved_symbol>"),
         SemanticType::GenericParam(generic_param) => generic_param.param_name.name.clone(),
         SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
@@ -430,11 +430,11 @@ pub fn format_sema_ty<'a>(sema_ty: SemanticType, fmt_symbol: SymbolFormatterFn) 
             fmt.push_str("]");
             fmt
         }
-        SemanticType::Const(sema_ty) => {
-            format!("const {}", format_sema_ty(*sema_ty, fmt_symbol))
+        SemanticType::Const(sema_type) => {
+            format!("const {}", format_sema_ty(*sema_type, fmt_symbol))
         }
-        SemanticType::Pointer(sema_ty) => {
-            format!("{}*", format_sema_ty(*sema_ty, fmt_symbol))
+        SemanticType::Pointer(sema_type) => {
+            format!("{}*", format_sema_ty(*sema_type, fmt_symbol))
         }
         SemanticType::UnnamedStruct(unnamed_struct_type) => format_unnamed_struct_ty(&unnamed_struct_type, fmt_symbol),
         SemanticType::UnnamedUnion(unnamed_union_type) => format_unnamed_union_ty(&unnamed_union_type, fmt_symbol),
@@ -472,8 +472,8 @@ pub fn format_func_ty<'a>(func_type: &TypedFuncType, fmt_symbol: SymbolFormatter
     if let Some(variadic) = func_type.params.variadic.clone() {
         match *variadic {
             TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncTypeVariadicParams::Typed(sema_ty) => {
-                params.push_str(&format!(", {}...", format_sema_ty(sema_ty, fmt_symbol)))
+            TypedFuncTypeVariadicParams::Typed(sema_type) => {
+                params.push_str(&format!(", {}...", format_sema_ty(sema_type, fmt_symbol)))
             }
         }
     }
@@ -503,10 +503,10 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, fmt_symbol: SymbolFormatterFn
     if let Some(variadic) = lambda.params.variadic.clone() {
         match &variadic {
             TypedFuncVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncVariadicParams::Typed(ident, sema_ty) => params.push_str(&format!(
+            TypedFuncVariadicParams::Typed(ident, sema_type) => params.push_str(&format!(
                 ", {}: ...{}",
                 ident.name,
-                format_sema_ty(sema_ty.clone(), fmt_symbol)
+                format_sema_ty(sema_type.clone(), fmt_symbol)
             )),
         }
     }

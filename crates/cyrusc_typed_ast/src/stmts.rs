@@ -513,7 +513,7 @@ impl TypedFuncParams {
 impl TypedFuncTypeParams {
     pub fn as_typed_variadic(&self) -> Option<SemanticType> {
         self.variadic.clone().and_then(|variadic| match *variadic {
-            TypedFuncTypeVariadicParams::Typed(sema_ty) => Some(sema_ty),
+            TypedFuncTypeVariadicParams::Typed(sema_type) => Some(sema_type),
             TypedFuncTypeVariadicParams::UntypedCStyle => None,
         })
     }
@@ -569,8 +569,8 @@ impl TypedSwitchStmt {
         self.cases.iter().any(|case| {
             case.patterns.iter().any(|p| match p {
                 TypedSwitchCasePattern::Expr(expr, ..) => {
-                    let sema_ty = expr.sema_ty.as_ref().unwrap();
-                    sema_ty.is_char() || sema_ty.is_integer()
+                    let sema_type = expr.sema_type.as_ref().unwrap();
+                    sema_type.is_char() || sema_type.is_integer()
                 }
                 _ => false,
             })
