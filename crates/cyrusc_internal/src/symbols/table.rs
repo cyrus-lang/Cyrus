@@ -19,7 +19,10 @@ use crate::symbols::symbols::{
     ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
     ResolvedUnion, ResolvedVar, SymbolEntry,
 };
-use cyrusc_typed_ast::{ModuleID, SymbolID};
+use cyrusc_typed_ast::{
+    ModuleID, SymbolID,
+    generics::monomorph::{MonomorphFuncEntry, MonomorphKey, SpecializedFuncEntry},
+};
 use std::collections::HashMap;
 
 pub trait SymbolQuery: Sync + Send {
@@ -38,6 +41,9 @@ pub trait SymbolQuery: Sync + Send {
     fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry>;
     fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
     fn lookup_global_symbol_deep(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
+
+    fn lookup_monomorph_func(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry>;
+    fn lookup_specialized_func_instance(&self, monomorph_key: &MonomorphKey) -> Option<SpecializedFuncEntry>;
 
     /// Returns the declaration name of a symbol visible from the given module
     /// and optional local scope.

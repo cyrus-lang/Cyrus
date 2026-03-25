@@ -27,7 +27,7 @@ mod tests {
     fn lex(input: &str) -> Vec<Token> {
         let source_map = Arc::new(SourceMap::new());
         let file_id = source_map.add_file("test".to_string(), input.to_string());
-        let source_file = source_map.get_file(file_id).unwrap();
+        let source_file = { source_map.get_file(file_id).unwrap().clone() };
         let mut reporter = DiagReporter::new(source_map.clone());
         let mut lexer = Lexer::new(&mut reporter, &source_file);
         lexer.tokenize()

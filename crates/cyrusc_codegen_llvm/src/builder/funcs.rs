@@ -31,7 +31,6 @@ use crate::{
     },
 };
 use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
-use cyrusc_diagcentral::source_loc::Loc;
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
@@ -44,6 +43,7 @@ use cyrusc_internal::{
         types::{CIRFuncTy, CIRTy},
     },
 };
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::generics::monomorph::MonomorphKey;
 use inkwell::{
     context::AsContextRef,
@@ -437,7 +437,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     &monomorph_func_entry.abi_func_info,
                     &monomorph_func_entry.body().unwrap(),
                     func_metadata,
-                    &monomorph_func_entry.loc,
+                    monomorph_func_entry.loc,
                 );
 
                 {
@@ -680,7 +680,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             &lambda.abi_func_info,
             &lambda.body,
             func_metadata,
-            &lambda.loc,
+            lambda.loc,
         );
 
         if let Some(cur_func) = parent_func {
@@ -728,7 +728,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         abi_func_info: &ABIFunctionInfo,
         cir_block: &CIRBlockStmt,
         func_metadata: LLVMMetadataRef,
-        loc: &Loc,
+        loc: Loc,
     ) {
         unsafe { reset_debug_location(self.llvmbuilder) };
         debug_assert!(self.cur_func.is_some());

@@ -197,7 +197,7 @@ impl ModuleLoader for FsModuleLoader {
             // register file in SourceMap
             let file_id = self.source_map.add_file_by_loading(module_file_path.clone());
 
-            let source_file = self.source_map.get_file(file_id).unwrap();
+            let source_file = { self.source_map.get_file(file_id).unwrap().clone() };
 
             let Ok(program_tree) = self.source_parser.parse_program(&source_file) else {
                 self.source_parser.display_errors();

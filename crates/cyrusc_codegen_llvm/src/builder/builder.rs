@@ -146,7 +146,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     &func_def_stmt.abi_func_info.as_ref().unwrap(),
                     &func_def_stmt.body,
                     func_metadata,
-                    &func_decl.loc,
+                    func_decl.loc,
                 );
             }
             CIRStmt::GlobalVar(global_var_stmt) => {

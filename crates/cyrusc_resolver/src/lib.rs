@@ -25,7 +25,7 @@ use cyrusc_internal::symbols::symbols::{
 };
 use cyrusc_internal::symbols::table::{SymbolEntryMut, SymbolQuery, SymbolTable};
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
-use cyrusc_typed_ast::generics::monomorph::MonomorphRegistry;
+use cyrusc_typed_ast::generics::monomorph::{MonomorphEntry, MonomorphFuncEntry, MonomorphKey, MonomorphRegistry, SpecializedFuncEntry};
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::*;
 use std::collections::HashSet;
@@ -502,10 +502,34 @@ impl SymbolQuery for Resolver {
 
     fn lookup_module_name(&self, module_id: ModuleID) -> Option<String> {
         {
-            Some(self.program_trees.lock().unwrap()
-                .iter()
-                .find(|program_tree| program_tree.module_id == module_id)?
-                .module_name)
+            Some(
+                self.program_trees
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|program_tree| program_tree.module_id == module_id)?
+                    .module_name.clone(),
+            )
+        }
+    }
+
+    fn lookup_monomorph_func(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry> {
+        {
+            let monomorph_registry = self.monomorph_registry.lock().unwrap();
+            let monomorph_entry = monomorph_registry.resolve_by_monomorph_key(monomorph_key).unwrap();
+            let monomorph_func_entry = match monomorph_entry.clone() {
+                MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
+            };
+            Some(monomorph_func_entry)
+        }
+    }
+
+    fn lookup_specialized_func_instance(&self, monomorph_key: &MonomorphKey) -> Option<SpecializedFuncEntry> {
+        {
+            let monomorph_registry = self.monomorph_registry.lock().unwrap();
+            monomorph_registry
+                .resolve_specialized_func_instance(monomorph_key)
+                .cloned()
         }
     }
 }

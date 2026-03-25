@@ -122,18 +122,12 @@ impl DiagReporter {
 
         let loc = diag.loc.unwrap();
         let source_map = self.source_map.as_ref().unwrap();
+        let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
 
-        let file = match source_map.get_file(loc.file_id) {
-            Some(f) => f,
-            None => {
-                return out;
-            }
-        };
-
-        let lines: Vec<&str> = file.content.lines().collect();
+        let lines: Vec<&str> = source_file.content.lines().collect();
 
         // Render header: `--> file:line:column`
-        out.push_str(&self.render_header(&file.name, loc));
+        out.push_str(&self.render_header(&source_file.name, loc));
 
         // Compute which lines to print
         let error_idx = loc.line.saturating_sub(1);

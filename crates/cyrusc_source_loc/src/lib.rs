@@ -62,11 +62,11 @@ impl SourceMap {
         let id_val = self.next_id.get();
         self.next_id.set(id_val + 1);
 
-        let id = FileID(id_val);
-        let source_file = SourceFile::new(id, name, content);
+        let file_id = FileID(id_val);
+        let source_file = SourceFile::new(file_id, name, content);
 
-        self.files.borrow_mut().insert(id, source_file);
-        id
+        self.files.borrow_mut().insert(file_id, source_file);
+        file_id
     }
 
     // Loads a file from disk and registers it in the SourceMap.

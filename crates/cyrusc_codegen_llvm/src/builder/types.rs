@@ -22,7 +22,7 @@ use crate::llvm::debug_info::{
     debug_scalar_enum_type, debug_simple_type, debug_struct_type, debug_union_type,
 };
 use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNSIGNED, DW_ATE_UNSIGNED_CHAR};
-use cyrusc_diagcentral::source_loc::Loc;
+use cyrusc_source_loc::Loc;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
@@ -327,7 +327,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy, loc: &Loc) -> CIRTy {
+    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy, loc: Loc) -> CIRTy {
         CIRTy::Struct(CIRStructTy {
             name: None,
             fields: vec![
@@ -340,7 +340,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             ],
             align: None,
             repr_attr: None,
-            loc: loc,
+            loc
         })
     }
 

@@ -27,6 +27,7 @@ use cyrusc_ast::abi::CallConv;
 use cyrusc_ast::abi::Linkage;
 use cyrusc_ast::operators::*;
 use cyrusc_tokens::literals::*;
+use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::format::SymbolFormatterFn;
 use cyrusc_typed_ast::generics::generic_type::GenericType;
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
@@ -35,7 +36,6 @@ use cyrusc_typed_ast::sigs::typed_func_decl_from_func_sig;
 use cyrusc_typed_ast::sigs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
-use cyrusc_typed_ast::{ModuleID, TypedProgramTree};
 use cyrusc_typed_ast::{SymbolID, exprs::*};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -45,7 +45,6 @@ use std::sync::{Arc, Mutex};
 pub(crate) struct CIRTraverse<'q> {
     program_tree: Box<TypedProgramTree>,
     current_self_ty: Option<CIRTy>,
-    pub(crate) module_id: ModuleID,
     pub(crate) query: &'q dyn SymbolQuery,
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
@@ -58,7 +57,6 @@ impl<'resolver> CIRTraverse<'resolver> {
     pub fn new(
         program: Box<TypedProgramTree>,
         query: &'resolver dyn SymbolQuery,
-        module_id: ModuleID,
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
@@ -67,7 +65,6 @@ impl<'resolver> CIRTraverse<'resolver> {
         Self {
             program_tree: program,
             query,
-            module_id,
             cir_monomorph_registry,
             current_self_ty: None,
             current_obj_operand_ty: None,
@@ -749,7 +746,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let mangled_name = mangle_global_var(
             &global_var.modifiers,
-            &self.module_name_by_module_id(global_var.module_id).unwrap(),
+            &self.query.lookup_module_name(global_var.module_id).unwrap(),
             &global_var.name,
         );
 
@@ -1087,7 +1084,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             .cloned()
             .map(|mut func_sig| {
                 let mangled_name = mangle_method(
-                    &self.module_name_by_module_id(func_sig.module_id).unwrap(),
+                    &self.query.lookup_module_name(func_sig.module_id).unwrap(),
                     &dynamic.object_name.as_ref().unwrap(),
                     &func_sig.name,
                 );
@@ -1122,7 +1119,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             let mangled_name = mangle_func(
                 &cir_func_decl.modifiers,
-                &self.module_name_by_module_id(resolved_func.module_id).unwrap(),
+                &self.query.lookup_module_name(resolved_func.module_id).unwrap(),
                 &resolved_func.func_sig.name,
             );
 
@@ -1146,7 +1143,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             let mangled_name = mangle_global_var(
                 &resolved_global_var.global_var_sig.modifiers,
-                &self.module_name_by_module_id(resolved_global_var.module_id).unwrap(),
+                &self.query.lookup_module_name(resolved_global_var.module_id).unwrap(),
                 &resolved_global_var.global_var_sig.name,
             );
 
@@ -1164,17 +1161,6 @@ impl<'resolver> CIRTraverse<'resolver> {
         } else {
             unreachable!("Unexpected symbol kind when lowering load symbol.")
         }
-    }
-
-    // FIXME: Move to self.query!
-    fn module_name_by_module_id(&self, module_id: ModuleID) -> Option<String> {
-        let program_trees = self.query.program_trees.lock().unwrap();
-        let opt = program_trees
-            .iter()
-            .find(|entry| entry.module_id == module_id)
-            .map(|entry| entry.module_name.clone());
-        drop(program_trees);
-        opt
     }
 
     pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
@@ -1324,7 +1310,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let mut func_sig = method_call.func_sig.as_ref().unwrap().clone();
 
         let mangled_name = mangle_method(
-            &self.module_name_by_module_id(func_sig.module_id).unwrap(),
+            &self.query.lookup_module_name(func_sig.module_id).unwrap(),
             &method_call.object_name.as_ref().unwrap(),
             &func_sig.name,
         );
@@ -1519,7 +1505,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let ret_ty = self.lower_sema_ty(&func_call.ret_type.clone().unwrap());
 
         if let Some(monomorph_key) = &func_call.monomorph_key {
-            let monomorph_func_entry = self.resolve_monomorph_func_entry(monomorph_key).unwrap();
+            let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_key).unwrap();
 
             let symbol_entry = self
                 .query
@@ -1616,23 +1602,6 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
-    fn lower_size_of(&mut self, sizeof: &TypedSizeOfExpr) -> CIRExprKind {
-        let sema_type = match &sizeof.operand.kind {
-            TypedExprKind::SemanticType(sema_type) => sema_type.clone(),
-            _ => sizeof.operand.sema_type.clone().unwrap(),
-        };
-
-        let ty = self.lower_sema_ty(&sema_type);
-        CIRExprKind::SizeOf(CIRSizeOfExpr { ty })
-    }
-
-    fn lower_cast(&mut self, cast: &TypedCastExpr) -> CIRExprKind {
-        CIRExprKind::Cast(CIRCastExpr {
-            operand: Box::new(self.lower_expr(&cast.operand)),
-            ty: Box::new(self.lower_sema_ty(&cast.target_type)),
-        })
-    }
-
     fn lower_assign(&mut self, assign: &TypedAssignExpr) -> CIRExprKind {
         CIRExprKind::Assign(CIRAssignExpr {
             lhs: Box::new(self.lower_expr(&assign.lhs)),
@@ -1681,8 +1650,6 @@ impl<'resolver> CIRTraverse<'resolver> {
         let ty = self.lower_sema_ty(&literal.ty.clone().unwrap());
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
-
-    // types
 
     fn lower_sema_ty(&mut self, sema_type: &SemanticType) -> CIRTy {
         match sema_type {
@@ -2033,7 +2000,6 @@ pub fn walk_program_trees_in_parallel(
                 let mut cir_walk = CIRTraverse::new(
                     program_tree.clone(),
                     query,
-                    program_tree.module_id,
                     cir_monomorph_registry.clone(),
                     mapping_ctx_arena.clone(),
                     vtable_registry,
@@ -2044,10 +2010,4 @@ pub fn walk_program_trees_in_parallel(
             })
             .collect()
     })
-}
-
-pub(crate) fn build_panic_symbol_formatter<'a>() -> Box<dyn Fn(SymbolID) -> String + 'a> {
-    Box::new(move |symbol_id: SymbolID| -> String {
-        panic!("Panic symbol formatter called for symbol id {}", symbol_id)
-    }) as Box<dyn Fn(SymbolID) -> String + 'a>
 }

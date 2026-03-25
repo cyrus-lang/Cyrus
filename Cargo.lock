@@ -167,12 +167,12 @@ dependencies = [
  "cyrusc_scaffold",
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
+ "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "serde",
  "serde_json",
  "thiserror-impl",
  "toml",
- "uuid",
 ]
 
 [[package]]
@@ -272,6 +272,7 @@ dependencies = [
  "cyrusc_internal",
  "cyrusc_scaffold_parser",
  "cyrusc_sema",
+ "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
  "inkwell",
@@ -287,7 +288,6 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_internal",
- "cyrusc_lexer",
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_scaffold_parser",
@@ -325,6 +325,7 @@ name = "cyrusc_fs_utils"
 version = "0.1.0"
 dependencies = [
  "cyrusc_tui_utils",
+ "uuid",
 ]
 
 [[package]]

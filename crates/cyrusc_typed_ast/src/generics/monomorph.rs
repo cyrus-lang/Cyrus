@@ -134,8 +134,8 @@ impl MonomorphRegistry {
     }
 
     #[inline]
-    pub fn resolve_specialized_func_instance(&self, monomorph_key: MonomorphKey) -> Option<&SpecializedFuncEntry> {
-        self.specialized_func_instances.get(&monomorph_key)
+    pub fn resolve_specialized_func_instance(&self, monomorph_key: &MonomorphKey) -> Option<&SpecializedFuncEntry> {
+        self.specialized_func_instances.get(monomorph_key)
     }
 
     #[inline]

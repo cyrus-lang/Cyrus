@@ -23,7 +23,6 @@ use crate::{
     c,
     llvm::abi::abi_type::abi_type_to_llvm_type,
 };
-use cyrusc_diagcentral::source_loc::Loc;
 use cyrusc_internal::{
     abi::{args::ABIRetInfoKind, layout::type_layout, types::ABIType},
     cir::{
@@ -34,6 +33,7 @@ use cyrusc_internal::{
         types::{CIREnumTy, CIRTupleTy, CIRTy},
     },
 };
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::exprs::TypedIdentifier;
 use inkwell::{
     basic_block::BasicBlock,
@@ -317,15 +317,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         variant_field_types: Vec<CIRTy>,
         payload_struct_ty: StructType<'ll>,
         exported_fields: &Vec<(TypedIdentifier, CIRTy)>,
-        loc: &Loc,
+        loc: Loc,
     ) {
         let mut irreg = self.irreg.borrow_mut();
 
         let elements: Vec<CIRTy> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
-        let tuple_type = CIRTy::Tuple(CIRTupleTy {
-            elements,
-            loc: loc,
-        });
+        let tuple_type = CIRTy::Tuple(CIRTupleTy { elements, loc });
         let layout = type_layout(&self.target.info, &tuple_type);
 
         for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
@@ -342,7 +339,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .unwrap();
 
             let field_ty = &variant_field_types[i];
-            irreg.insert(exported_field.symbol_id, LocalIRValue::LValue(ptr, field_ty.clone()));
+            irreg.insert(
+                exported_field.symbol_id.value(),
+                LocalIRValue::LValue(ptr, field_ty.clone()),
+            );
         }
 
         drop(irreg);
@@ -402,7 +402,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let mut irreg = self.irreg.borrow_mut();
                     irreg.insert(
-                        ident.symbol_id,
+                        ident.symbol_id.value(),
                         LocalIRValue::LValue(payload_alloca, expr_ty.ty.clone()),
                     );
                 }
@@ -513,7 +513,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         variant_field_types.to_vec(),
                         payload_struct_type,
                         exported_fields,
-                        &switch_on_enum_stmt.loc,
+                        switch_on_enum_stmt.loc,
                     );
                 } else if let CIRSwitchOnEnumPattern::Valued(_, _, (ident, expr)) = pattern {
                     self.emit_block(case_block);
@@ -534,7 +534,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                     self.llvmbuilder.build_store(alloca, enum_payload).unwrap();
 
                     let mut irreg = self.irreg.borrow_mut();
-                    irreg.insert(ident.symbol_id, LocalIRValue::LValue(alloca, variant_expr_type.clone()));
+                    irreg.insert(
+                        ident.symbol_id.value(),
+                        LocalIRValue::LValue(alloca, variant_expr_type.clone()),
+                    );
                     drop(irreg);
                 }
 

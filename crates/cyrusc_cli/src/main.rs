@@ -30,17 +30,16 @@ use cyrusc_compiler::{
     },
     vercheck::validate_compiler_version,
 };
-use cyrusc_diagcentral::exit_with_single_diag;
+use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
 use serde::Deserialize;
 
 mod commands;
-mod temp_executable_builder;
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {
-        exit_with_single_diag!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
+        exit_with_msg!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
     }
 }
 
@@ -497,7 +496,7 @@ fn command_new(project_name: String, lib: bool) {
     };
 
     if let Err(err) = result {
-        exit_with_single_diag!(err);
+        exit_with_msg!(err);
     }
 }
 
@@ -517,7 +516,7 @@ fn compiler_option_from_scaffold_parser(base_path: Option<String>) -> Option<Sca
     match parse_project_toml(project_file) {
         Ok(scaffold_config) => Some(scaffold_config),
         Err(err) => {
-            exit_with_single_diag!(format!("Scaffold Parse Error: {}", err.to_string()));
+            exit_with_msg!(format!("Scaffold Parse Error: {}", err.to_string()));
         }
     }
 }

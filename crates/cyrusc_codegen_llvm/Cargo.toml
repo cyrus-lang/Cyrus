@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 inkwell = { version = "0.7.0", features = ["llvm18-1"] }
+cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_buildmanifest = { path = "../cyrusc_buildmanifest", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }

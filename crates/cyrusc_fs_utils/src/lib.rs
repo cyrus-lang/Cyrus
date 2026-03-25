@@ -22,6 +22,8 @@ use std::{
     process::exit,
 };
 
+pub mod temp;
+
 /// Reads a file from the given path and returns its contents along with the file name.
 ///
 /// Behavior

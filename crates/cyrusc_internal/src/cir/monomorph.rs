@@ -24,10 +24,7 @@ use crate::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{
-    generics::monomorph::{MonomorphEntry, MonomorphFuncEntry, MonomorphKey},
-    sigs::FuncSig,
-};
+use cyrusc_typed_ast::{generics::monomorph::MonomorphKey, sigs::FuncSig};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -88,16 +85,6 @@ impl CIRMonomorphRegistry {
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
-    pub fn resolve_monomorph_func_entry(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry> {
-        let monomorph_registry = self.query.monomorph_registry.lock().unwrap();
-        let monomorph_entry = monomorph_registry.resolve_by_monomorph_key(monomorph_key).unwrap();
-        let monomorph_func_entry = match monomorph_entry.clone() {
-            MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
-        };
-        drop(monomorph_registry);
-        Some(monomorph_func_entry)
-    }
-
     pub fn insert_monomorph_func_instance(&mut self, monomorph_key: &MonomorphKey, func_sig: &FuncSig) {
         {
             let cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
@@ -109,18 +96,10 @@ impl<'resolver> CIRTraverse<'resolver> {
             }
         }
 
-        let monomorph_func_entry = self.resolve_monomorph_func_entry(monomorph_key).unwrap();
+        let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_key).unwrap();
+        let specialized_func_entry = self.query.lookup_specialized_func_instance(monomorph_key).unwrap();
 
         let irv_id = monomorph_func_entry.id;
-
-        let specialized_func_entry = {
-            let monomorph_registry = self.query.monomorph_registry.lock().unwrap();
-
-            monomorph_registry
-                .resolve_specialized_func_instance(monomorph_key.clone())
-                .unwrap()
-                .clone()
-        };
 
         let cir_func_decl = self.lower_func_sig(irv_id, func_sig);
 

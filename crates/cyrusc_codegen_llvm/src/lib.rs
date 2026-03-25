@@ -30,7 +30,7 @@ use cyrusc_compiler::{
     options::CodeGenOptions,
     tm_info::TargetMachineInfo,
 };
-use cyrusc_diagcentral::exit_with_single_diag;
+use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_internal::cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
@@ -144,7 +144,7 @@ impl CodeGenLLVM {
             llvm_ir_path.set_extension("ll");
 
             if let Err(llvm_str) = module.print_to_file(llvm_ir_path) {
-                exit_with_single_diag!(llvm_str.to_string());
+                exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
         }
@@ -168,7 +168,7 @@ impl CodeGenLLVM {
             assembly_path.set_extension("asm");
 
             if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Assembly, &assembly_path) {
-                exit_with_single_diag!(llvm_str.to_string());
+                exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
         }
@@ -181,7 +181,7 @@ impl CodeGenLLVM {
             object_path.set_extension("o");
 
             if let Err(llvm_str) = self.llvmtm.write_to_file(&module, FileType::Object, &object_path) {
-                exit_with_single_diag!(llvm_str.to_string());
+                exit_with_msg!(llvm_str.to_string());
             }
             drop(module);
         }
@@ -191,7 +191,7 @@ impl CodeGenLLVM {
         {
             let mut build_manifest = self.build_manifest.lock().unwrap();
             if let Err(err) = build_manifest.insert_object(module_name, object_path) {
-                exit_with_single_diag!(err.to_string());
+                exit_with_msg!(err.to_string());
             }
         }
     }
@@ -276,7 +276,7 @@ impl CodeGenBackend<'static, OwnedModule> for CodeGenLLVM {
         ) {
             Some(target_machine) => target_machine,
             None => {
-                exit_with_single_diag!(
+                exit_with_msg!(
                     "Failed to create LLVM Target Machine with given target_triple, cpu, features.".to_string()
                 );
             }

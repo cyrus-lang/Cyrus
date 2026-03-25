@@ -366,9 +366,6 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot assign value of type '{rhs_type}' to variable of type '{lhs_type}'.")]
     AssignmentTypeMismatch { lhs_type: String, rhs_type: String },
 
-    #[error("Cannot cast value of type '{rhs_type}' to type '{lhs_type}'.")]
-    CastTypeMismatch { lhs_type: String, rhs_type: String },
-
     #[error("Cannot apply minus operator to value of type '{operand_type}'.")]
     PrefixMinusOnNonInteger { operand_type: String },
 

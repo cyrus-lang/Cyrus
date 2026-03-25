@@ -49,7 +49,7 @@ pub fn main() {
 
     let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file_by_loading(file_path.clone());
-    let entry_source_file = source_map.get_file(file_id).unwrap().clone();
+    let entry_source_file = { source_map.get_file(file_id).unwrap().clone() };
 
     let reporter = Arc::new(DiagReporter::new(source_map.clone()));
     let source_parser = Arc::new(SourceParser::new(reporter.clone()));

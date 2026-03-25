@@ -175,7 +175,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 .into_struct_value();
 
             InternalValue::new(
-                self.cir_dynamic_ty(dynamic.data_expr.ty.clone(), &dynamic.loc),
+                self.cir_dynamic_ty(dynamic.data_expr.ty.clone(), dynamic.loc),
                 InternalValueKind::RValue(dynamic_struct_value.as_basic_value_enum()),
             )
         }

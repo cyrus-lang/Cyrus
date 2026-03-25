@@ -24,12 +24,14 @@ use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry},
+    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, traverse::walk_program_trees_in_parallel},
+    vtable::VTableRegistry,
 };
 use cyrusc_parser::SourceParser;
 use cyrusc_resolver::{
     Resolver,
     fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
+    modules::VisitingModule,
 };
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
@@ -42,7 +44,7 @@ use cyrusc_sema::{
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{
-    TypedProgramTree,
+    ModuleID, TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
@@ -148,7 +150,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
     // create source map
     let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file_by_loading(entry_file.clone());
-    let entry_source_file = source_map.get_file(file_id).unwrap();
+    let entry_source_file = { source_map.get_file(file_id).unwrap().clone() };
 
     let reporter = Arc::new(DiagReporter::new(source_map.clone()));
     let source_parser = Arc::new(SourceParser::new(reporter.clone()));
@@ -168,14 +170,15 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
-                reporter,
+                reporter.clone(),
                 monomorph_registry.clone(),
                 mapping_ctx_arena.clone(),
                 entry_file.clone(),
             );
 
             // resolve the entry module
-            let module_id = generate_module_id();
+            let module_id = ModuleID::new();
+
             resolver.resolve_module(
                 module_id,
                 &program_tree,
@@ -283,7 +286,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
     let cir_program_trees = walk_program_trees_in_parallel(
         opts.jobs,
         boxed_program_trees,
-        &codegen_semantic_bundle.resolver,
+        &*codegen_semantic_bundle.resolver,
         cir_monomorph_registry.clone(),
         codegen_semantic_bundle.mapping_ctx_arena.clone(),
         &codegen_semantic_bundle.vtable_registries,

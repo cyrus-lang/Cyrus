@@ -25,6 +25,6 @@ pub(crate) fn format_missing_fields(list: &Vec<String>) -> String {
 }
 
 pub(crate) fn format_loc(source_map: &SourceMap, loc: Loc) -> String {
-    let source_file = source_map.get_file(loc.file_id).unwrap();
+    let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
     format!("{}:{}:{}", source_file.name, loc.line, loc.column)
 }

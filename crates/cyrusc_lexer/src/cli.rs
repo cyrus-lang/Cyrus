@@ -29,7 +29,7 @@ pub fn main() {
 
     let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file(file_name, file_content);
-    let source_file = source_map.get_file(file_id).unwrap();
+    let source_file = {source_map.get_file(file_id).unwrap().clone()};
     let reporter = Arc::new(DiagReporter::new(source_map.clone()));
 
     let mut lexer = Lexer::new(&reporter, &source_file);

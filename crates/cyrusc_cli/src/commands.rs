@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::temp_executable_builder::TempExecutableBuilder;
+
 use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
@@ -24,16 +24,18 @@ use cyrusc_compiler::driver::{
 };
 use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
-use cyrusc_diagcentral::exit_with_single_diag;
-use cyrusc_fs_utils::read_file;
+use cyrusc_diagcentral::exit_with_msg;
+use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_fs_utils::temp::TempExecutableBuilder;
 use cyrusc_lexer::Lexer;
-use cyrusc_parser::Parser;
+use cyrusc_parser::SourceParser;
+use cyrusc_source_loc::SourceMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
-use std::process::exit;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
     let mut bundle = build_compilation_bundle(&mut opts, file_path);
@@ -73,7 +75,7 @@ pub(crate) fn command_run(mut opts: CodeGenOptions, file_path: Option<String>, p
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &temp_exe.path) {
-        exit_with_single_diag!(err);
+        exit_with_msg!(err);
     }
 
     match Command::new(&temp_exe.path)
@@ -131,7 +133,7 @@ pub(crate) fn command_build(mut opts: CodeGenOptions, file_path: Option<String>,
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &output_path) {
-        exit_with_single_diag!(err);
+        exit_with_msg!(err);
     }
 }
 
@@ -140,7 +142,7 @@ pub(crate) fn command_clean(opts: CodeGenOptions) {
 
     if build_dir.exists() {
         if let Err(err) = fs::remove_dir_all(build_dir) {
-            exit_with_single_diag!(format!("Error while cleaning build directory: {}", err.to_string()));
+            exit_with_msg!(format!("Error while cleaning build directory: {}", err.to_string()));
         }
     }
 }
@@ -295,7 +297,7 @@ pub(crate) fn command_shared_lib(mut opts: CodeGenOptions, file_path: Option<Str
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &shared_lib_dir) {
-        exit_with_single_diag!(err);
+        exit_with_msg!(err);
     }
 }
 
@@ -333,13 +335,19 @@ pub(crate) fn command_static_lib(mut opts: CodeGenOptions, file_path: Option<Str
     ctx.save_context_build_cache();
 
     if let Err(err) = ctx.trigger_linker(object_files, &static_lib_dir) {
-        exit_with_single_diag!(err);
+        exit_with_msg!(err);
     }
 }
 
 pub(crate) fn command_lex_only(file_path: String) {
-    let (file_content, file_name) = read_file(file_path.clone());
-    let mut lexer = Lexer::new(file_content, file_name);
+    let source_map = Arc::new(SourceMap::new());
+    let file_id = source_map.add_file_by_loading(file_path);
+    let source_file = { source_map.get_file(file_id).unwrap().clone() };
+
+    let reporter = DiagReporter::new(source_map);
+
+    let mut lexer = Lexer::new(&reporter, &source_file);
+
     loop {
         let token = lexer.next_token();
         if token.kind.is_eof() {
@@ -347,22 +355,26 @@ pub(crate) fn command_lex_only(file_path: String) {
         }
 
         println!(
-            "{:?} Span({}, {}) Line({}) Column({})",
-            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
+            "Kind={:?} Start={}, End={}, Line={}, Column={}",
+            token.kind, token.loc.start, token.loc.end, token.loc.line, token.loc.column
         );
     }
 }
 
 pub(crate) fn command_parse_only(file_path: String) {
-    let (file_content, file_name) = read_file(file_path.clone());
-    let mut lexer = Lexer::new(file_content, file_name.clone());
-    let mut parser = Parser::new(lexer.tokenize(), file_name);
+    let source_map = Arc::new(SourceMap::new());
+    let file_id = source_map.add_file_by_loading(file_path);
+    let source_file = {source_map.get_file(file_id).unwrap().clone()};
 
-    match parser.parse() {
+    let reporter = Arc::new(DiagReporter::new(source_map));
+
+    let source_parser = SourceParser::new(reporter.clone());
+
+    match source_parser.parse_program(&source_file) {
         Ok(result) => println!("{:#?}", result),
-        Err(errors) => {
-            parser.display_parser_errors(errors.clone());
-            exit(1);
+        Err(_) => {
+            reporter.display_and_exit_if_has_errors();
+            unreachable!();
         }
     }
 }

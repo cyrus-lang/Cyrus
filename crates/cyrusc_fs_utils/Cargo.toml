@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }
+uuid = "1.18.1"

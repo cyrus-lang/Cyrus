@@ -72,16 +72,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// 1. Extracting generic parameters and mapping context from a semantic type (if it's a generic type)
     /// 2. Merging generic context from an expected type (if provided)
     /// 3. Preserving the parent relationship in the mapping context hierarchy
-    ///
-    /// # Parameters
-    /// - `sema_type`: The semantic type to extract generics from (usually the actual/declared type)
-    /// - `declared_generic_params`: Optional generic parameters from the declaration context
-    /// - `expected_type`: Optional expected/contextual type for additional generic merging
-    ///
-    /// # Returns
-    /// A tuple of:
-    /// - `Option<TypedGenericParamsList>`: Extracted/merged generic parameters
-    /// - `Option<Rc<GenericMappingCtx>>`: Combined mapping context with parent relationships
     pub(crate) fn extract_and_merge_generic_context(
         &mut self,
         sema_type: &SemanticType,
@@ -174,7 +164,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         func_call_loc: &Loc,
     ) -> Option<MonomorphKey> {
         todo!();
-        
+
         // let current_diag_len = self.reporter.len();
 
         // let (mut template_body, mapping_ctx, base_symbol) = {
