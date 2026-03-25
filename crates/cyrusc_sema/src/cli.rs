@@ -16,17 +16,23 @@
  */
 
 use cyrusc_diagcentral::reporter::DiagReporter;
-use cyrusc_fs_utils::{get_directory_of_file, read_file};
-use cyrusc_lexer::Lexer;
-use cyrusc_modulefsloader::ModuleLoaderOptions;
-use cyrusc_parser::{Parser, SourceParser};
-use cyrusc_resolver::{Resolver, VisitingModule, generate_module_id};
-use cyrusc_sema::{analyze::AnalysisContext, config::AnalyzerConfig};
+use cyrusc_fs_utils::get_directory_of_file;
+use cyrusc_internal::vtable::VTableRegistry;
+use cyrusc_parser::SourceParser;
+use cyrusc_resolver::{
+    Resolver,
+    fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
+    modules::VisitingModule,
+};
+use cyrusc_sema::{
+    analyze::{AnalysisContext, EntryPoints},
+    config::AnalyzerConfig,
+};
+use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::{
     ModuleID,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
-use cyrusc_vtable_registry::VTableRegistry;
 use std::{
     env,
     path::Path,
@@ -44,12 +50,11 @@ pub fn main() {
     let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file_by_loading(file_path.clone());
     let entry_source_file = source_map.get_file(file_id).unwrap().clone();
-    let master_module_file_path = Path::new(&file_path).to_path_buf();
 
     let reporter = Arc::new(DiagReporter::new(source_map.clone()));
     let source_parser = Arc::new(SourceParser::new(reporter.clone()));
 
-    match source_parser.parse_program(entry_source_file) {
+    match source_parser.parse_program(&entry_source_file) {
         Ok(program) => {
             let mut current_dir = env::current_dir().unwrap();
             current_dir.push("./stdlib");
@@ -75,44 +80,53 @@ pub fn main() {
                 source_dirs: vec![input_dir.clone()],
             };
 
-            let fs_module_loader = FsModuleLoader::new(source_map, source_parser, fs_module_loader_opts);
+            let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, fs_module_loader_opts);
 
             let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
             let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
             let mut resolver = Resolver::new(
-                fs_module_loader,
-                reporter,
-                monomorph_registry,
-                mapping_ctx_arena,
-                master_module_file_path,
+                Box::new(fs_module_loader),
+                reporter.clone(),
+                monomorph_registry.clone(),
+                mapping_ctx_arena.clone(),
+                Path::new(&file_path).to_path_buf(),
             );
 
             let module_id = ModuleID::new();
 
-            // resolve entry module
-            resolver.resolve_module(
-                module_id,
-                &program,
-                &mut VisitingModule::new(),
-                true,
-                Path::new(&file_path).to_path_buf(),
-            );
+            resolver
+                .resolve_module(
+                    module_id,
+                    &program,
+                    &mut VisitingModule::new(),
+                    true,
+                    Path::new(&file_path).to_path_buf(),
+                )
+                .unwrap();
+
+            if resolver.reporter.has_errors() {
+                resolver.reporter.display();
+                exit(1);
+            }
 
             {
                 let config = AnalyzerConfig::default();
 
-                let entry_points = Arc::new(Mutex::new(Vec::new()));
+                let entry_points = Arc::new(EntryPoints::new(source_map.clone()));
                 let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
                 let resolved_program_trees = resolver.program_trees.lock().unwrap();
+
                 for program_tree_entry in &*resolved_program_trees {
                     let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
 
                     let mut analyzer = AnalysisContext::new(
-                        config,
+                        config.clone(),
                         reporter.clone(),
-                        query,
+                        source_map.clone(),
+                        &resolver,
+                        &resolver,
                         module_id,
                         program_tree_entry.program.clone(),
                         entry_points.clone(),
@@ -122,21 +136,20 @@ pub fn main() {
                     );
 
                     analyzer.analyze();
-                    DiagReporter::display(&analyzer.reporter);
-                    if analyzer.reporter.has_errors() {
+
+                    reporter.display();
+                    if reporter.has_errors() {
                         continue;
                     }
-
-                    dbg!(program_tree_entry.program.clone());
                 }
 
-                AnalysisContext::check_entry_points(entry_points);
+                entry_points.validate();
+
                 drop(resolved_program_trees);
             }
         }
-        Err(errors) => {
-            parser.display_parser_errors(errors.clone());
-            exit(1);
+        Err(()) => {
+            reporter.display_and_exit_if_has_errors();
         }
     }
 }

@@ -322,7 +322,7 @@ pub struct TypedMethodCall {
     pub func_sig: Option<FuncSig>,
     pub self_ty: Option<SemanticType>,
 
-    pub enum_const: Option<SymbolID>,
+    pub enum_constructor: Option<SymbolID>,
     pub method_call_on_interface: Option<TypedInterfaceMethodCallMetadata>,
 
     // only used when calling a generic method

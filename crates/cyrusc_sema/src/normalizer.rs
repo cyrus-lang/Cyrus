@@ -85,7 +85,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_type.is_self_type() && self.tctx.current_self.is_none() {
+        if sema_type.is_self_type() && self.fn_env.current_self.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -504,7 +504,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
         // try to resolve from current object operand context
-        if let Some(sema_type) = &self.tctx.current_obj_operand_ty {
+        if let Some(sema_type) = &self.fn_env.current_obj_operand_ty {
             if let Some(generic_type) = sema_type.as_generic_type() {
                 let mapping_ctx = generic_type.mapping_ctx.borrow();
 
@@ -520,7 +520,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
-        self.tctx
+        self.fn_env
             .current_self
             .clone()
             .or(Some(SemanticType::SelfType(self_type)))

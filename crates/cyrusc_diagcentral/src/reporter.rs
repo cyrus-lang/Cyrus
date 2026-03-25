@@ -20,14 +20,19 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_strescape::spaces;
-use std::{cell::RefCell, fmt, process::exit, sync::Arc};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    fmt,
+    process::exit,
+    sync::Arc,
+};
 
 const PANEL_LENGTH: usize = 2;
 const TAB_WIDTH: usize = 4;
 
 pub struct DiagReporter {
     source_map: Option<Arc<SourceMap>>,
-    pub diags: RefCell<Vec<Diag>>,
+    diags: RefCell<Vec<Diag>>,
 }
 
 impl DiagReporter {
@@ -43,6 +48,14 @@ impl DiagReporter {
             source_map: None,
             diags: RefCell::new(Vec::new()),
         }
+    }
+
+    pub fn diags(&self) -> Ref<'_, Vec<Diag>> {
+        self.diags.borrow()
+    }
+
+    pub fn diags_mut(&self) -> RefMut<'_, Vec<Diag>> {
+        self.diags.borrow_mut()
     }
 
     pub fn display_and_exit_if_has_errors(&self) {

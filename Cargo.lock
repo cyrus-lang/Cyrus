@@ -378,7 +378,6 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_internal",
- "cyrusc_lexer",
  "cyrusc_parser",
  "cyrusc_source_loc",
  "cyrusc_tokens",

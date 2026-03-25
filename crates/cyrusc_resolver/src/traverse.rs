@@ -2226,7 +2226,7 @@ impl Resolver {
                 is_fat_arrow: method_call.is_fat_arrow,
                 monomorph_key: None,
                 self_ty: None,
-                enum_const: None,
+                enum_constructor: None,
                 method_call_on_interface: None,
                 loc: method_call.loc,
                 args,

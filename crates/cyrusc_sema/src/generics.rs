@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_loc};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
@@ -164,6 +164,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
+    // FIXME
     pub(crate) fn register_specialized_generic_func(
         &mut self,
         func_sig: &mut FuncSig,
@@ -172,94 +173,94 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self_modifier_ty: Option<SemanticType>,
         func_call_loc: &Loc,
     ) -> Option<MonomorphKey> {
-        let current_diag_len = self.reporter.len();
+        todo!();
+        
+        // let current_diag_len = self.reporter.len();
 
-        let (mut template_body, mapping_ctx, base_symbol) = {
-            let monomorph_registry = self.monomorph_registry.lock().unwrap();
+        // let (mut template_body, mapping_ctx, base_symbol) = {
+        //     let monomorph_registry = self.monomorph_registry.lock().unwrap();
 
-            if let Some(monomorph_key) = monomorph_registry.resolve_func_entry_by_mapping_ctx(
-                self.mapping_ctx_arena.clone(),
-                func_sig.symbol_id.unwrap(),
-                generic_type.generic_params.clone(),
-                generic_type.mapping_ctx.clone(),
-            ) {
-                // already registered
-                return Some(monomorph_key.clone());
-            }
+        //     if let Some(monomorph_key) = monomorph_registry.resolve_func_entry_by_mapping_ctx(
+        //         self.mapping_ctx_arena.clone(),
+        //         func_sig.symbol_id.unwrap(),
+        //         generic_type.generic_params.clone(),
+        //         generic_type.mapping_ctx.clone(),
+        //     ) {
+        //         // already registered
+        //         return Some(monomorph_key.clone());
+        //     }
 
-            let generic_template_entry = monomorph_registry
-                .resolve_template(func_sig.symbol_id.unwrap())
-                .unwrap()
-                .clone();
+        //     let generic_template_entry = monomorph_registry
+        //         .resolve_template(func_sig.symbol_id.unwrap())
+        //         .unwrap()
+        //         .clone();
 
-            let mapping = generic_type.mapping_ctx.borrow().clone();
-            let base = func_sig.symbol_id.unwrap();
+        //     let mapping = generic_type.mapping_ctx.borrow().clone();
+        //     let base = func_sig.symbol_id.unwrap();
 
-            (generic_template_entry.body, mapping, base)
-        };
+        //     (generic_template_entry.body, mapping, base)
+        // };
 
-        let template_body_scope = self
-            .resolver
-            .resolve_local_scope(func_sig.module_id, template_body.scope_id)
-            .unwrap();
+        // let template_body_scope = self
+        //     .resolver
+        //     .resolve_local_scope(func_sig.module_id, template_body.scope_id)
+        //     .unwrap();
 
-        // make new scope for specialized func body
-        let new_body_scope_id = generate_scope_id();
-        {
-            template_body.scope_id = new_body_scope_id;
-            let template_body_scope = template_body_scope.borrow();
-            let new_body_scope = template_body_scope.deep_clone();
-            self.resolver
-                .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
-        };
+        // // make new scope for specialized func body
+        // let new_body_scope_id = generate_scope_id();
+        // {
+        //     template_body.scope_id = new_body_scope_id;
+        //     let template_body_scope = template_body_scope.borrow();
+        //     let new_body_scope = template_body_scope.deep_clone();
+        //     self.resolver
+        //         .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
+        // };
 
-        self.tctx.current_func = Some(typed_func_type_from_func_sig(func_sig));
-        self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
-        func_sig.ret_type = substitute_type(
-            self.mapping_ctx_arena.clone(),
-            func_sig.ret_type.clone(),
-            Rc::new(RefCell::new(mapping_ctx.clone())),
-        )
-        .unwrap();
+        // self.fn_env.current_func = Some(typed_func_type_from_func_sig(func_sig));
+        // self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
+        // func_sig.ret_type = substitute_type(
+        //     self.mapping_ctx_arena.clone(),
+        //     func_sig.ret_type.clone(),
+        //     Rc::new(RefCell::new(mapping_ctx.clone())),
+        // )
+        // .unwrap();
 
-        if let Some(sema_type) = self_modifier_ty {
-            self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_type);
-        }
+        // if let Some(sema_type) = self_modifier_ty {
+        //     self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_type);
+        // }
 
-        let monomorph_key = {
-            let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let (monomorph_key, _) =
-                monomorph_registry.register_func(base_symbol, generic_type.generic_params.clone(), mapping_ctx);
-            monomorph_key
-        };
+        // let monomorph_key = {
+        //     let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
+        //     let (monomorph_key, _) =
+        //         monomorph_registry.register_func(base_symbol, generic_type.generic_params.clone(), mapping_ctx);
+        //     monomorph_key
+        // };
 
-        let mut analyzed_body = template_body.clone();
+        // let mut analyzed_body = template_body.clone();
 
-        self.analyze_func_body(&mut analyzed_body, &func_sig.ret_type);
+        // self.analyze_func_body(&mut analyzed_body, &func_sig.ret_type);
 
-        {
-            let diag_len = self.reporter.len();
-            if diag_len > current_diag_len {
-                self.apply_error_originated_from_on_diag_range(current_diag_len..=diag_len, |diag| {
-                    diag.hint = Some(format!(
-                        "Error originates from this function call at {}:{}:{}.",
-                        func_call_loc.file_path.clone(),
-                        func_call_loc.line,
-                        func_call_loc.column
-                    ));
-                });
-            }
-        }
+        // {
+        //     let diag_len = self.reporter.len();
+        //     if diag_len > current_diag_len {
+        //         self.apply_error_originated_from_on_diag_range(current_diag_len..=diag_len, |diag| {
+        //             diag.hint = Some(format!(
+        //                 "Error originates from this function call at {}.",
+        //                 format_loc(self.source_map, *func_call_loc),
+        //             ));
+        //         });
+        //     }
+        // }
 
-        {
-            let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
-            monomorph_registry.register_specialized_func_instance(
-                monomorph_key.clone(),
-                SpecializedFuncEntry { body: analyzed_body },
-            );
-        }
+        // {
+        //     let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
+        //     monomorph_registry.register_specialized_func_instance(
+        //         monomorph_key.clone(),
+        //         SpecializedFuncEntry { body: analyzed_body },
+        //     );
+        // }
 
-        Some(monomorph_key)
+        // Some(monomorph_key)
     }
 
     fn apply_error_originated_from_on_diag_range<F>(&mut self, range: RangeInclusive<usize>, mut f: F)
@@ -279,49 +280,51 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let end = (end_inclusive + 1).min(len);
 
-        for diag in &mut self.reporter.diags[start..end] {
+        let mut diags = self.reporter.diags_mut();
+        for diag in &mut diags[start..end] {
             f(diag);
         }
+        drop(diags);
     }
 
-    fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
-        let scope_rc = self
-            .resolver
-            .resolve_local_scope(self.module_id, body_scope_id)
-            .unwrap();
-        {
-            let mut scope = scope_rc.borrow_mut();
+    // fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
+    //     let scope_rc = self
+    //         .resolver
+    //         .resolve_local_scope(self.module_id, body_scope_id)
+    //         .unwrap();
+    //     {
+    //         let mut scope = scope_rc.borrow_mut();
 
-            for param_kind in &params.list {
-                match param_kind {
-                    TypedFuncParamKind::FuncParam(typed_func_param) => {
-                        scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
-                            let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.variable.ty = Some(typed_func_param.ty.clone());
-                        });
-                    }
-                    TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                        scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
-                            let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
-                        });
-                    }
-                }
-            }
+    //         for param_kind in &params.list {
+    //             match param_kind {
+    //                 TypedFuncParamKind::FuncParam(typed_func_param) => {
+    //                     scope.with_symbol_id_mut(typed_func_param.symbol_id, |local_symbol| {
+    //                         let resolved_var = local_symbol.as_variable_mut().unwrap();
+    //                         resolved_var.variable.ty = Some(typed_func_param.ty.clone());
+    //                     });
+    //                 }
+    //                 TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+    //                     scope.with_symbol_id_mut(typed_self_modifier.symbol_id.unwrap(), |local_symbol| {
+    //                         let resolved_var = local_symbol.as_variable_mut().unwrap();
+    //                         resolved_var.variable.ty = Some(typed_self_modifier.ty.clone().unwrap());
+    //                     });
+    //                 }
+    //             }
+    //         }
 
-            if let Some(variadic) = &params.variadic {
-                match variadic {
-                    TypedFuncVariadicParams::Typed(ident, sema_type) => {
-                        scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
-                            let resolved_var = local_symbol.as_variable_mut().unwrap();
-                            resolved_var.variable.ty = Some(sema_type.clone());
-                        });
-                    }
-                    TypedFuncVariadicParams::UntypedCStyle => {}
-                }
-            }
-        }
-    }
+    //         if let Some(variadic) = &params.variadic {
+    //             match variadic {
+    //                 TypedFuncVariadicParams::Typed(ident, sema_type) => {
+    //                     scope.with_symbol_id_mut(ident.symbol_id, |local_symbol| {
+    //                         let resolved_var = local_symbol.as_variable_mut().unwrap();
+    //                         resolved_var.variable.ty = Some(sema_type.clone());
+    //                     });
+    //                 }
+    //                 TypedFuncVariadicParams::UntypedCStyle => {}
+    //             }
+    //         }
+    //     }
+    // }
 
     pub(crate) fn init_generic_type_with_symbol_id(
         &mut self,
@@ -400,7 +403,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let expected_mapping_ctx = expected_generic_type.mapping_ctx.borrow().clone();
 
         self.unify_generic_types(
-            scope_id_opt,
             &mut mapping_ctx,
             &Some(expected_mapping_ctx),
             &SemanticType::GenericType(generic_type.clone()),
@@ -498,18 +500,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             continue;
                         };
 
-                        sema_type = match self.normalize_sema_type(scope_id_opt, sema_type, target_generic_type.loc) {
+                        sema_type = match self.normalize_sema_type(sema_type, target_generic_type.loc) {
                             Some(sema_type) => sema_type,
                             None => continue,
                         };
 
-                        mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_type);
+                        mapping_ctx
+                            .insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_type);
                     }
                 }
             }
             (SemanticType::Array(target_array_type), SemanticType::Array(expr_array_type)) => {
                 self.unify_generic_types(
-                    scope_id_opt,
                     mapping_ctx,
                     expr_mapping_ctx_opt,
                     &expr_array_type.element_type,
@@ -527,9 +529,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         expr_ty: Option<SemanticType>,
         loc: Loc,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         macro_rules! check_type_mismatch {
             ($lhs:expr, $rhs:expr) => {
-                if !self.check_type_mismatch(scope_id_opt, $lhs.clone(), $rhs.clone(), loc) {
+                if !self.check_type_mismatch($lhs.clone(), $rhs.clone(), loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -559,13 +563,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 .and_then(|generic_type| Some(generic_type.mapping_ctx.borrow().clone()));
 
             // recursively unify expr_ty with target_ty
-            self.unify_generic_types(
-                scope_id_opt,
-                &mut mapping_ctx_ref,
-                &expr_mapping_ctx_opt,
-                &expr_ty,
-                &target_ty,
-            );
+            self.unify_generic_types(&mut mapping_ctx_ref, &expr_mapping_ctx_opt, &expr_ty, &target_ty);
 
             // reconcile with parent/linked contexts
             let generic_entries: Vec<GenericMappingEntry> = mapping_ctx_ref.named_mapping().keys().cloned().collect();
@@ -633,7 +631,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             )
             .unwrap();
 
-            self.normalize_sema_type(scope_id_opt, substituted_target_ty, loc)
+            self.normalize_sema_type(substituted_target_ty, loc)
         }
     }
 

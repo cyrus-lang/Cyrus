@@ -21,7 +21,7 @@ use crate::{
     flowstate::{ControlContext, FlowState},
     format::format_loc,
     normalizer::TypeCache,
-    type_checking::context::TypeContext,
+    type_checking::type_checking::FnEnv,
 };
 use cyrusc_ast::{
     AssignKind,
@@ -60,17 +60,18 @@ use std::{
 
 pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    pub entry_points: Arc<Mutex<Vec<Loc>>>,
+    pub entry_points: Arc<EntryPoints>,
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub vtable_registry: Arc<Mutex<VTableRegistry>>,
-    pub reporter: Arc<DiagReporter>,
 
     pub(crate) module_id: ModuleID,
     pub(crate) query: &'a dyn SymbolQuery,
     pub(crate) symbol_mut: &'a M,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    pub(crate) source_map: Arc<SourceMap>,
+    pub(crate) reporter: Arc<DiagReporter>,
 
-    pub(crate) tctx: TypeContext,
+    pub(crate) fn_env: FnEnv,
     pub(crate) type_cache: TypeCache,
 
     control_stack: Vec<ControlContext>,
@@ -78,16 +79,22 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub(crate) config: AnalyzerConfig,
 }
 
+pub struct EntryPoints {
+    locs: Mutex<Vec<Loc>>,
+    source_map: Arc<SourceMap>,
+}
+
 // Analysis Context Public API
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub fn new(
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
+        source_map: Arc<SourceMap>,
         query: &'a dyn SymbolQuery,
         symbol_mut: &'a M,
         module_id: ModuleID,
         program_tree: Rc<RefCell<TypedProgramTree>>,
-        entry_points: Arc<Mutex<Vec<Loc>>>,
+        entry_points: Arc<EntryPoints>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
@@ -95,8 +102,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Self {
             config,
             type_cache: TypeCache::default(),
-            tctx: TypeContext::new(),
+            fn_env: FnEnv::new(),
             reporter,
+            source_map,
             control_stack: Vec::new(),
             program_tree,
             query,
@@ -147,32 +155,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         self.program_tree.borrow_mut().body = body;
-    }
-
-    /// Validates that the program defines exactly one entry point and reports an
-    /// error if none or multiple entry points are found.
-    pub fn check_entry_points(source_map: &'a SourceMap, entry_points_arc: Arc<Mutex<Vec<Loc>>>) {
-        let entry_points = entry_points_arc.lock().unwrap();
-
-        if entry_points.len() == 1 {
-            // valid
-        } else if entry_points.len() == 0 {
-            exit_with_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
-                loc: None,
-                hint: None,
-            });
-        } else {
-            let hint_loc = entry_points.get(entry_points.len().saturating_sub(2)).copied();
-
-            exit_with_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
-                loc: entry_points.last().copied(),
-                hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(source_map, loc))),
-            });
-        }
     }
 }
 
@@ -832,9 +814,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
-        if let Some(sema_type) = self.analyze_expr(&mut typed_while.cond, Some(SemanticType::PlainType(PlainType::Bool)))
+        if let Some(sema_type) =
+            self.analyze_expr(&mut typed_while.cond, Some(SemanticType::PlainType(PlainType::Bool)))
         {
-            self.check_expr_type_must_be_condition(sema_type, typed_while.loc);
+            self.is_cond_expr(sema_type, typed_while.loc);
         }
 
         self.control_stack.push(ControlContext::While);
@@ -851,7 +834,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         if let Some(typed_expr) = &mut typed_for.cond {
             if let Some(sema_type) = self.analyze_expr(typed_expr, Some(SemanticType::PlainType(PlainType::Bool))) {
-                self.check_expr_type_must_be_condition(sema_type, typed_for.loc);
+                self.is_cond_expr(sema_type, typed_for.loc);
             }
         }
 
@@ -869,7 +852,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let func_type = self.tctx.current_func.clone().unwrap();
+        let func_type = self.fn_env.current_func.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {
@@ -1054,7 +1037,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.tctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
+        self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
             struct_stmt.symbol_id,
         )));
 
@@ -1085,7 +1068,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.tctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+        self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
             union_stmt.symbol_id,
         )));
 
@@ -1111,7 +1094,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.tctx.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+        self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
             enum_stmt.symbol_id,
         )));
 
@@ -1148,7 +1131,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generics_params(generic_params);
         }
 
-        self.tctx.current_func = Some(TypedFuncType {
+        self.fn_env.current_func = Some(TypedFuncType {
             symbol_id: Some(func_def.symbol_id),
             def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(&func_def.params),
@@ -1816,18 +1799,17 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // self.tctx.current_method_symbol_id = None;
     }
 
-    fn analyze_entry_func(&mut self, typed_func_def: &mut TypedFuncDefStmt) {
-        let is_public = typed_func_def.modifiers.vis.is_public();
+    fn analyze_entry_func(&mut self, func_def: &mut TypedFuncDefStmt) {
+        let is_public = func_def.modifiers.vis.is_public();
 
-        if typed_func_def.name == "main" {
-            let mut entry_points = self.entry_points.lock().unwrap();
-            entry_points.push(typed_func_def.loc);
+        if func_def.name == "main" {
+            self.entry_points.add(func_def.loc);
 
             if !is_public {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::PrivateEntryPoint),
-                    loc: Some(typed_func_def.loc),
+                    loc: Some(func_def.loc),
                     hint: Some("Declare it as 'pub' so the runtime and linker can reliably discover it.".to_string()),
                 });
             }
@@ -2124,6 +2106,45 @@ impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
             Some(expr) => expr.sema_type.as_ref().map(|t| t.is_const()).unwrap_or(false),
 
             None => false,
+        }
+    }
+}
+
+impl EntryPoints {
+    pub fn new(source_map: Arc<SourceMap>) -> Self {
+        Self {
+            locs: Mutex::new(Vec::new()),
+            source_map,
+        }
+    }
+
+    pub(crate) fn add(&self, loc: Loc) {
+        self.locs.lock().unwrap().push(loc);
+    }
+
+    /// Validates that the program defines exactly one entry point and reports an
+    /// error if none or multiple entry points are found.
+    pub fn validate(&self) {
+        let entry_points = self.locs.lock().unwrap();
+
+        if entry_points.len() == 1 {
+            // valid
+        } else if entry_points.len() == 0 {
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
+                loc: None,
+                hint: None,
+            });
+        } else {
+            let hint_loc = entry_points.get(entry_points.len().saturating_sub(2)).copied();
+
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
+                loc: entry_points.last().copied(),
+                hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(&self.source_map, loc))),
+            });
         }
     }
 }

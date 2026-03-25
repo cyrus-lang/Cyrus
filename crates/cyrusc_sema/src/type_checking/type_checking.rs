@@ -55,7 +55,7 @@ use cyrusc_typed_ast::{
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypeContext {
+pub(crate) struct FnEnv {
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_self: Option<SemanticType>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
@@ -252,7 +252,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
-        let parent_func = self.tctx.current_func.clone();
+        let parent_func = self.fn_env.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
         lambda.ret_type = self.normalize_sema_type(lambda.ret_type.clone(), lambda.loc)?;
@@ -266,10 +266,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             loc: lambda.loc,
         };
 
-        self.tctx.current_func = Some(func_type.clone());
+        self.fn_env.current_func = Some(func_type.clone());
         self.analyze_block_stmt(&mut lambda.body);
 
-        self.tctx.current_func = parent_func;
+        self.fn_env.current_func = parent_func;
         Some(SemanticType::FuncType(func_type))
     }
 
@@ -996,7 +996,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let object_symbol_id = {
             let operand_type = method_call_operand_ty
                 .symbol_id()
-                .and_then(|symbol_id| self.analyze_var_or_global_var_type(symbol_id, method_call.loc))
+                .and_then(|symbol_id| self.analyze_var_or_global_var_type(symbol_id))
                 .or(self.analyze_expr_non_terminal(&mut method_call.operand, expected_type.clone()))
                 .map(|sema_type| sema_type.const_inner().clone())?;
 
@@ -1527,40 +1527,44 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
+    // FIXME: Diags
     fn validate_unnamed_enum_value_variant_kind(
         &mut self,
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
         variant: &TypedUnnamedEnumVariant,
     ) -> Option<()> {
-        match &mut unnamed_enum_value.kind {
-            TypedUnnamedEnumValueKind::Plain => {
-                if !matches!(
-                    variant,
-                    TypedUnnamedEnumVariant::Ident(..) | TypedUnnamedEnumVariant::Valued(..)
-                ) {
-                    self.report_missing_fields_error(unnamed_enum_value);
-                    return None;
-                }
-            }
+        todo!();
 
-            TypedUnnamedEnumValueKind::Fielded(values) => match variant {
-                TypedUnnamedEnumVariant::Ident(_) | TypedUnnamedEnumVariant::Valued(_, _) => {
-                    self.report_variant_does_not_accept_fields(unnamed_enum_value);
-                    return None;
-                }
+        // match &mut unnamed_enum_value.kind {
+        //     TypedUnnamedEnumValueKind::Plain => {
+        //         if !matches!(
+        //             variant,
+        //             TypedUnnamedEnumVariant::Ident(..) | TypedUnnamedEnumVariant::Valued(..)
+        //         ) {
 
-                TypedUnnamedEnumVariant::Variant(_, fields) => {
-                    if fields.len() != values.len() {
-                        self.report_variant_arg_count_mismatch(unnamed_enum_value, fields.len());
-                        return None;
-                    }
+        //             self.report_missing_fields_error(unnamed_enum_value);
+        //             return None;
+        //         }
+        //     }
 
-                    for (expr, field) in values.iter_mut().zip(fields) {
-                        self.analyze_expr(expr, Some(field.ty.clone()));
-                    }
-                }
-            },
-        }
+        //     TypedUnnamedEnumValueKind::Fielded(values) => match variant {
+        //         TypedUnnamedEnumVariant::Ident(_) | TypedUnnamedEnumVariant::Valued(_, _) => {
+        //             self.report_variant_does_not_accept_fields(unnamed_enum_value);
+        //             return None;
+        //         }
+
+        //         TypedUnnamedEnumVariant::Variant(_, fields) => {
+        //             if fields.len() != values.len() {
+        //                 self.report_variant_arg_count_mismatch(unnamed_enum_value, fields.len());
+        //                 return None;
+        //             }
+
+        //             for (expr, field) in values.iter_mut().zip(fields) {
+        //                 self.analyze_expr(expr, Some(field.ty.clone()));
+        //             }
+        //         }
+        //     },
+        // }
 
         Some(())
     }
@@ -1888,7 +1892,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         }
 
-        self.tctx.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
+        self.fn_env.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
 
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
@@ -2685,14 +2689,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 expected_type,
             );
 
-            let sema = self.analyze_enum_variant_no_field(
-                scope_opt,
-                &resolved_enum,
-                field_access,
-                generic_params.as_ref(),
-                mapping_ctx,
-            );
-            (attempted, sema)
+            let sema_type =
+                self.analyze_enum_variant_no_field(&resolved_enum, field_access, generic_params.as_ref(), mapping_ctx);
+
+            (attempted, sema_type)
         }
     }
 
@@ -2725,11 +2725,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return (false, None);
         };
 
-        let Some(resolved_enum) = self.resolver.resolve_enum_symbol(scope_opt.clone(), symbol_id) else {
+        let Some(resolved_enum) = self.query.lookup_enum(symbol_id) else {
             return (false, None);
         };
 
-        method_call.enum_const = Some(resolved_enum.symbol_id);
+        method_call.enum_constructor = Some(resolved_enum.symbol_id);
 
         let enum_variant_opt = resolved_enum
             .enum_sig
@@ -2750,7 +2750,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         );
 
         let sema_ty_opt = self.analyze_enum_variant(
-            scope_opt,
             enum_variant.clone(),
             method_call,
             &resolved_enum,
@@ -2811,7 +2810,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         struct_name: union_sig.name.clone(),
                         field_name: field_access.field_name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(field_access.loc)),
+                    loc: Some(field_access.loc),
                     hint: None,
                 });
                 return None;
@@ -2837,11 +2836,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_unnamed_union_field_access(
         &mut self,
-
         unnamed_union_type: &TypedUnnamedUnionType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         let operand_type = match self.analyze_expr(&mut field_access.operand, expected_type) {
             Some(sema_type) => sema_type,
             None => return None,
@@ -2862,7 +2862,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         struct_name: format_sema_ty(SemanticType::UnnamedUnion(unnamed_union_type.clone()), fmt_symbol),
                         field_name: field_access.field_name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(field_access.loc)),
+                    loc: Some(field_access.loc),
                     hint: None,
                 });
                 return None;
@@ -2887,30 +2887,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// field in the struct's type definition and resolving its type. Unlike named
     /// structs, anonymous structs require special handling for error messages and
     /// type resolution.
-    ///
-    /// # Process
-    /// 1. **Operand Analysis**: Type-checks the anonymous struct expression operand.
-    /// 2. **Field Resolution**: Locates the field by name in the anonymous struct's field list.
-    /// 3. **Field Type Normalization**: Normalizes the resolved field type.
-    /// 4. **AST Annotation**: Attaches field index and type to the AST node.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis and normalization.
-    /// - `unnamed_struct_type`: The anonymous struct type definition.
-    /// - `field_access`: The field access expression to analyze.
-    /// - `expected_type`: Optional type context for operand analysis.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The normalized type of the accessed field.
-    /// - `None`: If field doesn't exist or type normalization fails.
-    ///
     fn analyze_unnamed_struct_field_access(
         &mut self,
-
         unnamed_struct_type: &TypedUnnamedStructType,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         let operand_type = match self.analyze_expr(&mut field_access.operand, expected_type) {
             Some(sema_type) => sema_type,
             None => return None,
@@ -2934,7 +2918,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         ),
                         field_name: field_access.field_name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(field_access.loc)),
+                    loc: Some(field_access.loc),
                     hint: None,
                 });
                 return None;
@@ -2958,25 +2942,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Type-checks field accesses on struct instances by resolving the field name,
     /// normalizing its type, and validating access permissions and syntax.
     /// Handles both visibility checks and pointer access operator validation.
-    ///
-    /// # Process
-    /// 1. **Field Resolution**: Locates the field by name in the struct's field list.
-    /// 2. **Type Normalization**: Normalizes the field's declared type.
-    /// 3. **Access Validation**: Checks field visibility and correct operator usage.
-    /// 4. **AST Annotation**: Attaches resolved field metadata to the AST node.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type normalization.
-    /// - `field_access`: The field access expression to analyze.
-    /// - `struct_name`: Name of the struct type for error messages.
-    /// - `struct_fields`: List of fields defined on the struct.
-    /// - `struct_methods`: Methods of the struct for visibility context.
-    /// - `struct_id`: Symbol ID of the struct type.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The normalized type of the accessed struct field.
-    /// - `None`: If field doesn't exist, access is invalid, or normalization fails.
-    ///
     fn analyze_struct_field_access(
         &mut self,
 
@@ -2998,7 +2963,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         struct_name,
                         field_name: field_access.field_name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(field_access.loc)),
+                    loc: Some(field_access.loc),
                     hint: None,
                 });
                 return None;
@@ -3032,48 +2997,25 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ///
     /// Type-checks enum variant instantiation that uses method-call syntax (e.g., `Color.Red(255)`).
     /// Handles generic enum instantiation, field type checking, and generic parameter inference.
-    ///
-    /// # Process
-    /// 1. **Variant Validation**: Confirms the variant accepts fields and argument count matches.
-    /// 2. **Generic Instantiation**: Initializes generic type if enum is generic.
-    /// 3. **Field Type Checking**: Type-checks each argument against the variant's field types.
-    /// 4. **Generic Inference**: Infers generic parameters from argument types when needed.
-    /// 5. **Type Mismatch Validation**: Ensures argument types match field types (for non-generic enums).
-    /// 6. **Generic Finalization**: Validates and finalizes generic type instantiation.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis and generic resolution.
-    /// - `scope_opt`: Local scope for symbol lookup.
-    /// - `enum_variant`: The enum variant being constructed.
-    /// - `method_call`: The method call AST node representing variant construction.
-    /// - `resolved_enum`: The resolved enum type definition.
-    /// - `generic_params`: Generic parameters from context (if any).
-    /// - `mapping_ctx`: Generic mapping context for type substitution.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The type of the constructed enum value (possibly generic).
-    /// - `None`: If validation fails, type mismatch occurs, or generic instantiation fails.
-    ///
     fn analyze_enum_variant(
         &mut self,
-
         mut enum_variant: TypedEnumVariant,
         method_call: &mut TypedMethodCall,
         resolved_enum: &ResolvedEnum,
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         let mut valued_fields = self.analyze_enum_fielded_variant(&mut enum_variant, method_call)?;
 
         let is_const = false;
 
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
-            scope_opt.clone(),
             resolved_enum.symbol_id,
             &mut method_call.type_args,
             mapping_ctx,
             generic_params,
-            is_const,
             method_call.loc,
         ) {
             Ok(opt) => opt?,
@@ -3113,7 +3055,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             lhs_type: format_sema_ty(enum_valued_field.ty.clone(), fmt_symbol),
                             rhs_type: format_sema_ty(typed_expr.sema_type.clone().unwrap(), fmt_symbol),
                         }),
-                        loc: Some(DiagLoc::new(typed_expr.loc)),
+                        loc: Some(typed_expr.loc),
                         hint: None,
                     });
                     return None;
@@ -3162,20 +3104,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Validates and extracts field information when an enum variant is being
     /// constructed with field values via method-call syntax. Ensures the variant
     /// accepts fields and the argument count matches the variant's field count.
-    ///
-    /// # Validation
-    /// - Confirms the variant is a fielded variant (not a unit variant).
-    /// - Validates argument count matches variant field count.
-    /// - Provides detailed error messages for mismatches.
-    ///
-    /// # Parameters
-    /// - `enum_variant`: The enum variant definition being constructed.
-    /// - `method_call`: The method call AST node representing the variant construction.
-    ///
-    /// # Returns
-    /// - `Some(Vec<TypedEnumValuedField>)`: The variant's field definitions if valid.
-    /// - `None`: If the variant doesn't accept fields or argument count mismatches.
-    ///
     fn analyze_enum_fielded_variant<'b>(
         &mut self,
 
@@ -3192,7 +3120,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             expected: valued_fields.len() as u32,
                             provided: method_call.args.len() as u32,
                         }),
-                        loc: Some(DiagLoc::new(method_call.loc)),
+                        loc: Some(method_call.loc),
                         hint: None,
                     });
                     return None;
@@ -3210,7 +3138,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
                         variant_name: method_call.method_name.clone(),
                     }),
-                    loc: Some(DiagLoc::new(method_call.loc)),
+                    loc: Some(method_call.loc),
                     hint: None,
                 });
                 return None;
@@ -3223,33 +3151,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Type-checks accesses to enum variants without fields (unit variants) through
     /// field access syntax (e.g., `Color.Red`). Handles both non-generic and generic
     /// enum types, and validates that the accessed variant is indeed a unit variant.
-    ///
-    /// # Process
-    /// 1. **Variant Resolution**: Locates the variant by name in the enum definition.
-    /// 2. **Variant Validation**: Ensures the variant is a unit variant (not fielded).
-    /// 3. **Generic Instantiation**: Initializes generic type if enum is generic.
-    /// 4. **Generic Finalization**: Validates and finalizes generic type instantiation.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis and generic resolution.
-    /// - `scope_opt`: Local scope for symbol lookup.
-    /// - `resolved_enum`: The resolved enum type definition.
-    /// - `field_access`: The field access AST node representing variant access.
-    /// - `generic_params`: Generic parameters from context (if any).
-    /// - `mapping_ctx`: Generic mapping context for type substitution.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The type of the enum (possibly generic instantiation).
-    /// - `None`: If variant doesn't exist, is a fielded variant, or generic instantiation fails.
-    ///
     fn analyze_enum_variant_no_field(
         &mut self,
-
         resolved_enum: &ResolvedEnum,
         field_access: &mut TypedFieldAccess,
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
         let enum_variant_idx_opt = resolved_enum
@@ -3267,7 +3177,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     enum_name: resolved_enum.enum_sig.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 }),
-                loc: Some(DiagLoc::new(field_access.loc)),
+                loc: Some(field_access.loc),
                 hint: None,
             });
             return None;
@@ -3278,7 +3188,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     enum_name: resolved_enum.enum_sig.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 }),
-                loc: Some(DiagLoc::new(field_access.loc)),
+                loc: Some(field_access.loc),
                 hint: None,
             });
             return None;
@@ -3289,12 +3199,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let is_const = false;
 
         let (_, generic_type_opt) = match self.init_generic_type_with_symbol_id(
-            scope_opt.clone(),
             resolved_enum.symbol_id,
             &mut field_access.type_args,
             mapping_ctx,
             generic_params,
-            is_const,
             field_access.loc,
         ) {
             Ok(opt) => opt?,
@@ -3343,37 +3251,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// or union member by analyzing the operand's type and resolving the underlying symbol.
     /// This function handles multiple type categories and extracts the appropriate access
     /// context for subsequent field/member resolution.
-    ///
-    /// # Resolution Pipeline
-    /// 1. Operand Type Analysis: Determines the semantic type of the access operand.
-    /// 2. Symbol ID Extraction: Extracts the underlying symbol ID from the operand type.
-    /// 3. Symbol Resolution: Resolves the symbol to its declaration (struct/union).
-    /// 4. Access Kind Categorization: Classifies the access as named/unnamed struct or union.
-    ///
-    /// # Supported Operand Types
-    /// - Symbol References: Variables, parameters, or global symbols.
-    /// - General Expressions: Arbitrary expressions yielding structured types.
-    /// - Pointers: Pointer types to structs/unions (excluding void pointers).
-    /// - Unnamed Structs: Direct unnamed struct types.
-    /// - Generic Types: Generic type instances with struct/union bases.
-    ///
-    /// # Return Variants
-    /// - FieldAccessKind::NamedStruct: Access to a named struct type's members.
-    /// - FieldAccessKind::UnnamedStruct: Access to an anonymous struct's members.
-    /// - FieldAccessKind::Union: Access to a union type's members.
-    /// - None: Invalid access (unsupported type, resolution failure, or error).
-    ///
-    /// # Parameters
-    /// - scope_id_opt: Scope for type analysis and symbol resolution.
-    /// - scope_opt: Local scope reference for variable resolution.
-    /// - operand: The member access operand expression (may be modified during analysis).
-    /// - expected_type: Optional expected type context for expression analysis.
-    /// - loc: Source location for error reporting and diagnostics.
-    ///
-    /// # Returns
-    /// - Some(FieldAccessKind): The resolved access category with type information.
-    /// - None: If resolution fails due to invalid types, unresolved symbols, or errors.
-    ///
     fn resolve_field_access_kind(
         &mut self,
         operand: &mut TypedExprStmt,
@@ -3381,17 +3258,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         loc: Loc,
     ) -> Option<FieldAccessKind> {
         let operand_type = match &operand.kind {
-            TypedExprKind::Symbol(TypedSymbolExpr {
-                symbol_id: instance_symbol_id,
-                loc,
-            }) => {
-                let resolved_var_type = match self.analyze_var_or_global_var_type(*instance_symbol_id, *loc) {
-                    Some(sema_type) => sema_type,
-                    None => return None,
-                };
-
-                resolved_var_type.clone()
-            }
+            TypedExprKind::Symbol(symbol) => self.analyze_var_or_global_var_type(symbol.symbol_id)?,
             _ => self.analyze_expr(operand, expected_type.clone())?,
         };
 
@@ -3419,10 +3286,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None => return None,
         };
 
-        let symbol_entry = match self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt, object_symbol_id)
-        {
+        let symbol_entry = match self.query.lookup_global_symbol(object_symbol_id) {
             Some(symbol_entry) => symbol_entry,
             None => return None,
         };
@@ -3442,24 +3306,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Type-checks tuple indexing operations by verifying the operand is a tuple type
     /// and the index is within bounds for that tuple. Returns the type of the accessed
     /// element if the access is valid.
-    ///
-    /// # Validation Steps
-    /// 1. **Operand Type Analysis**: Type-checks the tuple expression operand.
-    /// 2. **Tuple Type Verification**: Ensures the operand is actually a tuple type.
-    /// 3. **Bounds Checking**: Validates that the index is within the tuple's length.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for operand type checking.
-    /// - `tuple_member_access`: The tuple access expression to analyze.
-    /// - `expected_type`: Optional type context for operand analysis.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The type of the accessed tuple element.
-    /// - `None`: If the operand is not a tuple or index is out of bounds (errors reported).
-    ///
     fn analyze_tuple_member_access(
         &mut self,
-
         tuple_member_access: &mut TypedTupleAccessExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -3469,7 +3317,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                loc: Some(DiagLoc::new(tuple_member_access.loc)),
+                loc: Some(tuple_member_access.loc),
                 hint: None,
             });
             return None;
@@ -3486,7 +3334,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     index: tuple_member_access.index.try_into().unwrap(),
                     length: tuple_type.elements.len(),
                 }),
-                loc: Some(DiagLoc::new(tuple_member_access.loc)),
+                loc: Some(tuple_member_access.loc),
                 hint: None,
             });
             return None;
@@ -3502,62 +3350,45 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Updates context state with the type of the object instance being operated on
     /// in a method call. This contextual information is used for subsequent semantic
     /// analysis within the method body (e.g., field access validation, implicit 'self').
-    ///
-    /// # State Updates
-    /// - `current_obj_operand_ty`: The non-const, non-pointer inner type of the instance.
-    /// - `current_self`: The exact semantic type of the 'self' parameter.
-    /// - `method_call.self_ty`: The type attached to the method call AST node.
-    ///
-    /// # Parameters
-    /// - `method_call`: The method call AST node to annotate with self type.
-    /// - `sema_type`: The semantic type of the 'self' parameter (may include const/pointer qualifiers).
     pub(crate) fn set_ty_ctx_self_type(&mut self, method_call: &mut TypedMethodCall, sema_type: &SemanticType) {
-        self.tctx.current_obj_operand_ty = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
-        self.tctx.current_self = Some(sema_type.clone());
+        self.fn_env.current_obj_operand_ty = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
+        self.fn_env.current_self = Some(sema_type.clone());
         method_call.self_ty = Some(sema_type.clone());
     }
 
+    // FIXME: Must be removed.
+    //
     /// Analyzes and updates the type of 'self' modifier parameters in generic contexts.
     ///
     /// Processes the first parameter of a function when it is a 'self' modifier (copied
     /// or referenced), updating its semantic type based on the resolved generic type.
     /// This ensures that 'self' parameters in generic methods receive the correct
     /// concrete type when the method is instantiated.
-    ///
-    /// # Behavior
-    /// - For `SelfModifierKind::Copied`: Sets the parameter type directly to `sema_type`.
-    /// - For `SelfModifierKind::Referenced`: Sets the parameter type to a pointer to `sema_type`.
-    ///
-    /// # Parameters
-    /// - `scope_id`: Scope containing the parameter symbols.
-    /// - `params`: Function parameters to analyze.
-    /// - `sema_type`: The resolved semantic type to apply to the 'self' parameter.
-    ///
-    pub(crate) fn analyze_generic_self_modifier(
-        &self,
-        scope_id: ScopeID,
-        params: &TypedFuncParams,
-        sema_type: SemanticType,
-    ) {
-        let scope_rc = self.resolver.resolve_local_scope(self.module_id, scope_id).unwrap();
+    // pub(crate) fn analyze_generic_self_modifier(
+    //     &self,
+    //     scope_id: ScopeID,
+    //     params: &TypedFuncParams,
+    //     sema_type: SemanticType,
+    // ) {
+    //     let scope_rc = self.resolver.resolve_local_scope(self.module_id, scope_id).unwrap();
 
-        if let Some(first_param) = params.list.first() {
-            if let Some(self_modifier) = first_param.as_self_modifier() {
-                let mut scope_ref = scope_rc.borrow_mut();
+    //     if let Some(first_param) = params.list.first() {
+    //         if let Some(self_modifier) = first_param.as_self_modifier() {
+    //             let mut scope_ref = scope_rc.borrow_mut();
 
-                let new_self_modifier_ty = match self_modifier.kind {
-                    SelfModifierKind::Copied => sema_type,
-                    SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_type)),
-                };
+    //             let new_self_modifier_ty = match self_modifier.kind {
+    //                 SelfModifierKind::Copied => sema_type,
+    //                 SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(sema_type)),
+    //             };
 
-                scope_ref.with_symbol_id_mut(self_modifier.self_id.unwrap(), |local_symbol| {
-                    let resolved_var = local_symbol.as_variable_mut().unwrap();
-                    resolved_var.variable.ty = Some(new_self_modifier_ty);
-                });
-                drop(scope_ref);
-            }
-        }
-    }
+    //             scope_ref.with_symbol_id_mut(self_modifier.self_id.unwrap(), |local_symbol| {
+    //                 let resolved_var = local_symbol.as_variable_mut().unwrap();
+    //                 resolved_var.variable.ty = Some(new_self_modifier_ty);
+    //             });
+    //             drop(scope_ref);
+    //         }
+    //     }
+    // }
 
     /// Analyzes and potentially transforms the 'self' argument for object method calls.
     ///
@@ -3640,99 +3471,22 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         false
     }
 
-    /// Resolves and normalizes the semantic type of a variable or global variable.
-    ///
-    /// This function analyzes variable declarations (both local and global) to determine
-    /// their semantic types. For local variables, it may need to infer the type from
-    /// the initialization expression if not explicitly annotated. For global variables,
-    /// it retrieves the pre-computed type signature.
-    ///
-    /// # Process
-    /// 1. **Symbol Resolution**: Locates the variable symbol in either local or global scope.
-    /// 2. **Local Variable Analysis**:
-    ///    - If the variable has an explicit type annotation, normalizes that type.
-    ///    - If unannotated, type-checks the initialization expression to infer the type.
-    /// 3. **Global Variable Analysis**: Retrieves the pre-computed type from the global
-    ///    variable's signature.
-    /// 4. **Type Normalization**: Applies type normalization (alias resolution, generic
-    ///    substitutions) to ensure consistency.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Optional scope ident for name resolution and type normalization.
-    /// - `scope_opt`: Optional reference to the local scope for symbol lookup.
-    /// - `instance_symbol_id`: Ident of the variable symbol to analyze.
-    /// - `loc`: Source location for error reporting during type normalization.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The normalized semantic type of the variable.
-    /// - `None`: If:
-    ///   - The symbol doesn't resolve to a variable (global symbol is not a global var)
-    ///   - Type inference fails for unannotated local variables
-    ///   - Type normalization fails
-    ///
-    fn analyze_var_or_global_var_type(&mut self, instance_symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let symbol_entry = self
-            .resolver
-            .resolve_local_or_global_symbol(scope_opt.clone(), instance_symbol_id)
-            .unwrap();
+    // FIXME: As far as i remember know, we have an another and similar helper method with another name.
+    //
+    /// Resolves semantic type of a variable or global variable.
+    fn analyze_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
+        let symbol_entry = self.query.lookup_global_symbol(symbol_id)?;
 
-        let sema_type = match match &symbol_entry {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
-                let typed_variable = &local_symbol.as_var().unwrap().typed_variable;
-
-                match &typed_variable.ty {
-                    Some(sema_type) => self.normalize_sema_type(sema_type.clone(), loc),
-                    None => {
-                        let rhs = typed_variable.rhs.clone().unwrap();
-                        self.analyze_expr(&mut rhs.clone(), None)
-                    }
-                }
-            }
-            LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
-                Some(resolved_global_var) => Some(resolved_global_var.global_var_sig.ty.clone().unwrap()),
-                None => None,
-            },
-        } {
-            Some(sema_type) => Some(sema_type),
-            None => None,
-        };
-
-        if sema_type.is_some() {
-            let normalized_type = self.normalize_sema_type(sema_type.unwrap(), loc).unwrap();
-
-            Some(normalized_type)
+        if let Some(resolved_var) = symbol_entry.as_var() {
+            Some(resolved_var.variable.ty.clone().unwrap())
+        } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+            Some(resolved_global_var.global_var_sig.ty.clone().unwrap())
         } else {
             None
         }
     }
 
     /// Validates struct field access syntax, visibility, and pointer semantics.
-    ///
-    /// Ensures that field accesses comply with access control rules and use correct
-    /// syntax operators ('.' vs '->') based on the base type's characteristics.
-    /// Performs both visibility checks and pointer/object distinction validation.
-    ///
-    /// # Validation Steps
-    /// 1. **Visibility Check**: Verifies field accessibility based on visibility
-    ///    modifiers (public/private) and the calling context.
-    /// 2. **Syntax Operator Validation**: Ensures correct use of '.' for direct
-    ///    struct access and '->' for pointer-to-struct access.
-    ///
-    /// # Parameters
-    /// - `operand`: The expression being accessed (the struct/pointer instance).
-    /// - `field_access`: The field access AST node containing field details.
-    /// - `field_vis`: Visibility modifier of the accessed field.
-    /// - `struct_methods`: Methods defined on the struct for context checking.
-    /// - `struct_name`: Name of the struct type for error messages.
-    ///
-    /// # Returns
-    /// - `true`: If field access passes all validations.
-    /// - `false`: If any validation fails (errors are reported via diagnostics).
-    ///
-    /// # Error Conditions
-    /// - Accessing non-public fields from outside the struct's methods.
-    /// - Using '.' operator on pointers or '->' operator on non-pointers.
-    ///
     fn validate_struct_field_access(
         &mut self,
         operand: &TypedExprStmt,
@@ -3743,7 +3497,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> bool {
         let mut result = true;
 
-        let access_violation = if let Some(current_method_symbol_id) = self.tctx.current_method_symbol_id {
+        let access_violation = if let Some(current_method_symbol_id) = self.fn_env.current_method_symbol_id {
             let method_symbol_ids = struct_methods.values().cloned().collect::<Vec<SymbolID>>();
 
             if method_symbol_ids.contains(&current_method_symbol_id) {
@@ -3762,7 +3516,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     field_name: field_access.field_name.clone(),
                     struct_name: struct_name.to_string(),
                 }),
-                loc: Some(DiagLoc::new(field_access.loc)),
+                loc: Some(field_access.loc),
                 hint: None,
             });
             result = false;
@@ -3782,7 +3536,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidThinArrow),
-                    loc: Some(DiagLoc::new(field_access.loc)),
+                    loc: Some(field_access.loc),
                     hint: Some("Use '.' instead of '->'.".to_string()),
                 });
                 result = false;
@@ -3792,7 +3546,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::UseThinArrow),
-                    loc: Some(DiagLoc::new(field_access.loc)),
+                    loc: Some(field_access.loc),
                     hint: Some("Use '->' when accessing through a pointer.".to_string()),
                 });
                 result = false;
@@ -3803,23 +3557,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     /// Validates union field access operator usage based on pointer semantics.
-    ///
-    /// Ensures the correct field access operator ('.' or '->') is used when accessing
-    /// union fields, depending on whether the operand is a direct union or a pointer
-    /// to a union. This validation is specific to union types.
-    ///
-    /// # Operator Rules
-    /// - Use '.' for direct union value access: `union_var.field`
-    /// - Use '->' for pointer-to-union access: `union_ptr->field`
-    ///
-    /// # Parameters
-    /// - `operand_type`: The semantic type of the union operand.
-    /// - `field_access`: The field access AST node to validate.
-    ///
-    /// # Returns
-    /// - `true`: If the operator usage is correct.
-    /// - `false`: If the wrong operator is used (errors are reported via diagnostics).
-    ///
     fn validate_union_field_access(&mut self, operand_type: SemanticType, field_access: &TypedFieldAccess) -> bool {
         let mut result = true;
 
@@ -3845,40 +3582,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     /// Validates a method call's accessibility, syntax, and mutability constraints.
-    ///
-    /// Performs comprehensive validation of method calls including visibility checks,
-    /// pointer access syntax validation, and const-correctness enforcement. Ensures
-    /// that method calls adhere to the language's access control and safety rules.
-    ///
-    /// # Validation Steps
-    /// 1. **Access Control**: Checks if non-public methods are called from outside
-    ///    their defining type's methods.
-    /// 2. **Syntax Validation**: Verifies correct use of '.' vs '->' operators based
-    ///    on whether the operand is a pointer or object value.
-    /// 3. **Mutability Checking**: Prevents mutation of const instances through
-    ///    non-const methods.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for symbol formatting in error messages.
-    /// - `instance_symbol_id`: Symbol ID of the method call instance.
-    /// - `method_name`: Name of the method being called.
-    /// - `method_call_operand_ty`: Type of the instance the method is called on.
-    /// - `is_fat_arrow`: Whether the '->' operator was used.
-    /// - `first_param_opt`: Optional first parameter (for self-modifier checking).
-    /// - `object_methods`: Map of method names to symbols for the object type.
-    /// - `object_name`: Name of the object/struct type.
-    /// - `resolved_method`: The resolved method signature being called.
-    /// - `loc`: Source location for error reporting.
-    ///
-    /// # Returns
-    /// - `true`: If all validations pass.
-    /// - `false`: If any validation fails (errors are reported via the diagnostic reporter).
-    ///
-    /// # Error Conditions
-    /// - Accessing non-public methods from outside the type's methods.
-    /// - Using '.' on pointers or '->' on non-pointers.
-    /// - Calling mutating methods on const instances.
-    ///
     fn validate_method_call(
         &mut self,
 
@@ -3893,10 +3596,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         func_sig: &FuncSig,
         loc: Loc,
     ) -> bool {
-        let mut result = true;
-        let method_vis = &func_sig.modifiers.vis;
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let access_violation = if let Some(current_method_symbol_id) = self.tctx.current_method_symbol_id {
+        let mut result = true;
+        let vis = &func_sig.modifiers.vis;
+
+        let access_violation = if let Some(current_method_symbol_id) = self.fn_env.current_method_symbol_id {
             let object_contains_method = {
                 if let Some(object_methods) = object_methods_opt {
                     object_methods
@@ -3912,10 +3617,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             if object_contains_method {
                 false
             } else {
-                !method_vis.is_public() && !method_call_on_interface
+                !vis.is_public() && !method_call_on_interface
             }
         } else {
-            !method_vis.is_public() && !method_call_on_interface
+            !vis.is_public() && !method_call_on_interface
         };
 
         if access_violation {
@@ -3985,25 +3690,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     /// Validates that an expression type is suitable for use as a boolean condition.
-    ///
-    /// This function checks whether the given semantic type can be used as a condition
-    /// in control flow statements (`if`, `while`, `for`, etc.).
-    /// In our type system, only `bool` types are valid conditions.
-    ///
-    /// # Parameters
-    /// - `sema_type`: The semantic type to validate as a condition.
-    /// - `loc`: Source location of the conditional expression, used for error reporting.
-    ///
-    /// # Diagnostics
-    /// Reports a type error if `sema_type` is not a boolean type.
-    ///
-    /// # Notes
-    /// - Unlike some languages that allow implicit conversions (e.g., C/C++ where
-    ///   non-zero values are truthy), our type system requires explicit boolean types.
-    /// - This validation is typically called after type checking conditional expressions
-    ///   but before generating code for control flow constructs.
-    ///
-    pub(crate) fn check_expr_type_must_be_condition(&mut self, sema_type: SemanticType, loc: Loc) {
+    pub(crate) fn is_cond_expr(&mut self, sema_type: SemanticType, loc: Loc) {
         if !sema_type.is_bool() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -4022,19 +3709,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         if let Some(unnamed_struct_type) = sema_type.as_unnamed_struct() {
             unnamed_struct_type_as_inference_ctx(&unnamed_struct_type)
         } else if let Some(struct_id) = sema_type.as_struct_symbol_id() {
-            let symbol_entry = self
-                .resolver
-                .resolve_local_or_global_symbol(scope_opt, struct_id)
-                .unwrap();
-            let resolved_struct = symbol_entry.as_struct().unwrap();
+            let resolved_struct = self.query.lookup_struct(struct_id).unwrap();
 
             struct_sig_as_inference_ctx(&resolved_struct.struct_sig)
         } else if let Some(generic_type) = sema_type.as_generic_type() {
-            let symbol_entry = self
-                .resolver
-                .resolve_local_or_global_symbol(scope_opt, generic_type.base)
-                .unwrap();
-            let resolved_struct = symbol_entry.as_struct().unwrap();
+            let resolved_struct = self.query.lookup_struct(generic_type.base).unwrap();
 
             let struct_sig = substitute_struct_sig(
                 self.mapping_ctx_arena.clone(),
@@ -4050,7 +3729,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 }
 
-impl TypeContext {
+impl FnEnv {
     pub fn new() -> Self {
         Self {
             current_func: None,
