@@ -18,6 +18,6 @@
 use cyrusc_typed_ast::{SymbolID, exprs::TypedExprStmt};
 
 pub trait ConstResolver {
-    fn symbol_is_const(&mut self, symbol_id: SymbolID) -> bool;
+    fn is_symbol_const(&mut self, symbol_id: SymbolID) -> bool;
     fn resolve_symbol_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt>;
 }

@@ -499,6 +499,15 @@ impl SymbolQuery for Resolver {
             None => "<UNRESOLVED_SYMBOL>".to_string(),
         }
     }
+
+    fn lookup_module_name(&self, module_id: ModuleID) -> Option<String> {
+        {
+            Some(self.program_trees.lock().unwrap()
+                .iter()
+                .find(|program_tree| program_tree.module_id == module_id)?
+                .module_name)
+        }
+    }
 }
 
 impl SymbolEntryMut for Resolver {

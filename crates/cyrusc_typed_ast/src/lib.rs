@@ -51,6 +51,11 @@ impl SymbolID {
         let mut rng = rand::rng();
         Self(rng.random::<u32>())
     }
+
+    #[inline]
+    pub fn value(&self) -> u32 {
+        self.0
+    }
 }
 
 impl LabelID {
@@ -65,6 +70,7 @@ impl VTableID {
         Self(value)
     }
 
+    #[inline]
     pub fn value(&self) -> u32 {
         self.0
     }

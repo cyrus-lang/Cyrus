@@ -2099,7 +2099,7 @@ impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
         Some(resolved)
     }
 
-    fn symbol_is_const(&mut self, symbol_id: SymbolID) -> bool {
+    fn is_symbol_const(&mut self, symbol_id: SymbolID) -> bool {
         let resolved = self.resolve_variable_rhs_expr(symbol_id);
 
         match resolved {

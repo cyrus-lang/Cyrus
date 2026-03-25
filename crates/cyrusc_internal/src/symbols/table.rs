@@ -22,7 +22,7 @@ use crate::symbols::symbols::{
 use cyrusc_typed_ast::{ModuleID, SymbolID};
 use std::collections::HashMap;
 
-pub trait SymbolQuery {
+pub trait SymbolQuery: Sync + Send {
     fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
     fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar>;
     fn lookup_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod>;
@@ -44,6 +44,8 @@ pub trait SymbolQuery {
     ///
     /// If the symbol cannot be resolved, a fallback string is returned.
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
+
+    fn lookup_module_name(&self, module_id: ModuleID) -> Option<String>;
 }
 
 pub trait SymbolEntryMut {

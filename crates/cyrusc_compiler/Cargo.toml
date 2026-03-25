@@ -7,7 +7,6 @@ edition = "2024"
 cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_buildmanifest = { path = "../cyrusc_buildmanifest", version = "*" }
 cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }
-cyrusc_lexer = { path = "../cyrusc_lexer", version = "*" }
 cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }

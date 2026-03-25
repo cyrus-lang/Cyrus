@@ -70,7 +70,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             return Err(ConstEvalError::CyclicConst(symbol_id));
         }
 
-        if !self.resolver.symbol_is_const(symbol_id) {
+        if !self.resolver.is_symbol_const(symbol_id) {
             return Err(ConstEvalError::NonConstSymbol(symbol_id));
         }
 

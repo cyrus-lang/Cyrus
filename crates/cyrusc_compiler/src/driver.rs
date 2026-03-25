@@ -20,27 +20,31 @@ use crate::{
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
 use cyrusc_buildmanifest::BuildManifest;
-use cyrusc_diagcentral::{exit_with_msg, exit_with_single_diag, reporter::DiagReporter};
-use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file, read_file};
+use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
+use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, traverse::walk_program_trees_in_parallel},
+    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry},
 };
-use cyrusc_lexer::Lexer;
-use cyrusc_parser::Parser;
-use cyrusc_resolver::{Resolver, VisitingModule, fs_module_loader::FsModuleLoader, generate_module_id};
+use cyrusc_parser::SourceParser;
+use cyrusc_resolver::{
+    Resolver,
+    fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
+};
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
     OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
 };
-use cyrusc_sema::analyze::AnalysisContext;
+use cyrusc_sema::{
+    analyze::{AnalysisContext, EntryPoints},
+    config::AnalyzerConfig,
+};
 use cyrusc_source_loc::SourceMap;
+use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{
     TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
-use cyrusc_tui_utils::tui_error;
-use cyrusc_vtable_registry::VTableRegistry;
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
@@ -142,93 +146,108 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
     ensure_build_dir_subs_exist(&base_path, build_dir.clone());
 
     // create source map
-    let source_map = SourceMap::new();
-    source_map.add_file_by_loading(entry_file.clone());
-    
-    // lex & parse
-    // let mut lexer = Lexer::new(file_content, entry_file.to_string_lossy().to_string());
-    // let mut parser = Parser::new(lexer.tokenize(), entry_file.to_string_lossy().to_string());
+    let source_map = Arc::new(SourceMap::new());
+    let file_id = source_map.add_file_by_loading(entry_file.clone());
+    let entry_source_file = source_map.get_file(file_id).unwrap();
 
-    let program_tree = parser.parse().unwrap_or_else(|errors| {
-        parser.display_parser_errors(errors);
-        exit(1);
-    });
+    let reporter = Arc::new(DiagReporter::new(source_map.clone()));
+    let source_parser = Arc::new(SourceParser::new(reporter.clone()));
 
-    let module_loader_opts = ModuleLoaderOptions {
-        base_path: opts.base_path.clone().unwrap(),
-        stdlib_path: opts.stdlib_path.clone(),
-        source_dirs: opts.source_dirs.clone(),
-    };
+    match source_parser.parse_program(&entry_source_file) {
+        Ok(program_tree) => {
+            let module_loader_opts = FsModuleLoaderOptions {
+                base_path: opts.base_path.clone().unwrap(),
+                stdlib_path: opts.stdlib_path.clone(),
+                source_dirs: opts.source_dirs.clone(),
+            };
 
-    let fs_module_loader = FsModuleLoader::new(&mut source_map, source_parser, module_loader_opts);
+            let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, module_loader_opts);
 
-    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
-    let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
+            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
-    let mut resolver = Resolver::new(
-        Box::new(fs_module_loader),
-        reporter,
-        monomorph_registry.clone(),
-        mapping_ctx_arena.clone(),
-        entry_file.clone(),
-    );
+            let mut resolver = Resolver::new(
+                Box::new(fs_module_loader),
+                reporter,
+                monomorph_registry.clone(),
+                mapping_ctx_arena.clone(),
+                entry_file.clone(),
+            );
 
-    // resolve the entry module
-    let module_id = generate_module_id();
-    resolver.resolve_module(module_id, &program_tree, &mut VisitingModule::new(), true, entry_file.clone());
-    if resolver.reporter.has_errors() {
-        DiagReporter::display(&resolver.reporter);
-        exit(1);
-    }
+            // resolve the entry module
+            let module_id = generate_module_id();
+            resolver.resolve_module(
+                module_id,
+                &program_tree,
+                &mut VisitingModule::new(),
+                true,
+                entry_file.clone(),
+            );
+            if resolver.reporter.has_errors() {
+                DiagReporter::display(&resolver.reporter);
+                exit(1);
+            }
 
-    // analyze modules
+            // analyze modules
 
-    let entry_points = Arc::new(Mutex::new(Vec::new()));
-    let resolved_program_trees = resolver.program_trees.lock().unwrap();
+            let config = AnalyzerConfig::default();
 
-    let mut has_error = false;
-    let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
-    let mut vtable_registries: Vec<Arc<Mutex<VTableRegistry>>> = Vec::new();
+            let entry_points = Arc::new(EntryPoints::new(source_map.clone()));
+            let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
-    for program_tree_entry in &*resolved_program_trees {
-        let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
-        vtable_registries.push(vtable_registry.clone());
+            let mut has_error = false;
+            let mut analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>> = Vec::new();
+            let mut vtable_registries: Vec<Arc<Mutex<VTableRegistry>>> = Vec::new();
 
-        let mut analyzer = AnalysisContext::new(
-            &resolver,
-            program_tree_entry.module_id,
-            program_tree_entry.program.clone(),
-            entry_points.clone(),
-            monomorph_registry.clone(),
-            mapping_ctx_arena.clone(),
-            vtable_registry,
-            true,
-        );
+            for program_tree_entry in &*resolved_program_trees {
+                let vtable_registry = Arc::new(Mutex::new(VTableRegistry::new()));
+                vtable_registries.push(vtable_registry.clone());
 
-        analyzer.analyze();
-        DiagReporter::display(&analyzer.reporter);
-        if analyzer.reporter.has_errors() {
-            has_error = true;
+                let mut analyzer = AnalysisContext::new(
+                    config.clone(),
+                    reporter.clone(),
+                    source_map.clone(),
+                    &resolver,
+                    &resolver,
+                    program_tree_entry.module_id,
+                    program_tree_entry.program.clone(),
+                    entry_points.clone(),
+                    monomorph_registry.clone(),
+                    mapping_ctx_arena.clone(),
+                    vtable_registry,
+                );
+
+                analyzer.analyze();
+
+                if reporter.has_errors() {
+                    has_error = true;
+                }
+
+                reporter.display();
+                analyzed_program_trees.push(analyzer.program_tree.clone());
+            }
+
+            entry_points.validate();
+            drop(resolved_program_trees);
+
+            if has_error {
+                exit(1);
+            }
+
+            Box::new(CodeGenSemanticBundle {
+                resolver: Box::new(resolver),
+                analyzed_program_trees,
+                vtable_registries,
+                mapping_ctx_arena,
+                entry_file,
+                build_dir,
+            })
         }
-
-        analyzed_program_trees.push(analyzer.program_tree.clone());
+        Err(_) => {
+            reporter.display_and_exit_if_has_errors();
+            unreachable!()
+        }
     }
-
-    AnalysisContext::check_entry_points(entry_points);
-    drop(resolved_program_trees);
-
-    if has_error {
-        exit(1);
-    }
-
-    Box::new(CodeGenSemanticBundle {
-        resolver: Box::new(resolver),
-        analyzed_program_trees,
-        vtable_registries,
-        mapping_ctx_arena,
-        entry_file,
-        build_dir,
-    })
 }
 
 pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<String>) -> CodeGenContextBundle {

@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::exit_with_single_diag;
+use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_tui_utils::tui_error;
 use std::process::exit;
 
@@ -55,7 +55,7 @@ pub fn validate_compiler_version(compiler_version: &str, required_version_opt: O
             // compiler is equal or newer within the same Major branch
         }
         _ => {
-            exit_with_single_diag!("Could not parse version strings for compatibility check.".to_string());
+            exit_with_msg!("Could not parse version strings for compatibility check.".to_string());
         }
     }
 }

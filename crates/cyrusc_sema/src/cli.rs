@@ -148,8 +148,6 @@ pub fn main() {
                 drop(resolved_program_trees);
             }
         }
-        Err(()) => {
-            reporter.display_and_exit_if_has_errors();
-        }
+        Err(()) => reporter.display_and_exit_if_has_errors(),
     }
 }

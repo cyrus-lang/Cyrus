@@ -22,7 +22,6 @@ mod diagnostics;
 mod flowstate;
 mod format;
 mod generics;
-mod inference_ctx;
 mod nameconv;
 mod normalizer;
 mod type_checking;

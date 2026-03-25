@@ -15,12 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-    analyze::AnalysisContext,
-    diagnostics::AnalyzerDiagKind,
-    format::format_missing_fields,
-    inference_ctx::{InferenceCtx, struct_sig_as_inference_ctx, unnamed_struct_type_as_inference_ctx},
-};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields};
 use cyrusc_ast::{SelfModifierKind, abi::Visibility};
 use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel};
@@ -34,21 +29,9 @@ use cyrusc_tokens::{
 use cyrusc_typed_ast::{
     exprs::*,
     format::{SymbolFormatterFn, format_func_ty, format_sema_ty, format_typed_expr, format_unnamed_enum_ty},
-    generics::{
-        generic_type::GenericType,
-        mapping_ctx::GenericMappingCtx,
-        substitute::{
-            substitute_enum_sig, substitute_func_sig, substitute_struct_sig, substitute_type, substitute_union_sig,
-        },
-    },
-    sigs::{
-        EnumSig, FuncSig, UnionSig, set_self_modifier_symbol_id_in_func_sig, set_self_modifier_type_in_func_sig,
-        typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
-    },
-    stmts::{
-        TypedEnumValuedField, TypedEnumVariant, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeVariadicParams,
-        TypedFuncVariadicParams, TypedGenericParamsList, TypedSelfModifier, TypedStructField, TypedTypeArgs,
-    },
+    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::*},
+    sigs::*,
+    stmts::*,
     types::*,
     *,
 };
@@ -60,6 +43,11 @@ pub(crate) struct FnEnv {
     pub(crate) current_self: Option<SemanticType>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
+}
+
+#[derive(Debug, Clone)]
+struct FieldEnv {
+    fields: HashMap<String, SemanticType>,
 }
 
 // Analysis Entry Points
@@ -185,11 +173,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         literal: &mut TypedLiteralExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let typed_literal_clone = literal.clone();
+        let literal_clone = literal.clone();
 
         let ty_opt = match &mut literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
-                match infer_integer_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
+                match infer_integer_type(&literal_clone, suffix_opt, expected_type.clone()) {
                     Ok(ty) => Some(ty),
                     Err(diag) => {
                         self.reporter.report(diag);
@@ -198,7 +186,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
             LiteralKind::Float(_, suffix_opt) => {
-                match infer_float_type(&typed_literal_clone, suffix_opt, expected_type.clone()) {
+                match infer_float_type(&literal_clone, suffix_opt, expected_type.clone()) {
                     Ok(ty) => Some(ty),
                     Err(diag) => {
                         self.reporter.report(diag);
@@ -244,7 +232,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             LiteralKind::Null => Some(SemanticType::PlainType(PlainType::Null)),
         };
 
-        if let Some(ref ty) = ty_opt {
+        if let Some(ty) = &ty_opt {
             literal.ty = Some(ty.clone());
         }
 
@@ -316,7 +304,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        // FIXME: Use helper instead of this!!
+        // REVIEW: Use helper instead of this!!
         let unnamed_union_type = match expected_type.as_ref().and_then(|sema_type| {
             if let Some(unnamed_union_type) = sema_type.as_unnamed_union() {
                 return Some(unnamed_union_type);
@@ -442,7 +430,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.validate_align(&unnamed_struct_value.align, unnamed_struct_value.loc);
 
-        let infer_ctx = self.inference_ctx_from_struct_type(expected_type);
+        let infer_ctx = self.field_env_from_struct_type(expected_type);
 
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
@@ -603,7 +591,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         {
             if let Some(symbol_id) = operand_type.symbol_id() {
                 if let Some(symbol_entry) = self.query.lookup_global_symbol(symbol_id) {
-                    if self.check_unexpected_type_args(
+                    if self.report_if_unexpected_type_args(
                         &symbol_entry.symbol_generic_params(),
                         &field_access.type_args,
                         field_access.loc,
@@ -728,7 +716,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let symbol_entry = self.query.lookup_global_symbol(struct_init.symbol_id)?;
 
-        self.check_unexpected_type_args(
+        self.report_if_unexpected_type_args(
             &symbol_entry.symbol_generic_params(),
             &struct_init.type_args,
             struct_init.loc,
@@ -785,7 +773,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         if let Some(resolved_union) = symbol_entry.as_union() {
             return self.analyze_regular_union_init(struct_init, resolved_union, &generic_type_opt);
         } else if let Some(resolved_struct) = symbol_entry.as_struct() {
-            let infer_ctx = self.inference_ctx_from_struct_type(expected_type);
+            let infer_ctx = self.field_env_from_struct_type(expected_type);
             return self.analyze_regular_struct_init(struct_init, resolved_struct, &generic_type_opt, &infer_ctx);
         }
 
@@ -835,7 +823,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             if let Some(symbol_id) = func_type.symbol_id {
                 func_sig = self.query.lookup_func(symbol_id).unwrap().func_sig;
 
-                if self.check_unexpected_type_args(&func_sig.generic_params, &func_call.type_args, func_call.loc) {
+                if self.report_if_unexpected_type_args(&func_sig.generic_params, &func_call.type_args, func_call.loc) {
                     return None;
                 }
 
@@ -905,7 +893,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
-            // substitution before body analysis
+            // substitute before analyzing body
             func_sig = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
                 &func_sig,
@@ -996,7 +984,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let object_symbol_id = {
             let operand_type = method_call_operand_ty
                 .symbol_id()
-                .and_then(|symbol_id| self.analyze_var_or_global_var_type(symbol_id))
+                .and_then(|symbol_id| self.resolve_var_or_global_var_type(symbol_id))
                 .or(self.analyze_expr_non_terminal(&mut method_call.operand, expected_type.clone()))
                 .map(|sema_type| sema_type.const_inner().clone())?;
 
@@ -1329,31 +1317,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// validating type compatibility, constructing virtual method tables (vtables), and
     /// establishing dynamic dispatch capabilities. This function transforms static type
     /// information into runtime-usable dynamic type information.
-    ///
-    /// # Key Responsibilities
-    /// 1. Operand Analysis: Ensures the operand expression is semantically valid.
-    /// 2. Nesting Prevention: Guards against invalid nested dynamic expressions.
-    /// 3. Interface Type Validation: Confirms the expected type is a valid interface.
-    /// 4. Method Adaptation: Adjusts interface method signatures for the concrete type.
-    /// 5. VTable Construction: Creates and registers runtime dispatch information.
-    ///
-    /// # Process
-    /// 1. Operand Validation: Analyzes the base expression for type correctness.
-    /// 2. Dynamic Nesting Check: Prevents invalid dynamic(dynamic(...)) patterns.
-    /// 3. Interface Extraction: Extracts interface type from expected type context.
-    /// 4. Method Signature Adaptation: Updates self parameters in interface methods.
-    /// 5. VTable Registration: Creates runtime dispatch table for concrete-to-interface mapping.
-    /// 6. Dynamic Type Creation: Produces the resulting dynamic semantic type.
-    ///
-    /// # Parameters
-    /// - scope_id_opt: Scope for type analysis and symbol resolution.
-    /// - dynamic: The dynamic expression to analyze (modified in-place).
-    /// - expected_type: Optional expected semantic type (must be an interface type).
-    ///
-    /// # Returns
-    /// - Some(SemanticType): The resulting dynamic type encapsulating interface and vtable information.
-    /// - None: If analysis fails due to type errors or invalid expressions.
-    ///
     fn analyze_dynamic_expr(
         &mut self,
         dynamic: &mut TypedDynamicExpr,
@@ -1852,7 +1815,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // object name used later to make mangled abi name
         method_call.object_name = Some(object_name.clone());
 
-        if self.check_unexpected_type_args(&func_sig.generic_params, &method_call.type_args, method_call.loc) {
+        if self.report_if_unexpected_type_args(&func_sig.generic_params, &method_call.type_args, method_call.loc) {
             return None;
         }
 
@@ -2507,7 +2470,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         struct_init: &mut TypedStructInitExpr,
         resolved_struct: &ResolvedStruct,
         generic_type_opt: &Option<GenericType>,
-        infer_ctx: &InferenceCtx,
+        infer_ctx: &FieldEnv,
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
@@ -3258,7 +3221,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         loc: Loc,
     ) -> Option<FieldAccessKind> {
         let operand_type = match &operand.kind {
-            TypedExprKind::Symbol(symbol) => self.analyze_var_or_global_var_type(symbol.symbol_id)?,
+            TypedExprKind::Symbol(symbol) => self.resolve_var_or_global_var_type(symbol.symbol_id)?,
             _ => self.analyze_expr(operand, expected_type.clone())?,
         };
 
@@ -3443,17 +3406,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Checks whether type arguments (e.g., `<T, U>`) are unexpectedly provided
     /// for a type that does not have generic parameters. This prevents syntax
     /// like `NonGenericType<int>` which would be invalid.
-    ///
-    /// # Parameters
-    /// - `generic_params`: Optional generic parameters defined on the type.
-    /// - `type_args`: Optional type arguments provided at the usage site.
-    /// - `loc`: Source location for error reporting.
-    ///
-    /// # Returns
-    /// - `true`: If unexpected type arguments were found (error reported).
-    /// - `false`: If type arguments are properly used or absent.
-    ///
-    fn check_unexpected_type_args(
+    fn report_if_unexpected_type_args(
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
         type_args: &Option<TypedTypeArgs>,
@@ -3471,10 +3424,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         false
     }
 
-    // FIXME: As far as i remember know, we have an another and similar helper method with another name.
-    //
     /// Resolves semantic type of a variable or global variable.
-    fn analyze_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
+    fn resolve_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
         let symbol_entry = self.query.lookup_global_symbol(symbol_id)?;
 
         if let Some(resolved_var) = symbol_entry.as_var() {
@@ -3701,17 +3652,17 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn inference_ctx_from_struct_type(&self, expected_type: Option<SemanticType>) -> InferenceCtx {
+    fn field_env_from_struct_type(&self, expected_type: Option<SemanticType>) -> FieldEnv {
         let Some(sema_type) = expected_type else {
-            return InferenceCtx::default();
+            return FieldEnv::default();
         };
 
         if let Some(unnamed_struct_type) = sema_type.as_unnamed_struct() {
-            unnamed_struct_type_as_inference_ctx(&unnamed_struct_type)
+            field_env_from_unnamed_struct_type(&unnamed_struct_type)
         } else if let Some(struct_id) = sema_type.as_struct_symbol_id() {
             let resolved_struct = self.query.lookup_struct(struct_id).unwrap();
 
-            struct_sig_as_inference_ctx(&resolved_struct.struct_sig)
+            field_env_from_struct_sig(&resolved_struct.struct_sig)
         } else if let Some(generic_type) = sema_type.as_generic_type() {
             let resolved_struct = self.query.lookup_struct(generic_type.base).unwrap();
 
@@ -3722,9 +3673,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             )
             .unwrap();
 
-            struct_sig_as_inference_ctx(&struct_sig)
+            field_env_from_struct_sig(&struct_sig)
         } else {
-            InferenceCtx::default()
+            FieldEnv::default()
         }
     }
 }
@@ -3738,6 +3689,44 @@ impl FnEnv {
             current_method_symbol_id: None,
         }
     }
+}
+
+impl Default for FieldEnv {
+    fn default() -> Self {
+        Self {
+            fields: Default::default(),
+        }
+    }
+}
+
+impl FieldEnv {
+    pub fn new() -> Self {
+        Self { fields: HashMap::new() }
+    }
+
+    pub fn insert(&mut self, key: String, value: SemanticType) {
+        self.fields.insert(key, value);
+    }
+
+    pub fn get(&self, key: &str) -> Option<&SemanticType> {
+        self.fields.get(key)
+    }
+}
+
+fn field_env_from_unnamed_struct_type(unnamed_struct_type: &TypedUnnamedStructType) -> FieldEnv {
+    let mut infer_ctx = FieldEnv::new();
+    for field in &unnamed_struct_type.fields {
+        infer_ctx.insert(field.name.clone(), *field.ty.clone());
+    }
+    infer_ctx
+}
+
+fn field_env_from_struct_sig(struct_sig: &StructSig) -> FieldEnv {
+    let mut infer_ctx = FieldEnv::new();
+    for field in &struct_sig.fields {
+        infer_ctx.insert(field.name.clone(), field.ty.clone());
+    }
+    infer_ctx
 }
 
 #[derive(Debug, Clone)]
