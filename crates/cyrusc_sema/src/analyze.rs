@@ -216,7 +216,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 FlowState::Reachable
             }
             TypedStmt::Variable(typed_variable) => {
-                self.analyze_var(typed_variable);
+                self.analyze_variable(typed_variable);
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
@@ -857,7 +857,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_for_loop(&mut self, typed_for: &mut TypedForStmt) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
-            self.analyze_var(initializer);
+            self.analyze_variable(initializer);
         }
 
         if let Some(typed_expr) = &mut typed_for.cond {
@@ -1080,7 +1080,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.analyze_method_generic_params(&struct_stmt.name, &struct_stmt.methods, &struct_stmt.generic_params);
 
-        self.analyze_object_impls_interface(struct_stmt.name.clone(), &struct_stmt.impls, &struct_stmt.methods);
+        self.analyze_object_implements_interface_list(
+            struct_stmt.name.clone(),
+            &struct_stmt.impls,
+            &struct_stmt.methods,
+        );
 
         self.symbol_mut
             .with_struct_mut(struct_stmt.symbol_id, |resolved_struct| {
@@ -1111,7 +1115,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.analyze_method_generic_params(&union_stmt.name, &union_stmt.methods, &union_stmt.generic_params);
 
-        self.analyze_object_impls_interface(union_stmt.name.clone(), &union_stmt.impls, &union_stmt.methods);
+        self.analyze_object_implements_interface_list(union_stmt.name.clone(), &union_stmt.impls, &union_stmt.methods);
 
         self.symbol_mut.with_union_mut(union_stmt.symbol_id, |resolved_union| {
             resolved_union.union_sig.fields = union_stmt.fields.clone();
@@ -1137,7 +1141,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.analyze_method_generic_params(&enum_stmt.name, &enum_stmt.methods, &enum_stmt.generic_params);
 
-        self.analyze_object_impls_interface(enum_stmt.name.clone(), &enum_stmt.impls, &enum_stmt.methods);
+        self.analyze_object_implements_interface_list(enum_stmt.name.clone(), &enum_stmt.impls, &enum_stmt.methods);
 
         self.validate_enum_repr_attr(&enum_stmt.modifiers.repr_attr, enum_stmt.align.is_some(), enum_stmt.loc);
 
@@ -1197,7 +1201,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        self.check_duplicate_param_names(
+        self.report_if_duplicate_param_names(
             &func_decl.params.list,
             func_decl.params.variadic.as_ref(),
             func_decl.loc,
@@ -1261,9 +1265,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             Some(sema_type) => sema_type,
             None => return,
         };
+
+        self.symbol_mut
+            .with_typedef_mut(typed_typedef.symbol_id, |resolved_typedef| {
+                resolved_typedef.typedef_sig.ty = typed_typedef.ty.clone();
+            });
     }
 
-    fn analyze_var(&mut self, var: &mut TypedVarStmt) {
+    fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(ty) = &var.ty {
@@ -1365,7 +1374,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
 // Helper Functions
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
-    fn analyze_object_impls_interface(
+    /// Validates that an object correctly implements its declared interfaces.
+    ///
+    /// Ensures the referenced symbols are valid interfaces, checks visibility
+    /// rules, resolves generic interface instantiations, and verifies that all
+    /// required interface methods are implemented with matching signatures.
+    fn analyze_object_implements_interface_list(
         &mut self,
         object_name: String,
         impls: &Vec<TypedImplementInterface>,
@@ -1671,57 +1685,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.validate_field_type(Some(union_stmt.symbol_id), &field.ty, field.loc);
 
             field_names.push(field.name.clone());
-        }
-    }
-
-    fn check_duplicate_param_names(
-        &mut self,
-        params: &[TypedFuncParamKind],
-        variadic: Option<&TypedFuncVariadicParams>,
-        loc: Loc,
-    ) {
-        let mut param_names: Vec<String> = Vec::new();
-
-        for (param_idx, param) in params.iter().enumerate() {
-            match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    if param_names.contains(&typed_func_param.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
-                                param_name: typed_func_param.name.clone(),
-                                param_idx: param_idx.try_into().unwrap(),
-                            }),
-                            loc: Some(loc),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                        continue;
-                    }
-
-                    param_names.push(typed_func_param.name.clone());
-                }
-                TypedFuncParamKind::SelfModifier(_) => {
-                    param_names.push("self".to_string());
-                }
-            }
-        }
-
-        if let Some(variadic_param) = variadic {
-            match variadic_param {
-                TypedFuncVariadicParams::Typed(ident, _) => {
-                    if param_names.contains(&ident.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
-                                param_name: ident.name.clone(),
-                            }),
-                            loc: Some(loc),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                    }
-                }
-                TypedFuncVariadicParams::UntypedCStyle => {}
-            }
         }
     }
 
@@ -2117,6 +2080,57 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             resolved_global_var.global_var_sig.rhs.clone()
         } else {
             None
+        }
+    }
+
+    fn report_if_duplicate_param_names(
+        &mut self,
+        params: &[TypedFuncParamKind],
+        variadic: Option<&TypedFuncVariadicParams>,
+        loc: Loc,
+    ) {
+        let mut param_names: Vec<String> = Vec::new();
+
+        for (param_idx, param) in params.iter().enumerate() {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    if param_names.contains(&typed_func_param.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
+                                param_name: typed_func_param.name.clone(),
+                                param_idx: param_idx.try_into().unwrap(),
+                            }),
+                            loc: Some(loc),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                        continue;
+                    }
+
+                    param_names.push(typed_func_param.name.clone());
+                }
+                TypedFuncParamKind::SelfModifier(_) => {
+                    param_names.push("self".to_string());
+                }
+            }
+        }
+
+        if let Some(variadic_param) = variadic {
+            match variadic_param {
+                TypedFuncVariadicParams::Typed(ident, _) => {
+                    if param_names.contains(&ident.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
+                                param_name: ident.name.clone(),
+                            }),
+                            loc: Some(loc),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {}
+            }
         }
     }
 }

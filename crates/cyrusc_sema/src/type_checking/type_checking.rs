@@ -556,7 +556,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     // REVIEW: Refactor required.
     // This, and method_call does not share the same mechanism for resolving
     // the symbol method, and i wonder how we can simplify it.
-    // 
+    //
     /// Analyzes field access expressions with multi-dispatch for different types.
     ///
     /// Type-checks field accesses on structs, unnamed structs, unions and unnamed unions.
@@ -933,6 +933,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Some(func_sig.ret_type)
     }
 
+    // REVIEW: Refactor required.
     /// Analyzes method call expressions, handling both static and instance methods.
     ///
     /// Type-checks method calls by determining whether the call is on a type (static)
@@ -962,6 +963,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return self.analyze_interface_method_call(method_call, interface_type);
         }
 
+        // REVIEW: Refactor required.
+        // Lower method_call as `TypedEnumConstructor` before it achieves to this pointer.
+        // That must happen in `analyze_expr`,
+        // This would also affect `CIRTraverse`.
+
         // try as enum variant constructor
         {
             let (detected_as_enum_variant, sema_type) = self.maybe_enum_variant_constructor_from_method_call(
@@ -974,6 +980,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 return sema_type;
             }
         }
+
+        // REVIEW: END
 
         // method call analysis
 
@@ -1058,6 +1066,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         .const_inner()
                         .clone();
 
+                    // REVIEW: I don't like this helper method!
+                    // Maybe we should rename it? Or remove it totally?
+                    // Or maybe we used same logic without this helper method somewhere else?
                     match self.extract_object_symbol_id(var_type, method_call.loc) {
                         Some(object_id) => Some(object_id),
                         None => None,
@@ -1627,7 +1638,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Checks whether a semantic type which might have generic params
     /// has the required type arguments specified. Reports an error if type args
     /// are used without type arguments in a context where they're mandatory.
-    pub(crate) fn check_sema_ty_for_missing_type_args(&mut self, sema_type: &SemanticType, loc: Loc) {
+    pub(crate) fn is_sema_type_missing_type_args(&mut self, sema_type: &SemanticType, loc: Loc) {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(symbol_id) = sema_type.maybe_generic_base_symbol_id() {
@@ -1653,7 +1664,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_interface_method_call(
         &mut self,
-
         method_call: &mut TypedMethodCall,
         interface_type: &InterfaceType,
     ) -> Option<SemanticType> {
@@ -1675,12 +1685,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             method_sig: func_sig.clone(),
         });
 
+        // always instance method call for interfaces
+        let instance_method_call = true;
+
         let ret_type = self.check_func_call(
             &mut func_sig,
             &None,
             &mut method_call.args,
             method_call.loc,
-            true, // always instance method call for interfaces
+            instance_method_call,
         )?;
 
         method_call.func_sig = Some(func_sig.clone());
@@ -2048,6 +2061,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Some(func_sig.ret_type.clone())
     }
 
+    // REVIEW: Rename it.
     /// Extracts the pure symbol ID from a type, normalizing it first.
     ///
     /// Normalizes the given semantic type (resolving aliases, applying generics)

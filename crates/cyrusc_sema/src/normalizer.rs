@@ -110,7 +110,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.check_unnamed_union_type(unnamed_union_type);
         }
 
-        self.check_sema_ty_for_missing_type_args(&sema_type, loc);
+        self.is_sema_type_missing_type_args(&sema_type, loc);
         Some(sema_type)
     }
 
