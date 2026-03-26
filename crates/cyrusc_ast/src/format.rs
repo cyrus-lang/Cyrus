@@ -14,8 +14,48 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::*;
 use core::fmt;
+
+fn format_expr_series(exprs: &[ASTExpr]) -> String {
+    exprs.iter().map(|expr| expr.to_string()).collect::<Vec<_>>().join(", ")
+}
+
+fn format_stmts(stmts: &[ASTStmt]) -> String {
+    stmts.iter().map(|stmt| stmt.to_string()).collect()
+}
+
+pub fn format_module_segments(segments: &[ModuleSegment]) -> String {
+    let mut out = String::new();
+
+    for (i, item) in segments.iter().enumerate() {
+        match item {
+            ModuleSegment::SubModule(ident) => {
+                out.push_str(&ident.value);
+                // add '::' only if the next segment exists and is a SubModule
+                if matches!(segments.get(i + 1), Some(ModuleSegment::SubModule(_))) {
+                    out.push_str("::");
+                }
+            }
+            ModuleSegment::Single(module_segment_singles) => {
+                out.push('{');
+                for (jdx, single) in module_segment_singles.iter().enumerate() {
+                    if let Some(renamed) = &single.renamed {
+                        out.push_str(&format!("{}:", renamed.value));
+                    }
+                    out.push_str(&single.ident.value);
+                    if jdx != module_segment_singles.len() - 1 {
+                        out.push_str(", ");
+                    }
+                }
+                out.push('}');
+            }
+        }
+    }
+
+    out
+}
 
 impl fmt::Display for ASTBlockStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -32,17 +72,15 @@ impl fmt::Display for Ident {
 impl fmt::Display for UnaryOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnaryOperator::PreIncrement => write!(f, "++"),
-            UnaryOperator::PreDecrement => write!(f, "--"),
-            UnaryOperator::PostIncrement => write!(f, "++"),
-            UnaryOperator::PostDecrement => write!(f, "--"),
+            UnaryOperator::PreIncrement | UnaryOperator::PostIncrement => write!(f, "++"),
+            UnaryOperator::PreDecrement | UnaryOperator::PostDecrement => write!(f, "--"),
         }
     }
 }
 
 impl fmt::Display for ASTFuncCallExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}({})", self.operand, expr_series_to_string(self.args.clone()))
+        write!(f, "{}({})", self.operand, format_expr_series(&self.args))
     }
 }
 
@@ -57,7 +95,7 @@ impl fmt::Display for Builtin {
 
 impl fmt::Display for BuiltinFunc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "@{}({})", self.name, expr_series_to_string(self.args.clone()))
+        write!(f, "@{}({})", self.name, format_expr_series(&self.args))
     }
 }
 
@@ -67,7 +105,7 @@ impl fmt::Display for BuiltinScope {
             f,
             "@{}({}) {{ {} }}",
             self.name,
-            expr_series_to_string(self.args.clone()),
+            format_expr_series(&self.args),
             self.block
         )
     }
@@ -75,24 +113,7 @@ impl fmt::Display for BuiltinScope {
 
 impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ModuleSegment::SubModule(ident) => write!(f, "{}", ident.value),
-            ModuleSegment::Single(singles) => {
-                write!(f, "{{")?;
-                for (i, item) in singles.iter().enumerate() {
-                    if let Some(renamed) = &item.renamed {
-                        write!(f, "{}: ", renamed)?;
-                    }
-
-                    write!(f, "{}", item.ident)?;
-
-                    if !(singles.len() - 1 == i) {
-                        write!(f, ",")?;
-                    }
-                }
-                write!(f, "}}")
-            }
-        }
+        write!(f, "{}", format_module_segments(&[self.clone()]))
     }
 }
 
@@ -135,64 +156,9 @@ impl fmt::Display for TypeSpecifier {
                     }
                 )
             }
-            TypeSpecifier::UnnamedStruct(unnamed_struct) => {
-                write!(f, "struct {{ ")?;
-                for (i, field) in unnamed_struct.fields.iter().enumerate() {
-                    write!(f, "{}: {}", field.field_name, field.field_ty)?;
-
-                    if i == unnamed_struct.fields.len() - 1 {
-                        write!(f, " ")?;
-                    } else {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, "}}")
-            }
-            TypeSpecifier::UnnamedUnion(unnamed_union) => {
-                write!(f, "union {{ ")?;
-                for (i, field) in unnamed_union.fields.iter().enumerate() {
-                    write!(f, "{}: {}", field.field_name, field.field_ty)?;
-
-                    if i == unnamed_union.fields.len() - 1 {
-                        write!(f, " ")?;
-                    } else {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, "}}")
-            }
-            TypeSpecifier::UnnamedEnum(unnamed_enum) => {
-                write!(f, "enum {{ ")?;
-                for (i, variant) in unnamed_enum.variants.iter().enumerate() {
-                    match variant {
-                        UnnamedEnumVariant::Ident(ident) => {
-                            write!(f, "{}", ident.as_string())?;
-                        }
-                        UnnamedEnumVariant::Valued(ident, expr) => {
-                            write!(f, "{} = {}", ident.as_string(), expr.to_string())?;
-                        }
-                        UnnamedEnumVariant::Variant(ident, enum_valued_fields) => {
-                            write!(
-                                f,
-                                "{} = ({})",
-                                ident.as_string(),
-                                enum_valued_fields
-                                    .iter()
-                                    .map(|valued_field| { valued_field.ty.to_string() })
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            )?;
-                        }
-                    }
-
-                    if i == unnamed_enum.variants.len() - 1 {
-                        write!(f, " ")?;
-                    } else {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, "}}")
-            }
+            TypeSpecifier::UnnamedStruct(unnamed_struct) => write!(f, "{}", unnamed_struct),
+            TypeSpecifier::UnnamedUnion(unnamed_union) => write!(f, "{}", unnamed_union),
+            TypeSpecifier::UnnamedEnum(unnamed_enum) => write!(f, "{}", unnamed_enum),
             TypeSpecifier::Tuple(tuple_type) => {
                 write!(
                     f,
@@ -218,10 +184,45 @@ impl fmt::Display for TypeSpecifier {
 
                 write!(f, "{}<{}>", generic_inst.base, type_args)
             }
-            TypeSpecifier::SelfType(_) => {
-                write!(f, "Self")
+            TypeSpecifier::SelfType(_) => write!(f, "Self"),
+        }
+    }
+}
+
+impl fmt::Display for UnnamedUnionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "union {{ ")?;
+        for (i, field) in self.fields.iter().enumerate() {
+            write!(f, "{} = {}", field.field_name, field.field_ty)?;
+            if i == self.fields.len() - 1 {
+                write!(f, " ")?;
+            } else {
+                write!(f, ", ")?;
             }
         }
+        write!(f, "}}")
+    }
+}
+
+impl fmt::Display for UnnamedEnumType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "enum {{ ")?;
+        for (i, variant) in self.variants.iter().enumerate() {
+            match variant {
+                UnnamedEnumVariant::Ident(ident) => write!(f, "{}", ident.as_string())?,
+                UnnamedEnumVariant::Valued(ident, expr) => write!(f, "{} = {}", ident.as_string(), expr)?,
+                UnnamedEnumVariant::Variant(ident, fields) => {
+                    let field_str = fields.iter().map(|f| f.ty.to_string()).collect::<Vec<_>>().join(", ");
+                    write!(f, "{}({})", ident.as_string(), field_str)?;
+                }
+            }
+            if i == self.variants.len() - 1 {
+                write!(f, " ")?;
+            } else {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
@@ -229,12 +230,14 @@ impl fmt::Display for UnnamedStructType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "struct {{ ")?;
         for (i, field) in self.fields.iter().enumerate() {
-            write!(f, "{}: {}", field.field_name, field.field_ty)?;
+            write!(f, "{}: {}", field.name, field.ty)?;
             if i == self.fields.len() - 1 {
-                write!(f, ", ",)?;
+                write!(f, " ")?;
+            } else {
+                write!(f, ", ")?;
             }
         }
-        write!(f, " }}")
+        write!(f, "}}")
     }
 }
 
@@ -305,12 +308,8 @@ impl fmt::Display for ASTExpr {
             ASTExpr::Infix(infix_expr) => {
                 write!(f, "({} {} {})", infix_expr.lhs, infix_expr.op, infix_expr.rhs)
             }
-            ASTExpr::FuncCall(func_call) => {
-                write!(f, "{}", func_call.to_string())
-            }
-            ASTExpr::Builtin(builtin) => {
-                write!(f, "{}", builtin.to_string())
-            }
+            ASTExpr::FuncCall(func_call) => write!(f, "{}", func_call.to_string()),
+            ASTExpr::Builtin(builtin) => write!(f, "{}", builtin.to_string()),
             ASTExpr::FieldAccess(field_access) => {
                 if field_access.is_fat_arrow {
                     write!(f, "{}->{}", field_access.operand, field_access.field_name)
@@ -324,21 +323,13 @@ impl fmt::Display for ASTExpr {
                     "{}.{}({})",
                     method_call.operand,
                     method_call.method_name,
-                    expr_series_to_string(method_call.args.clone())
+                    format_expr_series(&method_call.args)
                 )
             }
-            ASTExpr::Array(array) => {
-                write!(f, "[{}]", expr_series_to_string(array.elements.clone()))
-            }
-            ASTExpr::UntypedArray(untyped_array) => {
-                write!(f, "[{}]", expr_series_to_string(untyped_array.elements.clone()))
-            }
-            ASTExpr::ArrayIndex(array_index) => {
-                write!(f, "{}[{}]", array_index.operand, array_index.index)
-            }
-            ASTExpr::Assign(assignment) => {
-                write!(f, "{} = {}", assignment.lhs, assignment.rhs)
-            }
+            ASTExpr::Array(array) => write!(f, "[{}]", format_expr_series(&array.elements)),
+            ASTExpr::UntypedArray(untyped_array) => write!(f, "[{}]", format_expr_series(&untyped_array.elements)),
+            ASTExpr::ArrayIndex(array_index) => write!(f, "{}[{}]", array_index.operand, array_index.index),
+            ASTExpr::Assign(assignment) => write!(f, "{} = {}", assignment.lhs, assignment.rhs),
             ASTExpr::AddrOf(address_of) => write!(f, "&({})", address_of.expr),
             ASTExpr::Deref(dereference) => write!(f, "(*{})", dereference.expr),
             ASTExpr::StructInit(struct_init) => {
@@ -352,26 +343,8 @@ impl fmt::Display for ASTExpr {
                 }
                 write!(f, "}}")
             }
-            ASTExpr::UnnamedStructValue(unnamed_struct_value) => {
-                write!(f, "struct {{ ")?;
-                for (i, field) in unnamed_struct_value.fields.iter().enumerate() {
-                    if let Some(field_ty) = &field.field_ty {
-                        write!(f, "{}: {} = {}", field.field_name, field_ty, field.field_value)?;
-                    } else {
-                        write!(f, "{} = {}", field.field_name, field.field_value)?;
-                    }
-
-                    if i == unnamed_struct_value.fields.len() - 1 {
-                        write!(f, " ")?;
-                    } else {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, "}}")
-            }
-            ASTExpr::ModuleImport(module_import) => {
-                write!(f, "{}", module_import.to_string())
-            }
+            ASTExpr::UnnamedStructValue(unnamed_struct_value) => write!(f, "{}", unnamed_struct_value),
+            ASTExpr::ModuleImport(module_import) => write!(f, "{}", module_import),
             ASTExpr::TypeSpecifier(type_spec) => write!(f, "{}", type_spec),
             ASTExpr::Tuple(tuple_value) => {
                 write!(
@@ -395,7 +368,7 @@ impl fmt::Display for ASTExpr {
                 match &unnamed_enum_value.kind {
                     UnnamedEnumValueKind::Plain => todo!(),
                     UnnamedEnumValueKind::Fielded(exprs) => {
-                        write!(f, "({})", format_exprs(exprs))?;
+                        write!(f, "({})", format_expr_series(exprs))?;
                     }
                 }
 
@@ -413,11 +386,6 @@ impl fmt::Display for ASTExpr {
     }
 }
 
-fn expr_series_to_string(exprs: Vec<ASTExpr>) -> String {
-    let str = exprs.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
-    str
-}
-
 impl fmt::Display for ASTStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
@@ -432,7 +400,7 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ASTModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", format_module_segments(self.segments.clone()))
+        write!(f, "{}", format_module_segments(&self.segments))
     }
 }
 
@@ -467,43 +435,4 @@ impl fmt::Display for ASTUnnamedStructValueExpr {
 
         write!(f, " }}")
     }
-}
-
-pub fn format_module_segments(segments: Vec<ModuleSegment>) -> String {
-    let mut out = String::new();
-
-    for (i, item) in segments.iter().enumerate() {
-        match item {
-            ModuleSegment::SubModule(ident) => {
-                out.push_str(&ident.value);
-                // add '::' only if the next segment exists and is a SubModule
-                if matches!(segments.get(i + 1), Some(ModuleSegment::SubModule(_))) {
-                    out.push_str("::");
-                }
-            }
-            ModuleSegment::Single(module_segment_singles) => {
-                out.push('{');
-                for (jdx, single) in module_segment_singles.iter().enumerate() {
-                    if let Some(renamed) = &single.renamed {
-                        out.push_str(&format!("{}:", renamed.value));
-                    }
-                    out.push_str(&single.ident.value);
-                    if jdx != module_segment_singles.len() - 1 {
-                        out.push_str(", ");
-                    }
-                }
-                out.push('}');
-            }
-        }
-    }
-
-    out
-}
-
-pub fn format_exprs(exprs: &Vec<ASTExpr>) -> String {
-    exprs.iter().map(|expr| expr.to_string()).collect()
-}
-
-pub fn format_stmts(stmts: &Vec<ASTStmt>) -> String {
-    stmts.iter().map(|stmt| stmt.to_string()).collect()
 }

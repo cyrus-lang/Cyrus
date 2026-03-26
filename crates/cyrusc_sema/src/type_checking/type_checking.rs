@@ -1016,7 +1016,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         return None;
                     }
 
-                    self.extract_object_symbol_id(*sema_type.clone(), method_call.loc)
+                    self.normalize_and_extract_symbol_id(*sema_type.clone(), method_call.loc)
                         .unwrap()
                 }
                 _ => {
@@ -1066,10 +1066,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         .const_inner()
                         .clone();
 
-                    // REVIEW: I don't like this helper method!
-                    // Maybe we should rename it? Or remove it totally?
-                    // Or maybe we used same logic without this helper method somewhere else?
-                    match self.extract_object_symbol_id(var_type, method_call.loc) {
+                    match self.normalize_and_extract_symbol_id(var_type, method_call.loc) {
                         Some(object_id) => Some(object_id),
                         None => None,
                     }
@@ -1082,7 +1079,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         .const_inner()
                         .clone();
 
-                    match self.extract_object_symbol_id(var_type, method_call.loc) {
+                    match self.normalize_and_extract_symbol_id(var_type, method_call.loc) {
                         Some(object_id) => Some(object_id),
                         None => None,
                     }
@@ -2061,12 +2058,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Some(func_sig.ret_type.clone())
     }
 
-    // REVIEW: Rename it.
     /// Extracts the pure symbol ID from a type, normalizing it first.
     ///
     /// Normalizes the given semantic type (resolving aliases, applying generics)
     /// then extracts the underlying pure symbol id if the type represents one.
-    fn extract_object_symbol_id<'b>(&mut self, var_type: SemanticType, loc: Loc) -> Option<SymbolID> {
+    fn normalize_and_extract_symbol_id<'b>(&mut self, var_type: SemanticType, loc: Loc) -> Option<SymbolID> {
         self.normalize_sema_type(var_type, loc)?.maybe_generic_base_symbol_id()
     }
 
@@ -3189,7 +3185,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     return Some(FieldAccessKind::UnnamedStruct(Box::new(unnamed_struct_type)));
                 }
 
-                self.extract_object_symbol_id(*sema_type.clone(), loc)
+                self.normalize_and_extract_symbol_id(*sema_type.clone(), loc)
             }
             SemanticType::UnnamedStruct(unnamed_struct_type) => {
                 return Some(FieldAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));

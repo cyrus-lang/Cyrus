@@ -16,7 +16,8 @@
  */
 
 use crate::fs_module_loader::diagnostics::ModuleFSLoaderDiagKind;
-use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree, format::format_module_segments};
+use cyrusc_ast::format::format_module_segments;
+use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree};
 use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader};
@@ -86,7 +87,7 @@ impl FsModuleLoader {
         sources: Vec<String>,
         mut module_file_path: String,
     ) -> Result<String, ModuleFSLoaderDiagKind> {
-        let module_name = format_module_segments(segments.to_vec());
+        let module_name = format_module_segments(segments);
 
         for (i, segment) in segments.iter().enumerate() {
             match segment {
@@ -178,7 +179,7 @@ impl ModuleLoader for FsModuleLoader {
 
                 if !index_path.exists() {
                     loaded_modules_list.push(Err(Box::new(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
-                        module_name: format_module_segments(sub_import.segments.clone()),
+                        module_name: format_module_segments(&sub_import.segments),
                     })));
                     continue;
                 }
@@ -189,7 +190,7 @@ impl ModuleLoader for FsModuleLoader {
             // verify file exists
             if std::fs::read_to_string(&module_file_path).is_err() {
                 loaded_modules_list.push(Err(Box::new(ModuleFSLoaderDiagKind::ModuleNotFound {
-                    module_name: format_module_segments(sub_import.segments.clone()),
+                    module_name: format_module_segments(&sub_import.segments),
                 })));
                 continue;
             }

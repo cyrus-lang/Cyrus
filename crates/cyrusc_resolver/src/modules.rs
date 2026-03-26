@@ -287,7 +287,7 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::ImportTwice {
-                        module_name: format_module_segments(loaded_module.path.segments.clone()),
+                        module_name: format_module_segments(&loaded_module.path.segments),
                     }),
                     loc: Some(import.loc),
                     hint: Some("Consider removing the previous declaration.".to_string()),

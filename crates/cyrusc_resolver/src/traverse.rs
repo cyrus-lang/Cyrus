@@ -211,7 +211,7 @@ impl Resolver {
 
         let symbol_name = symbol_ident.value;
 
-        let module_alias = format_module_segments(module_import.segments);
+        let module_alias = format_module_segments(&module_import.segments);
 
         let Some(target_module_id) = self.module_aliases.resolve_module_alias(Some(module_id), &module_alias) else {
             self.reporter.report(Diag {
@@ -642,10 +642,10 @@ impl Resolver {
         let mut fields = Vec::with_capacity(unnamed_struct_type.fields.len());
 
         for field in &unnamed_struct_type.fields {
-            let ty = self.resolve_type(generic_params, field.field_ty.clone(), field.loc)?;
+            let ty = self.resolve_type(generic_params, field.ty.clone(), field.loc)?;
 
             fields.push(TypedUnnamedStructTypeField {
-                name: field.field_name.value.clone(),
+                name: field.name.value.clone(),
                 ty: Box::new(ty),
                 loc: field.loc,
             });
