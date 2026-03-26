@@ -57,8 +57,9 @@ impl Resolver {
                 continue;
             }
 
+            let symbol_id = self.id_gen.alloc_symbol();
             self.global_symbols
-                .insert_symbol_name(module_id, &decl_name.value);
+                .insert_symbol_name(module_id, symbol_id, &decl_name.value);
         }
     }
 
@@ -690,7 +691,7 @@ impl Resolver {
             let bounds = self.resolve_generic_param_bounds(generic_param)?;
             let default = self.resolve_generic_param_default(generic_param)?;
 
-            let symbol_id = SymbolID::new();
+            let symbol_id = self.id_gen.alloc_symbol();
 
             let param_name = TypedIdentifier {
                 name: generic_param.param_name.as_string(),
@@ -743,7 +744,7 @@ impl Resolver {
         let module_id = self.module_id.unwrap();
         let symbol_id = self
             .lookup_symbol_id(&typedef.ident.value)
-            .unwrap_or_else(|| SymbolID::new());
+            .unwrap_or_else(|| self.id_gen.alloc_symbol());
 
         let generic_params = typedef
             .generic_params
@@ -1188,7 +1189,9 @@ impl Resolver {
                 }
             }
 
-            let method_id = self.global_symbols.insert_symbol_name(module_id, &unique_name);
+            let method_id = self.id_gen.alloc_symbol();
+            self.global_symbols
+                .insert_symbol_name(module_id, method_id, &unique_name);
             methods.insert(original_name.clone(), method_id);
 
             let func_sig = FuncSig {
@@ -1230,7 +1233,7 @@ impl Resolver {
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_id = SymbolID::new();
+                        let self_id = self.id_gen.alloc_symbol();
                         self_modifier.self_id = Some(self_id);
 
                         let ty = match self_modifier.kind {
@@ -1498,14 +1501,14 @@ impl Resolver {
             }
         };
 
-        // FIXME
+        // TODO: Const func param not implemented yet.
         let is_const_param = false;
 
         let symbol_id = {
             if !is_decl {
                 self.insert_variable(&param.ident, Some(ty.clone()), is_const_param)?
             } else {
-                SymbolID::new()
+                self.id_gen.alloc_symbol()
             }
         };
 
@@ -2022,7 +2025,7 @@ impl Resolver {
             return None;
         }
 
-        let label_id = LabelID::new();
+        let label_id = self.id_gen.alloc_label();
 
         self.current_scope_mut().unwrap().insert_label(name.clone(), label_id);
 
@@ -2221,7 +2224,7 @@ impl Resolver {
                 object_name: None,
                 method_name: method_call.method_name.value.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
-                monomorph_key: None,
+                monomorph_id: None,
                 self_ty: None,
                 enum_constructor: None,
                 method_call_on_interface: None,
@@ -2286,7 +2289,7 @@ impl Resolver {
                 args,
                 type_args,
                 ret_type: None,
-                monomorph_key: None,
+                monomorph_id: None,
                 loc,
             }),
             mloc: MemoryLocation::RValue,
@@ -2610,7 +2613,7 @@ impl Resolver {
 impl Resolver {
     fn insert_variable(&mut self, ident: &Ident, ty: Option<SemanticType>, is_const: bool) -> Option<SymbolID> {
         let module_id = self.module_id.unwrap();
-        let symbol_id = SymbolID::new();
+        let symbol_id = self.id_gen.alloc_symbol();
         let name = ident.as_string();
 
         if self.current_scope().unwrap().contains(&name) {

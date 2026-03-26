@@ -24,12 +24,12 @@ use crate::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{generics::monomorph::MonomorphKey, sigs::FuncSig};
+use cyrusc_typed_ast::{generics::monomorph::MonomorphID, sigs::FuncSig};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct CIRMonomorphRegistry {
-    map: HashMap<MonomorphKey, CIRMonomorphEntry>,
+    map: HashMap<MonomorphID, CIRMonomorphEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,28 +67,28 @@ impl CIRMonomorphRegistry {
         Self { map: HashMap::new() }
     }
 
-    pub fn contains_key(&self, key: &MonomorphKey) -> bool {
+    pub fn contains_key(&self, key: &MonomorphID) -> bool {
         self.map.contains_key(key)
     }
 
-    pub fn get(&self, key: &MonomorphKey) -> Option<&CIRMonomorphEntry> {
+    pub fn get(&self, key: &MonomorphID) -> Option<&CIRMonomorphEntry> {
         self.map.get(key)
     }
 
-    pub fn get_mut(&mut self, key: &MonomorphKey) -> Option<&mut CIRMonomorphEntry> {
+    pub fn get_mut(&mut self, key: &MonomorphID) -> Option<&mut CIRMonomorphEntry> {
         self.map.get_mut(key)
     }
 
-    pub fn insert(&mut self, key: MonomorphKey, entry: CIRMonomorphEntry) {
+    pub fn insert(&mut self, key: MonomorphID, entry: CIRMonomorphEntry) {
         self.map.insert(key, entry);
     }
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
-    pub fn insert_monomorph_func_instance(&mut self, monomorph_key: &MonomorphKey, func_sig: &FuncSig) {
+    pub fn insert_monomorph_func_instance(&mut self, monomorph_id: MonomorphID, func_sig: &FuncSig) {
         {
             let cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
-            if cir_monomorph_registry.contains_key(monomorph_key) {
+            if cir_monomorph_registry.contains_key(&monomorph_id) {
                 // if it's a Placeholder, we are already lowering it (recursion detected).
                 // if it's a body, we've already finished it.
                 // either way, STOP here to break the loop.
@@ -96,10 +96,10 @@ impl<'resolver> CIRTraverse<'resolver> {
             }
         }
 
-        let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_key).unwrap();
-        let specialized_func_entry = self.query.lookup_specialized_func_instance(monomorph_key).unwrap();
+        let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
+        let specialized_func_entry = self.query.lookup_specialized_func_instance(monomorph_id).unwrap();
 
-        let irv_id = monomorph_func_entry.id;
+        let irv_id: IRValueID = monomorph_func_entry.id.0.try_into().unwrap();
 
         let cir_func_decl = self.lower_func_sig(irv_id, func_sig);
 
@@ -113,7 +113,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             let mut cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
             cir_monomorph_registry.insert(
-                monomorph_key.clone(),
+                monomorph_id.clone(),
                 CIRMonomorphEntry::Func(CIRMonomorphFuncEntry {
                     irv_id,
                     func_params: cir_func_params,
@@ -130,7 +130,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         {
             let mut cir_monomorph_registry = self.cir_monomorph_registry.lock().unwrap();
-            let monomorph_entry = cir_monomorph_registry.get_mut(&monomorph_key).unwrap();
+            let monomorph_entry = cir_monomorph_registry.get_mut(&monomorph_id).unwrap();
 
             match monomorph_entry {
                 CIRMonomorphEntry::Func(monomorph_func_entry) => {

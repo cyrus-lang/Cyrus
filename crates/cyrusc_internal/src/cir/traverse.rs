@@ -51,6 +51,8 @@ pub(crate) struct CIRTraverse<'q> {
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) vtable_registry: Arc<Mutex<VTableRegistry>>,
     pub(crate) target: &'q ABITarget,
+
+    lambda_id: u32,
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
@@ -71,6 +73,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             mapping_ctx_arena,
             vtable_registry,
             target,
+            lambda_id: 0
         }
     }
 
@@ -264,7 +267,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 let var_rhs = self.lower_expr(&var.rhs.as_ref().unwrap());
 
                 vars.push(CIRVarStmt {
-                    irv_id: symbol_id.value(),
+                    irv_id: symbol_id.0,
                     name: format!("tuple.{}", var_name),
                     ty: var_ty,
                     expr: Some(var_rhs),
@@ -751,7 +754,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         );
 
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
-            irv_id: global_var.symbol_id.value(),
+            irv_id: global_var.symbol_id.0,
             name: mangled_name,
             ty,
             expr,
@@ -799,7 +802,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
         CIRVarStmt {
-            irv_id: var.symbol_id.value(),
+            irv_id: var.symbol_id.0,
             name: var.name.clone(),
             ty,
             expr,
@@ -827,13 +830,13 @@ impl<'resolver> CIRTraverse<'resolver> {
                     match param {
                         TypedFuncParamKind::FuncParam(func_param) => CIRFuncParam {
                             name,
-                            irv_id: func_param.symbol_id.value(),
+                            irv_id: func_param.symbol_id.0,
                             ty: self.lower_sema_ty(&func_param.ty),
                             loc,
                         },
                         TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
                             name,
-                            irv_id: self_modifier.self_id.unwrap().value(),
+                            irv_id: self_modifier.self_id.unwrap().0,
                             ty: self.lower_sema_ty(&self_modifier.ty.as_ref().unwrap()),
                             loc,
                         },
@@ -851,7 +854,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let ret = self.lower_sema_ty(&func_def.ret_type);
 
         let mut cir_func_def = CIRFuncDefStmt {
-            irv_id: func_def.symbol_id.value(),
+            irv_id: func_def.symbol_id.0,
             name: func_def.name.clone(),
             params,
             body: Box::new(body),
@@ -887,7 +890,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
 
         let mut cir_func_decl = CIRFuncDeclStmt {
-            irv_id: func_decl.symbol_id.value(),
+            irv_id: func_decl.symbol_id.0,
             name: func_name,
             params,
             ret,
@@ -1090,7 +1093,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 );
 
                 func_sig.name = mangled_name;
-                self.lower_func_sig(func_sig.symbol_id.unwrap().value(), &func_sig)
+                self.lower_func_sig(func_sig.symbol_id.unwrap().0, &func_sig)
             })
             .collect();
 
@@ -1100,9 +1103,9 @@ impl<'resolver> CIRTraverse<'resolver> {
         );
 
         CIRExprKind::Dynamic(CIRDynamicExpr {
+            global_var_id: vtable_info.vtable_id.0,
             data_expr: Box::new(data_ptr),
             method_decls,
-            global_var_id: vtable_info.global_var_id.value(),
             vtable_abi_name,
             loc: dynamic.loc,
         })
@@ -1112,7 +1115,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
 
         if let Some(resolved_func) = symbol_entry.as_func() {
-            let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.value(), &resolved_func.func_sig);
+            let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_sig);
 
             let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
             cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
@@ -1126,12 +1129,12 @@ impl<'resolver> CIRTraverse<'resolver> {
             cir_func_decl.name = mangled_name;
 
             CIRExprKind::Load(CIRValue {
-                irv_id: resolved_func.symbol_id.value(),
+                irv_id: resolved_func.symbol_id.0,
                 kind: CIRValueKind::Func(Box::new(cir_func_decl)),
             })
         } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
             let mut global_var_stmt = self.lower_global_var_sig(
-                resolved_global_var.symbol_id.value(),
+                resolved_global_var.symbol_id.0,
                 &resolved_global_var.global_var_sig,
             );
 
@@ -1150,12 +1153,12 @@ impl<'resolver> CIRTraverse<'resolver> {
             global_var_stmt.name = mangled_name;
 
             CIRExprKind::Load(CIRValue {
-                irv_id: resolved_global_var.symbol_id.value(),
+                irv_id: resolved_global_var.symbol_id.0,
                 kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
             })
         } else if let Some(resolved_variable) = symbol_entry.as_var() {
             CIRExprKind::Load(CIRValue {
-                irv_id: resolved_variable.symbol_id.value(),
+                irv_id: resolved_variable.symbol_id.0,
                 kind: CIRValueKind::LocalVariable,
             })
         } else {
@@ -1258,7 +1261,8 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
-        let irv_id = SymbolID::new().value();
+        let irv_id = self.lambda_id;
+        self.lambda_id += 1;
 
         CIRExprKind::Lambda(CIRLambda {
             irv_id,
@@ -1284,7 +1288,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let metadata = method_call.method_call_on_interface.as_ref().unwrap();
 
-        let cir_func_decl = self.lower_func_sig(metadata.method_sig.symbol_id.unwrap().value(), &metadata.method_sig);
+        let cir_func_decl = self.lower_func_sig(metadata.method_sig.symbol_id.unwrap().0, &metadata.method_sig);
 
         CIRExprKind::InterfaceMethodCall(CIRInterfaceMethodCall {
             operand: Box::new(operand),
@@ -1326,11 +1330,11 @@ impl<'resolver> CIRTraverse<'resolver> {
         let ret_ty = self.lower_sema_ty(&func_sig.ret_type.clone());
 
         let cir_expr_kind;
-        if let Some(monomorph_key) = &method_call.monomorph_key {
-            self.insert_monomorph_func_instance(monomorph_key, &func_sig);
+        if let Some(monomorph_id) = method_call.monomorph_id {
+            self.insert_monomorph_func_instance(monomorph_id, &func_sig);
 
             cir_expr_kind = CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
-                monomorph_key: monomorph_key.clone(),
+                monomorph_id,
                 args,
                 ret_ty,
             })
@@ -1340,7 +1344,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             let operand = Box::new(CIRExpr {
                 kind: CIRExprKind::Load(CIRValue {
-                    irv_id: method_call.func_sig.as_ref().unwrap().symbol_id.unwrap().value(),
+                    irv_id: method_call.func_sig.as_ref().unwrap().symbol_id.unwrap().0,
                     kind: CIRValueKind::Func(Box::new(cir_func_decl)),
                 }),
                 ty: ret_ty.clone(),
@@ -1504,8 +1508,8 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let ret_ty = self.lower_sema_ty(&func_call.ret_type.clone().unwrap());
 
-        if let Some(monomorph_key) = &func_call.monomorph_key {
-            let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_key).unwrap();
+        if let Some(monomorph_id) = func_call.monomorph_id {
+            let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
 
             let symbol_entry = self
                 .query
@@ -1527,10 +1531,10 @@ impl<'resolver> CIRTraverse<'resolver> {
             )
             .unwrap();
 
-            self.insert_monomorph_func_instance(monomorph_key, &func_sig);
+            self.insert_monomorph_func_instance(monomorph_id, &func_sig);
 
             CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
-                monomorph_key: monomorph_key.clone(),
+                monomorph_id,
                 args,
                 ret_ty,
             })

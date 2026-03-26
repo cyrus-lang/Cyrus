@@ -10,7 +10,7 @@ cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }
 cyrusc_parser = { path = "../cyrusc_parser", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_resolver = { path = "../cyrusc_resolver", version = "*" }
-cyrusc_sema = { path = "../cyrusc_sema", version = "*" }
+cyrusc_analyzer = { path = "../cyrusc_analyzer", version = "*" }
 cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
 cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }

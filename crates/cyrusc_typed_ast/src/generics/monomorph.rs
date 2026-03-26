@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     SymbolID,
     generics::{
@@ -22,7 +23,6 @@ use crate::{
     },
     stmts::{TypedBlockStmt, TypedGenericParamsList},
 };
-use rand::Rng;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -30,7 +30,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub type MonomorphID = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MonomorphID(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct GenericTemplateRegistry {
@@ -66,17 +67,6 @@ impl GenericTemplateRegistry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MonomorphKey(pub u32);
-
-impl MonomorphKey {
-    pub fn new_instance_key() -> Self {
-        let mut rng = rand::rng();
-        let key = rng.random::<u32>();
-        MonomorphKey(key)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct MonomorphFuncEntry {
     pub id: MonomorphID,
@@ -107,17 +97,15 @@ impl MonomorphEntry {
 
 #[derive(Debug, Clone)]
 pub struct MonomorphRegistry {
-    next_id: MonomorphID,
-    map: HashMap<MonomorphKey, MonomorphEntry>,
+    entries: Vec<MonomorphEntry>,
     pub templates: GenericTemplateRegistry,
-    pub specialized_func_instances: HashMap<MonomorphKey, SpecializedFuncEntry>,
+    pub specialized_func_instances: HashMap<MonomorphID, SpecializedFuncEntry>,
 }
 
 impl MonomorphRegistry {
     pub fn new() -> Self {
         Self {
-            next_id: 1,
-            map: HashMap::new(),
+            entries: Vec::new(),
             templates: GenericTemplateRegistry::new(),
             specialized_func_instances: HashMap::new(),
         }
@@ -129,13 +117,13 @@ impl MonomorphRegistry {
     }
 
     #[inline]
-    pub fn register_specialized_func_instance(&mut self, monomorph_key: MonomorphKey, instance: SpecializedFuncEntry) {
-        self.specialized_func_instances.insert(monomorph_key, instance);
+    pub fn register_specialized_func_instance(&mut self, monomorph_id: MonomorphID, instance: SpecializedFuncEntry) {
+        self.specialized_func_instances.insert(monomorph_id, instance);
     }
 
     #[inline]
-    pub fn resolve_specialized_func_instance(&self, monomorph_key: &MonomorphKey) -> Option<&SpecializedFuncEntry> {
-        self.specialized_func_instances.get(monomorph_key)
+    pub fn resolve_specialized_func_instance(&self, monomorph_id: MonomorphID) -> Option<&SpecializedFuncEntry> {
+        self.specialized_func_instances.get(&monomorph_id)
     }
 
     #[inline]
@@ -144,8 +132,8 @@ impl MonomorphRegistry {
     }
 
     #[inline]
-    pub fn resolve_by_monomorph_key(&self, key: &MonomorphKey) -> Option<&MonomorphEntry> {
-        self.map.get(key)
+    pub fn resolve_by_monomorph_id(&self, id: MonomorphID) -> Option<&MonomorphEntry> {
+        self.entries.get(id.0)
     }
 
     pub fn resolve_func_entry_by_mapping_ctx(
@@ -154,10 +142,10 @@ impl MonomorphRegistry {
         func_symbol_id: SymbolID,
         generic_params: TypedGenericParamsList,
         mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
-    ) -> Option<&MonomorphKey> {
-        self.map
+    ) -> Option<MonomorphID> {
+        self.entries
             .iter()
-            .find(|(_, monomorph_entry)| match monomorph_entry {
+            .find(|monomorph_entry| match monomorph_entry {
                 MonomorphEntry::Func(monomorph_func_entry) => {
                     mapping_ctx_eq_refcell(
                         mapping_ctx_arena.clone(),
@@ -168,7 +156,7 @@ impl MonomorphRegistry {
                     ) && monomorph_entry.base_symbol() == func_symbol_id
                 }
             })
-            .map(|(monomorph_key, _)| monomorph_key)
+            .map(|index| index.id())
     }
 
     pub fn register_func(
@@ -176,23 +164,19 @@ impl MonomorphRegistry {
         base_symbol: SymbolID,
         generic_params: TypedGenericParamsList,
         mapping_ctx: GenericMappingCtx,
-    ) -> (MonomorphKey, MonomorphID) {
-        let key = MonomorphKey::new_instance_key();
-
-        let id = self.next_id;
-        self.next_id += 1;
+    ) -> MonomorphID {
+        let monomorph_id = MonomorphID(self.entries.len() + 1);
 
         let entry = MonomorphEntry::Func(MonomorphFuncEntry {
-            id,
+            id: monomorph_id,
             base_symbol,
             generic_params,
             mapping_ctx,
             analyzed: false,
         });
 
-        self.map.insert(key.clone(), entry);
-
-        (key, id)
+        self.entries.push(entry);
+        monomorph_id
     }
 }
 

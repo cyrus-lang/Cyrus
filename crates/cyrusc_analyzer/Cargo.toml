@@ -1,5 +1,5 @@
 [package]
-name = "cyrusc_sema"
+name = "cyrusc_analyzer"
 version = "0.1.0"
 edition = "2024"
 
@@ -22,9 +22,9 @@ fx-hash = "0.1.0"
 smallvec = "1.15.1"
 
 [lib]
-name = "cyrusc_sema"
+name = "cyrusc_analyzer"
 path = "./src/lib.rs"
 
 [[bin]]
-name = "cyrusc_sema"
+name = "cyrusc_analyzer"
 path = "./src/cli.rs"

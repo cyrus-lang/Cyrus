@@ -340,7 +340,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             let field_ty = &variant_field_types[i];
             irreg.insert(
-                exported_field.symbol_id.value(),
+                exported_field.symbol_id.0,
                 LocalIRValue::LValue(ptr, field_ty.clone()),
             );
         }
@@ -403,7 +403,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let mut irreg = self.irreg.borrow_mut();
                     irreg.insert(
-                        ident.symbol_id.value(),
+                        ident.symbol_id.0,
                         LocalIRValue::LValue(payload_alloca, expr_ty.ty.clone()),
                     );
                 }
@@ -538,7 +538,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     let mut irreg = self.irreg.borrow_mut();
                     irreg.insert(
-                        ident.symbol_id.value(),
+                        ident.symbol_id.0,
                         LocalIRValue::LValue(alloca, variant_expr_type.clone()),
                     );
                     drop(irreg);

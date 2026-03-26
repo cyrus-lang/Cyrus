@@ -44,7 +44,7 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::generics::monomorph::MonomorphKey;
+use cyrusc_typed_ast::generics::monomorph::MonomorphID;
 use inkwell::{
     context::AsContextRef,
     llvm_sys::{
@@ -383,11 +383,11 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_monomorph_func_instance(
         &mut self,
-        monomorph_key: &MonomorphKey,
+        monomorph_id: MonomorphID,
     ) -> (FunctionValue<'ll>, CIRFuncTy) {
         {
             let monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let monomorph_entry = monomorph_registry.get(monomorph_key).cloned().unwrap();
+            let monomorph_entry = monomorph_registry.get(&monomorph_id).cloned().unwrap();
             let monomorph_func_entry = match monomorph_entry {
                 CIRMonomorphEntry::Func(entry) => entry,
             };

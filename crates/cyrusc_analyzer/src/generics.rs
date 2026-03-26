@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
     generics::{
         generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
-        monomorph::MonomorphKey,
+        monomorph::MonomorphID,
         substitute::substitute_type,
     },
     sigs::FuncSig,
@@ -162,7 +162,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // only used for methods (optional)
         self_modifier_ty: Option<SemanticType>,
         func_call_loc: &Loc,
-    ) -> Option<MonomorphKey> {
+    ) -> Option<MonomorphID> {
         todo!();
 
         // let current_diag_len = self.reporter.len();
@@ -170,14 +170,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // let (mut template_body, mapping_ctx, base_symbol) = {
         //     let monomorph_registry = self.monomorph_registry.lock().unwrap();
 
-        //     if let Some(monomorph_key) = monomorph_registry.resolve_func_entry_by_mapping_ctx(
+        //     if let Some(monomorph_id) = monomorph_registry.resolve_func_entry_by_mapping_ctx(
         //         self.mapping_ctx_arena.clone(),
         //         func_sig.symbol_id.unwrap(),
         //         generic_type.generic_params.clone(),
         //         generic_type.mapping_ctx.clone(),
         //     ) {
         //         // already registered
-        //         return Some(monomorph_key.clone());
+        //         return Some(monomorph_id.clone());
         //     }
 
         //     let generic_template_entry = monomorph_registry
@@ -219,11 +219,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //     self.analyze_generic_self_modifier(new_body_scope_id, &func_sig.params, sema_type);
         // }
 
-        // let monomorph_key = {
+        // let monomorph_id = {
         //     let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
-        //     let (monomorph_key, _) =
+        //     let (monomorph_id, _) =
         //         monomorph_registry.register_func(base_symbol, generic_type.generic_params.clone(), mapping_ctx);
-        //     monomorph_key
+        //     monomorph_id
         // };
 
         // let mut analyzed_body = template_body.clone();
@@ -245,12 +245,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // {
         //     let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
         //     monomorph_registry.register_specialized_func_instance(
-        //         monomorph_key.clone(),
+        //         monomorph_id.clone(),
         //         SpecializedFuncEntry { body: analyzed_body },
         //     );
         // }
 
-        // Some(monomorph_key)
+        // Some(monomorph_id)
     }
 
     fn apply_error_originated_from_on_diag_range<F>(&mut self, range: RangeInclusive<usize>, mut f: F)
@@ -530,8 +530,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty($lhs, fmt_symbol),
-                            rhs_type: format_sema_ty($rhs, fmt_symbol),
+                            lhs_type: format_sema_type($lhs, fmt_symbol),
+                            rhs_type: format_sema_type($rhs, fmt_symbol),
                         }),
                         loc: Some(loc),
                         hint: None,

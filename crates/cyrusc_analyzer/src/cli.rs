@@ -24,7 +24,7 @@ use cyrusc_resolver::{
     fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
     modules::VisitingModule,
 };
-use cyrusc_sema::{
+use cyrusc_analyzer::{
     analyze::{AnalysisContext, EntryPoints},
     config::AnalyzerConfig,
 };
@@ -93,7 +93,7 @@ pub fn main() {
                 Path::new(&file_path).to_path_buf(),
             );
 
-            let module_id = ModuleID::new();
+            let module_id = ModuleID::master_module_id();
 
             resolver
                 .resolve_module(

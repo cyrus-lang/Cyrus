@@ -88,7 +88,7 @@ pub fn main() {
                 Path::new(&file_path).to_path_buf(),
             );
 
-            let module_id = ModuleID::new();
+            let module_id = ModuleID::master_module_id();
 
             let typed_program_tree = resolver
                 .resolve_module(

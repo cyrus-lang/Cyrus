@@ -7,7 +7,7 @@ members = [
     "crates/cyrusc_diagcentral",
     "crates/cyrusc_typed_ast",
     "crates/cyrusc_cli",
-    "crates/cyrusc_sema",
+    "crates/cyrusc_analyzer",
     "crates/cyrusc_resolver",
     "crates/cyrusc_fs_utils",
     "crates/cyrusc_strescape",

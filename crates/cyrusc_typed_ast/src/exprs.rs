@@ -16,13 +16,9 @@
  */
 
 use crate::{
-    SymbolID, VTableID,
-    generics::monomorph::MonomorphKey,
-    sigs::{EnumSig, FuncSig},
-    stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
-    types::{
+    SymbolID, VTableID, generics::monomorph::MonomorphID, sigs::{EnumSig, FuncSig}, stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs}, types::{
         SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedStructTypeField, TypedUnnamedUnionType,
-    },
+    }
 };
 use cyrusc_ast::{
     AssignKind, Ident,
@@ -220,7 +216,7 @@ pub struct TypedFuncCall {
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
     pub ret_type: Option<SemanticType>,
-    pub monomorph_key: Option<MonomorphKey>, // only used when calling a generic func
+    pub monomorph_id: Option<MonomorphID>, // only used when calling a generic func
     pub loc: Loc,
 }
 
@@ -259,7 +255,7 @@ pub struct TypedMethodCall {
     pub method_call_on_interface: Option<TypedInterfaceMethodCallMetadata>,
 
     // only used when calling a generic method
-    pub monomorph_key: Option<MonomorphKey>,
+    pub monomorph_id: Option<MonomorphID>,
     pub loc: Loc,
 }
 

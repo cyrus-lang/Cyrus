@@ -1668,7 +1668,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         &mut self,
         monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
     ) -> InternalValue<'ll> {
-        let (fn_value, cir_func_ty) = self.emit_monomorph_func_instance(&monomorph_func_instance_call.monomorph_key);
+        let (fn_value, cir_func_ty) = self.emit_monomorph_func_instance(monomorph_func_instance_call.monomorph_id);
 
         self.emit_direct_call(
             &cir_func_ty,

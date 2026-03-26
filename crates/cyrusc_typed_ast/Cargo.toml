@@ -10,4 +10,3 @@ cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 thiserror = "2.0.17"
 thiserror-impl = "2.0.17"
-rand = "0.9.0"

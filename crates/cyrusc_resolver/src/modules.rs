@@ -26,7 +26,7 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{ModuleID, SymbolID, TypedProgramTree};
+use cyrusc_typed_ast::{ModuleID, TypedProgramTree};
 use std::{
     cell::RefCell,
     collections::HashSet,
@@ -176,7 +176,7 @@ impl Resolver {
             let module_id = self
                 .module_file_map
                 .get_file_path(&loaded_module.file_path)
-                .unwrap_or(ModuleID::new());
+                .unwrap_or(self.id_gen.alloc_module());
 
             // check duplicates using module file + alias
             let import_key = ImportedModuleEntry {
@@ -351,10 +351,10 @@ impl Resolver {
                     continue;
                 }
 
-                let proxy_symbol_id = SymbolID::new();
+                let proxy_symbol_id = self.id_gen.alloc_symbol();
 
                 self.global_symbols
-                    .insert_symbol_name_with_symbol_id(parent_module_id, &renamed_name, proxy_symbol_id);
+                    .insert_symbol_name(parent_module_id, proxy_symbol_id, &renamed_name);
 
                 self.global_symbols.insert_symbol_entry(
                     parent_module_id,

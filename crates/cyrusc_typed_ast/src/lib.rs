@@ -16,7 +16,6 @@
  */
 
 use crate::stmts::TypedStmt;
-use rand::Rng;
 use std::{fmt, path::PathBuf};
 
 pub mod exprs;
@@ -28,53 +27,16 @@ mod tests;
 pub mod types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SymbolID(u32);
+pub struct SymbolID(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ModuleID(u64);
+pub struct ModuleID(pub u32);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LabelID(u32);
+pub struct LabelID(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct VTableID(u32);
-
-impl ModuleID {
-    pub fn new() -> Self {
-        let mut rng = rand::rng();
-        Self(rng.random::<u64>())
-    }
-}
-
-impl SymbolID {
-    pub fn new() -> Self {
-        let mut rng = rand::rng();
-        Self(rng.random::<u32>())
-    }
-
-    #[inline]
-    pub fn value(&self) -> u32 {
-        self.0
-    }
-}
-
-impl LabelID {
-    pub fn new() -> Self {
-        let mut rng = rand::rng();
-        Self(rng.random::<u32>())
-    }
-}
-
-impl VTableID {
-    pub fn new(value: u32) -> Self {
-        Self(value)
-    }
-
-    #[inline]
-    pub fn value(&self) -> u32 {
-        self.0
-    }
-}
+pub struct VTableID(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
@@ -86,6 +48,12 @@ pub struct TypedProgramTree {
 
 unsafe impl Send for TypedProgramTree {}
 unsafe impl Sync for TypedProgramTree {}
+
+impl ModuleID {
+    pub const fn master_module_id() -> Self {
+        Self(1)
+    }
+}
 
 impl From<u32> for SymbolID {
     fn from(value: u32) -> Self {

@@ -18,8 +18,6 @@
 use cyrusc_typed_ast::{SymbolID, VTableID, sigs::FuncSig, types::SemanticType};
 use std::collections::HashMap;
 
-pub type GlobalVarID = u32;
-
 /// Uniquely identifies a vtable by the pair:
 ///   (concrete type, interface).
 ///
@@ -81,7 +79,7 @@ pub struct VTableInfo {
     ///
     /// Codegen will emit a single global definition for this symbol
     /// and all dynamic dispatch sites will reference it by address.
-    pub global_var_id: SymbolID,
+    pub vtable_id: VTableID,
 }
 
 impl VTableRegistry {
@@ -103,8 +101,6 @@ impl VTableRegistry {
     /// If the vtable was already registered, the existing `VTableID`
     /// is returned.
     ///
-    /// # Panics
-    ///
     /// Panics if `methods` is empty or if a duplicate registration
     /// attempts to change the method layout.
     pub fn register(
@@ -122,7 +118,7 @@ impl VTableRegistry {
         };
 
         if let Some(&existing_id) = self.map.get(&key) {
-            let existing = &self.tables[existing_id.value() as usize];
+            let existing = &self.tables[existing_id.0 as usize];
 
             // Hard invariant: layout must be identical
             assert_eq!(
@@ -133,15 +129,14 @@ impl VTableRegistry {
             return existing_id;
         }
 
-        let vtable_id = VTableID::new(self.tables.len() as u32);
-        let global_var_id = generate_global_var_id();
+        let vtable_id = VTableID(self.tables.len() as u32);
 
         self.tables.push(VTableInfo {
             sema_type,
             interface_id,
             interface_name,
             methods,
-            global_var_id,
+            vtable_id,
         });
 
         self.map.insert(key, vtable_id);
@@ -169,7 +164,7 @@ impl VTableRegistry {
 
     /// Returns metadata for a previously registered vtable.
     pub fn info(&self, vtable_id: VTableID) -> &VTableInfo {
-        &self.tables[vtable_id.value() as usize]
+        &self.tables[vtable_id.0 as usize]
     }
 
     /// Returns an iterator over all registered vtables.
@@ -183,7 +178,3 @@ impl VTableRegistry {
 
 unsafe impl Sync for VTableRegistry {}
 unsafe impl Send for VTableRegistry {}
-
-fn generate_global_var_id() -> SymbolID {
-    SymbolID::new()
-}

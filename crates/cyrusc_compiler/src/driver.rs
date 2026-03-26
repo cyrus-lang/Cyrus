@@ -19,6 +19,10 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
+use cyrusc_analyzer::{
+    analyze::{AnalysisContext, EntryPoints},
+    config::AnalyzerConfig,
+};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
@@ -36,10 +40,6 @@ use cyrusc_resolver::{
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
     OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
-};
-use cyrusc_sema::{
-    analyze::{AnalysisContext, EntryPoints},
-    config::AnalyzerConfig,
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
@@ -176,8 +176,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 entry_file.clone(),
             );
 
-            // resolve the entry module
-            let module_id = ModuleID::new();
+            let module_id = ModuleID::master_module_id();
 
             resolver.resolve_module(
                 module_id,

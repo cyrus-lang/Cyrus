@@ -157,6 +157,7 @@ version = "0.0.4"
 dependencies = [
  "clap",
  "colorized",
+ "cyrusc_analyzer",
  "cyrusc_ast",
  "cyrusc_codegen_llvm",
  "cyrusc_compiler",
@@ -166,7 +167,6 @@ dependencies = [
  "cyrusc_parser",
  "cyrusc_scaffold",
  "cyrusc_scaffold_parser",
- "cyrusc_sema",
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "serde",
@@ -232,6 +232,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "cyrusc_analyzer"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_const_eval",
+ "cyrusc_diagcentral",
+ "cyrusc_fs_utils",
+ "cyrusc_internal",
+ "cyrusc_lexer",
+ "cyrusc_parser",
+ "cyrusc_resolver",
+ "cyrusc_source_loc",
+ "cyrusc_strescape",
+ "cyrusc_tokens",
+ "cyrusc_typed_ast",
+ "fx-hash",
+ "smallvec",
+ "thiserror",
+ "thiserror-impl",
+]
+
+[[package]]
 name = "cyrusc_asan_wrapper"
 version = "0.1.0"
 dependencies = [
@@ -263,6 +285,7 @@ dependencies = [
 name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_analyzer",
  "cyrusc_asan_wrapper",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
@@ -271,7 +294,6 @@ dependencies = [
  "cyrusc_fs_utils",
  "cyrusc_internal",
  "cyrusc_scaffold_parser",
- "cyrusc_sema",
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
@@ -283,6 +305,7 @@ dependencies = [
 name = "cyrusc_compiler"
 version = "0.1.0"
 dependencies = [
+ "cyrusc_analyzer",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
  "cyrusc_diagcentral",
@@ -291,7 +314,6 @@ dependencies = [
  "cyrusc_parser",
  "cyrusc_resolver",
  "cyrusc_scaffold_parser",
- "cyrusc_sema",
  "cyrusc_source_loc",
  "cyrusc_tui_utils",
  "cyrusc_typed_ast",
@@ -406,28 +428,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyrusc_sema"
-version = "0.1.0"
-dependencies = [
- "cyrusc_ast",
- "cyrusc_const_eval",
- "cyrusc_diagcentral",
- "cyrusc_fs_utils",
- "cyrusc_internal",
- "cyrusc_lexer",
- "cyrusc_parser",
- "cyrusc_resolver",
- "cyrusc_source_loc",
- "cyrusc_strescape",
- "cyrusc_tokens",
- "cyrusc_typed_ast",
- "fx-hash",
- "smallvec",
- "thiserror",
- "thiserror-impl",
-]
-
-[[package]]
 name = "cyrusc_source_loc"
 version = "0.1.0"
 dependencies = [
@@ -465,7 +465,6 @@ dependencies = [
  "cyrusc_diagcentral",
  "cyrusc_source_loc",
  "cyrusc_tokens",
- "rand",
  "thiserror",
  "thiserror-impl",
 ]

@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn classify_return_dynamic_interface_object() {
         let abi = abi();
-        let ty = CIRTy::Dynamic(CIRDynamicTy { vtable_id: VTableID::new(1) });
+        let ty = CIRTy::Dynamic(CIRDynamicTy { vtable_id: VTableID(1) });
 
         let ret = abi.classify_return(&ty);
 
@@ -275,7 +275,7 @@ mod tests {
     fn classify_dynamic_two_pointers() {
         let abi = abi();
         let ty = CIRTy::Dynamic(CIRDynamicTy {
-            vtable_id: VTableID::new(0),
+            vtable_id: VTableID(0),
         });
 
         let (info, regs) = abi.classify_argument(&ty, 6, true);

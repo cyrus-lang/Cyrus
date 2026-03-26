@@ -26,12 +26,13 @@ use cyrusc_internal::symbols::symbols::{
 use cyrusc_internal::symbols::table::{SymbolEntryMut, SymbolQuery, SymbolTable};
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_typed_ast::generics::monomorph::{
-    MonomorphEntry, MonomorphFuncEntry, MonomorphKey, MonomorphRegistry, SpecializedFuncEntry,
+    MonomorphEntry, MonomorphFuncEntry, MonomorphID, MonomorphRegistry, SpecializedFuncEntry,
 };
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::*;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -132,6 +133,9 @@ pub struct Resolver {
     /// This stack is manipulated internally by `LocalScopeGuard`, ensuring
     /// automatic scope entry and exit based on lexical lifetime.
     scopes: Vec<LocalScope>,
+
+    // ID allocator for all compiler entities
+    pub(crate) id_gen: IDGen,
 }
 
 pub struct ResolvedProgramTree {
@@ -139,6 +143,22 @@ pub struct ResolvedProgramTree {
     pub module_name: String,
     pub module_path: PathBuf,
     pub program: Rc<RefCell<TypedProgramTree>>,
+}
+
+#[derive(Debug)]
+pub struct IDGen {
+    /// Module ID allocator.
+    ///
+    /// Reserved IDs:
+    ///   0 = invalid
+    ///   1 = master/root module
+    ///
+    /// Allocated module IDs therefore start at 2.
+    next_module_id: AtomicU32,
+
+    next_symbol_id: AtomicU32,
+    next_label_id: AtomicU32,
+    next_vtable_id: AtomicU32,
 }
 
 impl Resolver {
@@ -165,6 +185,7 @@ impl Resolver {
             monomorph_registry,
             mapping_ctx_arena,
             reporter,
+            id_gen: IDGen::new(),
         }
     }
 
@@ -257,22 +278,16 @@ impl GlobalSymbolRegistry {
         symbol_table.entries.insert(symbol_id, symbol_entry);
     }
 
-    /// Insert a symbol name into the module's symbol table and generate a new `SymbolID`.
+    /// Insert a symbol name into the module's symbol table.
     ///
-    /// This is a convenience helper that allocates a fresh `SymbolID`, registers the
-    /// `name` to `SymbolID` mapping in the module's symbol table, and returns the ID.
-    pub fn insert_symbol_name(&self, module_id: ModuleID, name: &str) -> SymbolID {
-        let symbol_id = SymbolID::new();
-        self.insert_symbol_name_with_symbol_id(module_id, name, symbol_id);
-        symbol_id
-    }
-
-    /// Insert a symbol name into the module's symbol table using an existing `SymbolID`.
+    /// This registers a mapping from `name` to an already allocated `SymbolID`
+    /// within the specified module's symbol table.
     ///
-    /// This is typically used when the `SymbolID` is already known or preallocated,
-    /// such as when creating proxy/imported symbols where the name must reference
-    /// a specific symbol entry.
-    pub fn insert_symbol_name_with_symbol_id(&self, module_id: ModuleID, name: &str, symbol_id: SymbolID) {
+    /// The function does **not** generate a new `SymbolID`; the caller must
+    /// provide the identifier to associate with the symbol name.
+    ///
+    /// If the module does not yet have a symbol table, one is created.
+    pub fn insert_symbol_name(&self, module_id: ModuleID, symbol_id: SymbolID, name: &str) {
         let mut registry = self.inner.lock().unwrap();
         let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
 
@@ -527,10 +542,10 @@ impl SymbolQuery for Resolver {
         }
     }
 
-    fn lookup_monomorph_func(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry> {
+    fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry> {
         {
             let monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let monomorph_entry = monomorph_registry.resolve_by_monomorph_key(monomorph_key).unwrap();
+            let monomorph_entry = monomorph_registry.resolve_by_monomorph_id(monomorph_id).unwrap();
             let monomorph_func_entry = match monomorph_entry.clone() {
                 MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
             };
@@ -538,11 +553,11 @@ impl SymbolQuery for Resolver {
         }
     }
 
-    fn lookup_specialized_func_instance(&self, monomorph_key: &MonomorphKey) -> Option<SpecializedFuncEntry> {
+    fn lookup_specialized_func_instance(&self, monomorph_id: MonomorphID) -> Option<SpecializedFuncEntry> {
         {
             let monomorph_registry = self.monomorph_registry.lock().unwrap();
             monomorph_registry
-                .resolve_specialized_func_instance(monomorph_key)
+                .resolve_specialized_func_instance(monomorph_id)
                 .cloned()
         }
     }
@@ -637,6 +652,40 @@ impl SymbolEntryMut for Resolver {
             SymbolEntryKind::Interface(resolved_interface) => Some(f(resolved_interface)),
             _ => None,
         })?
+    }
+}
+
+impl IDGen {
+    pub fn new() -> Self {
+        Self {
+            // 0 = invalid, 1 = master module.
+            // Allocation starts at 2.
+            next_module_id: AtomicU32::new(2),
+
+            next_symbol_id: AtomicU32::new(1),
+            next_label_id: AtomicU32::new(1),
+            next_vtable_id: AtomicU32::new(1),
+        }
+    }
+
+    #[inline(always)]
+    pub fn alloc_module(&self) -> ModuleID {
+        ModuleID(self.next_module_id.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[inline(always)]
+    pub fn alloc_symbol(&self) -> SymbolID {
+        SymbolID(self.next_symbol_id.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[inline(always)]
+    pub fn alloc_label(&self) -> LabelID {
+        LabelID(self.next_label_id.fetch_add(1, Ordering::Relaxed))
+    }
+
+    #[inline(always)]
+    pub fn alloc_vtable(&self) -> VTableID {
+        VTableID(self.next_vtable_id.fetch_add(1, Ordering::Relaxed))
     }
 }
 

@@ -8,7 +8,7 @@ cyrusc_source_loc = { path = "../cyrusc_source_loc", version = "*" }
 cyrusc_compiler = { path = "../cyrusc_compiler", version = "*" }
 cyrusc_codegen_llvm = { path = "../cyrusc_codegen_llvm", version = "*" }
 cyrusc_fs_utils = { path = "../cyrusc_fs_utils", version = "*" }
-cyrusc_sema = { path = "../cyrusc_sema", version = "*" }
+cyrusc_analyzer = { path = "../cyrusc_analyzer", version = "*" }
 cyrusc_scaffold = { path = "../cyrusc_scaffold", version = "*" }
 cyrusc_scaffold_parser = { path = "../cyrusc_scaffold_parser", version = "*" }
 cyrusc_tui_utils = { path = "../cyrusc_tui_utils", version = "*" }

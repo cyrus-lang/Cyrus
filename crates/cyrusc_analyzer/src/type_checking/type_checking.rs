@@ -920,7 +920,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             if !func_sig.is_func_decl {
                 // only specialize function definition which necessarily includes the body block
-                func_call.monomorph_key =
+                func_call.monomorph_id =
                     self.register_specialized_generic_func(&mut func_sig, &generic_type, None, &func_call.loc);
             }
 
@@ -1369,7 +1369,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             set_self_modifier_type_in_func_sig(func_sig, &dynamic.operand.sema_type.as_ref().unwrap());
 
             // FIXME: We have to set this ??
-            set_self_modifier_symbol_id_in_func_sig(func_sig, SymbolID::new());
+            // set_self_modifier_symbol_id_in_func_sig(func_sig, SymbolID::new());
+            todo!();
         });
 
         {
@@ -2023,7 +2024,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
 
             let func_call_loc = func_sig.loc;
-            method_call.monomorph_key = self.register_specialized_generic_func(
+            method_call.monomorph_id = self.register_specialized_generic_func(
                 &mut func_sig,
                 &generic_type,
                 Some(SemanticType::GenericType(merged_generic_type_opt.clone().unwrap())),

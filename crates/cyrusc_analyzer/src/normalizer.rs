@@ -666,26 +666,28 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // typedef itself is generic but it does not generate generic,
             // so simply initialize generic mapping ctx and substitute the type
 
-            let mapping_ctx = Rc::new(RefCell::new(GenericMappingCtx::new_root()));
-            let mut generic_type = GenericType::new_unresolved(
-                SymbolID::new(), // FIXME: Change to None
-                type_args.clone(),
-                mapping_ctx.clone(),
-                self.mapping_ctx_arena.clone(),
-                generic_params.clone(),
-                loc,
-            );
+            // FIXME
+            todo!();
+            // let mapping_ctx = Rc::new(RefCell::new(GenericMappingCtx::new_root()));
+            // let mut generic_type = GenericType::new_unresolved(
+            //     SymbolID::new(), // FIXME: Change to None
+            //     type_args.clone(),
+            //     mapping_ctx.clone(),
+            //     self.mapping_ctx_arena.clone(),
+            //     generic_params.clone(),
+            //     loc,
+            // );
 
-            if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
-                self.reporter.report(diag);
-                return None;
-            }
+            // if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
+            //     self.reporter.report(diag);
+            //     return None;
+            // }
 
-            substitute_type(
-                self.mapping_ctx_arena.clone(),
-                resolved_typedef.typedef_sig.ty.clone(),
-                mapping_ctx,
-            )
+            // substitute_type(
+            //     self.mapping_ctx_arena.clone(),
+            //     resolved_typedef.typedef_sig.ty.clone(),
+            //     mapping_ctx,
+            // )
         }
     }
 
