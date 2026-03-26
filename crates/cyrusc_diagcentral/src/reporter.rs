@@ -65,6 +65,21 @@ impl DiagReporter {
         }
     }
 
+    pub fn display_first(&self, n: usize) {
+        let mut diags = self.diags.borrow_mut();
+
+        let count = n.min(diags.len());
+
+        for diag in diags.iter().take(count) {
+            match diag.level {
+                DiagLevel::Error => eprintln!("{}", self.render(diag)),
+                DiagLevel::Warning => println!("{}", self.render(diag)),
+            }
+        }
+
+        diags.drain(..count);
+    }
+
     pub fn display(&self) {
         let mut diags = self.diags.borrow_mut();
 

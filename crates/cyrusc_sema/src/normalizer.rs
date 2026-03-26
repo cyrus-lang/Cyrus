@@ -300,13 +300,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             SemanticType::UnnamedEnum(unnamed_enum_type) => Some(SemanticType::UnnamedEnum(
                 self.normalize_unnamed_enum_ty(unnamed_enum_type),
             )),
-            SemanticType::UnnamedUnion(unnamed_union_type) => self.normalize_unnamed_union_ty(unnamed_union_type),
+            SemanticType::UnnamedUnion(unnamed_union_type) => self.normalize_unnamed_union_type(unnamed_union_type),
             SemanticType::UnnamedStruct(unnamed_struct_type) => self.normalize_unnamed_struct_ty(unnamed_struct_type),
             SemanticType::PlainType(_) | SemanticType::DynamicType(_) | SemanticType::Interface(_) => Some(ty),
         }
     }
 
-    fn normalize_unnamed_union_ty(&mut self, mut unnamed_union_type: TypedUnnamedUnionType) -> Option<SemanticType> {
+    fn normalize_unnamed_union_type(&mut self, mut unnamed_union_type: TypedUnnamedUnionType) -> Option<SemanticType> {
         for field in &mut unnamed_union_type.fields {
             field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
                 Some(sema_type) => Box::new(sema_type),
@@ -450,7 +450,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn normalize_variable(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
+    fn normalize_var(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
         let resolved_var = self.query.lookup_var(symbol_id)?;
         let var_type = &resolved_var.variable.ty;
         let var_rhs = &resolved_var.variable.rhs;
@@ -477,7 +477,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_resolved_symbol(&mut self, resolved_symbol: ResolvedSymbol, loc: Loc) -> Option<SemanticType> {
         match resolved_symbol {
             ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(symbol_id),
-            ResolvedSymbol::Variable(symbol_id) => self.normalize_variable(symbol_id, loc),
+            ResolvedSymbol::Variable(symbol_id) => self.normalize_var(symbol_id, loc),
             ResolvedSymbol::GlobalVar(symbol_id) => self.normalize_global_var(symbol_id, loc),
             ResolvedSymbol::Interface(symbol_id) => self.normalize_interface_type(symbol_id, loc),
             ResolvedSymbol::Struct(_) | ResolvedSymbol::Enum(_) | ResolvedSymbol::Union(_) => {
@@ -529,7 +529,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_generic_type(&mut self, mut generic_type: GenericType) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.lookup_global_symbol(generic_type.base)?;
+        let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
 
         if generic_type.generic_params.list.is_empty() {
             if let Some(generic_params) = symbol_entry.symbol_generic_params() {
@@ -795,108 +795,27 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         };
 
-        let symbol_entry = self.query.lookup_global_symbol(symbol_id)?;
+        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
 
-        let mut ty_opt = self.resolve_symbol_type_internal(symbol_id, &symbol_entry);
+        let mut sema_type_opt = self.resolve_symbol_type_internal(&symbol_entry);
 
-        if let Some(ty) = ty_opt.clone() {
-            ty_opt = self.normalize_sema_type(ty, loc);
+        if let Some(ty) = sema_type_opt.clone() {
+            sema_type_opt = self.normalize_sema_type(ty, loc);
         }
 
         self.type_cache.pop(symbol_id);
 
-        if let Some(ref final_ty) = ty_opt {
+        if let Some(ref final_ty) = sema_type_opt {
             self.type_cache.cache.insert(symbol_id, final_ty.clone());
         }
 
-        ty_opt
+        sema_type_opt
     }
 
-    fn resolve_symbol_type_internal(
-        &mut self,
-        symbol_id: SymbolID,
-        symbol_entry: &SymbolEntry,
-    ) -> Option<SemanticType> {
+    fn resolve_symbol_type_internal(&mut self, symbol_entry: &SymbolEntry) -> Option<SemanticType> {
         match &symbol_entry.kind {
-            SymbolEntryKind::GlobalVar(resolved_global_var) => {
-                let global_var_sig = &resolved_global_var.global_var_sig;
-
-                // explicit type
-                if let Some(sema_type) = &global_var_sig.ty {
-                    let sema_type = self.normalize_sema_type(sema_type.clone(), global_var_sig.loc)?;
-
-                    return Some(if global_var_sig.is_const {
-                        sema_type.as_const()
-                    } else {
-                        sema_type
-                    });
-                }
-
-                // skip if already analyzed
-                if global_var_sig.analyzed {
-                    let sema_ty_opt = global_var_sig
-                        .ty
-                        .clone()
-                        .or(global_var_sig.rhs.clone().and_then(|expr| expr.sema_type));
-
-                    return if global_var_sig.is_const {
-                        sema_ty_opt.map(|ty| ty.as_const())
-                    } else {
-                        sema_ty_opt
-                    };
-                }
-
-                // analyze rhs
-                let mut rhs_expr = global_var_sig.rhs.clone()?;
-                let sema_ty_opt = self.analyze_expr_non_terminal(&mut rhs_expr, None);
-
-                // persist mutation
-                self.symbol_mut.with_global_var_mut(symbol_id, |var_mut| {
-                    var_mut.global_var_sig.analyzed = true;
-                    var_mut.global_var_sig.rhs = Some(rhs_expr);
-                });
-
-                if global_var_sig.is_const {
-                    sema_ty_opt.map(|ty| ty.as_const())
-                } else {
-                    sema_ty_opt
-                }
-            }
-            SymbolEntryKind::Var(resolved_var) => {
-                let var_sig = &resolved_var.variable;
-
-                // explicit type
-                if let Some(sema_type) = &var_sig.ty {
-                    let sema_type = self.normalize_sema_type(sema_type.clone(), var_sig.loc)?;
-                    return Some(if var_sig.is_const { sema_type.as_const() } else { sema_type });
-                }
-
-                // skip if already analyzed
-                if var_sig.analyzed {
-                    let sema_ty_opt = var_sig.ty.clone().or(var_sig.rhs.clone().and_then(|expr| expr.sema_type));
-
-                    return if var_sig.is_const {
-                        sema_ty_opt.map(|ty| ty.as_const())
-                    } else {
-                        sema_ty_opt
-                    };
-                }
-
-                // analyze rhs
-                let mut rhs_expr = var_sig.rhs.clone()?;
-                let sema_ty_opt = self.analyze_expr_non_terminal(&mut rhs_expr, None);
-
-                self.symbol_mut.with_var_mut(symbol_id, |var_mut| {
-                    var_mut.variable.analyzed = true;
-                    var_mut.variable.rhs = Some(rhs_expr);
-                });
-
-                if var_sig.is_const {
-                    sema_ty_opt.map(|ty| ty.as_const())
-                } else {
-                    sema_ty_opt
-                }
-            }
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.ty.clone(),
+            SymbolEntryKind::Var(resolved_var) => resolved_var.variable.ty.clone(),
             SymbolEntryKind::Func(resolved_func) => {
                 let params_list = resolved_func
                     .func_sig
@@ -944,8 +863,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
             SymbolEntryKind::Typedef(typedef) => self.resolve_typedef_inner_type(typedef),
             SymbolEntryKind::ProxiedSymbol(_, target_symbol_id) => {
-                let target_entry = self.query.lookup_global_symbol_deep(*target_symbol_id)?;
-                self.resolve_symbol_type_internal(*target_symbol_id, &target_entry)
+                let target_entry = self.query.lookup_global_symbol(*target_symbol_id)?;
+                self.resolve_symbol_type_internal(&target_entry)
             }
             SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),
         }

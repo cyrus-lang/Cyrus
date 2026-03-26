@@ -31,6 +31,8 @@ mod modifiers;
 mod prec;
 mod stmts;
 
+const DISPLAY_DIAG_KIND: usize = 1;
+
 pub struct Parser<'source_file> {
     source_file: &'source_file SourceFile,
     reporter: Arc<DiagReporter>,
@@ -50,12 +52,18 @@ impl SourceParser {
         let tokens = lexer.tokenize();
 
         let mut parser = Parser::new(self.reporter.clone(), source_file, tokens);
-        parser.parse()
+
+        let Ok(program_tree) = parser.parse() else {
+            self.display_errors();
+            return Err(());
+        };
+
+        Ok(program_tree)
     }
 
     #[inline]
     pub fn display_errors(&self) {
-        self.reporter.display();
+        self.reporter.display_first(DISPLAY_DIAG_KIND);
     }
 }
 

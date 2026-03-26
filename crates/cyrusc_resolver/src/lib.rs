@@ -25,7 +25,9 @@ use cyrusc_internal::symbols::symbols::{
 };
 use cyrusc_internal::symbols::table::{SymbolEntryMut, SymbolQuery, SymbolTable};
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
-use cyrusc_typed_ast::generics::monomorph::{MonomorphEntry, MonomorphFuncEntry, MonomorphKey, MonomorphRegistry, SpecializedFuncEntry};
+use cyrusc_typed_ast::generics::monomorph::{
+    MonomorphEntry, MonomorphFuncEntry, MonomorphKey, MonomorphRegistry, SpecializedFuncEntry,
+};
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::*;
 use std::collections::HashSet;
@@ -70,7 +72,7 @@ pub struct ModuleFileMap {
 pub struct Resolver {
     /// Global symbol table shared across all modules.
     /// Stores all declared symbols and their associated metadata.
-    pub global_symbols_registry: GlobalSymbolRegistry,
+    pub global_symbols: GlobalSymbolRegistry,
 
     /// Tracks modules that have already been analyzed.
     /// Prevents resolving the same module multiple times.
@@ -148,7 +150,7 @@ impl Resolver {
         master_module_file_path: PathBuf,
     ) -> Self {
         Self {
-            global_symbols_registry: GlobalSymbolRegistry::new(),
+            global_symbols: GlobalSymbolRegistry::new(),
             module_aliases: ModuleAliasRegistry::new(),
             analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
             program_trees: Arc::new(Mutex::new(Vec::new())),
@@ -211,7 +213,7 @@ impl Resolver {
     where
         F: FnOnce(&mut SymbolEntry) -> R,
     {
-        let mut registry = self.global_symbols_registry.inner.lock().unwrap();
+        let mut registry = self.global_symbols.inner.lock().unwrap();
 
         for table in registry.values_mut() {
             if let Some(entry) = table.entries.get_mut(&symbol_id) {
@@ -255,17 +257,26 @@ impl GlobalSymbolRegistry {
         symbol_table.entries.insert(symbol_id, symbol_entry);
     }
 
-    /// Insert a symbol name into the module's symbol table and allocate a new `SymbolID`.
+    /// Insert a symbol name into the module's symbol table and generate a new `SymbolID`.
     ///
-    /// Returns the generated symbol identifier associated with the name.
+    /// This is a convenience helper that allocates a fresh `SymbolID`, registers the
+    /// `name` to `SymbolID` mapping in the module's symbol table, and returns the ID.
     pub fn insert_symbol_name(&self, module_id: ModuleID, name: &str) -> SymbolID {
         let symbol_id = SymbolID::new();
+        self.insert_symbol_name_with_symbol_id(module_id, name, symbol_id);
+        symbol_id
+    }
 
+    /// Insert a symbol name into the module's symbol table using an existing `SymbolID`.
+    ///
+    /// This is typically used when the `SymbolID` is already known or preallocated,
+    /// such as when creating proxy/imported symbols where the name must reference
+    /// a specific symbol entry.
+    pub fn insert_symbol_name_with_symbol_id(&self, module_id: ModuleID, name: &str, symbol_id: SymbolID) {
         let mut registry = self.inner.lock().unwrap();
         let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
 
         symbol_table.names.insert(name.to_owned(), symbol_id);
-        symbol_id
     }
 }
 
@@ -444,7 +455,7 @@ impl SymbolQuery for Resolver {
 
     /// Look up a symbol identifier by name.
     fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID> {
-        let registry = self.global_symbols_registry.inner.lock().unwrap();
+        let registry = self.global_symbols.inner.lock().unwrap();
 
         for table in registry.values() {
             if let Some(symbol_id) = table.names.get(name) {
@@ -457,7 +468,7 @@ impl SymbolQuery for Resolver {
 
     /// Look up a symbol identifier by name within a specific module.
     fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
-        let registry = self.global_symbols_registry.inner.lock().unwrap();
+        let registry = self.global_symbols.inner.lock().unwrap();
         let table = registry.get(&module_id)?;
         table.names.get(name).copied()
     }
@@ -468,29 +479,31 @@ impl SymbolQuery for Resolver {
         self.lookup_global_symbol(symbol_id)
     }
 
-    /// Retrieve the semantic entry for a specific symbol identifier.
+    /// Retrieve the semantic entry for a symbol, resolving proxy chains.
     fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let registry = self.global_symbols_registry.inner.lock().unwrap();
+        let registry = self.global_symbols.inner.lock().unwrap();
 
-        for table in registry.values() {
-            if let Some(entry) = table.entries.get(&symbol_id) {
-                return Some(entry.clone());
+        let mut current_id = symbol_id;
+
+        loop {
+            let mut found = None;
+
+            for table in registry.values() {
+                if let Some(entry) = table.entries.get(&current_id) {
+                    found = Some(entry.clone());
+                    break;
+                }
+            }
+
+            let entry = found?;
+
+            match entry.kind {
+                SymbolEntryKind::ProxiedSymbol(_, target_id) => {
+                    current_id = target_id;
+                }
+                _ => return Some(entry),
             }
         }
-
-        None
-    }
-
-    /// Perform a deep resolution of a symbol, following aliases or redirects.
-    fn lookup_global_symbol_deep(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let mut current_entry = self.lookup_global_symbol(symbol_id)?;
-
-        // if the entry is an alias, resolve what it points to
-        while let SymbolEntryKind::ProxiedSymbol(_, symbol_id) = &current_entry.kind {
-            current_entry = self.lookup_global_symbol(*symbol_id)?;
-        }
-
-        Some(current_entry)
     }
 
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
@@ -508,7 +521,8 @@ impl SymbolQuery for Resolver {
                     .unwrap()
                     .iter()
                     .find(|program_tree| program_tree.module_id == module_id)?
-                    .module_name.clone(),
+                    .module_name
+                    .clone(),
             )
         }
     }

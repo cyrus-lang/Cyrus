@@ -246,10 +246,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 build_dir,
             })
         }
-        Err(_) => {
-            reporter.display_and_exit_if_has_errors();
-            unreachable!()
-        }
+        Err(_) => exit(1),
     }
 }
 

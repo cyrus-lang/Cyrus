@@ -107,8 +107,6 @@ pub fn main() {
 
             dbg!(typed_program_tree);
         }
-        Err(()) => {
-            reporter.display_and_exit_if_has_errors();
-        }
+        Err(()) => exit(1),
     }
 }

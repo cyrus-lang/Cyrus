@@ -42,7 +42,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
 
     pub fn eval_expr(&mut self, expr: &TypedExprStmt) -> Result<ConstValue, ConstEvalError> {
         let raw = match &expr.kind {
-            TypedExprKind::Symbol(symbol) => self.eval_symbol(symbol.symbol_id),
+            TypedExprKind::Symbol(symbol_expr) => self.eval_symbol(symbol_expr.symbol_id),
             TypedExprKind::Literal(lit) => self.eval_literal(lit),
             TypedExprKind::Prefix(prefix) => self.eval_prefix(prefix),
             TypedExprKind::Infix(infix) => self.eval_infix(infix),

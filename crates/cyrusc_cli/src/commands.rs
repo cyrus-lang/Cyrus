@@ -33,7 +33,7 @@ use cyrusc_source_loc::SourceMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, exit};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -364,7 +364,7 @@ pub(crate) fn command_lex_only(file_path: String) {
 pub(crate) fn command_parse_only(file_path: String) {
     let source_map = Arc::new(SourceMap::new());
     let file_id = source_map.add_file_by_loading(file_path);
-    let source_file = {source_map.get_file(file_id).unwrap().clone()};
+    let source_file = { source_map.get_file(file_id).unwrap().clone() };
 
     let reporter = Arc::new(DiagReporter::new(source_map));
 
@@ -372,10 +372,7 @@ pub(crate) fn command_parse_only(file_path: String) {
 
     match source_parser.parse_program(&source_file) {
         Ok(result) => println!("{:#?}", result),
-        Err(_) => {
-            reporter.display_and_exit_if_has_errors();
-            unreachable!();
-        }
+        Err(_) => exit(1),
     }
 }
 

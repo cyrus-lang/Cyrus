@@ -942,7 +942,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let ty = self.lower_sema_ty(&expr.sema_type.clone().unwrap());
 
         let kind = match &expr.kind {
-            TypedExprKind::Symbol(symbol) => self.lower_load_symbol(symbol.symbol_id),
+            TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.symbol_id),
             TypedExprKind::Literal(literal_expr) => self.lower_literal(literal_expr),
             TypedExprKind::Prefix(prefix_expr) => self.lower_prefix(prefix_expr),
             TypedExprKind::Infix(infix_expr) => self.lower_infix(infix_expr),

@@ -40,7 +40,6 @@ pub trait SymbolQuery: Sync + Send {
     fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry>;
     fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
-    fn lookup_global_symbol_deep(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
 
     fn lookup_monomorph_func(&self, monomorph_key: &MonomorphKey) -> Option<MonomorphFuncEntry>;
     fn lookup_specialized_func_instance(&self, monomorph_key: &MonomorphKey) -> Option<SpecializedFuncEntry>;

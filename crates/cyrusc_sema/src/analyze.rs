@@ -219,7 +219,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 FlowState::Reachable
             }
             TypedStmt::Variable(typed_variable) => {
-                self.analyze_variable(typed_variable);
+                self.analyze_var(typed_variable);
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
@@ -829,7 +829,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_for_loop(&mut self, typed_for: &mut TypedForStmt) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
-            self.analyze_variable(initializer);
+            self.analyze_var(initializer);
         }
 
         if let Some(typed_expr) = &mut typed_for.cond {
@@ -999,13 +999,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        self.symbol_mut
-            .with_global_var_mut(global_var.symbol_id, |resolved_var| {
-                resolved_var.global_var_sig.rhs = global_var.expr.clone();
-                resolved_var.global_var_sig.ty = global_var.ty.clone();
-            });
-
-        if let Some(expr) = &mut global_var.expr {
+        if let Some(expr) = &global_var.expr {
             if let Some(target_type) = &global_var.ty {
                 let expr_type = expr.sema_type.clone().unwrap();
 
@@ -1022,6 +1016,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
         }
+
+        self.symbol_mut
+            .with_global_var_mut(global_var.symbol_id, |resolved_var| {
+                resolved_var.global_var_sig.rhs = global_var.expr.clone();
+                resolved_var.global_var_sig.ty = global_var.ty.clone();
+            });
     }
 
     fn analyze_struct(&mut self, struct_stmt: &mut TypedStructStmt) {
@@ -1234,11 +1234,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         };
     }
 
-    fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
+    fn analyze_var(&mut self, var: &mut TypedVarStmt) {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        if let Some(sema_type) = &var.ty {
-            var.ty = self.normalize_sema_type(sema_type.clone(), var.loc);
+        if let Some(ty) = &var.ty {
+            var.ty = self.normalize_sema_type(ty.clone(), var.loc);
         }
 
         if let Some(rhs) = &mut var.rhs {
@@ -1254,7 +1254,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let is_const = var.ty.as_ref().map(|t| t.is_const()).unwrap_or(false);
 
         if var.is_const != is_const {
-            var.ty = var.ty.clone().map(|t| t.as_const());
+            var.ty = var.ty.clone().map(|ty| ty.as_const());
         }
 
         if !var.is_const && is_const {
@@ -1290,6 +1290,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
         }
+
+        self.symbol_mut.with_var_mut(var.symbol_id, |resolved_var| {
+            resolved_var.variable.ty = var.ty.clone();
+        });
     }
 
     pub(crate) fn analyze_assign(&mut self, assign: &mut TypedAssignExpr) {

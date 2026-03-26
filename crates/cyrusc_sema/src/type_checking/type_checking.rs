@@ -58,22 +58,22 @@ struct FieldEnv {
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn analyze_expr(
         &mut self,
-        typed_expr: &mut TypedExprStmt,
+        expr: &mut TypedExprStmt,
         mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        match &typed_expr.kind {
-            TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, loc }) => {
-                let symbol_entry = self.query.lookup_global_symbol(*symbol_id)?;
+        match &expr.kind {
+            TypedExprKind::Symbol(symbol_expr) => {
+                let symbol_entry = self.query.lookup_global_symbol(symbol_expr.symbol_id).unwrap();
 
                 if !symbol_entry.is_kind_of_variable() && !symbol_entry.as_func().is_some() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnknownSymbol {
-                            symbol_name: fmt_symbol(*symbol_id),
+                            symbol_name: fmt_symbol(symbol_expr.symbol_id),
                         }),
-                        loc: Some(*loc),
+                        loc: Some(symbol_expr.loc),
                         hint: None,
                     });
                     return None;
@@ -89,7 +89,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        self.analyze_expr_non_terminal(typed_expr, expected_type)
+        self.analyze_expr_non_terminal(expr, expected_type)
     }
 
     pub(crate) fn analyze_expr_non_terminal(
@@ -104,7 +104,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.lower_special_exprs(expr, expected_type.clone());
 
         let ty_opt = match &mut expr.kind {
-            TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, loc }) => self.resolve_symbol_type(*symbol_id, *loc),
+            TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.symbol_id, symbol_expr.loc),
             TypedExprKind::Assign(assign) => {
                 self.analyze_assign(assign);
                 assign.rhs.sema_type.clone()
@@ -714,7 +714,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.lookup_global_symbol(struct_init.symbol_id)?;
+        let symbol_entry = self.query.lookup_global_symbol(struct_init.symbol_id).unwrap();
 
         self.report_if_unexpected_type_args(
             &symbol_entry.symbol_generic_params(),
@@ -1529,7 +1529,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //     },
         // }
 
-        Some(())
+        // Some(())
     }
 
     fn validate_unnamed_enum_value_from_enum_sig_variant_kind(
@@ -2320,22 +2320,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Type-checks union initialization syntax which requires exactly one field
     /// to be initialized. Handles generic union types and validates field existence
     /// and type compatibility.
-    ///
-    /// # Validation
-    /// - Exactly one field must be provided (unions hold one value at a time).
-    /// - The field must exist in the union definition.
-    /// - Field value type must match the union field's type (with generic inference).
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis.
-    /// - `struct_init`: The struct initialization AST node (reused for unions).
-    /// - `resolved_union`: The resolved union type definition.
-    /// - `generic_type_opt`: Optional generic type context.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The type of the initialized union (possibly generic).
-    /// - `None`: If validation fails or generic instantiation fails.
-    ///
     fn analyze_regular_union_init(
         &mut self,
         union_init: &mut TypedStructInitExpr,
@@ -2448,23 +2432,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Type-checks struct initialization syntax with named field assignments.
     /// Validates field existence, duplicate assignments, and missing required fields.
     /// Handles generic struct types with type inference from initialization values.
-    ///
-    /// # Validation
-    /// - No duplicate field assignments.
-    /// - All assigned fields exist in the struct definition.
-    /// - All non-optional fields are provided (no missing fields).
-    /// - Field value types match struct field types (with generic inference).
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis.
-    /// - `struct_init`: The struct initialization AST node.
-    /// - `resolved_struct`: The resolved struct type definition.
-    /// - `generic_type_opt`: Optional generic type context.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The type of the initialized struct (possibly generic).
-    /// - `None`: If validation fails, fields missing, or generic instantiation fails.
-    ///
     fn analyze_regular_struct_init(
         &mut self,
         struct_init: &mut TypedStructInitExpr,
@@ -2664,19 +2631,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Detects when a method call on an enum type is actually constructing a fielded
     /// enum variant (e.g., `Color::Rgb(255, 0, 0)`). If successful, performs the
     /// appropriate enum variant analysis with field validation.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis.
-    /// - `scope_opt`: Local scope for symbol resolution.
-    /// - `operand_type`: Type of the operand (should be an enum type).
-    /// - `method_call`: The method call AST node to reinterpret.
-    /// - `expected_type`: Optional type context for generic inference.
-    ///
-    /// # Returns
-    /// Tuple of:
-    /// - `bool`: Whether an enum variant interpretation was attempted.
-    /// - `Option<SemanticType>`: The resulting enum type if interpretation succeeded.
-    ///
     fn maybe_enum_variant_constructor_from_method_call(
         &mut self,
 
@@ -2728,24 +2682,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Type-checks field accesses on union instances by verifying the field exists
     /// in the union definition and the access uses correct pointer syntax.
     /// Annotates the field access AST node with resolved type and index information.
-    ///
-    /// # Process
-    /// 1. **Operand Analysis**: Type-checks the union expression operand.
-    /// 2. **Field Resolution**: Locates the field in the union signature by name.
-    /// 3. **Field Type Normalization**: Normalizes the field's declared type.
-    /// 4. **Access Validation**: Validates pointer access operator usage.
-    /// 5. **AST Annotation**: Attaches resolved field metadata to the AST node.
-    ///
-    /// # Parameters
-    /// - `scope_id_opt`: Scope for type analysis and normalization.
-    /// - `union_sig`: The union type signature containing field definitions.
-    /// - `field_access`: The field access expression to analyze.
-    /// - `expected_type`: Optional type context for operand analysis.
-    ///
-    /// # Returns
-    /// - `Some(SemanticType)`: The normalized type of the accessed union field.
-    /// - `None`: If field doesn't exist, type normalization fails, or access is invalid.
-    ///
     fn analyze_union_field_access(
         &mut self,
 
@@ -3221,7 +3157,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         loc: Loc,
     ) -> Option<FieldAccessKind> {
         let operand_type = match &operand.kind {
-            TypedExprKind::Symbol(symbol) => self.resolve_var_or_global_var_type(symbol.symbol_id)?,
+            TypedExprKind::Symbol(symbol_expr) => self.resolve_var_or_global_var_type(symbol_expr.symbol_id)?,
             _ => self.analyze_expr(operand, expected_type.clone())?,
         };
 
@@ -3358,21 +3294,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Processes the operand passed to a method call based on the 'self' modifier kind
     /// and access operator. For referenced 'self' parameters with dot notation ('.'),
     /// automatically inserts an address-of operation to create a pointer to the object.
-    ///
-    /// # Transformations
-    /// - `SelfModifierKind::Copied`: Uses the operand directly (pass by value).
-    /// - `SelfModifierKind::Referenced`:
-    ///   - With '->': Uses pointer operand directly.
-    ///   - With '.': Creates an address-of expression to obtain a pointer.
-    ///
-    /// # Parameters
-    /// - `operand`: The expression being passed as the 'self' argument.
-    /// - `is_fat_arrow`: Whether the method was accessed using '->' operator.
-    /// - `self_modifier`: The 'self' modifier specification from the method signature.
-    ///
-    /// # Returns
-    /// The transformed expression ready to be used as the method's 'self' argument.
-    ///
     fn analyze_object_self_modifier_argument(
         &mut self,
         operand: &TypedExprStmt,
@@ -3426,7 +3347,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     /// Resolves semantic type of a variable or global variable.
     fn resolve_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
-        let symbol_entry = self.query.lookup_global_symbol(symbol_id)?;
+        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
 
         if let Some(resolved_var) = symbol_entry.as_var() {
             Some(resolved_var.variable.ty.clone().unwrap())

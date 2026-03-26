@@ -15,11 +15,11 @@ use cyrusc_diagcentral::reporter::DiagReporter;
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use cyrusc_fs_utils::read_file;
-use cyrusc_lexer::Lexer;
-use cyrusc_parser::Parser;
+use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::SourceMap;
-use std::{env, sync::Arc};
+use std::{env, process::exit, sync::Arc};
 
 // FIXME: Move to cyrusc_compiler/driver.rs
 pub fn main() {
@@ -33,16 +33,12 @@ pub fn main() {
 
     let reporter = Arc::new(DiagReporter::new(source_map.clone()));
 
-    let mut lexer = Lexer::new(&reporter, &source_file);
-    let tokens = lexer.tokenize();
-    reporter.display_and_exit_if_has_errors();
+    let source_parser = SourceParser::new(reporter);
 
-    let mut parser = Parser::new(reporter.clone(), &source_file, tokens);
-
-    match parser.parse() {
+    match source_parser.parse_program(&source_file) {
         Ok(program_tree) => {
             dbg!(program_tree);
         }
-        Err(()) => reporter.display_and_exit_if_has_errors(),
+        Err(()) => exit(1),
     }
 }

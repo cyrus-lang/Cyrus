@@ -329,8 +329,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_compare_enums(&mut self, lhs_type: SemanticType, rhs_type: SemanticType) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         let enum_id1 = lhs_type.const_inner().as_enum_symbol_id().unwrap();
         let enum_id2 = rhs_type.const_inner().as_enum_symbol_id().unwrap();
 

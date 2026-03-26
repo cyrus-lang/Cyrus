@@ -57,7 +57,7 @@ impl Resolver {
                 continue;
             }
 
-            self.global_symbols_registry
+            self.global_symbols
                 .insert_symbol_name(module_id, &decl_name.value);
         }
     }
@@ -768,7 +768,7 @@ impl Resolver {
 
         let symbol_entry = SymbolEntry::new(SymbolEntryKind::Typedef(resolved_typedef));
 
-        self.global_symbols_registry
+        self.global_symbols
             .insert_symbol_entry(module_id, symbol_id, symbol_entry);
 
         let generic_params = typedef
@@ -895,7 +895,7 @@ impl Resolver {
             },
         };
 
-        self.global_symbols_registry.insert_symbol_entry(
+        self.global_symbols.insert_symbol_entry(
             module_id,
             symbol_id,
             SymbolEntry::new(SymbolEntryKind::Interface(resolved_interface)),
@@ -960,7 +960,7 @@ impl Resolver {
             },
         };
 
-        self.global_symbols_registry.insert_symbol_entry(
+        self.global_symbols.insert_symbol_entry(
             module_id,
             symbol_id,
             SymbolEntry::new(SymbolEntryKind::Union(resolved_union)),
@@ -1060,7 +1060,7 @@ impl Resolver {
             },
         };
 
-        self.global_symbols_registry.insert_symbol_entry(
+        self.global_symbols.insert_symbol_entry(
             module_id,
             symbol_id,
             SymbolEntry::new(SymbolEntryKind::Enum(resolved_enum)),
@@ -1116,7 +1116,7 @@ impl Resolver {
             },
         };
 
-        self.global_symbols_registry.insert_symbol_entry(
+        self.global_symbols.insert_symbol_entry(
             module_id,
             symbol_id,
             SymbolEntry::new(SymbolEntryKind::GlobalVar(resolved_global_var)),
@@ -1188,7 +1188,7 @@ impl Resolver {
                 }
             }
 
-            let method_id = self.global_symbols_registry.insert_symbol_name(module_id, &unique_name);
+            let method_id = self.global_symbols.insert_symbol_name(module_id, &unique_name);
             methods.insert(original_name.clone(), method_id);
 
             let func_sig = FuncSig {
@@ -1212,7 +1212,7 @@ impl Resolver {
                 func_body: None,
             };
 
-            self.global_symbols_registry.insert_symbol_entry(
+            self.global_symbols.insert_symbol_entry(
                 module_id,
                 method_id,
                 SymbolEntry::new(SymbolEntryKind::Method(resolved_method)),
@@ -1222,8 +1222,7 @@ impl Resolver {
         }
 
         for (method_id, (scope, body, is_generic)) in method_bodies {
-            let SymbolEntryKind::Method(mut resolved_method) =
-                self.lookup_global_symbol(method_id).unwrap().kind
+            let SymbolEntryKind::Method(mut resolved_method) = self.lookup_global_symbol(method_id).unwrap().kind
             else {
                 unreachable!();
             };
@@ -1252,7 +1251,6 @@ impl Resolver {
                                 ty,
                                 rhs: None,
                                 is_const: false,
-                                analyzed: true,
                                 loc: resolved_method.func_sig.loc,
                             },
                         };
@@ -1263,7 +1261,7 @@ impl Resolver {
                             .unwrap()
                             .insert(self_name.to_string().clone(), self_id);
 
-                        self.global_symbols_registry
+                        self.global_symbols
                             .insert_symbol_entry(module_id, self_id, symbol_entry);
                     }
                 }
@@ -1280,7 +1278,7 @@ impl Resolver {
                     resolved_method.func_body = Some(Box::new(typed_body));
                 }
 
-                self.global_symbols_registry.insert_symbol_entry(
+                self.global_symbols.insert_symbol_entry(
                     module_id,
                     method_id,
                     SymbolEntry::new(SymbolEntryKind::Method(resolved_method)),
@@ -1401,7 +1399,7 @@ impl Resolver {
             },
         };
 
-        self.global_symbols_registry.insert_symbol_entry(
+        self.global_symbols.insert_symbol_entry(
             module_id,
             symbol_id,
             SymbolEntry::new(SymbolEntryKind::Struct(resolved_struct)),
@@ -1582,7 +1580,7 @@ impl Resolver {
 
         let symbol_entry = SymbolEntry::new(SymbolEntryKind::Func(resolved_func));
 
-        self.global_symbols_registry
+        self.global_symbols
             .insert_symbol_entry(module_id, symbol_id, symbol_entry);
 
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
@@ -1635,7 +1633,7 @@ impl Resolver {
 
         let symbol_entry = SymbolEntry::new(SymbolEntryKind::Func(resolved_func));
 
-        self.global_symbols_registry
+        self.global_symbols
             .insert_symbol_entry(module_id, symbol_id, symbol_entry);
 
         let typed_func_body = self.resolve_block_stmt(&func_def.body)?;
@@ -1978,7 +1976,6 @@ impl Resolver {
             ty,
             rhs: typed_rhs,
             is_const: variable.is_const,
-            analyzed: variable.rhs.is_some(),
             loc: variable.loc,
         })
     }
@@ -2637,7 +2634,6 @@ impl Resolver {
             ty,
             rhs: None,
             is_const,
-            analyzed: false,
             loc: ident.loc,
         };
 
@@ -2647,7 +2643,7 @@ impl Resolver {
             variable: typed_variable,
         };
 
-        self.global_symbols_registry.insert_symbol_entry(
+        self.global_symbols.insert_symbol_entry(
             module_id,
             symbol_id,
             SymbolEntry::new(SymbolEntryKind::Var(resolved_var)),

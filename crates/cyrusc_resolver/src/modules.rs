@@ -183,6 +183,7 @@ impl Resolver {
                 module_file_path: loaded_module.file_path.clone(),
                 alias: loaded_module.alias.clone(),
             };
+
             let already_directly_imported = self.imported_modules.contains(&import_key);
             self.imported_modules.insert(import_key);
 
@@ -209,7 +210,7 @@ impl Resolver {
                             .insert_module_alias(parent_module_id, group_name, module_id);
                     }
                     ModuleAlias::Single(ref module_segment_singles) => {
-                        self.load_module_import_singles(
+                        self.proxy_imported_module_symbols_to_current_module(
                             parent_module_id,
                             module_id,
                             module_segment_singles,
@@ -228,7 +229,7 @@ impl Resolver {
                             .insert_module_alias(parent_module_id, group_name, module_id);
                     }
                     ModuleAlias::Single(ref module_segment_singles) => {
-                        self.load_module_import_singles(
+                        self.proxy_imported_module_symbols_to_current_module(
                             parent_module_id,
                             module_id,
                             module_segment_singles,
@@ -267,7 +268,7 @@ impl Resolver {
                                 .insert_module_alias(parent_module_id, group_name, module_id);
                         }
                         ModuleAlias::Single(ref module_segment_singles) => {
-                            self.load_module_import_singles(
+                            self.proxy_imported_module_symbols_to_current_module(
                                 parent_module_id,
                                 module_id,
                                 module_segment_singles,
@@ -299,7 +300,7 @@ impl Resolver {
         self.module_file_map.get_file_path(&file_path).is_some()
     }
 
-    fn load_module_import_singles(
+    fn proxy_imported_module_symbols_to_current_module(
         &mut self,
         parent_module_id: ModuleID,
         imported_module_id: ModuleID,
@@ -352,14 +353,14 @@ impl Resolver {
 
                 let proxy_symbol_id = SymbolID::new();
 
-                self.global_symbols_registry
-                    .insert_symbol_name(parent_module_id, &renamed_name);
+                self.global_symbols
+                    .insert_symbol_name_with_symbol_id(parent_module_id, &renamed_name, proxy_symbol_id);
 
-                self.global_symbols_registry.insert_symbol_entry(
+                self.global_symbols.insert_symbol_entry(
                     parent_module_id,
                     proxy_symbol_id,
                     SymbolEntry {
-                        kind: SymbolEntryKind::ProxiedSymbol(parent_module_id, symbol_id),
+                        kind: SymbolEntryKind::ProxiedSymbol(imported_module_id, symbol_id),
                         used: false,
                     },
                 );

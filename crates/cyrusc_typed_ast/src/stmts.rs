@@ -243,7 +243,6 @@ pub struct TypedVarStmt {
     pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
-    pub analyzed: bool,
     pub loc: Loc,
 }
 
