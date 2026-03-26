@@ -16,16 +16,14 @@
  */
 #[cfg(test)]
 mod tests {
-    use crate::{
-        SymbolID, exprs::TypedIdentifier, stmts::{TypedGenericParam, TypedGenericParamsList}
-    };
+    use crate::stmts::{TypedGenericParam, TypedGenericParamsList};
+    use cyrusc_ast::Ident;
     use cyrusc_source_loc::{FileID, Loc};
 
     fn make_param(name: &str) -> TypedGenericParam {
         TypedGenericParam {
-            param_name: TypedIdentifier {
-                name: name.to_string(),
-                symbol_id: SymbolID(100),
+            name: Ident {
+                value: name.to_string(),
                 loc: Loc::default(FileID(0)),
             },
             bounds: None,
@@ -44,7 +42,7 @@ mod tests {
         let mut list = TypedGenericParamsList::new();
         list.push(make_param("T"));
         assert_eq!(list.list.len(), 1);
-        assert_eq!(list.list[0].param_name.name, "T");
+        assert_eq!(list.list[0].name.value, "T");
     }
 
     #[test]
@@ -55,7 +53,7 @@ mod tests {
 
         let found = list.lookup_named(&"B".to_string());
         assert!(found.is_some());
-        assert_eq!(found.unwrap().param_name.name, "B");
+        assert_eq!(found.unwrap().name.value, "B");
     }
 
     #[test]
@@ -75,7 +73,7 @@ mod tests {
 
         let found = list.lookup_positional(1);
         assert!(found.is_some());
-        assert_eq!(found.unwrap().param_name.name, "U");
+        assert_eq!(found.unwrap().name.value, "U");
     }
 
     #[test]

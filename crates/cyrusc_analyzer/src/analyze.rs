@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    config::AnalyzerConfig, diagnostics::AnalyzerDiagKind, normalizer::TypeCache, type_checking::type_checking::FnEnv,
+    config::AnalyzerConfig, diagnostics::AnalyzerDiagKind, normalizer::TypeCache, type_checking::type_checking::FuncEnv,
 };
 use cyrusc_ast::{
     AssignKind,
@@ -67,7 +67,7 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub(crate) source_map: Arc<SourceMap>,
     pub(crate) reporter: Arc<DiagReporter>,
 
-    pub(crate) fn_env: FnEnv,
+    pub(crate) fn_env: FuncEnv,
     pub(crate) type_cache: TypeCache,
 
     control_stack: Vec<ControlRegion>,
@@ -98,7 +98,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Self {
             config,
             type_cache: TypeCache::default(),
-            fn_env: FnEnv::new(),
+            fn_env: FuncEnv::new(),
             reporter,
             source_map,
             control_stack: Vec::new(),
@@ -879,7 +879,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let func_type = self.fn_env.current_func.clone().unwrap();
+        let func_type = self.fn_env.current_func_type.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {
@@ -1065,7 +1065,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
+        self.fn_env.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
             struct_stmt.symbol_id,
         )));
 
@@ -1100,7 +1100,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+        self.fn_env.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
             union_stmt.symbol_id,
         )));
 
@@ -1126,7 +1126,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+        self.fn_env.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
             enum_stmt.symbol_id,
         )));
 
@@ -1163,7 +1163,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_func = Some(TypedFuncType {
+        self.fn_env.current_func_type = Some(TypedFuncType {
             symbol_id: Some(func_def.symbol_id),
             def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(&func_def.params),
@@ -1520,16 +1520,16 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             if let Some(method_generic_params) = symbol_entry.method_generic_params() {
                 for method_generic_param in &method_generic_params.list {
                     if generic_params
-                        .lookup_named(&method_generic_param.param_name.name)
+                        .lookup_named(&method_generic_param.name.value)
                         .is_some()
                     {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
-                                param_name: method_generic_param.param_name.name.clone(),
+                                param_name: method_generic_param.name.as_string(),
                                 object_name: object_name.clone(),
                             }),
-                            loc: Some(method_generic_param.param_name.loc),
+                            loc: Some(method_generic_param.name.loc),
                             hint: Some("Consider to rename the generic param to a different name.".to_string()),
                         });
                     }
@@ -1543,18 +1543,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let mut collected_names: Vec<String> = Vec::new();
 
         for generic_param in &generic_params.list {
-            if collected_names.contains(&generic_param.param_name.name) {
+            if collected_names.contains(&generic_param.name.value) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DuplicateGenericParam {
-                        param_name: generic_param.param_name.name.clone(),
+                        param_name: generic_param.name.as_string(),
                     }),
-                    loc: Some(generic_param.param_name.loc),
+                    loc: Some(generic_param.name.loc),
                     hint: Some("Consider to rename the generic param to a different name.".to_string()),
                 });
             }
 
-            collected_names.push(generic_param.param_name.name.clone());
+            collected_names.push(generic_param.name.as_string());
         }
     }
 

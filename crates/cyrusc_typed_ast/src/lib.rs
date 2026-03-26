@@ -55,6 +55,12 @@ impl ModuleID {
     }
 }
 
+impl SymbolID {
+    pub const fn placeholder() -> Self {
+        Self(0)
+    }
+}
+
 impl From<u32> for SymbolID {
     fn from(value: u32) -> Self {
         Self(value)

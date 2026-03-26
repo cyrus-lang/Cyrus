@@ -73,7 +73,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             mapping_ctx_arena,
             vtable_registry,
             target,
-            lambda_id: 0
+            lambda_id: 0,
         }
     }
 
@@ -260,7 +260,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_export_pattern_recursive(&mut self, pattern: &TypedExportPattern, vars: &mut Vec<CIRVarStmt>) {
         match pattern {
             TypedExportPattern::Ident(symbol_id) => {
-                let var = self.query.lookup_var(*symbol_id).unwrap().variable;
+                let var = &self.query.lookup_var(*symbol_id).unwrap().variable;
 
                 let var_name = var.name.clone();
                 let var_ty = self.lower_sema_ty(&var.ty.as_ref().unwrap());
@@ -647,7 +647,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                                 ));
                             }
                             TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
-                                let exported_fields: Vec<(TypedIdentifier, CIRTy)> = exported_fields
+                                let exported_fields: Vec<(TypedIdent, CIRTy)> = exported_fields
                                     .iter()
                                     .enumerate()
                                     .map(|(i, ident)| {
@@ -818,25 +818,35 @@ impl<'resolver> CIRTraverse<'resolver> {
             .collect()
     }
 
-    fn lower_func_params(&mut self, func_params: &TypedFuncParams) -> CIRFuncParams {
+    fn lower_func_params(&mut self, func_params: &TypedFuncParams, is_decl: bool) -> CIRFuncParams {
         CIRFuncParams {
             list: func_params
                 .list
                 .iter()
-                .map(|param| {
-                    let name = Some(param.name());
-                    let loc = param.loc();
+                .map(|param_kind| {
+                    let name = Some(param_kind.name());
+                    let loc = param_kind.loc();
 
-                    match param {
-                        TypedFuncParamKind::FuncParam(func_param) => CIRFuncParam {
-                            name,
-                            irv_id: func_param.symbol_id.0,
-                            ty: self.lower_sema_ty(&func_param.ty),
-                            loc,
-                        },
+                    match param_kind {
+                        TypedFuncParamKind::FuncParam(func_param) => {
+                            let irv_id = {
+                                if !is_decl {
+                                    Some(func_param.symbol_id.unwrap().0)
+                                } else {
+                                    None
+                                }
+                            };
+
+                            CIRFuncParam {
+                                name,
+                                irv_id,
+                                ty: self.lower_sema_ty(&func_param.ty),
+                                loc,
+                            }
+                        }
                         TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
                             name,
-                            irv_id: self_modifier.self_id.unwrap().0,
+                            irv_id: Some(self_modifier.self_id.unwrap().0),
                             ty: self.lower_sema_ty(&self_modifier.ty.as_ref().unwrap()),
                             loc,
                         },
@@ -848,7 +858,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRStmt {
-        let params = self.lower_func_params(&func_def.params);
+        let params = self.lower_func_params(&func_def.params, false);
 
         let body = self.lower_body(&func_def.body);
         let ret = self.lower_sema_ty(&func_def.ret_type);
@@ -880,7 +890,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_func_decl(&mut self, func_decl: &TypedFuncDeclStmt, mangle_name: bool) -> CIRFuncDeclStmt {
-        let params = self.lower_func_params(&func_decl.params);
+        let params = self.lower_func_params(&func_decl.params, true);
         let ret = self.lower_sema_ty(&func_decl.ret_type);
 
         let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
@@ -905,7 +915,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     pub(crate) fn lower_func_sig(&mut self, irv_id: IRValueID, func_sig: &FuncSig) -> CIRFuncDeclStmt {
-        let params = self.lower_func_params(&func_sig.params);
+        let params = self.lower_func_params(&func_sig.params, func_sig.is_func_decl);
         let ret = self.lower_sema_ty(&func_sig.ret_type);
 
         let mut cir_func_decl = CIRFuncDeclStmt {
@@ -1133,10 +1143,8 @@ impl<'resolver> CIRTraverse<'resolver> {
                 kind: CIRValueKind::Func(Box::new(cir_func_decl)),
             })
         } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-            let mut global_var_stmt = self.lower_global_var_sig(
-                resolved_global_var.symbol_id.0,
-                &resolved_global_var.global_var_sig,
-            );
+            let mut global_var_stmt =
+                self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
 
             if global_var_stmt.modifiers.vis.is_public() {
                 if global_var_stmt.modifiers.linkage.is_none() {
@@ -1247,7 +1255,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_lambda(&mut self, lambda: &TypedLambdaExpr) -> CIRExprKind {
-        let params = self.lower_func_params(&lambda.params);
+        let params = self.lower_func_params(&lambda.params, false);
         let body = Box::new(self.lower_body(&lambda.body));
         let ret = self.lower_sema_ty(&lambda.ret_type);
 
@@ -1738,7 +1746,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                             let mapping_ctx = generic_type.mapping_ctx.borrow();
 
                             let cir_ty = mapping_ctx
-                                .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                                .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
                                 .map(|sema_type| self.lower_sema_ty(&sema_type))
                                 .unwrap();
 

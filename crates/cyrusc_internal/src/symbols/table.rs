@@ -36,9 +36,9 @@ pub trait SymbolQuery: Sync + Send {
     fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct>;
     fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface>;
 
-    fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID>;
+    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry>;
+    fn lookup_symbol_entry(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry>;
     fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
 
     fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry>;
@@ -53,6 +53,20 @@ pub trait SymbolQuery: Sync + Send {
     fn lookup_module_name(&self, module_id: ModuleID) -> Option<String>;
 }
 
+///  Analyzer‑Only Mutation Helpers
+///
+///  These accessors MUST NOT be used during symbol resolution.
+///
+///  - Resolver phase is responsible for assigning the final `SymbolEntryKind`
+///    using `with_global_symbol_mut` (Unresolved -> Var/Func/Struct/...).
+///
+///  - These helpers are ONLY valid in the analyzer/type‑checking phase, where
+///    symbol kinds are already fixed. They mutate the *interior* of an already-
+///    resolved variant and will assert/fail if called on an Unresolved entry.
+///
+///  Using these in the resolver will silently no‑op or corrupt symbol state.
+///  Resolver code MUST set `entry.kind` explicitly and never rely on these.
+///
 pub trait SymbolEntryMut {
     fn with_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
     where

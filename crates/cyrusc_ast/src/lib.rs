@@ -853,7 +853,37 @@ impl ASTFuncDeclStmt {
 }
 
 impl ASTStmt {
-    #[inline]
+    pub fn vis(&self) -> Option<Visibility> {
+        match self {
+            ASTStmt::FuncDef(func_def) => Some(func_def.modifiers.vis),
+            ASTStmt::FuncDecl(func_decl) => Some(func_decl.modifiers.vis),
+            ASTStmt::Interface(interface) => Some(interface.vis),
+            ASTStmt::Struct(struct_stmt) => Some(struct_stmt.modifiers.vis),
+            ASTStmt::Union(union_stmt) => Some(union_stmt.modifiers.vis),
+            ASTStmt::Enum(enum_stmt) => Some(enum_stmt.modifiers.vis),
+            ASTStmt::GlobalVar(global_var) => Some(global_var.modifiers.vis),
+
+            ASTStmt::Builtin(_)
+            | ASTStmt::For(_)
+            | ASTStmt::While(_)
+            | ASTStmt::Foreach(_)
+            | ASTStmt::Switch(_)
+            | ASTStmt::BlockStmt(_)
+            | ASTStmt::Import(_)
+            | ASTStmt::Variable(_)
+            | ASTStmt::ExportTuple(_)
+            | ASTStmt::Expr(_)
+            | ASTStmt::If(_)
+            | ASTStmt::Return(_)
+            | ASTStmt::Break(_)
+            | ASTStmt::Continue(_)
+            | ASTStmt::Typedef(_)
+            | ASTStmt::Defer(_)
+            | ASTStmt::Label(_)
+            | ASTStmt::Goto(_) => None,
+        }
+    }
+
     pub fn decl_name(&self) -> Option<&Ident> {
         match self {
             ASTStmt::Variable(variable) => Some(&variable.ident),

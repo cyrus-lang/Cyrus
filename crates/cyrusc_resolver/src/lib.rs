@@ -33,7 +33,7 @@ use cyrusc_typed_ast::*;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 mod diagnostics;
@@ -50,7 +50,15 @@ type ImportedModules = HashMap<ModuleGroupName, ModuleID>;
 /// GlobalSymbolRegistry wraps an Arc<Mutex<_>> to allow concurrent access
 /// across compilation units.
 pub struct GlobalSymbolRegistry {
-    inner: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
+    inner: Arc<RwLock<GlobalSymbolRegistryInner>>,
+}
+
+pub struct GlobalSymbolRegistryInner {
+    /// Maps module id to symbol table.
+    pub modules: HashMap<ModuleID, SymbolTable>,
+
+    /// Global symbol storage indexed by SymbolID.
+    pub entries: Vec<SymbolEntry>,
 }
 
 /// Registry for module aliases within the current scope.
@@ -156,9 +164,7 @@ pub struct IDGen {
     /// Allocated module IDs therefore start at 2.
     next_module_id: AtomicU32,
 
-    next_symbol_id: AtomicU32,
     next_label_id: AtomicU32,
-    next_vtable_id: AtomicU32,
 }
 
 impl Resolver {
@@ -234,15 +240,9 @@ impl Resolver {
     where
         F: FnOnce(&mut SymbolEntry) -> R,
     {
-        let mut registry = self.global_symbols.inner.lock().unwrap();
-
-        for table in registry.values_mut() {
-            if let Some(entry) = table.entries.get_mut(&symbol_id) {
-                return Some(f(entry));
-            }
-        }
-
-        None
+        let mut registry = self.global_symbols.inner.write().unwrap();
+        let entry = registry.entries.get_mut(symbol_id.0 as usize)?;
+        Some(f(entry))
     }
 
     /// Resolves a symbol by searching the active scope stack.
@@ -263,35 +263,57 @@ impl Resolver {
 impl GlobalSymbolRegistry {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(RwLock::new(GlobalSymbolRegistryInner {
+                modules: HashMap::new(),
+                entries: Vec::new(),
+            })),
         }
     }
 
-    /// Insert a symbol entry into the symbol table of the given module.
-    ///
-    /// Associates `symbol_id` with its corresponding `SymbolEntry`.
-    pub fn insert_symbol_entry(&self, module_id: ModuleID, symbol_id: SymbolID, symbol_entry: SymbolEntry) {
-        let mut registry = self.inner.lock().unwrap();
-
-        let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
-
-        symbol_table.entries.insert(symbol_id, symbol_entry);
+    pub fn insert_symbol_name(&self, module_id: ModuleID, symbol_id: SymbolID, name: &str) {
+        let mut registry = self.inner.write().unwrap();
+        let table = registry.modules.entry(module_id).or_insert_with(SymbolTable::new);
+        table.names.insert(name.to_string(), symbol_id);
     }
 
-    /// Insert a symbol name into the module's symbol table.
-    ///
-    /// This registers a mapping from `name` to an already allocated `SymbolID`
-    /// within the specified module's symbol table.
-    ///
-    /// The function does **not** generate a new `SymbolID`; the caller must
-    /// provide the identifier to associate with the symbol name.
-    ///
-    /// If the module does not yet have a symbol table, one is created.
-    pub fn insert_symbol_name(&self, module_id: ModuleID, symbol_id: SymbolID, name: &str) {
-        let mut registry = self.inner.lock().unwrap();
-        let symbol_table = registry.entry(module_id).or_insert_with(SymbolTable::new);
+    pub fn lookup_symbol_entry(&self, id: SymbolID) -> Option<SymbolEntry> {
+        let registry = self.inner.read().unwrap();
+        registry.entries.get(id.0 as usize).cloned()
+    }
 
-        symbol_table.names.insert(name.to_owned(), symbol_id);
+    /// Lookup symbol id by name inside module.
+    pub fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+        let registry = self.inner.read().unwrap();
+        registry.modules.get(&module_id)?.names.get(name).copied()
+    }
+
+    /// Allocate and store a new symbol entry in the global arena.
+    pub fn create_symbol(&self, entry: SymbolEntry) -> SymbolID {
+        let mut registry = self.inner.write().unwrap();
+
+        let id = SymbolID(registry.entries.len() as u32);
+        registry.entries.push(entry);
+        id
+    }
+
+    pub fn create_proxy_symbol(
+        &self,
+        current_module: ModuleID,
+        name: &str,
+        imported_module: ModuleID,
+        target_symbol_id: SymbolID,
+    ) -> SymbolID {
+        // proxy inherits visibility from target
+        let target_vis = self.lookup_symbol_entry(target_symbol_id).unwrap().vis_opt.clone();
+
+        let proxy_id = self.create_symbol(SymbolEntry {
+            kind: SymbolEntryKind::ProxiedSymbol(imported_module, target_symbol_id),
+            vis_opt: target_vis,
+            used: false,
+        });
+
+        self.insert_symbol_name(current_module, proxy_id, name);
+        proxy_id
     }
 }
 
@@ -396,127 +418,54 @@ impl ModuleFileMap {
 }
 
 impl SymbolQuery for Resolver {
-    /// Resolve a symbol id to a variable within the given scope.
-    fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Var(resolved_var) => Some(resolved_var),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_var, Var, ResolvedVar);
 
-    /// Resolve a symbol id to a method definition.
-    fn lookup_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_global_var, GlobalVar, ResolvedGlobalVar);
 
-    /// Resolve a symbol id to a global function.
-    fn lookup_func(&self, symbol_di: SymbolID) -> Option<ResolvedFunc> {
-        match self.lookup_global_symbol(symbol_di)?.kind {
-            SymbolEntryKind::Func(resolved_func) => Some(resolved_func),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_method, Method, ResolvedMethod);
 
-    /// Resolve a symbol id to a type definition (typedef).
-    fn lookup_typedef(&self, symbol_id: SymbolID) -> Option<ResolvedTypedef> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_func, Func, ResolvedFunc);
 
-    /// Resolve a symbol id to a global variable.
-    fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::GlobalVar(resolved_global_var) => Some(resolved_global_var),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_typedef, Typedef, ResolvedTypedef);
 
-    /// Resolve a symbol id to an interface/trait definition.
-    fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_union, Union, ResolvedUnion);
 
-    /// Resolve a symbol id to a union definition.
-    fn lookup_union(&self, symbol_id: SymbolID) -> Option<ResolvedUnion> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Union(resolved_union) => Some(resolved_union),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_enum, Enum, ResolvedEnum);
 
-    /// Resolve a symbol id to an enum definition.
-    fn lookup_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_struct, Struct, ResolvedStruct);
 
-    /// Resolve a symbol id to a struct definition.
-    fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct> {
-        match self.lookup_global_symbol(symbol_id)?.kind {
-            SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),
-            _ => None,
-        }
-    }
+    lookup_kind!(lookup_interface, Interface, ResolvedInterface);
 
     /// Look up a symbol identifier by name.
-    fn lookup_symbol_id(&self, name: &str) -> Option<SymbolID> {
-        let registry = self.global_symbols.inner.lock().unwrap();
-
-        for table in registry.values() {
-            if let Some(symbol_id) = table.names.get(name) {
-                return Some(*symbol_id);
-            }
-        }
-
-        None
+    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+        let registry = self.global_symbols.inner.read().unwrap();
+        registry.modules.get(&module_id)?.names.get(name).copied()
     }
 
     /// Look up a symbol identifier by name within a specific module.
     fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
-        let registry = self.global_symbols.inner.lock().unwrap();
-        let table = registry.get(&module_id)?;
-        table.names.get(name).copied()
+        let registry = self.global_symbols.inner.read().unwrap();
+        registry.modules.get(&module_id)?.names.get(name).copied()
     }
 
     /// Retrieve the full semantic entry for a symbol by its name.
-    fn lookup_symbol_entry(&self, name: &str) -> Option<SymbolEntry> {
-        let symbol_id = self.lookup_symbol_id(name)?;
+    fn lookup_symbol_entry(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
+        let symbol_id = self.lookup_symbol_id(module_id, name)?;
         self.lookup_global_symbol(symbol_id)
     }
 
     /// Retrieve the semantic entry for a symbol, resolving proxy chains.
-    fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let registry = self.global_symbols.inner.lock().unwrap();
-
-        let mut current_id = symbol_id;
+    fn lookup_global_symbol(&self, mut id: SymbolID) -> Option<SymbolEntry> {
+        let registry = self.global_symbols.inner.read().unwrap();
 
         loop {
-            let mut found = None;
-
-            for table in registry.values() {
-                if let Some(entry) = table.entries.get(&current_id) {
-                    found = Some(entry.clone());
-                    break;
-                }
-            }
-
-            let entry = found?;
+            let entry = registry.entries.get(id.0 as usize)?;
 
             match entry.kind {
-                SymbolEntryKind::ProxiedSymbol(_, target_id) => {
-                    current_id = target_id;
+                SymbolEntryKind::ProxiedSymbol(_, target) => {
+                    id = target;
                 }
-                _ => return Some(entry),
+                _ => return Some(entry.clone()),
             }
         }
     }
@@ -661,10 +610,7 @@ impl IDGen {
             // 0 = invalid, 1 = master module.
             // Allocation starts at 2.
             next_module_id: AtomicU32::new(2),
-
-            next_symbol_id: AtomicU32::new(1),
             next_label_id: AtomicU32::new(1),
-            next_vtable_id: AtomicU32::new(1),
         }
     }
 
@@ -674,18 +620,8 @@ impl IDGen {
     }
 
     #[inline(always)]
-    pub fn alloc_symbol(&self) -> SymbolID {
-        SymbolID(self.next_symbol_id.fetch_add(1, Ordering::Relaxed))
-    }
-
-    #[inline(always)]
     pub fn alloc_label(&self) -> LabelID {
         LabelID(self.next_label_id.fetch_add(1, Ordering::Relaxed))
-    }
-
-    #[inline(always)]
-    pub fn alloc_vtable(&self) -> VTableID {
-        VTableID(self.next_vtable_id.fetch_add(1, Ordering::Relaxed))
     }
 }
 

@@ -85,7 +85,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_type.is_self_type() && self.fn_env.current_self.is_none() {
+        if sema_type.is_self_type() && self.fn_env.current_self_type.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -504,12 +504,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
         // try to resolve from current object operand context
-        if let Some(sema_type) = &self.fn_env.current_obj_operand_ty {
+        if let Some(sema_type) = &self.fn_env.current_object_type {
             if let Some(generic_type) = sema_type.as_generic_type() {
                 let mapping_ctx = generic_type.mapping_ctx.borrow();
 
                 if let Some(sema_type) =
-                    mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                    mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
                 {
                     return Some(sema_type);
                 }
@@ -521,7 +521,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
         self.fn_env
-            .current_self
+            .current_self_type
             .clone()
             .or(Some(SemanticType::SelfType(self_type)))
     }
@@ -798,6 +798,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         };
 
         let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+        debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
         let mut sema_type_opt = self.resolve_symbol_type_internal(&symbol_entry);
 
@@ -869,6 +870,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.resolve_symbol_type_internal(&target_entry)
             }
             SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),
+            SymbolEntryKind::Unresolved => unreachable!("unresolved symbol entry should not appear here"),
         }
     }
 }

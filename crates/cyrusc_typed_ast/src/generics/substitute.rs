@@ -53,7 +53,7 @@ pub fn substitute_type(
         SemanticType::GenericParam(generic_param) => {
             let mut sema_type = {
                 let mapping_ctx_ref = mapping_ctx.borrow();
-                mapping_ctx_ref.resolve_with_name(mapping_ctx_arena, &generic_param.param_name.name)
+                mapping_ctx_ref.resolve_with_name(mapping_ctx_arena, &generic_param.name.value)
             };
 
             if let Some(SemanticType::GenericParam(generic_param)) = sema_type {

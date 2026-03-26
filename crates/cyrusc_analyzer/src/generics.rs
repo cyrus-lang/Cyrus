@@ -134,7 +134,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             let mapping_ctx = generic_type.mapping_ctx.borrow();
 
             mapping_ctx
-                .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
                 .or(generic_param.default.clone().map(|sema_type| *sema_type))
         };
 
@@ -417,7 +417,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         match (target_ty.const_inner(), expr_ty.const_inner()) {
             (SemanticType::GenericParam(generic_param), _) => {
                 mapping_ctx.insert_named(
-                    GenericMappingEntry::from(generic_param.param_name.clone()),
+                    GenericMappingEntry::from(generic_param.name.clone()),
                     expr_ty.clone(),
                 );
             }
@@ -488,7 +488,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                     for generic_param in &target_generic_type.generic_params.list {
                         let Some(mut sema_type) = expr_mapping_ctx
-                            .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                            .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
                         else {
                             continue;
                         };
@@ -499,7 +499,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         };
 
                         mapping_ctx
-                            .insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), sema_type);
+                            .insert_named(GenericMappingEntry::from(generic_param.name.clone()), sema_type);
                     }
                 }
             }

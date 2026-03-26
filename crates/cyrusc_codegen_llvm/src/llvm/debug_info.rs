@@ -135,7 +135,6 @@ pub unsafe fn create_debug_lexical_block(
     line: u32,
     col: u32,
 ) -> LLVMMetadataRef {
-    dbg!(line);
     unsafe { LLVMDIBuilderCreateLexicalBlock(dctx.builder, parent, dctx.file.metadata, line, col) }
 }
 

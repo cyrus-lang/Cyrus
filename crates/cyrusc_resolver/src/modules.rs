@@ -18,13 +18,7 @@
 use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
 use cyrusc_ast::{ASTImportStmt, ModuleSegmentSingle, ProgramTree, abi::Visibility, format::format_module_segments};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::{
-    module_loader::ModuleAlias,
-    symbols::{
-        symbols::{SymbolEntry, SymbolEntryKind},
-        table::SymbolQuery,
-    },
-};
+use cyrusc_internal::{module_loader::ModuleAlias, symbols::table::SymbolQuery};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{ModuleID, TypedProgramTree};
 use std::{
@@ -330,8 +324,10 @@ impl Resolver {
             {
                 // check symbol visibility
                 let symbol_entry = self.lookup_global_symbol(symbol_id).unwrap();
-                let vis = symbol_entry.vis();
-                self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
+
+                if let Some(vis) = symbol_entry.vis_opt {
+                    self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
+                }
             }
 
             {
@@ -351,19 +347,8 @@ impl Resolver {
                     continue;
                 }
 
-                let proxy_symbol_id = self.id_gen.alloc_symbol();
-
                 self.global_symbols
-                    .insert_symbol_name(parent_module_id, proxy_symbol_id, &renamed_name);
-
-                self.global_symbols.insert_symbol_entry(
-                    parent_module_id,
-                    proxy_symbol_id,
-                    SymbolEntry {
-                        kind: SymbolEntryKind::ProxiedSymbol(imported_module_id, symbol_id),
-                        used: false,
-                    },
-                );
+                    .create_proxy_symbol(parent_module_id, &renamed_name, imported_module_id, symbol_id);
             }
         }
     }

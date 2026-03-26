@@ -17,7 +17,6 @@
 
 use crate::{
     SymbolID,
-    exprs::TypedIdentifier,
     format::{SymbolFormatterFn, format_sema_type},
     generics::{
         diagnostics::GenericTypesDiagKind,
@@ -27,6 +26,7 @@ use crate::{
     stmts::{TypedGenericParamsList, TypedTypeArg, TypedTypeArgs},
     types::SemanticType,
 };
+use cyrusc_ast::Ident;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use std::{
@@ -96,7 +96,7 @@ impl GenericType {
                     self.check_for_overriding_parent_generic_param(
                         mapping_ctx_arena.clone(),
                         &mapping_ctx,
-                        generic_param.param_name.name.clone(),
+                        generic_param.name.as_string(),
                         Some(ty.clone()),
                         fmt_symbol,
                         loc,
@@ -104,12 +104,11 @@ impl GenericType {
 
                     if let Some(target_generic_param) = ty.as_generic_param() {
                         mapping_ctx.insert_linked(
-                            GenericMappingEntry::from(target_generic_param.param_name.clone()),
-                            GenericMappingEntry::from(generic_param.param_name.clone()),
+                            GenericMappingEntry::from(target_generic_param.name.clone()),
+                            GenericMappingEntry::from(generic_param.name.clone()),
                         );
                     } else {
-                        mapping_ctx
-                            .insert_named(GenericMappingEntry::from(generic_param.param_name.clone()), ty.clone());
+                        mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.name.clone()), ty.clone());
                     }
 
                     drop(mapping_ctx);
@@ -129,7 +128,7 @@ impl GenericType {
                     let typed_identifier = self
                         .generic_params
                         .lookup_named(&key)
-                        .map(|generic_param| GenericMappingEntry::from(generic_param.param_name.clone()))
+                        .map(|generic_param| GenericMappingEntry::from(generic_param.name.clone()))
                         .or(mapping_ctx.resolve_linked_by_name(mapping_ctx_arena.clone(), &key))
                         .ok_or({
                             Diag {
@@ -160,14 +159,12 @@ impl GenericType {
             let mut mapping_ctx = self.mapping_ctx.borrow_mut();
             for generic_param in &template.list {
                 if mapping_ctx
-                    .resolve_with_name(mapping_ctx_arena.clone(), &generic_param.param_name.name)
+                    .resolve_with_name(mapping_ctx_arena.clone(), &generic_param.name.value)
                     .is_none()
                 {
                     if let Some(default) = &generic_param.default {
-                        mapping_ctx.insert_named(
-                            GenericMappingEntry::from(generic_param.param_name.clone()),
-                            *default.clone(),
-                        );
+                        mapping_ctx
+                            .insert_named(GenericMappingEntry::from(generic_param.name.clone()), *default.clone());
                     }
                 }
             }
@@ -181,7 +178,7 @@ impl GenericType {
 
             let missing_fmt = missing
                 .iter()
-                .map(|ident| format!("'{}'", ident.name))
+                .map(|ident| format!("'{}'", ident.value))
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -238,21 +235,22 @@ impl GenericType {
         &self,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         template: &TypedGenericParamsList,
-    ) -> Vec<TypedIdentifier> {
+    ) -> Vec<Ident> {
         let mapping_ctx = self.mapping_ctx.borrow();
 
         template
             .list
             .iter()
-            .filter(|gp| {
+            .filter(|generic_param| {
                 mapping_ctx
-                    .resolve_with_name(mapping_ctx_arena.clone(), &gp.param_name.name)
+                    .resolve_with_name(mapping_ctx_arena.clone(), &generic_param.name.value)
                     .is_none()
             })
-            .map(|gp| gp.param_name.clone())
+            .map(|gp| gp.name.clone())
             .collect()
     }
 
+    // REVIEW: Move to typed_ast/format.rs
     pub fn format(&self, fmt_symbol: SymbolFormatterFn) -> String {
         let base = fmt_symbol(self.base);
 
@@ -264,7 +262,7 @@ impl GenericType {
             for generic_param in self.generic_params.list.clone() {
                 {
                     let sema_ty_opt =
-                        mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name);
+                        mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value);
 
                     if let Some(sema_type) = sema_ty_opt {
                         collected_type_args.push(format_sema_type(sema_type, &fmt_symbol));
@@ -315,7 +313,7 @@ pub fn debug_generic_type<'a>(
     println!("Generic Params: ");
 
     for generic_param in &generic_type.generic_params.list {
-        print!("{}", generic_param.param_name.name.clone());
+        print!("{}", generic_param.name.value.clone());
         if let Some(default) = &generic_param.default {
             print!(" default({})", format_sema_type(*default.clone(), fmt_symbol));
         }

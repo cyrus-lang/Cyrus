@@ -34,7 +34,7 @@ use cyrusc_internal::{
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::exprs::TypedIdentifier;
+use cyrusc_typed_ast::exprs::TypedIdent;
 use inkwell::{
     basic_block::BasicBlock,
     context::AsContextRef,
@@ -316,7 +316,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         payload_alloca: PointerValue<'ll>,
         variant_field_types: Vec<CIRTy>,
         payload_struct_ty: StructType<'ll>,
-        exported_fields: &Vec<(TypedIdentifier, CIRTy)>,
+        exported_fields: &Vec<(TypedIdent, CIRTy)>,
         loc: Loc,
     ) {
         let mut irreg = self.irreg.borrow_mut();

@@ -125,7 +125,7 @@ pub struct TypedSelfType {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub struct TypedIdentifier {
+pub struct TypedIdent {
     pub name: String,
     pub symbol_id: SymbolID,
     pub loc: Loc,

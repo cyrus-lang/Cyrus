@@ -25,7 +25,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{LabelID, exprs::TypedIdentifier, generics::monomorph::MonomorphID};
+use cyrusc_typed_ast::{LabelID, exprs::TypedIdent, generics::monomorph::MonomorphID};
 use std::fmt::Debug;
 
 pub type IRValueID = u32;
@@ -318,7 +318,7 @@ pub struct CIRFuncDeclStmt {
 #[derive(Debug, Clone)]
 pub struct CIRFuncParam {
     pub name: Option<String>,
-    pub irv_id: IRValueID,
+    pub irv_id: Option<IRValueID>,
     pub ty: CIRTy,
     pub loc: Loc,
 }
@@ -392,8 +392,8 @@ pub struct CIRSwitchOnEnumCase {
 #[derive(Debug, Clone)]
 pub enum CIRSwitchOnEnumPattern {
     Ident(String, usize),
-    Valued(String, usize, (TypedIdentifier, CIRExpr)),
-    ExportFields(String, usize, Vec<(TypedIdentifier, CIRTy)>),
+    Valued(String, usize, (TypedIdent, CIRExpr)),
+    ExportFields(String, usize, Vec<(TypedIdent, CIRTy)>),
 }
 
 impl CIRSwitchOnEnumPattern {

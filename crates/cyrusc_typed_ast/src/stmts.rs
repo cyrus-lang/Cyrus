@@ -17,7 +17,7 @@
 
 use crate::{
     LabelID, ModuleID, SymbolID,
-    exprs::{TypedExprStmt, TypedIdentifier, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
+    exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
 use cyrusc_ast::{
@@ -290,7 +290,7 @@ pub struct TypedFuncParams {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,
-    Typed(TypedIdentifier, SemanticType),
+    Typed(TypedIdent, SemanticType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -322,7 +322,7 @@ pub struct TypedSelfModifier {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedFuncParam {
-    pub symbol_id: SymbolID,
+    pub symbol_id: Option<SymbolID>, // none if used in func decl
     pub name: String,
     pub ty: SemanticType,
     pub loc: Loc,
@@ -364,7 +364,7 @@ pub enum TypedSwitchCasePattern {
     Range(TypedRange),
     Expr(TypedExprStmt),
     Ident(Ident),
-    EnumVariant(Ident, Vec<TypedIdentifier>, Loc),
+    EnumVariant(Ident, Vec<TypedIdent>, Loc),
 }
 
 #[derive(Debug, Clone)]
@@ -392,7 +392,7 @@ pub struct TypedGenericParamsList {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedGenericParam {
-    pub param_name: TypedIdentifier,
+    pub name: Ident,
     pub bounds: Option<Vec<TypedBound>>,
     pub default: Option<Box<SemanticType>>,
 }
@@ -579,7 +579,7 @@ impl TypedSwitchStmt {
 
 impl Hash for TypedGenericParam {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.param_name.hash(state);
+        self.name.hash(state);
         if let Some(bounds) = &self.bounds {
             bounds.hash(state);
         }
@@ -601,12 +601,8 @@ impl TypedGenericParamsList {
         self.list.push(gp);
     }
 
-    pub fn resolve_symbol_id(&self, name: &String) -> Option<SymbolID> {
-        self.lookup_named(name).map(|p| p.param_name.symbol_id)
-    }
-
     pub fn lookup_named(&self, name: &String) -> Option<&TypedGenericParam> {
-        self.list.iter().find(|p| &p.param_name.name == name)
+        self.list.iter().find(|generic_param| &generic_param.name.value == name)
     }
 
     pub fn lookup_positional(&self, i: usize) -> Option<&TypedGenericParam> {
@@ -705,7 +701,7 @@ impl PartialEq for TypedTupleAccessExpr {
     }
 }
 
-impl PartialEq for TypedIdentifier {
+impl PartialEq for TypedIdent {
     fn eq(&self, other: &Self) -> bool {
         self.symbol_id == other.symbol_id
     }
@@ -723,7 +719,7 @@ impl PartialEq for TypedBuiltinScope {
     }
 }
 
-impl Hash for TypedIdentifier {
+impl Hash for TypedIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.symbol_id.hash(state);
@@ -732,14 +728,3 @@ impl Hash for TypedIdentifier {
 
 impl Eq for TypedBuiltinFunc {}
 impl Eq for TypedBuiltinScope {}
-
-pub fn lookup_symbol_from_generic_params(
-    generic_params: &TypedGenericParamsList,
-    symbol_id: SymbolID,
-) -> Option<TypedGenericParam> {
-    generic_params
-        .list
-        .iter()
-        .find(|generic_param| generic_param.param_name.symbol_id == symbol_id)
-        .cloned()
-}

@@ -482,7 +482,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     self.irreg
                         .borrow_mut()
-                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
                 }
                 ABIArgKind::DirectPair { lo: _, hi: _ } => {
                     let layout = type_layout(&self.target.info, &param.ty);
@@ -542,7 +542,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     self.irreg
                         .borrow_mut()
-                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
                 }
                 ABIArgKind::Indirect { .. } => {
                     let param_alloca = self
@@ -556,7 +556,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     self.irreg
                         .borrow_mut()
-                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
                 }
                 ABIArgKind::Expand { kind } => {
                     let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
@@ -625,7 +625,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     self.irreg
                         .borrow_mut()
-                        .insert(param.irv_id, LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
                 }
                 ABIArgKind::Ignore => {
                     // zero sized type

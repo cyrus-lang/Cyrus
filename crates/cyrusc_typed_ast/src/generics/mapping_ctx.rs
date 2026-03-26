@@ -17,12 +17,12 @@
 
 use crate::{
     SymbolID,
-    exprs::TypedIdentifier,
     format::{SymbolFormatterFn, format_sema_type},
     generics::mapping_ctx_arena::{GenericMappingCtxArena, ParentGenericMappingCtxID},
     stmts::TypedGenericParamsList,
     types::SemanticType,
 };
+use cyrusc_ast::Ident;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -63,11 +63,7 @@ pub fn mapping_ctx_eq(
     let final_generic_params = {
         let mut list = generic_params1.list.clone();
         for generic_param in &generic_params2.list {
-            if list
-                .iter()
-                .find(|x| x.param_name.name == generic_param.param_name.name)
-                .is_none()
-            {
+            if list.iter().find(|x| x.name.value == generic_param.name.value).is_none() {
                 list.push(generic_param.clone());
             }
         }
@@ -78,10 +74,8 @@ pub fn mapping_ctx_eq(
 
     {
         for generic_param in &final_generic_params {
-            let sema_ty_opt1 =
-                mapping_ctx1.resolve_with_name(mapping_ctx_arena.clone(), &generic_param.param_name.name);
-            let sema_ty_opt2 =
-                mapping_ctx2.resolve_with_name(mapping_ctx_arena.clone(), &generic_param.param_name.name);
+            let sema_ty_opt1 = mapping_ctx1.resolve_with_name(mapping_ctx_arena.clone(), &generic_param.name.value);
+            let sema_ty_opt2 = mapping_ctx2.resolve_with_name(mapping_ctx_arena.clone(), &generic_param.name.value);
 
             if sema_ty_opt1 != sema_ty_opt2 {
                 return false;
@@ -297,10 +291,10 @@ impl Display for GenericMappingEntry {
     }
 }
 
-impl From<TypedIdentifier> for GenericMappingEntry {
-    fn from(value: TypedIdentifier) -> Self {
+impl From<Ident> for GenericMappingEntry {
+    fn from(value: Ident) -> Self {
         Self {
-            name: value.name.clone(),
+            name: value.as_string(),
         }
     }
 }

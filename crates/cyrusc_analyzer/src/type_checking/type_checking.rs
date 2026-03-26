@@ -41,10 +41,10 @@ use cyrusc_typed_ast::{
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Debug, Clone)]
-pub(crate) struct FnEnv {
-    pub(crate) current_func: Option<TypedFuncType>,
-    pub(crate) current_self: Option<SemanticType>,
-    pub(crate) current_obj_operand_ty: Option<SemanticType>,
+pub(crate) struct FuncEnv {
+    pub(crate) current_func_type: Option<TypedFuncType>,
+    pub(crate) current_self_type: Option<SemanticType>,
+    pub(crate) current_object_type: Option<SemanticType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
 }
 
@@ -69,6 +69,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
                 let symbol_entry = self.query.lookup_global_symbol(symbol_expr.symbol_id).unwrap();
+                debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
                 if !symbol_entry.is_kind_of_variable() && !symbol_entry.as_func().is_some() {
                     self.reporter.report(Diag {
@@ -243,7 +244,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
-        let parent_func = self.fn_env.current_func.clone();
+        let parent_func = self.fn_env.current_func_type.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
         lambda.ret_type = self.normalize_sema_type(lambda.ret_type.clone(), lambda.loc)?;
@@ -257,10 +258,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             loc: lambda.loc,
         };
 
-        self.fn_env.current_func = Some(func_type.clone());
+        self.fn_env.current_func_type = Some(func_type.clone());
         self.analyze_block_stmt(&mut lambda.body);
 
-        self.fn_env.current_func = parent_func;
+        self.fn_env.current_func_type = parent_func;
         Some(SemanticType::FuncType(func_type))
     }
 
@@ -1327,6 +1328,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     // }
     // FIXME
 
+    // FIXME
     /// Analyzes dynamic expression operations (dynamic dispatch/interface implementation).
     ///
     /// Processes dynamic expressions that enable runtime polymorphism through interface types,
@@ -2777,7 +2779,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: format_sema_type(SemanticType::UnnamedUnion(unnamed_union_type.clone()), fmt_symbol),
+                        struct_name: format_sema_type(
+                            SemanticType::UnnamedUnion(unnamed_union_type.clone()),
+                            fmt_symbol,
+                        ),
                         field_name: field_access.field_name.clone(),
                     }),
                     loc: Some(field_access.loc),
@@ -3269,8 +3274,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// in a method call. This contextual information is used for subsequent semantic
     /// analysis within the method body (e.g., field access validation, implicit 'self').
     pub(crate) fn set_ty_ctx_self_type(&mut self, method_call: &mut TypedMethodCall, sema_type: &SemanticType) {
-        self.fn_env.current_obj_operand_ty = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
-        self.fn_env.current_self = Some(sema_type.clone());
+        self.fn_env.current_object_type = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
+        self.fn_env.current_self_type = Some(sema_type.clone());
         method_call.self_ty = Some(sema_type.clone());
     }
 
@@ -3620,12 +3625,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 }
 
-impl FnEnv {
+impl FuncEnv {
     pub fn new() -> Self {
         Self {
-            current_func: None,
-            current_self: None,
-            current_obj_operand_ty: None,
+            current_func_type: None,
+            current_self_type: None,
+            current_object_type: None,
             current_method_symbol_id: None,
         }
     }

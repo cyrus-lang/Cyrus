@@ -297,7 +297,7 @@ pub fn format_unnamed_enum_type<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fm
 pub fn format_sema_type<'a>(sema_type: SemanticType, fmt_symbol: SymbolFormatterFn) -> String {
     match sema_type {
         SemanticType::UnresolvedSymbol(..) => format!("<unresolved_symbol>"),
-        SemanticType::GenericParam(generic_param) => generic_param.param_name.name.clone(),
+        SemanticType::GenericParam(generic_param) => generic_param.name.as_string(),
         SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
             ResolvedSymbol::Enum(symbol_id) => fmt_symbol(symbol_id),
             ResolvedSymbol::Typedef(symbol_id) => fmt_symbol(symbol_id),

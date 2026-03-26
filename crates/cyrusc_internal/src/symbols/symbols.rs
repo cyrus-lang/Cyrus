@@ -28,11 +28,13 @@ use cyrusc_typed_ast::{
 #[derive(Debug, Clone)]
 pub struct SymbolEntry {
     pub kind: SymbolEntryKind,
+    pub vis_opt: Option<Visibility>,
     pub used: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum SymbolEntryKind {
+    Unresolved,
     Method(ResolvedMethod),
     Func(ResolvedFunc),
     Typedef(ResolvedTypedef),
@@ -110,12 +112,21 @@ pub struct ResolvedVar {
 }
 
 impl SymbolEntry {
-    pub fn new(kind: SymbolEntryKind) -> Self {
-        Self { used: false, kind }
+    pub fn new(kind: SymbolEntryKind, vis: Option<Visibility>) -> Self {
+        Self { kind, vis_opt: vis, used: false }
+    }
+
+    pub fn unresolved(vis: Option<Visibility>) -> Self {
+        Self {
+            kind: SymbolEntryKind::Unresolved,
+            vis_opt: vis,
+            used: false,
+        }
     }
 
     pub fn module_id(&self) -> ModuleID {
         match &self.kind {
+            SymbolEntryKind::Unresolved => unreachable!(),
             SymbolEntryKind::Method(resolved_method) => resolved_method.module_id,
             SymbolEntryKind::Func(resolved_func) => resolved_func.module_id,
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.module_id,
@@ -131,6 +142,7 @@ impl SymbolEntry {
 
     pub fn symbol_id(&self) -> SymbolID {
         match &self.kind {
+            SymbolEntryKind::Unresolved => unreachable!(),
             SymbolEntryKind::Method(resolved_method) => resolved_method.symbol_id,
             SymbolEntryKind::Func(resolved_func) => resolved_func.symbol_id,
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.symbol_id,
@@ -146,6 +158,7 @@ impl SymbolEntry {
 
     pub fn decl_name(&self) -> String {
         match &self.kind {
+            SymbolEntryKind::Unresolved => "<UNRESOLVED_SYMBOL_ENTRY_KIND>".to_string(),
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.name.clone(),
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.name.clone(),
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
@@ -161,6 +174,7 @@ impl SymbolEntry {
 
     pub fn vis(&self) -> Visibility {
         match &self.kind {
+            SymbolEntryKind::Unresolved => unreachable!(),
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.modifiers.vis.clone(),
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.vis.clone(),
             SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.modifiers.vis.clone(),
@@ -176,6 +190,7 @@ impl SymbolEntry {
 
     pub fn loc(&self) -> Loc {
         match &self.kind {
+            SymbolEntryKind::Unresolved => unreachable!(),
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.loc,
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.loc,
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.loc,
@@ -191,6 +206,7 @@ impl SymbolEntry {
 
     pub fn symbol_generic_params(&self) -> Option<TypedGenericParamsList> {
         match &self.kind {
+            SymbolEntryKind::Unresolved => unreachable!(),
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.generic_params.clone(),
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.generic_params.clone(),
             SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.generic_params.clone(),
