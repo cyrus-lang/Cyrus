@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_missing_fields};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{SelfModifierKind, abi::Visibility};
 use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel};
@@ -28,7 +28,10 @@ use cyrusc_tokens::{
 };
 use cyrusc_typed_ast::{
     exprs::*,
-    format::{SymbolFormatterFn, format_func_ty, format_sema_ty, format_typed_expr, format_unnamed_enum_ty},
+    format::{
+        SymbolFormatterFn, format_func_type, format_missing_fields, format_sema_type, format_typed_expr,
+        format_unnamed_enum_type,
+    },
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::*},
     sigs::*,
     stmts::*,
@@ -349,7 +352,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .find(|field| field.name == unnamed_union_value.field_name.as_string())
             .cloned()
         else {
-            let object_name = format_sema_ty(expected_type.unwrap(), fmt_symbol);
+            let object_name = format_sema_type(expected_type.unwrap(), fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -445,8 +448,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             if let Some(explicit_field_ty) = &field.ty {
                 if !self.check_type_mismatch(field_value_type.clone(), explicit_field_ty.clone(), field.loc) {
-                    let lhs_type = format_sema_ty(explicit_field_ty.clone(), fmt_symbol);
-                    let rhs_type = format_sema_ty(field_value_type, fmt_symbol);
+                    let lhs_type = format_sema_type(explicit_field_ty.clone(), fmt_symbol);
+                    let rhs_type = format_sema_type(field_value_type, fmt_symbol);
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type }),
@@ -514,7 +517,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .and_then(|b| Some(b.is_integer()))
             .is_some()
         {
-            let found_type = format_sema_ty(index_concrete_type, fmt_symbol);
+            let found_type = format_sema_type(index_concrete_type, fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -747,7 +750,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
-                    symbol_name: format_sema_ty(sema_type, fmt_symbol),
+                    symbol_name: format_sema_type(sema_type, fmt_symbol),
                 }),
                 loc: Some(struct_init.loc),
                 hint: None,
@@ -869,7 +872,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 return Some(ret_type);
             }
         } else {
-            let symbol_name = format_sema_ty(operand_type, fmt_symbol);
+            let symbol_name = format_sema_type(operand_type, fmt_symbol);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1217,8 +1220,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
 
             if !self.check_type_mismatch(expr_type.clone(), *array_type!().element_type.clone(), element.loc) {
-                let element_type = format_sema_ty(expr_type, fmt_symbol);
-                let expected_type = format_sema_ty(*array_type!().element_type.clone(), fmt_symbol);
+                let element_type = format_sema_type(expr_type, fmt_symbol);
+                let expected_type = format_sema_type(*array_type!().element_type.clone(), fmt_symbol);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1460,7 +1463,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
-                        enum_name: format_unnamed_enum_ty(unnamed_enum_type, fmt_symbol),
+                        enum_name: format_unnamed_enum_type(unnamed_enum_type, fmt_symbol),
                         variant_name: unnamed_enum_value.ident.as_string(),
                     }),
                     loc: Some(unnamed_enum_value.loc),
@@ -1646,7 +1649,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             let is_generic_type = sema_type.as_generic_type().is_some() || is_generic_interface;
 
             if is_generic_object && !is_generic_type {
-                let type_name = format_sema_ty(sema_type.clone(), fmt_symbol);
+                let type_name = format_sema_type(sema_type.clone(), fmt_symbol);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1849,7 +1852,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 loc: Some(method_call.loc),
                 hint: Some(format!(
                     "Call it on a value of type '{}', or declare it as a static function if no instance is required.",
-                    format_sema_ty(operand_type, fmt_symbol)
+                    format_sema_type(operand_type, fmt_symbol)
                 )),
             });
             return None;
@@ -2153,8 +2156,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_sema_ty(param_type.clone(), fmt_symbol),
-                        argument_type: format_sema_ty(arg_type, fmt_symbol),
+                        param_type: format_sema_type(param_type.clone(), fmt_symbol),
+                        argument_type: format_sema_type(arg_type, fmt_symbol),
                         argument_idx: param_idx as u32,
                     }),
                     loc: Some(loc),
@@ -2187,8 +2190,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                        param_type: format_sema_ty(variadic_param_type.clone(), fmt_symbol),
-                                        argument_type: format_sema_ty(arg_type, fmt_symbol),
+                                        param_type: format_sema_type(variadic_param_type.clone(), fmt_symbol),
+                                        argument_type: format_sema_type(arg_type, fmt_symbol),
                                         argument_idx: (i + static_params_len) as u32,
                                     }),
                                     loc: Some(loc),
@@ -2222,7 +2225,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
-        let func_name = format_func_ty(func_type, fmt_symbol);
+        let func_name = format_func_type(func_type, fmt_symbol);
 
         // check argument count
 
@@ -2263,8 +2266,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
-                        param_type: format_sema_ty(param_type.clone(), fmt_symbol),
-                        argument_type: format_sema_ty(arg_type, fmt_symbol),
+                        param_type: format_sema_type(param_type.clone(), fmt_symbol),
+                        argument_type: format_sema_type(arg_type, fmt_symbol),
                         argument_idx: param_idx as u32,
                     }),
                     loc: Some(loc),
@@ -2288,8 +2291,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                            param_type: format_sema_ty(variadic_param_type.clone(), fmt_symbol),
-                                            argument_type: format_sema_ty(arg_type, fmt_symbol),
+                                            param_type: format_sema_type(variadic_param_type.clone(), fmt_symbol),
+                                            argument_type: format_sema_type(arg_type, fmt_symbol),
                                             argument_idx: (i + static_params_len) as u32,
                                         }),
                                         loc: Some(loc),
@@ -2395,8 +2398,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_sema_ty(field.ty.clone(), fmt_symbol),
-                        rhs_type: format_sema_ty(field_init.value.sema_type.clone().unwrap(), fmt_symbol),
+                        lhs_type: format_sema_type(field.ty.clone(), fmt_symbol),
+                        rhs_type: format_sema_type(field_init.value.sema_type.clone().unwrap(), fmt_symbol),
                     }),
                     loc: Some(field_init.value.loc),
                     hint: None,
@@ -2538,8 +2541,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty(field.ty.clone(), fmt_symbol),
-                            rhs_type: format_sema_ty(field_init.value.sema_type.clone().unwrap(), fmt_symbol),
+                            lhs_type: format_sema_type(field.ty.clone(), fmt_symbol),
+                            rhs_type: format_sema_type(field_init.value.sema_type.clone().unwrap(), fmt_symbol),
                         }),
                         loc: Some(field_init.value.loc),
                         hint: None,
@@ -2773,7 +2776,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: format_sema_ty(SemanticType::UnnamedUnion(unnamed_union_type.clone()), fmt_symbol),
+                        struct_name: format_sema_type(SemanticType::UnnamedUnion(unnamed_union_type.clone()), fmt_symbol),
                         field_name: field_access.field_name.clone(),
                     }),
                     loc: Some(field_access.loc),
@@ -2826,7 +2829,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: format_sema_ty(
+                        struct_name: format_sema_type(
                             SemanticType::UnnamedStruct(unnamed_struct_type.clone()),
                             fmt_symbol,
                         ),
@@ -2966,8 +2969,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_ty(enum_valued_field.ty.clone(), fmt_symbol),
-                            rhs_type: format_sema_ty(typed_expr.sema_type.clone().unwrap(), fmt_symbol),
+                            lhs_type: format_sema_type(enum_valued_field.ty.clone(), fmt_symbol),
+                            rhs_type: format_sema_type(typed_expr.sema_type.clone().unwrap(), fmt_symbol),
                         }),
                         loc: Some(typed_expr.loc),
                         hint: None,

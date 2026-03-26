@@ -31,6 +31,7 @@ use cyrusc_ast::{
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::literals::LiteralKind;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct TypedExprStmt {
@@ -120,74 +121,6 @@ pub struct TypedLiteralExpr {
     pub ty: Option<SemanticType>,
     pub kind: LiteralKind,
     pub loc: Loc,
-}
-
-impl TypedLiteralExpr {
-    pub fn format_kind(&self) -> String {
-        match &self.kind {
-            LiteralKind::Integer { .. } => "integer",
-            LiteralKind::Float(..) => "float",
-            LiteralKind::String(..) => "string",
-            LiteralKind::Bool(..) => "bool",
-            LiteralKind::Char(..) => "char",
-            LiteralKind::Null => "null",
-        }
-        .to_string()
-    }
-}
-
-impl TypedExprStmt {
-    pub fn is_lvalue(&self) -> bool {
-        self.mloc == MemoryLocation::LValue
-    }
-
-    pub fn is_rvalue(&self) -> bool {
-        self.mloc == MemoryLocation::RValue
-    }
-}
-
-impl TypedExprKind {
-    pub fn is_dynamic_expr(&self) -> bool {
-        match self {
-            TypedExprKind::Dynamic(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn as_symbol_id(&self) -> Option<SymbolID> {
-        match self {
-            TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => Some(*symbol_id),
-            _ => None,
-        }
-    }
-
-    pub fn is_lvalue(&self) -> bool {
-        match self {
-            TypedExprKind::Symbol(..) => true,
-            TypedExprKind::ArrayIndex(_) => true,
-            TypedExprKind::Deref(_) => true,
-            TypedExprKind::FieldAccess(_) => true,
-            TypedExprKind::TupleAccess(_) => true,
-            TypedExprKind::MethodCall(_) => false,
-            TypedExprKind::FuncCall(_) => false,
-            TypedExprKind::StructInit(_) => false,
-            TypedExprKind::UnnamedStructValue(_) => false,
-            TypedExprKind::UnnamedEnumValue(_) => false,
-            TypedExprKind::Literal(_) => false,
-            TypedExprKind::Prefix(_) => false,
-            TypedExprKind::Infix(_) => false,
-            TypedExprKind::Unary(_) => false,
-            TypedExprKind::Assign(_) => false,
-            TypedExprKind::AddrOf(_) => false,
-            TypedExprKind::Array(_) => false,
-            TypedExprKind::SemanticType(_) => false,
-            TypedExprKind::Lambda(_) => false,
-            TypedExprKind::Tuple(_) => false,
-            TypedExprKind::Dynamic(_) => false,
-            TypedExprKind::UnnamedUnionValue(_) => false,
-            TypedExprKind::Builtin(_) => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -372,6 +305,80 @@ pub struct TypedUnnamedStructValueField {
     pub ty: Option<SemanticType>,
     pub field_value: Box<TypedExprStmt>,
     pub loc: Loc,
+}
+
+impl TypedExprStmt {
+    pub fn is_lvalue(&self) -> bool {
+        self.mloc == MemoryLocation::LValue
+    }
+
+    pub fn is_rvalue(&self) -> bool {
+        self.mloc == MemoryLocation::RValue
+    }
+}
+
+impl TypedExprKind {
+    pub fn is_dynamic_expr(&self) -> bool {
+        match self {
+            TypedExprKind::Dynamic(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn as_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => Some(*symbol_id),
+            _ => None,
+        }
+    }
+
+    pub fn is_lvalue(&self) -> bool {
+        match self {
+            TypedExprKind::Symbol(..) => true,
+            TypedExprKind::ArrayIndex(_) => true,
+            TypedExprKind::Deref(_) => true,
+            TypedExprKind::FieldAccess(_) => true,
+            TypedExprKind::TupleAccess(_) => true,
+            TypedExprKind::MethodCall(_) => false,
+            TypedExprKind::FuncCall(_) => false,
+            TypedExprKind::StructInit(_) => false,
+            TypedExprKind::UnnamedStructValue(_) => false,
+            TypedExprKind::UnnamedEnumValue(_) => false,
+            TypedExprKind::Literal(_) => false,
+            TypedExprKind::Prefix(_) => false,
+            TypedExprKind::Infix(_) => false,
+            TypedExprKind::Unary(_) => false,
+            TypedExprKind::Assign(_) => false,
+            TypedExprKind::AddrOf(_) => false,
+            TypedExprKind::Array(_) => false,
+            TypedExprKind::SemanticType(_) => false,
+            TypedExprKind::Lambda(_) => false,
+            TypedExprKind::Tuple(_) => false,
+            TypedExprKind::Dynamic(_) => false,
+            TypedExprKind::UnnamedUnionValue(_) => false,
+            TypedExprKind::Builtin(_) => false,
+        }
+    }
+}
+
+impl fmt::Display for TypedLiteralExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl TypedLiteralExpr {
+    pub fn format_kind(&self) -> String {
+        match &self.kind {
+            LiteralKind::Integer { .. } => "integer",
+            LiteralKind::Float(..) => "float",
+            LiteralKind::String(..) => "string",
+            LiteralKind::Bool(..) => "bool",
+            LiteralKind::Char(..) => "char",
+            LiteralKind::Null => "null",
+        }
+        .to_string()
+    }
 }
 
 impl TypedUnnamedStructValue {

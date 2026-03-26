@@ -18,7 +18,7 @@
 use crate::{
     SymbolID,
     exprs::TypedIdentifier,
-    format::{SymbolFormatterFn, format_sema_ty},
+    format::{SymbolFormatterFn, format_sema_type},
     generics::{
         diagnostics::GenericTypesDiagKind,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry, mapping_ctx_eq_refcell},
@@ -222,7 +222,7 @@ impl GenericType {
                         level: DiagLevel::Error,
                         kind: Box::new(GenericTypesDiagKind::CannotOverrideParentInferredGenericParam {
                             generic_param: generic_param_name.clone(),
-                            already_inferred_as: format_sema_ty(parent_sema_ty, &fmt_symbol),
+                            already_inferred_as: format_sema_type(parent_sema_ty, &fmt_symbol),
                         }),
                         loc: Some(loc),
                         hint: None,
@@ -267,7 +267,7 @@ impl GenericType {
                         mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.param_name.name);
 
                     if let Some(sema_type) = sema_ty_opt {
-                        collected_type_args.push(format_sema_ty(sema_type, &fmt_symbol));
+                        collected_type_args.push(format_sema_type(sema_type, &fmt_symbol));
                     }
                 }
             }
@@ -317,7 +317,7 @@ pub fn debug_generic_type<'a>(
     for generic_param in &generic_type.generic_params.list {
         print!("{}", generic_param.param_name.name.clone());
         if let Some(default) = &generic_param.default {
-            print!(" default({})", format_sema_ty(*default.clone(), fmt_symbol));
+            print!(" default({})", format_sema_type(*default.clone(), fmt_symbol));
         }
         if let Some(bounds) = &generic_param.bounds {
             print!(
@@ -330,10 +330,10 @@ pub fn debug_generic_type<'a>(
                             .iter()
                             .map(|type_arg| match type_arg {
                                 TypedTypeArg::Positional { i, ty, .. } => {
-                                    format!("  {}:{}\n", i, format_sema_ty(ty.clone(), fmt_symbol))
+                                    format!("  {}:{}\n", i, format_sema_type(ty.clone(), fmt_symbol))
                                 }
                                 TypedTypeArg::Named { key, ty, .. } => {
-                                    format!("  {}:{}\n", key, format_sema_ty(ty.clone(), fmt_symbol))
+                                    format!("  {}:{}\n", key, format_sema_type(ty.clone(), fmt_symbol))
                                 }
                             })
                             .collect::<Vec<String>>()
@@ -354,10 +354,10 @@ pub fn debug_generic_type<'a>(
         for type_arg in type_args {
             match type_arg {
                 TypedTypeArg::Positional { i, ty, .. } => {
-                    println!("  {}:{}", i, format_sema_ty(ty.clone(), fmt_symbol));
+                    println!("  {}:{}", i, format_sema_type(ty.clone(), fmt_symbol));
                 }
                 TypedTypeArg::Named { key, ty, .. } => {
-                    println!("  {}:{}", key, format_sema_ty(ty.clone(), fmt_symbol));
+                    println!("  {}:{}", key, format_sema_type(ty.clone(), fmt_symbol));
                 }
             }
         }
@@ -372,7 +372,7 @@ pub fn debug_generic_type<'a>(
                 println!(
                     "{} -> {}",
                     entry.name.clone(),
-                    format_sema_ty(sema_type.clone(), fmt_symbol)
+                    format_sema_type(sema_type.clone(), fmt_symbol)
                 );
             }
         };
@@ -406,7 +406,7 @@ pub fn debug_generic_type<'a>(
 
     println!(
         "Inline Format: {}",
-        format_sema_ty(SemanticType::GenericType(generic_type.clone()), fmt_symbol)
+        format_sema_type(SemanticType::GenericType(generic_type.clone()), fmt_symbol)
     );
 
     println!("-----------------------");

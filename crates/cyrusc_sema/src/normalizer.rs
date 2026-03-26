@@ -27,7 +27,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
     exprs::TypedSelfType,
-    format::{SymbolFormatterFn, format_unnamed_enum_ty, format_unnamed_struct_ty, format_unnamed_union_ty},
+    format::{SymbolFormatterFn, format_unnamed_enum_type, format_unnamed_struct_type, format_unnamed_union_type},
     generics::{
         generic_type::GenericType,
         mapping_ctx::GenericMappingCtx,
@@ -125,7 +125,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.validate_align(&unnamed_union_type.align, unnamed_union_type.loc);
 
-        let union_name = format_unnamed_union_ty(unnamed_union_type, fmt_symbol);
+        let union_name = format_unnamed_union_type(unnamed_union_type, fmt_symbol);
 
         let mut field_names: Vec<String> = Vec::new();
 
@@ -165,7 +165,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.validate_align(&unnamed_struct_type.align, unnamed_struct_type.loc);
 
-        let struct_name = format_unnamed_struct_ty(unnamed_struct_type, fmt_symbol);
+        let struct_name = format_unnamed_struct_type(unnamed_struct_type, fmt_symbol);
 
         let mut field_names: Vec<String> = Vec::new();
 
@@ -213,7 +213,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let is_repr_c = unnamed_enum_type.is_repr_c();
         let mut variant_names: Vec<String> = Vec::new();
 
-        let enum_name = format_unnamed_enum_ty(unnamed_enum_type, fmt_symbol);
+        let enum_name = format_unnamed_enum_type(unnamed_enum_type, fmt_symbol);
 
         for variant in &mut unnamed_enum_type.variants {
             let variant_ident = match variant {

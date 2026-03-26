@@ -19,7 +19,6 @@ pub mod analyze;
 pub mod config;
 mod lower;
 mod diagnostics;
-mod format;
 mod generics;
 mod nameconv;
 mod normalizer;

@@ -18,7 +18,7 @@
 use crate::{
     SymbolID,
     exprs::TypedIdentifier,
-    format::{SymbolFormatterFn, format_sema_ty},
+    format::{SymbolFormatterFn, format_sema_type},
     generics::mapping_ctx_arena::{GenericMappingCtxArena, ParentGenericMappingCtxID},
     stmts::TypedGenericParamsList,
     types::SemanticType,
@@ -267,7 +267,7 @@ impl GenericMappingCtx {
         let mut parts = Vec::new();
 
         for (entry, sema_type) in &self.named {
-            let type_str = format_sema_ty(sema_type.clone(), fmt_symbol);
+            let type_str = format_sema_type(sema_type.clone(), fmt_symbol);
             parts.push(format!("{} = {}", entry, type_str));
         }
 

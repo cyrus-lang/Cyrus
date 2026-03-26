@@ -21,7 +21,7 @@ use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
-    format::{SymbolFormatterFn, format_sema_ty},
+    format::{SymbolFormatterFn, format_sema_type},
     generics::{
         generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},

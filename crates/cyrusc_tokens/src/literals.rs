@@ -41,9 +41,9 @@ pub enum StringPrefix {
     B, // Bytes string
 }
 
-impl fmt::Display for ASTLiteralExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.kind {
+impl fmt::Display for LiteralKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
             LiteralKind::Integer(integer, integer_type_opt) => {
                 write!(f, "{}", integer)?;
                 if let Some(integer_type) = integer_type_opt {
@@ -71,6 +71,12 @@ impl fmt::Display for ASTLiteralExpr {
             LiteralKind::Char(ch) => write!(f, "{}", ch),
             LiteralKind::Null => write!(f, "null"),
         }
+    }
+}
+
+impl fmt::Display for ASTLiteralExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
     }
 }
 

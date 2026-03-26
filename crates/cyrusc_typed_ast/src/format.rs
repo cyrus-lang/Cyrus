@@ -25,356 +25,249 @@ use crate::{
     },
 };
 use cyrusc_ast::{AssignKind, operators::UnaryOperator};
-use cyrusc_tokens::literals::{LiteralKind, StringPrefix};
+use cyrusc_source_loc::{Loc, SourceMap};
 
 pub type SymbolFormatterFn<'a> = &'a dyn Fn(SymbolID) -> String;
 
-pub fn format_typed_exprs<'a>(exprs: &Vec<TypedExprStmt>, fmt_symbol: SymbolFormatterFn) -> String {
+fn join_exprs(exprs: &[TypedExprStmt], fmt_symbol: SymbolFormatterFn) -> String {
     exprs
         .iter()
-        .map(|expr| format_typed_expr(expr, fmt_symbol))
-        .collect::<Vec<String>>()
+        .map(|e| format_typed_expr(e, fmt_symbol))
+        .collect::<Vec<_>>()
         .join(", ")
 }
 
-pub fn format_typed_expr<'a>(typed_expr: &TypedExprStmt, fmt_symbol: SymbolFormatterFn) -> String {
-    match &typed_expr.kind {
-        TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => fmt_symbol(*symbol_id),
-        TypedExprKind::Literal(typed_literal) => match &typed_literal.kind {
-            LiteralKind::Integer(value, token_kind_opt) => {
-                let mut fmt = String::new();
-                fmt.push_str(&value.to_string());
-                if let Some(token_kind) = token_kind_opt {
-                    fmt.push_str(&token_kind.to_string());
-                }
-                fmt
-            }
-            LiteralKind::Float(value, token_kind_opt) => {
-                let mut fmt = String::new();
-                fmt.push_str(&value.to_string());
-                if let Some(token_kind) = token_kind_opt {
-                    fmt.push_str(&token_kind.to_string());
-                }
-                fmt
-            }
-            LiteralKind::String(value, string_prefix) => {
-                let mut fmt = String::new();
+pub fn format_typed_expr(expr: &TypedExprStmt, fmt_symbol: SymbolFormatterFn) -> String {
+    use TypedExprKind::*;
 
-                if let Some(prefix) = string_prefix {
-                    match prefix {
-                        StringPrefix::C => fmt.push_str("c"),
-                        StringPrefix::B => fmt.push_str("b"),
-                    }
-                }
+    match &expr.kind {
+        Symbol(TypedSymbolExpr { symbol_id, .. }) => fmt_symbol(*symbol_id),
+        Literal(literal) => literal.to_string(),
+        Prefix(p) => format!("{}{}", p.op, format_typed_expr(&p.operand, fmt_symbol)),
 
-                fmt.push_str(&format!("\"{}\"", value));
-                fmt
-            }
-            LiteralKind::Bool(value) => {
-                if *value {
-                    return "true".to_string();
-                } else {
-                    return "false".to_string();
-                }
-            }
-            LiteralKind::Char(value) => value.to_string(),
-            LiteralKind::Null => "null".to_string(),
-        },
-        TypedExprKind::Prefix(typed_prefix_expr) => {
-            let mut fmt = String::new();
-            fmt.push_str(&typed_prefix_expr.op.to_string());
-            fmt.push_str(&format_typed_expr(&typed_prefix_expr.operand, fmt_symbol));
-            fmt
-        }
-        TypedExprKind::Infix(typed_infix_expr) => {
-            let mut fmt = String::new();
-            fmt.push_str(&format_typed_expr(&typed_infix_expr.lhs, fmt_symbol));
-            fmt.push_str(&typed_infix_expr.op.to_string());
-            fmt.push_str(&format_typed_expr(&typed_infix_expr.rhs, fmt_symbol));
-            fmt
-        }
-        TypedExprKind::Unary(typed_unary_expr) => {
-            let operand_fmt = &format_typed_expr(&typed_unary_expr.operand, fmt_symbol);
-            match typed_unary_expr.op {
-                UnaryOperator::PreIncrement => format!("++{}", operand_fmt),
-                UnaryOperator::PreDecrement => format!("--{}", operand_fmt),
-                UnaryOperator::PostIncrement => format!("{}++", operand_fmt),
-                UnaryOperator::PostDecrement => format!("{}--", operand_fmt),
+        Infix(inf) => format!(
+            "{}{}{}",
+            format_typed_expr(&inf.lhs, fmt_symbol),
+            inf.op,
+            format_typed_expr(&inf.rhs, fmt_symbol)
+        ),
+        Unary(unary) => {
+            let operand = format_typed_expr(&unary.operand, fmt_symbol);
+            match unary.op {
+                UnaryOperator::PreIncrement => format!("++{}", operand),
+                UnaryOperator::PreDecrement => format!("--{}", operand),
+                UnaryOperator::PostIncrement => format!("{}++", operand),
+                UnaryOperator::PostDecrement => format!("{}--", operand),
             }
         }
-        TypedExprKind::Assign(typed_assign) => {
-            let mut fmt = String::new();
-            fmt.push_str(&format_typed_expr(&typed_assign.lhs, fmt_symbol));
-            match &typed_assign.kind {
-                AssignKind::Default => fmt.push_str("="),
-                AssignKind::AddAssign => fmt.push_str("+="),
-                AssignKind::SubAssign => fmt.push_str("-="),
-                AssignKind::MulAssign => fmt.push_str("*="),
-                AssignKind::DivAssign => fmt.push_str("/="),
-                AssignKind::ModAssign => fmt.push_str("%="),
-                AssignKind::BitwiseAndAssign => fmt.push_str("&="),
-                AssignKind::BitwiseXorAssign => fmt.push_str("^="),
-                AssignKind::BitwiseAndNotAssign => fmt.push_str("&~="),
-                AssignKind::LeftShiftAssign => fmt.push_str("<<="),
-                AssignKind::RightShiftAssign => fmt.push_str(">>="),
+        Assign(assign) => {
+            let lhs = format_typed_expr(&assign.lhs, fmt_symbol);
+            let rhs = format_typed_expr(&assign.rhs, fmt_symbol);
+            let operator = match assign.kind {
+                AssignKind::Default => "=",
+                AssignKind::AddAssign => "+=",
+                AssignKind::SubAssign => "-=",
+                AssignKind::MulAssign => "*=",
+                AssignKind::DivAssign => "/=",
+                AssignKind::ModAssign => "%=",
+                AssignKind::BitwiseAndAssign => "&=",
+                AssignKind::BitwiseXorAssign => "^=",
+                AssignKind::BitwiseAndNotAssign => "&~=",
+                AssignKind::LeftShiftAssign => "<<=",
+                AssignKind::RightShiftAssign => ">>=",
             };
-            fmt.push_str(&format_typed_expr(&typed_assign.rhs, fmt_symbol));
-            fmt
+            format!("{}{}{}", lhs, operator, rhs)
         }
-        TypedExprKind::Array(typed_array) => {
-            let mut fmt = String::new();
-            let array_type_fmt = typed_array
+        Array(array) => {
+            let ty = array
                 .ty
                 .as_ref()
-                .and_then(|sema_type| Some(format_sema_ty(sema_type.clone(), fmt_symbol)))
-                .unwrap_or("".to_string());
-            fmt.push_str(&format!(
-                "{}{{{}}}",
-                array_type_fmt,
-                format_typed_exprs(&typed_array.elements, fmt_symbol)
-            ));
-            fmt
+                .map(|t| format_sema_type(t.clone(), fmt_symbol))
+                .unwrap_or_default();
+            format!("{}{{{}}}", ty, join_exprs(&array.elements, fmt_symbol))
         }
-        TypedExprKind::ArrayIndex(typed_array_index) => {
-            let operand_fmt = &format_typed_expr(&typed_array_index.operand, fmt_symbol);
-            let index_fmt = &format_typed_expr(&typed_array_index.index, fmt_symbol);
-            format!("{}[{}]", operand_fmt, index_fmt)
-        }
-        TypedExprKind::AddrOf(typed_addr_of) => {
-            let operand_fmt = &format_typed_expr(&typed_addr_of.operand, fmt_symbol);
-            format!("&{}", operand_fmt)
-        }
-        TypedExprKind::Deref(typed_deref) => {
-            let operand_fmt = &format_typed_expr(&typed_deref.operand, fmt_symbol);
-            format!("*{}", operand_fmt)
-        }
-        TypedExprKind::StructInit(typed_struct_init) => {
-            let mut fmt = String::new();
-            let struct_name = fmt_symbol(typed_struct_init.symbol_id);
-            fmt.push_str(&struct_name);
-            fmt.push_str("{{ ");
-            fmt.push_str(
-                &typed_struct_init
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        let value_fmt = &format_typed_expr(&field.value, fmt_symbol);
-                        format!("{}: {}", field.name, value_fmt)
-                    })
-                    .collect::<Vec<String>>()
-                    .join(", "),
-            );
-            fmt.push_str(" }}");
-            fmt
-        }
-        TypedExprKind::FuncCall(typed_func_call) => {
-            format!(
-                "{}({})",
-                format_typed_expr(&typed_func_call.operand, fmt_symbol),
-                format_typed_exprs(&typed_func_call.args, fmt_symbol)
-            )
-        }
-        TypedExprKind::FieldAccess(field_access) => {
-            let mut fmt = String::new();
-            let operand_fmt = &format_typed_expr(&field_access.operand, fmt_symbol);
-            fmt.push_str(operand_fmt);
-            if field_access.is_fat_arrow {
-                fmt.push_str("->");
-            } else {
-                fmt.push_str(".");
-            }
-            fmt.push_str(&field_access.field_name);
-            fmt
-        }
-        TypedExprKind::TupleAccess(tuple_member_access) => {
-            format!(
-                "{}.{}",
-                format_typed_expr(&tuple_member_access.operand, fmt_symbol),
-                format_typed_expr(&tuple_member_access.operand, fmt_symbol)
-            )
-        }
-        TypedExprKind::MethodCall(typed_method_call) => {
-            let mut fmt = String::new();
-            let operand_fmt = &format_typed_expr(&typed_method_call.operand, fmt_symbol);
-            fmt.push_str(operand_fmt);
-            if typed_method_call.is_fat_arrow {
-                fmt.push_str("->");
-            } else {
-                fmt.push_str(".");
-            }
-            fmt.push_str(&typed_method_call.func_sig.clone().unwrap().name);
-            fmt
-        }
-        TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
-            format!(
-                "union {{ {} = {} }}",
-                unnamed_union_value.field_name.as_string(),
-                format_typed_expr(&unnamed_union_value.field_value, fmt_symbol)
-            )
-        }
-        TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
-            let mut fmt = String::new();
+        ArrayIndex(array_index) => format!(
+            "{}[{}]",
+            format_typed_expr(&array_index.operand, fmt_symbol),
+            format_typed_expr(&array_index.index, fmt_symbol)
+        ),
+        AddrOf(addr_of) => format!("&{}", format_typed_expr(&addr_of.operand, fmt_symbol)),
+        Deref(deref) => format!("*{}", format_typed_expr(&deref.operand, fmt_symbol)),
+        StructInit(struct_init) => {
+            let name = fmt_symbol(struct_init.symbol_id);
+            let fields = struct_init
+                .fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name, format_typed_expr(&f.value, fmt_symbol)))
+                .collect::<Vec<_>>()
+                .join(", ");
 
-            if let Some(repr_attr) = &unnamed_struct_value.repr_attr {
-                fmt.push_str(&repr_attr.to_string());
-                fmt.push_str(" ");
+            format!("{}{{ {} }}", name, fields)
+        }
+        FuncCall(func_call) => format!(
+            "{}({})",
+            format_typed_expr(&func_call.operand, fmt_symbol),
+            join_exprs(&func_call.args, fmt_symbol)
+        ),
+        FieldAccess(field_access) => {
+            let op = format_typed_expr(&field_access.operand, fmt_symbol);
+            let sep = if field_access.is_fat_arrow { "->" } else { "." };
+            format!("{}{}{}", op, sep, field_access.field_name)
+        }
+        TupleAccess(tuple_access) => format!(
+            "{}.{}",
+            format_typed_expr(&tuple_access.operand, fmt_symbol),
+            tuple_access.index
+        ),
+        MethodCall(method_call) => {
+            let op = format_typed_expr(&method_call.operand, fmt_symbol);
+            let sep = if method_call.is_fat_arrow { "->" } else { "." };
+            let name = method_call.func_sig.clone().unwrap().name;
+            format!("{}{}{}", op, sep, name)
+        }
+        UnnamedUnionValue(unnamed_union_value) => format!(
+            "union {{ {} = {} }}",
+            unnamed_union_value.field_name.as_string(),
+            format_typed_expr(&unnamed_union_value.field_value, fmt_symbol)
+        ),
+        UnnamedStructValue(unnamed_struct_value) => {
+            let mut out = String::new();
+
+            if let Some(r) = &unnamed_struct_value.repr_attr {
+                out.push_str(&r.to_string());
+                out.push(' ');
+            }
+            out.push_str("struct");
+
+            if let Some(al) = unnamed_struct_value.align {
+                out.push_str(&format!(" align({})", al));
             }
 
-            fmt.push_str("struct");
+            out.push_str(" {{ ");
 
-            if let Some(align) = unnamed_struct_value.align {
-                fmt.push_str(&format!(" align({})", align));
-            }
-
-            fmt.push_str(" {{ ");
-
-            fmt.push_str(
+            out.push_str(
                 &unnamed_struct_value
                     .fields
                     .iter()
-                    .map(|field| {
-                        let mut lfmt = String::new();
-                        lfmt.push_str(&field.name);
-                        if let Some(sema_type) = &field.ty {
-                            let type_fmt = format_sema_ty(sema_type.clone(), fmt_symbol);
-                            lfmt.push_str(": ");
-                            lfmt.push_str(&type_fmt);
+                    .map(|f| {
+                        let mut x = String::new();
+                        x.push_str(&f.name);
+                        if let Some(ty) = &f.ty {
+                            x.push_str(": ");
+                            x.push_str(&format_sema_type(ty.clone(), fmt_symbol));
                         }
-                        lfmt.push_str(&format_typed_expr(&field.field_value, fmt_symbol));
-                        lfmt
+                        x.push_str(&format_typed_expr(&f.field_value, fmt_symbol));
+                        x
                     })
-                    .collect::<Vec<String>>()
+                    .collect::<Vec<_>>()
                     .join(", "),
             );
-            fmt.push_str(" }}");
-            fmt
-        }
-        TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => {
-            let mut fmt = format!(".{}", unnamed_enum_value.ident.as_string());
 
-            match &unnamed_enum_value.kind {
-                TypedUnnamedEnumValueKind::Plain => {}
-                TypedUnnamedEnumValueKind::Fielded(values) => {
-                    fmt.push_str(&format!("({})", format_typed_exprs(values, fmt_symbol)));
-                }
-            }
-
-            fmt
+            out.push_str(" }}");
+            out
         }
-        TypedExprKind::SemanticType(sema_type) => format_sema_ty(sema_type.clone(), fmt_symbol),
-        TypedExprKind::Lambda(typed_lambda) => format_lambda(typed_lambda, fmt_symbol),
-        TypedExprKind::Tuple(tuple_value) => {
-            format!(
-                "({})",
-                tuple_value
-                    .elements
-                    .iter()
-                    .map(|v| format_typed_expr(v, fmt_symbol))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            )
-        }
-        TypedExprKind::Dynamic(typed_dynamic_expr) => {
-            format!("dynamic {}", format_typed_expr(&typed_dynamic_expr.operand, fmt_symbol))
-        }
-        TypedExprKind::Builtin(builtin) => match builtin {
-            TypedBuiltin::BuiltinFunc(builtin_func) => {
-                format!(
-                    "@{}({})",
-                    builtin_func.name,
-                    format_typed_exprs(&builtin_func.args, fmt_symbol)
-                )
+        UnnamedEnumValue(unnamed_enum_value) => {
+            let mut out = format!(".{}", unnamed_enum_value.ident.as_string());
+            if let TypedUnnamedEnumValueKind::Fielded(vals) = &unnamed_enum_value.kind {
+                out.push_str(&format!("({})", join_exprs(vals, fmt_symbol)));
             }
-            TypedBuiltin::BuiltinScope(builtin_scope) => {
-                format!(
-                    "@{}({}) {{ ... }}",
-                    builtin_scope.name,
-                    format_typed_exprs(&builtin_scope.args, fmt_symbol),
-                )
-            }
+            out
+        }
+        SemanticType(sema_type) => format_sema_type(sema_type.clone(), fmt_symbol),
+        Lambda(lambda) => format_lambda(lambda, fmt_symbol),
+        Tuple(tuple) => format!(
+            "({})",
+            tuple
+                .elements
+                .iter()
+                .map(|v| format_typed_expr(v, fmt_symbol))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Dynamic(dynamic) => format!("dynamic {}", format_typed_expr(&dynamic.operand, fmt_symbol)),
+        Builtin(builtin) => match builtin {
+            TypedBuiltin::BuiltinFunc(f) => format!("@{}({})", f.name, join_exprs(&f.args, fmt_symbol)),
+            TypedBuiltin::BuiltinScope(s) => format!("@{}({}) {{ ... }}", s.name, join_exprs(&s.args, fmt_symbol)),
         },
     }
 }
 
-pub fn format_unnamed_union_ty<'a>(
-    unnamed_union_type: &TypedUnnamedUnionType,
-    fmt_symbol: SymbolFormatterFn,
-) -> String {
-    let mut fmt = String::new();
+pub fn format_unnamed_union_type(unnamed_union_type: &TypedUnnamedUnionType, fmt_symbol: SymbolFormatterFn) -> String {
+    let mut out = String::new();
 
     if let Some(repr_attr) = &unnamed_union_type.repr_attr {
-        fmt.push_str(&repr_attr.to_string());
-        fmt.push_str(" ");
+        out.push_str(&repr_attr.to_string());
+        out.push_str(" ");
     }
 
-    fmt.push_str("union");
+    out.push_str("union");
 
     if let Some(align) = unnamed_union_type.align {
-        fmt.push_str(&format!(" align({})", align));
+        out.push_str(&format!(" align({})", align));
     }
 
-    fmt.push_str(" { ");
+    out.push_str(" { ");
 
-    fmt.push_str(
+    out.push_str(
         &unnamed_union_type
             .fields
             .iter()
-            .map(|field| format!("{}: {}", field.name, format_sema_ty(*field.ty.clone(), fmt_symbol)))
+            .map(|field| format!("{}: {}", field.name, format_sema_type(*field.ty.clone(), fmt_symbol)))
             .collect::<Vec<String>>()
             .join(", "),
     );
 
-    fmt.push_str(" }");
-    fmt
+    out.push_str(" }");
+    out
 }
 
-pub fn format_unnamed_struct_ty<'a>(
+pub fn format_unnamed_struct_type(
     unnamed_struct_type: &TypedUnnamedStructType,
     fmt_symbol: SymbolFormatterFn,
 ) -> String {
-    let mut fmt = String::new();
+    let mut out = String::new();
 
     if let Some(repr_attr) = &unnamed_struct_type.repr_attr {
-        fmt.push_str(&repr_attr.to_string());
-        fmt.push_str(" ");
+        out.push_str(&repr_attr.to_string());
+        out.push_str(" ");
     }
 
-    fmt.push_str("struct");
+    out.push_str("struct");
 
     if let Some(align) = unnamed_struct_type.align {
-        fmt.push_str(&format!(" align({})", align));
+        out.push_str(&format!(" align({})", align));
     }
 
-    fmt.push_str(" { ");
+    out.push_str(" { ");
 
-    fmt.push_str(
+    out.push_str(
         &unnamed_struct_type
             .fields
             .iter()
-            .map(|field| format!("{}: {}", field.name, format_sema_ty(*field.ty.clone(), fmt_symbol)))
+            .map(|field| format!("{}: {}", field.name, format_sema_type(*field.ty.clone(), fmt_symbol)))
             .collect::<Vec<String>>()
             .join(", "),
     );
 
-    fmt.push_str(" }");
-    fmt
+    out.push_str(" }");
+    out
 }
 
-pub fn format_unnamed_enum_ty<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fmt_symbol: SymbolFormatterFn) -> String {
-    let mut fmt = String::new();
+pub fn format_unnamed_enum_type<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fmt_symbol: SymbolFormatterFn) -> String {
+    let mut out = String::new();
 
     if let Some(repr_attr) = &unnamed_enum_type.repr_attr {
-        fmt.push_str(&repr_attr.to_string());
-        fmt.push_str(" ");
+        out.push_str(&repr_attr.to_string());
+        out.push_str(" ");
     }
 
-    fmt.push_str("enum");
+    out.push_str("enum");
 
     if let Some(align) = unnamed_enum_type.align {
-        fmt.push_str(&format!(" align({})", align));
+        out.push_str(&format!(" align({})", align));
     }
 
-    fmt.push_str(" { ");
+    out.push_str(" { ");
 
     let variant_strings: Vec<String> = unnamed_enum_type
         .variants
@@ -387,7 +280,7 @@ pub fn format_unnamed_enum_ty<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fmt_
             TypedUnnamedEnumVariant::Variant(ident, valued_fields) => {
                 let valued_fields_fmt = valued_fields
                     .iter()
-                    .map(|field| format_sema_ty(field.ty.clone(), fmt_symbol))
+                    .map(|field| format_sema_type(field.ty.clone(), fmt_symbol))
                     .collect::<Vec<_>>()
                     .join(", ");
 
@@ -396,12 +289,12 @@ pub fn format_unnamed_enum_ty<'a>(unnamed_enum_type: &TypedUnnamedEnumType, fmt_
         })
         .collect();
 
-    fmt.push_str(&variant_strings.join(", "));
-    fmt.push_str(" }");
-    fmt
+    out.push_str(&variant_strings.join(", "));
+    out.push_str(" }");
+    out
 }
 
-pub fn format_sema_ty<'a>(sema_type: SemanticType, fmt_symbol: SymbolFormatterFn) -> String {
+pub fn format_sema_type<'a>(sema_type: SemanticType, fmt_symbol: SymbolFormatterFn) -> String {
     match sema_type {
         SemanticType::UnresolvedSymbol(..) => format!("<unresolved_symbol>"),
         SemanticType::GenericParam(generic_param) => generic_param.param_name.name.clone(),
@@ -419,7 +312,7 @@ pub fn format_sema_ty<'a>(sema_type: SemanticType, fmt_symbol: SymbolFormatterFn
         SemanticType::PlainType(plain_type) => plain_type.to_string(),
         SemanticType::Array(typed_array_type) => {
             let mut fmt = String::new();
-            fmt.push_str(&format_sema_ty(*typed_array_type.element_type, fmt_symbol));
+            fmt.push_str(&format_sema_type(*typed_array_type.element_type, fmt_symbol));
             fmt.push_str("[");
             match typed_array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => {
@@ -431,41 +324,43 @@ pub fn format_sema_ty<'a>(sema_type: SemanticType, fmt_symbol: SymbolFormatterFn
             fmt
         }
         SemanticType::Const(sema_type) => {
-            format!("const {}", format_sema_ty(*sema_type, fmt_symbol))
+            format!("const {}", format_sema_type(*sema_type, fmt_symbol))
         }
         SemanticType::Pointer(sema_type) => {
-            format!("{}*", format_sema_ty(*sema_type, fmt_symbol))
+            format!("{}*", format_sema_type(*sema_type, fmt_symbol))
         }
-        SemanticType::UnnamedStruct(unnamed_struct_type) => format_unnamed_struct_ty(&unnamed_struct_type, fmt_symbol),
-        SemanticType::UnnamedUnion(unnamed_union_type) => format_unnamed_union_ty(&unnamed_union_type, fmt_symbol),
-        SemanticType::UnnamedEnum(unnamed_enum_type) => format_unnamed_enum_ty(&unnamed_enum_type, fmt_symbol),
-        SemanticType::FuncType(func_type) => format_func_ty(&func_type, fmt_symbol),
+        SemanticType::UnnamedStruct(unnamed_struct_type) => {
+            format_unnamed_struct_type(&unnamed_struct_type, fmt_symbol)
+        }
+        SemanticType::UnnamedUnion(unnamed_union_type) => format_unnamed_union_type(&unnamed_union_type, fmt_symbol),
+        SemanticType::UnnamedEnum(unnamed_enum_type) => format_unnamed_enum_type(&unnamed_enum_type, fmt_symbol),
+        SemanticType::FuncType(func_type) => format_func_type(&func_type, fmt_symbol),
         SemanticType::Tuple(tuple_type) => {
             format!(
                 "({})",
                 tuple_type
                     .elements
                     .iter()
-                    .map(|t| format_sema_ty(t.clone(), fmt_symbol))
+                    .map(|t| format_sema_type(t.clone(), fmt_symbol))
                     .collect::<Vec<String>>()
                     .join(", ")
             )
         }
         SemanticType::GenericType(generic_type) => generic_type.format(fmt_symbol),
+        SemanticType::Interface(interface_type) => fmt_symbol(interface_type.symbol_id),
         SemanticType::DynamicType(dynamic_type) => {
             format!("dynamic {}", fmt_symbol(dynamic_type.interface_id))
         }
         SemanticType::SelfType(_) => "Self".to_string(),
-        SemanticType::Interface(interface_type) => fmt_symbol(interface_type.symbol_id),
     }
 }
 
-pub fn format_func_ty<'a>(func_type: &TypedFuncType, fmt_symbol: SymbolFormatterFn) -> String {
+pub fn format_func_type<'a>(func_type: &TypedFuncType, fmt_symbol: SymbolFormatterFn) -> String {
     let mut params = func_type
         .params
         .list
         .iter()
-        .map(|param| format_sema_ty(param.clone(), fmt_symbol))
+        .map(|param| format_sema_type(param.clone(), fmt_symbol))
         .collect::<Vec<String>>()
         .join(", ");
 
@@ -473,16 +368,16 @@ pub fn format_func_ty<'a>(func_type: &TypedFuncType, fmt_symbol: SymbolFormatter
         match *variadic {
             TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
             TypedFuncTypeVariadicParams::Typed(sema_type) => {
-                params.push_str(&format!(", {}...", format_sema_ty(sema_type, fmt_symbol)))
+                params.push_str(&format!(", {}...", format_sema_type(sema_type, fmt_symbol)))
             }
         }
     }
 
-    let ret = format_sema_ty(*func_type.ret_type.clone(), fmt_symbol);
+    let ret = format_sema_type(*func_type.ret_type.clone(), fmt_symbol);
     format!("fn({}) {}", params, ret)
 }
 
-pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, fmt_symbol: SymbolFormatterFn) -> String {
+pub fn format_lambda(lambda: &TypedLambdaExpr, fmt_symbol: SymbolFormatterFn) -> String {
     let mut params = lambda
         .params
         .list
@@ -492,7 +387,7 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, fmt_symbol: SymbolFormatterFn
                 format!(
                     "{}: {}",
                     typed_func_param.name,
-                    format_sema_ty(typed_func_param.ty.clone(), fmt_symbol)
+                    format_sema_type(typed_func_param.ty.clone(), fmt_symbol)
                 )
             }
             TypedFuncParamKind::SelfModifier(..) => unreachable!(),
@@ -506,11 +401,23 @@ pub fn format_lambda<'a>(lambda: &TypedLambdaExpr, fmt_symbol: SymbolFormatterFn
             TypedFuncVariadicParams::Typed(ident, sema_type) => params.push_str(&format!(
                 ", {}: ...{}",
                 ident.name,
-                format_sema_ty(sema_type.clone(), fmt_symbol)
+                format_sema_type(sema_type.clone(), fmt_symbol)
             )),
         }
     }
 
-    let ret = format_sema_ty(lambda.ret_type.clone(), fmt_symbol);
+    let ret = format_sema_type(lambda.ret_type.clone(), fmt_symbol);
     format!("fn({}) {} {{ ... }}", params, ret)
+}
+
+pub fn format_missing_fields(list: &Vec<String>) -> String {
+    list.iter()
+        .map(|str| format!("'{str}'"))
+        .collect::<Vec<String>>()
+        .join(", ")
+}
+
+pub fn format_loc(source_map: &SourceMap, loc: Loc) -> String {
+    let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
+    format!("{}:{}:{}", source_file.name, loc.line, loc.column)
 }

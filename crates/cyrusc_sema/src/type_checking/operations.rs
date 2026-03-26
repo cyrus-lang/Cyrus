@@ -22,7 +22,7 @@ use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::*,
-    format::{SymbolFormatterFn, format_sema_ty},
+    format::{SymbolFormatterFn, format_sema_type},
     generics::mapping_ctx::mapping_ctx_eq_refcell,
     types::{PlainType, SemanticType},
 };
@@ -191,7 +191,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 match valid_plain_type {
                     Some(sema_type) => Some(SemanticType::PlainType(sema_type.clone())),
                     None => {
-                        let operand_type = format_sema_ty(operand_type, fmt_symbol);
+                        let operand_type = format_sema_type(operand_type, fmt_symbol);
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -218,7 +218,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 match valid_plain_type {
                     Some(sema_type) => Some(SemanticType::PlainType(sema_type.clone())),
                     None => {
-                        let operand_type = format_sema_ty(operand_type, fmt_symbol);
+                        let operand_type = format_sema_type(operand_type, fmt_symbol);
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -262,7 +262,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::PrefixMinusOnNonInteger {
-                                operand_type: format_sema_ty(operand_type, fmt_symbol),
+                                operand_type: format_sema_type(operand_type, fmt_symbol),
                             }),
                             loc: Some(prefix.loc),
                             hint: None,
@@ -294,7 +294,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidUnary {
-                    operand_type: format_sema_ty(operand_type, fmt_symbol),
+                    operand_type: format_sema_type(operand_type, fmt_symbol),
                 }),
                 loc: Some(unary.loc),
                 hint: None,
@@ -370,8 +370,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                        lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
-                        rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
+                        lhs_type: format_sema_type(lhs_type.clone(), fmt_symbol),
+                        rhs_type: format_sema_type(rhs_type.clone(), fmt_symbol),
                     }),
                     loc: Some(loc),
                     hint: None,
@@ -387,8 +387,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                            lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
-                            rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
+                            lhs_type: format_sema_type(lhs_type.clone(), fmt_symbol),
+                            rhs_type: format_sema_type(rhs_type.clone(), fmt_symbol),
                         }),
                         loc: Some(loc),
                         hint: None,
@@ -400,8 +400,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                    lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
-                    rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
+                    lhs_type: format_sema_type(lhs_type.clone(), fmt_symbol),
+                    rhs_type: format_sema_type(rhs_type.clone(), fmt_symbol),
                 }),
                 loc: Some(loc),
                 hint: None,
@@ -448,8 +448,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                    lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
-                    rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
+                    lhs_type: format_sema_type(lhs_type.clone(), fmt_symbol),
+                    rhs_type: format_sema_type(rhs_type.clone(), fmt_symbol),
                 }),
                 loc: Some(loc),
                 hint: Some(
@@ -466,8 +466,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                        lhs_type: format_sema_ty(lhs_type.clone(), fmt_symbol),
-                        rhs_type: format_sema_ty(rhs_type.clone(), fmt_symbol),
+                        lhs_type: format_sema_type(lhs_type.clone(), fmt_symbol),
+                        rhs_type: format_sema_type(rhs_type.clone(), fmt_symbol),
                     }),
                     loc: Some(loc),
                     hint: None,

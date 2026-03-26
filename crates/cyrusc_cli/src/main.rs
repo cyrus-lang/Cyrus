@@ -33,6 +33,7 @@ use cyrusc_compiler::{
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_scaffold::version::CYRUS_COMPILER_VERSION;
 use cyrusc_scaffold_parser::{PROJECT_FILE_PATH, ScaffoldConfig, parse_project_toml};
+use cyrusc_tui_utils::tui_error;
 use serde::Deserialize;
 
 mod commands;
@@ -521,7 +522,7 @@ fn compiler_option_from_scaffold_parser(base_path: Option<String>) -> Option<Sca
     }
 }
 
-pub fn merge_scaffold_config_with_codegen_options(
+pub fn merge_and_validate_scaffold_config_with_codegen_options(
     opts: &mut CodeGenOptions,
     scaffold_config_opt: &Option<ScaffoldConfig>,
 ) {
@@ -532,7 +533,10 @@ pub fn merge_scaffold_config_with_codegen_options(
     let scaffold_codegen_options = CodeGenOptions::from_scaffold(scaffold_config);
     *opts = opts.merge(&scaffold_codegen_options);
 
-    validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version);
+    if let Err(err) = validate_compiler_version(CYRUS_COMPILER_VERSION.trim(), scaffold_codegen_options.cyrus_version) {
+        tui_error(err);
+        exit(1);
+    }
 
     if opts.validate_paths().is_err() {
         exit(1);
@@ -558,7 +562,7 @@ pub fn main() {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
             codegen_options.linker_options = linker_options.to_compiler_linker_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_run(codegen_options, file_path, program_args);
         }
@@ -572,7 +576,7 @@ pub fn main() {
             }
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_llvm(codegen_options, file_path, output_path);
         }
@@ -587,7 +591,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_asm(codegen_options, file_path, output_path);
         }
@@ -602,7 +606,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_emit_bitcode(codegen_options, file_path, output_path);
         }
@@ -619,14 +623,14 @@ pub fn main() {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
             codegen_options.linker_options = linker_options.to_compiler_linker_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_build(codegen_options, file_path, output_path);
         }
         Commands::Clean { compiler_options } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_clean(codegen_options);
         }
@@ -641,7 +645,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_object(codegen_options, file_path, output_path);
         }
@@ -656,7 +660,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_shared_lib(codegen_options, file_path, output_path);
         }
@@ -671,7 +675,7 @@ pub fn main() {
 
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_static_lib(codegen_options, file_path, output_path);
         }
@@ -681,7 +685,7 @@ pub fn main() {
         } => {
             let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
             let mut codegen_options = compiler_options.as_codegen_options();
-            merge_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
 
             command_semantic_only(codegen_options, file_path)
         }

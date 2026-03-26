@@ -14,18 +14,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_tui_utils::tui_error;
-use std::process::exit;
 
 /// Validates if the current compiler meets the requirements of the project/source.
 ///
 /// Principle:
 /// 1. Major version must match exactly (Breaking changes).
 /// 2. Current Minor/Patch must be >= Required Minor/Patch.
-pub fn validate_compiler_version(compiler_version: &str, required_version_opt: Option<String>) {
+pub fn validate_compiler_version(compiler_version: &str, required_version_opt: Option<String>) -> Result<(), String> {
     let Some(required_raw) = required_version_opt else {
-        return; // No requirement specified, proceed.
+        return Ok(()); // no requirement specified, proceed.
     };
 
     let current = parse_version(compiler_version);
@@ -33,31 +30,30 @@ pub fn validate_compiler_version(compiler_version: &str, required_version_opt: O
 
     match (current, required) {
         (Some(cur), Some(req)) => {
-            // check Major version (breaking changes)
+            // check major version (breaking changes)
             if cur.0 != req.0 {
-                tui_error("Incompatible Major versions!".to_string());
-                tui_error(format!(
-                    "Compiler: v{}, Project requires: v{}",
+                return Err(format!(
+                    "Incompatible major versions! Compiler: v{}, Project requires: v{}.",
                     compiler_version, required_raw
                 ));
-                exit(1);
             }
 
             // check if compiler is too old
             if cur < req {
-                tui_error(format!(
+                return Err(format!(
                     "Compiler version too old. Current: v{}, Minimum Required: v{}",
                     compiler_version, required_raw,
                 ));
-                exit(1);
             }
 
-            // compiler is equal or newer within the same Major branch
+            // compiler is equal or newer within the same major branch
         }
         _ => {
-            exit_with_msg!("Could not parse version strings for compatibility check.".to_string());
+            return Err("Could not parse version strings for compatibility check.".to_string());
         }
     }
+
+    Ok(())
 }
 
 /// Simple helper to turn "1.2.3" into (1, 2, 3) for easy comparison
