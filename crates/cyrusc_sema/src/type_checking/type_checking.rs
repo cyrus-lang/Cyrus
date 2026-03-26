@@ -297,6 +297,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }))
     }
 
+    // REVIEW: Refactor required.
     fn analyze_unnamed_union_value(
         &mut self,
         unnamed_union_value: &mut TypedUnnamedUnionValue,
@@ -552,6 +553,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
+    // REVIEW: Refactor required.
+    // This, and method_call does not share the same mechanism for resolving
+    // the symbol method, and i wonder how we can simplify it.
+    // 
     /// Analyzes field access expressions with multi-dispatch for different types.
     ///
     /// Type-checks field accesses on structs, unnamed structs, unions and unnamed unions.

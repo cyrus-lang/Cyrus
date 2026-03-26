@@ -28,38 +28,23 @@ enum NamingConvDeclKind {
 }
 
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
-    fn check_name(&mut self, decl_kind: NamingConvDeclKind, name: &str, loc: Loc) {
-        let valid = is_pascal_case(name);
-
-        if !valid {
-            let kind_str = match decl_kind {
-                NamingConvDeclKind::Struct => "Struct",
-                NamingConvDeclKind::Enum => "Enum",
-                NamingConvDeclKind::Interface => "Interface",
-                NamingConvDeclKind::Union => "Union",
-            };
-
-            self.report_nameconv_diag(kind_str.to_string(), name.to_string(), loc);
-        }
+    pub(crate) fn nameconv_check_struct_name(&mut self, name: String, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Struct, &name, loc);
     }
 
-    pub(crate) fn check_struct_name(&mut self, name: String, loc: Loc) {
-        self.check_name(NamingConvDeclKind::Struct, &name, loc);
+    pub(crate) fn nameconv_check_enum_name(&mut self, name: String, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Enum, &name, loc);
     }
 
-    pub(crate) fn check_enum_name(&mut self, name: String, loc: Loc) {
-        self.check_name(NamingConvDeclKind::Enum, &name, loc);
+    pub(crate) fn nameconv_check_union_name(&mut self, name: String, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Union, &name, loc);
     }
 
-    pub(crate) fn check_union_name(&mut self, name: String, loc: Loc) {
-        self.check_name(NamingConvDeclKind::Union, &name, loc);
+    pub(crate) fn nameconv_check_interface_name(&mut self, name: String, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Interface, &name, loc);
     }
 
-    pub(crate) fn check_interface_name(&mut self, name: String, loc: Loc) {
-        self.check_name(NamingConvDeclKind::Interface, &name, loc);
-    }
-
-    pub(crate) fn check_method_name(&mut self, name: String, loc: Loc) {
+    pub(crate) fn nameconv_check_method_name(&mut self, name: String, loc: Loc) {
         if self.config.warnings.enabled {
             if !is_snake_case(&name) {
                 self.reporter.report(Diag {
@@ -73,6 +58,21 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     hint: None,
                 });
             }
+        }
+    }
+
+    fn nameconv_check_name(&mut self, decl_kind: NamingConvDeclKind, name: &str, loc: Loc) {
+        let valid = is_pascal_case(name);
+
+        if !valid {
+            let kind_str = match decl_kind {
+                NamingConvDeclKind::Struct => "Struct",
+                NamingConvDeclKind::Enum => "Enum",
+                NamingConvDeclKind::Interface => "Interface",
+                NamingConvDeclKind::Union => "Union",
+            };
+
+            self.report_nameconv_diag(kind_str.to_string(), name.to_string(), loc);
         }
     }
 

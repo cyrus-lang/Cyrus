@@ -16,11 +16,7 @@
  */
 
 use crate::{
-    config::AnalyzerConfig,
-    diagnostics::AnalyzerDiagKind,
-    flowstate::{ControlContext, FlowState},
-    format::format_loc,
-    normalizer::TypeCache,
+    config::AnalyzerConfig, diagnostics::AnalyzerDiagKind, format::format_loc, normalizer::TypeCache,
     type_checking::type_checking::FnEnv,
 };
 use cyrusc_ast::{
@@ -30,6 +26,7 @@ use cyrusc_ast::{
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_internal::{
+    flow_state::{ControlRegion, FlowState},
     symbols::table::{SymbolEntryMut, SymbolQuery},
     vtable::VTableRegistry,
 };
@@ -74,7 +71,7 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub(crate) fn_env: FnEnv,
     pub(crate) type_cache: TypeCache,
 
-    control_stack: Vec<ControlContext>,
+    control_stack: Vec<ControlRegion>,
 
     pub(crate) config: AnalyzerConfig,
 }
@@ -130,10 +127,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 TypedStmt::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStmt::Interface(typed_interface) => self.analyze_interface(typed_interface),
-                TypedStmt::Struct(typed_struct) => self.analyze_struct(typed_struct),
+                TypedStmt::Struct(struct_stmt) => self.analyze_struct(struct_stmt),
                 TypedStmt::Enum(typed_enum) => self.analyze_enum(typed_enum),
                 TypedStmt::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef),
-                TypedStmt::Union(typed_union) => self.analyze_union(typed_union),
+                TypedStmt::Union(union_stmt) => self.analyze_union(union_stmt),
                 TypedStmt::Variable(_)
                 | TypedStmt::ExportTuple(_)
                 | TypedStmt::BlockStmt(_)
@@ -320,10 +317,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let tuple_patterns = export_tuple.pattern.into_tuple();
         for (i, (pattern, sema_type)) in tuple_patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
             self.analyze_tuple_pattern(
-                export_tuple.is_const,
                 pattern,
                 sema_type,
                 &export_tuple.rhs.as_mut().unwrap(),
+                export_tuple.is_const,
                 export_tuple.loc,
                 vec![i],
             );
@@ -333,13 +330,42 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Some(())
     }
 
+    /// Assigns the resolved type and RHS expression to a variable introduced
+    /// by a tuple destructuring pattern.
+    ///
+    /// Applies `const` qualification to the type when required and updates
+    /// the corresponding variable symbol entry.
+    fn analyze_tuple_ident_pattern(
+        &mut self,
+        symbol_id: SymbolID,
+        sema_type: &SemanticType,
+        rhs: &TypedExprStmt,
+        is_const: bool,
+    ) {
+        let mut ty = sema_type.clone();
+
+        if is_const && !matches!(ty, SemanticType::Const(..)) {
+            ty = ty.as_const();
+        }
+
+        self.symbol_mut.with_var_mut(symbol_id, |var_mut| {
+            var_mut.variable.ty = Some(ty);
+            var_mut.variable.rhs = Some(rhs.clone());
+        });
+    }
+
+    /// Analyzes a tuple destructuring pattern.
+    ///
+    /// Recursively walks tuple patterns, constructs the appropriate tuple
+    /// access expressions for each binding, and assigns the extracted values
+    /// to the corresponding variables. Reports errors for tuple size mismatches
+    /// or when tuple access is attempted on a non‑tuple type.
     fn analyze_tuple_pattern(
         &mut self,
-
-        is_const: bool,
         pattern: &TypedExportPattern,
         sema_type: &SemanticType,
         expr: &TypedExprStmt,
+        is_const: bool,
         loc: Loc,
         access_path: Vec<usize>,
     ) {
@@ -376,9 +402,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         return;
                     }
                     for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.elements).enumerate() {
-                        let mut new_path = access_path.clone();
-                        new_path.push(i);
-                        self.analyze_tuple_pattern(is_const, sub_pattern, sub_ty, expr, loc, new_path);
+                        let mut new_access_path = access_path.clone();
+                        new_access_path.push(i);
+
+                        self.analyze_tuple_pattern(sub_pattern, sub_ty, expr, is_const, loc, new_access_path);
                     }
                 } else {
                     self.reporter.report(Diag {
@@ -577,7 +604,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_switch(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        self.control_stack.push(ControlContext::Switch);
+        self.control_stack.push(ControlRegion::Switch);
 
         if switch_stmt.cases.is_empty() {
             self.reporter.report(Diag {
@@ -662,6 +689,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     }
                 }
             }
+
             true
         }
 
@@ -820,7 +848,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.is_cond_expr(sema_type, typed_while.loc);
         }
 
-        self.control_stack.push(ControlContext::While);
+        self.control_stack.push(ControlRegion::Loop);
         self.analyze_block_stmt(&mut typed_while.body);
         self.control_stack.pop();
 
@@ -842,7 +870,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_expr(typed_expr, None);
         }
 
-        self.control_stack.push(ControlContext::Loop);
+        self.control_stack.push(ControlRegion::Loop);
         self.analyze_block_stmt(&mut typed_for.body);
         self.control_stack.pop();
 
@@ -892,6 +920,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     // FIXME: Check that break statement is inside loop, while or not??
     fn analyze_break(&mut self, brk: &TypedBreakStmt) -> FlowState {
+        dbg!(&self.control_stack);
         if self.control_stack.is_empty() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -910,7 +939,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .control_stack
             .iter()
             .rev()
-            .any(|ctx| matches!(ctx, ControlContext::Loop));
+            .any(|ctx| matches!(ctx, ControlRegion::Loop));
 
         if !is_inside_loop {
             self.reporter.report(Diag {
@@ -1034,14 +1063,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.validate_align(&struct_stmt.align, struct_stmt.loc);
 
         if let Some(generic_params) = &struct_stmt.generic_params {
-            self.analyze_generics_params(generic_params);
+            self.analyze_generic_params(generic_params);
         }
 
         self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
             struct_stmt.symbol_id,
         )));
 
-        self.check_struct_name(struct_stmt.name.clone(), struct_stmt.loc);
+        self.nameconv_check_struct_name(struct_stmt.name.clone(), struct_stmt.loc);
 
         self.analyze_struct_fields(struct_stmt);
 
@@ -1065,14 +1094,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.validate_align(&union_stmt.align, union_stmt.loc);
 
         if let Some(generic_params) = &union_stmt.generic_params {
-            self.analyze_generics_params(generic_params);
+            self.analyze_generic_params(generic_params);
         }
 
         self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
             union_stmt.symbol_id,
         )));
 
-        self.check_union_name(union_stmt.name.clone(), union_stmt.loc);
+        self.nameconv_check_union_name(union_stmt.name.clone(), union_stmt.loc);
 
         self.analyze_union_fields(union_stmt);
 
@@ -1091,14 +1120,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_enum(&mut self, enum_stmt: &mut TypedEnumStmt) {
         if let Some(generic_params) = &enum_stmt.generic_params {
-            self.analyze_generics_params(generic_params);
+            self.analyze_generic_params(generic_params);
         }
 
         self.fn_env.current_self = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
             enum_stmt.symbol_id,
         )));
 
-        self.check_enum_name(enum_stmt.name.clone(), enum_stmt.loc);
+        self.nameconv_check_enum_name(enum_stmt.name.clone(), enum_stmt.loc);
 
         self.analyze_enum_variants(enum_stmt);
 
@@ -1128,7 +1157,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let is_generic_func = func_def.is_generic();
 
         if let Some(generic_params) = &func_def.generic_params {
-            self.analyze_generics_params(generic_params);
+            self.analyze_generic_params(generic_params);
         }
 
         self.fn_env.current_func = Some(TypedFuncType {
@@ -1189,10 +1218,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_interface(&mut self, interface: &TypedInterfaceStmt) {
         if let Some(generic_params) = &interface.generic_params {
-            self.analyze_generics_params(generic_params);
+            self.analyze_generic_params(generic_params);
         }
 
-        self.check_interface_name(interface.name.clone(), interface.loc);
+        self.nameconv_check_interface_name(interface.name.clone(), interface.loc);
 
         let mut methods: Vec<String> = Vec::new();
 
@@ -1457,6 +1486,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
+    /// Checks method-level generic parameters against the object's generic parameters.
+    ///
+    /// Ensures that no method generic parameter reuses a name already defined
+    /// at the object level. If a conflict is found, an error diagnostic is emitted
+    /// because the method generic would shadow the object's generic parameter.
     fn analyze_method_generic_params(
         &mut self,
         object_name: &String,
@@ -1491,7 +1525,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn analyze_generics_params(&mut self, generic_params: &TypedGenericParamsList) {
+    /// Validates a list of generic parameters for duplicate names.
+    fn analyze_generic_params(&mut self, generic_params: &TypedGenericParamsList) {
         let mut collected_names: Vec<String> = Vec::new();
 
         for generic_param in &generic_params.list {
@@ -1575,15 +1610,19 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn analyze_struct_fields(&mut self, typed_struct: &mut TypedStructStmt) {
+    /// Analyzes struct fields for semantic correctness.
+    ///
+    /// Checks for duplicate field names within the struct and validates each field's type.
+    /// Ensures type normalization and semantic validation are applied to all fields.
+    fn analyze_struct_fields(&mut self, struct_stmt: &mut TypedStructStmt) {
         let mut field_names: Vec<String> = Vec::new();
 
-        for field in &mut typed_struct.fields {
+        for field in &mut struct_stmt.fields {
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        object_name: typed_struct.name.clone(),
+                        object_name: struct_stmt.name.clone(),
                         field_name: field.name.clone(),
                     }),
                     loc: Some(field.loc),
@@ -1597,21 +1636,25 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 None => continue,
             };
 
-            self.validate_field_type(Some(typed_struct.symbol_id), &field.ty, field.loc);
+            self.validate_field_type(Some(struct_stmt.symbol_id), &field.ty, field.loc);
             field_names.push(field.name.clone());
         }
     }
 
-    fn analyze_union_fields(&mut self, typed_union: &mut TypedUnionStmt) {
+    /// Analyzes union fields for semantic correctness.
+    ///
+    /// Checks for duplicate field names within the union and validates each field's type.
+    /// Ensures type normalization and semantic validation are applied to all fields.
+    fn analyze_union_fields(&mut self, union_stmt: &mut TypedUnionStmt) {
         let mut field_names: Vec<String> = Vec::new();
 
-        for field in &mut typed_union.fields {
+        for field in &mut union_stmt.fields {
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
                         field_name: field.name.clone(),
-                        object_name: typed_union.name.clone(),
+                        object_name: union_stmt.name.clone(),
                     }),
                     loc: Some(field.loc),
                     hint: Some("Consider to rename the field to a different name.".to_string()),
@@ -1625,29 +1668,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 None => continue,
             }
 
-            self.validate_field_type(Some(typed_union.symbol_id), &field.ty, field.loc);
+            self.validate_field_type(Some(union_stmt.symbol_id), &field.ty, field.loc);
 
             field_names.push(field.name.clone());
         }
-    }
-
-    fn analyze_tuple_ident_pattern(
-        &mut self,
-        symbol_id: SymbolID,
-        sema_type: &SemanticType,
-        rhs: &TypedExprStmt,
-        is_const: bool,
-    ) {
-        let mut ty = sema_type.clone();
-
-        if is_const && !matches!(ty, SemanticType::Const(..)) {
-            ty = ty.as_const();
-        }
-
-        self.symbol_mut.with_var_mut(symbol_id, |var_mut| {
-            var_mut.variable.ty = Some(ty);
-            var_mut.variable.rhs = Some(rhs.clone());
-        });
     }
 
     fn check_duplicate_param_names(

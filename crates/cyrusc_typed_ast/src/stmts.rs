@@ -424,7 +424,7 @@ impl TypedStmt {
             TypedStmt::Continue(typed_continue) => typed_continue.loc,
             TypedStmt::For(typed_for) => typed_for.loc,
             TypedStmt::Switch(typed_switch) => typed_switch.loc,
-            TypedStmt::Struct(typed_struct) => typed_struct.loc,
+            TypedStmt::Struct(struct_stmt) => struct_stmt.loc,
             TypedStmt::Enum(typed_enum) => typed_enum.loc,
             TypedStmt::Interface(typed_interface) => typed_interface.loc,
             TypedStmt::Expr(typed_expr) => typed_expr.loc,

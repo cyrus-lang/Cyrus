@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind, format::format_loc};
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
@@ -25,10 +25,10 @@ use cyrusc_typed_ast::{
     generics::{
         generic_type::GenericType,
         mapping_ctx::{GenericMappingCtx, GenericMappingEntry},
-        monomorph::{MonomorphKey, SpecializedFuncEntry},
+        monomorph::MonomorphKey,
         substitute::substitute_type,
     },
-    sigs::{FuncSig, typed_func_type_from_func_sig},
+    sigs::FuncSig,
     stmts::*,
     types::SemanticType,
 };
@@ -316,6 +316,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     //     }
     // }
 
+    // REVIEW: Refactor required.
+    // Consider to rename this constructor method,
+    // and also make base(symbol_id) optional,
+    // because it's possible to form a mapping_ctx without having
+    // symbol entry; which is currently used for GenericInterface/GenericTypedef substitution.
     pub(crate) fn init_generic_type_with_symbol_id(
         &mut self,
         symbol_id: SymbolID,
@@ -381,7 +386,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     pub(crate) fn unify_generic_types_from_expected_type(
         &mut self,
-
         generic_type: &GenericType,
         expected_type_opt: Option<SemanticType>,
     ) -> Option<()> {
@@ -405,7 +409,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn unify_generic_types(
         &mut self,
-
         mapping_ctx: &mut GenericMappingCtx,
         expr_mapping_ctx_opt: &Option<GenericMappingCtx>,
         expr_ty: &SemanticType,

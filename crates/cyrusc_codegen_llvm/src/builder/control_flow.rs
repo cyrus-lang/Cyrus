@@ -366,9 +366,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(else_block);
             self.emit_body(block_stmt);
 
-            let cur_block = self.blockreg.cur_block.unwrap();
-            if cur_block.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
             }
 
             else_block
@@ -410,9 +411,10 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             self.emit_body(&case.body);
 
-            let cur_block = self.blockreg.cur_block.unwrap();
-            if cur_block.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
             }
         }
 
@@ -470,9 +472,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(else_block);
             self.emit_body(block_stmt);
 
-            let cur_block = self.blockreg.cur_block.unwrap();
-            if cur_block.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
             }
 
             else_block
@@ -546,10 +549,12 @@ impl<'ll> IRBuilderCtx<'ll> {
 
             self.emit_block(case_block);
             self.emit_body(&case.body);
-            let cur_block = self.blockreg.cur_block.unwrap();
-            self.llvmbuilder.position_at_end(cur_block);
-            if cur_block.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                self.llvmbuilder.position_at_end(*cur_block);
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
             }
         }
 
@@ -591,9 +596,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(else_block);
             self.emit_body(block_stmt);
 
-            let cur_block = self.blockreg.cur_block.unwrap();
-            if cur_block.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
             }
 
             else_block
@@ -608,9 +614,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(case_block);
             self.emit_body(&case.body);
 
-            let cur_block = self.blockreg.cur_block.unwrap();
-            if cur_block.get_terminator().is_none() {
-                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            if let Some(cur_block) = &self.blockreg.cur_block {
+                if cur_block.get_terminator().is_none() {
+                    self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+                }
             }
 
             for pattern in &case.patterns {
@@ -692,9 +699,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.emit_block(body_block);
         self.emit_body(&for_stmt.body);
 
-        if let Some(cur_block) = self.blockreg.cur_block {
+        if let Some(cur_block) = &self.blockreg.cur_block {
             if cur_block.get_terminator().is_none() {
-                self.emit_block(cur_block);
+                self.emit_block(*cur_block);
 
                 let next_block: BasicBlock<'ll>;
                 if for_stmt.cond.is_some() {
@@ -751,10 +758,11 @@ impl<'ll> IRBuilderCtx<'ll> {
         self.blockreg.cur_block = Some(body_block);
         self.emit_body(&while_stmt.body);
 
-        let body_block_now = self.blockreg.cur_block.unwrap();
-        if body_block_now.get_terminator().is_none() {
-            self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
-            self.blockreg.cur_block = Some(cond_block);
+        if let Some(body_block_now) = &self.blockreg.cur_block {
+            if body_block_now.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
+                self.blockreg.cur_block = Some(cond_block);
+            }
         }
 
         let exit_in_use: bool = unsafe {
@@ -868,7 +876,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             self.emit_block(else_block);
             self.emit_body(if_stmt.else_block.as_ref().unwrap());
 
-            if let Some(cur_block) = self.blockreg.cur_block {
+            if let Some(cur_block) = &self.blockreg.cur_block {
                 if cur_block.get_terminator().is_none() {
                     self.llvm_emit_br(exit_block.as_mut_ptr());
                 }

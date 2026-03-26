@@ -199,16 +199,16 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     }
 }
 
-pub fn typed_struct_as_struct_sig(typed_struct: &TypedStructStmt) -> StructSig {
+pub fn typed_struct_as_struct_sig(struct_stmt: &TypedStructStmt) -> StructSig {
     StructSig {
-        name: typed_struct.name.clone(),
-        fields: typed_struct.fields.clone(),
-        impls: typed_struct.impls.clone(),
-        methods: typed_struct.methods.clone(),
-        generic_params: typed_struct.generic_params.clone(),
-        modifiers: typed_struct.modifiers.clone(),
-        align: typed_struct.align.clone(),
-        loc: typed_struct.loc,
+        name: struct_stmt.name.clone(),
+        fields: struct_stmt.fields.clone(),
+        impls: struct_stmt.impls.clone(),
+        methods: struct_stmt.methods.clone(),
+        generic_params: struct_stmt.generic_params.clone(),
+        modifiers: struct_stmt.modifiers.clone(),
+        align: struct_stmt.align.clone(),
+        loc: struct_stmt.loc,
     }
 }
 
@@ -227,16 +227,16 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
     }
 }
 
-pub fn typed_union_as_union_sig(typed_union: &TypedUnionStmt) -> UnionSig {
+pub fn typed_union_as_union_sig(union_stmt: &TypedUnionStmt) -> UnionSig {
     UnionSig {
-        symbol_id: typed_union.symbol_id,
-        name: typed_union.name.clone(),
-        fields: typed_union.fields.clone(),
-        methods: typed_union.methods.clone(),
-        generic_params: typed_union.generic_params.clone(),
-        modifiers: typed_union.modifiers.clone(),
-        align: typed_union.align.clone(),
-        loc: typed_union.loc,
+        symbol_id: union_stmt.symbol_id,
+        name: union_stmt.name.clone(),
+        fields: union_stmt.fields.clone(),
+        methods: union_stmt.methods.clone(),
+        generic_params: union_stmt.generic_params.clone(),
+        modifiers: union_stmt.modifiers.clone(),
+        align: union_stmt.align.clone(),
+        loc: union_stmt.loc,
     }
 }
 
