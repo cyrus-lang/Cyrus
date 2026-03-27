@@ -1,33 +1,35 @@
-import std::libc::abi;
+// import std::libc::abi;
+
+// pub extern "C" {
+//     var stdout: abi::c_file;
+//     var stderr: abi::c_file;
+//     var stdin: abi::c_file;
+// }
 
 pub extern "C" {
-    var stdout: abi::c_file;
-    var stderr: abi::c_file;
-    var stdin: abi::c_file;
-}
+    fn printf(format: char*, ...) int;
 
-pub extern "C" {
-    fn printf(format: abi::c_char*, ...) abi::c_int;
-    fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
-    fn malloc(size: abi::c_size) abi::c_void*;
-    fn calloc(num: abi::c_size, size: abi::c_size) abi::c_void*;
-    fn free(ptr: abi::c_void*) abi::c_void;
-    fn exit(status: abi::c_int) abi::c_void;
-    fn realloc(ptr: abi::c_void*, size: abi::c_size) abi::c_void*;
-    fn strncpy(dest: abi::c_char*, src: abi::c_char*, count: abi::c_size) abi::c_char*;
-    fn putchar(ch: abi::c_char) abi::c_int;
-    fn strdup(src: abi::c_char*) abi::c_char*;
-    fn strlen(src: abi::c_char*) abi::c_size;
-    fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size) abi::c_void*;
-    fn memmove(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size) abi::c_void*;
-    fn fflush(stream: abi::c_file*) abi::c_int;
-    fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
-    fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
-    fn scanf(format: abi::c_char*, ...) abi::c_int;
-    fn getline(lineptr: abi::c_char**, n: abi::c_size*, stream: abi::c_file*) abi::c_size;
-    fn fread(src: abi::c_void*, size: abi::c_size, n: abi::c_size, stream: abi::c_file*) abi::c_size;
-    fn fopen(file_name: abi::c_char*, modes: abi::c_char*) abi::c_file*;
-    fn fclose(src: abi::c_void*) abi::c_int;
-    fn ferror(stream: abi::c_file*) abi::c_int;
-    fn abort();
+    // fn printf(format: abi::c_char*, ...) abi::c_int;
+    // fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
+    // fn malloc(size: abi::c_size) abi::c_void*;
+    // fn calloc(num: abi::c_size, size: abi::c_size) abi::c_void*;
+    // fn free(ptr: abi::c_void*) abi::c_void;
+    // fn exit(status: abi::c_int) abi::c_void;
+    // fn realloc(ptr: abi::c_void*, size: abi::c_size) abi::c_void*;
+    // fn strncpy(dest: abi::c_char*, src: abi::c_char*, count: abi::c_size) abi::c_char*;
+    // fn putchar(ch: abi::c_char) abi::c_int;
+    // fn strdup(src: abi::c_char*) abi::c_char*;
+    // fn strlen(src: abi::c_char*) abi::c_size;
+    // fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size) abi::c_void*;
+    // fn memmove(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size) abi::c_void*;
+    // fn fflush(stream: abi::c_file*) abi::c_int;
+    // fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+    // fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+    // fn scanf(format: abi::c_char*, ...) abi::c_int;
+    // fn getline(lineptr: abi::c_char**, n: abi::c_size*, stream: abi::c_file*) abi::c_size;
+    // fn fread(src: abi::c_void*, size: abi::c_size, n: abi::c_size, stream: abi::c_file*) abi::c_size;
+    // fn fopen(file_name: abi::c_char*, modes: abi::c_char*) abi::c_file*;
+    // fn fclose(src: abi::c_void*) abi::c_int;
+    // fn ferror(stream: abi::c_file*) abi::c_int;
+    // fn abort();
 }

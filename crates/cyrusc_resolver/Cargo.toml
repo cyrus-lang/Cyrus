@@ -23,3 +23,7 @@ path = "./src/lib.rs"
 [[bin]]
 name = "cyrusc_resolver"
 path = "./src/cli.rs"
+
+[[bin]]
+name = "cyrusc_resolver_debugger"
+path = "./src/debugger_cli.rs"

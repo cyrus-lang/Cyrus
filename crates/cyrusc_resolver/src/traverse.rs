@@ -253,6 +253,7 @@ impl Resolver {
         Some(current_symbol)
     }
 
+    #[inline]
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_ident(ident)?;
 
@@ -1955,18 +1956,15 @@ impl Resolver {
         }))
     }
 
+    #[inline]
     fn resolve_module_import_expr(&mut self, module_import: &ASTModuleImport) -> Option<TypedExprStmt> {
-        if let Some(ident) = module_import.as_ident() {
-            self.resolve_ident_expr(&ident)
-        } else {
-            self.resolve_module_import(module_import.clone())
-                .map(|symbol_id| TypedExprStmt {
-                    kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, module_import.loc)),
-                    sema_type: None,
-                    mloc: MemoryLocation::LValue,
-                    loc: module_import.loc,
-                })
-        }
+        self.resolve_module_import(module_import.clone())
+            .map(|symbol_id| TypedExprStmt {
+                kind: TypedExprKind::Symbol(TypedSymbolExpr::new(symbol_id, module_import.loc)),
+                sema_type: None,
+                mloc: MemoryLocation::LValue,
+                loc: module_import.loc,
+            })
     }
 
     fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExprStmt> {

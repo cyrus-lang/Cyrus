@@ -184,10 +184,10 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.symbol_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.symbol_id,
             SymbolEntryKind::Union(resolved_union) => resolved_union.symbol_id,
-            SymbolEntryKind::Module(_) => unreachable!(),
-            SymbolEntryKind::Namespace(_) => unreachable!(),
+            SymbolEntryKind::Module(module) => module.scope_id,
             SymbolEntryKind::ProxiedSymbol { symbol_id, .. } => *symbol_id,
             SymbolEntryKind::ProxiedModule { symbol_id } => *symbol_id,
+            SymbolEntryKind::Namespace(_) => unreachable!(),
         }
     }
 

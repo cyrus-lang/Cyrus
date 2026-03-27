@@ -48,8 +48,8 @@ pub mod traverse;
 /// GlobalSymbolRegistry wraps an Arc<Mutex<_>> to allow concurrent access
 /// across compilation units.
 pub struct GlobalSymbolRegistry {
-    inner: Arc<RwLock<GlobalSymbolRegistryInner>>,
-    root_scope: Option<SymbolID>,
+    pub inner: Arc<RwLock<GlobalSymbolRegistryInner>>,
+    pub root_scope: Option<SymbolID>,
 }
 
 pub struct GlobalSymbolRegistryInner {
@@ -61,7 +61,7 @@ pub struct GlobalSymbolRegistryInner {
 pub struct Resolver {
     /// Global symbol table shared across all modules.
     /// Stores all declared symbols and their associated metadata.
-    global_symbols: Arc<GlobalSymbolRegistry>,
+    pub global_symbols: Arc<GlobalSymbolRegistry>,
 
     /// Program trees of successfully analyzed modules.
     /// Acts as the semantic output collected during resolution.

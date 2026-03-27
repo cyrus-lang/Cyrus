@@ -151,8 +151,6 @@ impl Resolver {
 
             if let ModuleAlias::Group(alias) = &loaded_module.alias {
                 if let Some(_) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
-                    dbg!(alias.clone());
-
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(ResolverDiagKind::ImportTwice {
@@ -231,7 +229,7 @@ impl Resolver {
                         name: actual_name.clone(),
                     }),
                     loc: Some(loc),
-                    hint: Some(format!("Module does not export '{}'", actual_name)),
+                    hint: None,
                 });
                 continue;
             };
