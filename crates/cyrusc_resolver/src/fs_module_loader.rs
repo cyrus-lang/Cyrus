@@ -269,7 +269,6 @@ impl ModuleLoader for FsModuleLoader {
                 _ => unreachable!("last_module_idx always picks a SubModule"),
             };
 
-            // alias: single only affects symbol names, not module aliases
             let module_alias = match &sub_import.segments.last().unwrap() {
                 ModuleSegment::SubModule(ident) => {
                     ModuleAlias::Group(sub_import.alias.clone().unwrap_or_else(|| ident.value.clone()))

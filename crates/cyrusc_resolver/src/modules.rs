@@ -149,16 +149,17 @@ impl Resolver {
             };
 
             if let ModuleAlias::Group(alias) = &loaded_module.alias {
-                if let Some(_) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::ImportTwice {
-                            module_name: alias.clone(),
-                        }),
-                        loc: Some(import.loc),
-                        hint: Some("Consider removing the previous declaration.".to_string()),
-                    });
-                    continue;
+                if let Some(symbol_id) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
+                    println!("{} -> {}", alias, symbol_id);
+                    // self.reporter.report(Diag {
+                    //     level: DiagLevel::Error,
+                    //     kind: Box::new(ResolverDiagKind::ImportTwice {
+                    //         module_name: alias.clone(),
+                    //     }),
+                    //     loc: Some(import.loc),
+                    //     hint: Some("Consider removing the previous declaration.".to_string()),
+                    // });
+                    // continue;
                 }
             }
 

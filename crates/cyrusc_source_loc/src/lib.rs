@@ -60,10 +60,19 @@ impl SourceMap {
         }
     }
 
+    #[inline]
+    pub fn files(&self) -> HashMap<FileID, Arc<SourceFile>> {
+        self.files.read().unwrap().clone()
+    }
+
     /// Adds a new source file to the map and returns its assigned FileID.
     pub fn add_file<P: AsRef<Path>>(&self, file_path: P, content: String) -> FileID {
-        let id_val = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let file_id = FileID(id_val);
+        if let Some(file_id) = self.lookup_source_file_by_path(file_path.as_ref().to_path_buf()) {
+            return file_id;
+        }
+        
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let file_id = FileID(id);
 
         let source_file = Arc::new(SourceFile::new(file_id, file_path.as_ref().to_path_buf(), content));
 
@@ -72,14 +81,24 @@ impl SourceMap {
     }
 
     /// Loads a file from disk and registers it in the SourceMap.
+    #[inline]
     pub fn add_file_by_loading<P: AsRef<Path>>(&self, file_path: P) -> FileID {
         let (content, _) = read_file(&file_path);
         self.add_file(file_path, content)
     }
 
     /// Retrieves a SourceFile by its FileID.
+    #[inline]
     pub fn get_file(&self, file_id: FileID) -> Option<Arc<SourceFile>> {
         self.files.read().unwrap().get(&file_id).cloned()
+    }
+
+    fn lookup_source_file_by_path(&self, path: PathBuf) -> Option<FileID> {
+        let files = self.files.read().unwrap();
+        files
+            .iter()
+            .find(|(_, source_file)| source_file.file_path == path)
+            .map(|(file_id, _)| *file_id)
     }
 }
 

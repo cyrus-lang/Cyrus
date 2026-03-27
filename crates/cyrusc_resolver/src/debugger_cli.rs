@@ -98,27 +98,42 @@ pub fn main() {
                 exit(1);
             }
 
-            dump_global_symbols(&resolver, &output_file);
+            let file = File::create(output_file).expect("failed to create output file");
+            let mut writer = BufWriter::new(file);
+
+            dump_global_symbols(&resolver, &mut writer);
+            dump_source_map(&source_map, &mut writer);
         }
 
         Err(()) => exit(1),
     }
 }
 
-// Symbol Graph Debugger
-fn dump_global_symbols(resolver: &Resolver, output_path: &str) {
-    let file = File::create(output_path).expect("failed to create output file");
-    let mut writer = BufWriter::new(file);
+fn dump_source_map(source_map: &SourceMap, writer: &mut BufWriter<File>) {
+    writeln!(writer, "\n=========== SOURCE MAP ===========\n").unwrap();
 
+    for (file_id, source_file) in source_map.files() {
+        writeln!(
+            writer,
+            "file_id={}  ->  {}",
+            file_id.0,
+            source_file.file_path.to_str().unwrap()
+        )
+        .unwrap();
+    }
+}
+
+// Symbol Graph Debugger
+fn dump_global_symbols(resolver: &Resolver, writer: &mut BufWriter<File>) {
     let inner = resolver.global_symbols.inner.read().unwrap();
 
     writeln!(writer, "=========== GLOBAL SYMBOL TABLE ===========\n").unwrap();
 
-    dump_flat_table(resolver, &inner.entries, &mut writer);
+    dump_flat_table(resolver, &inner.entries, writer);
 
     writeln!(writer, "\n=========== SCOPE GRAPH ===========\n").unwrap();
 
-    dump_scope_tree(resolver, &inner.entries, &mut writer);
+    dump_scope_tree(resolver, &inner.entries, writer);
 }
 
 fn dump_flat_table(resolver: &Resolver, entries: &Vec<SymbolEntry>, writer: &mut BufWriter<File>) {

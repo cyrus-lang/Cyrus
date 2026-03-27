@@ -31,7 +31,7 @@ resolver:
 	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
 resolver_dump_global_symbols:
-	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver_debugger -- $(INPUT) ./tmp/global_symbols_dump.txt $(COMMON_FLAGS) --stdlib=$(STDLIB)
+	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver_debugger -- $(INPUT) ./tmp/global_symbols_dump $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
 cir_walk analyzer parser lexer:
 	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
