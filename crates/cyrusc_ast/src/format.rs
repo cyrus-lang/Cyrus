@@ -59,7 +59,7 @@ pub fn format_module_segments(segments: &[ModuleSegment]) -> String {
 
 impl fmt::Display for ASTBlockStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format_stmts(&self.exprs))
+        write!(f, "{}", format_stmts(&self.stmts))
     }
 }
 
@@ -295,7 +295,7 @@ impl fmt::Display for ASTExpr {
                     FuncParamKind::SelfModifier(..) => unreachable!(),
                 });
                 write!(f, ") {}", lambda.ret_type.clone())?;
-                write!(f, "{{ {} }}", format_stmts(&lambda.body.exprs))
+                write!(f, "{{ {} }}", format_stmts(&lambda.body.stmts))
             }
             ASTExpr::Unary(unary_expr) => {
                 write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)

@@ -74,9 +74,6 @@ pub enum ResolverDiagKind {
     #[error("Function parameter must have a type.")]
     InvalidUntypedFuncParam,
 
-    #[error("Module '{module_name}' not found.")]
-    ModuleImportNotFound { module_name: String },
-
     #[error(
         "An import cycle was found, indicating a circular dependency between modules.\nCycle Path: {module_names}\nConsider resolving the cycle by refactoring the modules."
     )]

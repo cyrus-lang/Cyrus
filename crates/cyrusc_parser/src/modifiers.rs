@@ -45,6 +45,11 @@ pub(crate) struct InterfaceModifiers {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ModuleDeclModifiers {
+    pub(crate) vis: Visibility,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct TypedefModifiers {
     pub(crate) vis: Visibility,
 }
@@ -358,6 +363,31 @@ impl<'source_file> Parser<'source_file> {
 }
 
 impl UnresolvedModifiers {
+    pub(crate) fn into_module_decl_modifiers(self, loc: Loc) -> Result<ModuleDeclModifiers, Diag> {
+        let vis = self.visibility.unwrap_or_default();
+
+        if self.linkage.is_some()
+            || self.inline.is_some()
+            || self.prologue.is_some()
+            || self.export.is_some()
+            || self.callconv.is_some()
+            || self.repr_attr.is_some()
+            || !self.optional_flags.is_empty()
+            || !self.placement.is_empty()
+        {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Module declarations can only have visibility modifiers.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        Ok(ModuleDeclModifiers { vis })
+    }
+
     pub(crate) fn into_func_modifiers(self, loc: Loc) -> Result<FuncModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 

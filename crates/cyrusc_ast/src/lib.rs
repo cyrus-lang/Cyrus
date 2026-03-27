@@ -66,6 +66,14 @@ pub enum ASTExpr {
 }
 
 #[derive(Debug, Clone)]
+pub struct ASTModuleDecl {
+    pub ident: Ident,
+    pub vis: Visibility,
+    pub stmts: Vec<ASTStmt>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
 pub struct ASTDynamicExpr {
     pub operand: Box<ASTExpr>,
     pub loc: Loc,
@@ -403,6 +411,7 @@ pub struct ASTArrayIndexExpr {
 
 #[derive(Debug, Clone)]
 pub enum ASTStmt {
+    ModuleDecl(ASTModuleDecl),
     Builtin(Builtin),
     Import(ASTImportStmt),
     Variable(ASTVarStmt),
@@ -644,7 +653,7 @@ pub struct ASTFuncDeclStmt {
 
 #[derive(Debug, Clone)]
 pub struct ASTBlockStmt {
-    pub exprs: Vec<ASTStmt>,
+    pub stmts: Vec<ASTStmt>,
     pub loc: Loc,
 }
 
@@ -861,6 +870,7 @@ impl ASTFuncDeclStmt {
 impl ASTStmt {
     pub fn vis(&self) -> Option<Visibility> {
         match self {
+            ASTStmt::ModuleDecl(module_decl) => Some(module_decl.vis),
             ASTStmt::FuncDef(func_def) => Some(func_def.modifiers.vis),
             ASTStmt::FuncDecl(func_decl) => Some(func_decl.modifiers.vis),
             ASTStmt::Interface(interface) => Some(interface.vis),
@@ -892,6 +902,7 @@ impl ASTStmt {
 
     pub fn decl_name(&self) -> Option<&Ident> {
         match self {
+            ASTStmt::ModuleDecl(module_decl) => Some(&module_decl.ident),
             ASTStmt::Variable(variable) => Some(&variable.ident),
             ASTStmt::FuncDef(func_def) => Some(&func_def.ident),
             ASTStmt::FuncDecl(func_decl) => Some(&func_decl.ident),
@@ -923,6 +934,7 @@ impl ASTStmt {
 
     pub fn loc(&self) -> Loc {
         match self {
+            ASTStmt::ModuleDecl(module_decl) => module_decl.loc,
             ASTStmt::Interface(interface) => interface.loc,
             ASTStmt::Variable(variable) => variable.loc,
             ASTStmt::ExportTuple(export_tuple_values) => export_tuple_values.loc,

@@ -94,7 +94,7 @@ impl Resolver {
         self.current_module_file_id = Some(file_id);
 
         // collect symbol names (first pass)
-        self.resolve_decl_names(&ast);
+        self.resolve_decl_names(&ast.body);
 
         // analyze `import statements` of this module
         for import in ast.import_stmts() {
@@ -282,7 +282,6 @@ impl Resolver {
 
         for (i, implied_parent) in loaded_module.implied_parent_modules.iter().enumerate() {
             let parent_name = &implied_parent.ident.value;
-            dbg!(parent_name.clone());
 
             // last parent should proxy to real module
             if i == loaded_module.implied_parent_modules.len() - 1 {

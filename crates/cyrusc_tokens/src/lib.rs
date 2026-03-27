@@ -82,6 +82,7 @@ pub enum TokenKind {
     At,
 
     // Keywords
+    Module,
     Var,
     Dynamic,
     Goto,
@@ -255,6 +256,7 @@ impl fmt::Display for TokenKind {
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Dynamic => write!(f, "dynamic"),
             TokenKind::Var => write!(f, "var"),
+            TokenKind::Module => write!(f, "mod"),
             TokenKind::Interface => write!(f, "interface"),
             TokenKind::Typedef => write!(f, "type"),
             TokenKind::Typecast => write!(f, "cast"),

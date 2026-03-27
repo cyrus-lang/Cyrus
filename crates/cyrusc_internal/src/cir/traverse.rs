@@ -1521,10 +1521,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         if let Some(monomorph_id) = func_call.monomorph_id {
             let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
 
-            let symbol_entry = self
-                .query
-                .get_symbol_entry(monomorph_func_entry.base_symbol)
-                .unwrap();
+            let symbol_entry = self.query.get_symbol_entry(monomorph_func_entry.base_symbol).unwrap();
 
             let mut func_sig = symbol_entry
                 .as_func()
@@ -1733,12 +1730,12 @@ impl<'resolver> CIRTraverse<'resolver> {
                 })
             }
             SemanticType::GenericType(generic_type) => self.lower_generic_type(generic_type.clone()),
-            SemanticType::UnresolvedSymbol(_) => unreachable!("Unexpected unresolved symbol."),
+            SemanticType::UnresolvedSymbol(_) => unreachable!("unexpected unresolved symbol"),
             SemanticType::SelfType(_) => {
                 if let Some(cir_ty) = &self.current_self_ty {
                     cir_ty.clone()
                 } else {
-                    unreachable!("Unexpected self type which is not resolved.")
+                    unreachable!("unexpected self type which is not resolved")
                 }
             }
             SemanticType::GenericParam(generic_param) => {

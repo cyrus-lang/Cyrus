@@ -44,8 +44,8 @@ use std::rc::Rc;
 impl Resolver {
     // Scans the top-level AST for declarations (typedefs, functions, structs, etc.)
     // And Registers each declared name into the current module’s symbol table. (first pass)
-    pub(crate) fn resolve_decl_names(&mut self, ast: &ProgramTree) {
-        for stmt in ast.body.as_ref() {
+    pub(crate) fn resolve_decl_names(&mut self, stmts: &[ASTStmt]) {
+        for stmt in stmts {
             // skip statement if it's not a declaration symbol
             let Some(decl_name) = stmt.decl_name() else {
                 continue;
@@ -69,36 +69,151 @@ impl Resolver {
         let mut typed_body = Vec::new();
 
         for stmt in ast.body.as_ref() {
-            let typed_stmt = match stmt {
-                ASTStmt::Import(..) | ASTStmt::Expr(..) => continue,
-                ASTStmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
-                ASTStmt::GlobalVar(global_var) => self.resolve_global_var_stmt(global_var),
-                ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
-                ASTStmt::FuncDef(func_def) => self.resolve_func_def(func_def),
-                ASTStmt::FuncDecl(func_decl) => self.resolve_func_decl(func_decl),
-                ASTStmt::Struct(struct_) => self.resolve_struct_stmt(struct_),
-                ASTStmt::Enum(enum_) => self.resolve_enum_stmt(enum_),
-                ASTStmt::Union(union_) => self.resolve_union_stmt(union_),
-                ASTStmt::Interface(interface) => self.resolve_interface_stmt(interface),
-
-                // invalid top-level statements
-                _ => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::InvalidTopLevelStatement),
-                        loc: Some(stmt.loc()),
-                        hint: None,
-                    });
-                    continue;
-                }
-            };
-
-            if let Some(stmt) = typed_stmt {
-                typed_body.push(stmt);
-            }
+            let resolved = self.resolve_toplevel_stmt(stmt);
+            typed_body.extend(resolved);
         }
 
         typed_body
+    }
+
+    fn resolve_toplevel_stmt(&mut self, stmt: &ASTStmt) -> Vec<TypedStmt> {
+        match stmt {
+            ASTStmt::ModuleDecl(module_decl) => {
+                return self.resolve_module_decl(module_decl);
+            }
+            ASTStmt::Import(..) | ASTStmt::Expr(..) => {
+                return Vec::new();
+            }
+            ASTStmt::Builtin(builtin) => {
+                if let Some(stmt) = self.resolve_builtin(builtin).map(TypedStmt::Builtin) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::GlobalVar(global_var) => {
+                if let Some(stmt) = self.resolve_global_var_stmt(global_var) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::Typedef(typedef) => {
+                if let Some(stmt) = self.resolve_typedef(typedef) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::FuncDef(func_def) => {
+                if let Some(stmt) = self.resolve_func_def(func_def) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::FuncDecl(func_decl) => {
+                if let Some(stmt) = self.resolve_func_decl(func_decl) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::Struct(struct_) => {
+                if let Some(stmt) = self.resolve_struct_stmt(struct_) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::Enum(enum_) => {
+                if let Some(stmt) = self.resolve_enum_stmt(enum_) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::Union(union_) => {
+                if let Some(stmt) = self.resolve_union_stmt(union_) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            ASTStmt::Interface(interface) => {
+                if let Some(stmt) = self.resolve_interface_stmt(interface) {
+                    return vec![stmt];
+                }
+                return Vec::new();
+            }
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::InvalidTopLevelStatement),
+                    loc: Some(stmt.loc()),
+                    hint: None,
+                });
+                Vec::new()
+            }
+        }
+    }
+
+    fn resolve_stmt(&mut self, stmt: &ASTStmt) -> Option<TypedStmt> {
+        match stmt {
+            ASTStmt::ExportTuple(export_tuple) => self.resolve_export_tuple_stmt(export_tuple),
+            ASTStmt::Variable(variable) => self.resolve_var(variable).map(TypedStmt::Variable),
+            ASTStmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
+            ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmt::Expr),
+            ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmt::If),
+            ASTStmt::For(for_stmt) => self.resolve_for_stmt(for_stmt).map(TypedStmt::For),
+            ASTStmt::While(while_stmt) => self.resolve_while_stmt(while_stmt).map(TypedStmt::While),
+            ASTStmt::Switch(switch_stmt) => self.resolve_switch_stmt(switch_stmt).map(TypedStmt::Switch),
+            ASTStmt::Enum(enum_decl) => self.resolve_enum_stmt(enum_decl),
+            ASTStmt::Union(union_decl) => self.resolve_union_stmt(union_decl),
+            ASTStmt::Interface(interface) => self.resolve_interface_stmt(interface),
+            ASTStmt::Struct(struct_decl) => self.resolve_struct_stmt(struct_decl),
+            ASTStmt::BlockStmt(block) => self.resolve_block_stmt(block).map(TypedStmt::BlockStmt),
+            ASTStmt::Return(return_stmt) => self.resolve_return_stmt(return_stmt).map(TypedStmt::Return),
+            ASTStmt::Break(break_stmt) => self.resolve_break_stmt(break_stmt).map(TypedStmt::Break),
+            ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
+            ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
+            ASTStmt::Label(label) => self.resolve_label_stmt(label),
+            ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
+            ASTStmt::Foreach(_foreach_stmt) => unimplemented!(), // TODO
+
+            // invalid statements
+            ASTStmt::GlobalVar(_)
+            | ASTStmt::FuncDef(_)
+            | ASTStmt::FuncDecl(_)
+            | ASTStmt::Import(_)
+            | ASTStmt::ModuleDecl(_) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::InvalidStatement),
+                    loc: Some(stmt.loc()),
+                    hint: None,
+                });
+                None
+            }
+            ASTStmt::Defer(_) => unreachable!(),
+        }
+    }
+
+    fn resolve_module_decl(&mut self, module_decl: &ASTModuleDecl) -> Vec<TypedStmt> {
+        let mut module_decl_stmts = Vec::new();
+
+        let parent_scope = self.current_scope.unwrap();
+
+        let module_scope = self.global_symbols.insert_namespace_symbol(
+            parent_scope,
+            &module_decl.ident.value,
+            module_decl.loc,
+            Some(module_decl.vis),
+        );
+
+        self.enter_scope_table(module_scope);
+
+        self.resolve_decl_names(&module_decl.stmts);
+
+        for stmt in &module_decl.stmts {
+            module_decl_stmts.extend(self.resolve_toplevel_stmt(stmt));
+        }
+
+        self.exit_scope_table();
+
+        module_decl_stmts
     }
 
     /// Resolve an identifier in the current lexical context.
@@ -1621,7 +1736,7 @@ impl Resolver {
         let mut typed_body: Vec<TypedStmt> = Vec::new();
         let mut defers: Vec<TypedDeferStmt> = Vec::new();
 
-        for stmt in &block_stmt.exprs {
+        for stmt in &block_stmt.stmts {
             match stmt {
                 ASTStmt::Defer(defer) => {
                     if let Some(typed_stmt) = self.resolve_stmt(&defer.operand) {
@@ -1698,41 +1813,6 @@ impl Resolver {
             is_const: export_tuple.is_const,
             loc: export_tuple.loc,
         }))
-    }
-
-    fn resolve_stmt(&mut self, stmt: &ASTStmt) -> Option<TypedStmt> {
-        match stmt {
-            ASTStmt::ExportTuple(export_tuple) => self.resolve_export_tuple_stmt(export_tuple),
-            ASTStmt::Variable(variable) => self.resolve_var(variable).map(TypedStmt::Variable),
-            ASTStmt::Builtin(builtin) => self.resolve_builtin(builtin).map(TypedStmt::Builtin),
-            ASTStmt::Expr(expr) => self.resolve_expr(expr).map(TypedStmt::Expr),
-            ASTStmt::If(if_stmt) => self.resolve_if_stmt(if_stmt).map(TypedStmt::If),
-            ASTStmt::For(for_stmt) => self.resolve_for_stmt(for_stmt).map(TypedStmt::For),
-            ASTStmt::While(while_stmt) => self.resolve_while_stmt(while_stmt).map(TypedStmt::While),
-            ASTStmt::Switch(switch_stmt) => self.resolve_switch_stmt(switch_stmt).map(TypedStmt::Switch),
-            ASTStmt::Enum(enum_decl) => self.resolve_enum_stmt(enum_decl),
-            ASTStmt::Union(union_decl) => self.resolve_union_stmt(union_decl),
-            ASTStmt::Interface(interface) => self.resolve_interface_stmt(interface),
-            ASTStmt::Struct(struct_decl) => self.resolve_struct_stmt(struct_decl),
-            ASTStmt::BlockStmt(block) => self.resolve_block_stmt(block).map(TypedStmt::BlockStmt),
-            ASTStmt::Return(return_stmt) => self.resolve_return_stmt(return_stmt).map(TypedStmt::Return),
-            ASTStmt::Break(break_stmt) => self.resolve_break_stmt(break_stmt).map(TypedStmt::Break),
-            ASTStmt::Continue(continue_stmt) => self.resolve_continue_stmt(continue_stmt).map(TypedStmt::Continue),
-            ASTStmt::Typedef(typedef) => self.resolve_typedef(typedef),
-            ASTStmt::Label(label) => self.resolve_label_stmt(label),
-            ASTStmt::Goto(goto) => self.resolve_goto_stmt(goto),
-            ASTStmt::GlobalVar(_) | ASTStmt::FuncDef(_) | ASTStmt::FuncDecl(_) | ASTStmt::Import(_) => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::InvalidStatement),
-                    loc: Some(stmt.loc()),
-                    hint: None,
-                });
-                None
-            }
-            ASTStmt::Defer(_) => unreachable!(),
-            ASTStmt::Foreach(_foreach_stmt) => unimplemented!(),
-        }
     }
 
     fn resolve_for_stmt(&mut self, for_stmt: &ASTForStmt) -> Option<TypedForStmt> {
