@@ -18,7 +18,13 @@
 use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
 use cyrusc_ast::{ASTImportStmt, ModuleSegmentSingle, ProgramTree, abi::Visibility};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::{module_loader::ModuleAlias, symbols::table::Query};
+use cyrusc_internal::{
+    module_loader::ModuleAlias,
+    symbols::{
+        symbols::{SymbolEntry, SymbolEntryKind},
+        table::Query,
+    },
+};
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
 use std::{
@@ -156,19 +162,23 @@ impl Resolver {
                 }
             };
 
-            {
+            // store module name and generate symbol id in global_symbols for it
+            let module_symbol_id = {
                 let module_file_path = self
                     .source_map
                     .get_file(loaded_module.file_id)
                     .unwrap()
                     .file_path
                     .clone();
+
                 let module_name = self
                     .module_loader
                     .module_name_from_file_path(Path::new(&module_file_path));
 
-                self.insert_module_name(loaded_module.file_id, module_name.clone());
-            }
+                self.insert_module_name(loaded_module.file_id, module_name.to_string());
+
+                self.get_or_create_module_symbol_id(loaded_module.file_id, &module_name, import.loc)
+            };
 
             // check for self-import
             if current_file == loaded_module.file_id {
@@ -194,14 +204,12 @@ impl Resolver {
                 continue;
             }
 
-            visiting.active.insert(loaded_module.file_id);
-
             // resolve module if needed
             if !visiting.done.contains(&loaded_module.file_id) {
                 visiting.active.insert(loaded_module.file_id);
 
                 self.resolve_module(
-                    module_symbol,
+                    module_symbol_id,
                     &loaded_module.program_tree,
                     visiting,
                     loaded_module.file_id,
@@ -210,6 +218,84 @@ impl Resolver {
 
                 visiting.active.remove(&loaded_module.file_id);
                 visiting.done.insert(loaded_module.file_id);
+            }
+
+            match loaded_module.alias {
+                ModuleAlias::Group(alias) => {
+                    let already_directly_imported =
+                        self.with_scope_table(parent_scope_id, |scope_table| scope_table.lookup(&alias_name).is_some());
+
+                    if already_directly_imported {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(ResolverDiagKind::ImportTwice {
+                                module_name: alias_name.clone(),
+                            }),
+                            loc: Some(import.loc),
+                            hint: Some("Consider removing the previous declaration.".to_string()),
+                        });
+                        continue;
+                    }
+
+                    let proxy_symbol_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::new(
+                        SymbolEntryKind::ProxiedModule {
+                            symbol_id: module_symbol_id,
+                        },
+                        None,
+                    ));
+
+                    self.global_symbols
+                        .bind_symbol_name(parent_scope_id, proxy_symbol_id, &alias_name);
+                }
+                ModuleAlias::Single(module_segment_singles) => {
+                    for single in module_segment_singles {
+                        let visible_name = single.visible_name();
+
+                        let already_directly_imported =
+                            self.with_scope_table(parent_scope_id, |scope| scope.lookup(&visible_name).is_some());
+
+                        if already_directly_imported {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: Box::new(ResolverDiagKind::ImportTwice {
+                                    module_name: visible_name.clone(),
+                                }),
+                                loc: Some(import.loc),
+                                hint: Some("Consider removing the previous declaration.".to_string()),
+                            });
+                            continue;
+                        }
+
+                        // lookup symbol inside module scope
+                        let target_symbol_id = self.with_scope_table(module_symbol_id, |scope| scope.lookup(&single.name));
+
+                        let target_symbol_id = match target_symbol_id {
+                            Some(id) => id,
+                            None => {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
+                                        name: single.name.clone(),
+                                    }),
+                                    loc: Some(import.loc),
+                                    hint: None,
+                                });
+                                continue;
+                            }
+                        };
+
+                        let proxy_symbol_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::new(
+                            SymbolEntryKind::ProxiedSymbol {
+                                scope_id: module_symbol_id,
+                                symbol_id: target_symbol_id,
+                            },
+                            Some(parent_scope_id),
+                        ));
+
+                        self.global_symbols
+                            .bind_symbol_name(parent_scope_id, proxy_symbol_id, &visible_name);
+                    }
+                }
             }
         }
     }
@@ -265,7 +351,7 @@ impl Resolver {
                     continue;
                 }
 
-                self.global_symbols.insert_proxy_symbol(
+                self.global_symbols.bind_symbol_proxy(
                     self.current_scope.unwrap(),
                     &renamed_name,
                     imported_scope_id,

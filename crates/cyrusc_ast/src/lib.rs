@@ -982,6 +982,16 @@ impl Ident {
     }
 }
 
+impl ModuleSegmentSingle {
+    #[inline]
+    pub fn visible_name(&self) -> String {
+        self.renamed
+            .clone()
+            .map(|ident| ident.value)
+            .unwrap_or(self.ident.as_string())
+    }
+}
+
 impl ASTModuleImport {
     pub fn as_ident(&self) -> Option<Ident> {
         if self.segments.len() == 1 {

@@ -29,6 +29,7 @@ use crate::symbols::table::ScopeTable;
 
 #[derive(Debug, Clone)]
 pub struct SymbolEntry {
+    pub parent_scope_id: Option<SymbolID>,
     pub kind: SymbolEntryKind,
     pub vis_opt: Option<Visibility>,
     pub used: bool,
@@ -71,35 +72,30 @@ pub struct Namespace {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedUnion {
-    
     pub symbol_id: SymbolID,
     pub union_sig: UnionSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedEnum {
-    
     pub symbol_id: SymbolID,
     pub enum_sig: EnumSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedStruct {
-    
     pub symbol_id: SymbolID,
     pub struct_sig: StructSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedGlobalVar {
-    
     pub symbol_id: SymbolID,
     pub global_var_sig: GlobalVarSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedMethod {
-    
     pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
     pub func_body: Option<Box<TypedBlockStmt>>,
@@ -107,35 +103,32 @@ pub struct ResolvedMethod {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedFunc {
-    
     pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedTypedef {
-    
     pub symbol_id: SymbolID,
     pub typedef_sig: TypedefSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedInterface {
-    
     pub symbol_id: SymbolID,
     pub interface_sig: InterfaceSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedVar {
-    
     pub symbol_id: SymbolID,
     pub variable: TypedVarStmt,
 }
 
 impl SymbolEntry {
-    pub fn new(kind: SymbolEntryKind, vis: Option<Visibility>) -> Self {
+    pub fn new(kind: SymbolEntryKind, vis: Option<Visibility>, parent_scope_id: Option<SymbolID>) -> Self {
         Self {
+            parent_scope_id,
             kind,
             vis_opt: vis,
             used: false,
@@ -143,8 +136,9 @@ impl SymbolEntry {
     }
 
     #[inline]
-    pub fn unresolved(vis: Option<Visibility>) -> Self {
+    pub fn unresolved(vis: Option<Visibility>, parent_scope_id: Option<SymbolID>) -> Self {
         Self {
+            parent_scope_id,
             kind: SymbolEntryKind::Unresolved,
             vis_opt: vis,
             used: false,

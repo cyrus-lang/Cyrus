@@ -57,10 +57,10 @@ impl Resolver {
 
             let symbol_id = self
                 .global_symbols
-                .insert_symbol_entry(SymbolEntry::unresolved(stmt.vis()));
+                .alloc_symbol_entry(SymbolEntry::unresolved(stmt.vis()));
 
             self.global_symbols
-                .insert_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
+                .bind_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
         }
     }
 
@@ -110,7 +110,7 @@ impl Resolver {
     ///
     /// If no symbol can be found, an error diagnostic is emitted.
     fn resolve_ident(&mut self, ident: &Ident) -> Option<SymbolID> {
-        if let Some(symbol_id) = self.resolve_scope_symbol(&ident.value) {
+        if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
             return Some(symbol_id);
         }
 
@@ -349,7 +349,7 @@ impl Resolver {
             return Some(ty);
         }
 
-        if let Some(symbol_id) = self.resolve_scope_symbol(&ident.value) {
+        if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
             return Some(SemanticType::UnresolvedSymbol(symbol_id));
         }
 
@@ -1156,10 +1156,10 @@ impl Resolver {
                 }
             }
 
-            let method_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
+            let method_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::unresolved(None));
 
             self.global_symbols
-                .insert_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
+                .bind_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
 
             methods.insert(original_name.clone(), method_id);
 
@@ -1192,7 +1192,7 @@ impl Resolver {
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
+                        let self_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::unresolved(None));
                         self_modifier.self_id = Some(self_id);
 
                         let ty = match self_modifier.kind {
@@ -1215,7 +1215,7 @@ impl Resolver {
 
                         self.with_var_mut(self_id, |resolved_var| resolved_var.variable = self_var);
 
-                        self.current_scope_mut()
+                        self.current_local_scope_mut()
                             .unwrap()
                             .insert(self_name.to_string().clone(), self_id);
                     }
@@ -1970,7 +1970,7 @@ impl Resolver {
 
         let label_id = self.id_gen.alloc_label();
 
-        self.current_scope_mut().unwrap().insert_label(name.clone(), label_id);
+        self.current_local_scope_mut().unwrap().insert_label(name.clone(), label_id);
 
         Some(TypedStmt::Label(TypedLabelStmt {
             name,
@@ -2571,7 +2571,7 @@ impl Resolver {
         }
 
         // allocate placeholder entry
-        let symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
+        let symbol_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::unresolved(None));
 
         let variable = TypedVarStmt {
             symbol_id,
@@ -2591,7 +2591,7 @@ impl Resolver {
         });
 
         // insert into current scope
-        self.current_scope_mut().unwrap().insert(name.clone(), symbol_id);
+        self.current_local_scope_mut().unwrap().insert(name.clone(), symbol_id);
 
         Some(symbol_id)
     }
