@@ -441,7 +441,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_global_var(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let resolved_global_var = self.query.lookup_global_var(symbol_id)?;
+        let resolved_global_var = self.query.get_global_var(symbol_id)?;
 
         if let Some(ty) = &resolved_global_var.global_var_sig.ty {
             self.normalize_sema_type(ty.clone(), loc)
@@ -451,7 +451,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_var(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let resolved_var = self.query.lookup_var(symbol_id)?;
+        let resolved_var = self.query.get_var(symbol_id)?;
         let var_type = &resolved_var.variable.ty;
         let var_rhs = &resolved_var.variable.rhs;
 
@@ -470,7 +470,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_typedef(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
-        let resolved_typedef = self.query.lookup_typedef(symbol_id)?;
+        let resolved_typedef = self.query.get_typedef(symbol_id)?;
         self.resolve_typedef_inner_type(&resolved_typedef)
     }
 
@@ -529,7 +529,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_generic_type(&mut self, mut generic_type: GenericType) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
+        let symbol_entry = self.query.get_symbol(generic_type.base).unwrap();
 
         if generic_type.generic_params.list.is_empty() {
             if let Some(generic_params) = symbol_entry.symbol_generic_params() {
@@ -584,7 +584,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_interface_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let resolved_interface = self.query.lookup_interface(symbol_id)?;
+        let resolved_interface = self.query.get_interface(symbol_id)?;
 
         let methods: Vec<FuncSig> = resolved_interface
             .interface_sig
@@ -797,7 +797,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         };
 
-        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol(symbol_id).unwrap();
         debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
         let mut sema_type_opt = self.resolve_symbol_type_internal(&symbol_entry);
@@ -866,7 +866,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
             SymbolEntryKind::Typedef(typedef) => self.resolve_typedef_inner_type(typedef),
             SymbolEntryKind::ProxiedSymbol(_, target_symbol_id) => {
-                let target_entry = self.query.lookup_global_symbol(*target_symbol_id)?;
+                let target_entry = self.query.get_symbol(*target_symbol_id)?;
                 self.resolve_symbol_type_internal(&target_entry)
             }
             SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),

@@ -332,8 +332,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let enum_id1 = lhs_type.const_inner().as_enum_symbol_id().unwrap();
         let enum_id2 = rhs_type.const_inner().as_enum_symbol_id().unwrap();
 
-        let resolved_enum1 = self.query.lookup_enum(enum_id1)?;
-        let resolved_enum2 = self.query.lookup_enum(enum_id2)?;
+        let resolved_enum1 = self.query.get_enum(enum_id1)?;
+        let resolved_enum2 = self.query.get_enum(enum_id2)?;
 
         if resolved_enum1.symbol_id == resolved_enum2.symbol_id {
             Some(SemanticType::PlainType(PlainType::Bool))
@@ -364,7 +364,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             );
 
             let equal_base = generic_type1.base == generic_type2.base;
-            let is_enum = self.query.lookup_enum(generic_type1.base).is_some();
+            let is_enum = self.query.get_enum(generic_type1.base).is_some();
 
             if !(is_enum && equal_mapping_ctx && equal_base) {
                 self.reporter.report(Diag {

@@ -333,7 +333,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.normalize_type_args(type_args.as_mut());
 
-        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol(symbol_id).unwrap();
 
         // get genera params from symbol entry if not specified explicitly
         let symbol_generic_params = symbol_entry.symbol_generic_params();

@@ -27,20 +27,20 @@ use cyrusc_typed_ast::{
 use std::collections::HashMap;
 
 pub trait Query: Sync + Send {
-    fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
-    fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar>;
-    fn lookup_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod>;
-    fn lookup_func(&self, symbol_id: SymbolID) -> Option<ResolvedFunc>;
-    fn lookup_typedef(&self, symbol_id: SymbolID) -> Option<ResolvedTypedef>;
-    fn lookup_union(&self, symbol_id: SymbolID) -> Option<ResolvedUnion>;
-    fn lookup_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum>;
-    fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct>;
-    fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface>;
+    fn get_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
+    fn get_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar>;
+    fn get_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod>;
+    fn get_func(&self, symbol_id: SymbolID) -> Option<ResolvedFunc>;
+    fn get_typedef(&self, symbol_id: SymbolID) -> Option<ResolvedTypedef>;
+    fn get_union(&self, symbol_id: SymbolID) -> Option<ResolvedUnion>;
+    fn get_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum>;
+    fn get_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct>;
+    fn get_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface>;
 
     fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_entry(&self, scope_id: SymbolID, name: &str) -> Option<SymbolEntry>;
-    fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
+    fn get_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
 
     fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry>;
     fn lookup_specialized_func_instance(&self, monomorph_id: MonomorphID) -> Option<SpecializedFuncEntry>;

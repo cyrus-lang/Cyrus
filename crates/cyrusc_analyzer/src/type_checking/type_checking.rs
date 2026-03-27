@@ -68,7 +68,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let symbol_entry = self.query.lookup_global_symbol(symbol_expr.symbol_id).unwrap();
+                let symbol_entry = self.query.get_symbol(symbol_expr.symbol_id).unwrap();
                 debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
                 if !symbol_entry.is_kind_of_variable() && !symbol_entry.as_func().is_some() {
@@ -314,14 +314,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             if let Some(unnamed_union_type) = sema_type.as_unnamed_union() {
                 return Some(unnamed_union_type);
             } else if let Some(union_id) = sema_type.as_union_symbol_id() {
-                let resolved_union = self.query.lookup_union(union_id)?;
+                let resolved_union = self.query.get_union(union_id)?;
 
                 return Some(union_sig_as_unnamed_union_type(
                     &resolved_union.union_sig,
                     unnamed_union_value.loc,
                 ));
             } else if let Some(generic_type) = sema_type.as_generic_type() {
-                let resolved_union = self.query.lookup_union(generic_type.base)?;
+                let resolved_union = self.query.get_union(generic_type.base)?;
 
                 let union_sig = substitute_union_sig(
                     self.mapping_ctx_arena.clone(),
@@ -599,7 +599,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         {
             if let Some(symbol_id) = operand_type.symbol_id() {
-                if let Some(symbol_entry) = self.query.lookup_global_symbol(symbol_id) {
+                if let Some(symbol_entry) = self.query.get_symbol(symbol_id) {
                     if self.report_if_unexpected_type_args(
                         &symbol_entry.symbol_generic_params(),
                         &field_access.type_args,
@@ -723,7 +723,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.lookup_global_symbol(struct_init.symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol(struct_init.symbol_id).unwrap();
 
         self.report_if_unexpected_type_args(
             &symbol_entry.symbol_generic_params(),
@@ -830,7 +830,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
 
             if let Some(symbol_id) = func_type.symbol_id {
-                func_sig = self.query.lookup_func(symbol_id).unwrap().func_sig;
+                func_sig = self.query.get_func(symbol_id).unwrap().func_sig;
 
                 if self.report_if_unexpected_type_args(&func_sig.generic_params, &func_call.type_args, func_call.loc) {
                     return None;
@@ -993,7 +993,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let unresolved_symbol_id = method_call.operand.kind.as_symbol_id();
 
         let is_instance_method_operand = unresolved_symbol_id
-            .and_then(|symbol_id| self.query.lookup_global_symbol(symbol_id))
+            .and_then(|symbol_id| self.query.get_symbol(symbol_id))
             .map_or(false, |symbol_entry| {
                 symbol_entry.as_var().is_some() || symbol_entry.as_global_var().is_some()
             });
@@ -1035,7 +1035,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         };
 
-        let symbol_entry = match self.query.lookup_global_symbol(object_symbol_id) {
+        let symbol_entry = match self.query.get_symbol(object_symbol_id) {
             Some(symbol_entry) => symbol_entry,
             None => {
                 self.reporter.report(Diag {
@@ -1430,13 +1430,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         sema_type: SemanticType,
     ) -> (Option<GenericType>, Option<EnumSig>) {
         if let Some(enum_id) = sema_type.as_enum_symbol_id() {
-            if let Some(resolved_enum) = self.query.lookup_enum(enum_id) {
+            if let Some(resolved_enum) = self.query.get_enum(enum_id) {
                 return (None, Some(resolved_enum.enum_sig));
             }
         }
 
         if let Some(generic_type) = sema_type.as_generic_type() {
-            if let Some(resolved_enum) = self.query.lookup_enum(generic_type.base) {
+            if let Some(resolved_enum) = self.query.get_enum(generic_type.base) {
                 let enum_sig = substitute_enum_sig(
                     self.mapping_ctx_arena.clone(),
                     &resolved_enum.enum_sig,
@@ -1615,7 +1615,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn check_generic_typedef_missing_args(&mut self, symbol_id: SymbolID, loc: Loc) -> bool {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let Some(resolved_typedef) = self.query.lookup_typedef(symbol_id) else {
+        let Some(resolved_typedef) = self.query.get_typedef(symbol_id) else {
             return true; // it's okay
         };
 
@@ -1645,7 +1645,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(symbol_id) = sema_type.maybe_generic_base_symbol_id() {
-            let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+            let symbol_entry = self.query.get_symbol(symbol_id).unwrap();
 
             let is_generic_object = symbol_entry.symbol_generic_params().is_some();
             let is_generic_interface = symbol_entry.as_interface().is_some() && is_generic_object;
@@ -1744,14 +1744,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let object_name: String;
         let object_methods: Option<HashMap<String, SymbolID>>;
-        let symbol_entry = self.query.lookup_global_symbol(object_id).unwrap();
+        let symbol_entry = self.query.get_symbol(object_id).unwrap();
 
         macro_rules! lookup_object_method {
             () => {{
                 match object_methods.as_ref().unwrap().get(&method_call.method_name) {
                     Some(method_id) => self
                         .query
-                        .lookup_method(*method_id)
+                        .get_method(*method_id)
                         .and_then(|resolved_method| Some(resolved_method.func_sig)),
                     None => None,
                 }
@@ -2625,7 +2625,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return (false, None);
         };
 
-        let Some(resolved_enum) = self.query.lookup_enum(symbol_id) else {
+        let Some(resolved_enum) = self.query.get_enum(symbol_id) else {
             return (false, None);
         };
 
@@ -2663,7 +2663,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return (false, None);
         };
 
-        let Some(resolved_enum) = self.query.lookup_enum(symbol_id) else {
+        let Some(resolved_enum) = self.query.get_enum(symbol_id) else {
             return (false, None);
         };
 
@@ -3209,7 +3209,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None => return None,
         };
 
-        let symbol_entry = match self.query.lookup_global_symbol(object_symbol_id) {
+        let symbol_entry = match self.query.get_symbol(object_symbol_id) {
             Some(symbol_entry) => symbol_entry,
             None => return None,
         };
@@ -3371,7 +3371,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     /// Resolves semantic type of a variable or global variable.
     fn resolve_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
-        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol(symbol_id).unwrap();
 
         if let Some(resolved_var) = symbol_entry.as_var() {
             Some(resolved_var.variable.ty.clone().unwrap())
@@ -3605,11 +3605,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         if let Some(unnamed_struct_type) = sema_type.as_unnamed_struct() {
             field_env_from_unnamed_struct_type(&unnamed_struct_type)
         } else if let Some(struct_id) = sema_type.as_struct_symbol_id() {
-            let resolved_struct = self.query.lookup_struct(struct_id).unwrap();
+            let resolved_struct = self.query.get_struct(struct_id).unwrap();
 
             field_env_from_struct_sig(&resolved_struct.struct_sig)
         } else if let Some(generic_type) = sema_type.as_generic_type() {
-            let resolved_struct = self.query.lookup_struct(generic_type.base).unwrap();
+            let resolved_struct = self.query.get_struct(generic_type.base).unwrap();
 
             let struct_sig = substitute_struct_sig(
                 self.mapping_ctx_arena.clone(),

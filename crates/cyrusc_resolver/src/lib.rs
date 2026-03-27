@@ -196,6 +196,24 @@ impl Resolver {
         self.local_scopes.iter().rev()
     }
 
+    /// Insert a local variable into the current local scope.
+    #[inline]
+    pub fn insert_local(&mut self, name: String, symbol_id: SymbolID) {
+        self.current_local_scope_mut().unwrap().insert(name, symbol_id);
+    }
+
+    /// Look up a name in all lexical scopes (innermost-first).
+    pub fn lookup_local(&self, name: &str) -> Option<SymbolID> {
+        for scope in self.local_scopes_into_iter() {
+            if let Some(symbol_id) = scope.resolve(name) {
+                return Some(symbol_id);
+            }
+        }
+        None
+    }
+
+    // -------
+
     #[inline]
     pub fn current_module_file_path(&self) -> PathBuf {
         let file_id = self
@@ -208,15 +226,6 @@ impl Resolver {
     fn insert_module_name(&self, file_id: FileID, name: String) {
         let mut map = self.module_names.lock().unwrap();
         map.insert(file_id, name);
-    }
-
-    fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut SymbolEntry) -> R,
-    {
-        let mut registry = self.global_symbols.inner.write().unwrap();
-        let entry = registry.entries.get_mut(symbol_id.0 as usize)?;
-        Some(f(entry))
     }
 
     /// Resolves a symbol by searching the active local scope stack.
@@ -259,6 +268,24 @@ impl Resolver {
         f(scope_table)
     }
 
+    /// Enter a new lexical scope.
+    ///
+    /// This pushes the current scope onto `scope_table_stack` and
+    /// updates `current_scope` to the provided `scope_id`.
+    pub fn enter_scope_table(&mut self, scope_id: SymbolID) {
+        if let Some(curr) = self.current_scope {
+            self.scope_table_stack.push(curr);
+        }
+        self.current_scope = Some(scope_id);
+    }
+
+    /// Exit the current lexical scope.
+    ///
+    /// Pops the last scope ID from `scope_table_stack` and restores it as `current_scope`.
+    pub fn exit_scope_table(&mut self) {
+        self.current_scope = self.scope_table_stack.pop();
+    }
+
     pub fn get_or_create_module_symbol_id(&mut self, file_id: FileID, module_name: &str, loc: Loc) -> SymbolID {
         if let Some(symbol_id) = self.module_symbols.get(&file_id) {
             return *symbol_id;
@@ -266,13 +293,23 @@ impl Resolver {
 
         let module_symbol_id =
             self.global_symbols
-                .bind_module(self.global_symbols.root_scope(), module_name, file_id, loc);
+                .insert_module_symbol(self.global_symbols.root_scope(), module_name, loc);
 
         self.module_symbols.insert(file_id, module_symbol_id);
         module_symbol_id
     }
+
+    fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut SymbolEntry) -> R,
+    {
+        let mut registry = self.global_symbols.inner.write().unwrap();
+        let entry = registry.entries.get_mut(symbol_id.0 as usize)?;
+        Some(f(entry))
+    }
 }
 
+// Insertions.
 impl GlobalSymbolRegistry {
     /// Create a new global symbol registry and allocate the root scope.
     ///
@@ -283,14 +320,14 @@ impl GlobalSymbolRegistry {
             root_scope: None,
         };
 
-        global_symbols.root_scope = Some(global_symbols.alloc_symbol_entry(SymbolEntry::new(
+        global_symbols.root_scope = Some(global_symbols.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::Namespace(Namespace {
                 name: "<global>".to_string(),
                 scope: ScopeTable::new(),
                 loc: Loc::default(FileID(0)),
             }),
             None,
-            None
+            None,
         )));
 
         global_symbols
@@ -302,18 +339,84 @@ impl GlobalSymbolRegistry {
         self.root_scope.unwrap()
     }
 
-    /// Insert a new `Module` symbol into the given parent scope.
+    /// Insert symbol by name into the specified scope.
+    pub fn insert_symbol_name(&self, scope_id: SymbolID, symbol_id: SymbolID, name: &str) {
+        let mut registry = self.inner.write().unwrap();
+        let symbol_entry = &mut registry.entries[scope_id.0 as usize];
+        let scope_table = symbol_entry.get_scope_table_mut().unwrap();
+
+        scope_table.bind(name.to_string(), symbol_id);
+    }
+
+    /// Create and bind a proxied imported symbol in the current scope.
     ///
-    /// A module symbol owns a `ScopeTable` which becomes the root scope
-    /// for resolving declarations inside that module.
+    /// The proxied symbol inherits visibility. Used for single imports.
+    pub fn insert_proxied_symbol(
+        &self,
+        current_scope_id: SymbolID,
+        name: &str,
+        imported_scope_id: SymbolID,
+        target_symbol_id: SymbolID,
+    ) -> SymbolID {
+        // proxy inherits visibility from target symbol
+        let target_vis = self.lookup_symbol_entry(target_symbol_id).unwrap().vis_opt.clone();
+
+        let proxy_id = self.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::ProxiedSymbol {
+                scope_id: imported_scope_id,
+                symbol_id: target_symbol_id,
+            },
+            target_vis,
+            Some(current_scope_id),
+        ));
+
+        self.insert_symbol_name(current_scope_id, proxy_id, name);
+        proxy_id
+    }
+
+    /// Create and bind a proxied module symbol in the parent scope.
     ///
-    /// The symbol is:
-    /// 1. Allocated in the global symbol arena
-    /// 2. Bound into the parent scope under `name`
+    /// Used for module group imports or aliasing entire modules.
+    pub fn insert_proxied_module(&self, parent_scope_id: SymbolID, name: &str, target_symbol_id: SymbolID) -> SymbolID {
+        let symbol_id = self.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::ProxiedModule {
+                symbol_id: target_symbol_id,
+            },
+            None,
+            Some(parent_scope_id),
+        ));
+
+        self.insert_symbol_name(parent_scope_id, symbol_id, name);
+        symbol_id
+    }
+
+    /// Create and bind a new lexical namespace symbol.
     ///
-    /// Returns the created `SymbolID`.
-    pub fn bind_module(&self, parent_scope_id: SymbolID, name: &str, loc: Loc) -> SymbolID {
-        let module_symbol_id = self.alloc_symbol_entry(SymbolEntry::new(
+    /// Namespaces introduce new scope tables within source files or modules.
+    pub fn insert_namespace_symbol(
+        &self,
+        parent_scope_id: SymbolID,
+        name: &str,
+        loc: Loc,
+        vis_opt: Option<Visibility>,
+    ) -> SymbolID {
+        let namespace_symbol = self.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::Namespace(Namespace {
+                name: name.to_string(),
+                scope: ScopeTable::new(),
+                loc,
+            }),
+            vis_opt,
+            Some(parent_scope_id),
+        ));
+
+        self.insert_symbol_name(parent_scope_id, namespace_symbol, name);
+        namespace_symbol
+    }
+
+    /// Allocate a new module symbol and bind it in the specified parent scope.
+    pub fn insert_module_symbol(&self, parent_scope_id: SymbolID, name: &str, loc: Loc) -> SymbolID {
+        let module_symbol_id = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::Module(Module {
                 name: name.to_string(),
                 scope: ScopeTable::new(),
@@ -323,30 +426,29 @@ impl GlobalSymbolRegistry {
             Some(parent_scope_id),
         ));
 
-        self.bind_symbol_name(parent_scope_id, module_symbol_id, name);
+        self.insert_symbol_name(parent_scope_id, module_symbol_id, name);
         module_symbol_id
     }
 
-    /// Insert a symbol into a scope by name.
-    ///
-    /// Looks up the `SymbolEntry` for `scope_id`, extracts its
-    /// `ScopeTable`, and inserts `(name -> symbol_id)` into the table.
-    /// Only `Module` and `Namespace` entries may be used as scopes.
-    pub fn bind_symbol_name(&self, scope_id: SymbolID, symbol_id: SymbolID, name: &str) {
+    /// Inserts a new symbol entry in the global symbols and returns the associated `SymbolID`.
+    pub fn insert_symbol_entry(&self, symbol_entry: SymbolEntry) -> SymbolID {
         let mut registry = self.inner.write().unwrap();
-        let symbol_entry = &mut registry.entries[scope_id.0 as usize];
-        let scope_table = symbol_entry.get_scope_table_mut().unwrap();
 
-        scope_table.bind(name.to_string(), symbol_id);
+        let symbol_id = SymbolID(registry.entries.len() as u32);
+        registry.entries.push(symbol_entry);
+        symbol_id
     }
+}
 
+// Lookups.
+impl GlobalSymbolRegistry {
     /// Lookup a symbol entry by `SymbolID` in global symbols.
-    pub fn lookup_symbol_entry(&self, symbol_entry: SymbolID) -> Option<SymbolEntry> {
+    pub fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
         let registry = self.inner.read().unwrap();
-        registry.entries.get(symbol_entry.0 as usize).cloned()
+        registry.entries.get(symbol_id.0 as usize).cloned()
     }
 
-    /// Lookup a symbol by name within a given scope.
+    /// Lookup a symbol by name within a specific scope.
     pub fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
         let registry = self.inner.read().unwrap();
         let symbol_entry = &registry.entries[scope_id.0 as usize];
@@ -355,6 +457,7 @@ impl GlobalSymbolRegistry {
         scope_table.lookup(name)
     }
 
+    /// Recursively search up the scope chain for a symbol by name.
     pub fn lookup_in_scope_chain(&self, mut scope_id: SymbolID, name: &str) -> Option<SymbolID> {
         loop {
             if let Some(symbol_id) = self.lookup_symbol_id_in_scope(scope_id, name) {
@@ -369,111 +472,37 @@ impl GlobalSymbolRegistry {
             }
         }
     }
-
-    /// Create a `ProxiedSymbol` inside the given scope.
-    ///
-    /// A proxy symbol represents an imported symbol. The proxy inherits
-    /// visibility from the target symbol and binds into the caller's
-    /// current scope under the provided `name`.
-    pub fn bind_symbol_proxy(
-        &self,
-        current_scope_id: SymbolID,
-        name: &str,
-        imported_scope_id: SymbolID,
-        target_symbol_id: SymbolID,
-    ) -> SymbolID {
-        // proxy inherits visibility from target symbol
-        let target_vis = self.lookup_symbol_entry(target_symbol_id).unwrap().vis_opt.clone();
-
-        let proxy_id = self.alloc_symbol_entry(SymbolEntry::new(
-            SymbolEntryKind::ProxiedSymbol {
-                scope_id: imported_scope_id,
-                symbol_id: target_symbol_id,
-            },
-            target_vis,
-            Some(current_scope_id),
-        ));
-
-        self.bind_symbol_name(current_scope_id, proxy_id, name);
-        proxy_id
-    }
-
-    /// Insert a new lexical `Namespace` symbol into the given scope.
-    ///
-    /// Namespaces behave similarly to modules but exist purely inside
-    /// source files (`mod foo { ... }`). They introduce a new scope
-    /// table for name resolution.
-    ///
-    /// The symbol is:
-    /// 1. Allocated in the global symbol arena
-    /// 2. Bound into the parent scope under `name`
-    ///
-    /// Returns the created `SymbolID`.
-    pub fn bind_namespace_symbol(
-        &self,
-        parent_scope_id: SymbolID,
-        name: &str,
-        loc: Loc,
-        vis_opt: Option<Visibility>,
-    ) -> SymbolID {
-        let namespace_symbol = self.alloc_symbol_entry(SymbolEntry::new(
-            SymbolEntryKind::Namespace(Namespace {
-                name: name.to_string(),
-                scope: ScopeTable::new(),
-                loc,
-            }),
-            vis_opt,
-            Some(parent_scope_id),
-        ));
-
-        self.bind_symbol_name(parent_scope_id, namespace_symbol, name);
-        namespace_symbol
-    }
-
-    pub fn bind_module_proxy(&self, parent_scope_id: SymbolID, name: &str, target_symbol_id: SymbolID) -> SymbolID {
-        let symbol_id = self.alloc_symbol_entry(SymbolEntry::new(
-            SymbolEntryKind::ProxiedModule {
-                symbol_id: target_symbol_id,
-            },
-            None,
-            Some(parent_scope_id),
-        ));
-
-        self.bind_symbol_name(parent_scope_id, symbol_id, name);
-        symbol_id
-    }
-
-    /// Inserts a new symbol entry in the global symbols and returns the associated `SymbolID`.
-    pub fn alloc_symbol_entry(&self, symbol_entry: SymbolEntry) -> SymbolID {
-        let mut registry = self.inner.write().unwrap();
-
-        let symbol_id = SymbolID(registry.entries.len() as u32);
-        registry.entries.push(symbol_entry);
-        symbol_id
-    }
 }
 
 impl Query for Resolver {
-    lookup_kind!(lookup_var, Var, ResolvedVar);
+    impl_helper_method__get_kind!(get_var, Var, ResolvedVar);
 
-    lookup_kind!(lookup_global_var, GlobalVar, ResolvedGlobalVar);
+    impl_helper_method__get_kind!(get_global_var, GlobalVar, ResolvedGlobalVar);
 
-    lookup_kind!(lookup_method, Method, ResolvedMethod);
+    impl_helper_method__get_kind!(get_method, Method, ResolvedMethod);
 
-    lookup_kind!(lookup_func, Func, ResolvedFunc);
+    impl_helper_method__get_kind!(get_func, Func, ResolvedFunc);
 
-    lookup_kind!(lookup_typedef, Typedef, ResolvedTypedef);
+    impl_helper_method__get_kind!(get_typedef, Typedef, ResolvedTypedef);
 
-    lookup_kind!(lookup_union, Union, ResolvedUnion);
+    impl_helper_method__get_kind!(get_union, Union, ResolvedUnion);
 
-    lookup_kind!(lookup_enum, Enum, ResolvedEnum);
+    impl_helper_method__get_kind!(get_enum, Enum, ResolvedEnum);
 
-    lookup_kind!(lookup_struct, Struct, ResolvedStruct);
+    impl_helper_method__get_kind!(get_struct, Struct, ResolvedStruct);
 
-    lookup_kind!(lookup_interface, Interface, ResolvedInterface);
+    impl_helper_method__get_kind!(get_interface, Interface, ResolvedInterface);
 
-    /// Look up a symbol identifier by name.
+    /// Resolve a symbol ID by name.
+    ///
+    /// Resolution order:
+    /// 1. Local lexical scopes (innermost -> outer)
+    /// 2. Global semantic scope (modules, namespaces)
     fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
+        if let Some(local_id) = self.lookup_local(name) {
+            return Some(local_id);
+        }
+
         self.global_symbols.lookup_in_scope_chain(scope_id, name)
     }
 
@@ -487,27 +516,13 @@ impl Query for Resolver {
         self.global_symbols.lookup_symbol_entry(symbol_id)
     }
 
-    /// Retrieve the semantic entry for a symbol, resolving proxy chains.
-    fn lookup_global_symbol(&self, mut symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let registry = self.global_symbols.inner.read().unwrap();
-
-        loop {
-            let symbol_entry = registry.entries.get(symbol_id.0 as usize)?;
-
-            match symbol_entry.kind {
-                SymbolEntryKind::ProxiedSymbol {
-                    symbol_id: target_symbol_id,
-                    ..
-                } => {
-                    symbol_id = target_symbol_id;
-                }
-                _ => return Some(symbol_entry.clone()),
-            }
-        }
+    /// Get the symbol entry for a symbol.
+    fn get_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        self.global_symbols.lookup_symbol_entry(symbol_id)
     }
 
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
-        match self.lookup_global_symbol(symbol_id) {
+        match self.get_symbol(symbol_id) {
             Some(symbol_entry) => symbol_entry.decl_name(),
             None => "<UNRESOLVED_SYMBOL>".to_string(),
         }

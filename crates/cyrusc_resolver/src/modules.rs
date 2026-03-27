@@ -237,7 +237,7 @@ impl Resolver {
                         continue;
                     }
 
-                    let proxy_symbol_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::new(
+                    let proxy_symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::new(
                         SymbolEntryKind::ProxiedModule {
                             symbol_id: module_symbol_id,
                         },
@@ -245,7 +245,7 @@ impl Resolver {
                     ));
 
                     self.global_symbols
-                        .bind_symbol_name(parent_scope_id, proxy_symbol_id, &alias_name);
+                        .insert_symbol_name(parent_scope_id, proxy_symbol_id, &alias_name);
                 }
                 ModuleAlias::Single(module_segment_singles) => {
                     for single in module_segment_singles {
@@ -284,7 +284,7 @@ impl Resolver {
                             }
                         };
 
-                        let proxy_symbol_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::new(
+                        let proxy_symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::new(
                             SymbolEntryKind::ProxiedSymbol {
                                 scope_id: module_symbol_id,
                                 symbol_id: target_symbol_id,
@@ -293,7 +293,7 @@ impl Resolver {
                         ));
 
                         self.global_symbols
-                            .bind_symbol_name(parent_scope_id, proxy_symbol_id, &visible_name);
+                            .insert_symbol_name(parent_scope_id, proxy_symbol_id, &visible_name);
                     }
                 }
             }
@@ -329,7 +329,7 @@ impl Resolver {
 
             {
                 // check symbol visibility
-                let symbol_entry = self.lookup_global_symbol(symbol_id).unwrap();
+                let symbol_entry = self.get_symbol(symbol_id).unwrap();
 
                 if let Some(vis) = symbol_entry.vis_opt {
                     self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
@@ -351,7 +351,7 @@ impl Resolver {
                     continue;
                 }
 
-                self.global_symbols.bind_symbol_proxy(
+                self.global_symbols.insert_proxied_symbol(
                     self.current_scope.unwrap(),
                     &renamed_name,
                     imported_scope_id,

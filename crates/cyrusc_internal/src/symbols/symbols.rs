@@ -276,7 +276,7 @@ impl SymbolEntry {
         }
     }
 
-    pub fn lookup_method(&self, name: &str) -> Option<SymbolID> {
+    pub fn get_method(&self, name: &str) -> Option<SymbolID> {
         self.symbol_methods()?.get(name).cloned()
     }
 

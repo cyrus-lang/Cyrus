@@ -189,7 +189,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let mut stmts: Vec<CIRStmt> = Vec::new();
 
         for method_id in methods.values().cloned() {
-            let resolved_method = self.query.lookup_method(method_id).unwrap();
+            let resolved_method = self.query.get_method(method_id).unwrap();
             let lowered_method = self.lower_method(&resolved_method, object_name).unwrap();
             stmts.push(lowered_method);
         }
@@ -261,7 +261,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_export_pattern_recursive(&mut self, pattern: &TypedExportPattern, vars: &mut Vec<CIRVarStmt>) {
         match pattern {
             TypedExportPattern::Ident(symbol_id) => {
-                let var = &self.query.lookup_var(*symbol_id).unwrap().variable;
+                let var = &self.query.get_var(*symbol_id).unwrap().variable;
 
                 let var_name = var.name.clone();
                 let var_ty = self.lower_sema_ty(&var.ty.as_ref().unwrap());
@@ -326,13 +326,13 @@ impl<'resolver> CIRTraverse<'resolver> {
             .as_enum_symbol_id()
             .and_then(|symbol_id| {
                 self.query
-                    .lookup_enum(symbol_id)
+                    .get_enum(symbol_id)
                     .map(|resolved_enum| enum_sig_as_unnamed_enum_type(&resolved_enum.enum_sig, switch_stmt.loc))
             })
             .or(operand_type.as_generic_type().and_then(|generic_type| {
                 Some(
                     self.query
-                        .lookup_enum(generic_type.base)
+                        .get_enum(generic_type.base)
                         .map(|resolved_enum| {
                             let enum_sig = substitute_enum_sig(
                                 self.mapping_ctx_arena.clone(),
@@ -1174,7 +1174,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
-        let symbol_entry = self.query.lookup_global_symbol(struct_init_expr.symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol(struct_init_expr.symbol_id).unwrap();
 
         if let Some(resolved_struct) = symbol_entry.as_struct() {
             let fields = struct_init_expr
@@ -1419,7 +1419,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
     fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
         if let Some(enum_id) = method_call.enum_constructor {
-            let resolved_enum = self.query.lookup_enum(enum_id).unwrap();
+            let resolved_enum = self.query.get_enum(enum_id).unwrap();
 
             return self.lower_enum_init(&resolved_enum.enum_sig, method_call);
         }
@@ -1459,7 +1459,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let symbol_entry = self
             .query
-            .lookup_global_symbol(field_access.object_symbol_id.unwrap())
+            .get_symbol(field_access.object_symbol_id.unwrap())
             .unwrap();
 
         if symbol_entry.as_struct().is_some() {
@@ -1523,7 +1523,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             let symbol_entry = self
                 .query
-                .lookup_global_symbol(monomorph_func_entry.base_symbol)
+                .get_symbol(monomorph_func_entry.base_symbol)
                 .unwrap();
 
             let mut func_sig = symbol_entry
@@ -1848,7 +1848,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_generic_type(&mut self, mut generic_type: GenericType) -> CIRTy {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.lookup_global_symbol(generic_type.base).unwrap();
+        let symbol_entry = self.query.get_symbol(generic_type.base).unwrap();
 
         if let Err(err) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
             eprintln!("Failed to init generic type: {:?}.", err.kind.to_string())
@@ -1971,7 +1971,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_resolved_symbol(&mut self, resolved_symbol: &ResolvedSymbol) -> CIRTy {
-        let symbol_entry = self.query.lookup_global_symbol(resolved_symbol.symbol_id()).unwrap();
+        let symbol_entry = self.query.get_symbol(resolved_symbol.symbol_id()).unwrap();
 
         if let Some(resolved_struct) = symbol_entry.as_struct() {
             CIRTy::Struct(self.lower_struct_sig_as_struct_ty(&resolved_struct.struct_sig))

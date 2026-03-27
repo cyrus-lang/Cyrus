@@ -57,10 +57,10 @@ impl Resolver {
 
             let symbol_id = self
                 .global_symbols
-                .alloc_symbol_entry(SymbolEntry::unresolved(stmt.vis()));
+                .insert_symbol_entry(SymbolEntry::unresolved(stmt.vis()));
 
             self.global_symbols
-                .bind_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
+                .insert_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
         }
     }
 
@@ -1156,10 +1156,10 @@ impl Resolver {
                 }
             }
 
-            let method_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::unresolved(None));
+            let method_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
 
             self.global_symbols
-                .bind_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
+                .insert_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
 
             methods.insert(original_name.clone(), method_id);
 
@@ -1184,7 +1184,7 @@ impl Resolver {
         }
 
         for (method_id, (scope, body, is_generic)) in method_bodies {
-            let SymbolEntryKind::Method(mut resolved_method) = self.lookup_global_symbol(method_id).unwrap().kind
+            let SymbolEntryKind::Method(mut resolved_method) = self.get_symbol(method_id).unwrap().kind
             else {
                 unreachable!();
             };
@@ -1192,7 +1192,7 @@ impl Resolver {
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::unresolved(None));
+                        let self_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
                         self_modifier.self_id = Some(self_id);
 
                         let ty = match self_modifier.kind {
@@ -2571,7 +2571,7 @@ impl Resolver {
         }
 
         // allocate placeholder entry
-        let symbol_id = self.global_symbols.alloc_symbol_entry(SymbolEntry::unresolved(None));
+        let symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
 
         let variable = TypedVarStmt {
             symbol_id,
