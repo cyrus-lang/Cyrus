@@ -149,17 +149,16 @@ impl Resolver {
             };
 
             if let ModuleAlias::Group(alias) = &loaded_module.alias {
-                if let Some(symbol_id) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
-                    println!("{} -> {}", alias, symbol_id);
-                    // self.reporter.report(Diag {
-                    //     level: DiagLevel::Error,
-                    //     kind: Box::new(ResolverDiagKind::ImportTwice {
-                    //         module_name: alias.clone(),
-                    //     }),
-                    //     loc: Some(import.loc),
-                    //     hint: Some("Consider removing the previous declaration.".to_string()),
-                    // });
-                    // continue;
+                if let Some(_) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(ResolverDiagKind::ImportTwice {
+                            module_name: alias.clone(),
+                        }),
+                        loc: Some(import.loc),
+                        hint: Some("Consider removing the previous declaration.".to_string()),
+                    });
+                    continue;
                 }
             }
 
@@ -274,12 +273,26 @@ impl Resolver {
     ) -> SymbolID {
         let module_name = loaded_module.segment.as_string();
 
+        let real_module_id = self.get_or_create_module_symbol_id_for_file(loaded_module.file_id, &module_name, loc);
+
+        self.module_symbols.insert(loaded_module.file_id, real_module_id);
+        self.insert_module_name(loaded_module.file_id, module_name.clone());
+
         let mut current_scope_id = parent_scope_id;
 
-        // resolve implied parents
-        for implied_parent in &loaded_module.implied_parent_modules {
+        for (i, implied_parent) in loaded_module.implied_parent_modules.iter().enumerate() {
             let parent_name = &implied_parent.ident.value;
+            dbg!(parent_name.clone());
 
+            // last parent should proxy to real module
+            if i == loaded_module.implied_parent_modules.len() - 1 {
+                self.global_symbols
+                    .insert_proxied_module(current_scope_id, parent_name, real_module_id);
+
+                return real_module_id;
+            }
+
+            // intermediate parents remain synthetic containers
             let synthetic_id =
                 self.get_or_create_synthetic_module_symbol(current_scope_id, parent_name, implied_parent.ident.loc);
 
@@ -289,17 +302,9 @@ impl Resolver {
             current_scope_id = self.global_symbols.resolve_concrete_scope_id(synthetic_id);
         }
 
-        // if not found, create the real module symbol
-        let real_module_id = self.get_or_create_module_symbol_id_for_file(loaded_module.file_id, &module_name, loc);
-
-        // record file_id -> symbol_id binding
-        self.module_symbols.insert(loaded_module.file_id, real_module_id);
-
-        // insert into scope
+        // no implied parents case
         self.global_symbols
             .insert_symbol_name(current_scope_id, real_module_id, &module_name);
-
-        self.insert_module_name(loaded_module.file_id, module_name.clone());
 
         real_module_id
     }

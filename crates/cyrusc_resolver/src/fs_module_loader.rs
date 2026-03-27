@@ -63,7 +63,7 @@ impl FsModuleLoader {
     /// Handles stdlib redirection and resolves full module paths.
     fn get_imported_module_file_path(
         &self,
-        segments: Vec<ModuleSegment>,
+        mut segments: Vec<ModuleSegment>,
         current_module_file_path: PathBuf,
     ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
         let stdlib_path = self.opts.stdlib_path.clone().map(|str| Path::new(&str).to_path_buf());
@@ -76,14 +76,27 @@ impl FsModuleLoader {
 
         let mut sources = self.opts.source_dirs.clone();
 
-        let mut segments = segments;
+        let first_segment = segments.first().cloned();
 
+        let mut is_std = false;
         if matches!(segments.first(), Some(ModuleSegment::SubModule(ident)) if ident.value == "std") {
             segments.remove(0);
             sources = vec![stdlib_modules_path()];
+            is_std = true;
         }
 
-        self.load_module_segments(current_module_file_path, &segments, sources, String::new())
+        let mut resolved_module_file =
+            self.load_module_segments(current_module_file_path, &segments, sources, String::new())?;
+
+        if is_std {
+            if let Some(ident) = first_segment.unwrap().as_ident() {
+                resolved_module_file
+                    .implied_parents
+                    .insert(0, ImpliedParentModule { ident });
+            }
+        }
+
+        Ok(resolved_module_file)
     }
 
     /// Walks through module segments to locate either a `.cyrus` file or

@@ -8,6 +8,7 @@
 
 pub extern "C" {
     fn printf(format: char*, ...) int;
+    fn fprintf(a: int) int;
 
     // fn printf(format: abi::c_char*, ...) abi::c_int;
     // fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
