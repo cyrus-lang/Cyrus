@@ -28,7 +28,7 @@ pub enum ModuleFSLoaderDiagKind {
     )]
     StdlibNotFound,
 
-    #[error("Module directory '{module_name}' must contain an 'index.cyr' file for it to be importable.")]
+    #[error("Module directory '{module_name}' must contain an 'index.cyrus' file for it to be importable.")]
     ModuleIndexNotFound { module_name: String },
 
     #[error("Module '{module_name}' cannot exist as both a file and a directory.")]

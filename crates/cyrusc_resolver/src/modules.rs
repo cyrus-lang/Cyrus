@@ -18,7 +18,10 @@
 use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
 use cyrusc_ast::{ASTImportStmt, ModuleSegmentSingle, ProgramTree, abi::Visibility};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::{module_loader::ModuleAlias, symbols::table::Query};
+use cyrusc_internal::{
+    module_loader::{LoadedModule, ModuleAlias},
+    symbols::table::Query,
+};
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
 use std::{cell::RefCell, collections::HashSet, path::Path, rc::Rc, sync::Arc};
@@ -143,23 +146,7 @@ impl Resolver {
                 }
             };
 
-            // store module name and generate symbol id in global_symbols for it
-            let module_symbol_id = {
-                let module_file_path = self
-                    .source_map
-                    .get_file(loaded_module.file_id)
-                    .unwrap()
-                    .file_path
-                    .clone();
-
-                let module_name = self
-                    .module_loader
-                    .module_name_from_file_path(Path::new(&module_file_path));
-
-                self.insert_module_name(loaded_module.file_id, module_name.to_string());
-
-                self.get_or_create_module_symbol_id(loaded_module.file_id, &module_name, import.loc)
-            };
+            let module_symbol_id = self.create_module_symbol_id_for_loaded_module(&loaded_module, import.loc);
 
             // check for self-import
             if current_file == loaded_module.file_id {
@@ -279,6 +266,57 @@ impl Resolver {
                 source_module_id,
                 target_symbol_id,
             );
+        }
+    }
+
+    fn create_module_symbol_id_for_loaded_module(&mut self, loaded_module: &LoadedModule, loc: Loc) -> SymbolID {
+        if !loaded_module.implied_parent_modules.is_empty() {
+            // let mut current_parent: Option<SymbolID> = None;
+
+            // // iterate over implied parent modules in reverse order to build the hierarchy
+            // for parent in &loaded_module.implied_parent_modules {
+            //     // check if the parent module already exists
+            //     let parent_module_id = self.get_or_create_module_symbol_id(parent, None);
+
+            //     // if it's the first parent, set it as the current module
+            //     if current_parent.is_none() {
+            //         current_parent = Some(parent_module_id);
+            //     } else {
+            //         // if it has a previous parent, establish the relationship
+            //         self.global_symbols
+            //             .insert_child_module(current_parent.unwrap(), parent_module_id);
+
+            //         current_parent = Some(parent_module_id);
+            //     }
+            // }
+
+            // // now current_parent holds the symbol ID for the last parent in the chain
+            // // create or retrieve the final module symbol
+            // let final_module_id =
+            //     self.get_or_create_module_symbol_id(loaded_module.file_id, &loaded_module.name, import.loc);
+
+            // // establish the last relationship from the last parent to this module
+            // if let Some(parent_module_id) = current_parent {
+            //     self.global_symbols
+            //         .insert_child_module(parent_module_id, final_module_id);
+            // }
+
+            // return final_module_id;
+            todo!();
+        } else {
+            let module_file_path = self
+                .source_map
+                .get_file(loaded_module.file_id)
+                .unwrap()
+                .file_path
+                .clone();
+
+            let module_name = self
+                .module_loader
+                .module_name_from_file_path(Path::new(&module_file_path));
+
+            self.insert_module_name(loaded_module.file_id, module_name.to_string());
+            self.get_or_create_module_symbol_id(loaded_module.file_id, &module_name, loc)
         }
     }
 

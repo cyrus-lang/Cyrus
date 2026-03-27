@@ -22,8 +22,7 @@ use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader};
 use cyrusc_parser::SourceParser;
-use cyrusc_source_loc::{FileID, Loc, SourceMap};
-use cyrusc_typed_ast::SymbolID;
+use cyrusc_source_loc::{FileID, SourceMap};
 use std::path::{Component, Path, PathBuf};
 use std::{env, rc::Rc, sync::Arc};
 
@@ -86,70 +85,85 @@ impl FsModuleLoader {
         &self,
         segments: &[ModuleSegment],
         sources: Vec<String>,
-        mut module_file_path: String,
+        initial_base_path: String,
     ) -> Result<String, ModuleFSLoaderDiagKind> {
-        let module_name = format_module_segments(segments);
+        let mut current_path = PathBuf::from(initial_base_path);
+        let total_segments = segments.len();
 
         for (i, segment) in segments.iter().enumerate() {
+            let is_last = i == total_segments - 1;
+
             match segment {
                 ModuleSegment::SubModule(ident) => {
-                    let file_path = format!("{}{}.cyrus", module_file_path, ident.value);
-                    let dir_path = format!("{}{}/", module_file_path, ident.value);
+                    let name = &ident.value;
 
-                    let file_exists = if Path::new(&file_path).exists() {
-                        Some(PathBuf::from(&file_path))
+                    // check file
+                    let file_path_buf = current_path.join(format!("{}.cyrus", name));
+                    let file_exists = if file_path_buf.exists() {
+                        Some(file_path_buf.clone())
                     } else {
-                        find_file_from_sources(&file_path, &sources)
+                        // fallback: search in additional source dirs
+                        find_file_from_sources(file_path_buf.to_string_lossy().as_ref(), &sources)
                     };
 
-                    let dir_exists = if Path::new(&dir_path).exists() {
-                        Some(PathBuf::from(&dir_path))
+                    // check dir
+                    let dir_path_buf = current_path.join(name);
+                    let dir_exists = if dir_path_buf.is_dir() {
+                        Some(dir_path_buf.clone())
                     } else {
-                        find_file_from_sources(&dir_path, &sources)
+                        // fallback: search in additional source dirs
+                        find_file_from_sources(dir_path_buf.to_string_lossy().as_ref(), &sources)
                     };
 
                     match (file_exists, dir_exists) {
+                        // ambiguity check
                         (Some(_), Some(_)) => {
                             return Err(ModuleFSLoaderDiagKind::DuplicateModule {
-                                module_name: ident.value.clone(),
+                                module_name: name.clone(),
                             });
                         }
-                        (Some(file_buf), None) => {
-                            module_file_path = file_buf.to_str().unwrap().to_string();
-                            if i == segments.len() - 1 {
-                                return Ok(module_file_path);
+                        // it's a file
+                        (Some(_), None) => {
+                            if !is_last {
+                                // can't have `foo::bar` if 'foo' is a file!
+                                return Err(ModuleFSLoaderDiagKind::ModuleNotFound {
+                                    module_name: name.clone(),
+                                });
                             }
-                            // continue to next segment
+                            return Ok(file_path_buf.to_str().unwrap().to_string());
                         }
+                        // it's a directory
                         (None, Some(dir_buf)) => {
-                            module_file_path = dir_buf.to_str().unwrap().to_string();
-                            if i == segments.len() - 1 {
-                                // last segment (require index.cyr)
+                            // we must use `dir_buf` because `dir_path_buf`
+                            // might not exist if the directory was found in the 'sources' folders!
+
+                            if is_last {
                                 let index_path = dir_buf.join("index.cyrus");
+
                                 if !index_path.exists() {
                                     return Err(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
-                                        module_name: ident.value.clone(),
+                                        module_name: name.clone(),
                                     });
                                 }
-                                return Ok(index_path.to_str().unwrap().to_string());
+
+                                return Ok(index_path.to_string_lossy().to_string());
                             } else {
-                                // not last segment (descend into directory)
-                                if !module_file_path.ends_with('/') {
-                                    module_file_path.push('/');
-                                }
+                                // descend into the directory
+                                current_path = dir_buf;
                             }
                         }
-                        (None, None) => return Err(ModuleFSLoaderDiagKind::ModuleNotFound { module_name }),
+                        (None, None) => {
+                            return Err(ModuleFSLoaderDiagKind::ModuleNotFound {
+                                module_name: format_module_segments(segments),
+                            });
+                        }
                     }
                 }
-                ModuleSegment::Single(_) => {
-                    // single segment (return current path)
-                    return Ok(module_file_path);
-                }
+                ModuleSegment::Single(_) => return Ok(current_path.to_str().unwrap().to_string()),
             }
         }
 
-        Ok(module_file_path)
+        Ok(current_path.to_str().unwrap().to_string())
     }
 }
 
@@ -175,9 +189,12 @@ impl ModuleLoader for FsModuleLoader {
                 }
             };
 
+            dbg!(file_path.clone());
+
             // handle directory imports -> index.cyrus
             let mut module_file_path = Path::new(&file_path).to_path_buf();
 
+            dbg!(module_file_path.clone());
             if module_file_path.is_dir() {
                 // extract implied parent segments (directory ancestors)
                 implied_parents.extend(collect_directory_segments(&sub_import.segments));
