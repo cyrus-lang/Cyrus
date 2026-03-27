@@ -206,8 +206,6 @@ impl Resolver {
         None
     }
 
-    // -------
-
     #[inline]
     pub fn lookup_module_file_id(&self, module_symbol_id: SymbolID) -> Option<FileID> {
         self.module_symbols
