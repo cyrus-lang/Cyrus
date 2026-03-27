@@ -19,6 +19,10 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
+use cyrusc_analyzer::{
+    analyze::{AnalysisContext, EntryPoints},
+    config::AnalyzerConfig,
+};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
@@ -36,10 +40,6 @@ use cyrusc_resolver::{
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
     OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
-};
-use cyrusc_analyzer::{
-    analyze::{AnalysisContext, EntryPoints},
-    config::AnalyzerConfig,
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
@@ -73,6 +73,7 @@ pub struct CodeGenSemanticBundle {
     pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
     pub mapping_ctx_arena: Arc<Mutex<GenericMappingCtxArenaImpl>>,
     pub resolver: Box<Resolver>,
+    pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
 }
@@ -174,19 +175,12 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 reporter.clone(),
                 monomorph_registry.clone(),
                 mapping_ctx_arena.clone(),
-                file_id,
             );
 
             // resolve the entry module
             let module_id = ModuleID::master_module_id();
 
-            resolver.resolve_module(
-                module_id,
-                &program_tree,
-                &mut VisitingModule::new(),
-                true,
-                file_id,
-            );
+            resolver.resolve_module(module_id, &program_tree, &mut VisitingModule::new(), file_id, true);
             if resolver.reporter.has_errors() {
                 DiagReporter::display(&resolver.reporter);
                 exit(1);
@@ -240,6 +234,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
             Box::new(CodeGenSemanticBundle {
                 resolver: Box::new(resolver),
+                source_map,
                 analyzed_program_trees,
                 vtable_registries,
                 mapping_ctx_arena,
@@ -285,6 +280,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         opts.jobs,
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
+        codegen_semantic_bundle.source_map.clone(),
         cir_monomorph_registry.clone(),
         codegen_semantic_bundle.mapping_ctx_arena.clone(),
         &codegen_semantic_bundle.vtable_registries,

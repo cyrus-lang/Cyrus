@@ -26,7 +26,11 @@ use cyrusc_resolver::{
 use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
-    env, path::Path, process::exit, sync::{Arc, Mutex}, vec
+    env,
+    path::Path,
+    process::exit,
+    sync::{Arc, Mutex},
+    vec,
 };
 
 pub fn main() {
@@ -79,7 +83,6 @@ pub fn main() {
                 reporter,
                 monomorph_registry,
                 mapping_ctx_arena.clone(),
-                file_id,
             );
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);

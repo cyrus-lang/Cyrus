@@ -18,13 +18,7 @@
 use crate::{ResolvedProgramTree, Resolver, diagnostics::ResolverDiagKind};
 use cyrusc_ast::{ASTImportStmt, ModuleSegmentSingle, ProgramTree, abi::Visibility};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::{
-    module_loader::ModuleAlias,
-    symbols::{
-        symbols::{SymbolEntry, SymbolEntryKind},
-        table::Query,
-    },
-};
+use cyrusc_internal::{module_loader::ModuleAlias, symbols::table::Query};
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
 use std::{cell::RefCell, collections::HashSet, path::Path, rc::Rc, sync::Arc};
@@ -209,10 +203,8 @@ impl Resolver {
 
             match loaded_module.alias {
                 ModuleAlias::Group(alias) => {
-                    let already_imported =
-                        self.with_scope_table(parent_scope_id, |scope_table| scope_table.lookup(&alias).is_some());
-
-                    if already_imported {
+                    // check if alias name is already taken in current scope
+                    if self.lookup_symbol_id_in_scope(parent_scope_id, &alias).is_some() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(ResolverDiagKind::ImportTwice {
@@ -224,19 +216,12 @@ impl Resolver {
                         continue;
                     }
 
-                    let proxy_symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::new(
-                        SymbolEntryKind::ProxiedModule {
-                            symbol_id: module_symbol_id,
-                        },
-                        None,
-                        self.current_scope,
-                    ));
-
+                    // insert proxied module symbol
                     self.global_symbols
-                        .insert_symbol_name(parent_scope_id, proxy_symbol_id, &alias);
+                        .insert_proxied_module(parent_scope_id, &alias, module_symbol_id);
                 }
                 ModuleAlias::Single(singles) => {
-                    self.resolve_import_module_segments(parent_scope_id, self.current_scope.unwrap(), &singles);
+                    self.resolve_import_module_segments(parent_scope_id, module_symbol_id, &singles);
                 }
             }
         }
@@ -244,63 +229,56 @@ impl Resolver {
 
     fn resolve_import_module_segments(
         &mut self,
-        parent_scope_id: SymbolID,
-        imported_scope_id: SymbolID,
+        // where the proxy goes
+        target_scope_id: SymbolID,
+        // the module we are looking inside
+        source_module_id: SymbolID,
         singles: &[ModuleSegmentSingle],
     ) {
-        let mut imported_symbol_ids = Vec::new();
-
         for single in singles {
             let loc = single.ident.loc;
-
             let actual_name = single.ident.as_string();
-            let renamed_name = single.renamed.as_ref().unwrap_or(&single.ident).as_string();
+            let visible_name = single.visible_name();
 
-            let Some(symbol_id) = self.lookup_symbol_id_in_scope(imported_scope_id, &actual_name) else {
+            // look up the actual symbol inside the source module's scope
+            let Some(target_symbol_id) = self.lookup_symbol_id_in_scope(source_module_id, &actual_name) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                        name: renamed_name.clone(),
+                        name: actual_name.clone(),
                     }),
                     loc: Some(loc),
-                    hint: None,
+                    hint: Some(format!("Module does not export '{}'", actual_name)),
                 });
                 continue;
             };
 
-            imported_symbol_ids.push(symbol_id);
-
-            {
-                // check symbol visibility
-                let symbol_entry = self.get_symbol(symbol_id).unwrap();
-
+            if let Some(symbol_entry) = self.get_symbol(target_symbol_id) {
                 if let Some(vis) = symbol_entry.vis_opt {
                     self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
                 }
             }
 
-            {
-                let exists = self.lookup_symbol_id_in_scope(parent_scope_id, &actual_name).is_some();
-
-                if exists {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::DuplicateSymbol {
-                            symbol_name: renamed_name.clone(),
-                        }),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                    continue;
-                }
-
-                self.global_symbols.insert_proxied_symbol(
-                    self.current_scope.unwrap(),
-                    &renamed_name,
-                    imported_scope_id,
-                    symbol_id,
-                );
+            // check if the visible name exists in the local scope
+            if self.lookup_symbol_id_in_scope(target_scope_id, &visible_name).is_some() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::DuplicateSymbol {
+                        symbol_name: visible_name.clone(),
+                    }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+                continue;
             }
+
+            // insert proxied symbol
+            self.global_symbols.insert_proxied_symbol(
+                target_scope_id,
+                &visible_name,
+                source_module_id,
+                target_symbol_id,
+            );
         }
     }
 

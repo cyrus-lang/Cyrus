@@ -43,8 +43,6 @@ pub mod macros;
 pub mod modules;
 pub mod traverse;
 
-type ModuleGroupName = String;
-
 /// Thread-safe registry mapping modules to their symbol tables.
 ///
 /// GlobalSymbolRegistry wraps an Arc<Mutex<_>> to allow concurrent access
@@ -98,8 +96,6 @@ pub struct Resolver {
     /// which indirectly depend on a shared mapping context arena.
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 
-    master_module_file_id: FileID,
-
     current_module_file_id: Option<FileID>,
 
     /// Symbol representing the current object context (struct/trait/impl).
@@ -140,7 +136,6 @@ impl Resolver {
         reporter: Arc<DiagReporter>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-        master_module_file_id: FileID,
     ) -> Self {
         Self {
             global_symbols: GlobalSymbolRegistry::new(),
@@ -151,7 +146,6 @@ impl Resolver {
             module_loader,
             current_object_generic_params: None,
             current_object: None,
-            master_module_file_id,
             monomorph_registry,
             mapping_ctx_arena,
             reporter,
