@@ -220,10 +220,6 @@ impl Resolver {
 
             let scope_id = self.global_symbols.resolve_concrete_scope_id(current_symbol);
 
-            {
-                dbg!(self.global_symbols.inner.read().unwrap().entries.clone());
-            }
-
             let Some(next_symbol) = self.lookup_symbol_id_in_scope(scope_id, name) else {
                 let module_name = format_module_segments(&module_import.segments[0..i]);
                 self.reporter.report(Diag {

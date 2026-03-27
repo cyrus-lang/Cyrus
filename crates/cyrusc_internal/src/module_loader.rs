@@ -26,7 +26,7 @@ use std::{
 
 #[derive(Debug, Clone)]
 pub struct LoadedModule {
-    pub segment:Ident,
+    pub segment: Ident,
     pub alias: ModuleAlias,
     pub path: ModulePath,
     pub file_id: FileID,
@@ -46,7 +46,11 @@ pub enum ModuleAlias {
 }
 
 pub trait ModuleLoader {
-    fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>>;
+    fn load_module(
+        &mut self,
+        import: &ASTImportStmt,
+        current_module_file_id: FileID,
+    ) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>>;
 
     /// Forms a stable module name from a filesystem path.
     /// Strips extensions, normalizes separators, and prefixes stdlib modules.

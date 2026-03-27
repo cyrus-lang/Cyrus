@@ -132,7 +132,7 @@ impl Resolver {
         let parent_scope_id = self.global_symbols.resolve_concrete_scope_id(parent_scope_id);
 
         let current_file = self.current_module_file_id.unwrap();
-        let loaded_modules_list = self.module_loader.load_module(&import);
+        let loaded_modules_list = self.module_loader.load_module(&import, current_file);
 
         for loaded_module_result in loaded_modules_list {
             let loaded_module = match loaded_module_result {
@@ -149,19 +149,24 @@ impl Resolver {
                 }
             };
 
-            let module_symbol_id =
-                self.create_module_symbol_id_for_loaded_module(parent_scope_id, &loaded_module, import.loc);
+            if let ModuleAlias::Group(alias) = &loaded_module.alias {
+                if let Some(_) = self.lookup_symbol_id_in_scope(parent_scope_id, &alias) {
+                    dbg!(alias.clone());
 
-            // check for self-import
-            if current_file == loaded_module.file_id {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::ModuleCannotImportItself),
-                    loc: Some(import.loc),
-                    hint: None,
-                });
-                continue;
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(ResolverDiagKind::ImportTwice {
+                            module_name: alias.clone(),
+                        }),
+                        loc: Some(import.loc),
+                        hint: Some("Consider removing the previous declaration.".to_string()),
+                    });
+                    continue;
+                }
             }
+
+            let module_symbol_id =
+                self.get_or_create_module_symbol_id_for_loaded_module(parent_scope_id, &loaded_module, import.loc);
 
             // cycle detection
             if visiting.active.contains(&loaded_module.file_id) {
@@ -194,19 +199,6 @@ impl Resolver {
 
             match loaded_module.alias {
                 ModuleAlias::Group(alias) => {
-                    // check if alias name is already taken in current scope
-                    if self.lookup_symbol_id_in_scope(parent_scope_id, &alias).is_some() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(ResolverDiagKind::ImportTwice {
-                                module_name: alias.clone(),
-                            }),
-                            loc: Some(import.loc),
-                            hint: Some("Consider removing the previous declaration.".to_string()),
-                        });
-                        continue;
-                    }
-
                     // insert proxied module symbol
                     self.global_symbols
                         .insert_proxied_module(parent_scope_id, &alias, module_symbol_id);
@@ -273,7 +265,7 @@ impl Resolver {
         }
     }
 
-    fn create_module_symbol_id_for_loaded_module(
+    fn get_or_create_module_symbol_id_for_loaded_module(
         &mut self,
         parent_scope_id: SymbolID,
         loaded_module: &LoadedModule,
@@ -282,8 +274,8 @@ impl Resolver {
         let module_name = loaded_module.segment.as_string();
 
         let mut current_scope_id = parent_scope_id;
-        let mut root_symbol_id = None;
 
+        // resolve implied parents
         for implied_parent in &loaded_module.implied_parent_modules {
             let parent_name = &implied_parent.ident.value;
 
@@ -293,24 +285,22 @@ impl Resolver {
             self.global_symbols
                 .insert_symbol_name(current_scope_id, synthetic_id, parent_name);
 
-            // descend into its real internal scope
             current_scope_id = self.global_symbols.resolve_concrete_scope_id(synthetic_id);
         }
 
+        // if not found, create the real module symbol
         let real_module_id = self.get_or_create_module_symbol_id_for_file(loaded_module.file_id, &module_name, loc);
 
+        // record file_id -> symbol_id binding
         self.module_symbols.insert(loaded_module.file_id, real_module_id);
 
+        // insert into scope
         self.global_symbols
             .insert_symbol_name(current_scope_id, real_module_id, &module_name);
 
-        if root_symbol_id.is_none() {
-            root_symbol_id = Some(real_module_id);
-        }
+        self.insert_module_name(loaded_module.file_id, module_name.clone());
 
-        self.insert_module_name(loaded_module.file_id, module_name.to_string());
-
-        root_symbol_id.unwrap()
+        real_module_id
     }
 
     fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Loc) {

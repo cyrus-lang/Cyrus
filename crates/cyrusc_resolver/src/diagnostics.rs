@@ -32,6 +32,9 @@ pub enum ModuleFSLoaderDiagKind {
 
     #[error("Module '{module_name}' cannot exist as both a file and a directory.")]
     DuplicateModule { module_name: String },
+
+    #[error("Module cannot import itself.")]
+    ModuleCannotImportItself,
 }
 
 impl DiagKind for ModuleFSLoaderDiagKind {}
@@ -81,9 +84,6 @@ pub enum ResolverDiagKind {
 
     #[error("Cannot import module '{module_name}' twice.")]
     ImportTwice { module_name: String },
-
-    #[error("Module cannot import itself.")]
-    ModuleCannotImportItself,
 
     #[error("Symbol '{symbol_name}' is not defined in module '{module_name}'.")]
     SymbolIsNotDefinedInModule { symbol_name: String, module_name: String },

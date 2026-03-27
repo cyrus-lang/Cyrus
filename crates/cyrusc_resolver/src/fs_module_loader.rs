@@ -64,6 +64,7 @@ impl FsModuleLoader {
     fn get_imported_module_file_path(
         &self,
         segments: Vec<ModuleSegment>,
+        current_module_file_path: PathBuf,
     ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
         let stdlib_path = self.opts.stdlib_path.clone().map(|str| Path::new(&str).to_path_buf());
         let stdlib_modules_path = || {
@@ -82,13 +83,14 @@ impl FsModuleLoader {
             sources = vec![stdlib_modules_path()];
         }
 
-        self.load_module_segments(&segments, sources, String::new())
+        self.load_module_segments(current_module_file_path, &segments, sources, String::new())
     }
 
     /// Walks through module segments to locate either a `.cyrus` file or
     /// a directory containing `index.cyrus`. Reports missing or ambiguous modules.
     fn load_module_segments(
         &self,
+        current_module_file_path: PathBuf,
         segments: &[ModuleSegment],
         sources: Vec<String>,
         initial_base_path: String,
@@ -96,7 +98,6 @@ impl FsModuleLoader {
         let mut implied_parents = Vec::new();
 
         let mut current_path = PathBuf::from(initial_base_path);
-        let total_segments = segments.len();
 
         let last_module_idx = segments
             .iter()
@@ -127,6 +128,13 @@ impl FsModuleLoader {
                         // fallback: search in additional source dirs
                         find_file_from_sources(dir_path_buf.to_string_lossy().as_ref(), &sources)
                     };
+
+                    // check for self-import
+                    if let Some(file_buf) = &file_exists {
+                        if *file_buf == current_module_file_path {
+                            return Err(ModuleFSLoaderDiagKind::ModuleCannotImportItself);
+                        }
+                    }
 
                     match (file_exists, dir_exists) {
                         // ambiguity check
@@ -191,7 +199,13 @@ impl ModuleLoader for FsModuleLoader {
     /// Loads all modules referenced in an import statement.
     /// Phase 1: locate and parse each module.  
     /// Phase 2: if all succeeded, construct LoadedModule entries.
-    fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> {
+    fn load_module(
+        &mut self,
+        import: &ASTImportStmt,
+        current_module_file_id: FileID,
+    ) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> {
+        let current_module_file_path = &self.source_map.get_file(current_module_file_id).unwrap().file_path;
+
         type ImpliedParents = Vec<ImpliedParentModule>;
 
         // phase 1: collect and parse all modules
@@ -199,7 +213,9 @@ impl ModuleLoader for FsModuleLoader {
         let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> = Vec::new();
 
         for sub_import in &import.paths {
-            let resolved_module_file = match self.get_imported_module_file_path(sub_import.segments.clone()) {
+            let resolved_module_file = match self
+                .get_imported_module_file_path(sub_import.segments.clone(), current_module_file_path.clone())
+            {
                 Ok(path) => path,
                 Err(diag) => {
                     loaded_modules_list.push(Err(Box::new(diag)));
