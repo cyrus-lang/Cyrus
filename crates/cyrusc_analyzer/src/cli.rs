@@ -128,7 +128,7 @@ pub fn main() {
                         &resolver,
                         &resolver,
                         module_id,
-                        program_tree_entry.program.clone(),
+                        program_tree_entry.program_tree.clone(),
                         entry_points.clone(),
                         monomorph_registry.clone(),
                         mapping_ctx_arena.clone(),

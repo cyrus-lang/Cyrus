@@ -42,8 +42,8 @@ pub struct FsModuleLoaderOptions {
 #[derive(Debug)]
 pub struct FsModuleLoader {
     pub source_map: Arc<SourceMap>,
-    pub source_parser: Arc<SourceParser>,
-    pub opts: FsModuleLoaderOptions,
+    source_parser: Arc<SourceParser>,
+    opts: FsModuleLoaderOptions,
 }
 
 impl FsModuleLoader {
@@ -158,7 +158,7 @@ impl ModuleLoader for FsModuleLoader {
     /// Phase 2: if all succeeded, construct LoadedModule entries.
     fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> {
         // phase 1: collect and parse all modules
-        let mut parsed_program_trees: Vec<(PathBuf, FileID, Rc<ProgramTree>, &ModulePath)> = Vec::new();
+        let mut parsed_program_trees: Vec<(FileID, Rc<ProgramTree>, &ModulePath)> = Vec::new();
         let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> = Vec::new();
 
         for sub_import in &import.paths {
@@ -209,7 +209,7 @@ impl ModuleLoader for FsModuleLoader {
                 body: Rc::clone(&program_tree.body),
             });
 
-            parsed_program_trees.push((module_file_path.to_path_buf(), file_id, program_tree_rc, sub_import));
+            parsed_program_trees.push((file_id, program_tree_rc, sub_import));
         }
 
         // if any module failed parsing/path resolution, stop immediately
@@ -218,7 +218,7 @@ impl ModuleLoader for FsModuleLoader {
         }
 
         // phase 2: construct LoadedModule objects
-        for (file_path, _file_id, program_tree_rc, sub_import) in parsed_program_trees {
+        for (file_id, program_tree_rc, sub_import) in parsed_program_trees {
             let module_alias = match sub_import.segments.last().unwrap() {
                 ModuleSegment::SubModule(ident) => {
                     ModuleAlias::Group(sub_import.alias.clone().unwrap_or(ident.value.clone()))
@@ -229,8 +229,8 @@ impl ModuleLoader for FsModuleLoader {
             let loaded_module = LoadedModule {
                 alias: module_alias,
                 path: sub_import.clone(),
-                program: program_tree_rc,
-                file_path,
+                program_tree: program_tree_rc,
+                file_id,
             };
 
             loaded_modules_list.push(Ok(loaded_module));

@@ -75,7 +75,7 @@ impl SourceParser {
 
 impl<'source_file> Parser<'source_file> {
     pub fn new(reporter: Arc<DiagReporter>, source_file: &'source_file SourceFile, tokens: Vec<Token>) -> Self {
-        let initial_loc = Loc::default(source_file.id);
+        let initial_loc = Loc::default(source_file.file_id);
 
         Parser {
             source_file,
@@ -89,7 +89,7 @@ impl<'source_file> Parser<'source_file> {
     /// Returns the FileID of the source file being tokenized.
     #[inline]
     pub fn file_id(&self) -> FileID {
-        self.source_file.id
+        self.source_file.file_id
     }
 
     /// Parses the program by repeatedly parsing statements until the end of file (EOF) token is encountered.

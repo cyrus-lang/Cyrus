@@ -16,14 +16,16 @@
  */
 
 use crate::modules::ImportedModuleEntry;
+use cyrusc_ast::abi::Visibility;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::module_loader::ModuleLoader;
 use cyrusc_internal::symbols::symbols::{
-    ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
-    ResolvedUnion, ResolvedVar, SymbolEntry, SymbolEntryKind,
+    Module, Namespace, ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod,
+    ResolvedStruct, ResolvedTypedef, ResolvedUnion, ResolvedVar, SymbolEntry, SymbolEntryKind,
 };
-use cyrusc_internal::symbols::table::{SymbolEntryMut, SymbolQuery, SymbolTable};
+use cyrusc_internal::symbols::table::{Query, ScopeTable, SymbolEntryMut};
+use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_typed_ast::generics::monomorph::{
     MonomorphEntry, MonomorphFuncEntry, MonomorphID, MonomorphRegistry, SpecializedFuncEntry,
@@ -43,7 +45,6 @@ pub mod modules;
 pub mod traverse;
 
 type ModuleGroupName = String;
-type ImportedModules = HashMap<ModuleGroupName, ModuleID>;
 
 /// Thread-safe registry mapping modules to their symbol tables.
 ///
@@ -51,29 +52,11 @@ type ImportedModules = HashMap<ModuleGroupName, ModuleID>;
 /// across compilation units.
 pub struct GlobalSymbolRegistry {
     inner: Arc<RwLock<GlobalSymbolRegistryInner>>,
+    root_scope: Option<SymbolID>,
 }
 
 pub struct GlobalSymbolRegistryInner {
-    /// Maps module id to symbol table.
-    pub modules: HashMap<ModuleID, SymbolTable>,
-
-    /// Global symbol storage indexed by SymbolID.
     pub entries: Vec<SymbolEntry>,
-}
-
-/// Registry for module aliases within the current scope.
-///
-/// Manages mappings from `ModuleGroupName` to `ModuleID` for imported modules,
-/// enabling alias resolution during semantic analysis.
-pub struct ModuleAliasRegistry {
-    inner: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
-}
-
-/// Registry mapping modules to their source file paths.
-///
-/// This is used to associate a `ModuleID` with the file it originated from.
-pub struct ModuleFileMap {
-    inner: Arc<Mutex<HashMap<ModuleID, PathBuf>>>,
 }
 
 /// Semantic resolver responsible for symbol binding, module loading,
@@ -83,17 +66,11 @@ pub struct Resolver {
     /// Stores all declared symbols and their associated metadata.
     pub global_symbols: GlobalSymbolRegistry,
 
-    /// Tracks modules that have already been analyzed.
-    /// Prevents resolving the same module multiple times.
-    pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
-
     /// Program trees of successfully analyzed modules.
     /// Acts as the semantic output collected during resolution.
     pub program_trees: Arc<Mutex<Vec<Rc<ResolvedProgramTree>>>>,
 
-    /// Maps module identifiers to their originating file paths.
-    /// Used for diagnostics and module identity tracking.
-    pub module_file_map: ModuleFileMap,
+    module_names: Arc<Mutex<HashMap<FileID, String>>>,
 
     /// Diagnostic reporter used to emit compiler errors and warnings.
     pub reporter: Arc<DiagReporter>,
@@ -108,9 +85,13 @@ pub struct Resolver {
     /// Actual type checking and specialization are performed later by the analyzer.
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 
-    /// Maps module aliases to their resolved imported modules.
-    /// Used for resolving `import` references within a module.
-    pub module_aliases: ModuleAliasRegistry,
+    /// Tracks files that have already been analyzed.
+    /// Prevents resolving the same file multiple times.
+    analyzed_files: Arc<Mutex<HashSet<FileID>>>,
+
+    module_symbols: HashMap<FileID, SymbolID>,
+
+    source_map: Arc<SourceMap>,
 
     /// Arena managing generic mapping contexts.
     ///
@@ -118,15 +99,9 @@ pub struct Resolver {
     /// which indirectly depend on a shared mapping context arena.
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 
-    /// File path of the entry module driving the compilation.
-    master_module_file_path: PathBuf,
+    master_module_file_id: FileID,
 
-    /// List of modules imported by the current module.
-    /// Used during resolution to track dependency relationships.
-    imported_modules: HashSet<ImportedModuleEntry>,
-
-    /// Identifier of the module currently being resolved.
-    module_id: Option<ModuleID>,
+    current_module_file_id: Option<FileID>,
 
     /// Symbol representing the current object context (struct/trait/impl).
     /// Used to resolve `Self` and member references.
@@ -140,100 +115,100 @@ pub struct Resolver {
     ///
     /// This stack is manipulated internally by `LocalScopeGuard`, ensuring
     /// automatic scope entry and exit based on lexical lifetime.
-    scopes: Vec<LocalScope>,
+    local_scopes: Vec<LocalScope>,
+
+    scope_table_stack: Vec<SymbolID>,
+    current_scope: Option<SymbolID>,
 
     // ID allocator for all compiler entities
     pub(crate) id_gen: IDGen,
 }
 
 pub struct ResolvedProgramTree {
-    pub module_id: ModuleID,
-    pub module_name: String,
-    pub module_path: PathBuf,
-    pub program: Rc<RefCell<TypedProgramTree>>,
+    pub file_id: FileID,
+    pub program_tree: Rc<RefCell<TypedProgramTree>>,
 }
 
 #[derive(Debug)]
 pub struct IDGen {
-    /// Module ID allocator.
-    ///
-    /// Reserved IDs:
-    ///   0 = invalid
-    ///   1 = master/root module
-    ///
-    /// Allocated module IDs therefore start at 2.
-    next_module_id: AtomicU32,
-
     next_label_id: AtomicU32,
 }
 
 impl Resolver {
     pub fn new(
         module_loader: Box<dyn ModuleLoader>,
+        source_map: Arc<SourceMap>,
         reporter: Arc<DiagReporter>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-        master_module_file_path: PathBuf,
+        master_module_file_id: FileID,
     ) -> Self {
         Self {
             global_symbols: GlobalSymbolRegistry::new(),
-            module_aliases: ModuleAliasRegistry::new(),
-            analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
+            analyzed_files: Arc::new(Mutex::new(HashSet::new())),
             program_trees: Arc::new(Mutex::new(Vec::new())),
-            module_file_map: ModuleFileMap::new(),
-            imported_modules: HashSet::new(),
-            scopes: Vec::new(),
+            module_names: Arc::new(Mutex::new(HashMap::new())),
+            local_scopes: Vec::new(),
             module_loader,
             current_object_generic_params: None,
-            module_id: None,
             current_object: None,
-            master_module_file_path,
+            master_module_file_id,
             monomorph_registry,
             mapping_ctx_arena,
             reporter,
+            source_map,
             id_gen: IDGen::new(),
+            current_scope: None,
+            scope_table_stack: Vec::new(),
+            module_symbols: HashMap::new(),
+            current_module_file_id: None,
         }
     }
 
     /// Returns a reference to the current active scope, if any.
     #[inline]
-    pub fn current_scope(&self) -> Option<&LocalScope> {
-        self.scopes.last()
+    pub fn current_local_scope(&self) -> Option<&LocalScope> {
+        self.local_scopes.last()
     }
 
     /// Returns a mutable reference to the current active scope, if any.
     #[inline]
     pub fn current_scope_mut(&mut self) -> Option<&mut LocalScope> {
-        self.scopes.last_mut()
+        self.local_scopes.last_mut()
     }
 
     // Method to enter a new scope.
     #[inline]
-    pub fn enter_scope(&mut self, scope: LocalScope) {
-        self.scopes.push(scope);
+    pub fn enter_local_scope(&mut self, scope: LocalScope) {
+        self.local_scopes.push(scope);
     }
 
     // Method to exit the current scope.
     #[inline]
-    pub fn exit_scope(&mut self) {
-        self.scopes.pop();
+    pub fn exit_local_scope(&mut self) {
+        self.local_scopes.pop();
     }
 
     /// Returns an iterator over the active scope stack.
     ///
     /// The iterator yields scopes from the innermost scope outward toward
     /// the outermost scope.
-    pub fn scopes_into_iter(&self) -> impl Iterator<Item = &LocalScope> {
-        self.scopes.iter().rev()
+    pub fn local_scopes_into_iter(&self) -> impl Iterator<Item = &LocalScope> {
+        self.local_scopes.iter().rev()
     }
 
     #[inline]
     pub fn current_module_file_path(&self) -> PathBuf {
-        let module_id = self.module_id.unwrap();
-        match self.module_file_map.get(module_id) {
-            Some(path_buf) => path_buf,
-            None => self.master_module_file_path.clone(),
-        }
+        let file_id = self
+            .current_module_file_id
+            .expect("resolver current module file not set");
+
+        self.source_map.get_file(file_id).unwrap().file_path.clone()
+    }
+
+    fn insert_module_name(&self, file_id: FileID, name: String) {
+        let mut map = self.module_names.lock().unwrap();
+        map.insert(file_id, name);
     }
 
     fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
@@ -250,7 +225,7 @@ impl Resolver {
     /// Lookup proceeds from the innermost scope outward until a matching
     /// symbol binding is found.
     pub(crate) fn resolve_scope_symbol(&self, name: &str) -> Option<SymbolID> {
-        for scope in self.scopes_into_iter() {
+        for scope in self.local_scopes_into_iter() {
             if let Some(symbol_id) = scope.resolve(name) {
                 return Some(symbol_id);
             }
@@ -258,166 +233,191 @@ impl Resolver {
 
         None
     }
+
+    /// Return a mutable reference to the scope table for a given symbol entry.
+    ///
+    /// This is a utility used during symbol insertion to avoid repeating
+    /// pattern matching on `SymbolEntryKind`. Only `Module` and `Namespace`
+    /// symbols own a scope table.
+    pub fn scope_table_mut(entry: &mut SymbolEntry) -> &mut ScopeTable {
+        match &mut entry.kind {
+            SymbolEntryKind::Module(module) => &mut module.scope,
+            SymbolEntryKind::Namespace(namespace) => &mut namespace.scope,
+            _ => panic!("symbol is not a scope"),
+        }
+    }
+
+    pub fn get_or_create_module_symbol_id(&mut self, file_id: FileID, module_name: &str, loc: Loc) -> SymbolID {
+        if let Some(symbol_id) = self.module_symbols.get(&file_id) {
+            return *symbol_id;
+        }
+
+        let module_symbol_id =
+            self.global_symbols
+                .insert_module_symbol(self.global_symbols.root_scope(), module_name, file_id);
+
+        self.module_symbols.insert(file_id, module_symbol_id);
+        module_symbol_id
+    }
 }
 
 impl GlobalSymbolRegistry {
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(GlobalSymbolRegistryInner {
-                modules: HashMap::new(),
-                entries: Vec::new(),
-            })),
-        }
+        let mut global_symbols = Self {
+            inner: Arc::new(RwLock::new(GlobalSymbolRegistryInner { entries: Vec::new() })),
+            root_scope: None,
+        };
+
+        global_symbols.root_scope = Some(global_symbols.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::Namespace(Namespace {
+                name: "<global>".to_string(),
+                scope: ScopeTable::new(),
+                loc: Loc::default(FileID(0)),
+            }),
+            None,
+        )));
+
+        global_symbols
     }
 
-    pub fn insert_symbol_name(&self, module_id: ModuleID, symbol_id: SymbolID, name: &str) {
+    pub fn root_scope(&self) -> SymbolID {
+        self.root_scope.unwrap()
+    }
+
+    /// Insert a symbol into a scope by name.
+    ///
+    /// Looks up the `SymbolEntry` for `scope_id`, extracts its
+    /// `ScopeTable`, and inserts `(name -> symbol_id)` into the table.
+    /// Only `Module` and `Namespace` entries may be used as scopes.
+    pub fn insert_symbol_name(&self, scope_id: SymbolID, symbol_id: SymbolID, name: &str) {
         let mut registry = self.inner.write().unwrap();
-        let table = registry.modules.entry(module_id).or_insert_with(SymbolTable::new);
-        table.names.insert(name.to_string(), symbol_id);
+        let symbol_entry = &mut registry.entries[scope_id.0 as usize];
+        let scope_table = symbol_entry.get_scope_table_mut().unwrap();
+
+        scope_table.names.insert(name.to_string(), symbol_id);
     }
 
+    /// Lookup a symbol entry by `SymbolID` in global symbols.
     pub fn lookup_symbol_entry(&self, id: SymbolID) -> Option<SymbolEntry> {
         let registry = self.inner.read().unwrap();
         registry.entries.get(id.0 as usize).cloned()
     }
 
-    /// Lookup symbol id by name inside module.
-    pub fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+    /// Lookup a symbol by name within a given scope.
+    pub fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
         let registry = self.inner.read().unwrap();
-        registry.modules.get(&module_id)?.names.get(name).copied()
+        let symbol_entry = &registry.entries[scope_id.0 as usize];
+        let scope_table = symbol_entry.get_scope_table().unwrap();
+
+        scope_table.names.get(name).copied()
     }
 
-    /// Allocate and store a new symbol entry in the global arena.
-    pub fn create_symbol(&self, entry: SymbolEntry) -> SymbolID {
+    /// Inserts a new symbol entry in the global symbols and returns the associated `SymbolID`.
+    pub fn insert_symbol_entry(&self, entry: SymbolEntry) -> SymbolID {
         let mut registry = self.inner.write().unwrap();
 
-        let id = SymbolID(registry.entries.len() as u32);
+        let symbol_id = SymbolID(registry.entries.len() as u32);
         registry.entries.push(entry);
-        id
+        symbol_id
     }
 
-    pub fn create_proxy_symbol(
+    /// Create a `ProxiedSymbol` inside the given scope.
+    ///
+    /// A proxy symbol represents an imported symbol. The proxy inherits
+    /// visibility from the target symbol and binds into the caller's
+    /// current scope under the provided `name`.
+    pub fn insert_proxy_symbol(
         &self,
-        current_module: ModuleID,
+        current_scope: SymbolID,
         name: &str,
-        imported_module: ModuleID,
+        imported_scope_id: SymbolID,
         target_symbol_id: SymbolID,
     ) -> SymbolID {
-        // proxy inherits visibility from target
+        // proxy inherits visibility from target symbol
         let target_vis = self.lookup_symbol_entry(target_symbol_id).unwrap().vis_opt.clone();
 
-        let proxy_id = self.create_symbol(SymbolEntry {
-            kind: SymbolEntryKind::ProxiedSymbol(imported_module, target_symbol_id),
+        let proxy_id = self.insert_symbol_entry(SymbolEntry {
+            kind: SymbolEntryKind::ProxiedSymbol {
+                scope_id: imported_scope_id,
+                symbol_id: target_symbol_id,
+            },
             vis_opt: target_vis,
             used: false,
         });
 
-        self.insert_symbol_name(current_module, proxy_id, name);
+        self.insert_symbol_name(current_scope, proxy_id, name);
         proxy_id
     }
-}
 
-impl ModuleAliasRegistry {
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(HashMap::new())),
-        }
+    /// Insert a new `Module` symbol into the given parent scope.
+    ///
+    /// A module symbol owns a `ScopeTable` which becomes the root scope
+    /// for resolving declarations inside that module.
+    ///
+    /// The symbol is:
+    /// 1. Allocated in the global symbol arena
+    /// 2. Bound into the parent scope under `name`
+    ///
+    /// Returns the created `SymbolID`.
+    pub fn insert_module_symbol(&self, parent_scope: SymbolID, name: &str, file_id: FileID) -> SymbolID {
+        let module_symbol = self.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::Module(Module {
+                name: name.to_string(),
+                scope: ScopeTable::new(),
+                loc: Loc::new(file_id, 0, 0, 0, 0),
+            }),
+            None,
+        ));
+
+        self.insert_symbol_name(parent_scope, module_symbol, name);
+        module_symbol
     }
 
-    /// Insert an alias for an imported module into the parent module's registry.
+    /// Insert a new lexical `Namespace` symbol into the given scope.
     ///
-    /// Associates `imported_module_id` with `group_name` for the specified `parent_module_id`.
-    /// The parent module's entry must already exist.
-    pub fn insert_module_alias(
+    /// Namespaces behave similarly to modules but exist purely inside
+    /// source files (`mod foo { ... }`). They introduce a new scope
+    /// table for name resolution.
+    ///
+    /// The symbol is:
+    /// 1. Allocated in the global symbol arena
+    /// 2. Bound into the parent scope under `name`
+    ///
+    /// Returns the created `SymbolID`.
+    pub fn insert_namespace_symbol(
         &self,
-        parent_module_id: ModuleID,
-        group_name: ModuleGroupName,
-        imported_module_id: ModuleID,
-    ) {
-        let mut registry = self.inner.lock().unwrap();
+        parent_scope: SymbolID,
+        name: &str,
+        loc: Loc,
+        vis_opt: Option<Visibility>,
+    ) -> SymbolID {
+        let namespace_symbol = self.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::Namespace(Namespace {
+                name: name.to_string(),
+                scope: ScopeTable::new(),
+                loc,
+            }),
+            vis_opt,
+        ));
 
-        let imported_modules = registry.entry(parent_module_id).or_insert_with(HashMap::new);
-
-        imported_modules.insert(group_name, imported_module_id);
+        self.insert_symbol_name(parent_scope, namespace_symbol, name);
+        namespace_symbol
     }
 
-    /// Resolve a module alias to its corresponding `ModuleID`.
-    ///
-    /// Looks up the `group_name` within the aliases of the `current_module`.
-    /// Returns `None` if the alias is not found or if the current module
-    /// has no associated aliases.
-    pub fn resolve_module_alias(
-        &self,
-        current_module: Option<ModuleID>,
-        group_name: &ModuleGroupName,
-    ) -> Option<ModuleID> {
-        let registry = self.inner.lock().unwrap();
+    pub fn insert_module_alias(&self, parent_scope_id: SymbolID, name: &str, target_symbol_id: SymbolID) -> SymbolID {
+        let symbol_id = self.insert_symbol_entry(SymbolEntry::new(
+            SymbolEntryKind::ProxiedModule {
+                symbol_id: target_symbol_id,
+            },
+            None,
+        ));
 
-        if let Some(current_module_id) = current_module {
-            if let Some(imported_modules) = registry.get(&current_module_id) {
-                return imported_modules.get(group_name).cloned();
-            }
-        }
-        None
-    }
-}
-
-impl ModuleFileMap {
-    #[inline]
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    /// Associate a module with its file path.
-    ///
-    /// If the module already exists in the map, the path will be replaced.
-    #[inline]
-    pub fn insert(&self, module_id: ModuleID, path: PathBuf) {
-        let mut map = self.inner.lock().unwrap();
-        map.insert(module_id, path);
-    }
-
-    /// Retrieve the file path associated with a module.
-    ///
-    /// Returns `None` if the module is not registered.
-    #[inline]
-    pub fn get(&self, module_id: ModuleID) -> Option<PathBuf> {
-        let map = self.inner.lock().unwrap();
-        map.get(&module_id).cloned()
-    }
-
-    /// Check and returns if file path already has a registered.
-    #[inline]
-    pub fn get_file_path(&self, file_path: &PathBuf) -> Option<ModuleID> {
-        let map = self.inner.lock().unwrap();
-        map.iter()
-            .find(|(_, path_buf)| **path_buf == *file_path)
-            .map(|(module_id, _)| *module_id)
-    }
-
-    /// Check whether a module already has a registered module id.
-    #[inline]
-    pub fn contains_module_id(&self, module_id: ModuleID) -> bool {
-        self.get(module_id).is_some()
-    }
-
-    /// Check whether a file path already has a registered.
-    #[inline]
-    pub fn contains_file_path(&self, file_path: &PathBuf) -> bool {
-        self.get_file_path(file_path).is_some()
-    }
-
-    /// Remove the file path entry for a module.
-    #[inline]
-    pub fn remove(&self, module_id: ModuleID) {
-        let mut map = self.inner.lock().unwrap();
-        map.remove(&module_id);
+        self.insert_symbol_name(parent_scope_id, symbol_id, name);
+        symbol_id
     }
 }
 
-impl SymbolQuery for Resolver {
+impl Query for Resolver {
     lookup_kind!(lookup_var, Var, ResolvedVar);
 
     lookup_kind!(lookup_global_var, GlobalVar, ResolvedGlobalVar);
@@ -437,35 +437,44 @@ impl SymbolQuery for Resolver {
     lookup_kind!(lookup_interface, Interface, ResolvedInterface);
 
     /// Look up a symbol identifier by name.
-    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+    fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
         let registry = self.global_symbols.inner.read().unwrap();
-        registry.modules.get(&module_id)?.names.get(name).copied()
+        let symbol_entry = registry.entries.get(scope_id.0 as usize)?;
+        let scope_table = symbol_entry.get_scope_table()?;
+
+        scope_table.names.get(name).copied()
     }
 
     /// Look up a symbol identifier by name within a specific module.
-    fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+    fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
         let registry = self.global_symbols.inner.read().unwrap();
-        registry.modules.get(&module_id)?.names.get(name).copied()
+        let symbol_entry = registry.entries.get(scope_id.0 as usize)?;
+        let scope_table = symbol_entry.get_scope_table()?;
+
+        scope_table.names.get(name).copied()
     }
 
     /// Retrieve the full semantic entry for a symbol by its name.
-    fn lookup_symbol_entry(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
-        let symbol_id = self.lookup_symbol_id(module_id, name)?;
-        self.lookup_global_symbol(symbol_id)
+    fn lookup_symbol_entry(&self, scope_id: SymbolID, name: &str) -> Option<SymbolEntry> {
+        let symbol_id = self.lookup_symbol_id(scope_id, name)?;
+        self.global_symbols.lookup_symbol_entry(symbol_id)
     }
 
     /// Retrieve the semantic entry for a symbol, resolving proxy chains.
-    fn lookup_global_symbol(&self, mut id: SymbolID) -> Option<SymbolEntry> {
+    fn lookup_global_symbol(&self, mut symbol_id: SymbolID) -> Option<SymbolEntry> {
         let registry = self.global_symbols.inner.read().unwrap();
 
         loop {
-            let entry = registry.entries.get(id.0 as usize)?;
+            let symbol_entry = registry.entries.get(symbol_id.0 as usize)?;
 
-            match entry.kind {
-                SymbolEntryKind::ProxiedSymbol(_, target) => {
-                    id = target;
+            match symbol_entry.kind {
+                SymbolEntryKind::ProxiedSymbol {
+                    symbol_id: target_symbol_id,
+                    ..
+                } => {
+                    symbol_id = target_symbol_id;
                 }
-                _ => return Some(entry.clone()),
+                _ => return Some(symbol_entry.clone()),
             }
         }
     }
@@ -474,20 +483,6 @@ impl SymbolQuery for Resolver {
         match self.lookup_global_symbol(symbol_id) {
             Some(symbol_entry) => symbol_entry.decl_name(),
             None => "<UNRESOLVED_SYMBOL>".to_string(),
-        }
-    }
-
-    fn lookup_module_name(&self, module_id: ModuleID) -> Option<String> {
-        {
-            Some(
-                self.program_trees
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .find(|program_tree| program_tree.module_id == module_id)?
-                    .module_name
-                    .clone(),
-            )
         }
     }
 
@@ -509,6 +504,11 @@ impl SymbolQuery for Resolver {
                 .resolve_specialized_func_instance(monomorph_id)
                 .cloned()
         }
+    }
+
+    fn lookup_module_name(&self, file_id: FileID) -> Option<String> {
+        let map = self.module_names.lock().unwrap();
+        map.get(&file_id).cloned()
     }
 }
 
@@ -612,11 +612,6 @@ impl IDGen {
             next_module_id: AtomicU32::new(2),
             next_label_id: AtomicU32::new(1),
         }
-    }
-
-    #[inline(always)]
-    pub fn alloc_module(&self) -> ModuleID {
-        ModuleID(self.next_module_id.fetch_add(1, Ordering::Relaxed))
     }
 
     #[inline(always)]

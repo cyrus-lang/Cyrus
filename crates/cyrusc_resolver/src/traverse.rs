@@ -45,8 +45,6 @@ impl Resolver {
     // Scans the top-level AST for declarations (typedefs, functions, structs, etc.)
     // And Registers each declared name into the current module’s symbol table. (first pass)
     pub(crate) fn resolve_decl_names(&mut self, ast: &ProgramTree) {
-        let module_id = self.module_id.unwrap();
-
         for stmt in ast.body.as_ref() {
             // skip statement if it's not a declaration symbol
             let Some(decl_name) = stmt.decl_name() else {
@@ -57,9 +55,12 @@ impl Resolver {
                 continue;
             }
 
-            let symbol_id = self.global_symbols.create_symbol(SymbolEntry::unresolved(stmt.vis()));
+            let symbol_id = self
+                .global_symbols
+                .insert_symbol_entry(SymbolEntry::unresolved(stmt.vis()));
+
             self.global_symbols
-                .insert_symbol_name(module_id, symbol_id, &decl_name.value);
+                .insert_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
         }
     }
 
@@ -109,8 +110,6 @@ impl Resolver {
     ///
     /// If no symbol can be found, an error diagnostic is emitted.
     fn resolve_ident(&mut self, ident: &Ident) -> Option<SymbolID> {
-        let module_id = self.module_id.unwrap();
-
         if let Some(symbol_id) = self.resolve_scope_symbol(&ident.value) {
             return Some(symbol_id);
         }
@@ -119,7 +118,7 @@ impl Resolver {
             return self.current_object;
         }
 
-        if let Some(symbol_id) = self.lookup_symbol_id_in_module(module_id, &ident.value) {
+        if let Some(symbol_id) = self.lookup_symbol_id_in_scope(self.current_scope.unwrap(), &ident.value) {
             return Some(symbol_id);
         }
 
@@ -161,8 +160,6 @@ impl Resolver {
     ///
     /// Errors are reported if the module or symbol cannot be found.
     fn resolve_module_import(&mut self, mut module_import: ASTModuleImport) -> Option<SymbolID> {
-        let module_id = self.module_id.unwrap();
-
         if module_import.segments.len() == 1 {
             let maybe_ident = module_import.as_ident();
 
@@ -226,7 +223,7 @@ impl Resolver {
             return None;
         };
 
-        let Some(symbol_id) = self.lookup_symbol_id_in_module(target_module_id, &symbol_name) else {
+        let Some(symbol_id) = self.lookup_symbol_id_in_scope(target_module_id, &symbol_name) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::SymbolIsNotDefinedInModule {
@@ -358,7 +355,7 @@ impl Resolver {
 
         let module_id = self.module_id.expect("resolver missing module context");
 
-        if let Some(symbol_id) = self.lookup_symbol_id_in_module(module_id, &ident.value) {
+        if let Some(symbol_id) = self.lookup_symbol_id_in_scope(module_id, &ident.value) {
             return Some(SemanticType::UnresolvedSymbol(symbol_id));
         }
 
@@ -734,7 +731,6 @@ impl Resolver {
     }
 
     fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(module_id, &typedef.ident.value).unwrap();
 
         let generic_params = typedef
@@ -817,7 +813,6 @@ impl Resolver {
     }
 
     fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
         let name = interface.ident.as_string();
         let loc = interface.loc;
 
@@ -895,7 +890,7 @@ impl Resolver {
 
     fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
         let name = union_decl.ident.as_string();
-        let module_id = self.module_id.unwrap();
+
         let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
         let loc = union_decl.loc;
 
@@ -964,7 +959,7 @@ impl Resolver {
 
     fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
         let name = enum_decl.ident.as_string();
-        let module_id = self.module_id.unwrap();
+
         let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
         let loc = enum_decl.loc;
 
@@ -1062,7 +1057,6 @@ impl Resolver {
     }
 
     fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(module_id, &global_var.ident.value).unwrap();
 
         let name = global_var.ident.as_string();
@@ -1139,8 +1133,6 @@ impl Resolver {
         object_symbol_id: SymbolID,
         generic_object: bool,
     ) -> Option<HashMap<String, SymbolID>> {
-        let module_id = self.module_id.unwrap();
-
         let mut methods = HashMap::with_capacity(methods_list.len());
         let mut method_bodies: HashMap<SymbolID, (LocalScope, &ASTBlockStmt, bool)> =
             HashMap::with_capacity(methods_list.len());
@@ -1164,15 +1156,14 @@ impl Resolver {
                 }
             }
 
-            let method_id = self.global_symbols.create_symbol(SymbolEntry::unresolved(None));
+            let method_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
 
             self.global_symbols
-                .insert_symbol_name(module_id, method_id, &unique_name);
+                .insert_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
 
             methods.insert(original_name.clone(), method_id);
 
             let func_sig = FuncSig {
-                module_id,
                 symbol_id: Some(method_id),
                 name: original_name,
                 is_func_decl: false,
@@ -1201,7 +1192,7 @@ impl Resolver {
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_id = self.global_symbols.create_symbol(SymbolEntry::unresolved(None));
+                        let self_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
                         self_modifier.self_id = Some(self_id);
 
                         let ty = match self_modifier.kind {
@@ -1316,7 +1307,7 @@ impl Resolver {
 
     fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
         let name = struct_decl.ident.as_string();
-        let module_id = self.module_id.unwrap();
+
         let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
 
         self.current_object = Some(symbol_id);
@@ -1514,7 +1505,7 @@ impl Resolver {
 
     fn resolve_func_decl(&mut self, func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
         let name = func_decl.usable_name();
-        let module_id = self.module_id.unwrap();
+
         let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
 
         let (ret_type, typed_func_params, typed_variadic_param, generic_params) = self.resolve_func(func_decl, true)?;
@@ -1559,12 +1550,11 @@ impl Resolver {
     }
 
     fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmt> {
-        let module_id = self.module_id.unwrap();
         let symbol_id = self.lookup_symbol_id(module_id, &func_def.ident.value)?;
 
         let scope = LocalScope::new();
 
-        self.enter_scope(scope);
+        self.enter_local_scope(scope);
 
         let (ret_type, typed_func_params, typed_variadic_param, generic_params) =
             self.resolve_func(&func_def.as_func_decl(), false)?;
@@ -1594,7 +1584,7 @@ impl Resolver {
 
         let typed_func_body = self.resolve_block_stmt(&func_def.body)?;
 
-        self.exit_scope();
+        self.exit_local_scope();
 
         monomorph_registry!(self, ctx, {
             ctx.register_template(symbol_id, typed_func_body.clone());
@@ -1620,16 +1610,16 @@ impl Resolver {
         let cond = self.resolve_expr(&if_stmt.condition)?;
 
         let then_scope = LocalScope::new();
-        self.enter_scope(then_scope);
+        self.enter_local_scope(then_scope);
 
         let then_block = Box::new(self.resolve_block_stmt(&if_stmt.then_block)?);
-        self.exit_scope();
+        self.exit_local_scope();
 
         let else_block = if let Some(block) = &if_stmt.else_block {
             let else_scope = LocalScope::new();
-            self.enter_scope(else_scope);
+            self.enter_local_scope(else_scope);
             let block = self.resolve_block_stmt(block)?;
-            self.exit_scope();
+            self.exit_local_scope();
             Some(Box::new(block))
         } else {
             None
@@ -1965,7 +1955,7 @@ impl Resolver {
     fn resolve_label_stmt(&mut self, label: &ASTLabelStmt) -> Option<TypedStmt> {
         let name = label.name.as_string();
 
-        if self.current_scope().unwrap().contains_label(&name) {
+        if self.current_local_scope().unwrap().contains_label(&name) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::LabelAlreadyDefined {
@@ -2565,10 +2555,9 @@ impl Resolver {
 // Resolver helper methods.
 impl Resolver {
     fn insert_variable(&mut self, ident: &Ident, ty: Option<SemanticType>, is_const: bool) -> Option<SymbolID> {
-        let module_id = self.module_id.unwrap();
         let name = ident.as_string();
 
-        if self.current_scope().unwrap().contains(&name) {
+        if self.current_local_scope().unwrap().contains(&name) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
@@ -2582,7 +2571,7 @@ impl Resolver {
         }
 
         // allocate placeholder entry
-        let symbol_id = self.global_symbols.create_symbol(SymbolEntry::unresolved(None));
+        let symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
 
         let variable = TypedVarStmt {
             symbol_id,
@@ -2608,8 +2597,6 @@ impl Resolver {
     }
 
     fn report_if_duplicate_symbol(&mut self, symbol_name: String, loc: Loc) -> bool {
-        let module_id = self.module_id.unwrap();
-
         match self.lookup_symbol_id(module_id, &symbol_name) {
             Some(_) => {
                 self.reporter.report(Diag {

@@ -21,11 +21,12 @@ use crate::cir::cir::*;
 use crate::cir::monomorph::CIRMonomorphRegistry;
 use crate::cir::types::*;
 use crate::symbols::symbols::ResolvedMethod;
-use crate::symbols::table::SymbolQuery;
+use crate::symbols::table::Query;
 use crate::vtable::VTableRegistry;
 use cyrusc_ast::abi::CallConv;
 use cyrusc_ast::abi::Linkage;
 use cyrusc_ast::operators::*;
+use cyrusc_source_loc::SourceMap;
 use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
 use cyrusc_typed_ast::format::SymbolFormatterFn;
@@ -45,27 +46,30 @@ use std::sync::{Arc, Mutex};
 pub(crate) struct CIRTraverse<'q> {
     program_tree: Box<TypedProgramTree>,
     current_self_ty: Option<CIRTy>,
-    pub(crate) query: &'q dyn SymbolQuery,
+    pub(crate) query: &'q dyn Query,
     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     pub(crate) current_obj_operand_ty: Option<SemanticType>,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) vtable_registry: Arc<Mutex<VTableRegistry>>,
     pub(crate) target: &'q ABITarget,
 
+    module_name: String,
     lambda_id: u32,
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
     pub fn new(
-        program: Box<TypedProgramTree>,
-        query: &'resolver dyn SymbolQuery,
+        program_tree: Box<TypedProgramTree>,
+        query: &'resolver dyn Query,
         cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
         target: &'resolver ABITarget,
     ) -> Self {
+        let module_name = query.lookup_module_name(program_tree.file_id).unwrap();
+
         Self {
-            program_tree: program,
+            program_tree,
             query,
             cir_monomorph_registry,
             current_self_ty: None,
@@ -73,6 +77,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             mapping_ctx_arena,
             vtable_registry,
             target,
+            module_name,
             lambda_id: 0,
         }
     }
@@ -80,10 +85,11 @@ impl<'resolver> CIRTraverse<'resolver> {
     pub fn run_pass(&mut self, file_path: String) -> CIRProgramTree {
         let stmts = std::mem::take(&mut self.program_tree.body);
         let lowered_stmts = self.lower_stmts(&stmts);
+
         CIRProgramTree {
             body: lowered_stmts,
             file_path,
-            module_name: self.program_tree.module_name.clone(),
+            module_name: self.module_name.clone(),
         }
     }
 
@@ -192,17 +198,12 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_method(&mut self, resolved_method: &ResolvedMethod, object_name: &String) -> Option<CIRStmt> {
-        let mangled_name = DEFAULT_ABI.method_name(
-            &self.program_tree.module_name,
-            object_name,
-            &resolved_method.func_sig.name,
-        );
+        let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_sig.name);
 
         // skip if has no body
         let func_body = resolved_method.func_body.clone()?;
 
         let func_def = TypedFuncDefStmt {
-            module_id: resolved_method.module_id,
             symbol_id: resolved_method.symbol_id,
             name: mangled_name,
             params: resolved_method.func_sig.params.clone(),
@@ -747,11 +748,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let expr = global_var.expr.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
-        let mangled_name = mangle_global_var(
-            &global_var.modifiers,
-            &self.query.lookup_module_name(global_var.module_id).unwrap(),
-            &global_var.name,
-        );
+        let mangled_name = mangle_global_var(&global_var.modifiers, &self.module_name, &global_var.name);
 
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
             irv_id: global_var.symbol_id.0,
@@ -878,11 +875,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         cir_func_def.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         if mangle_name {
-            let mangled_name = mangle_func(
-                &cir_func_def.modifiers,
-                &self.program_tree.module_name,
-                &cir_func_def.name,
-            );
+            let mangled_name = mangle_func(&cir_func_def.modifiers, &self.module_name, &cir_func_def.name);
             cir_func_def.name = mangled_name;
         }
 
@@ -896,7 +889,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
 
         if mangle_name {
-            func_name = mangle_func(&func_decl.modifiers, &self.program_tree.module_name, &func_name);
+            func_name = mangle_func(&func_decl.modifiers, &self.module_name, &func_name);
         }
 
         let mut cir_func_decl = CIRFuncDeclStmt {
@@ -1076,102 +1069,108 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
     }
 
+    // FIXME
     fn lower_dynamic_expr(&mut self, dynamic: &TypedDynamicExpr) -> CIRExprKind {
-        let operand = self.lower_expr(&dynamic.operand);
-        let data_ptr = CIRExpr {
-            kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
-                operand: Box::new(operand),
-            }),
-            ty: CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
-            loc: dynamic.loc,
-        };
+        todo!();
 
-        let vtable_info = {
-            let vtable_registry = self.vtable_registry.lock().unwrap();
-            vtable_registry.info(dynamic.vtable_id.unwrap()).clone()
-        };
+        // let operand = self.lower_expr(&dynamic.operand);
+        // let data_ptr = CIRExpr {
+        //     kind: CIRExprKind::AddrOf(CIRAddrOfExpr {
+        //         operand: Box::new(operand),
+        //     }),
+        //     ty: CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+        //     loc: dynamic.loc,
+        // };
 
-        let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
-            .methods
-            .iter()
-            .cloned()
-            .map(|mut func_sig| {
-                let mangled_name = mangle_method(
-                    &self.query.lookup_module_name(func_sig.module_id).unwrap(),
-                    &dynamic.object_name.as_ref().unwrap(),
-                    &func_sig.name,
-                );
+        // let vtable_info = {
+        //     let vtable_registry = self.vtable_registry.lock().unwrap();
+        //     vtable_registry.info(dynamic.vtable_id.unwrap()).clone()
+        // };
 
-                func_sig.name = mangled_name;
-                self.lower_func_sig(func_sig.symbol_id.unwrap().0, &func_sig)
-            })
-            .collect();
+        // let method_decls: Vec<CIRFuncDeclStmt> = vtable_info
+        //     .methods
+        //     .iter()
+        //     .cloned()
+        //     .map(|mut func_sig| {
+        //         let mangled_name = mangle_method(
+        //             &self.query.lookup_module_name(func_sig.module_id).unwrap(),
+        //             &dynamic.object_name.as_ref().unwrap(),
+        //             &func_sig.name,
+        //         );
 
-        let vtable_abi_name = DEFAULT_ABI.vtable_name(
-            &dynamic.object_name.clone().unwrap(),
-            &dynamic.vtable_id.unwrap().to_string(),
-        );
+        //         func_sig.name = mangled_name;
+        //         self.lower_func_sig(func_sig.symbol_id.unwrap().0, &func_sig)
+        //     })
+        //     .collect();
 
-        CIRExprKind::Dynamic(CIRDynamicExpr {
-            global_var_id: vtable_info.vtable_id.0,
-            data_expr: Box::new(data_ptr),
-            method_decls,
-            vtable_abi_name,
-            loc: dynamic.loc,
-        })
+        // let vtable_abi_name = DEFAULT_ABI.vtable_name(
+        //     &dynamic.object_name.clone().unwrap(),
+        //     &dynamic.vtable_id.unwrap().to_string(),
+        // );
+
+        // CIRExprKind::Dynamic(CIRDynamicExpr {
+        //     global_var_id: vtable_info.vtable_id.0,
+        //     data_expr: Box::new(data_ptr),
+        //     method_decls,
+        //     vtable_abi_name,
+        //     loc: dynamic.loc,
+        // })
     }
 
+    // FIXME
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
-        let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+        todo!();
 
-        if let Some(resolved_func) = symbol_entry.as_func() {
-            let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_sig);
+        // let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
 
-            let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-            cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+        // if let Some(resolved_func) = symbol_entry.as_func() {
+        //     let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_sig);
 
-            let mangled_name = mangle_func(
-                &cir_func_decl.modifiers,
-                &self.query.lookup_module_name(resolved_func.module_id).unwrap(),
-                &resolved_func.func_sig.name,
-            );
+        //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        //     cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
-            cir_func_decl.name = mangled_name;
+        //     let mangled_name = mangle_func(
+        //         &cir_func_decl.modifiers,
+        //         &self.query.lookup_module_name(resolved_func.module_id).unwrap(),
+        //         &resolved_func.func_sig.name,
+        //     );
 
-            CIRExprKind::Load(CIRValue {
-                irv_id: resolved_func.symbol_id.0,
-                kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-            })
-        } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-            let mut global_var_stmt =
-                self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
+        //     cir_func_decl.name = mangled_name;
 
-            if global_var_stmt.modifiers.vis.is_public() {
-                if global_var_stmt.modifiers.linkage.is_none() {
-                    global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
-                }
-            }
+        //     CIRExprKind::Load(CIRValue {
+        //         irv_id: resolved_func.symbol_id.0,
+        //         kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+        //     })
+        // } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+        //     let mut global_var_stmt =
+        //         self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
 
-            let mangled_name = mangle_global_var(
-                &resolved_global_var.global_var_sig.modifiers,
-                &self.query.lookup_module_name(resolved_global_var.module_id).unwrap(),
-                &resolved_global_var.global_var_sig.name,
-            );
+        //     if global_var_stmt.modifiers.vis.is_public() {
+        //         if global_var_stmt.modifiers.linkage.is_none() {
+        //             global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
+        //         }
+        //     }
 
-            global_var_stmt.name = mangled_name;
+        //     let mangled_name = mangle_global_var(
+        //         &resolved_global_var.global_var_sig.modifiers,
+        //         &self.query.lookup_module_name(resolved_global_var.module_id).unwrap(),
+        //         &resolved_global_var.global_var_sig.name,
+        //     );
 
-            CIRExprKind::Load(CIRValue {
-                irv_id: resolved_global_var.symbol_id.0,
-                kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
-            })
-        } else if let Some(resolved_variable) = symbol_entry.as_var() {
-            CIRExprKind::Load(CIRValue {
-                irv_id: resolved_variable.symbol_id.0,
-                kind: CIRValueKind::LocalVariable,
-            })
-        } else {
-            unreachable!("Unexpected symbol kind when lowering load symbol.")
-        }
+        //     global_var_stmt.name = mangled_name;
+
+        //     CIRExprKind::Load(CIRValue {
+        //         irv_id: resolved_global_var.symbol_id.0,
+        //         kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
+        //     })
+        // } else if let Some(resolved_variable) = symbol_entry.as_var() {
+        //     CIRExprKind::Load(CIRValue {
+        //         irv_id: resolved_variable.symbol_id.0,
+        //         kind: CIRValueKind::LocalVariable,
+        //     })
+        // } else {
+        //     unreachable!("Unexpected symbol kind when lowering load symbol.")
+        // }
     }
 
     pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
@@ -1308,62 +1307,65 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
+    // FIXME
     fn lower_regular_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        if method_call.method_call_on_interface.is_some() {
-            return self.lower_interface_method_call(method_call);
-        }
+        todo!();
 
-        self.current_obj_operand_ty = Some(method_call.operand.sema_type.clone().unwrap());
-        self.current_self_ty = method_call
-            .self_ty
-            .clone()
-            .map(|sema_type| self.lower_sema_ty(&sema_type));
+        // if method_call.method_call_on_interface.is_some() {
+        //     return self.lower_interface_method_call(method_call);
+        // }
 
-        let mut func_sig = method_call.func_sig.as_ref().unwrap().clone();
+        // self.current_obj_operand_ty = Some(method_call.operand.sema_type.clone().unwrap());
+        // self.current_self_ty = method_call
+        //     .self_ty
+        //     .clone()
+        //     .map(|sema_type| self.lower_sema_ty(&sema_type));
 
-        let mangled_name = mangle_method(
-            &self.query.lookup_module_name(func_sig.module_id).unwrap(),
-            &method_call.object_name.as_ref().unwrap(),
-            &func_sig.name,
-        );
+        // let mut func_sig = method_call.func_sig.as_ref().unwrap().clone();
 
-        func_sig.name = mangled_name;
+        // let mangled_name = mangle_method(
+        //     &self.query.lookup_module_name(func_sig.module_id).unwrap(),
+        //     &method_call.object_name.as_ref().unwrap(),
+        //     &func_sig.name,
+        // );
 
-        let args = method_call
-            .args
-            .iter()
-            .map(|arg| self.lower_expr(arg))
-            .collect::<Vec<CIRExpr>>();
+        // func_sig.name = mangled_name;
 
-        let ret_ty = self.lower_sema_ty(&func_sig.ret_type.clone());
+        // let args = method_call
+        //     .args
+        //     .iter()
+        //     .map(|arg| self.lower_expr(arg))
+        //     .collect::<Vec<CIRExpr>>();
 
-        let cir_expr_kind;
-        if let Some(monomorph_id) = method_call.monomorph_id {
-            self.insert_monomorph_func_instance(monomorph_id, &func_sig);
+        // let ret_ty = self.lower_sema_ty(&func_sig.ret_type.clone());
 
-            cir_expr_kind = CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
-                monomorph_id,
-                args,
-                ret_ty,
-            })
-        } else {
-            let func_decl = typed_func_decl_from_func_sig(&func_sig);
-            let cir_func_decl = self.lower_func_decl(&func_decl, false);
+        // let cir_expr_kind;
+        // if let Some(monomorph_id) = method_call.monomorph_id {
+        //     self.insert_monomorph_func_instance(monomorph_id, &func_sig);
 
-            let operand = Box::new(CIRExpr {
-                kind: CIRExprKind::Load(CIRValue {
-                    irv_id: method_call.func_sig.as_ref().unwrap().symbol_id.unwrap().0,
-                    kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-                }),
-                ty: ret_ty.clone(),
-                loc: func_decl.loc,
-            });
+        //     cir_expr_kind = CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
+        //         monomorph_id,
+        //         args,
+        //         ret_ty,
+        //     })
+        // } else {
+        //     let func_decl = typed_func_decl_from_func_sig(&func_sig);
+        //     let cir_func_decl = self.lower_func_decl(&func_decl, false);
 
-            cir_expr_kind = CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
-        }
+        //     let operand = Box::new(CIRExpr {
+        //         kind: CIRExprKind::Load(CIRValue {
+        //             irv_id: method_call.func_sig.as_ref().unwrap().symbol_id.unwrap().0,
+        //             kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+        //         }),
+        //         ty: ret_ty.clone(),
+        //         loc: func_decl.loc,
+        //     });
 
-        self.current_self_ty = None;
-        cir_expr_kind
+        //     cir_expr_kind = CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+        // }
+
+        // self.current_self_ty = None;
+        // cir_expr_kind
     }
 
     fn lower_enum_init(&mut self, enum_sig: &EnumSig, method_call: &TypedMethodCall) -> CIRExprKind {
@@ -1987,7 +1989,8 @@ impl<'resolver> CIRTraverse<'resolver> {
 pub fn walk_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
-    query: &dyn SymbolQuery,
+    query: &dyn Query,
+    source_map: Arc<SourceMap>,
     cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
@@ -2017,7 +2020,9 @@ pub fn walk_program_trees_in_parallel(
                     vtable_registry,
                     target,
                 );
-                let cir_program_tree = cir_walk.run_pass(program_tree.file_path.to_string_lossy().to_string());
+
+                let file_path = source_map.get_file(program_tree.file_id).unwrap().file_path.clone();
+                let cir_program_tree = cir_walk.run_pass(file_path.to_string_lossy().to_string());
                 Box::new(cir_program_tree)
             })
             .collect()

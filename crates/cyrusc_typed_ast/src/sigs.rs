@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    ModuleID, SymbolID,
+    SymbolID,
     exprs::TypedExprStmt,
     stmts::{
         TypedEnumStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncDefStmt, TypedFuncParamKind, TypedFuncParams,
@@ -35,6 +35,7 @@ use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
 pub struct StructSig {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub impls: Vec<TypedImplementInterface>,
@@ -59,7 +60,6 @@ pub struct UnionSig {
 
 #[derive(Debug, Clone, Eq)]
 pub struct FuncSig {
-    pub module_id: ModuleID,
     pub symbol_id: Option<SymbolID>,
     pub name: String,
     pub params: TypedFuncParams,
@@ -72,7 +72,6 @@ pub struct FuncSig {
 
 #[derive(Debug, Clone)]
 pub struct EnumSig {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub methods: HashMap<String, SymbolID>,
@@ -95,7 +94,6 @@ pub struct TypedefSig {
 
 #[derive(Debug, Clone)]
 pub struct InterfaceSig {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub methods: Vec<TypedFuncDeclStmt>,
@@ -106,7 +104,6 @@ pub struct InterfaceSig {
 
 #[derive(Debug, Clone)]
 pub struct GlobalVarSig {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemanticType>,
@@ -149,7 +146,6 @@ pub fn set_self_modifier_symbol_id_in_func_sig(func_sig: &mut FuncSig, symbol_id
 pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
     FuncSig {
         symbol_id: Some(func_decl.symbol_id),
-        module_id: func_decl.module_id,
         name: func_decl.name.clone(),
         generic_params: func_decl.generic_params.clone(),
         params: func_decl.params.clone(),
@@ -163,7 +159,6 @@ pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncSig {
 pub fn typed_func_decl_from_func_sig(sig: &FuncSig) -> TypedFuncDeclStmt {
     TypedFuncDeclStmt {
         symbol_id: sig.symbol_id.unwrap(),
-        module_id: sig.module_id,
         name: sig.name.clone(),
         generic_params: sig.generic_params.clone(),
         params: sig.params.clone(),
@@ -177,7 +172,6 @@ pub fn typed_func_decl_from_func_sig(sig: &FuncSig) -> TypedFuncDeclStmt {
 pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
     FuncSig {
         symbol_id: Some(func_def.symbol_id),
-        module_id: func_def.module_id,
         name: func_def.name.clone(),
         generic_params: func_def.generic_params.clone(),
         params: func_def.params.clone(),
@@ -191,7 +185,6 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncSig {
 pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     TypedFuncType {
         symbol_id: func_sig.symbol_id,
-        def_module_id: Some(func_sig.module_id),
         params: typed_func_params_as_func_type_params(&func_sig.params),
         ret_type: Box::new(func_sig.ret_type.clone()),
         is_public: func_sig.modifiers.vis.is_public(),
@@ -201,6 +194,7 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
 
 pub fn typed_struct_as_struct_sig(struct_stmt: &TypedStructStmt) -> StructSig {
     StructSig {
+        symbol_id: struct_stmt.symbol_id,
         name: struct_stmt.name.clone(),
         fields: struct_stmt.fields.clone(),
         impls: struct_stmt.impls.clone(),
@@ -214,7 +208,6 @@ pub fn typed_struct_as_struct_sig(struct_stmt: &TypedStructStmt) -> StructSig {
 
 pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumSig {
     EnumSig {
-        module_id: typed_enum.module_id,
         symbol_id: typed_enum.symbol_id,
         name: typed_enum.name.clone(),
         methods: typed_enum.methods.clone(),
@@ -296,7 +289,6 @@ impl FuncSig {
 
 impl Hash for FuncSig {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.module_id.hash(state);
         self.symbol_id.hash(state);
     }
 }

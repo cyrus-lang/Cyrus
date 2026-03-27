@@ -20,10 +20,12 @@ use std::collections::HashMap;
 use cyrusc_ast::abi::Visibility;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    ModuleID, SymbolID,
+    SymbolID,
     sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig},
     stmts::{TypedBlockStmt, TypedGenericParamsList, TypedVarStmt},
 };
+
+use crate::symbols::table::ScopeTable;
 
 #[derive(Debug, Clone)]
 pub struct SymbolEntry {
@@ -35,6 +37,10 @@ pub struct SymbolEntry {
 #[derive(Debug, Clone)]
 pub enum SymbolEntryKind {
     Unresolved,
+
+    Module(Module),
+    Namespace(Namespace),
+
     Method(ResolvedMethod),
     Func(ResolvedFunc),
     Typedef(ResolvedTypedef),
@@ -44,40 +50,56 @@ pub enum SymbolEntryKind {
     Enum(ResolvedEnum),
     Union(ResolvedUnion),
     Interface(ResolvedInterface),
-    ProxiedSymbol(ModuleID, SymbolID),
+
+    ProxiedSymbol { scope_id: SymbolID, symbol_id: SymbolID },
+    ProxiedModule { symbol_id: SymbolID },
+}
+
+#[derive(Debug, Clone)]
+pub struct Module {
+    pub name: String,
+    pub scope: ScopeTable,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct Namespace {
+    pub name: String,
+    pub scope: ScopeTable,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedUnion {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub union_sig: UnionSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedEnum {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub enum_sig: EnumSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedStruct {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub struct_sig: StructSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedGlobalVar {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub global_var_sig: GlobalVarSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedMethod {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
     pub func_body: Option<Box<TypedBlockStmt>>,
@@ -85,37 +107,42 @@ pub struct ResolvedMethod {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedFunc {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedTypedef {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub typedef_sig: TypedefSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedInterface {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub interface_sig: InterfaceSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedVar {
-    pub module_id: ModuleID,
+    
     pub symbol_id: SymbolID,
     pub variable: TypedVarStmt,
 }
 
 impl SymbolEntry {
     pub fn new(kind: SymbolEntryKind, vis: Option<Visibility>) -> Self {
-        Self { kind, vis_opt: vis, used: false }
+        Self {
+            kind,
+            vis_opt: vis,
+            used: false,
+        }
     }
 
+    #[inline]
     pub fn unresolved(vis: Option<Visibility>) -> Self {
         Self {
             kind: SymbolEntryKind::Unresolved,
@@ -124,19 +151,29 @@ impl SymbolEntry {
         }
     }
 
-    pub fn module_id(&self) -> ModuleID {
+    /// Return a reference to the scope table for this symbol entry.
+    ///
+    /// Only `Module` and `Namespace` variants own scope tables.
+    /// Calling this on any non-scope symbol will return `None`.
+    #[inline]
+    pub fn get_scope_table(&self) -> Option<&ScopeTable> {
         match &self.kind {
-            SymbolEntryKind::Unresolved => unreachable!(),
-            SymbolEntryKind::Method(resolved_method) => resolved_method.module_id,
-            SymbolEntryKind::Func(resolved_func) => resolved_func.module_id,
-            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.module_id,
-            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.module_id,
-            SymbolEntryKind::Var(resolved_var) => resolved_var.module_id,
-            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.module_id,
-            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.module_id,
-            SymbolEntryKind::Interface(resolved_interface) => resolved_interface.module_id,
-            SymbolEntryKind::Union(resolved_union) => resolved_union.module_id,
-            SymbolEntryKind::ProxiedSymbol(module_id, _) => *module_id,
+            SymbolEntryKind::Module(module) => Some(&module.scope),
+            SymbolEntryKind::Namespace(namespace) => Some(&namespace.scope),
+            _ => None,
+        }
+    }
+
+    /// Return a mutable reference to the scope table for this symbol entry.
+    ///
+    /// Only `Module` and `Namespace` variants own scope tables.
+    /// Returns `None` if the symbol is not a scope.
+    #[inline]
+    pub fn get_scope_table_mut(&mut self) -> Option<&mut ScopeTable> {
+        match &mut self.kind {
+            SymbolEntryKind::Module(module) => Some(&mut module.scope),
+            SymbolEntryKind::Namespace(namespace) => Some(&mut namespace.scope),
+            _ => None,
         }
     }
 
@@ -152,13 +189,19 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.symbol_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.symbol_id,
             SymbolEntryKind::Union(resolved_union) => resolved_union.symbol_id,
-            SymbolEntryKind::ProxiedSymbol(_, symbol_id) => *symbol_id,
+            SymbolEntryKind::Module(_) => unreachable!(),
+            SymbolEntryKind::Namespace(_) => unreachable!(),
+            SymbolEntryKind::ProxiedSymbol { symbol_id, .. } => *symbol_id,
+            SymbolEntryKind::ProxiedModule { symbol_id } => *symbol_id,
         }
     }
 
     pub fn decl_name(&self) -> String {
         match &self.kind {
             SymbolEntryKind::Unresolved => "<UNRESOLVED_SYMBOL_ENTRY_KIND>".to_string(),
+            SymbolEntryKind::ProxiedSymbol { .. } => "<PROXIED_SYMBOL>".to_string(),
+            SymbolEntryKind::ProxiedModule { .. } => "<PROXIED_MODULE>".to_string(),
+
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.name.clone(),
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.name.clone(),
             SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
@@ -168,7 +211,8 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
             SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.name.clone(),
-            SymbolEntryKind::ProxiedSymbol(_, _) => "<PROXIED_SYMBOL>".to_string(),
+            SymbolEntryKind::Module(module) => module.name.clone(),
+            SymbolEntryKind::Namespace(namespace) => namespace.name.clone(),
         }
     }
 
@@ -184,7 +228,10 @@ impl SymbolEntry {
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.modifiers.vis.clone(),
             SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.modifiers.vis.clone(),
             SymbolEntryKind::Var(_) => unreachable!(),
-            SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
+            SymbolEntryKind::Module(_) => unreachable!(),
+            SymbolEntryKind::Namespace(_) => unreachable!(),
+            SymbolEntryKind::ProxiedSymbol { .. } => unreachable!(),
+            SymbolEntryKind::ProxiedModule { .. } => unreachable!(),
         }
     }
 
@@ -200,7 +247,10 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.loc,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.loc,
             SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.loc,
-            SymbolEntryKind::ProxiedSymbol(..) => unreachable!(),
+            SymbolEntryKind::Module(module) => module.loc,
+            SymbolEntryKind::Namespace(namespace) => namespace.loc,
+            SymbolEntryKind::ProxiedSymbol { .. } => unreachable!(),
+            SymbolEntryKind::ProxiedModule { .. } => unreachable!(),
         }
     }
 
@@ -216,7 +266,10 @@ impl SymbolEntry {
             SymbolEntryKind::Var(_) => None,
             SymbolEntryKind::GlobalVar(_) => None,
             SymbolEntryKind::Method(_) => None,
-            SymbolEntryKind::ProxiedSymbol(..) => unreachable!("proxied symbol should be resolved first"),
+            SymbolEntryKind::Module(_) => unreachable!(),
+            SymbolEntryKind::Namespace(_) => unreachable!(),
+            SymbolEntryKind::ProxiedSymbol { .. } => unreachable!(),
+            SymbolEntryKind::ProxiedModule { .. } => unreachable!(),
         }
     }
 
@@ -307,9 +360,9 @@ impl SymbolEntry {
         }
     }
 
-    pub fn as_proxied_symbol(&self) -> Option<(ModuleID, SymbolID)> {
+    pub fn as_proxied_symbol(&self) -> Option<(SymbolID, SymbolID)> {
         match self.kind {
-            SymbolEntryKind::ProxiedSymbol(module_id, symbol_id) => Some((module_id, symbol_id)),
+            SymbolEntryKind::ProxiedSymbol { scope_id, symbol_id } => Some((scope_id, symbol_id)),
             _ => None,
         }
     }

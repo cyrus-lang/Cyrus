@@ -142,7 +142,7 @@ impl DiagReporter {
         let lines: Vec<&str> = source_file.content.lines().collect();
 
         // Render header: `--> file:line:column`
-        out.push_str(&self.render_header(&source_file.name, loc));
+        out.push_str(&self.render_header(source_file.file_path.to_str().unwrap(), loc));
 
         // Compute which lines to print
         let error_idx = loc.line.saturating_sub(1);

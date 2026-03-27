@@ -15,8 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_source_loc::FileID;
+
 use crate::stmts::TypedStmt;
-use std::{fmt, path::PathBuf};
+use std::fmt;
 
 pub mod exprs;
 pub mod format;
@@ -29,9 +31,6 @@ pub mod types;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolID(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ModuleID(pub u32);
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LabelID(pub u32);
 
@@ -40,20 +39,12 @@ pub struct VTableID(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {
+    pub file_id: FileID,
     pub body: Vec<TypedStmt>,
-    pub file_path: PathBuf,
-    pub module_id: ModuleID,
-    pub module_name: String,
 }
 
 unsafe impl Send for TypedProgramTree {}
 unsafe impl Sync for TypedProgramTree {}
-
-impl ModuleID {
-    pub const fn master_module_id() -> Self {
-        Self(1)
-    }
-}
 
 impl SymbolID {
     pub const fn placeholder() -> Self {
@@ -64,12 +55,6 @@ impl SymbolID {
 impl From<u32> for SymbolID {
     fn from(value: u32) -> Self {
         Self(value)
-    }
-}
-
-impl fmt::Display for ModuleID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

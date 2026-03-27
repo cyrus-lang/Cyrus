@@ -114,7 +114,6 @@ pub fn substitute_type(
             )?);
             Some(SemanticType::FuncType(TypedFuncType {
                 symbol_id: func_type.symbol_id,
-                def_module_id: func_type.def_module_id,
                 params: TypedFuncTypeParams {
                     list: params,
                     variadic: func_type.params.variadic,
@@ -159,7 +158,8 @@ fn substitute_func_params(
         .iter()
         .map(|func_param_kind| match func_param_kind.clone() {
             TypedFuncParamKind::FuncParam(mut func_param) => {
-                if let Some(sema_type) = substitute_type(mapping_ctx_arena.clone(), func_param.ty.clone(), ctx.clone()) {
+                if let Some(sema_type) = substitute_type(mapping_ctx_arena.clone(), func_param.ty.clone(), ctx.clone())
+                {
                     func_param.ty = sema_type;
                 }
                 TypedFuncParamKind::FuncParam(func_param)
@@ -189,31 +189,30 @@ fn substitute_func_params(
 
 pub fn substitute_func_sig(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    sig: &FuncSig,
+    func_sig: &FuncSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<FuncSig> {
-    let params = substitute_func_params(mapping_ctx_arena.clone(), &sig.params, ctx.clone())?;
-    let ret_type = substitute_type(mapping_ctx_arena.clone(), sig.ret_type.clone(), ctx)?;
+    let params = substitute_func_params(mapping_ctx_arena.clone(), &func_sig.params, ctx.clone())?;
+    let ret_type = substitute_type(mapping_ctx_arena.clone(), func_sig.ret_type.clone(), ctx)?;
 
     Some(FuncSig {
-        name: sig.name.clone(),
-        module_id: sig.module_id,
-        symbol_id: sig.symbol_id,
+        symbol_id: func_sig.symbol_id,
+        name: func_sig.name.clone(),
         params,
         ret_type,
-        is_func_decl: sig.is_func_decl,
-        generic_params: sig.generic_params.clone(),
-        modifiers: sig.modifiers.clone(),
-        loc: sig.loc,
+        is_func_decl: func_sig.is_func_decl,
+        generic_params: func_sig.generic_params.clone(),
+        modifiers: func_sig.modifiers.clone(),
+        loc: func_sig.loc,
     })
 }
 
 pub fn substitute_struct_sig(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    sig: &StructSig,
+    struct_sig: &StructSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<StructSig> {
-    let new_fields = sig
+    let new_fields = struct_sig
         .fields
         .iter()
         .map(|f| {
@@ -225,23 +224,24 @@ pub fn substitute_struct_sig(
         .collect::<Option<Vec<_>>>()?;
 
     Some(StructSig {
-        name: sig.name.clone(),
+        symbol_id: struct_sig.symbol_id,
+        name: struct_sig.name.clone(),
         fields: new_fields,
-        impls: sig.impls.clone(),
-        methods: sig.methods.clone(),
-        generic_params: sig.generic_params.clone(),
-        modifiers: sig.modifiers.clone(),
-        align: sig.align.clone(),
-        loc: sig.loc,
+        impls: struct_sig.impls.clone(),
+        methods: struct_sig.methods.clone(),
+        generic_params: struct_sig.generic_params.clone(),
+        modifiers: struct_sig.modifiers.clone(),
+        align: struct_sig.align.clone(),
+        loc: struct_sig.loc,
     })
 }
 
 pub fn substitute_union_sig(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    sig: &UnionSig,
+    union_sig: &UnionSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<UnionSig> {
-    let fields = sig
+    let fields = union_sig
         .fields
         .iter()
         .map(|f| {
@@ -253,39 +253,42 @@ pub fn substitute_union_sig(
         .collect::<Option<Vec<_>>>()?;
 
     Some(UnionSig {
-        symbol_id: sig.symbol_id,
-        name: sig.name.clone(),
+        symbol_id: union_sig.symbol_id,
+        name: union_sig.name.clone(),
         fields,
-        methods: sig.methods.clone(),
-        generic_params: sig.generic_params.clone(),
-        modifiers: sig.modifiers.clone(),
-        align: sig.align.clone(),
-        loc: sig.loc,
+        methods: union_sig.methods.clone(),
+        generic_params: union_sig.generic_params.clone(),
+        modifiers: union_sig.modifiers.clone(),
+        align: union_sig.align.clone(),
+        loc: union_sig.loc,
     })
 }
 
 pub fn substitute_enum_sig(
     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    sig: &EnumSig,
+    enum_sig: &EnumSig,
     ctx: Rc<RefCell<GenericMappingCtx>>,
 ) -> Option<EnumSig> {
-    let variants = sig
+    let variants = enum_sig
         .variants
         .iter()
-        .map(|v| match v {
+        .map(|variant| match variant {
             TypedEnumVariant::Ident(ident) => Some(TypedEnumVariant::Ident(ident.clone())),
             TypedEnumVariant::Valued(ident, expr) => {
                 let substituted =
                     substitute_type(mapping_ctx_arena.clone(), expr.sema_type.clone().unwrap(), ctx.clone())?;
-                let mut expr_v2 = *expr.clone();
-                expr_v2.sema_type = Some(substituted);
-                Some(TypedEnumVariant::Valued(ident.clone(), Box::new(expr_v2)))
+
+                let mut expr_clone = *expr.clone();
+                expr_clone.sema_type = Some(substituted);
+
+                Some(TypedEnumVariant::Valued(ident.clone(), Box::new(expr_clone)))
             }
             TypedEnumVariant::Variant(ident, fields) => {
                 let new_fields = fields
                     .iter()
                     .map(|field| {
                         let substituted = substitute_type(mapping_ctx_arena.clone(), field.ty.clone(), ctx.clone())?;
+
                         Some(TypedEnumValuedField {
                             ty: substituted,
                             loc: field.loc,
@@ -298,15 +301,14 @@ pub fn substitute_enum_sig(
         .collect::<Option<Vec<_>>>()?;
 
     Some(EnumSig {
-        module_id: sig.module_id,
-        symbol_id: sig.symbol_id,
-        name: sig.name.clone(),
-        methods: sig.methods.clone(),
+        symbol_id: enum_sig.symbol_id,
+        name: enum_sig.name.clone(),
+        methods: enum_sig.methods.clone(),
         variants,
-        generic_params: sig.generic_params.clone(),
-        tag_type: sig.tag_type.clone(),
-        modifiers: sig.modifiers.clone(),
-        align: sig.align.clone(),
-        loc: sig.loc,
+        generic_params: enum_sig.generic_params.clone(),
+        tag_type: enum_sig.tag_type.clone(),
+        modifiers: enum_sig.modifiers.clone(),
+        align: enum_sig.align.clone(),
+        loc: enum_sig.loc,
     })
 }

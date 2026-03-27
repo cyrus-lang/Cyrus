@@ -26,7 +26,7 @@ use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_co
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_internal::{
     flow_state::{ControlRegion, FlowState},
-    symbols::table::{SymbolEntryMut, SymbolQuery},
+    symbols::table::{Query, SymbolEntryMut},
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::{Loc, SourceMap};
@@ -60,8 +60,8 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub vtable_registry: Arc<Mutex<VTableRegistry>>,
 
-    pub(crate) module_id: ModuleID,
-    pub(crate) query: &'a dyn SymbolQuery,
+    pub(crate) scope_id: SymbolID,
+    pub(crate) query: &'a dyn Query,
     pub(crate) symbol_mut: &'a M,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) source_map: Arc<SourceMap>,
@@ -86,9 +86,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
         source_map: Arc<SourceMap>,
-        query: &'a dyn SymbolQuery,
+        query: &'a dyn Query,
         symbol_mut: &'a M,
-        module_id: ModuleID,
+        module_id: SymbolID,
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<EntryPoints>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
@@ -105,7 +105,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             program_tree,
             query,
             symbol_mut,
-            module_id,
             entry_points,
             vtable_registry,
             monomorph_registry,
@@ -1519,10 +1518,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             if let Some(method_generic_params) = symbol_entry.method_generic_params() {
                 for method_generic_param in &method_generic_params.list {
-                    if generic_params
-                        .lookup_named(&method_generic_param.name.value)
-                        .is_some()
-                    {
+                    if generic_params.lookup_named(&method_generic_param.name.value).is_some() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {

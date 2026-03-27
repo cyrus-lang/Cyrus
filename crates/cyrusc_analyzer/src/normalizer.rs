@@ -45,7 +45,7 @@ use cyrusc_typed_ast::{
 };
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
 #[derive(Default)]
 pub struct TypeCache {

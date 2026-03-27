@@ -19,10 +19,6 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
-use cyrusc_analyzer::{
-    analyze::{AnalysisContext, EntryPoints},
-    config::AnalyzerConfig,
-};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
@@ -40,6 +36,10 @@ use cyrusc_resolver::{
 use cyrusc_scaffold_parser::{
     ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
     OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
+};
+use cyrusc_analyzer::{
+    analyze::{AnalysisContext, EntryPoints},
+    config::AnalyzerConfig,
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
@@ -170,12 +170,14 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
+                source_map.clone(),
                 reporter.clone(),
                 monomorph_registry.clone(),
                 mapping_ctx_arena.clone(),
-                entry_file.clone(),
+                file_id,
             );
 
+            // resolve the entry module
             let module_id = ModuleID::master_module_id();
 
             resolver.resolve_module(
@@ -183,7 +185,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 &program_tree,
                 &mut VisitingModule::new(),
                 true,
-                entry_file.clone(),
+                file_id,
             );
             if resolver.reporter.has_errors() {
                 DiagReporter::display(&resolver.reporter);
@@ -212,7 +214,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                     &resolver,
                     &resolver,
                     program_tree_entry.module_id,
-                    program_tree_entry.program.clone(),
+                    program_tree_entry.program_tree.clone(),
                     entry_points.clone(),
                     monomorph_registry.clone(),
                     mapping_ctx_arena.clone(),

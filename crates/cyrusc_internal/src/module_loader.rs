@@ -17,6 +17,7 @@
 
 use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegmentSingle, ProgramTree};
 use cyrusc_diagcentral::{DiagKindClone};
+use cyrusc_source_loc::FileID;
 use std::{
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
@@ -27,8 +28,8 @@ use std::{
 pub struct LoadedModule {
     pub alias: ModuleAlias,
     pub path: ModulePath,
-    pub file_path: PathBuf,
-    pub program: Rc<ProgramTree>,
+    pub file_id: FileID,
+    pub program_tree: Rc<ProgramTree>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

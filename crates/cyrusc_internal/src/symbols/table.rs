@@ -19,13 +19,14 @@ use crate::symbols::symbols::{
     ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
     ResolvedUnion, ResolvedVar, SymbolEntry,
 };
+use cyrusc_source_loc::FileID;
 use cyrusc_typed_ast::{
-    ModuleID, SymbolID,
+    SymbolID,
     generics::monomorph::{MonomorphFuncEntry, MonomorphID, SpecializedFuncEntry},
 };
 use std::collections::HashMap;
 
-pub trait SymbolQuery: Sync + Send {
+pub trait Query: Sync + Send {
     fn lookup_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
     fn lookup_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar>;
     fn lookup_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod>;
@@ -36,9 +37,9 @@ pub trait SymbolQuery: Sync + Send {
     fn lookup_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct>;
     fn lookup_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface>;
 
-    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_id_in_module(&self, module_id: ModuleID, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_entry(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry>;
+    fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
+    fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
+    fn lookup_symbol_entry(&self, scope_id: SymbolID, name: &str) -> Option<SymbolEntry>;
     fn lookup_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
 
     fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry>;
@@ -50,7 +51,7 @@ pub trait SymbolQuery: Sync + Send {
     /// If the symbol cannot be resolved, a fallback string is returned.
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
 
-    fn lookup_module_name(&self, module_id: ModuleID) -> Option<String>;
+    fn lookup_module_name(&self, file_id: FileID) -> Option<String>;
 }
 
 ///  Analyzer‑Only Mutation Helpers
@@ -106,15 +107,16 @@ pub trait SymbolEntryMut {
 }
 
 /// A collection of symbols and their metadata within a specific scope or module.
-#[derive(Debug)]
-pub struct SymbolTable {
+#[derive(Debug, Clone)]
+pub struct ScopeTable {
     /// Mapping from unique symbol identifiers to their semantic entries.
     pub entries: HashMap<SymbolID, SymbolEntry>,
+
     /// Mapping from symbol names to their identifiers for fast lookup.
     pub names: HashMap<String, SymbolID>,
 }
 
-impl SymbolTable {
+impl ScopeTable {
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),

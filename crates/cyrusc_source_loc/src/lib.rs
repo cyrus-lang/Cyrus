@@ -16,9 +16,12 @@
  */
 
 use std::{
-    cell::{Cell, Ref, RefCell},
     collections::HashMap,
-    path::Path,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicU32, Ordering},
+    },
 };
 
 use cyrusc_fs_utils::read_file;
@@ -26,17 +29,17 @@ use cyrusc_fs_utils::read_file;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileID(pub u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SourceMap {
-    files: RefCell<HashMap<FileID, SourceFile>>,
-    next_id: Cell<u32>,
+    files: RwLock<HashMap<FileID, Arc<SourceFile>>>,
+    next_id: AtomicU32,
 }
 
 #[derive(Debug, Clone)]
 pub struct SourceFile {
-    pub id: FileID,      // The unique identifier for this file
-    pub name: String,    // The original filename (e.g., "main.cyrus")
-    pub content: String, // The full source code of the file
+    pub file_id: FileID,    // The unique identifier for this file
+    pub file_path: PathBuf, // The original filename (e.g., "main.cyrus")
+    pub content: String,    // The full source code of the file
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,42 +55,41 @@ impl SourceMap {
     /// Creates a new, empty SourceMap.
     pub fn new() -> Self {
         Self {
-            files: RefCell::new(HashMap::new()),
-            next_id: Cell::new(0),
+            files: RwLock::new(HashMap::new()),
+            next_id: AtomicU32::new(0),
         }
     }
 
     /// Adds a new source file to the map and returns its assigned FileID.
-    pub fn add_file(&self, name: String, content: String) -> FileID {
-        let id_val = self.next_id.get();
-        self.next_id.set(id_val + 1);
-
+    pub fn add_file<P: AsRef<Path>>(&self, file_path: P, content: String) -> FileID {
+        let id_val = self.next_id.fetch_add(1, Ordering::Relaxed);
         let file_id = FileID(id_val);
-        let source_file = SourceFile::new(file_id, name, content);
 
-        self.files.borrow_mut().insert(file_id, source_file);
+        let source_file = Arc::new(SourceFile::new(file_id, file_path.as_ref().to_path_buf(), content));
+
+        self.files.write().unwrap().insert(file_id, source_file);
         file_id
     }
 
-    // Loads a file from disk and registers it in the SourceMap.
-    pub fn add_file_by_loading<P: AsRef<Path>>(&self, path: P) -> FileID {
-        let (content, name) = read_file(&path);
-        self.add_file(name, content)
+    /// Loads a file from disk and registers it in the SourceMap.
+    pub fn add_file_by_loading<P: AsRef<Path>>(&self, file_path: P) -> FileID {
+        let (content, _) = read_file(&file_path);
+        self.add_file(file_path, content)
     }
 
     /// Retrieves a SourceFile by its FileID.
-    pub fn get_file(&self, id: FileID) -> Option<Ref<'_, SourceFile>> {
-        if !self.files.borrow().contains_key(&id) {
-            return None;
-        }
-
-        Some(std::cell::Ref::map(self.files.borrow(), |m| m.get(&id).unwrap()))
+    pub fn get_file(&self, file_id: FileID) -> Option<Arc<SourceFile>> {
+        self.files.read().unwrap().get(&file_id).cloned()
     }
 }
 
 impl SourceFile {
-    pub fn new(id: FileID, name: String, content: String) -> Self {
-        Self { id, name, content }
+    pub fn new(file_id: FileID, file_path: PathBuf, content: String) -> Self {
+        Self {
+            file_id,
+            file_path,
+            content,
+        }
     }
 }
 
@@ -102,9 +104,9 @@ impl Loc {
         }
     }
 
-    pub fn default(id: FileID) -> Self {
+    pub fn default(file_id: FileID) -> Self {
         Self {
-            file_id: id,
+            file_id: file_id,
             line: 0,
             column: 0,
             start: 0,

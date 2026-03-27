@@ -27,11 +27,11 @@
 #[macro_export]
 macro_rules! with_local_scope {
     ($resolver:expr, $scope:expr, $body:block) => {{
-        $resolver.enter_scope($scope);
+        $resolver.enter_local_scope($scope);
 
         let __result = { $body };
 
-        $resolver.exit_scope();
+        $resolver.exit_local_scope();
 
         __result
     }};

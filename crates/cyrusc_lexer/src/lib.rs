@@ -58,7 +58,7 @@ impl<'diag, 'source_file> Lexer<'diag, 'source_file> {
     /// Returns the FileID of the source file being tokenized.
     #[inline]
     pub fn file_id(&self) -> FileID {
-        self.source_file.id
+        self.source_file.file_id
     }
 
     /// Returns the input source string.

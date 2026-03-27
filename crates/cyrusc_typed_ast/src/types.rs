@@ -19,7 +19,7 @@ use crate::exprs::{TypedExprStmt, TypedSelfType};
 use crate::generics::generic_type::GenericType;
 use crate::sigs::{EnumSig, FuncSig, InterfaceSig, UnionSig, typed_func_decl_as_func_sig};
 use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
-use crate::{ModuleID, SymbolID, VTableID};
+use crate::{SymbolID, VTableID};
 use cyrusc_ast::Ident;
 use cyrusc_ast::abi::{ReprAttr, ReprKind};
 use cyrusc_source_loc::Loc;
@@ -97,7 +97,6 @@ pub struct TypedTupleType {
 #[derive(Debug, Clone)]
 pub struct TypedFuncType {
     pub symbol_id: Option<SymbolID>,
-    pub def_module_id: Option<ModuleID>,
     pub params: TypedFuncTypeParams,
     pub ret_type: Box<SemanticType>,
     pub is_public: bool,

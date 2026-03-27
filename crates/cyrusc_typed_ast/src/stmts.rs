@@ -16,7 +16,7 @@
  */
 
 use crate::{
-    LabelID, ModuleID, SymbolID,
+    LabelID, SymbolID,
     exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
@@ -25,7 +25,7 @@ use cyrusc_ast::{
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{FileID, Loc};
 use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, Clone)]
@@ -131,7 +131,6 @@ pub struct TypedInterfaceStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumStmt {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
@@ -159,7 +158,6 @@ pub struct TypedEnumValuedField {
 
 #[derive(Debug, Clone)]
 pub struct TypedStructStmt {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedStructField>,
@@ -174,7 +172,6 @@ pub struct TypedStructStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnionStmt {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedUnionField>,
@@ -209,7 +206,7 @@ pub struct TypedReturnStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVarStmt {
-    pub module_id: ModuleID,
+    pub file_id: FileID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<SemanticType>,
@@ -257,7 +254,6 @@ pub struct TypedIfStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDefStmt {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
@@ -270,7 +266,6 @@ pub struct TypedFuncDefStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDeclStmt {
-    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub generic_params: Option<TypedGenericParamsList>,
