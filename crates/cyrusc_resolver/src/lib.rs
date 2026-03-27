@@ -450,15 +450,20 @@ impl GlobalSymbolRegistry {
 
     /// Lookup a symbol by name within a specific scope.
     pub fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
+        let scope_id = self.resolve_concrete_scope_id(scope_id);
+
         let registry = self.inner.read().unwrap();
         let symbol_entry = &registry.entries[scope_id.0 as usize];
+        dbg!(symbol_entry.clone());
         let scope_table = symbol_entry.get_scope_table().unwrap();
 
         scope_table.lookup(name)
     }
 
     /// Recursively search up the scope chain for a symbol by name.
-    pub fn lookup_in_scope_chain(&self, mut scope_id: SymbolID, name: &str) -> Option<SymbolID> {
+    pub fn lookup_in_scope_chain(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID> {
+        let mut scope_id = self.resolve_concrete_scope_id(scope_id);
+
         loop {
             if let Some(symbol_id) = self.lookup_symbol_id_in_scope(scope_id, name) {
                 return Some(symbol_id);
@@ -470,6 +475,46 @@ impl GlobalSymbolRegistry {
                 Some(parent_id) => scope_id = parent_id,
                 None => return None,
             }
+        }
+    }
+
+    /// Resolve a symbol ID to the concrete scope that actually owns
+    /// a `ScopeTable`.
+    ///
+    /// In the symbol model, some entries such as `ProxiedModule` and
+    /// `ProxiedSymbol` do *not* contain their own scope tables. They
+    /// are indirections that refer to another symbol whose scope should
+    /// be used for name lookup. Attempting to read a scope table from
+    /// a proxy would therefore panic.
+    ///
+    /// This function follows proxy chains recursively until it reaches
+    /// a symbol entry that is guaranteed to own a scope table.
+    ///
+    /// If the given symbol ID is already a concrete scope owner, it is
+    /// returned unchanged. If the symbol is not found (should not
+    /// happen in a consistent registry), the original ID is returned as
+    /// a defensive fallback.
+    pub fn resolve_concrete_scope_id(&self, symbol_id: SymbolID) -> SymbolID {
+        let Some(symbol_entry) = self.lookup_symbol_entry(symbol_id) else {
+            return symbol_id;
+        };
+
+        match &symbol_entry.kind {
+            SymbolEntryKind::ProxiedModule {
+                symbol_id: target_symbol_id,
+                ..
+            }
+            | SymbolEntryKind::ProxiedSymbol {
+                symbol_id: target_symbol_id,
+                ..
+            } => {
+                // if it's a proxy, resolve the target symbol id
+                self.resolve_concrete_scope_id(*target_symbol_id)
+            }
+
+            SymbolEntryKind::Module { .. } | SymbolEntryKind::Namespace { .. } => symbol_id,
+
+            _ => symbol_id,
         }
     }
 }

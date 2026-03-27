@@ -515,7 +515,6 @@ pub struct ModulePath {
 #[derive(Debug, Clone)]
 pub struct ASTImportStmt {
     pub paths: Vec<ModulePath>,
-
     pub loc: Loc,
 }
 
@@ -781,6 +780,13 @@ pub fn return_type_or_default_void(ret_type: Option<TypeSpecifier>, loc: Loc) ->
 }
 
 impl ModuleSegment {
+    pub fn loc(&self) -> Loc {
+        match self {
+            ModuleSegment::SubModule(ident) => ident.loc,
+            ModuleSegment::Single(singles) => singles.first().unwrap().ident.loc,
+        }
+    }
+
     pub fn as_ident(&self) -> Option<Ident> {
         match self {
             ModuleSegment::SubModule(ident) => Some(ident.clone()),

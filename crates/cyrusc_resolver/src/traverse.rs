@@ -18,6 +18,7 @@
 use crate::Resolver;
 use crate::diagnostics::ResolverDiagKind;
 use crate::with_local_scope;
+use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::DiagLevel;
@@ -145,29 +146,78 @@ impl Resolver {
         None
     }
 
-    // TODO
     fn resolve_module_import(&mut self, module_import: ASTModuleImport) -> Option<SymbolID> {
+        // simple identifier
         if let Some(ident) = module_import.as_ident() {
             return self.resolve_ident(&ident);
         }
 
-        // Each segment of a qualified path is resolved by looking inside the previous symbol’s scope.
-        //
-        // std::libc::abi::foo()
-        //
-        // lookup_symbol_id(current_scope, "std")
-        // lookup_symbol_id_in_scope(std, "libc")
-        // lookup_symbol_id_in_scope(libc, "abi")
-        // lookup_symbol_id_in_scope(abi, "foo")
+        assert!(!module_import.segments.is_empty());
 
-        // start = lookup_symbol_id(current_scope, "a")
+        let mut iter = module_import.segments.iter();
+        let first = iter.next().unwrap();
 
-        // for each segment in [b, c, d]:
-        //     start = lookup_symbol_id_in_scope(start, segment)
+        let Some(first_ident) = first.as_ident() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
+                loc: Some(first.loc()),
+                hint: None,
+            });
+            return None;
+        };
 
-        // return start
+        let mut current_symbol = match self.lookup_symbol_id(self.current_scope.unwrap(), &first_ident.value) {
+            Some(id) => id,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
+                        name: first_ident.value.clone(),
+                    }),
+                    loc: Some(first_ident.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        };
 
-        todo!();
+        // counts how many segments have been resolved so far including the first
+        let mut i = 1;
+
+        for segment in iter {
+            let Some(seg_ident) = segment.as_ident() else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
+                    loc: Some(segment.loc()),
+                    hint: None,
+                });
+                return None;
+            };
+
+            let name = &seg_ident.value;
+
+            let Some(next_symbol) = self.lookup_symbol_id_in_scope(current_symbol, name) else {
+                let module_name = format_module_segments(&module_import.segments[0..i]);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::SymbolIsNotDefinedInModule {
+                        symbol_name: name.clone(),
+                        module_name,
+                    }),
+                    loc: Some(seg_ident.loc),
+                    hint: None,
+                });
+                return None;
+            };
+
+            current_symbol = next_symbol;
+            i += 1;
+        }
+
+        Some(current_symbol)
     }
 
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExprStmt> {
