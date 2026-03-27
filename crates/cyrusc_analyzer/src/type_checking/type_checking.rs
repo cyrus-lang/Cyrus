@@ -28,10 +28,7 @@ use cyrusc_tokens::{
 };
 use cyrusc_typed_ast::{
     exprs::*,
-    format::{
-        SymbolFormatterFn, format_func_type, format_missing_fields, format_sema_type, format_typed_expr,
-        format_unnamed_enum_type,
-    },
+    format::{SymbolFormatterFn, format_func_type, format_missing_fields, format_sema_type, format_unnamed_enum_type},
     generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::*},
     sigs::*,
     stmts::*,
@@ -251,7 +248,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let params = typed_func_params_as_func_type_params(&lambda.params);
         let func_type = TypedFuncType {
             symbol_id: None,
-            def_module_id: Some(self.module_id),
             params,
             ret_type: Box::new(lambda.ret_type.clone()),
             is_public: true,
@@ -817,18 +813,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let mut func_sig: FuncSig;
 
         if let Some(mut func_type) = operand_type.const_inner().as_func_type().cloned() {
-            if !func_type.is_public && func_type.def_module_id != Some(self.module_id) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::PrivateFunctionCall {
-                        name: format_typed_expr(&func_call.operand, fmt_symbol),
-                    }),
-                    loc: Some(func_call.loc),
-                    hint: None,
-                });
-                return None;
-            }
-
             if let Some(symbol_id) = func_type.symbol_id {
                 func_sig = self.query.get_func(symbol_id).unwrap().func_sig;
 

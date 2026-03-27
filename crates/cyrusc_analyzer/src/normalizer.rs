@@ -28,11 +28,7 @@ use cyrusc_typed_ast::{
     SymbolID,
     exprs::TypedSelfType,
     format::{SymbolFormatterFn, format_unnamed_enum_type, format_unnamed_struct_type, format_unnamed_union_type},
-    generics::{
-        generic_type::GenericType,
-        mapping_ctx::GenericMappingCtx,
-        substitute::{substitute_func_sig, substitute_type},
-    },
+    generics::{generic_type::GenericType, substitute::substitute_func_sig},
     sigs::{FuncSig, InterfaceSig, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
@@ -632,7 +628,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         mut type_args: Option<TypedTypeArgs>,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let fmt_symbol = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        // let fmt_symbol = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
 
@@ -842,7 +838,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 Some(SemanticType::FuncType(TypedFuncType {
                     symbol_id: Some(resolved_func.symbol_id),
-                    def_module_id: Some(resolved_func.module_id),
                     params: TypedFuncTypeParams {
                         list: params_list,
                         variadic: params_variadic,
@@ -865,11 +860,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.normalize_interface_type(interface.symbol_id, interface.interface_sig.loc)
             }
             SymbolEntryKind::Typedef(typedef) => self.resolve_typedef_inner_type(typedef),
-            SymbolEntryKind::ProxiedSymbol(_, target_symbol_id) => {
+            SymbolEntryKind::ProxiedSymbol {
+                symbol_id: target_symbol_id,
+                ..
+            } => {
                 let target_entry = self.query.get_symbol_entry(*target_symbol_id)?;
                 self.resolve_symbol_type_internal(&target_entry)
             }
             SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),
+            SymbolEntryKind::ProxiedModule { .. } => {
+                unreachable!("proxied module symbol entry kind should not appear here")
+            }
+            SymbolEntryKind::Module { .. } => {
+                unreachable!("module symbol entry kind should not appear here")
+            }
+            SymbolEntryKind::Namespace { .. } => {
+                unreachable!("namespace symbol entry kind should not appear here")
+            }
             SymbolEntryKind::Unresolved => unreachable!("unresolved symbol entry should not appear here"),
         }
     }

@@ -60,7 +60,6 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
     pub vtable_registry: Arc<Mutex<VTableRegistry>>,
 
-    pub(crate) scope_id: SymbolID,
     pub(crate) query: &'a dyn Query,
     pub(crate) symbol_mut: &'a M,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
@@ -88,7 +87,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         source_map: Arc<SourceMap>,
         query: &'a dyn Query,
         symbol_mut: &'a M,
-        module_id: SymbolID,
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<EntryPoints>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
@@ -1073,7 +1071,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.analyze_struct_fields(struct_stmt);
 
         if struct_stmt.generic_params.is_none() {
-            self.analyze_non_generic_methods(self.module_id, &struct_stmt.methods);
+            self.analyze_non_generic_methods(&struct_stmt.methods);
         }
 
         self.analyze_method_generic_params(&struct_stmt.name, &struct_stmt.methods, &struct_stmt.generic_params);
@@ -1108,7 +1106,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.analyze_union_fields(union_stmt);
 
         if union_stmt.generic_params.is_none() {
-            self.analyze_non_generic_methods(self.module_id, &union_stmt.methods);
+            self.analyze_non_generic_methods(&union_stmt.methods);
         }
 
         self.analyze_method_generic_params(&union_stmt.name, &union_stmt.methods, &union_stmt.generic_params);
@@ -1134,7 +1132,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.analyze_enum_variants(enum_stmt);
 
         if enum_stmt.generic_params.is_none() {
-            self.analyze_non_generic_methods(self.module_id, &enum_stmt.methods);
+            self.analyze_non_generic_methods(&enum_stmt.methods);
         }
 
         self.analyze_method_generic_params(&enum_stmt.name, &enum_stmt.methods, &enum_stmt.generic_params);
@@ -1164,7 +1162,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.fn_env.current_func_type = Some(TypedFuncType {
             symbol_id: Some(func_def.symbol_id),
-            def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(&func_def.params),
             ret_type: Box::new(func_def.ret_type.clone()),
             is_public,
@@ -1399,20 +1396,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     continue;
                 }
             };
-
-            if resolved_interface.interface_sig.vis.is_private()
-                && resolved_interface.interface_sig.module_id != self.module_id
-            {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InternalSymbolAccess {
-                        symbol_name: name.clone(),
-                    }),
-                    loc: Some(implement_interface.loc),
-                    hint: None,
-                });
-                continue;
-            }
 
             let interface_method_decls = &resolved_interface.interface_sig.methods;
             let mut interface_method_sigs: Vec<FuncSig> = Vec::new();
@@ -1697,7 +1680,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     // FIXME
-    fn analyze_non_generic_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+    fn analyze_non_generic_methods(&mut self, _methods: &HashMap<String, SymbolID>) {
         todo!();
 
         // let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
@@ -1756,7 +1739,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //     self.tctx.current_method_symbol_id = Some(symbol_id);
         //     self.tctx.current_func = Some(TypedFuncType {
         //         symbol_id: Some(symbol_id),
-        //         def_module_id: Some(self.module_id),
         //         params: typed_func_params_as_func_type_params(&func_sig.params),
         //         ret_type: Box::new(func_sig.ret_type.clone()),
         //         is_public: func_sig.modifiers.vis.is_public(),

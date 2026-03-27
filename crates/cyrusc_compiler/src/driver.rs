@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::{
     context::CodeGenContext,
     linker::Linker,
@@ -44,7 +45,7 @@ use cyrusc_scaffold_parser::{
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{
-    ModuleID, TypedProgramTree,
+    TypedProgramTree,
     generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
@@ -177,10 +178,15 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 mapping_ctx_arena.clone(),
             );
 
-            // resolve the entry module
-            let module_id = ModuleID::master_module_id();
+            let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&entry_file), file_id);
 
-            resolver.resolve_module(module_id, &program_tree, &mut VisitingModule::new(), file_id, true);
+            resolver.resolve_module(
+                module_symbol_id,
+                &program_tree,
+                &mut VisitingModule::new(),
+                file_id,
+                true,
+            );
             if resolver.reporter.has_errors() {
                 DiagReporter::display(&resolver.reporter);
                 exit(1);
@@ -207,7 +213,6 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                     source_map.clone(),
                     &resolver,
                     &resolver,
-                    program_tree_entry.module_id,
                     program_tree_entry.program_tree.clone(),
                     entry_points.clone(),
                     monomorph_registry.clone(),

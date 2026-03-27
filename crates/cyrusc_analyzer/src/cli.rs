@@ -15,6 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_analyzer::{
+    analyze::{AnalysisContext, EntryPoints},
+    config::AnalyzerConfig,
+};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
 use cyrusc_internal::vtable::VTableRegistry;
@@ -24,21 +28,10 @@ use cyrusc_resolver::{
     fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
     modules::VisitingModule,
 };
-use cyrusc_analyzer::{
-    analyze::{AnalysisContext, EntryPoints},
-    config::AnalyzerConfig,
-};
 use cyrusc_source_loc::SourceMap;
-use cyrusc_typed_ast::{
-    ModuleID,
-    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
-};
+use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
-    env,
-    path::Path,
-    process::exit,
-    sync::{Arc, Mutex},
-    vec,
+    env, path::Path, process::exit, sync::{Arc, Mutex}, vec
 };
 
 pub fn main() {
@@ -87,22 +80,16 @@ pub fn main() {
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
+                source_map.clone(),
                 reporter.clone(),
                 monomorph_registry.clone(),
                 mapping_ctx_arena.clone(),
-                Path::new(&file_path).to_path_buf(),
             );
 
-            let module_id = ModuleID::master_module_id();
+            let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
 
             resolver
-                .resolve_module(
-                    module_id,
-                    &program,
-                    &mut VisitingModule::new(),
-                    true,
-                    Path::new(&file_path).to_path_buf(),
-                )
+                .resolve_module(module_symbol_id, &program, &mut VisitingModule::new(), file_id, true)
                 .unwrap();
 
             if resolver.reporter.has_errors() {
@@ -127,7 +114,6 @@ pub fn main() {
                         source_map.clone(),
                         &resolver,
                         &resolver,
-                        module_id,
                         program_tree_entry.program_tree.clone(),
                         entry_points.clone(),
                         monomorph_registry.clone(),

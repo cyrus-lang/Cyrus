@@ -419,16 +419,6 @@ impl GlobalSymbolRegistry {
     ///
     /// Used for module group imports or aliasing entire modules.
     pub fn insert_proxied_module(&self, parent_scope_id: SymbolID, name: &str, target_symbol_id: SymbolID) -> SymbolID {
-        if let Some(existing) = self.lookup_symbol_id_in_scope(parent_scope_id, name) {
-            match &self.get_symbol_entry(existing).unwrap().kind {
-                SymbolEntryKind::ProxiedModule { symbol_id } if *symbol_id == target_symbol_id => {
-                    // same alias already exists, use it
-                    return existing;
-                }
-                _ => return existing,
-            }
-        }
-
         let symbol_id = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::ProxiedModule {
                 symbol_id: target_symbol_id,
@@ -438,7 +428,6 @@ impl GlobalSymbolRegistry {
         ));
 
         self.insert_symbol_name(parent_scope_id, symbol_id, name);
-
         symbol_id
     }
 
