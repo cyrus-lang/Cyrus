@@ -15,7 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::fs_module_loader::diagnostics::ModuleFSLoaderDiagKind;
 use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree};
 use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
@@ -26,7 +25,7 @@ use cyrusc_source_loc::{FileID, SourceMap};
 use std::path::{Component, Path, PathBuf};
 use std::{env, rc::Rc, sync::Arc};
 
-mod diagnostics;
+use crate::diagnostics::ModuleFSLoaderDiagKind;
 
 /// Options controlling how modules are located on disk.
 /// Defines search roots for user code and optional standard library.
@@ -77,7 +76,8 @@ impl FsModuleLoader {
         let mut sources = self.opts.source_dirs.clone();
 
         let mut segments = segments;
-        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.value == "std") {
+
+        if matches!(segments.first(), Some(ModuleSegment::SubModule(ident)) if ident.value == "std") {
             segments.remove(0);
             sources = vec![stdlib_modules_path()];
         }
@@ -98,8 +98,13 @@ impl FsModuleLoader {
         let mut current_path = PathBuf::from(initial_base_path);
         let total_segments = segments.len();
 
+        let last_module_idx = segments
+            .iter()
+            .rposition(|seg| matches!(seg, ModuleSegment::SubModule(_)))
+            .unwrap_or(0);
+
         for (i, segment) in segments.iter().enumerate() {
-            let is_last = i == total_segments - 1;
+            let is_last = i == last_module_idx;
 
             match segment {
                 ModuleSegment::SubModule(ident) => {
@@ -131,17 +136,13 @@ impl FsModuleLoader {
                             });
                         }
                         // it's a file
-                        (Some(_), None) => {
-                            if !is_last {
-                                // can't have `foo::bar` if 'foo' is a file!
-                                return Err(ModuleFSLoaderDiagKind::ModuleNotFound {
-                                    module_name: name.clone(),
+                        (Some(file_buf), None) => {
+                            if is_last {
+                                return Ok(ResolvedModuleFile {
+                                    file_path: file_buf,
+                                    implied_parents,
                                 });
                             }
-                            return Ok(ResolvedModuleFile {
-                                file_path: file_path_buf,
-                                implied_parents,
-                            });
                         }
                         // it's a directory
                         (None, Some(dir_buf)) => {
@@ -175,12 +176,7 @@ impl FsModuleLoader {
                         }
                     }
                 }
-                ModuleSegment::Single(_) => {
-                    return Ok(ResolvedModuleFile {
-                        file_path: current_path,
-                        implied_parents,
-                    });
-                }
+                ModuleSegment::Single(_) => break,
             }
         }
 
@@ -246,13 +242,23 @@ impl ModuleLoader for FsModuleLoader {
 
         // phase 2: construct LoadedModule objects
         for (file_id, program_tree_rc, sub_import, implied_parents) in parsed_program_trees {
-            let segment_actual_name = sub_import.segments.last().unwrap().as_ident().unwrap();
+            let last_module_idx = sub_import
+                .segments
+                .iter()
+                .rposition(|seg| matches!(seg, ModuleSegment::SubModule(_)))
+                .expect("import must contain at least one module segment");
 
-            let module_alias = match sub_import.segments.last().unwrap() {
+            let segment_actual_name = match &sub_import.segments[last_module_idx] {
+                ModuleSegment::SubModule(ident) => ident.clone(),
+                _ => unreachable!("last_module_idx always picks a SubModule"),
+            };
+
+            // alias: single only affects symbol names, not module aliases
+            let module_alias = match &sub_import.segments[last_module_idx] {
                 ModuleSegment::SubModule(ident) => {
-                    ModuleAlias::Group(sub_import.alias.clone().unwrap_or(ident.value.clone()))
+                    ModuleAlias::Group(sub_import.alias.clone().unwrap_or_else(|| ident.value.clone()))
                 }
-                ModuleSegment::Single(module_segment_singles) => ModuleAlias::Single(module_segment_singles.clone()),
+                _ => unreachable!(),
             };
 
             let loaded_module = LoadedModule {

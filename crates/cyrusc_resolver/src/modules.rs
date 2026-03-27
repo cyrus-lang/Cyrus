@@ -279,8 +279,6 @@ impl Resolver {
         loaded_module: &LoadedModule,
         loc: Loc,
     ) -> SymbolID {
-        dbg!(self.global_symbols.inner.read().unwrap().entries.clone());
-
         let module_name = loaded_module.segment.as_string();
 
         let mut current_scope_id = parent_scope_id;
@@ -292,32 +290,12 @@ impl Resolver {
             let synthetic_id =
                 self.get_or_create_synthetic_module_symbol(current_scope_id, parent_name, implied_parent.ident.loc);
 
-            // 🩶 make a *real* nested module, not a proxy.
             self.global_symbols
                 .insert_symbol_name(current_scope_id, synthetic_id, parent_name);
 
             // descend into its real internal scope
             current_scope_id = self.global_symbols.resolve_concrete_scope_id(synthetic_id);
         }
-
-        // // build the implied parent chain (directories)
-        // for implied_parent in &loaded_module.implied_parent_modules {
-        //     let parent_name = &implied_parent.ident.value;
-
-        //     // create or get the synthetic module for this directory level
-        //     let synthetic_id =
-        //         self.get_or_create_synthetic_module_symbol(current_scope_id, parent_name, implied_parent.ident.loc);
-
-        //     self.global_symbols
-        //         .insert_symbol_name(current_scope_id, synthetic_id, parent_name);
-
-        //     if root_symbol_id.is_none() {
-        //         root_symbol_id = Some(synthetic_id);
-        //     }
-
-        //     // move the cursor: the next segment belongs inside this parent's scope.
-        //     current_scope_id = synthetic_id;
-        // }
 
         let real_module_id = self.get_or_create_module_symbol_id_for_file(loaded_module.file_id, &module_name, loc);
 
