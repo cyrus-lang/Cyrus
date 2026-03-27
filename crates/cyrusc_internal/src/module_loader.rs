@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegmentSingle, ProgramTree};
+use cyrusc_ast::{ASTImportStmt, Ident, ModulePath, ModuleSegmentSingle, ProgramTree};
 use cyrusc_diagcentral::DiagKindClone;
 use cyrusc_source_loc::FileID;
 use std::{
@@ -26,16 +26,17 @@ use std::{
 
 #[derive(Debug, Clone)]
 pub struct LoadedModule {
+    pub segment:Ident,
     pub alias: ModuleAlias,
     pub path: ModulePath,
     pub file_id: FileID,
     pub program_tree: Rc<ProgramTree>,
+    pub implied_parent_modules: Vec<ImpliedParentModule>,
+}
 
-    /// Metadata describing directory modules implied by this import.
-    /// The Resolver uses these to create module symbols before inserting the loaded module itself.
-    /// 
-    /// e.g., for `foo/bar.cyrus`, this would be ["foo"].
-    pub implied_parent_modules: Vec<String>,
+#[derive(Debug, Clone)]
+pub struct ImpliedParentModule {
+    pub ident: Ident,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

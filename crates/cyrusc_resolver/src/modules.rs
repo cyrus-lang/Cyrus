@@ -24,7 +24,7 @@ use cyrusc_internal::{
 };
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
-use std::{cell::RefCell, collections::HashSet, path::Path, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
 
 // Used to check import cycles.
 pub struct VisitingModule {
@@ -85,8 +85,9 @@ impl Resolver {
         }
 
         // module scope becomes current scope
-        let previous_scope = self.current_scope;
-        self.current_scope = Some(module_symbol_id);
+        let prev_scope = self.current_scope;
+        let concrete_scope = self.global_symbols.resolve_concrete_scope_id(module_symbol_id);
+        self.current_scope = Some(concrete_scope);
 
         // current module file
         let prev_file = self.current_module_file_id;
@@ -97,7 +98,7 @@ impl Resolver {
 
         // analyze `import statements` of this module
         for import in ast.import_stmts() {
-            self.resolve_import(self.current_scope.unwrap(), import, &mut visiting);
+            self.resolve_import(module_symbol_id, import, &mut visiting);
         }
 
         // collect full definitions and details of the symbols (second pass)
@@ -115,7 +116,7 @@ impl Resolver {
         }
 
         // restore scope
-        self.current_scope = previous_scope;
+        self.current_scope = prev_scope;
 
         // restore module file id
         self.current_module_file_id = prev_file;
@@ -128,6 +129,8 @@ impl Resolver {
 
     /// Resolves a module import with duplicate and cycle detection.
     fn resolve_import(&mut self, parent_scope_id: SymbolID, import: ASTImportStmt, visiting: &mut VisitingModule) {
+        let parent_scope_id = self.global_symbols.resolve_concrete_scope_id(parent_scope_id);
+
         let current_file = self.current_module_file_id.unwrap();
         let loaded_modules_list = self.module_loader.load_module(&import);
 
@@ -146,7 +149,8 @@ impl Resolver {
                 }
             };
 
-            let module_symbol_id = self.create_module_symbol_id_for_loaded_module(&loaded_module, import.loc);
+            let module_symbol_id =
+                self.create_module_symbol_id_for_loaded_module(parent_scope_id, &loaded_module, import.loc);
 
             // check for self-import
             if current_file == loaded_module.file_id {
@@ -269,55 +273,66 @@ impl Resolver {
         }
     }
 
-    fn create_module_symbol_id_for_loaded_module(&mut self, loaded_module: &LoadedModule, loc: Loc) -> SymbolID {
-        if !loaded_module.implied_parent_modules.is_empty() {
-            // let mut current_parent: Option<SymbolID> = None;
+    fn create_module_symbol_id_for_loaded_module(
+        &mut self,
+        parent_scope_id: SymbolID,
+        loaded_module: &LoadedModule,
+        loc: Loc,
+    ) -> SymbolID {
+        dbg!(self.global_symbols.inner.read().unwrap().entries.clone());
 
-            // // iterate over implied parent modules in reverse order to build the hierarchy
-            // for parent in &loaded_module.implied_parent_modules {
-            //     // check if the parent module already exists
-            //     let parent_module_id = self.get_or_create_module_symbol_id(parent, None);
+        let module_name = loaded_module.segment.as_string();
 
-            //     // if it's the first parent, set it as the current module
-            //     if current_parent.is_none() {
-            //         current_parent = Some(parent_module_id);
-            //     } else {
-            //         // if it has a previous parent, establish the relationship
-            //         self.global_symbols
-            //             .insert_child_module(current_parent.unwrap(), parent_module_id);
+        let mut current_scope_id = parent_scope_id;
+        let mut root_symbol_id = None;
 
-            //         current_parent = Some(parent_module_id);
-            //     }
-            // }
+        for implied_parent in &loaded_module.implied_parent_modules {
+            let parent_name = &implied_parent.ident.value;
 
-            // // now current_parent holds the symbol ID for the last parent in the chain
-            // // create or retrieve the final module symbol
-            // let final_module_id =
-            //     self.get_or_create_module_symbol_id(loaded_module.file_id, &loaded_module.name, import.loc);
+            let synthetic_id =
+                self.get_or_create_synthetic_module_symbol(current_scope_id, parent_name, implied_parent.ident.loc);
 
-            // // establish the last relationship from the last parent to this module
-            // if let Some(parent_module_id) = current_parent {
-            //     self.global_symbols
-            //         .insert_child_module(parent_module_id, final_module_id);
-            // }
+            // 🩶 make a *real* nested module, not a proxy.
+            self.global_symbols
+                .insert_symbol_name(current_scope_id, synthetic_id, parent_name);
 
-            // return final_module_id;
-            todo!();
-        } else {
-            let module_file_path = self
-                .source_map
-                .get_file(loaded_module.file_id)
-                .unwrap()
-                .file_path
-                .clone();
-
-            let module_name = self
-                .module_loader
-                .module_name_from_file_path(Path::new(&module_file_path));
-
-            self.insert_module_name(loaded_module.file_id, module_name.to_string());
-            self.get_or_create_module_symbol_id(loaded_module.file_id, &module_name, loc)
+            // descend into its real internal scope
+            current_scope_id = self.global_symbols.resolve_concrete_scope_id(synthetic_id);
         }
+
+        // // build the implied parent chain (directories)
+        // for implied_parent in &loaded_module.implied_parent_modules {
+        //     let parent_name = &implied_parent.ident.value;
+
+        //     // create or get the synthetic module for this directory level
+        //     let synthetic_id =
+        //         self.get_or_create_synthetic_module_symbol(current_scope_id, parent_name, implied_parent.ident.loc);
+
+        //     self.global_symbols
+        //         .insert_symbol_name(current_scope_id, synthetic_id, parent_name);
+
+        //     if root_symbol_id.is_none() {
+        //         root_symbol_id = Some(synthetic_id);
+        //     }
+
+        //     // move the cursor: the next segment belongs inside this parent's scope.
+        //     current_scope_id = synthetic_id;
+        // }
+
+        let real_module_id = self.get_or_create_module_symbol_id_for_file(loaded_module.file_id, &module_name, loc);
+
+        self.module_symbols.insert(loaded_module.file_id, real_module_id);
+
+        self.global_symbols
+            .insert_symbol_name(current_scope_id, real_module_id, &module_name);
+
+        if root_symbol_id.is_none() {
+            root_symbol_id = Some(real_module_id);
+        }
+
+        self.insert_module_name(loaded_module.file_id, module_name.to_string());
+
+        root_symbol_id.unwrap()
     }
 
     fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Loc) {

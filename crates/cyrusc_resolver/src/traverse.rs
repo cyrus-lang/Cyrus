@@ -172,6 +172,7 @@ impl Resolver {
             Some(symbol_id) => symbol_id,
             None => {
                 let root_scope = self.global_symbols.root_scope();
+
                 if let Some(global_id) = self
                     .global_symbols
                     .lookup_symbol_id_in_scope(root_scope, &first_ident.value)
@@ -216,7 +217,14 @@ impl Resolver {
             };
 
             let name = &seg_ident.value;
-            let Some(next_symbol) = self.lookup_symbol_id_in_scope(current_symbol, name) else {
+
+            let scope_id = self.global_symbols.resolve_concrete_scope_id(current_symbol);
+
+            {
+                dbg!(self.global_symbols.inner.read().unwrap().entries.clone());
+            }
+
+            let Some(next_symbol) = self.lookup_symbol_id_in_scope(scope_id, name) else {
                 let module_name = format_module_segments(&module_import.segments[0..i]);
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

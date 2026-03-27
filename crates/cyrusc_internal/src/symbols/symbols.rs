@@ -58,6 +58,7 @@ pub enum SymbolEntryKind {
 
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub scope_id: SymbolID,
     pub name: String,
     pub scope: ScopeTable,
     pub loc: Loc,

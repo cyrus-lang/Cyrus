@@ -20,7 +20,7 @@ use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree};
 use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
-use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader};
+use cyrusc_internal::module_loader::{ImpliedParentModule, LoadedModule, ModuleAlias, ModuleLoader};
 use cyrusc_parser::SourceParser;
 use cyrusc_source_loc::{FileID, SourceMap};
 use std::path::{Component, Path, PathBuf};
@@ -46,6 +46,11 @@ pub struct FsModuleLoader {
     opts: FsModuleLoaderOptions,
 }
 
+pub struct ResolvedModuleFile {
+    pub file_path: PathBuf,
+    pub implied_parents: Vec<ImpliedParentModule>,
+}
+
 impl FsModuleLoader {
     pub fn new(source_map: Arc<SourceMap>, source_parser: Arc<SourceParser>, opts: FsModuleLoaderOptions) -> Self {
         Self {
@@ -57,7 +62,10 @@ impl FsModuleLoader {
 
     /// Computes the filesystem path for an imported module.
     /// Handles stdlib redirection and resolves full module paths.
-    fn get_imported_module_file_path(&self, segments: Vec<ModuleSegment>) -> Result<String, ModuleFSLoaderDiagKind> {
+    fn get_imported_module_file_path(
+        &self,
+        segments: Vec<ModuleSegment>,
+    ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
         let stdlib_path = self.opts.stdlib_path.clone().map(|str| Path::new(&str).to_path_buf());
         let stdlib_modules_path = || {
             get_stdlib_modules_path(stdlib_path.as_ref())
@@ -74,9 +82,7 @@ impl FsModuleLoader {
             sources = vec![stdlib_modules_path()];
         }
 
-        // starting point
-        let module_file_path = String::new();
-        self.load_module_segments(&segments, sources, module_file_path)
+        self.load_module_segments(&segments, sources, String::new())
     }
 
     /// Walks through module segments to locate either a `.cyrus` file or
@@ -86,7 +92,9 @@ impl FsModuleLoader {
         segments: &[ModuleSegment],
         sources: Vec<String>,
         initial_base_path: String,
-    ) -> Result<String, ModuleFSLoaderDiagKind> {
+    ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
+        let mut implied_parents = Vec::new();
+
         let mut current_path = PathBuf::from(initial_base_path);
         let total_segments = segments.len();
 
@@ -130,10 +138,15 @@ impl FsModuleLoader {
                                     module_name: name.clone(),
                                 });
                             }
-                            return Ok(file_path_buf.to_str().unwrap().to_string());
+                            return Ok(ResolvedModuleFile {
+                                file_path: file_path_buf,
+                                implied_parents,
+                            });
                         }
                         // it's a directory
                         (None, Some(dir_buf)) => {
+                            implied_parents.push(ImpliedParentModule { ident: ident.clone() });
+
                             // we must use `dir_buf` because `dir_path_buf`
                             // might not exist if the directory was found in the 'sources' folders!
 
@@ -146,7 +159,10 @@ impl FsModuleLoader {
                                     });
                                 }
 
-                                return Ok(index_path.to_string_lossy().to_string());
+                                return Ok(ResolvedModuleFile {
+                                    file_path: index_path,
+                                    implied_parents,
+                                });
                             } else {
                                 // descend into the directory
                                 current_path = dir_buf;
@@ -159,11 +175,19 @@ impl FsModuleLoader {
                         }
                     }
                 }
-                ModuleSegment::Single(_) => return Ok(current_path.to_str().unwrap().to_string()),
+                ModuleSegment::Single(_) => {
+                    return Ok(ResolvedModuleFile {
+                        file_path: current_path,
+                        implied_parents,
+                    });
+                }
             }
         }
 
-        Ok(current_path.to_str().unwrap().to_string())
+        Ok(ResolvedModuleFile {
+            file_path: current_path,
+            implied_parents,
+        })
     }
 }
 
@@ -172,16 +196,14 @@ impl ModuleLoader for FsModuleLoader {
     /// Phase 1: locate and parse each module.  
     /// Phase 2: if all succeeded, construct LoadedModule entries.
     fn load_module(&mut self, import: &ASTImportStmt) -> Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> {
-        type ImpliedParents = Vec<String>;
+        type ImpliedParents = Vec<ImpliedParentModule>;
 
         // phase 1: collect and parse all modules
         let mut parsed_program_trees: Vec<(FileID, Rc<ProgramTree>, &ModulePath, ImpliedParents)> = Vec::new();
         let mut loaded_modules_list: Vec<Result<LoadedModule, Box<dyn DiagKindClone>>> = Vec::new();
 
         for sub_import in &import.paths {
-            let mut implied_parents = Vec::new();
-
-            let file_path = match self.get_imported_module_file_path(sub_import.segments.clone()) {
+            let resolved_module_file = match self.get_imported_module_file_path(sub_import.segments.clone()) {
                 Ok(path) => path,
                 Err(diag) => {
                     loaded_modules_list.push(Err(Box::new(diag)));
@@ -189,27 +211,8 @@ impl ModuleLoader for FsModuleLoader {
                 }
             };
 
-            dbg!(file_path.clone());
-
-            // handle directory imports -> index.cyrus
-            let mut module_file_path = Path::new(&file_path).to_path_buf();
-
-            dbg!(module_file_path.clone());
-            if module_file_path.is_dir() {
-                // extract implied parent segments (directory ancestors)
-                implied_parents.extend(collect_directory_segments(&sub_import.segments));
-
-                let index_path = module_file_path.join("index.cyrus");
-
-                if !index_path.exists() {
-                    loaded_modules_list.push(Err(Box::new(ModuleFSLoaderDiagKind::ModuleIndexNotFound {
-                        module_name: format_module_segments(&sub_import.segments),
-                    })));
-                    continue;
-                }
-
-                module_file_path = index_path;
-            }
+            let module_file_path = resolved_module_file.file_path;
+            let implied_parents = resolved_module_file.implied_parents;
 
             // verify file exists
             if std::fs::read_to_string(&module_file_path).is_err() {
@@ -243,6 +246,8 @@ impl ModuleLoader for FsModuleLoader {
 
         // phase 2: construct LoadedModule objects
         for (file_id, program_tree_rc, sub_import, implied_parents) in parsed_program_trees {
+            let segment_actual_name = sub_import.segments.last().unwrap().as_ident().unwrap();
+
             let module_alias = match sub_import.segments.last().unwrap() {
                 ModuleSegment::SubModule(ident) => {
                     ModuleAlias::Group(sub_import.alias.clone().unwrap_or(ident.value.clone()))
@@ -251,6 +256,7 @@ impl ModuleLoader for FsModuleLoader {
             };
 
             let loaded_module = LoadedModule {
+                segment: segment_actual_name,
                 alias: module_alias,
                 path: sub_import.clone(),
                 program_tree: program_tree_rc,
@@ -327,18 +333,6 @@ impl ModuleLoader for FsModuleLoader {
                     '_'
                 }
             })
-            .collect()
-    }
-}
-
-fn collect_directory_segments(segments: &[ModuleSegment]) -> Vec<String> {
-    // drop the last segment if it's a file (submodule)
-    if segments.len() <= 1 {
-        Vec::new()
-    } else {
-        segments[..segments.len() - 1]
-            .iter()
-            .map(|seg| seg.as_ident().unwrap().as_string())
             .collect()
     }
 }
