@@ -1174,7 +1174,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
-        let symbol_entry = self.query.get_symbol(struct_init_expr.symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol_entry(struct_init_expr.symbol_id).unwrap();
 
         if let Some(resolved_struct) = symbol_entry.as_struct() {
             let fields = struct_init_expr
@@ -1459,7 +1459,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let symbol_entry = self
             .query
-            .get_symbol(field_access.object_symbol_id.unwrap())
+            .get_symbol_entry(field_access.object_symbol_id.unwrap())
             .unwrap();
 
         if symbol_entry.as_struct().is_some() {
@@ -1523,7 +1523,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
             let symbol_entry = self
                 .query
-                .get_symbol(monomorph_func_entry.base_symbol)
+                .get_symbol_entry(monomorph_func_entry.base_symbol)
                 .unwrap();
 
             let mut func_sig = symbol_entry
@@ -1848,7 +1848,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_generic_type(&mut self, mut generic_type: GenericType) -> CIRTy {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.get_symbol(generic_type.base).unwrap();
+        let symbol_entry = self.query.get_symbol_entry(generic_type.base).unwrap();
 
         if let Err(err) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
             eprintln!("Failed to init generic type: {:?}.", err.kind.to_string())
@@ -1971,7 +1971,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_resolved_symbol(&mut self, resolved_symbol: &ResolvedSymbol) -> CIRTy {
-        let symbol_entry = self.query.get_symbol(resolved_symbol.symbol_id()).unwrap();
+        let symbol_entry = self.query.get_symbol_entry(resolved_symbol.symbol_id()).unwrap();
 
         if let Some(resolved_struct) = symbol_entry.as_struct() {
             CIRTy::Struct(self.lower_struct_sig_as_struct_ty(&resolved_struct.struct_sig))

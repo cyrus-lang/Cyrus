@@ -253,7 +253,7 @@ impl Resolver {
                 continue;
             };
 
-            if let Some(symbol_entry) = self.get_symbol(target_symbol_id) {
+            if let Some(symbol_entry) = self.get_symbol_entry(target_symbol_id) {
                 if let Some(vis) = symbol_entry.vis_opt {
                     self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
                 }

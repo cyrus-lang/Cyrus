@@ -147,7 +147,6 @@ impl Resolver {
     }
 
     fn resolve_module_import(&mut self, module_import: ASTModuleImport) -> Option<SymbolID> {
-        // simple identifier
         if let Some(ident) = module_import.as_ident() {
             return self.resolve_ident(&ident);
         }
@@ -167,24 +166,44 @@ impl Resolver {
             return None;
         };
 
-        let mut current_symbol = match self.lookup_symbol_id(self.current_scope.unwrap(), &first_ident.value) {
-            Some(id) => id,
+        let current_scope_id = self.current_scope.unwrap();
+
+        let mut current_symbol = match self.lookup_symbol_id(current_scope_id, &first_ident.value) {
+            Some(symbol_id) => symbol_id,
             None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                        name: first_ident.value.clone(),
-                    }),
-                    loc: Some(first_ident.loc),
-                    hint: None,
-                });
-                return None;
+                let root_scope = self.global_symbols.root_scope();
+                if let Some(global_id) = self
+                    .global_symbols
+                    .lookup_symbol_id_in_scope(root_scope, &first_ident.value)
+                {
+                    if self
+                        .global_symbols
+                        .lookup_symbol_id_in_scope(current_scope_id, &first_ident.value)
+                        .is_none()
+                    {
+                        let proxy_id =
+                            self.global_symbols
+                                .insert_proxied_module(current_scope_id, &first_ident.value, global_id);
+
+                        self.global_symbols
+                            .insert_symbol_name(current_scope_id, proxy_id, &first_ident.value);
+                    }
+                    global_id
+                } else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(ResolverDiagKind::SymbolNotFound {
+                            name: first_ident.value.clone(),
+                        }),
+                        loc: Some(first_ident.loc),
+                        hint: None,
+                    });
+                    return None;
+                }
             }
         };
 
-        // counts how many segments have been resolved so far including the first
         let mut i = 1;
-
         for segment in iter {
             let Some(seg_ident) = segment.as_ident() else {
                 self.reporter.report(Diag {
@@ -197,10 +216,8 @@ impl Resolver {
             };
 
             let name = &seg_ident.value;
-
             let Some(next_symbol) = self.lookup_symbol_id_in_scope(current_symbol, name) else {
                 let module_name = format_module_segments(&module_import.segments[0..i]);
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolIsNotDefinedInModule {
@@ -212,6 +229,18 @@ impl Resolver {
                 });
                 return None;
             };
+
+            if self
+                .global_symbols
+                .lookup_symbol_id_in_scope(current_scope_id, name)
+                .is_none()
+            {
+                let proxy_id = self
+                    .global_symbols
+                    .insert_proxied_module(current_scope_id, name, next_symbol);
+
+                self.global_symbols.insert_symbol_name(current_scope_id, proxy_id, name);
+            }
 
             current_symbol = next_symbol;
             i += 1;
@@ -1142,7 +1171,7 @@ impl Resolver {
         }
 
         for (method_id, (scope, body, is_generic)) in method_bodies {
-            let SymbolEntryKind::Method(mut resolved_method) = self.get_symbol(method_id).unwrap().kind else {
+            let SymbolEntryKind::Method(mut resolved_method) = self.get_symbol_entry(method_id).unwrap().kind else {
                 unreachable!();
             };
 

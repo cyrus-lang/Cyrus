@@ -529,7 +529,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_generic_type(&mut self, mut generic_type: GenericType) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.get_symbol(generic_type.base).unwrap();
+        let symbol_entry = self.query.get_symbol_entry(generic_type.base).unwrap();
 
         if generic_type.generic_params.list.is_empty() {
             if let Some(generic_params) = symbol_entry.symbol_generic_params() {
@@ -797,7 +797,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         };
 
-        let symbol_entry = self.query.get_symbol(symbol_id).unwrap();
+        let symbol_entry = self.query.get_symbol_entry(symbol_id).unwrap();
         debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
         let mut sema_type_opt = self.resolve_symbol_type_internal(&symbol_entry);
@@ -866,7 +866,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
             SymbolEntryKind::Typedef(typedef) => self.resolve_typedef_inner_type(typedef),
             SymbolEntryKind::ProxiedSymbol(_, target_symbol_id) => {
-                let target_entry = self.query.get_symbol(*target_symbol_id)?;
+                let target_entry = self.query.get_symbol_entry(*target_symbol_id)?;
                 self.resolve_symbol_type_internal(&target_entry)
             }
             SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),

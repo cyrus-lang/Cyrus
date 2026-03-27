@@ -41,7 +41,7 @@ macro_rules! with_local_scope {
 macro_rules! impl_helper_method__get_kind {
     ($name:ident, $variant:ident, $ty:ty) => {
         fn $name(&self, id: SymbolID) -> Option<$ty> {
-            match &self.get_symbol(id)?.kind {
+            match &self.get_symbol_entry(id)?.kind {
                 SymbolEntryKind::$variant(v) => Some(v.clone()),
                 _ => None,
             }

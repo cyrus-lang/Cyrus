@@ -16,11 +16,11 @@
  */
 
 use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegmentSingle, ProgramTree};
-use cyrusc_diagcentral::{DiagKindClone};
+use cyrusc_diagcentral::DiagKindClone;
 use cyrusc_source_loc::FileID;
 use std::{
     hash::{Hash, Hasher},
-    path::{Path, PathBuf},
+    path::Path,
     rc::Rc,
 };
 
@@ -30,6 +30,12 @@ pub struct LoadedModule {
     pub path: ModulePath,
     pub file_id: FileID,
     pub program_tree: Rc<ProgramTree>,
+
+    /// Metadata describing directory modules implied by this import.
+    /// The Resolver uses these to create module symbols before inserting the loaded module itself.
+    /// 
+    /// e.g., for `foo/bar.cyrus`, this would be ["foo"].
+    pub implied_parent_modules: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -61,7 +61,7 @@ pub struct GlobalSymbolRegistryInner {
 pub struct Resolver {
     /// Global symbol table shared across all modules.
     /// Stores all declared symbols and their associated metadata.
-    global_symbols: GlobalSymbolRegistry,
+    global_symbols: Arc<GlobalSymbolRegistry>,
 
     /// Program trees of successfully analyzed modules.
     /// Acts as the semantic output collected during resolution.
@@ -138,7 +138,7 @@ impl Resolver {
         mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     ) -> Self {
         Self {
-            global_symbols: GlobalSymbolRegistry::new(),
+            global_symbols: Arc::new(GlobalSymbolRegistry::new()),
             analyzed_files: Arc::new(Mutex::new(HashSet::new())),
             program_trees: Arc::new(Mutex::new(Vec::new())),
             module_names: Arc::new(Mutex::new(HashMap::new())),
@@ -359,7 +359,7 @@ impl GlobalSymbolRegistry {
         target_symbol_id: SymbolID,
     ) -> SymbolID {
         // proxy inherits visibility from target symbol
-        let target_vis = self.lookup_symbol_entry(target_symbol_id).unwrap().vis_opt.clone();
+        let target_vis = self.get_symbol_entry(target_symbol_id).unwrap().vis_opt.clone();
 
         let proxy_id = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::ProxiedSymbol {
@@ -442,8 +442,8 @@ impl GlobalSymbolRegistry {
 
 // Lookups.
 impl GlobalSymbolRegistry {
-    /// Lookup a symbol entry by `SymbolID` in global symbols.
-    pub fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+    /// Get the symbol entry for a symbol.
+    pub fn get_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
         let registry = self.inner.read().unwrap();
         registry.entries.get(symbol_id.0 as usize).cloned()
     }
@@ -454,7 +454,6 @@ impl GlobalSymbolRegistry {
 
         let registry = self.inner.read().unwrap();
         let symbol_entry = &registry.entries[scope_id.0 as usize];
-        dbg!(symbol_entry.clone());
         let scope_table = symbol_entry.get_scope_table().unwrap();
 
         scope_table.lookup(name)
@@ -469,7 +468,7 @@ impl GlobalSymbolRegistry {
                 return Some(symbol_id);
             }
 
-            let symbol_entry = self.lookup_symbol_entry(scope_id)?;
+            let symbol_entry = self.get_symbol_entry(scope_id)?;
 
             match symbol_entry.parent_scope_id {
                 Some(parent_id) => scope_id = parent_id,
@@ -495,7 +494,7 @@ impl GlobalSymbolRegistry {
     /// happen in a consistent registry), the original ID is returned as
     /// a defensive fallback.
     pub fn resolve_concrete_scope_id(&self, symbol_id: SymbolID) -> SymbolID {
-        let Some(symbol_entry) = self.lookup_symbol_entry(symbol_id) else {
+        let Some(symbol_entry) = self.get_symbol_entry(symbol_id) else {
             return symbol_id;
         };
 
@@ -538,6 +537,11 @@ impl Query for Resolver {
 
     impl_helper_method__get_kind!(get_interface, Interface, ResolvedInterface);
 
+    /// Get the symbol entry for a symbol.
+    fn get_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        self.global_symbols.get_symbol_entry(symbol_id)
+    }
+
     /// Resolve a symbol ID by name.
     ///
     /// Resolution order:
@@ -558,16 +562,11 @@ impl Query for Resolver {
     /// Retrieve the full semantic entry for a symbol by its name.
     fn lookup_symbol_entry(&self, scope_id: SymbolID, name: &str) -> Option<SymbolEntry> {
         let symbol_id = self.lookup_symbol_id(scope_id, name)?;
-        self.global_symbols.lookup_symbol_entry(symbol_id)
-    }
-
-    /// Get the symbol entry for a symbol.
-    fn get_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        self.global_symbols.lookup_symbol_entry(symbol_id)
+        self.global_symbols.get_symbol_entry(symbol_id)
     }
 
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
-        match self.get_symbol(symbol_id) {
+        match self.get_symbol_entry(symbol_id) {
             Some(symbol_entry) => symbol_entry.decl_name(),
             None => "<UNRESOLVED_SYMBOL>".to_string(),
         }

@@ -95,6 +95,7 @@ impl<'source_file> Parser<'source_file> {
         Ok(lhs)
     }
 
+    // FIXME: Span calculation does not seem correct.
     pub(crate) fn parse_module_import(&mut self) -> Result<ASTModuleImport, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);

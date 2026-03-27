@@ -40,7 +40,7 @@ pub trait Query: Sync + Send {
     fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_entry(&self, scope_id: SymbolID, name: &str) -> Option<SymbolEntry>;
-    fn get_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
+    fn get_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
 
     fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry>;
     fn lookup_specialized_func_instance(&self, monomorph_id: MonomorphID) -> Option<SpecializedFuncEntry>;
