@@ -18,7 +18,6 @@
 use crate::Resolver;
 use crate::diagnostics::ResolverDiagKind;
 use crate::with_local_scope;
-use cyrusc_ast::format::format_module_segments;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::DiagLevel;
@@ -51,13 +50,13 @@ impl Resolver {
                 continue;
             };
 
-            if self.report_if_duplicate_symbol(decl_name.as_string(), stmt.loc()) {
+            if self.report_if_duplicate_symbol(self.current_scope.unwrap(), decl_name.as_string(), stmt.loc()) {
                 continue;
             }
 
             let symbol_id = self
                 .global_symbols
-                .insert_symbol_entry(SymbolEntry::unresolved(stmt.vis()));
+                .insert_symbol_entry(SymbolEntry::unresolved(stmt.vis(), self.current_scope));
 
             self.global_symbols
                 .insert_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
@@ -118,7 +117,7 @@ impl Resolver {
             return self.current_object;
         }
 
-        if let Some(symbol_id) = self.lookup_symbol_id_in_scope(self.current_scope.unwrap(), &ident.value) {
+        if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
             return Some(symbol_id);
         }
 
@@ -146,97 +145,29 @@ impl Resolver {
         None
     }
 
-    /// Resolve a qualified module import path.
-    ///
-    /// The import path is expected to follow the structure:
-    ///
-    ///     module_path::symbol
-    ///
-    /// Resolution proceeds as follows:
-    ///
-    /// 1. Split the final symbol name from the module path.
-    /// 2. Resolve the module path through the module alias registry.
-    /// 3. Look up the symbol within the resolved module.
-    ///
-    /// Errors are reported if the module or symbol cannot be found.
-    fn resolve_module_import(&mut self, mut module_import: ASTModuleImport) -> Option<SymbolID> {
-        if module_import.segments.len() == 1 {
-            let maybe_ident = module_import.as_ident();
-
-            if let Some(ident) = maybe_ident {
-                if let Some(symbol_entry) = self.lookup_symbol_id(module_id, &ident.value) {
-                    return Some(symbol_entry);
-                }
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                        name: ident.as_string(),
-                    }),
-                    loc: Some(ident.loc),
-                    hint: None,
-                });
-            } else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
-                    loc: Some(module_import.loc),
-                    hint: Some("Import path must include at least one symbol.".into()),
-                });
-            }
-            return None;
+    // TODO
+    fn resolve_module_import(&mut self, module_import: ASTModuleImport) -> Option<SymbolID> {
+        if let Some(ident) = module_import.as_ident() {
+            return self.resolve_ident(&ident);
         }
 
-        let Some(last_segment) = module_import.segments.pop() else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
-                loc: Some(module_import.loc),
-                hint: Some("Import path must include at least one symbol.".into()),
-            });
-            return None;
-        };
+        // Each segment of a qualified path is resolved by looking inside the previous symbol’s scope.
+        //
+        // std::libc::abi::foo()
+        //
+        // lookup_symbol_id(current_scope, "std")
+        // lookup_symbol_id_in_scope(std, "libc")
+        // lookup_symbol_id_in_scope(libc, "abi")
+        // lookup_symbol_id_in_scope(abi, "foo")
 
-        let Some(symbol_ident) = last_segment.as_identifier_opt() else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::ExpectedIdentifierInImport),
-                loc: Some(module_import.loc),
-                hint: Some("The last part of an import path must be a symbol name.".into()),
-            });
-            return None;
-        };
+        // start = lookup_symbol_id(current_scope, "a")
 
-        let symbol_name = symbol_ident.value;
+        // for each segment in [b, c, d]:
+        //     start = lookup_symbol_id_in_scope(start, segment)
 
-        let module_alias = format_module_segments(&module_import.segments);
+        // return start
 
-        let Some(target_module_id) = self.module_aliases.resolve_module_alias(Some(module_id), &module_alias) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::ModuleImportNotFound {
-                    module_name: module_alias,
-                }),
-                loc: Some(module_import.loc),
-                hint: None,
-            });
-            return None;
-        };
-
-        let Some(symbol_id) = self.lookup_symbol_id_in_scope(target_module_id, &symbol_name) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(ResolverDiagKind::SymbolIsNotDefinedInModule {
-                    symbol_name,
-                    module_name: module_alias,
-                }),
-                loc: Some(symbol_ident.loc),
-                hint: None,
-            });
-            return None;
-        };
-
-        Some(symbol_id)
+        todo!();
     }
 
     fn resolve_ident_expr(&mut self, ident: &Ident) -> Option<TypedExprStmt> {
@@ -271,12 +202,12 @@ impl Resolver {
             ASTExpr::Tuple(tuple_value) => self.resolve_tuple_expr(tuple_value),
             ASTExpr::TupleAccess(tuple_member_access) => self.resolve_tuple_member_access(tuple_member_access),
             ASTExpr::Dynamic(dynamic) => self.resolve_dynamic_expr(dynamic),
+            ASTExpr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(untyped_array),
+            ASTExpr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
+            ASTExpr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
             ASTExpr::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(unnamed_struct_value)
             }
-            ASTExpr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
-            ASTExpr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
-            ASTExpr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(untyped_array),
             ASTExpr::Builtin(builtin) => match self.resolve_builtin(builtin) {
                 Some(typed_builtin) => {
                     let kind = TypedExprKind::Builtin(typed_builtin);
@@ -353,9 +284,7 @@ impl Resolver {
             return Some(SemanticType::UnresolvedSymbol(symbol_id));
         }
 
-        let module_id = self.module_id.expect("resolver missing module context");
-
-        if let Some(symbol_id) = self.lookup_symbol_id_in_scope(module_id, &ident.value) {
+        if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
             return Some(SemanticType::UnresolvedSymbol(symbol_id));
         }
 
@@ -441,7 +370,6 @@ impl Resolver {
 
         Some(SemanticType::FuncType(TypedFuncType {
             symbol_id: None,
-            def_module_id: None,
             params: TypedFuncTypeParams { list: params, variadic },
             ret_type: Box::new(ret_type),
             is_public: true,
@@ -584,7 +512,7 @@ impl Resolver {
         let mut variants = Vec::with_capacity(unnamed_enum_type.variants.len());
 
         for variant in &unnamed_enum_type.variants {
-            let resolved = match variant {
+            let typed_variant = match variant {
                 UnnamedEnumVariant::Ident(ident) => TypedUnnamedEnumVariant::Ident(ident.clone()),
                 UnnamedEnumVariant::Valued(ident, expr) => {
                     let expr = self.resolve_expr(expr)?;
@@ -596,7 +524,7 @@ impl Resolver {
                 }
             };
 
-            variants.push(resolved);
+            variants.push(typed_variant);
         }
 
         Some(variants)
@@ -606,15 +534,15 @@ impl Resolver {
         &mut self,
         fields: &[UnnamedEnumValuedField],
     ) -> Option<Vec<TypedUnnamedEnumValuedField>> {
-        let mut resolved = Vec::with_capacity(fields.len());
+        let mut typed_fields = Vec::with_capacity(fields.len());
 
         for field in fields {
             let ty = self.resolve_type(&None, field.ty.clone(), field.loc)?;
 
-            resolved.push(TypedUnnamedEnumValuedField { ty, loc: field.loc });
+            typed_fields.push(TypedUnnamedEnumValuedField { ty, loc: field.loc });
         }
 
-        Some(resolved)
+        Some(typed_fields)
     }
 
     fn resolve_struct_type(
@@ -705,18 +633,18 @@ impl Resolver {
             None => return Some(None),
         };
 
-        let mut resolved = Vec::with_capacity(bounds_list.len());
+        let mut typed_bounds = Vec::with_capacity(bounds_list.len());
 
         for bound in bounds_list {
             let type_args = self.resolve_type_args(&None, &bound.type_args, generic_param.param_name.loc)?;
 
-            resolved.push(TypedBound {
+            typed_bounds.push(TypedBound {
                 symbol: bound.symbol.clone(),
                 type_args,
             });
         }
 
-        Some(Some(resolved))
+        Some(Some(typed_bounds))
     }
 
     fn resolve_generic_param_default(&mut self, generic_param: &GenericParam) -> Option<Option<Box<SemanticType>>> {
@@ -731,7 +659,9 @@ impl Resolver {
     }
 
     fn resolve_typedef(&mut self, typedef: &ASTTypedefStmt) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(module_id, &typedef.ident.value).unwrap();
+        let symbol_id = self
+            .lookup_symbol_id(self.current_scope.unwrap(), &typedef.ident.value)
+            .unwrap();
 
         let generic_params = typedef
             .generic_params
@@ -749,11 +679,7 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Typedef(ResolvedTypedef {
-                module_id,
-                symbol_id,
-                typedef_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Typedef(ResolvedTypedef { symbol_id, typedef_sig })
         });
 
         Some(TypedStmt::Typedef(TypedTypedefStmt {
@@ -814,17 +740,16 @@ impl Resolver {
 
     fn resolve_interface_stmt(&mut self, interface: &ASTInterfaceStmt) -> Option<TypedStmt> {
         let name = interface.ident.as_string();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = interface.loc;
 
-        let resolved_generic_params = match &interface.generic_params {
+        let typed_generic_params = match &interface.generic_params {
             Some(params) => self.resolve_generic_params(params)?,
             None => TypedGenericParamsList { list: Vec::new() },
         };
 
         // Install these as active for method resolution
-        self.current_object_generic_params = Some(resolved_generic_params.clone());
-
-        let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
+        self.current_object_generic_params = Some(typed_generic_params.clone());
 
         let mut typed_methods = Vec::with_capacity(interface.methods.len());
 
@@ -845,7 +770,6 @@ impl Resolver {
                 resolved;
 
             typed_methods.push(TypedFuncDeclStmt {
-                module_id,
                 symbol_id,
                 name: func_decl.ident.as_string(),
                 generic_params: resolved_func_generic_params,
@@ -862,17 +786,15 @@ impl Resolver {
 
         let interface_sig = InterfaceSig {
             symbol_id,
-            module_id,
             name: name.clone(),
             methods: typed_methods.clone(),
-            generic_params: Some(resolved_generic_params.clone()),
+            generic_params: Some(typed_generic_params.clone()),
             vis: interface.vis.clone(),
             loc,
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
             symbol_entry.kind = SymbolEntryKind::Interface(ResolvedInterface {
-                module_id,
                 symbol_id,
                 interface_sig,
             })
@@ -882,7 +804,7 @@ impl Resolver {
             name,
             symbol_id,
             methods: typed_methods,
-            generic_params: Some(resolved_generic_params),
+            generic_params: Some(typed_generic_params),
             vis: interface.vis.clone(),
             loc,
         }))
@@ -890,8 +812,7 @@ impl Resolver {
 
     fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
         let name = union_decl.ident.as_string();
-
-        let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = union_decl.loc;
 
         self.current_object = Some(symbol_id);
@@ -934,18 +855,13 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Union(ResolvedUnion {
-                module_id,
-                symbol_id,
-                union_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Union(ResolvedUnion { symbol_id, union_sig })
         });
 
         let impls = self.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
 
         Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id,
-            module_id,
             name,
             fields: typed_union_fields,
             methods,
@@ -959,8 +875,7 @@ impl Resolver {
 
     fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
         let name = enum_decl.ident.as_string();
-
-        let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = enum_decl.loc;
 
         self.current_object = Some(symbol_id);
@@ -1019,7 +934,6 @@ impl Resolver {
         };
 
         let enum_sig = EnumSig {
-            module_id,
             symbol_id,
             name: name.clone(),
             methods: methods.clone(),
@@ -1032,18 +946,13 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Enum(ResolvedEnum {
-                module_id,
-                symbol_id,
-                enum_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Enum(ResolvedEnum { symbol_id, enum_sig })
         });
 
         let impls = self.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
 
         Some(TypedStmt::Enum(TypedEnumStmt {
             symbol_id,
-            module_id,
             name,
             variants,
             methods,
@@ -1057,9 +966,8 @@ impl Resolver {
     }
 
     fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(module_id, &global_var.ident.value).unwrap();
-
         let name = global_var.ident.as_string();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = global_var.loc;
 
         let sema_type = match &global_var.type_spec {
@@ -1073,7 +981,6 @@ impl Resolver {
         };
 
         let global_var_sig = GlobalVarSig {
-            module_id,
             symbol_id,
             name: name.clone(),
             ty: sema_type.clone(),
@@ -1086,15 +993,14 @@ impl Resolver {
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
             symbol_entry.kind = SymbolEntryKind::GlobalVar(ResolvedGlobalVar {
-                module_id,
                 symbol_id,
                 global_var_sig,
             })
         });
 
         Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
+            file_id: self.current_module_file_id.unwrap(),
             symbol_id,
-            module_id,
             name,
             ty: sema_type,
             expr: typed_expr,
@@ -1156,7 +1062,9 @@ impl Resolver {
                 }
             }
 
-            let method_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
+            let method_id = self
+                .global_symbols
+                .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
 
             self.global_symbols
                 .insert_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
@@ -1184,15 +1092,16 @@ impl Resolver {
         }
 
         for (method_id, (scope, body, is_generic)) in method_bodies {
-            let SymbolEntryKind::Method(mut resolved_method) = self.get_symbol(method_id).unwrap().kind
-            else {
+            let SymbolEntryKind::Method(mut resolved_method) = self.get_symbol(method_id).unwrap().kind else {
                 unreachable!();
             };
 
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
+                        let self_id = self
+                            .global_symbols
+                            .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
                         self_modifier.self_id = Some(self_id);
 
                         let ty = match self_modifier.kind {
@@ -1307,8 +1216,7 @@ impl Resolver {
 
     fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
         let name = struct_decl.ident.as_string();
-
-        let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
 
         self.current_object = Some(symbol_id);
 
@@ -1340,6 +1248,7 @@ impl Resolver {
         let impls = self.resolve_object_implements_interface_list(&struct_decl.impls, struct_decl.loc);
 
         let struct_sig = StructSig {
+            symbol_id,
             name: struct_decl.ident.as_string(),
             fields: typed_struct_fields.clone(),
             generic_params: generic_params.clone(),
@@ -1351,15 +1260,10 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Struct(ResolvedStruct {
-                module_id,
-                symbol_id,
-                struct_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Struct(ResolvedStruct { symbol_id, struct_sig })
         });
 
         Some(TypedStmt::Struct(TypedStructStmt {
-            module_id,
             symbol_id,
             name: struct_decl.ident.as_string(),
             fields: typed_struct_fields,
@@ -1505,13 +1409,11 @@ impl Resolver {
 
     fn resolve_func_decl(&mut self, func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
         let name = func_decl.usable_name();
-
-        let symbol_id = self.lookup_symbol_id(module_id, &name).unwrap();
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
 
         let (ret_type, typed_func_params, typed_variadic_param, generic_params) = self.resolve_func(func_decl, true)?;
 
         let func_sig = FuncSig {
-            module_id,
             symbol_id: Some(symbol_id),
             name,
             is_func_decl: true,
@@ -1526,15 +1428,10 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc {
-                module_id,
-                symbol_id,
-                func_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc { symbol_id, func_sig })
         });
 
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
-            module_id,
             symbol_id,
             name: func_decl.ident.as_string(),
             generic_params,
@@ -1550,7 +1447,7 @@ impl Resolver {
     }
 
     fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmt> {
-        let symbol_id = self.lookup_symbol_id(module_id, &func_def.ident.value)?;
+        let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &func_def.ident.value)?;
 
         let scope = LocalScope::new();
 
@@ -1560,7 +1457,6 @@ impl Resolver {
             self.resolve_func(&func_def.as_func_decl(), false)?;
 
         let func_sig = FuncSig {
-            module_id,
             symbol_id: Some(symbol_id),
             name: func_def.ident.as_string(),
             generic_params: generic_params.clone(),
@@ -1575,11 +1471,7 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc {
-                module_id,
-                symbol_id,
-                func_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc { symbol_id, func_sig })
         });
 
         let typed_func_body = self.resolve_block_stmt(&func_def.body)?;
@@ -1591,7 +1483,6 @@ impl Resolver {
         });
 
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
-            module_id,
             symbol_id,
             name: func_def.ident.as_string(),
             generic_params,
@@ -1968,9 +1859,11 @@ impl Resolver {
             return None;
         }
 
-        let label_id = self.id_gen.alloc_label();
+        let label_id = self.id_gen.label_id();
 
-        self.current_local_scope_mut().unwrap().insert_label(name.clone(), label_id);
+        self.current_local_scope_mut()
+            .unwrap()
+            .insert_label(name.clone(), label_id);
 
         Some(TypedStmt::Label(TypedLabelStmt {
             name,
@@ -2571,7 +2464,9 @@ impl Resolver {
         }
 
         // allocate placeholder entry
-        let symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(None));
+        let symbol_id = self
+            .global_symbols
+            .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
 
         let variable = TypedVarStmt {
             symbol_id,
@@ -2583,11 +2478,7 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Var(ResolvedVar {
-                module_id,
-                symbol_id,
-                variable,
-            })
+            symbol_entry.kind = SymbolEntryKind::Var(ResolvedVar { symbol_id, variable })
         });
 
         // insert into current scope
@@ -2596,8 +2487,8 @@ impl Resolver {
         Some(symbol_id)
     }
 
-    fn report_if_duplicate_symbol(&mut self, symbol_name: String, loc: Loc) -> bool {
-        match self.lookup_symbol_id(module_id, &symbol_name) {
+    fn report_if_duplicate_symbol(&mut self, scope_id: SymbolID, symbol_name: String, loc: Loc) -> bool {
+        match self.lookup_symbol_id_in_scope(scope_id, &symbol_name) {
             Some(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

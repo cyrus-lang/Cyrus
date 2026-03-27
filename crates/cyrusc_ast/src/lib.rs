@@ -781,7 +781,7 @@ pub fn return_type_or_default_void(ret_type: Option<TypeSpecifier>, loc: Loc) ->
 }
 
 impl ModuleSegment {
-    pub fn as_identifier_opt(&self) -> Option<Ident> {
+    pub fn as_ident(&self) -> Option<Ident> {
         match self {
             ModuleSegment::SubModule(ident) => Some(ident.clone()),
             ModuleSegment::Single(_) => None,

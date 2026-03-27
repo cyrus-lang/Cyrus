@@ -63,7 +63,7 @@ pub struct GlobalSymbolRegistryInner {
 pub struct Resolver {
     /// Global symbol table shared across all modules.
     /// Stores all declared symbols and their associated metadata.
-    pub global_symbols: GlobalSymbolRegistry,
+    global_symbols: GlobalSymbolRegistry,
 
     /// Program trees of successfully analyzed modules.
     /// Acts as the semantic output collected during resolution.
@@ -649,15 +649,12 @@ impl SymbolEntryMut for Resolver {
 impl IDGen {
     pub fn new() -> Self {
         Self {
-            // 0 = invalid, 1 = master module.
-            // Allocation starts at 2.
-            next_module_id: AtomicU32::new(2),
             next_label_id: AtomicU32::new(1),
         }
     }
 
     #[inline(always)]
-    pub fn alloc_label(&self) -> LabelID {
+    pub fn label_id(&self) -> LabelID {
         LabelID(self.next_label_id.fetch_add(1, Ordering::Relaxed))
     }
 }
