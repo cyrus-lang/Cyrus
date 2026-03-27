@@ -24,16 +24,9 @@ use cyrusc_resolver::{
     modules::VisitingModule,
 };
 use cyrusc_source_loc::SourceMap;
-use cyrusc_typed_ast::{
-    ModuleID,
-    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
-};
+use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
-    env,
-    path::Path,
-    process::exit,
-    sync::{Arc, Mutex},
-    vec,
+    env, path::Path, process::exit, sync::{Arc, Mutex}, vec
 };
 
 pub fn main() {
@@ -75,29 +68,24 @@ pub fn main() {
                 source_dirs: vec![input_dir.clone()],
             };
 
-            let fs_module_loader = FsModuleLoader::new(source_map, source_parser, fs_module_loader_opts);
+            let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, fs_module_loader_opts);
 
             let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
             let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
+                source_map.clone(),
                 reporter,
                 monomorph_registry,
                 mapping_ctx_arena.clone(),
-                Path::new(&file_path).to_path_buf(),
+                file_id,
             );
 
-            let module_id = ModuleID::master_module_id();
+            let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
 
             let typed_program_tree = resolver
-                .resolve_module(
-                    module_id,
-                    &program,
-                    &mut VisitingModule::new(),
-                    true,
-                    Path::new(&file_path).to_path_buf(),
-                )
+                .resolve_module(module_symbol_id, &program, &mut VisitingModule::new(), file_id, true)
                 .unwrap();
 
             if resolver.reporter.has_errors() {

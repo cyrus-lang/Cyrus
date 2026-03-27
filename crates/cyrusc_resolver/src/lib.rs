@@ -32,7 +32,7 @@ use cyrusc_typed_ast::generics::monomorph::{
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::*;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -284,6 +284,12 @@ impl Resolver {
     /// Pops the last scope ID from `scope_table_stack` and restores it as `current_scope`.
     pub fn exit_scope_table(&mut self) {
         self.current_scope = self.scope_table_stack.pop();
+    }
+
+    pub fn create_entry_module_symbol_id(&mut self, module_file_path: &Path, file_id: FileID) -> SymbolID {
+        let module_name = self.module_loader.module_name_from_file_path(module_file_path);
+        self.insert_module_name(file_id, module_name.to_string());
+        self.get_or_create_module_symbol_id(file_id, &module_name, Loc::new(file_id, 0, 0, 0, 0))
     }
 
     pub fn get_or_create_module_symbol_id(&mut self, file_id: FileID, module_name: &str, loc: Loc) -> SymbolID {

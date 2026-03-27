@@ -27,20 +27,7 @@ use cyrusc_internal::{
 };
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
-use std::{
-    cell::RefCell,
-    collections::HashSet,
-    path::{Path, PathBuf},
-    rc::Rc,
-    sync::Arc,
-};
-
-// Track imported module + alias
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ImportedModuleEntry {
-    file_id: FileID,
-    alias: ModuleAlias,
-}
+use std::{cell::RefCell, collections::HashSet, path::Path, rc::Rc, sync::Arc};
 
 // Used to check import cycles.
 pub struct VisitingModule {
@@ -222,14 +209,14 @@ impl Resolver {
 
             match loaded_module.alias {
                 ModuleAlias::Group(alias) => {
-                    let already_directly_imported =
-                        self.with_scope_table(parent_scope_id, |scope_table| scope_table.lookup(&alias_name).is_some());
+                    let already_imported =
+                        self.with_scope_table(parent_scope_id, |scope_table| scope_table.lookup(&alias).is_some());
 
-                    if already_directly_imported {
+                    if already_imported {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(ResolverDiagKind::ImportTwice {
-                                module_name: alias_name.clone(),
+                                module_name: alias.clone(),
                             }),
                             loc: Some(import.loc),
                             hint: Some("Consider removing the previous declaration.".to_string()),
@@ -242,74 +229,30 @@ impl Resolver {
                             symbol_id: module_symbol_id,
                         },
                         None,
+                        self.current_scope,
                     ));
 
                     self.global_symbols
-                        .insert_symbol_name(parent_scope_id, proxy_symbol_id, &alias_name);
+                        .insert_symbol_name(parent_scope_id, proxy_symbol_id, &alias);
                 }
-                ModuleAlias::Single(module_segment_singles) => {
-                    for single in module_segment_singles {
-                        let visible_name = single.visible_name();
-
-                        let already_directly_imported =
-                            self.with_scope_table(parent_scope_id, |scope| scope.lookup(&visible_name).is_some());
-
-                        if already_directly_imported {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(ResolverDiagKind::ImportTwice {
-                                    module_name: visible_name.clone(),
-                                }),
-                                loc: Some(import.loc),
-                                hint: Some("Consider removing the previous declaration.".to_string()),
-                            });
-                            continue;
-                        }
-
-                        // lookup symbol inside module scope
-                        let target_symbol_id = self.with_scope_table(module_symbol_id, |scope| scope.lookup(&single.name));
-
-                        let target_symbol_id = match target_symbol_id {
-                            Some(id) => id,
-                            None => {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                                        name: single.name.clone(),
-                                    }),
-                                    loc: Some(import.loc),
-                                    hint: None,
-                                });
-                                continue;
-                            }
-                        };
-
-                        let proxy_symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::new(
-                            SymbolEntryKind::ProxiedSymbol {
-                                scope_id: module_symbol_id,
-                                symbol_id: target_symbol_id,
-                            },
-                            Some(parent_scope_id),
-                        ));
-
-                        self.global_symbols
-                            .insert_symbol_name(parent_scope_id, proxy_symbol_id, &visible_name);
-                    }
+                ModuleAlias::Single(singles) => {
+                    self.resolve_import_module_segments(parent_scope_id, self.current_scope.unwrap(), &singles);
                 }
             }
         }
     }
 
-    fn proxy_imported_scope_symbols_to_current_scope(
+    fn resolve_import_module_segments(
         &mut self,
         parent_scope_id: SymbolID,
         imported_scope_id: SymbolID,
         singles: &[ModuleSegmentSingle],
-        loc: Loc,
     ) {
         let mut imported_symbol_ids = Vec::new();
 
         for single in singles {
+            let loc = single.ident.loc;
+
             let actual_name = single.ident.as_string();
             let renamed_name = single.renamed.as_ref().unwrap_or(&single.ident).as_string();
 
