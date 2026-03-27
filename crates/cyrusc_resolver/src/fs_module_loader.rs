@@ -270,11 +270,11 @@ impl ModuleLoader for FsModuleLoader {
             };
 
             // alias: single only affects symbol names, not module aliases
-            let module_alias = match &sub_import.segments[last_module_idx] {
+            let module_alias = match &sub_import.segments.last().unwrap() {
                 ModuleSegment::SubModule(ident) => {
                     ModuleAlias::Group(sub_import.alias.clone().unwrap_or_else(|| ident.value.clone()))
                 }
-                _ => unreachable!(),
+                ModuleSegment::Single(singles) => ModuleAlias::Single(singles.to_vec()),
             };
 
             let loaded_module = LoadedModule {

@@ -27,7 +27,13 @@ COMMON_FLAGS = --disable-warnings $(ARGS)
 .PHONY: run build test testsuite \
         cir_walk analyzer resolver parser emit-llvm
 
-cir_walk analyzer resolver parser lexer:
+resolver:
+	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
+
+resolver_dump_global_symbols:
+	$(CARGO_RUN) -p cyrusc_resolver --bin cyrusc_resolver_debugger -- $(INPUT) ./tmp/global_symbols_dump.txt $(COMMON_FLAGS) --stdlib=$(STDLIB)
+
+cir_walk analyzer parser lexer:
 	$(CARGO_RUN) -p cyrusc_$@ -- $(INPUT) $(COMMON_FLAGS) --stdlib=$(STDLIB)
 
 emit-llvm:

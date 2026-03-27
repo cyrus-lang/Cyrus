@@ -361,7 +361,7 @@ impl GlobalSymbolRegistry {
 
         global_symbols.root_scope = Some(global_symbols.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::Namespace(Namespace {
-                name: "<global>".to_string(),
+                name: "<GLOBAL_NAMESPACE>".to_string(),
                 scope: ScopeTable::new(),
                 loc: Loc::default(FileID(0)),
             }),

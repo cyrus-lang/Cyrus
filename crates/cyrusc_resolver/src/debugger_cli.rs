@@ -1,12 +1,26 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
-use cyrusc_internal::symbols::{
-    symbols::{SymbolEntry, SymbolEntryKind},
-    table::Query,
-};
+use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
 use cyrusc_parser::SourceParser;
 use cyrusc_resolver::{
-    GlobalSymbolRegistry, Resolver,
+    Resolver,
     fs_module_loader::{FsModuleLoader, FsModuleLoaderOptions},
     modules::VisitingModule,
 };
@@ -167,7 +181,7 @@ fn print_node(
     }
 }
 
-fn simplify_kind(resolver: &Resolver, entry: &SymbolEntry) -> String {
+fn simplify_kind(_resolver: &Resolver, entry: &SymbolEntry) -> String {
     let kind_str = match &entry.kind {
         SymbolEntryKind::Unresolved => "Unresolved",
 

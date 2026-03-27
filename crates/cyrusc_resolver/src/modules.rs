@@ -144,7 +144,6 @@ impl Resolver {
                         loc: Some(import.loc),
                         hint: None,
                     });
-
                     continue;
                 }
             };
@@ -202,27 +201,28 @@ impl Resolver {
                         .insert_proxied_module(parent_scope_id, &alias, module_symbol_id);
                 }
                 ModuleAlias::Single(singles) => {
-                    self.resolve_import_module_segments(parent_scope_id, module_symbol_id, &singles);
+                    self.resolve_import_single_symbols_from_module(parent_scope_id, module_symbol_id, &singles);
                 }
             }
         }
     }
 
-    fn resolve_import_module_segments(
+    fn resolve_import_single_symbols_from_module(
         &mut self,
-        // where the proxy goes
-        target_scope_id: SymbolID,
-        // the module we are looking inside
-        source_module_id: SymbolID,
+        target_scope_id: SymbolID,         // where proxies are inserted
+        source_module_symbol_id: SymbolID, // module we import from
         singles: &[ModuleSegmentSingle],
     ) {
+        let source_scope_id = self.global_symbols.resolve_concrete_scope_id(source_module_symbol_id);
+
         for single in singles {
             let loc = single.ident.loc;
+
             let actual_name = single.ident.as_string();
             let visible_name = single.visible_name();
 
-            // look up the actual symbol inside the source module's scope
-            let Some(target_symbol_id) = self.lookup_symbol_id_in_scope(source_module_id, &actual_name) else {
+            // lookup symbol inside module scope
+            let Some(target_symbol_id) = self.lookup_symbol_id_in_scope(source_scope_id, &actual_name) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolNotFound {
@@ -234,13 +234,14 @@ impl Resolver {
                 continue;
             };
 
+            // visibility check
             if let Some(symbol_entry) = self.get_symbol_entry(target_symbol_id) {
                 if let Some(vis) = symbol_entry.vis_opt {
                     self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
                 }
             }
 
-            // check if the visible name exists in the local scope
+            // duplicate check in target scope
             if self.lookup_symbol_id_in_scope(target_scope_id, &visible_name).is_some() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -250,14 +251,15 @@ impl Resolver {
                     loc: Some(loc),
                     hint: None,
                 });
+
                 continue;
             }
 
-            // insert proxied symbol
+            // insert proxy symbol
             self.global_symbols.insert_proxied_symbol(
                 target_scope_id,
                 &visible_name,
-                source_module_id,
+                source_module_symbol_id,
                 target_symbol_id,
             );
         }
