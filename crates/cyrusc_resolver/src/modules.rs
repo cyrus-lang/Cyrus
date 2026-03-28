@@ -165,28 +165,12 @@ impl Resolver {
             // insert file module
 
             let mut module_symbol_id =
-                self.get_or_create_module_symbol_id_for_loaded_module(parent_scope_id, &loaded_module, import.loc);
+                self.get_or_create_module_symbol_id_for_loaded_module(parent_scope_id, &loaded_module);
 
             module_symbol_id = self.global_symbols.resolve_concrete_scope_id(module_symbol_id);
 
-            // resolve namespace segments
-
-            let segments = &loaded_module.path.segments;
-            let consumed_segments = loaded_module.resolved_module_file.consumed_segments;
-
-            let namespace_segments: Vec<&ModuleSegment> = segments[consumed_segments..]
-                .iter()
-                .filter(|seg| matches!(seg, ModuleSegment::SubModule(_)))
-                .collect();
-
-            if !namespace_segments.is_empty() {
-                module_symbol_id =
-                    self.resolve_namespace_segments_after_file(module_symbol_id, &namespace_segments, import.loc);
-
-                dbg!(self.format_symbol_name(module_symbol_id));
-            }
-
             // cycle detection
+
             if visiting.active.contains(&loaded_module.file_id) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -214,6 +198,21 @@ impl Resolver {
 
                 visiting.active.remove(&loaded_module.file_id);
                 visiting.done.insert(loaded_module.file_id);
+            }
+
+            // resolve namespace segments
+
+            let segments = &loaded_module.path.segments;
+            let consumed_segments = loaded_module.resolved_module_file.consumed_segments;
+
+            let namespace_segments: Vec<&ModuleSegment> = segments[consumed_segments..]
+                .iter()
+                .filter(|seg| matches!(seg, ModuleSegment::SubModule(_)))
+                .collect();
+
+            if !namespace_segments.is_empty() {
+                module_symbol_id =
+                    self.resolve_namespace_segments_after_file(module_symbol_id, &namespace_segments, import.loc);
             }
 
             // insert alias
@@ -244,24 +243,12 @@ impl Resolver {
         &mut self,
         mut module_symbol_id: SymbolID,
         namespace_segments: &[&ModuleSegment],
-        import_loc: Loc,
+        loc: Loc,
     ) -> SymbolID {
-        let scope_id = self.global_symbols.resolve_concrete_scope_id(module_symbol_id);
-
-        // dbg!(self.format_symbol_name(scope_id));
-        // dbg!(self.format_symbol_name(module_symbol_id));
-
         for segment in namespace_segments {
-            let ModuleSegment::SubModule(ident) = segment else {
-                continue;
-            };
+            let name = segment.as_ident().unwrap().value;
 
-            let name = &ident.value;
-
-            let scope_id = self.global_symbols.resolve_concrete_scope_id(module_symbol_id);
-
-            let Some(symbol_id) = self.lookup_symbol_id_in_scope(scope_id, name) else {
-                // let Some(symbol_id) = self.lookup_symbol_id_in_scope(module_symbol_id, name) else {
+            let Some(symbol_id) = self.lookup_symbol_id_in_scope(module_symbol_id, &name) else {
                 let module_name = self.format_symbol_name(module_symbol_id).to_string();
 
                 self.reporter.report(Diag {
@@ -270,7 +257,7 @@ impl Resolver {
                         namespace: name.clone(),
                         module: module_name,
                     }),
-                    loc: Some(import_loc),
+                    loc: Some(loc),
                     hint: Some(format!(
                         "Declare it with `mod {} {{ ... }}` inside that module or import the correct path.",
                         name
@@ -281,21 +268,9 @@ impl Resolver {
             };
 
             // ensure the symbol actually represents a namespace/module
-            let next_scope = self.global_symbols.resolve_concrete_scope_id(symbol_id);
+            let scope_id = self.global_symbols.resolve_concrete_scope_id(symbol_id);
 
-            if next_scope == symbol_id {
-                // symbol has no namespace scope
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::SymbolNotFound { name: name.clone() }),
-                    loc: Some(import_loc),
-                    hint: Some(format!("'{}' exists but is not a module or namespace", name)),
-                });
-
-                return module_symbol_id;
-            }
-
-            module_symbol_id = symbol_id;
+            module_symbol_id = scope_id;
         }
 
         module_symbol_id
@@ -363,55 +338,63 @@ impl Resolver {
         &mut self,
         parent_scope_id: SymbolID,
         loaded_module: &LoadedModule,
-        loc: Loc,
     ) -> SymbolID {
-        let resolved = &loaded_module.resolved_module_file;
+        let resolved_module_file = &loaded_module.resolved_module_file;
+
+        // lookup in root_scope that this module has ever been registered or not
+        let real_module_symbol_id;
+        let root_scope_id = self.global_symbols.root_scope_id();
+        let fs_module_name = self
+            .module_loader
+            .module_name_from_file_path(&loaded_module.resolved_module_file.file_path);
+
+        if let Some(module_symbol_id) = self.lookup_symbol_id_in_scope(root_scope_id, &fs_module_name) {
+            real_module_symbol_id = module_symbol_id; // use it
+        } else {
+            self.insert_module_name(loaded_module.file_id, &fs_module_name);
+
+            // real modules always inserted to ROOT SCOPE!
+            real_module_symbol_id = self.global_symbols.insert_module_symbol(root_scope_id, &fs_module_name);
+        }
+
+        // build directory modules as visual-modules that contains
+        // descendent child, which proxies us to REAL imported modules.
+        let directory_modules = &resolved_module_file.directory_modules;
 
         let mut current_scope_id = parent_scope_id;
 
-        // Build directory modules
-        for dir in &resolved.directory_modules {
+        println!(
+            "directory modules for scope({}) -> {:#?}",
+            parent_scope_id, directory_modules
+        );
+
+        for dir in directory_modules {
             let dir_name = &dir.value;
 
-            let dir_symbol_id = if let Some(existing) = self.lookup_symbol_id_in_scope(current_scope_id, dir_name) {
-                existing
-            } else {
-                let new_symbol_id = self.get_or_create_synthetic_module_symbol(current_scope_id, dir_name, dir.loc);
+            let dir_symbol_id = {
+                if let Some(module_symbol_id) = self.lookup_symbol_id_in_scope(current_scope_id, dir_name) {
+                    module_symbol_id
+                } else {
+                    // create virtual module
+                    let virtual_module_symbol_id =
+                        self.get_or_create_virtual_module_symbol(current_scope_id, dir_name, dir.loc);
 
-                self.global_symbols
-                    .insert_symbol_name(current_scope_id, new_symbol_id, dir_name);
+                    self.global_symbols
+                        .insert_symbol_name(current_scope_id, virtual_module_symbol_id, dir_name);
 
-                new_symbol_id
+                    virtual_module_symbol_id
+                }
             };
 
             current_scope_id = self.global_symbols.resolve_concrete_scope_id(dir_symbol_id);
         }
 
-        // Create or fetch file module
+        // insert virtual-module proxy to current scope to navigate into real_module_symbol_id
+        let real_module_name = &loaded_module.resolved_module_file.file_module_name;
+        self.global_symbols
+            .insert_proxied_module(current_scope_id, real_module_name, real_module_symbol_id);
 
-        let module_name = &resolved.file_module_name;
-
-        if let Some(existing) = self.lookup_symbol_id_in_scope(current_scope_id, module_name) {
-            self.module_symbols.insert(loaded_module.file_id, existing);
-            return existing;
-        }
-
-        let real_module_id =
-            self.get_or_create_module_symbol_id_for_file(current_scope_id, loaded_module.file_id, module_name, loc);
-
-        // register mapping file -> module symbol
-        self.module_symbols.insert(loaded_module.file_id, real_module_id);
-
-        self.insert_module_name(loaded_module.file_id, module_name.clone());
-
-        // insert module in directory scope
-
-        if self.lookup_symbol_id_in_scope(current_scope_id, module_name).is_none() {
-            self.global_symbols
-                .insert_symbol_name(current_scope_id, real_module_id, module_name);
-        }
-
-        real_module_id
+        return real_module_symbol_id;
     }
 
     fn report_if_imported_private_symbol(&mut self, single_name: String, vis: Visibility, loc: Loc) {

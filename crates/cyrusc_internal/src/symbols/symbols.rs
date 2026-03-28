@@ -61,7 +61,6 @@ pub struct Module {
     pub scope_id: SymbolID,
     pub name: String,
     pub scope: ScopeTable,
-    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -242,8 +241,8 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.loc,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.loc,
             SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.loc,
-            SymbolEntryKind::Module(module) => module.loc,
             SymbolEntryKind::Namespace(namespace) => namespace.loc,
+            SymbolEntryKind::Module(_) => unreachable!(),
             SymbolEntryKind::ProxiedSymbol { .. } => unreachable!(),
             SymbolEntryKind::ProxiedModule { .. } => unreachable!(),
         }

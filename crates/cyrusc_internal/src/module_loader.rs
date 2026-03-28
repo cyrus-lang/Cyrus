@@ -42,6 +42,7 @@ pub struct ResolvedModuleFile {
     // foo/bar/baz.cyrus -> ["foo", "bar"]
     pub directory_modules: Vec<Ident>,
 
+    // FIXME: Remove because unused
     // actual file module name
     // foo/bar/baz.cyrus -> "baz"
     pub file_module_name: String,

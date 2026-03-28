@@ -223,9 +223,9 @@ impl Resolver {
         self.source_map.get_file(file_id).unwrap().file_path.clone()
     }
 
-    fn insert_module_name(&self, file_id: FileID, name: String) {
-        let mut map = self.module_names.lock().unwrap();
-        map.insert(file_id, name);
+    fn insert_module_name(&self, file_id: FileID, name: &str) {
+        let mut module_names = self.module_names.lock().unwrap();
+        module_names.insert(file_id, name.to_string());
     }
 
     /// Resolves a symbol by searching the active local scope stack.
@@ -295,7 +295,7 @@ impl Resolver {
     pub fn create_entry_module_symbol_id(&mut self, module_file_path: &Path, file_id: FileID) -> SymbolID {
         let root_scope_id = self.global_symbols.root_scope_id();
         let module_name = self.module_loader.module_name_from_file_path(module_file_path);
-        self.insert_module_name(file_id, module_name.to_string());
+        self.insert_module_name(file_id, &module_name);
         self.get_or_create_module_symbol_id_for_file(
             root_scope_id,
             file_id,
@@ -315,7 +315,7 @@ impl Resolver {
             return *symbol_id;
         }
 
-        let module_symbol_id = self.global_symbols.insert_module_symbol(parent_scope, module_name, loc);
+        let module_symbol_id = self.global_symbols.insert_module_symbol(parent_scope, module_name);
 
         self.global_symbols
             .insert_symbol_name(parent_scope, module_symbol_id, module_name);
@@ -325,7 +325,7 @@ impl Resolver {
         module_symbol_id
     }
 
-    pub fn get_or_create_synthetic_module_symbol(
+    pub fn get_or_create_virtual_module_symbol(
         &mut self,
         parent_scope_id: SymbolID,
         module_name: &str,
@@ -342,7 +342,7 @@ impl Resolver {
         }
 
         self.global_symbols
-            .insert_module_symbol(parent_scope_id, module_name, loc)
+            .insert_module_symbol(parent_scope_id, module_name)
     }
 
     fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
@@ -463,13 +463,12 @@ impl GlobalSymbolRegistry {
     }
 
     /// Allocate a new module symbol and bind it in the specified parent scope.
-    pub fn insert_module_symbol(&self, parent_scope_id: SymbolID, name: &str, loc: Loc) -> SymbolID {
+    pub fn insert_module_symbol(&self, parent_scope_id: SymbolID, name: &str) -> SymbolID {
         let module_symbol_id = self.insert_symbol_entry(SymbolEntry::new(
             SymbolEntryKind::Module(Module {
                 scope_id: SymbolID::placeholder(), // temporarily placeholder
                 name: name.to_string(),
                 scope: ScopeTable::new(),
-                loc,
             }),
             None,
             Some(parent_scope_id),

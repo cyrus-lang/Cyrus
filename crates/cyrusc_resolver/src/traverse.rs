@@ -199,16 +199,18 @@ impl Resolver {
     fn resolve_module_decl_names(&mut self, module_decl: &ASTModuleDecl) {
         let parent_scope_id = self.current_scope.unwrap();
 
-        dbg!("insert llvm into", parent_scope_id);
-        // dbg!("declaring module", &module_decl.ident.value);
-        // dbg!("current scope", self.format_symbol_name(self.current_scope.unwrap()));
-
-        let module_scope_id = self.global_symbols.insert_namespace_symbol(
-            parent_scope_id,
-            &module_decl.ident.value,
-            module_decl.loc,
-            Some(module_decl.vis),
-        );
+        let module_scope_id = {
+            if let Some(module_symbol_id) = self.lookup_symbol_id_in_scope(parent_scope_id, &module_decl.ident.value) {
+                module_symbol_id
+            } else {
+                self.global_symbols.insert_namespace_symbol(
+                    parent_scope_id,
+                    &module_decl.ident.value,
+                    module_decl.loc,
+                    Some(module_decl.vis),
+                )
+            }
+        };
 
         self.enter_scope_table(module_scope_id);
         self.resolve_decl_names(&module_decl.stmts);
@@ -301,36 +303,15 @@ impl Resolver {
         let mut current_symbol = match self.lookup_symbol_id(current_scope_id, &first_ident.value) {
             Some(symbol_id) => symbol_id,
             None => {
-                let root_scope = self.global_symbols.root_scope_id();
-
-                if let Some(global_id) = self
-                    .global_symbols
-                    .lookup_symbol_id_in_scope(root_scope, &first_ident.value)
-                {
-                    if self
-                        .global_symbols
-                        .lookup_symbol_id_in_scope(current_scope_id, &first_ident.value)
-                        .is_none()
-                    {
-                        let proxy_id =
-                            self.global_symbols
-                                .insert_proxied_module(current_scope_id, &first_ident.value, global_id);
-
-                        self.global_symbols
-                            .insert_symbol_name(current_scope_id, proxy_id, &first_ident.value);
-                    }
-                    global_id
-                } else {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::SymbolNotFound {
-                            name: first_ident.value.clone(),
-                        }),
-                        loc: Some(first_ident.loc),
-                        hint: None,
-                    });
-                    return None;
-                }
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::SymbolNotFound {
+                        name: first_ident.value.clone(),
+                    }),
+                    loc: Some(first_ident.loc),
+                    hint: None,
+                });
+                return None;
             }
         };
 
@@ -347,11 +328,11 @@ impl Resolver {
             };
 
             let name = &seg_ident.value;
-
             let scope_id = self.global_symbols.resolve_concrete_scope_id(current_symbol);
 
             let Some(next_symbol) = self.lookup_symbol_id_in_scope(scope_id, name) else {
                 let module_name = format_module_segments(&module_import.segments[0..i]);
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(ResolverDiagKind::SymbolIsNotDefinedInModule {
@@ -363,18 +344,6 @@ impl Resolver {
                 });
                 return None;
             };
-
-            if self
-                .global_symbols
-                .lookup_symbol_id_in_scope(current_scope_id, name)
-                .is_none()
-            {
-                let proxy_id = self
-                    .global_symbols
-                    .insert_proxied_module(current_scope_id, name, next_symbol);
-
-                self.global_symbols.insert_symbol_name(current_scope_id, proxy_id, name);
-            }
 
             current_symbol = next_symbol;
             i += 1;
