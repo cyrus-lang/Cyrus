@@ -315,6 +315,8 @@ impl Resolver {
             }
         };
 
+        self.report_if_symbol_is_private(current_symbol, first_ident.loc);
+
         let mut i = 1;
         for segment in iter {
             let Some(seg_ident) = segment.as_ident() else {
@@ -344,6 +346,8 @@ impl Resolver {
                 });
                 return None;
             };
+
+            self.report_if_symbol_is_private(next_symbol, module_import.loc);
 
             current_symbol = next_symbol;
             i += 1;
@@ -2644,6 +2648,24 @@ impl Resolver {
                 true
             }
             None => false,
+        }
+    }
+
+    fn report_if_symbol_is_private(&mut self, symbol_id: SymbolID, loc: Loc) {
+        let symbol_entry = self.get_symbol_entry(symbol_id).unwrap();
+
+        // report if private symbol is being accessed if visibility specified for symbol
+        if let Some(vis) = &symbol_entry.vis_opt {
+            if vis.is_private() {
+                let symbol_name = self.format_symbol_name(symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::ImportSinglePrivateSymbol { symbol_name }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+            }
         }
     }
 }

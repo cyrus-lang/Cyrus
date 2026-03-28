@@ -36,14 +36,35 @@ pub struct VisitingModule {
 
 impl VisitingModule {
     pub fn active_paths_str(&self, source_map: Arc<SourceMap>) -> String {
-        self.active
+        let mut paths: Vec<String> = self
+            .active
             .iter()
             .map(|file_id| {
-                let source_file = source_map.get_file(*file_id).unwrap();
-                source_file.file_path.to_str().unwrap().to_string()
+                source_map
+                    .get_file(*file_id)
+                    .unwrap()
+                    .file_path
+                    .to_string_lossy()
+                    .to_string()
             })
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect();
+
+        // show a cycle visually: A -> B -> A
+        if let Some(first) = paths.first().cloned() {
+            paths.push(first);
+        }
+
+        // build pretty chain formatting
+        let mut out = String::new();
+        for (i, p) in paths.iter().enumerate() {
+            if i == 0 {
+                out.push_str(p);
+            } else {
+                out.push_str(&format!("\n  - {}", p));
+            }
+        }
+
+        out
     }
 }
 
@@ -363,11 +384,6 @@ impl Resolver {
 
         let mut current_scope_id = parent_scope_id;
 
-        println!(
-            "directory modules for scope({}) -> {:#?}",
-            parent_scope_id, directory_modules
-        );
-
         for dir in directory_modules {
             let dir_name = &dir.value;
 
@@ -376,8 +392,7 @@ impl Resolver {
                     module_symbol_id
                 } else {
                     // create virtual module
-                    let virtual_module_symbol_id =
-                        self.get_or_create_virtual_module_symbol(current_scope_id, dir_name, dir.loc);
+                    let virtual_module_symbol_id = self.get_or_create_virtual_module_symbol(current_scope_id, dir_name);
 
                     self.global_symbols
                         .insert_symbol_name(current_scope_id, virtual_module_symbol_id, dir_name);

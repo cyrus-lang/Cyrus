@@ -75,7 +75,7 @@ pub enum ResolverDiagKind {
     InvalidUntypedFuncParam,
 
     #[error(
-        "An import cycle was found, indicating a circular dependency between modules.\nCycle Path: {module_names}\nConsider resolving the cycle by refactoring the modules."
+        "An import cycle was found, indicating a circular dependency between modules.\n\n{module_names}\n\nConsider resolving the cycle by refactoring the modules."
     )]
     ImportCycle { module_names: String },
 

@@ -296,12 +296,7 @@ impl Resolver {
         let root_scope_id = self.global_symbols.root_scope_id();
         let module_name = self.module_loader.module_name_from_file_path(module_file_path);
         self.insert_module_name(file_id, &module_name);
-        self.get_or_create_module_symbol_id_for_file(
-            root_scope_id,
-            file_id,
-            &module_name,
-            Loc::new(file_id, 0, 0, 0, 0),
-        )
+        self.get_or_create_module_symbol_id_for_file(root_scope_id, file_id, &module_name)
     }
 
     pub fn get_or_create_module_symbol_id_for_file(
@@ -309,7 +304,6 @@ impl Resolver {
         parent_scope: SymbolID,
         file_id: FileID,
         module_name: &str,
-        loc: Loc,
     ) -> SymbolID {
         if let Some(symbol_id) = self.module_symbols.get(&file_id) {
             return *symbol_id;
@@ -325,12 +319,7 @@ impl Resolver {
         module_symbol_id
     }
 
-    pub fn get_or_create_virtual_module_symbol(
-        &mut self,
-        parent_scope_id: SymbolID,
-        module_name: &str,
-        loc: Loc,
-    ) -> SymbolID {
+    pub fn get_or_create_virtual_module_symbol(&mut self, parent_scope_id: SymbolID, module_name: &str) -> SymbolID {
         let parent_scope_id = self.global_symbols.resolve_concrete_scope_id(parent_scope_id);
 
         if let Some(symbol_id) = self.lookup_symbol_id(parent_scope_id, module_name) {
@@ -341,8 +330,7 @@ impl Resolver {
             };
         }
 
-        self.global_symbols
-            .insert_module_symbol(parent_scope_id, module_name)
+        self.global_symbols.insert_module_symbol(parent_scope_id, module_name)
     }
 
     fn with_global_symbol_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>

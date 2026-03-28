@@ -15,8 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::fmt::{self, Debug, Display};
 use cyrusc_source_loc::Loc;
+use std::fmt::{self, Debug, Display};
 
 pub mod reporter;
 mod tests;
