@@ -93,19 +93,22 @@ pub fn main() {
                 .resolve_module(module_symbol_id, &program, &mut VisitingModule::new(), file_id, true)
                 .unwrap();
 
-            if resolver.reporter.has_errors() {
-                resolver.reporter.display();
-                exit(1);
-            }
-
             let file = File::create(output_file).expect("failed to create output file");
             let mut writer = BufWriter::new(file);
 
             dump_global_symbols(&resolver, &mut writer);
             dump_source_map(&source_map, &mut writer);
+
+            if resolver.reporter.has_errors() {
+                resolver.reporter.display();
+                eprintln!("exit with error.");
+                return;
+            }
         }
 
-        Err(()) => exit(1),
+        Err(()) => {
+            eprintln!("exit with error.")
+        }
     }
 }
 

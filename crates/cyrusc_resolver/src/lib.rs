@@ -293,26 +293,35 @@ impl Resolver {
     }
 
     pub fn create_entry_module_symbol_id(&mut self, module_file_path: &Path, file_id: FileID) -> SymbolID {
+        let root_scope_id = self.global_symbols.root_scope_id();
         let module_name = self.module_loader.module_name_from_file_path(module_file_path);
         self.insert_module_name(file_id, module_name.to_string());
-        self.get_or_create_module_symbol_id_for_file(file_id, &module_name, Loc::new(file_id, 0, 0, 0, 0))
+        self.get_or_create_module_symbol_id_for_file(
+            root_scope_id,
+            file_id,
+            &module_name,
+            Loc::new(file_id, 0, 0, 0, 0),
+        )
     }
 
     pub fn get_or_create_module_symbol_id_for_file(
         &mut self,
+        parent_scope: SymbolID,
         file_id: FileID,
         module_name: &str,
         loc: Loc,
     ) -> SymbolID {
-        let root_scope = self.global_symbols.root_scope();
-
         if let Some(symbol_id) = self.module_symbols.get(&file_id) {
             return *symbol_id;
         }
 
-        let module_symbol_id = self.global_symbols.insert_module_symbol(root_scope, module_name, loc);
+        let module_symbol_id = self.global_symbols.insert_module_symbol(parent_scope, module_name, loc);
+
+        self.global_symbols
+            .insert_symbol_name(parent_scope, module_symbol_id, module_name);
 
         self.module_symbols.insert(file_id, module_symbol_id);
+
         module_symbol_id
     }
 
@@ -372,7 +381,7 @@ impl GlobalSymbolRegistry {
 
     /// Get the root scope symbol for the global namespace.
     #[inline]
-    pub fn root_scope(&self) -> SymbolID {
+    pub fn root_scope_id(&self) -> SymbolID {
         self.root_scope.unwrap()
     }
 

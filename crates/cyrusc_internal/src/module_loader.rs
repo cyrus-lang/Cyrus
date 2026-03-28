@@ -15,12 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::{ASTImportStmt, Ident, ModulePath, ModuleSegmentSingle, ProgramTree};
+use cyrusc_ast::{ASTImportStmt, Ident, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree};
 use cyrusc_diagcentral::DiagKindClone;
 use cyrusc_source_loc::FileID;
 use std::{
     hash::{Hash, Hasher},
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
 };
 
@@ -31,12 +31,30 @@ pub struct LoadedModule {
     pub path: ModulePath,
     pub file_id: FileID,
     pub program_tree: Rc<ProgramTree>,
-    pub implied_parent_modules: Vec<ImpliedParentModule>,
+    pub resolved_module_file: ResolvedModuleFile,
 }
 
 #[derive(Debug, Clone)]
-pub struct ImpliedParentModule {
-    pub ident: Ident,
+pub struct ResolvedModuleFile {
+    pub file_path: PathBuf,
+
+    // directories leading to the module file
+    // foo/bar/baz.cyrus -> ["foo", "bar"]
+    pub directory_modules: Vec<Ident>,
+
+    // actual file module name
+    // foo/bar/baz.cyrus -> "baz"
+    pub file_module_name: String,
+
+    // Used to compute symbol table for imported namespaces,
+    // after module-path reaches a concrete cyrus file like:
+    //
+    // import foo::bar::baz;
+    //
+    // It resolves `foo/bar.cyrus`;
+    // But then for the remaining `baz` which is a namespace,
+    // resolve_import takes the responsibility to emit a symbol_table for it.
+    pub consumed_segments: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

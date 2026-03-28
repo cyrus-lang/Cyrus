@@ -46,6 +46,11 @@ impl Resolver {
     // And Registers each declared name into the current module’s symbol table. (first pass)
     pub(crate) fn resolve_decl_names(&mut self, stmts: &[ASTStmt]) {
         for stmt in stmts {
+            if let ASTStmt::ModuleDecl(module_decl) = stmt {
+                self.resolve_module_decl_names(module_decl);
+                continue;
+            }
+
             // skip statement if it's not a declaration symbol
             let Some(decl_name) = stmt.decl_name() else {
                 continue;
@@ -191,28 +196,38 @@ impl Resolver {
         }
     }
 
-    fn resolve_module_decl(&mut self, module_decl: &ASTModuleDecl) -> Vec<TypedStmt> {
-        let mut module_decl_stmts = Vec::new();
+    fn resolve_module_decl_names(&mut self, module_decl: &ASTModuleDecl) {
+        let parent_scope_id = self.current_scope.unwrap();
 
-        let parent_scope = self.current_scope.unwrap();
+        dbg!("insert llvm into", parent_scope_id);
+        // dbg!("declaring module", &module_decl.ident.value);
+        // dbg!("current scope", self.format_symbol_name(self.current_scope.unwrap()));
 
-        let module_scope = self.global_symbols.insert_namespace_symbol(
-            parent_scope,
+        let module_scope_id = self.global_symbols.insert_namespace_symbol(
+            parent_scope_id,
             &module_decl.ident.value,
             module_decl.loc,
             Some(module_decl.vis),
         );
 
-        self.enter_scope_table(module_scope);
-
+        self.enter_scope_table(module_scope_id);
         self.resolve_decl_names(&module_decl.stmts);
+        self.exit_scope_table();
+    }
 
+    fn resolve_module_decl(&mut self, module_decl: &ASTModuleDecl) -> Vec<TypedStmt> {
+        let mut module_decl_stmts = Vec::new();
+
+        let parent_scope_id = self.current_scope.unwrap();
+        let module_scope_id = self
+            .lookup_symbol_id_in_scope(parent_scope_id, &module_decl.ident.value)
+            .unwrap();
+
+        self.enter_scope_table(module_scope_id);
         for stmt in &module_decl.stmts {
             module_decl_stmts.extend(self.resolve_toplevel_stmt(stmt));
         }
-
         self.exit_scope_table();
-
         module_decl_stmts
     }
 
@@ -286,7 +301,7 @@ impl Resolver {
         let mut current_symbol = match self.lookup_symbol_id(current_scope_id, &first_ident.value) {
             Some(symbol_id) => symbol_id,
             None => {
-                let root_scope = self.global_symbols.root_scope();
+                let root_scope = self.global_symbols.root_scope_id();
 
                 if let Some(global_id) = self
                     .global_symbols

@@ -27,9 +27,6 @@ pub enum ModuleFSLoaderDiagKind {
     )]
     StdlibNotFound,
 
-    #[error("Module directory '{module_name}' must contain an 'index.cyrus' file for it to be importable.")]
-    ModuleIndexNotFound { module_name: String },
-
     #[error("Module '{module_name}' cannot exist as both a file and a directory.")]
     DuplicateModule { module_name: String },
 
@@ -41,6 +38,9 @@ impl DiagKind for ModuleFSLoaderDiagKind {}
 
 #[derive(Debug, Error, Clone)]
 pub enum ResolverDiagKind {
+    #[error("Namespace '{namespace}' does not exist in module '{module}'.")]
+    NamespaceNotFoundInModule { namespace: String, module: String },
+
     #[error("Label '{label_name}' already defined in this scope.")]
     LabelAlreadyDefined { label_name: String },
 
