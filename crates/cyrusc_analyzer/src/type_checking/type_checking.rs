@@ -65,7 +65,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
-                let symbol_entry = self.query.get_symbol_entry(symbol_expr.symbol_id).unwrap();
+                let symbol_entry = self.query.lookup_symbol_entry(symbol_expr.symbol_id).unwrap();
                 debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
                 if !symbol_entry.is_kind_of_variable() && !symbol_entry.as_func().is_some() {
@@ -595,7 +595,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         {
             if let Some(symbol_id) = operand_type.symbol_id() {
-                if let Some(symbol_entry) = self.query.get_symbol_entry(symbol_id) {
+                if let Some(symbol_entry) = self.query.lookup_symbol_entry(symbol_id) {
                     if self.report_if_unexpected_type_args(
                         &symbol_entry.symbol_generic_params(),
                         &field_access.type_args,
@@ -719,7 +719,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.get_symbol_entry(struct_init.symbol_id).unwrap();
+        let symbol_entry = self.query.lookup_symbol_entry(struct_init.symbol_id).unwrap();
 
         self.report_if_unexpected_type_args(
             &symbol_entry.symbol_generic_params(),
@@ -977,7 +977,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let unresolved_symbol_id = method_call.operand.kind.as_symbol_id();
 
         let is_instance_method_operand = unresolved_symbol_id
-            .and_then(|symbol_id| self.query.get_symbol_entry(symbol_id))
+            .and_then(|symbol_id| self.query.lookup_symbol_entry(symbol_id))
             .map_or(false, |symbol_entry| {
                 symbol_entry.as_var().is_some() || symbol_entry.as_global_var().is_some()
             });
@@ -1019,7 +1019,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         };
 
-        let symbol_entry = match self.query.get_symbol_entry(object_symbol_id) {
+        let symbol_entry = match self.query.lookup_symbol_entry(object_symbol_id) {
             Some(symbol_entry) => symbol_entry,
             None => {
                 self.reporter.report(Diag {
@@ -1629,7 +1629,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(symbol_id) = sema_type.maybe_generic_base_symbol_id() {
-            let symbol_entry = self.query.get_symbol_entry(symbol_id).unwrap();
+            let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
             let is_generic_object = symbol_entry.symbol_generic_params().is_some();
             let is_generic_interface = symbol_entry.as_interface().is_some() && is_generic_object;
@@ -1728,7 +1728,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let object_name: String;
         let object_methods: Option<HashMap<String, SymbolID>>;
-        let symbol_entry = self.query.get_symbol_entry(object_id).unwrap();
+        let symbol_entry = self.query.lookup_symbol_entry(object_id).unwrap();
 
         macro_rules! lookup_object_method {
             () => {{
@@ -3193,7 +3193,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None => return None,
         };
 
-        let symbol_entry = match self.query.get_symbol_entry(object_symbol_id) {
+        let symbol_entry = match self.query.lookup_symbol_entry(object_symbol_id) {
             Some(symbol_entry) => symbol_entry,
             None => return None,
         };
@@ -3355,7 +3355,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     /// Resolves semantic type of a variable or global variable.
     fn resolve_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
-        let symbol_entry = self.query.get_symbol_entry(symbol_id).unwrap();
+        let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
         if let Some(resolved_var) = symbol_entry.as_var() {
             Some(resolved_var.variable.ty.clone().unwrap())

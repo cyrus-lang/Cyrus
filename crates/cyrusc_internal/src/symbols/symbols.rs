@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use cyrusc_ast::abi::Visibility;
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{FileID, Loc};
 use cyrusc_typed_ast::{
     SymbolID,
     sigs::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig},
@@ -91,6 +91,7 @@ pub struct ResolvedStruct {
 #[derive(Debug, Clone)]
 pub struct ResolvedGlobalVar {
     pub symbol_id: SymbolID,
+    pub file_id: FileID,
     pub global_var_sig: GlobalVarSig,
 }
 
@@ -104,6 +105,7 @@ pub struct ResolvedMethod {
 #[derive(Debug, Clone)]
 pub struct ResolvedFunc {
     pub symbol_id: SymbolID,
+    pub file_id: FileID,
     pub func_sig: FuncSig,
 }
 

@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::{ASTImportStmt, Ident, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree};
+use cyrusc_ast::{ASTImportStmt, Ident, ModulePath, ModuleSegmentSingle, ProgramTree};
 use cyrusc_diagcentral::DiagKindClone;
 use cyrusc_source_loc::FileID;
 use std::{

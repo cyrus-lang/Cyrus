@@ -127,13 +127,12 @@ impl Resolver {
 
         let program_tree = Rc::new(RefCell::new(TypedProgramTree { file_id, body }));
 
-        if is_master {
+        {
             let mut program_trees = self.program_trees.lock().unwrap();
             program_trees.push(Rc::new(ResolvedProgramTree {
                 file_id,
                 program_tree: program_tree.clone(),
             }));
-            drop(program_trees);
         }
 
         // restore scope
@@ -319,7 +318,7 @@ impl Resolver {
             };
 
             // visibility check
-            if let Some(symbol_entry) = self.get_symbol_entry(target_symbol_id) {
+            if let Some(symbol_entry) = self.lookup_symbol_entry(target_symbol_id) {
                 if let Some(vis) = symbol_entry.vis_opt {
                     self.report_if_imported_private_symbol(actual_name.clone(), vis, loc);
                 }

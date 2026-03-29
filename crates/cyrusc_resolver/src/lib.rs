@@ -86,7 +86,7 @@ pub struct Resolver {
     /// Prevents resolving the same file multiple times.
     analyzed_files: Arc<Mutex<HashSet<FileID>>>,
 
-    module_symbols: HashMap<FileID, SymbolID>,
+    pub module_symbols: HashMap<FileID, SymbolID>,
 
     source_map: Arc<SourceMap>,
 
@@ -556,6 +556,20 @@ impl GlobalSymbolRegistry {
             _ => scope_id,
         }
     }
+
+    pub fn resolve_concrete_symbol_id(&self, symbol_id: SymbolID) -> SymbolID {
+        let Some(symbol_entry) = self.get_symbol_entry(symbol_id) else {
+            return symbol_id;
+        };
+
+        match symbol_entry.kind {
+            SymbolEntryKind::ProxiedSymbol {
+                symbol_id: target_symbol_id,
+                ..
+            } => self.resolve_concrete_symbol_id(target_symbol_id),
+            _ => symbol_id,
+        }
+    }
 }
 
 impl Query for Resolver {
@@ -578,8 +592,10 @@ impl Query for Resolver {
     impl_helper_method__get_kind!(get_interface, Interface, ResolvedInterface);
 
     /// Get the symbol entry for a symbol.
-    fn get_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        self.global_symbols.get_symbol_entry(symbol_id)
+    fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        let concrete_symbol_id = self.global_symbols.resolve_concrete_symbol_id(symbol_id);
+
+        self.global_symbols.get_symbol_entry(concrete_symbol_id)
     }
 
     /// Resolve a symbol ID by name.
@@ -603,16 +619,8 @@ impl Query for Resolver {
         self.global_symbols.lookup_symbol_id_in_scope(scope_id, name)
     }
 
-    /// Retrieve the full semantic entry for a symbol by its name.
-    fn lookup_symbol_entry(&self, scope_id: SymbolID, name: &str) -> Option<SymbolEntry> {
-        let scope_id = self.global_symbols.resolve_concrete_scope_id(scope_id);
-
-        let symbol_id = self.lookup_symbol_id(scope_id, name)?;
-        self.global_symbols.get_symbol_entry(symbol_id)
-    }
-
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
-        match self.get_symbol_entry(symbol_id) {
+        match self.lookup_symbol_entry(symbol_id) {
             Some(symbol_entry) => symbol_entry.decl_name(),
             None => "<UNRESOLVED_SYMBOL>".to_string(),
         }

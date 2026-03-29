@@ -1178,6 +1178,7 @@ impl Resolver {
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
             symbol_entry.kind = SymbolEntryKind::GlobalVar(ResolvedGlobalVar {
+                file_id: self.current_module_file_id.unwrap(),
                 symbol_id,
                 global_var_sig,
             })
@@ -1277,7 +1278,7 @@ impl Resolver {
         }
 
         for (method_id, (scope, body, is_generic)) in method_bodies {
-            let SymbolEntryKind::Method(mut resolved_method) = self.get_symbol_entry(method_id).unwrap().kind else {
+            let SymbolEntryKind::Method(mut resolved_method) = self.lookup_symbol_entry(method_id).unwrap().kind else {
                 unreachable!();
             };
 
@@ -1613,7 +1614,11 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc { symbol_id, func_sig })
+            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc {
+                file_id: self.current_module_file_id.unwrap(),
+                symbol_id,
+                func_sig,
+            })
         });
 
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
@@ -1656,7 +1661,11 @@ impl Resolver {
         };
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc { symbol_id, func_sig })
+            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc {
+                file_id: self.current_module_file_id.unwrap(),
+                symbol_id,
+                func_sig,
+            })
         });
 
         let typed_func_body = self.resolve_block_stmt(&func_def.body)?;
@@ -2650,7 +2659,7 @@ impl Resolver {
     }
 
     fn report_if_symbol_is_private(&mut self, symbol_id: SymbolID, loc: Loc) {
-        let symbol_entry = self.get_symbol_entry(symbol_id).unwrap();
+        let symbol_entry = self.lookup_symbol_entry(symbol_id).unwrap();
 
         // report if private symbol is being accessed if visibility specified for symbol
         if let Some(vis) = &symbol_entry.vis_opt {

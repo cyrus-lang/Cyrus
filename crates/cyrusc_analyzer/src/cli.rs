@@ -31,7 +31,11 @@ use cyrusc_resolver::{
 use cyrusc_source_loc::SourceMap;
 use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
-    env, path::Path, process::exit, sync::{Arc, Mutex}, vec
+    env,
+    path::Path,
+    process::exit,
+    sync::{Arc, Mutex},
+    vec,
 };
 
 pub fn main() {
@@ -127,6 +131,8 @@ pub fn main() {
                     if reporter.has_errors() {
                         continue;
                     }
+
+                    dbg!(program_tree_entry.program_tree.clone());
                 }
 
                 entry_points.validate();

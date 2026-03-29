@@ -33,7 +33,6 @@ use cyrusc_typed_ast::format::SymbolFormatterFn;
 use cyrusc_typed_ast::generics::generic_type::GenericType;
 use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
 use cyrusc_typed_ast::generics::substitute::*;
-use cyrusc_typed_ast::sigs::typed_func_decl_from_func_sig;
 use cyrusc_typed_ast::sigs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
@@ -1117,64 +1116,61 @@ impl<'resolver> CIRTraverse<'resolver> {
         // })
     }
 
-    // FIXME
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
-        todo!();
+        let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
-        // let symbol_entry = self.query.lookup_global_symbol(symbol_id).unwrap();
+        if let Some(resolved_func) = symbol_entry.as_func() {
+            let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_sig);
 
-        // if let Some(resolved_func) = symbol_entry.as_func() {
-        //     let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_sig);
+            let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+            cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
-        //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-        //     cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+            let mangled_name = mangle_func(
+                &cir_func_decl.modifiers,
+                &self.query.lookup_module_name(resolved_func.file_id).unwrap(),
+                &resolved_func.func_sig.name,
+            );
 
-        //     let mangled_name = mangle_func(
-        //         &cir_func_decl.modifiers,
-        //         &self.query.lookup_module_name(resolved_func.module_id).unwrap(),
-        //         &resolved_func.func_sig.name,
-        //     );
+            cir_func_decl.name = mangled_name;
 
-        //     cir_func_decl.name = mangled_name;
+            CIRExprKind::Load(CIRValue {
+                irv_id: resolved_func.symbol_id.0,
+                kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+            })
+        } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+            let mut global_var_stmt =
+                self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
 
-        //     CIRExprKind::Load(CIRValue {
-        //         irv_id: resolved_func.symbol_id.0,
-        //         kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-        //     })
-        // } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-        //     let mut global_var_stmt =
-        //         self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
+            if global_var_stmt.modifiers.vis.is_public() {
+                if global_var_stmt.modifiers.linkage.is_none() {
+                    global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
+                }
+            }
 
-        //     if global_var_stmt.modifiers.vis.is_public() {
-        //         if global_var_stmt.modifiers.linkage.is_none() {
-        //             global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
-        //         }
-        //     }
+            let mangled_name = mangle_global_var(
+                &resolved_global_var.global_var_sig.modifiers,
+                &self.query.lookup_module_name(resolved_global_var.file_id).unwrap(),
+                &resolved_global_var.global_var_sig.name,
+            );
 
-        //     let mangled_name = mangle_global_var(
-        //         &resolved_global_var.global_var_sig.modifiers,
-        //         &self.query.lookup_module_name(resolved_global_var.module_id).unwrap(),
-        //         &resolved_global_var.global_var_sig.name,
-        //     );
+            global_var_stmt.name = mangled_name;
 
-        //     global_var_stmt.name = mangled_name;
-
-        //     CIRExprKind::Load(CIRValue {
-        //         irv_id: resolved_global_var.symbol_id.0,
-        //         kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
-        //     })
-        // } else if let Some(resolved_variable) = symbol_entry.as_var() {
-        //     CIRExprKind::Load(CIRValue {
-        //         irv_id: resolved_variable.symbol_id.0,
-        //         kind: CIRValueKind::LocalVariable,
-        //     })
-        // } else {
-        //     unreachable!("Unexpected symbol kind when lowering load symbol.")
-        // }
+            CIRExprKind::Load(CIRValue {
+                irv_id: resolved_global_var.symbol_id.0,
+                kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
+            })
+        } else if let Some(resolved_variable) = symbol_entry.as_var() {
+            CIRExprKind::Load(CIRValue {
+                irv_id: resolved_variable.symbol_id.0,
+                kind: CIRValueKind::LocalVariable,
+            })
+        } else {
+            unreachable!("Unexpected symbol kind when lowering load symbol.")
+        }
     }
 
     pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
-        let symbol_entry = self.query.get_symbol_entry(struct_init_expr.symbol_id).unwrap();
+        let symbol_entry = self.query.lookup_symbol_entry(struct_init_expr.symbol_id).unwrap();
 
         if let Some(resolved_struct) = symbol_entry.as_struct() {
             let fields = struct_init_expr
@@ -1459,7 +1455,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let symbol_entry = self
             .query
-            .get_symbol_entry(field_access.object_symbol_id.unwrap())
+            .lookup_symbol_entry(field_access.object_symbol_id.unwrap())
             .unwrap();
 
         if symbol_entry.as_struct().is_some() {
@@ -1521,7 +1517,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         if let Some(monomorph_id) = func_call.monomorph_id {
             let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
 
-            let symbol_entry = self.query.get_symbol_entry(monomorph_func_entry.base_symbol).unwrap();
+            let symbol_entry = self.query.lookup_symbol_entry(monomorph_func_entry.base_symbol).unwrap();
 
             let mut func_sig = symbol_entry
                 .as_func()
@@ -1845,7 +1841,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_generic_type(&mut self, mut generic_type: GenericType) -> CIRTy {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let symbol_entry = self.query.get_symbol_entry(generic_type.base).unwrap();
+        let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 
         if let Err(err) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
             eprintln!("Failed to init generic type: {:?}.", err.kind.to_string())
@@ -1968,7 +1964,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_resolved_symbol(&mut self, resolved_symbol: &ResolvedSymbol) -> CIRTy {
-        let symbol_entry = self.query.get_symbol_entry(resolved_symbol.symbol_id()).unwrap();
+        let symbol_entry = self.query.lookup_symbol_entry(resolved_symbol.symbol_id()).unwrap();
 
         if let Some(resolved_struct) = symbol_entry.as_struct() {
             CIRTy::Struct(self.lower_struct_sig_as_struct_ty(&resolved_struct.struct_sig))

@@ -89,7 +89,7 @@ pub fn main() {
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
 
-            let _typed_program_tree = resolver
+            resolver
                 .resolve_module(module_symbol_id, &program, &mut VisitingModule::new(), file_id, true)
                 .unwrap();
 

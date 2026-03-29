@@ -620,7 +620,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         match if let Some(enum_id) = operand_type.const_inner().as_enum_symbol_id() {
             Some((enum_id, None))
         } else if let Some(generic_type) = operand_type.const_inner().as_generic_type() {
-            let Some(symbol_entry) = self.query.get_symbol_entry(generic_type.base) else {
+            let Some(symbol_entry) = self.query.lookup_symbol_entry(generic_type.base) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum {
@@ -1381,7 +1381,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         method_ids: &HashMap<String, SymbolID>,
     ) {
         for implement_interface in impls {
-            let symbol_entry = self.query.get_symbol_entry(implement_interface.symbol_id).unwrap();
+            let symbol_entry = self.query.lookup_symbol_entry(implement_interface.symbol_id).unwrap();
             let name = symbol_entry.decl_name();
 
             let resolved_interface = match symbol_entry.as_interface() {
@@ -1497,7 +1497,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         };
 
         for method_id in methods.values().cloned() {
-            let symbol_entry = self.query.get_symbol_entry(method_id).unwrap();
+            let symbol_entry = self.query.lookup_symbol_entry(method_id).unwrap();
 
             if let Some(method_generic_params) = symbol_entry.method_generic_params() {
                 for method_generic_param in &method_generic_params.list {
@@ -2049,7 +2049,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn resolve_variable_rhs_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
-        let symbol_entry = self.query.get_symbol_entry(symbol_id)?;
+        let symbol_entry = self.query.lookup_symbol_entry(symbol_id)?;
 
         if let Some(resolved_var) = symbol_entry.as_var() {
             resolved_var.variable.rhs.clone()
