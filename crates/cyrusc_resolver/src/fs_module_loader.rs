@@ -161,8 +161,6 @@ impl FsModuleLoader {
                         let index_path = dir_buf.join("index.cyrus");
                         let index_exists = index_path.exists();
 
-                        dbg!(index_path.clone());
-
                         if index_exists {
                             return Ok(ResolvedModuleFile {
                                 file_path: index_path,

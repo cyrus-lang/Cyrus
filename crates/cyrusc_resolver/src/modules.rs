@@ -185,17 +185,17 @@ impl Resolver {
 
             // cycle detection
 
-            // if visiting.active.contains(&loaded_module.file_id) {
-            //     self.reporter.report(Diag {
-            //         level: DiagLevel::Error,
-            //         kind: Box::new(ResolverDiagKind::ImportCycle {
-            //             module_names: visiting.active_paths_str(self.source_map.clone()),
-            //         }),
-            //         loc: Some(import.loc),
-            //         hint: Some("Break the cycle by removing one import.".to_string()),
-            //     });
-            //     continue;
-            // }
+            if visiting.active.contains(&loaded_module.file_id) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::ImportCycle {
+                        module_names: visiting.active_paths_str(self.source_map.clone()),
+                    }),
+                    loc: Some(import.loc),
+                    hint: Some("Break the cycle by removing one import.".to_string()),
+                });
+                visiting.done.insert(loaded_module.file_id);
+            }
 
             // insert file module
 
