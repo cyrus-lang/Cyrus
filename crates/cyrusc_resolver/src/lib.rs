@@ -557,6 +557,13 @@ impl GlobalSymbolRegistry {
         }
     }
 
+    /// Resolve a symbol ID to the underlying concrete symbol by
+    /// eliminating proxy indirections.
+    ///
+    /// In the symbol model, some entries such as `ProxiedSymbol`
+    /// represent aliases or re-exports of another symbol. These
+    /// entries do not define a new semantic entity; instead they
+    /// forward all semantic meaning to a target symbol.
     pub fn resolve_concrete_symbol_id(&self, symbol_id: SymbolID) -> SymbolID {
         let Some(symbol_entry) = self.get_symbol_entry(symbol_id) else {
             return symbol_id;

@@ -3570,7 +3570,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     /// Validates that an expression type is suitable for use as a boolean condition.
-    pub(crate) fn is_cond_expr(&mut self, sema_type: SemanticType, loc: Loc) {
+    pub(crate) fn report_if_not_cond_expr(&mut self, sema_type: SemanticType, loc: Loc) {
         if !sema_type.is_bool() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

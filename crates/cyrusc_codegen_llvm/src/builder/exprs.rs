@@ -158,11 +158,13 @@ impl<'ll> IRBuilderCtx<'ll> {
             let dynamic_struct_type = self.emit_dynamic_ty();
 
             let mut dynamic_struct_value = dynamic_struct_type.get_undef();
+
             dynamic_struct_value = self
                 .llvmbuilder
                 .build_insert_value(dynamic_struct_value, data_ptr.as_basic_value_enum(), 0, "insert")
                 .unwrap()
                 .into_struct_value();
+
             dynamic_struct_value = self
                 .llvmbuilder
                 .build_insert_value(
@@ -187,12 +189,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         index: InternalValue<'ll>,
         cir_elm_ty: CIRTy,
     ) -> InternalValue<'ll> {
-        let elm_ty: BasicTypeEnum<'ll> = self.emit_ty(cir_elm_ty.clone()).try_into().unwrap();
-        let idx_int = index.as_basic_value().into_int_value();
+        let element_type: BasicTypeEnum<'ll> = self.emit_ty(cir_elm_ty.clone()).try_into().unwrap();
+        let index_int = index.as_basic_value().into_int_value();
 
         let element_ptr: PointerValue<'ll> = unsafe {
             self.llvmbuilder
-                .build_in_bounds_gep(elm_ty, lvalue, &[idx_int], "elem_ptr")
+                .build_in_bounds_gep(element_type, lvalue, &[index_int], "index")
                 .unwrap()
         };
 
@@ -200,40 +202,38 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_array_index(&mut self, array_index: &CIRArrayIndexExpr) -> InternalValue<'ll> {
-        let lvalue = self.emit_lvalue_address(&array_index.operand);
+        let base_addr = self.emit_lvalue_address(&array_index.operand);
 
         let index_lvalue = self.emit_expr(&array_index.index);
         let index_rvalue = self.load_rvalue(index_lvalue);
 
-        if lvalue.ty.as_array().is_some() {
-            let arr_ty = lvalue.ty.as_array().unwrap();
-            let basic_value = lvalue.as_basic_value();
+        if base_addr.ty.as_array().is_some() {
+            let array_type = base_addr.ty.as_array().unwrap();
+            let basic_value = base_addr.as_basic_value();
 
             if basic_value.is_pointer_value() {
                 self.emit_inbounds_checked_array_index(
-                    lvalue.as_basic_value().into_pointer_value(),
-                    *arr_ty.ty.clone(),
+                    base_addr.as_basic_value().into_pointer_value(),
+                    *array_type.ty.clone(),
                     index_rvalue,
-                    arr_ty.len.try_into().unwrap(),
+                    array_type.len.try_into().unwrap(),
                 )
             } else if basic_value.is_array_value() {
                 let ptr = self.emit_temp_array_value_alloca(&basic_value.into_array_value());
 
                 self.emit_inbounds_checked_array_index(
                     ptr, // use temp alloca instead
-                    *arr_ty.ty.clone(),
+                    *array_type.ty.clone(),
                     index_rvalue,
-                    arr_ty.len.try_into().unwrap(),
+                    array_type.len.try_into().unwrap(),
                 )
             } else {
                 unreachable!("Expected array or pointer type for array indexing expression");
             }
-        } else if let Some(pointee_ty) = lvalue.ty.pointer_inner() {
-            self.emit_array_index_on_pointer(
-                lvalue.as_basic_value().into_pointer_value(),
-                index_rvalue,
-                pointee_ty.clone(),
-            )
+        } else if let Some(pointee_ty) = base_addr.ty.pointer_inner() {
+            let array_ptr = base_addr.as_basic_value().into_pointer_value();
+
+            self.emit_array_index_on_pointer(array_ptr, index_rvalue, pointee_ty.clone())
         } else {
             unreachable!("Expected array or pointer type for array indexing expression");
         }

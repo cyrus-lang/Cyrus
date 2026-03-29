@@ -26,6 +26,16 @@ pub enum ControlRegion {
     Switch,
 }
 
+impl ControlRegion {
+    pub fn allows_break(&self) -> bool {
+        matches!(self, Self::Loop)
+    }
+
+    pub fn allows_continue(&self) -> bool {
+        matches!(self, Self::Loop)
+    }
+}
+
 /// Describes the control-flow state after evaluating a statement or block.
 ///
 /// This helps the analyzer reason about reachability and determine whether

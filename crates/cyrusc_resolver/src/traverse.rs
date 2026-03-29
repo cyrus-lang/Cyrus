@@ -1976,8 +1976,8 @@ impl Resolver {
         })
     }
 
-    fn resolve_continue_stmt(&mut self, cont: &ASTContinueStmt) -> Option<TypedContinueStmt> {
-        Some(TypedContinueStmt { loc: cont.loc })
+    fn resolve_continue_stmt(&mut self, continue_stmt: &ASTContinueStmt) -> Option<TypedContinueStmt> {
+        Some(TypedContinueStmt { loc: continue_stmt.loc })
     }
 
     fn resolve_break_stmt(&mut self, break_stmt: &ASTBreakStmt) -> Option<TypedBreakStmt> {

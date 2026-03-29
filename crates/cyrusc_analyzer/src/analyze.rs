@@ -820,7 +820,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt, expected_type: Option<SemanticType>) -> FlowState {
         let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
 
-        self.analyze_expr(&mut if_stmt.cond, expected_type.clone());
+        if let Some(sema_type) = self.analyze_expr(&mut if_stmt.cond, expected_type.clone()) {
+            self.report_if_not_cond_expr(sema_type, if_stmt.loc);
+        }
 
         let else_state = {
             if let Some(block_stmt) = &mut if_stmt.else_block {
@@ -841,7 +843,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         if let Some(sema_type) =
             self.analyze_expr(&mut typed_while.cond, Some(SemanticType::PlainType(PlainType::Bool)))
         {
-            self.is_cond_expr(sema_type, typed_while.loc);
+            self.report_if_not_cond_expr(sema_type, typed_while.loc);
         }
 
         self.control_stack.push(ControlRegion::Loop);
@@ -858,7 +860,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         if let Some(typed_expr) = &mut typed_for.cond {
             if let Some(sema_type) = self.analyze_expr(typed_expr, Some(SemanticType::PlainType(PlainType::Bool))) {
-                self.is_cond_expr(sema_type, typed_for.loc);
+                self.report_if_not_cond_expr(sema_type, typed_for.loc);
             }
         }
 
@@ -914,14 +916,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         FlowState::Returns
     }
 
-    // FIXME: Check that break statement is inside loop, while or not??
-    fn analyze_break(&mut self, brk: &TypedBreakStmt) -> FlowState {
-        dbg!(&self.control_stack);
-        if self.control_stack.is_empty() {
+    fn analyze_break(&mut self, break_stmt: &TypedBreakStmt) -> FlowState {
+        let valid = self.control_stack.iter().rev().any(|c| c.allows_break());
+
+        if !valid {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidBreakStatement),
-                loc: Some(brk.loc),
+                loc: Some(break_stmt.loc),
                 hint: None,
             });
             FlowState::Reachable
@@ -930,18 +932,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn analyze_continue(&mut self, cont: &TypedContinueStmt) -> FlowState {
-        let is_inside_loop = self
-            .control_stack
-            .iter()
-            .rev()
-            .any(|ctx| matches!(ctx, ControlRegion::Loop));
+    fn analyze_continue(&mut self, continue_stmt: &TypedContinueStmt) -> FlowState {
+        let valid = self.control_stack.iter().rev().any(|c| c.allows_continue());
 
-        if !is_inside_loop {
+        if !valid {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidContinueStatement),
-                loc: Some(cont.loc),
+                loc: Some(continue_stmt.loc),
                 hint: None,
             });
             FlowState::Reachable

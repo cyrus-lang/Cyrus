@@ -46,6 +46,7 @@ use cyrusc_internal::{
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::generics::monomorph::MonomorphID;
 use inkwell::{
+    AddressSpace,
     context::AsContextRef,
     llvm_sys::{
         core::{
@@ -480,14 +481,27 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     self.llvmbuilder.build_store(param_alloca, llvm_param).unwrap();
 
-                    self.irreg
-                        .borrow_mut()
-                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                    self.irreg.borrow_mut().insert(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
                 }
-                ABIArgKind::DirectPair { lo: _, hi: _ } => {
-                    let layout = type_layout(&self.target.info, &param.ty);
+                ABIArgKind::DirectPair { lo: lo_ty, hi: hi_ty } => {
+                    let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
 
-                    let ptr_type = self.llvmctx.ptr_type(inkwell::AddressSpace::default());
+                    let coerced_type = self.llvmctx.struct_type(
+                        &[
+                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, lo_ty)
+                                .try_into()
+                                .unwrap(),
+                            abi_type_to_llvm_type(self.llvmctx, &self.target.info, hi_ty)
+                                .try_into()
+                                .unwrap(),
+                        ],
+                        false,
+                    );
+
+                    let param_type: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
 
                     let lo = self.cur_func.unwrap().get_nth_param(llvm_param_index as u32).unwrap();
 
@@ -499,50 +513,32 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     llvm_param_index += 2;
 
-                    let param_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
+                    let param_alloca = self.llvmbuilder.build_alloca(param_type, "param").unwrap();
 
-                    let param_alloca = self.llvmbuilder.build_alloca(param_ty, "param").unwrap();
-
-                    let lo_index = layout.lookup_field_index(0).unwrap();
+                    // reinterpret memory as coercion struct
+                    let coerced_ptr = self
+                        .llvmbuilder
+                        .build_pointer_cast(param_alloca, ptr_type, "coerce.ptr")
+                        .unwrap();
 
                     let lo_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(param_ty, param_alloca, lo_index, "lo.ptr")
+                        .build_struct_gep(coerced_type, coerced_ptr, 0, "lo.ptr")
                         .unwrap();
 
                     self.llvmbuilder.build_store(lo_ptr, lo).unwrap();
 
-                    let hi_index = layout.lookup_field_index(1).unwrap();
-
                     let hi_ptr = self
                         .llvmbuilder
-                        .build_struct_gep(param_ty, param_alloca, hi_index, "hi.ptr")
+                        .build_struct_gep(coerced_type, coerced_ptr, 1, "hi.ptr")
                         .unwrap();
 
-                    // spill hi register
-                    let tmp = self.llvmbuilder.build_alloca(hi.get_type(), "hi.temp").unwrap();
+                    self.llvmbuilder.build_store(hi_ptr, hi).unwrap();
 
-                    self.llvmbuilder.build_store(tmp, hi).unwrap();
-
-                    let dst = self
-                        .llvmbuilder
-                        .build_bit_cast(hi_ptr, ptr_type, "")
-                        .unwrap()
-                        .into_pointer_value();
-
-                    let src = self
-                        .llvmbuilder
-                        .build_bit_cast(tmp, ptr_type, "")
-                        .unwrap()
-                        .into_pointer_value();
-
-                    let size = hi.get_type().size_of().unwrap();
-
-                    self.llvmbuilder.build_memcpy(dst, 1, src, 1, size).unwrap();
-
-                    self.irreg
-                        .borrow_mut()
-                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                    self.irreg.borrow_mut().insert(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
                 }
                 ABIArgKind::Indirect { .. } => {
                     let param_alloca = self
@@ -554,9 +550,10 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     llvm_param_index += 1;
 
-                    self.irreg
-                        .borrow_mut()
-                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                    self.irreg.borrow_mut().insert(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
                 }
                 ABIArgKind::Expand { kind } => {
                     let struct_ty: BasicTypeEnum<'ll> = self.emit_ty(param.ty.clone()).try_into().unwrap();
@@ -623,9 +620,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                         }
                     }
 
-                    self.irreg
-                        .borrow_mut()
-                        .insert(param.irv_id.unwrap(), LocalIRValue::LValue(param_alloca, param.ty.clone()));
+                    self.irreg.borrow_mut().insert(
+                        param.irv_id.unwrap(),
+                        LocalIRValue::LValue(param_alloca, param.ty.clone()),
+                    );
                 }
                 ABIArgKind::Ignore => {
                     // zero sized type

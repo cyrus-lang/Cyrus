@@ -177,9 +177,9 @@ impl X86_64 {
             }
             CIRTy::Tuple(tuple_ty) => {
                 // tuple lowered as struct in codegen
-                let struct_ty = tuple_ty.as_struct_ty();
+                let struct_type = tuple_ty.as_struct_ty();
 
-                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRTy::Struct(struct_ty), offset) {
+                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRTy::Struct(struct_type), offset) {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
                 }
             }
@@ -188,8 +188,8 @@ impl X86_64 {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
                 }
             }
-            CIRTy::Array(array_ty) => {
-                let element_ty = &array_ty.ty;
+            CIRTy::Array(array_type) => {
+                let element_ty = &array_type.ty;
                 let element_layout = type_layout(&self.info, element_ty);
                 let element_offset = (offset / element_layout.size) * element_layout.size;
                 return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
@@ -264,8 +264,8 @@ impl X86_64 {
             }
         }
 
-        if let Some(array_ty) = ty.as_array() {
-            let element_ty = &array_ty.ty;
+        if let Some(array_type) = ty.as_array() {
+            let element_ty = &array_type.ty;
             let element_layout = type_layout(&self.info, &element_ty);
             let element_start = (offset / element_layout.size) * element_layout.size;
             let element_offset = offset - element_start;
@@ -383,12 +383,12 @@ impl X86_64 {
             return true;
         }
 
-        if let Some(array_ty) = ty.as_array() {
-            let element_ty = &array_ty.ty;
+        if let Some(array_type) = ty.as_array() {
+            let element_ty = &array_type.ty;
             let element_layout = type_layout(&self.info, element_ty);
             let element_size = element_layout.size;
 
-            for i in 0..array_ty.len {
+            for i in 0..array_type.len {
                 let offset = (i as u32) * element_size;
 
                 // if the field is after the span we care about, then we're done
@@ -405,8 +405,8 @@ impl X86_64 {
 
             // no overlap found
             true
-        } else if let Some(struct_ty) = ty.as_struct() {
-            check_for_struct_or_union(&struct_ty.fields, false)
+        } else if let Some(struct_type) = ty.as_struct() {
+            check_for_struct_or_union(&struct_type.fields, false)
         } else if let Some(union_ty) = ty.as_union() {
             check_for_struct_or_union(&union_ty.fields, true)
         } else {
@@ -778,7 +778,7 @@ impl TargetABI for X86_64 {
                 PlainType::Void | PlainType::Null => panic!("void or null type in varargs"),
             },
 
-            CIRTy::Array(array_ty) => CIRTy::Pointer(array_ty.ty.clone()),
+            CIRTy::Array(array_type) => CIRTy::Pointer(array_type.ty.clone()),
 
             CIRTy::Pointer(_) | CIRTy::FuncType(_) => ty.clone(),
             CIRTy::Struct(_) | CIRTy::Tuple(_) | CIRTy::Dynamic(_) | CIRTy::Enum(_) | CIRTy::Union(_) => ty.clone(),
@@ -917,20 +917,20 @@ fn classify(
         CIRTy::Struct(_) | CIRTy::Union(_) => {
             classify_struct_or_union(info, ty, offset_base, current, lo_class, hi_class)
         }
-        CIRTy::Tuple(tuple_ty) => {
+        CIRTy::Tuple(tuple_type) => {
             // tuple lowered as struct in codegen
-            let struct_ty = tuple_ty.as_struct_ty();
+            let struct_type = tuple_type.as_struct_ty();
 
             classify_struct_or_union(
                 info,
-                &CIRTy::Struct(struct_ty),
+                &CIRTy::Struct(struct_type),
                 offset_base,
                 current,
                 lo_class,
                 hi_class,
             );
         }
-        CIRTy::Array(array_ty) => classify_array(info, array_ty, offset_base, lo_class, hi_class),
+        CIRTy::Array(array_type) => classify_array(info, array_type, offset_base, lo_class, hi_class),
         CIRTy::Dynamic(_) => classify_dynamic(info, offset_base, lo_class, hi_class),
         CIRTy::Enum(_) => classify_enum(info, ty, offset_base, lo_class, hi_class),
     }
@@ -978,13 +978,13 @@ fn classify_dynamic(
 
 fn classify_array(
     info: &ABITargetInfo,
-    array_ty: &CIRArrayTy,
+    array_type: &CIRArrayTy,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let layout = type_layout(info, &CIRTy::Array(array_ty.clone()));
-    let element_ty = &array_ty.ty;
+    let layout = type_layout(info, &CIRTy::Array(array_type.clone()));
+    let element_ty = &array_type.ty;
     let element_layout = type_layout(info, element_ty);
 
     if layout.size > 16 {
@@ -1011,7 +1011,7 @@ fn classify_array(
     }
 
     let mut offset = offset_base;
-    for _ in 0..array_ty.len {
+    for _ in 0..array_type.len {
         let mut field_lo = RegisterClass::NoClass;
         let mut field_hi = RegisterClass::NoClass;
 
