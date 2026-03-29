@@ -293,6 +293,14 @@ impl SymbolEntry {
         self.as_var().is_some() || self.as_global_var().is_some()
     }
 
+    pub fn is_const_qualified(&self) -> bool {
+        match &self.kind {
+            SymbolEntryKind::Var(resolved_var) => resolved_var.variable.is_const,
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.is_const,
+            _ => false,
+        }
+    }
+
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match &self.kind {
             SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),

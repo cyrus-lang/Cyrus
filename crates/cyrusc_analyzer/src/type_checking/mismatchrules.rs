@@ -15,11 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::analyze::AnalysisContext;
+use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::fold::ConstFolder;
+use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    format::{SymbolFormatterFn, format_sema_type},
     generics::{
         mapping_ctx::mapping_ctx_eq_refcell,
         substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig},
@@ -39,6 +41,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         target_type: SemanticType,
         loc: Loc,
     ) -> bool {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
         match (value_type.const_inner().clone(), target_type.const_inner().clone()) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
@@ -50,6 +54,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let valid_capacity = self.check_const_str_to_array_assign(array_type1.clone(), array_type2.clone());
 
                 valid_capacity && self.check_type_mismatch(*array_type1.element_type, *array_type2.element_type, loc)
+            }
+            (SemanticType::Array(array_type), SemanticType::Pointer(inner)) => {
+                // REVIEW: Maybe we don't need this really?
+                // if array_type.element_type.is_const() && !inner.is_const() {
+                //     self.reporter.report(Diag {
+                //         level: DiagLevel::Warning,
+                //         kind: Box::new(AnalyzerDiagKind::CannotDiscardConst {
+                //             from: format_sema_type(value_type, fmt_symbol),
+                //             to: format_sema_type(target_type, fmt_symbol),
+                //         }),
+                //         loc: Some(loc),
+                //         hint: None,
+                //     });
+                // }
+
+                // array-to-pointer decay
+                self.check_type_mismatch(*array_type.element_type, *inner, loc)
             }
             (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
                 (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())

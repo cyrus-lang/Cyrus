@@ -1006,10 +1006,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc);
         }
 
-        if global_var.is_const && !matches!(global_var.ty, Some(SemanticType::Const(..))) {
-            global_var.ty = Some(global_var.ty.clone().unwrap().as_const());
-        }
-
         if let Some(expr) = &global_var.expr {
             if !is_comptime_valid(&expr.kind) && !matches!(global_var.ty, Some(SemanticType::Const(..))) {
                 self.reporter.report(Diag {
@@ -1020,6 +1016,22 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 });
                 return;
             }
+        }
+
+        let is_type_const = global_var.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false);
+
+        if !global_var.is_const && is_type_const {
+            // example:
+            // var x: const int = 10;
+            self.reporter.report(Diag {
+                level: DiagLevel::Warning,
+                kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
+                loc: Some(global_var.loc),
+                hint: Some(
+                    "Prefer declaring the global variable itself as const instead of using a const-qualified type."
+                        .to_string(),
+                ),
+            });
         }
 
         if let Some(expr) = &global_var.expr {
@@ -1282,13 +1294,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        let is_const = var.ty.as_ref().map(|t| t.is_const()).unwrap_or(false);
+        let is_type_const = var.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false);
 
-        if var.is_const != is_const {
-            var.ty = var.ty.clone().map(|ty| ty.as_const());
-        }
-
-        if !var.is_const && is_const {
+        if !var.is_const && is_type_const {
             // example:
             // var x: const int = 10;
             self.reporter.report(Diag {
@@ -1340,7 +1348,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None => return,
         };
 
-        if lhs_type.is_const() {
+        let lhs_symbol_entry = self
+            .query
+            .lookup_symbol_entry(assign.lhs.kind.as_symbol_id().unwrap())
+            .unwrap();
+
+        let is_lhs_const = lhs_symbol_entry.is_const_qualified();
+
+        if is_lhs_const {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::CannotAssignToConstLValue),

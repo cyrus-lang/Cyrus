@@ -182,6 +182,10 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn load_rvalue(&self, internal_value: InternalValue<'ll>) -> InternalValue<'ll> {
         match internal_value.kind {
             InternalValueKind::LValue(pointer_value) => {
+                if internal_value.ty.is_array() {
+                    return self.emit_decay_array_to_pointer(internal_value);
+                }
+
                 let ty: BasicTypeEnum<'ll> = self.emit_ty(internal_value.ty.clone()).try_into().unwrap();
                 let basic_value = self.llvmbuilder.build_load(ty, pointer_value, "rvalue").unwrap();
 

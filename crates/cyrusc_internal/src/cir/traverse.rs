@@ -1517,7 +1517,10 @@ impl<'resolver> CIRTraverse<'resolver> {
         if let Some(monomorph_id) = func_call.monomorph_id {
             let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
 
-            let symbol_entry = self.query.lookup_symbol_entry(monomorph_func_entry.base_symbol).unwrap();
+            let symbol_entry = self
+                .query
+                .lookup_symbol_entry(monomorph_func_entry.base_symbol)
+                .unwrap();
 
             let mut func_sig = symbol_entry
                 .as_func()
@@ -1663,14 +1666,14 @@ impl<'resolver> CIRTraverse<'resolver> {
             SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(resolved_symbol),
             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
             SemanticType::Array(array_type) => {
-                let ty = self.lower_sema_ty(&array_type.element_type);
+                let element_type = self.lower_sema_ty(&array_type.element_type);
                 let len = match &array_type.capacity {
                     TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
                     TypedArrayCapacity::Dynamic => todo!(),
                 };
 
                 CIRTy::Array(CIRArrayTy {
-                    ty: Box::new(ty),
+                    element_ty: Box::new(element_type),
                     len: len.try_into().unwrap(),
                 })
             }

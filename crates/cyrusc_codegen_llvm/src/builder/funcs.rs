@@ -34,7 +34,6 @@ use cyrusc_ast::{abi::Inlining, modifiers::FuncModifiers};
 use cyrusc_internal::{
     abi::{
         args::{ABIArgInfo, ABIArgKind, ABIFunctionInfo, ExpandKind},
-        layout::type_layout,
         types::ABIType,
     },
     cir::{
@@ -54,7 +53,7 @@ use inkwell::{
         },
         prelude::LLVMMetadataRef,
     },
-    types::{AsTypeRef, BasicType, BasicTypeEnum, StructType},
+    types::{AsTypeRef, BasicTypeEnum, StructType},
     values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue},
 };
 

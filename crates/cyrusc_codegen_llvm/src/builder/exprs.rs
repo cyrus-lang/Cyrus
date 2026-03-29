@@ -214,7 +214,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             if basic_value.is_pointer_value() {
                 self.emit_inbounds_checked_array_index(
                     base_addr.as_basic_value().into_pointer_value(),
-                    *array_type.ty.clone(),
+                    *array_type.element_ty.clone(),
                     index_rvalue,
                     array_type.len.try_into().unwrap(),
                 )
@@ -223,15 +223,15 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 self.emit_inbounds_checked_array_index(
                     ptr, // use temp alloca instead
-                    *array_type.ty.clone(),
+                    *array_type.element_ty.clone(),
                     index_rvalue,
                     array_type.len.try_into().unwrap(),
                 )
             } else {
                 unreachable!("Expected array or pointer type for array indexing expression");
             }
-        } else if let Some(pointee_ty) = base_addr.ty.pointer_inner() {
-            let array_ptr = base_addr.as_basic_value().into_pointer_value();
+        } else if let Some(pointee_ty) = base_addr.ty.pointer_inner().cloned() {
+            let array_ptr = self.load_rvalue(base_addr).as_basic_value().into_pointer_value();
 
             self.emit_array_index_on_pointer(array_ptr, index_rvalue, pointee_ty.clone())
         } else {
@@ -481,7 +481,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
         let cir_arr_ty = array.ty.as_array().unwrap();
-        let element_ty = cir_arr_ty.ty.clone();
+        let element_ty = cir_arr_ty.element_ty.clone();
 
         let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().unwrap();
 
@@ -546,6 +546,27 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
+    pub(crate) fn emit_decay_array_to_pointer(&self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
+        let array_ptr = array_lvalue.as_basic_value().into_pointer_value();
+        let element_type = array_lvalue.ty.as_array().unwrap().element_ty;
+
+        let zero = self.llvmctx.i32_type().const_int(0, false);
+        let first_element = unsafe {
+            self.llvmbuilder
+                .build_in_bounds_gep(
+                    self.emit_ty(array_lvalue.ty.clone()).into_array_type(),
+                    array_ptr,
+                    &[zero, zero],
+                    "array_decay",
+                )
+                .unwrap()
+        };
+
+        let cir_type = CIRTy::Pointer(element_type);
+
+        InternalValue::new(cir_type, InternalValueKind::RValue(first_element.as_basic_value_enum()))
+    }
+
     pub(crate) fn emit_lvalue_address(&mut self, expr: &CIRExpr) -> InternalValue<'ll> {
         match &expr.kind {
             CIRExprKind::Deref(deref_expr) => {
@@ -574,7 +595,15 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let field_ty = struct_field_access.field_ty.clone();
                 InternalValue::new(field_ty, InternalValueKind::LValue(field_ptr))
             }
-            _ => self.emit_expr(expr),
+            _ => {
+                let value = self.emit_expr(expr);
+
+                if let InternalValueKind::LValue(_) = &value.kind {
+                    value
+                } else {
+                    unreachable!("attempted to take lvalue of an rvalue expression")
+                }
+            }
         }
     }
 
@@ -1572,7 +1601,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 }
                 ABIFieldOffsetInfo::Padding { size, .. } => {
                     let cir_array_type = CIRTy::Array(CIRArrayTy {
-                        ty: Box::new(CIRTy::PlainType(PlainType::Int8)),
+                        element_ty: Box::new(CIRTy::PlainType(PlainType::Int8)),
                         len: *size as usize,
                     });
                     let padding_array_value = self.llvmctx.i8_type().array_type(*size).const_zero();

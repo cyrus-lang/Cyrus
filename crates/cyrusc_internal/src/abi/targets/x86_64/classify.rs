@@ -189,7 +189,7 @@ impl X86_64 {
                 }
             }
             CIRTy::Array(array_type) => {
-                let element_ty = &array_type.ty;
+                let element_ty = &array_type.element_ty;
                 let element_layout = type_layout(&self.info, element_ty);
                 let element_offset = (offset / element_layout.size) * element_layout.size;
                 return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
@@ -265,7 +265,7 @@ impl X86_64 {
         }
 
         if let Some(array_type) = ty.as_array() {
-            let element_ty = &array_type.ty;
+            let element_ty = &array_type.element_ty;
             let element_layout = type_layout(&self.info, &element_ty);
             let element_start = (offset / element_layout.size) * element_layout.size;
             let element_offset = offset - element_start;
@@ -384,7 +384,7 @@ impl X86_64 {
         }
 
         if let Some(array_type) = ty.as_array() {
-            let element_ty = &array_type.ty;
+            let element_ty = &array_type.element_ty;
             let element_layout = type_layout(&self.info, element_ty);
             let element_size = element_layout.size;
 
@@ -778,7 +778,7 @@ impl TargetABI for X86_64 {
                 PlainType::Void | PlainType::Null => panic!("void or null type in varargs"),
             },
 
-            CIRTy::Array(array_type) => CIRTy::Pointer(array_type.ty.clone()),
+            CIRTy::Array(array_type) => CIRTy::Pointer(array_type.element_ty.clone()),
 
             CIRTy::Pointer(_) | CIRTy::FuncType(_) => ty.clone(),
             CIRTy::Struct(_) | CIRTy::Tuple(_) | CIRTy::Dynamic(_) | CIRTy::Enum(_) | CIRTy::Union(_) => ty.clone(),
@@ -984,7 +984,7 @@ fn classify_array(
     hi_class: *mut RegisterClass,
 ) {
     let layout = type_layout(info, &CIRTy::Array(array_type.clone()));
-    let element_ty = &array_type.ty;
+    let element_ty = &array_type.element_ty;
     let element_layout = type_layout(info, element_ty);
 
     if layout.size > 16 {
@@ -1087,7 +1087,7 @@ fn classify_enum(
     if payload_size > 0 {
         // payload is a byte array, classify based on its size
         let payload_ty = CIRTy::Array(CIRArrayTy {
-            ty: Box::new(CIRTy::PlainType(PlainType::UInt8)),
+            element_ty: Box::new(CIRTy::PlainType(PlainType::UInt8)),
             len: payload_size as usize,
         });
 

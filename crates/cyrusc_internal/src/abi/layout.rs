@@ -223,7 +223,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             type_layout(info, &CIRTy::Struct(struct_type))
         }
         CIRTy::Array(array_type) => {
-            let element_layout = type_layout(info, &array_type.ty);
+            let element_layout = type_layout(info, &array_type.element_ty);
             let total_size = element_layout.size * array_type.len as u32;
 
             let mut field_offsets = Vec::new();

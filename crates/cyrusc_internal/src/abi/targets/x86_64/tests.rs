@@ -90,7 +90,7 @@ mod tests {
     }
 
     fn array_ty(ty: CIRTy, len: usize) -> CIRTy {
-        CIRTy::Array(CIRArrayTy { ty: Box::new(ty), len })
+        CIRTy::Array(CIRArrayTy { element_ty: Box::new(ty), len })
     }
 
     #[test]

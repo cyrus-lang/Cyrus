@@ -99,7 +99,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
             ABIType::Struct(elements, false)
         }
         CIRTy::Array(array_ty) => {
-            let element_ty = Box::new(cir_type_to_abi_type(info, &array_ty.ty));
+            let element_ty = Box::new(cir_type_to_abi_type(info, &array_ty.element_ty));
             ABIType::Array {
                 element_ty,
                 count: array_ty.len,

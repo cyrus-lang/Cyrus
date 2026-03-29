@@ -20,6 +20,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
+    #[error("Cannot discard 'const' qualifier when converting from '{from}' to '{to}'.")]
+    CannotDiscardConst { from: String, to: String },
+    
     #[error(
         "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
     )]
