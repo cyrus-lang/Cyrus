@@ -315,8 +315,6 @@ impl Resolver {
             }
         };
 
-        self.report_if_symbol_is_private(current_symbol, first_ident.loc);
-
         let mut i = 1;
         for segment in iter {
             let Some(seg_ident) = segment.as_ident() else {

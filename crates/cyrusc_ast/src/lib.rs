@@ -788,6 +788,21 @@ pub fn return_type_or_default_void(ret_type: Option<TypeSpecifier>, loc: Loc) ->
     }))
 }
 
+pub fn last_sub_module_index(segments: &Vec<ModuleSegment>) -> usize {
+    segments
+        .iter()
+        .rposition(|seg| matches!(seg, ModuleSegment::SubModule(_)))
+        .expect("import must contain at least one module segment")
+}
+
+#[inline]
+pub fn sub_module_segments(segments: Vec<ModuleSegment>) -> Vec<Ident> {
+    segments
+        .iter()
+        .filter_map(|module_segment| module_segment.as_ident())
+        .collect()
+}
+
 impl ModuleSegment {
     pub fn loc(&self) -> Loc {
         match self {
@@ -796,6 +811,7 @@ impl ModuleSegment {
         }
     }
 
+    #[inline]
     pub fn as_ident(&self) -> Option<Ident> {
         match self {
             ModuleSegment::SubModule(ident) => Some(ident.clone()),

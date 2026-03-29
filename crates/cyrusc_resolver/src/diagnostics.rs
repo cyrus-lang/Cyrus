@@ -91,7 +91,7 @@ pub enum ResolverDiagKind {
     #[error("Symbol '{symbol_name}' cannot be declared again. It already exists within the current scope.")]
     DuplicateSymbolInThisScope { symbol_name: String },
 
-    #[error("Duplicate declaration of method '{method_name}' in struct '{struct_name}'.")]
+    #[error("Duplicate declaration of method '{method_name}' in '{struct_name}'.")]
     DuplicateMethodName { struct_name: String, method_name: String },
 
     #[error("Interface methods cannot be renamed.")]

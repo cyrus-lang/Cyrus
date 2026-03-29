@@ -183,26 +183,26 @@ impl Resolver {
                 }
             }
 
+            // cycle detection
+
+            // if visiting.active.contains(&loaded_module.file_id) {
+            //     self.reporter.report(Diag {
+            //         level: DiagLevel::Error,
+            //         kind: Box::new(ResolverDiagKind::ImportCycle {
+            //             module_names: visiting.active_paths_str(self.source_map.clone()),
+            //         }),
+            //         loc: Some(import.loc),
+            //         hint: Some("Break the cycle by removing one import.".to_string()),
+            //     });
+            //     continue;
+            // }
+
             // insert file module
 
             let mut module_symbol_id =
                 self.get_or_create_module_symbol_id_for_loaded_module(parent_scope_id, &loaded_module);
 
             module_symbol_id = self.global_symbols.resolve_concrete_scope_id(module_symbol_id);
-
-            // cycle detection
-
-            if visiting.active.contains(&loaded_module.file_id) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::ImportCycle {
-                        module_names: visiting.active_paths_str(self.source_map.clone()),
-                    }),
-                    loc: Some(import.loc),
-                    hint: Some("Break the cycle by removing one import.".to_string()),
-                });
-                continue;
-            }
 
             // resolve module if needed
 
@@ -270,21 +270,15 @@ impl Resolver {
             let name = segment.as_ident().unwrap().value;
 
             let Some(symbol_id) = self.lookup_symbol_id_in_scope(module_symbol_id, &name) else {
-                let module_name = self.format_symbol_name(module_symbol_id).to_string();
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::NamespaceNotFoundInModule {
-                        namespace: name.clone(),
-                        module: module_name,
-                    }),
+                    kind: Box::new(ResolverDiagKind::SymbolNotFound { name: name.clone() }),
                     loc: Some(loc),
                     hint: Some(format!(
                         "Declare it with `mod {} {{ ... }}` inside that module or import the correct path.",
                         name
                     )),
                 });
-
                 return module_symbol_id;
             };
 

@@ -15,8 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_ast::format::format_module_segments;
-use cyrusc_ast::{ASTImportStmt, ModulePath, ModuleSegment, ProgramTree};
+use cyrusc_ast::format::{format_module_segments, format_sub_modules};
+use cyrusc_ast::{
+    ASTImportStmt, Ident, ModulePath, ModuleSegment, ProgramTree, last_sub_module_index, sub_module_segments,
+};
 use cyrusc_diagcentral::{Diag, DiagKindClone, DiagLevel, exit_with_single_diag};
 use cyrusc_fs_utils::find_file_from_sources;
 use cyrusc_internal::module_loader::{LoadedModule, ModuleAlias, ModuleLoader, ResolvedModuleFile};
@@ -58,9 +60,12 @@ impl FsModuleLoader {
     /// Handles stdlib redirection and resolves full module paths.
     fn get_imported_module_file_path(
         &self,
-        mut segments: Vec<ModuleSegment>,
+        segments: Vec<ModuleSegment>,
         current_module_file_path: PathBuf,
     ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
+        // filter sub-modules
+        let mut segments = sub_module_segments(segments);
+
         let stdlib_path = self.opts.stdlib_path.clone().map(|str| Path::new(&str).to_path_buf());
         let stdlib_modules_path = || {
             get_stdlib_modules_path(stdlib_path.as_ref())
@@ -74,7 +79,7 @@ impl FsModuleLoader {
         let first_segment = segments.first().cloned();
 
         let mut is_std = false;
-        if matches!(segments.first(), Some(ModuleSegment::SubModule(ident)) if ident.value == "std") {
+        if matches!(segments.first(), Some(ident) if ident.value == "std") {
             segments.remove(0);
             sources = vec![stdlib_modules_path()];
             is_std = true;
@@ -84,8 +89,9 @@ impl FsModuleLoader {
             self.load_module_segments(current_module_file_path, &segments, sources, String::new())?;
 
         if is_std {
-            if let Some(ident) = first_segment.unwrap().as_ident() {
+            if let Some(ident) = first_segment {
                 resolved_module_file.directory_modules.insert(0, ident);
+                resolved_module_file.consumed_segments += 1;
             }
         }
 
@@ -97,96 +103,90 @@ impl FsModuleLoader {
     fn load_module_segments(
         &self,
         current_module_file_path: PathBuf,
-        segments: &[ModuleSegment],
+        sub_modules: &[Ident],
         sources: Vec<String>,
         initial_base_path: String,
     ) -> Result<ResolvedModuleFile, ModuleFSLoaderDiagKind> {
         let mut directory_modules = Vec::new();
         let mut current_path = PathBuf::from(initial_base_path);
 
-        let last_module_idx = segments
-            .iter()
-            .rposition(|seg| matches!(seg, ModuleSegment::SubModule(_)))
-            .unwrap_or(0);
+        for (i, ident) in sub_modules.iter().enumerate() {
+            let name = &ident.value;
 
-        for (i, segment) in segments.iter().enumerate() {
-            match segment {
-                ModuleSegment::SubModule(ident) => {
-                    let name = &ident.value;
+            let file_path_buf = current_path.join(format!("{}.cyrus", name));
+            let dir_path_buf = current_path.join(name);
 
-                    let file_path_buf = current_path.join(format!("{}.cyrus", name));
-                    let dir_path_buf = current_path.join(name);
+            let file_exists = if file_path_buf.exists() {
+                Some(file_path_buf.clone())
+            } else {
+                find_file_from_sources(file_path_buf.to_string_lossy().as_ref(), &sources)
+            };
 
-                    let file_exists = if file_path_buf.exists() {
-                        Some(file_path_buf.clone())
-                    } else {
-                        find_file_from_sources(file_path_buf.to_string_lossy().as_ref(), &sources)
-                    };
+            let dir_exists = if dir_path_buf.is_dir() {
+                Some(dir_path_buf.clone())
+            } else {
+                find_file_from_sources(dir_path_buf.to_string_lossy().as_ref(), &sources)
+            };
 
-                    let dir_exists = if dir_path_buf.is_dir() {
-                        Some(dir_path_buf.clone())
-                    } else {
-                        find_file_from_sources(dir_path_buf.to_string_lossy().as_ref(), &sources)
-                    };
+            // prevent importing the same file
+            if let Some(file_buf) = &file_exists {
+                if *file_buf == current_module_file_path {
+                    return Err(ModuleFSLoaderDiagKind::ModuleCannotImportItself);
+                }
+            }
 
-                    // prevent importing the same file
-                    if let Some(file_buf) = &file_exists {
-                        if *file_buf == current_module_file_path {
-                            return Err(ModuleFSLoaderDiagKind::ModuleCannotImportItself);
-                        }
-                    }
+            match (file_exists, dir_exists) {
+                // file + dir conflict
+                (Some(_), Some(_)) => {
+                    return Err(ModuleFSLoaderDiagKind::DuplicateModule {
+                        module_name: name.clone(),
+                    });
+                }
 
-                    match (file_exists, dir_exists) {
-                        // file + dir conflict
-                        (Some(_), Some(_)) => {
-                            return Err(ModuleFSLoaderDiagKind::DuplicateModule {
-                                module_name: name.clone(),
-                            });
-                        }
+                // file module: foo/bar.cyrus
+                (Some(file_buf), None) => {
+                    return Ok(ResolvedModuleFile {
+                        file_path: file_buf,
+                        directory_modules,
+                        file_module_name: ident.as_string(),
+                        consumed_segments: i + 1,
+                    });
+                }
 
-                        // file module: foo/bar.cyrus
-                        (Some(file_buf), None) => {
+                // directory module
+                (None, Some(dir_buf)) => {
+                    let is_last_segment = i == sub_modules.len() - 1;
+
+                    if is_last_segment {
+                        let index_path = dir_buf.join("index.cyrus");
+                        let index_exists = index_path.exists();
+
+                        dbg!(index_path.clone());
+
+                        if index_exists {
                             return Ok(ResolvedModuleFile {
-                                file_path: file_buf,
+                                file_path: index_path,
                                 directory_modules,
                                 file_module_name: ident.as_string(),
                                 consumed_segments: i + 1,
                             });
                         }
-
-                        // directory module
-                        (None, Some(dir_buf)) => {
-                            directory_modules.push(ident.clone());
-
-                            let index_path = dir_buf.join("index.cyrus");
-
-                            // directory with index module
-                            if index_path.exists() {
-                                return Ok(ResolvedModuleFile {
-                                    file_path: index_path,
-                                    directory_modules,
-                                    file_module_name: ident.as_string(),
-                                    consumed_segments: i + 1,
-                                });
-                            }
-
-                            // descend into directory
-                            current_path = dir_buf;
-                        }
-
-                        (None, None) => {
-                            return Err(ModuleFSLoaderDiagKind::ModuleNotFound {
-                                module_name: format_module_segments(segments),
-                            });
-                        }
                     }
+
+                    // descend into directory
+                    current_path = dir_buf;
+
+                    directory_modules.push(ident.clone());
                 }
 
-                ModuleSegment::Single(_) => break,
+                (None, None) => {
+                    return Err(ModuleFSLoaderDiagKind::ModuleNotFound {
+                        module_name: format_sub_modules(sub_modules),
+                    });
+                }
             }
         }
 
-        // fallback case (rare, but keeps function total)
         let file_stem = current_path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -196,7 +196,7 @@ impl FsModuleLoader {
             file_path: current_path,
             directory_modules,
             file_module_name: file_stem,
-            consumed_segments: last_module_idx + 1,
+            consumed_segments: sub_modules.len(),
         })
     }
 }
@@ -261,11 +261,7 @@ impl ModuleLoader for FsModuleLoader {
 
         // phase 2: construct LoadedModule objects
         for (file_id, program_tree_rc, sub_import, resolved_module_file) in parsed_program_trees {
-            let last_module_idx = sub_import
-                .segments
-                .iter()
-                .rposition(|seg| matches!(seg, ModuleSegment::SubModule(_)))
-                .expect("import must contain at least one module segment");
+            let last_module_idx = last_sub_module_index(&sub_import.segments);
 
             let segment_actual_name = match &sub_import.segments[last_module_idx] {
                 ModuleSegment::SubModule(ident) => ident.clone(),

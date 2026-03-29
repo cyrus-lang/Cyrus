@@ -26,6 +26,20 @@ fn format_stmts(stmts: &[ASTStmt]) -> String {
     stmts.iter().map(|stmt| stmt.to_string()).collect()
 }
 
+pub fn format_sub_modules(sub_modules: &[Ident]) -> String {
+    let mut out = String::new();
+
+    for (i, ident) in sub_modules.iter().enumerate() {
+        out.push_str(&ident.value);
+        // add '::' only if the next segment exists and is a SubModule
+        if matches!(sub_modules.get(i + 1), Some(_)) {
+            out.push_str("::");
+        }
+    }
+
+    out
+}
+
 pub fn format_module_segments(segments: &[ModuleSegment]) -> String {
     let mut out = String::new();
 
