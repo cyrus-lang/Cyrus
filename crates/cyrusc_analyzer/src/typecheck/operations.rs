@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::table::SymbolEntryMut;
@@ -396,7 +396,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     return None;
                 }
             }
-        } else if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone(), loc) {
+        } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
@@ -444,7 +444,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone(), loc) {
+        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {

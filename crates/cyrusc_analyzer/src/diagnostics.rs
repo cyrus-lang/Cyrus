@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -14,9 +16,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::DiagKind;
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
+use cyrusc_internal::symbols::table::SymbolEntryMut;
+use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
+use cyrusc_typed_ast::{
+    stmts::{TypedFuncParamKind, TypedFuncVariadicParams, TypedGenericParamsList, TypedTypeArgs, TypedVarStmt},
+    types::SemanticType,
+};
 use thiserror::Error;
+
+use crate::AnalysisContext;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {
@@ -395,6 +405,137 @@ pub enum AnalyzerDiagKind {
 
     #[error("{0}")]
     UnescapeError(UnescapeError),
+}
+
+impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+    pub(crate) fn report_const_qualified_type_assigned_to_non_const_variable(&mut self, loc: Loc) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Warning,
+            kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
+            loc: Some(loc),
+            hint: Some(
+                "Prefer declaring the variable itself as const instead of using a const‑qualified type.".to_string(),
+            ),
+        });
+    }
+
+    /// Validates that an expression type is suitable for use as a boolean condition.
+    pub(crate) fn report_if_not_cond_expr(&mut self, sema_type: SemanticType, loc: Loc) {
+        if !sema_type.is_bool() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+    }
+
+    /// Validates that type arguments are not provided for non-generic types.
+    ///
+    /// Checks whether type arguments (e.g., `<T, U>`) are unexpectedly provided
+    /// for a type that does not have generic parameters. This prevents syntax
+    /// like `NonGenericType<int>` which would be invalid.
+    pub(crate) fn report_if_unexpected_type_args(
+        &mut self,
+        generic_params: &Option<TypedGenericParamsList>,
+        type_args: &Option<TypedTypeArgs>,
+        loc: Loc,
+    ) -> bool {
+        if generic_params.is_none() && type_args.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                loc: Some(loc),
+                hint: None,
+            });
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn report_if_duplicate_param_names(
+        &mut self,
+        params: &[TypedFuncParamKind],
+        variadic: Option<&TypedFuncVariadicParams>,
+        loc: Loc,
+    ) {
+        let mut param_names: Vec<String> = Vec::new();
+
+        for (param_idx, param) in params.iter().enumerate() {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    if param_names.contains(&typed_func_param.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
+                                param_name: typed_func_param.name.clone(),
+                                param_idx: param_idx.try_into().unwrap(),
+                            }),
+                            loc: Some(loc),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                        continue;
+                    }
+
+                    param_names.push(typed_func_param.name.clone());
+                }
+                TypedFuncParamKind::SelfModifier(_) => {
+                    param_names.push("self".to_string());
+                }
+            }
+        }
+
+        if let Some(variadic_param) = variadic {
+            match variadic_param {
+                TypedFuncVariadicParams::Typed(ident, _) => {
+                    if param_names.contains(&ident.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
+                                param_name: ident.name.clone(),
+                            }),
+                            loc: Some(loc),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {}
+            }
+        }
+    }
+
+    /// Applies a function to a mutable reference of diagnostics within a specified range.
+    ///
+    /// This method iterates over a slice of diagnostics, determined by `start` and `end_inclusive`,
+    /// and applies the provided closure `f` to each diagnostic in mutable form.
+    ///
+    /// Handles invalid ranges (start > end, start out of bounds) by returning early.
+    /// Ensures the range does not exceed the bounds of the diagnostic reporter.
+    /// Lazily drops the mutable borrow of diagnostics after the loop.
+    pub(crate) fn apply_error_originated_from_on_diag_range<F>(&mut self, range: RangeInclusive<usize>, mut f: F)
+    where
+        F: FnMut(&mut Diag),
+    {
+        let len = self.reporter.len();
+        let start = *range.start();
+        let end_inclusive = *range.end();
+
+        if start > end_inclusive {
+            return;
+        }
+        if start >= len {
+            return;
+        }
+
+        let end = (end_inclusive + 1).min(len);
+
+        let mut diags = self.reporter.diags_mut();
+        for diag in &mut diags[start..end] {
+            f(diag);
+        }
+        drop(diags);
+    }
 }
 
 impl DiagKind for AnalyzerDiagKind {}

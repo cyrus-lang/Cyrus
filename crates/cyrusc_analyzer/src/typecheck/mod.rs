@@ -15,6 +15,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod mismatchrules;
+pub(crate) mod types;
 pub(crate) mod operations;
-pub(crate) mod type_checking;
+pub(crate) mod typecheck;

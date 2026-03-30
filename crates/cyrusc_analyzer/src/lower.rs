@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::analyze::AnalysisContext;
+use crate::AnalysisContext;
 use cyrusc_ast::{
     AssignKind,
     operators::{InfixOperator, PrefixOperator},

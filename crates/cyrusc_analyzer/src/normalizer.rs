@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
@@ -81,7 +81,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if sema_type.is_self_type() && self.fn_env.current_self_type.is_none() {
+        if sema_type.is_self_type() && self.fenv.current_self_type.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -500,7 +500,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
         // try to resolve from current object operand context
-        if let Some(sema_type) = &self.fn_env.current_object_type {
+        if let Some(sema_type) = &self.fenv.current_object_type {
             if let Some(generic_type) = sema_type.as_generic_type() {
                 let mapping_ctx = generic_type.mapping_ctx.borrow();
 
@@ -516,7 +516,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
-        self.fn_env
+        self.fenv
             .current_self_type
             .clone()
             .or(Some(SemanticType::SelfType(self_type)))

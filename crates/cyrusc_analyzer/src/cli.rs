@@ -15,10 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_analyzer::{
-    analyze::{AnalysisContext, EntryPoints},
-    config::AnalyzerConfig,
-};
+use cyrusc_analyzer::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_fs_utils::get_directory_of_file;
 use cyrusc_internal::vtable::VTableRegistry;

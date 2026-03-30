@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
@@ -205,7 +205,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //         .insert_scope_ref(self.module_id, new_body_scope_id, new_body_scope.clone());
         // };
 
-        // self.fn_env.current_func = Some(typed_func_type_from_func_sig(func_sig));
+        // self.fenv.current_func = Some(typed_func_type_from_func_sig(func_sig));
         // self.substitute_func_params_in_body_scope(new_body_scope_id, &func_sig.params);
         // func_sig.ret_type = substitute_type(
         //     self.mapping_ctx_arena.clone(),
@@ -248,30 +248,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // }
 
         // Some(monomorph_id)
-    }
-
-    fn apply_error_originated_from_on_diag_range<F>(&mut self, range: RangeInclusive<usize>, mut f: F)
-    where
-        F: FnMut(&mut Diag),
-    {
-        let len = self.reporter.len();
-        let start = *range.start();
-        let end_inclusive = *range.end();
-
-        if start > end_inclusive {
-            return;
-        }
-        if start >= len {
-            return;
-        }
-
-        let end = (end_inclusive + 1).min(len);
-
-        let mut diags = self.reporter.diags_mut();
-        for diag in &mut diags[start..end] {
-            f(diag);
-        }
-        drop(diags);
     }
 
     // fn substitute_func_params_in_body_scope(&mut self, body_scope_id: ScopeID, params: &TypedFuncParams) {
@@ -517,9 +493,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        macro_rules! check_type_mismatch {
+        macro_rules! is_assignable_to {
             ($lhs:expr, $rhs:expr) => {
-                if !self.check_type_mismatch($lhs.clone(), $rhs.clone(), loc) {
+                if !self.is_assignable_to($lhs.clone(), $rhs.clone(), loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -572,7 +548,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     )
                     .unwrap();
 
-                    check_type_mismatch!(expr_ty, substituted_target);
+                    is_assignable_to!(expr_ty, substituted_target);
 
                     mapping_ctx_ref.insert_named(entry.clone(), parent_sema_ty);
                     continue;
@@ -592,7 +568,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             Rc::new(RefCell::new(mapping_ctx_ref.clone())),
                         )
                         .unwrap();
-                        check_type_mismatch!(expr_ty, substituted_target);
+                        is_assignable_to!(expr_ty, substituted_target);
 
                         mapping_ctx_ref.insert_named(entry.clone(), linked_val.clone());
                         mapping_ctx_ref.insert_linked(entry.clone(), parent_entry);

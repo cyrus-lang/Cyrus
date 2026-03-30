@@ -15,13 +15,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::AnalysisContext;
 use cyrusc_const_eval::fold::ConstFolder;
-use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    format::{SymbolFormatterFn, format_sema_type},
+    format::SymbolFormatterFn,
     generics::{
         mapping_ctx::mapping_ctx_eq_refcell,
         substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig},
@@ -35,28 +34,22 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
-    pub(crate) fn check_type_mismatch(
-        &mut self,
-        value_type: SemanticType,
-        target_type: SemanticType,
-        loc: Loc,
-    ) -> bool {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
-        match (value_type.const_inner().clone(), target_type.const_inner().clone()) {
+    pub(crate) fn is_assignable_to(&mut self, rhs: SemanticType, lhs: SemanticType, loc: Loc) -> bool {
+        match (rhs.const_inner().clone(), lhs.const_inner().clone()) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
             }
             (SemanticType::PlainType(basic_concrete_type1), SemanticType::PlainType(basic_concrete_type2)) => {
-                self.check_plain_type_mismatch(basic_concrete_type1, basic_concrete_type2)
+                self.is_plain_type_assignable_to(basic_concrete_type1, basic_concrete_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
-                let valid_capacity = self.check_const_str_to_array_assign(array_type1.clone(), array_type2.clone());
+                let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
 
-                valid_capacity && self.check_type_mismatch(*array_type1.element_type, *array_type2.element_type, loc)
+                valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
             }
             (SemanticType::Array(array_type), SemanticType::Pointer(inner)) => {
                 // REVIEW: Maybe we don't need this really?
+                // let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
                 // if array_type.element_type.is_const() && !inner.is_const() {
                 //     self.reporter.report(Diag {
                 //         level: DiagLevel::Warning,
@@ -70,14 +63,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 // }
 
                 // array-to-pointer decay
-                self.check_type_mismatch(*array_type.element_type, *inner, loc)
+                self.is_assignable_to(*array_type.element_type, *inner, loc)
             }
-            (SemanticType::Pointer(inner_concrete_type1), SemanticType::Pointer(inner_concrete_type2)) => {
-                (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
-                    || self.check_type_mismatch(*inner_concrete_type1, *inner_concrete_type2, loc)
+            (SemanticType::Pointer(inner1), SemanticType::Pointer(inner2)) => {
+                (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
             (SemanticType::UnnamedEnum(unnamed_enum1), SemanticType::UnnamedEnum(unnamed_enum2)) => {
                 let mut variants = true;
+
                 for (variant1, variant2) in unnamed_enum1.variants.iter().zip(unnamed_enum2.variants) {
                     let valid = match (variant1, variant2) {
                         (TypedUnnamedEnumVariant::Ident(ident1), TypedUnnamedEnumVariant::Ident(ident2)) => {
@@ -99,6 +92,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         break;
                     }
                 }
+
                 variants
             }
             (
@@ -108,7 +102,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_enum = symbol_entry.as_enum().unwrap();
 
-                self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
+                self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
             }
             (
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
@@ -117,7 +111,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_enum = symbol_entry.as_enum().unwrap();
 
-                self.check_unnamed_enum_and_named_enum_type_mismatch(&unnamed_enum_type, &resolved_enum.enum_sig)
+                self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
             }
             (SemanticType::UnnamedEnum(unnamed_enum_type), SemanticType::GenericType(generic_type)) => {
                 let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
@@ -131,10 +125,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         )
                         .unwrap();
 
-                        self.check_unnamed_enum_and_named_enum_type_mismatch(
-                            &unnamed_enum_type,
-                            &resolved_enum.enum_sig,
-                        )
+                        self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
                     }
                     None => false, // not compatible!
                 }
@@ -151,10 +142,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         )
                         .unwrap();
 
-                        self.check_unnamed_enum_and_named_enum_type_mismatch(
-                            &unnamed_enum_type,
-                            &resolved_enum.enum_sig,
-                        )
+                        self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
                     }
                     None => false, // not compatible!
                 }
@@ -169,7 +157,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(union_id).unwrap();
                 let resolved_union = symbol_entry.as_union().unwrap();
 
-                self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
+                self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
             }
             (
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
@@ -178,7 +166,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(union_id).unwrap();
                 let resolved_union = symbol_entry.as_union().unwrap();
 
-                self.check_unnamed_union_and_named_union_type_mismatch(&unnamed_union_type, &resolved_union.union_sig)
+                self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
             }
             (SemanticType::UnnamedUnion(unnamed_union_type), SemanticType::GenericType(generic_type)) => {
                 let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
@@ -192,10 +180,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         )
                         .unwrap();
 
-                        self.check_unnamed_union_and_named_union_type_mismatch(
-                            &unnamed_union_type,
-                            &resolved_union.union_sig,
-                        )
+                        self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
                     }
                     None => false, // not compatible!
                 }
@@ -212,10 +197,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         )
                         .unwrap();
 
-                        self.check_unnamed_union_and_named_union_type_mismatch(
-                            &unnamed_union_type,
-                            &resolved_union.union_sig,
-                        )
+                        self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
                     }
                     None => false, // not compatible!
                 }
@@ -226,7 +208,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 let mut fields = true;
                 for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
-                    if !self.check_type_mismatch(*field1.ty.clone(), *field2.ty.clone(), loc) {
+                    if !self.is_assignable_to(*field1.ty.clone(), *field2.ty.clone(), loc) {
                         fields = false;
                         break;
                     }
@@ -240,10 +222,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_struct = symbol_entry.as_struct().unwrap();
 
-                self.check_unnamed_struct_and_named_struct_type_mismatch(
-                    &unnamed_struct_type,
-                    &resolved_struct.struct_sig,
-                )
+                self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct_type, &resolved_struct.struct_sig)
             }
             (
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
@@ -252,10 +231,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_struct = symbol_entry.as_struct().unwrap();
 
-                self.check_unnamed_struct_and_named_struct_type_mismatch(
-                    &unnamed_struct_type,
-                    &resolved_struct.struct_sig,
-                )
+                self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct_type, &resolved_struct.struct_sig)
             }
             (SemanticType::UnnamedStruct(unnamed_struct_type), SemanticType::GenericType(generic_type)) => {
                 let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
@@ -269,7 +245,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         )
                         .unwrap();
 
-                        self.check_unnamed_struct_and_named_struct_type_mismatch(
+                        self.is_unnamed_struct_assignable_to_named_struct(
                             &unnamed_struct_type,
                             &resolved_struct.struct_sig,
                         )
@@ -289,10 +265,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         )
                         .unwrap();
 
-                        self.check_unnamed_struct_and_named_struct_type_mismatch(
-                            &unnamed_struct,
-                            &resolved_struct.struct_sig,
-                        )
+                        self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct, &resolved_struct.struct_sig)
                     }
                     None => false, // not compatible!
                 }
@@ -319,7 +292,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn check_unnamed_union_and_named_union_type_mismatch(
+    fn is_unnamed_union_assignable_to_named_union(
         &self,
         unnamed_union_type: &TypedUnnamedUnionType,
         union_sig: &UnionSig,
@@ -335,7 +308,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             && fields
     }
 
-    fn check_unnamed_enum_and_named_enum_type_mismatch(
+    fn is_unnamed_enum_assignable_to_named_enum(
         &self,
         unnamed_enum_type: &TypedUnnamedEnumType,
         enum_sig: &EnumSig,
@@ -366,7 +339,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             )
     }
 
-    fn check_unnamed_struct_and_named_struct_type_mismatch(
+    fn is_unnamed_struct_assignable_to_named_struct(
         &self,
         unnamed_struct: &TypedUnnamedStructType,
         struct_sig: &StructSig,
@@ -388,7 +361,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             && unnamed_struct_fields == named_struct_fields
     }
 
-    pub(crate) fn check_plain_type_mismatch(&self, value_type: PlainType, target_type: PlainType) -> bool {
+    pub(crate) fn is_plain_type_assignable_to(&self, value_type: PlainType, target_type: PlainType) -> bool {
         use PlainType::*;
 
         match (value_type, target_type) {
@@ -448,7 +421,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn check_const_str_to_array_assign(&mut self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
+    fn is_const_str_assignable_to_array(&mut self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
         match (value_type.capacity, target_type.capacity) {
             (TypedArrayCapacity::Fixed(value_capacity_expr), TypedArrayCapacity::Fixed(target_capacity_expr)) => {
                 let mut folder = ConstFolder::new(self);
@@ -462,85 +435,86 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    pub(crate) fn check_explicit_typecast(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
-        match (value_type, target_type) {
-            // Any integer to any integer
-            (SemanticType::PlainType(value), SemanticType::PlainType(target))
-                if value.is_integer() && target.is_integer() =>
-            {
-                true
-            }
+    // TODO: Would be used after implementing @cast.
+    // pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
+    //     match (value_type, target_type) {
+    //         // Any integer to any integer
+    //         (SemanticType::PlainType(value), SemanticType::PlainType(target))
+    //             if value.is_integer() && target.is_integer() =>
+    //         {
+    //             true
+    //         }
 
-            // Any float to any float
-            (SemanticType::PlainType(value), SemanticType::PlainType(target))
-                if value.is_float() && target.is_float() =>
-            {
-                true
-            }
+    //         // Any float to any float
+    //         (SemanticType::PlainType(value), SemanticType::PlainType(target))
+    //             if value.is_float() && target.is_float() =>
+    //         {
+    //             true
+    //         }
 
-            // Any integer <-> float
-            (SemanticType::PlainType(v), SemanticType::PlainType(t))
-                if (v.is_integer() && t.is_float()) || (v.is_float() && t.is_integer()) =>
-            {
-                true
-            }
+    //         // Any integer <-> float
+    //         (SemanticType::PlainType(v), SemanticType::PlainType(t))
+    //             if (v.is_integer() && t.is_float()) || (v.is_float() && t.is_integer()) =>
+    //         {
+    //             true
+    //         }
 
-            // Bool to anything integer-ish (common in C-style languages)
-            (SemanticType::PlainType(PlainType::Bool), SemanticType::PlainType(target)) if target.is_integer() => true,
+    //         // Bool to anything integer-ish (common in C-style languages)
+    //         (SemanticType::PlainType(PlainType::Bool), SemanticType::PlainType(target)) if target.is_integer() => true,
 
-            // Char to integer and back
-            (SemanticType::PlainType(PlainType::Char), SemanticType::PlainType(target)) if target.is_integer() => true,
-            (SemanticType::PlainType(value), SemanticType::PlainType(PlainType::Char)) if value.is_integer() => true,
+    //         // Char to integer and back
+    //         (SemanticType::PlainType(PlainType::Char), SemanticType::PlainType(target)) if target.is_integer() => true,
+    //         (SemanticType::PlainType(value), SemanticType::PlainType(PlainType::Char)) if value.is_integer() => true,
 
-            // void* <-> intptr/uintptr
-            (SemanticType::Pointer(..), SemanticType::PlainType(PlainType::IntPtr))
-            | (SemanticType::Pointer(..), SemanticType::PlainType(PlainType::UIntPtr))
-            | (SemanticType::PlainType(PlainType::IntPtr), SemanticType::Pointer(..))
-            | (SemanticType::PlainType(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
+    //         // void* <-> intptr/uintptr
+    //         (SemanticType::Pointer(..), SemanticType::PlainType(PlainType::IntPtr))
+    //         | (SemanticType::Pointer(..), SemanticType::PlainType(PlainType::UIntPtr))
+    //         | (SemanticType::PlainType(PlainType::IntPtr), SemanticType::Pointer(..))
+    //         | (SemanticType::PlainType(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
 
-            // NOTE
-            //
-            // At the semantic/typecheck layer we intentionally allow casts between
-            // enums and integer/bool scalar types without validating the enum’s
-            // underlying representation yet.
-            //
-            // The reason is architectural: the semantic layer only answers the
-            // question “is this cast conceptually legal?”, not "how exactly should it
-            // be lowered?”. Determining the actual integer representation of an enum
-            // (its tag type) is a lowering concern that is handled
-            // later in the CIR stage.
-            //
-            //
-            // Therefore here we accept the following conversions:
-            // enum -> integer/bool ^ integer/bool -> enum
-            //
-            //
-            // as long as the non‑enum side is a scalar integer or bool. This keeps the
-            // typechecker simple and avoids pulling enum layout/lowering knowledge
-            // into this phase.
-            //
-            // During CIR lowering the expression:
-            //
-            // @cast(IntType, enumValue)
-            //
-            // is resolved using the enum's tag type. At that
-            // point we perform the precise lowering (and any required compile‑time validation)
-            // through the cast builtin implementation.
-            //
-            (SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)), SemanticType::PlainType(plain_type)) => {
-                let symbol_entry = self.query.lookup_symbol_entry(enum_id).unwrap();
+    //         // NOTE
+    //         //
+    //         // At the semantic/typecheck layer we intentionally allow casts between
+    //         // enums and integer/bool scalar types without validating the enum’s
+    //         // underlying representation yet.
+    //         //
+    //         // The reason is architectural: the semantic layer only answers the
+    //         // question “is this cast conceptually legal?”, not "how exactly should it
+    //         // be lowered?”. Determining the actual integer representation of an enum
+    //         // (its tag type) is a lowering concern that is handled
+    //         // later in the CIR stage.
+    //         //
+    //         //
+    //         // Therefore here we accept the following conversions:
+    //         // enum -> integer/bool ^ integer/bool -> enum
+    //         //
+    //         //
+    //         // as long as the non‑enum side is a scalar integer or bool. This keeps the
+    //         // typechecker simple and avoids pulling enum layout/lowering knowledge
+    //         // into this phase.
+    //         //
+    //         // During CIR lowering the expression:
+    //         //
+    //         // @cast(IntType, enumValue)
+    //         //
+    //         // is resolved using the enum's tag type. At that
+    //         // point we perform the precise lowering (and any required compile‑time validation)
+    //         // through the cast builtin implementation.
+    //         //
+    //         (SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)), SemanticType::PlainType(plain_type)) => {
+    //             let symbol_entry = self.query.lookup_symbol_entry(enum_id).unwrap();
 
-                symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
-            }
-            (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
-            (SemanticType::PlainType(plain_type), SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id))) => {
-                let symbol_entry = self.query.lookup_symbol_entry(enum_id).unwrap();
+    //             symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
+    //         }
+    //         (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
+    //         (SemanticType::PlainType(plain_type), SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id))) => {
+    //             let symbol_entry = self.query.lookup_symbol_entry(enum_id).unwrap();
 
-                symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
-            }
-            (SemanticType::PlainType(plain_type), SemanticType::UnnamedEnum(_)) => plain_type.is_integer_or_bool(),
-            // END
-            _ => false,
-        }
-    }
+    //             symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
+    //         }
+    //         (SemanticType::PlainType(plain_type), SemanticType::UnnamedEnum(_)) => plain_type.is_integer_or_bool(),
+    //         // END
+    //         _ => false,
+    //     }
+    // }
 }

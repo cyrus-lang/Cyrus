@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{analyze::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{SelfModifierKind, abi::Visibility};
 use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel};
@@ -241,7 +241,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
-        let parent_func = self.fn_env.current_func_type.clone();
+        let parent_func = self.fenv.current_func_type.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
         lambda.ret_type = self.normalize_sema_type(lambda.ret_type.clone(), lambda.loc)?;
@@ -254,10 +254,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             loc: lambda.loc,
         };
 
-        self.fn_env.current_func_type = Some(func_type.clone());
+        self.fenv.current_func_type = Some(func_type.clone());
         self.analyze_block_stmt(&mut lambda.body);
 
-        self.fn_env.current_func_type = parent_func;
+        self.fenv.current_func_type = parent_func;
         Some(SemanticType::FuncType(func_type))
     }
 
@@ -444,7 +444,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             };
 
             if let Some(explicit_field_ty) = &field.ty {
-                if !self.check_type_mismatch(field_value_type.clone(), explicit_field_ty.clone(), field.loc) {
+                if !self.is_assignable_to(field_value_type.clone(), explicit_field_ty.clone(), field.loc) {
                     let lhs_type = format_sema_type(explicit_field_ty.clone(), fmt_symbol);
                     let rhs_type = format_sema_type(field_value_type, fmt_symbol);
                     self.reporter.report(Diag {
@@ -1204,7 +1204,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 };
             }
 
-            if !self.check_type_mismatch(expr_type.clone(), *array_type!().element_type.clone(), element.loc) {
+            if !self.is_assignable_to(expr_type.clone(), *array_type!().element_type.clone(), element.loc) {
                 let element_type = format_sema_type(expr_type, fmt_symbol);
                 let expected_type = format_sema_type(*array_type!().element_type.clone(), fmt_symbol);
 
@@ -1860,7 +1860,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         }
 
-        self.fn_env.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
+        self.fenv.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
 
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
@@ -2048,6 +2048,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Some(func_sig.ret_type.clone())
     }
 
+    // REVIEW: Move to normalizer.
     /// Extracts the pure symbol ID from a type, normalizing it first.
     ///
     /// Normalizes the given semantic type (resolving aliases, applying generics)
@@ -2139,7 +2140,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 continue;
             }
 
-            if !self.check_type_mismatch(arg_type.clone(), param_type.clone(), arg.loc) {
+            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -2173,7 +2174,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
                         if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                            if !self.check_type_mismatch(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
+                            if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
@@ -2249,7 +2250,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 None => continue,
             };
 
-            if !self.check_type_mismatch(arg_type.clone(), param_type.clone(), arg.loc) {
+            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -2274,7 +2275,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
                         for (i, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                                if !self.check_type_mismatch(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
+                                if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
@@ -2377,7 +2378,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         field_init.value.sema_type = self.analyze_expr(&mut field_init.value, Some(field_expected_type));
 
         if generic_type_opt.is_none() {
-            if !self.check_type_mismatch(
+            if !self.is_assignable_to(
                 field_init.value.sema_type.clone().unwrap(),
                 field.ty.clone(),
                 field_init.value.loc,
@@ -2520,7 +2521,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
 
             if generic_type_opt.is_none() {
-                if !self.check_type_mismatch(
+                if !self.is_assignable_to(
                     field_init.value.sema_type.clone().unwrap(),
                     field.ty.clone(),
                     field_init.value.loc,
@@ -2951,7 +2952,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             if generic_type_opt.is_none() {
                 enum_valued_field.ty = self.normalize_sema_type(enum_valued_field.ty.clone(), typed_expr.loc)?;
 
-                if !self.check_type_mismatch(
+                if !self.is_assignable_to(
                     typed_expr.sema_type.clone().unwrap(),
                     enum_valued_field.ty.clone(),
                     typed_expr.loc,
@@ -3258,8 +3259,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// in a method call. This contextual information is used for subsequent semantic
     /// analysis within the method body (e.g., field access validation, implicit 'self').
     pub(crate) fn set_ty_ctx_self_type(&mut self, method_call: &mut TypedMethodCall, sema_type: &SemanticType) {
-        self.fn_env.current_object_type = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
-        self.fn_env.current_self_type = Some(sema_type.clone());
+        self.fenv.current_object_type = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
+        self.fenv.current_self_type = Some(sema_type.clone());
         method_call.self_ty = Some(sema_type.clone());
     }
 
@@ -3330,29 +3331,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    /// Validates that type arguments are not provided for non-generic types.
-    ///
-    /// Checks whether type arguments (e.g., `<T, U>`) are unexpectedly provided
-    /// for a type that does not have generic parameters. This prevents syntax
-    /// like `NonGenericType<int>` which would be invalid.
-    fn report_if_unexpected_type_args(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        type_args: &Option<TypedTypeArgs>,
-        loc: Loc,
-    ) -> bool {
-        if generic_params.is_none() && type_args.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                loc: Some(loc),
-                hint: None,
-            });
-            return true;
-        }
-        false
-    }
-
     /// Resolves semantic type of a variable or global variable.
     fn resolve_var_or_global_var_type(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
         let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
@@ -3377,7 +3355,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> bool {
         let mut result = true;
 
-        let access_violation = if let Some(current_method_symbol_id) = self.fn_env.current_method_symbol_id {
+        let access_violation = if let Some(current_method_symbol_id) = self.fenv.current_method_symbol_id {
             let method_symbol_ids = struct_methods.values().cloned().collect::<Vec<SymbolID>>();
 
             if method_symbol_ids.contains(&current_method_symbol_id) {
@@ -3481,7 +3459,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let mut result = true;
         let vis = &func_sig.modifiers.vis;
 
-        let access_violation = if let Some(current_method_symbol_id) = self.fn_env.current_method_symbol_id {
+        let access_violation = if let Some(current_method_symbol_id) = self.fenv.current_method_symbol_id {
             let object_contains_method = {
                 if let Some(object_methods) = object_methods_opt {
                     object_methods
@@ -3569,18 +3547,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         result
     }
 
-    /// Validates that an expression type is suitable for use as a boolean condition.
-    pub(crate) fn report_if_not_cond_expr(&mut self, sema_type: SemanticType, loc: Loc) {
-        if !sema_type.is_bool() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::ConditionExprMustBeOfTypeBool),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-    }
-
+    // REVIEW: Maybe we should have a leading crate for envs?
+    // Called: env.rs or infer.rs
     fn field_env_from_struct_type(&self, expected_type: Option<SemanticType>) -> FieldEnv {
         let Some(sema_type) = expected_type else {
             return FieldEnv::default();
@@ -3608,6 +3576,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 }
+
 
 impl FuncEnv {
     pub fn new() -> Self {
@@ -3642,6 +3611,7 @@ impl FieldEnv {
     }
 }
 
+// REVIEW: Maybe we should have a leading crate for envs?
 fn field_env_from_unnamed_struct_type(unnamed_struct_type: &TypedUnnamedStructType) -> FieldEnv {
     let mut infer_ctx = FieldEnv::new();
     for field in &unnamed_struct_type.fields {
@@ -3650,6 +3620,7 @@ fn field_env_from_unnamed_struct_type(unnamed_struct_type: &TypedUnnamedStructTy
     infer_ctx
 }
 
+// REVIEW: Maybe we should have a leading crate for envs?
 fn field_env_from_struct_sig(struct_sig: &StructSig) -> FieldEnv {
     let mut infer_ctx = FieldEnv::new();
     for field in &struct_sig.fields {

@@ -16,23 +16,24 @@
  */
 
 use crate::{
-    config::AnalyzerConfig, diagnostics::AnalyzerDiagKind, normalizer::TypeCache, type_checking::type_checking::FuncEnv,
+    AnalysisContext, AnalyzerConfig, EntryPoints, diagnostics::AnalyzerDiagKind, normalizer::TypeCache,
+    typecheck::typecheck::FuncEnv,
 };
 use cyrusc_ast::{
     AssignKind,
     abi::{ReprAttr, ReprKind},
 };
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_comptime_valid};
-use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
+use cyrusc_diagcentral::{Diag, DiagLevel, reporter::DiagReporter};
 use cyrusc_internal::{
     flow_state::{ControlRegion, FlowState},
     symbols::table::{Query, SymbolEntryMut},
     vtable::VTableRegistry,
 };
-use cyrusc_source_loc::{Loc, SourceMap};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
-    format::{SymbolFormatterFn, format_loc, format_sema_type, format_unnamed_enum_type},
+    format::{SymbolFormatterFn, format_sema_type, format_unnamed_enum_type},
     generics::{
         mapping_ctx_arena::GenericMappingCtxArena,
         monomorph::MonomorphRegistry,
@@ -54,30 +55,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub struct AnalysisContext<'a, M: SymbolEntryMut> {
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-    pub entry_points: Arc<EntryPoints>,
-    pub program_tree: Rc<RefCell<TypedProgramTree>>,
-    pub vtable_registry: Arc<Mutex<VTableRegistry>>,
-
-    pub(crate) query: &'a dyn Query,
-    pub(crate) symbol_mut: &'a M,
-    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    pub(crate) reporter: Arc<DiagReporter>,
-
-    pub(crate) fn_env: FuncEnv,
-    pub(crate) type_cache: TypeCache,
-
-    control_stack: Vec<ControlRegion>,
-
-    pub(crate) config: AnalyzerConfig,
-}
-
-pub struct EntryPoints {
-    locs: Mutex<Vec<Loc>>,
-    source_map: Arc<SourceMap>,
-}
-
 // Analysis Context Public API
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub fn new(
@@ -94,7 +71,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         Self {
             config,
             type_cache: TypeCache::default(),
-            fn_env: FuncEnv::new(),
+            fenv: FuncEnv::new(),
             reporter,
             control_stack: Vec::new(),
             program_tree,
@@ -293,7 +270,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         if let Some(target_type) = explicit_sema_ty {
-            if !self.check_type_mismatch(expr_sema_ty.clone(), target_type.clone(), export_tuple.loc) {
+            if !self.is_assignable_to(expr_sema_ty.clone(), target_type.clone(), export_tuple.loc) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -696,7 +673,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             continue;
                         };
 
-                        if !self.check_type_mismatch(pattern_type.clone(), operand_type.clone(), switch_stmt.loc) {
+                        if !self.is_assignable_to(pattern_type.clone(), operand_type.clone(), switch_stmt.loc) {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: Box::new(AnalyzerDiagKind::TypeMismatchInCasePattern {
@@ -875,7 +852,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let func_type = self.fn_env.current_func_type.clone().unwrap();
+        let func_type = self.fenv.current_func_type.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {
@@ -887,7 +864,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         } else if let Some(typed_expr) = &mut ret.arg {
             if let Some(sema_type) = self.analyze_expr(typed_expr, Some(ret_type.clone())) {
-                if !self.check_type_mismatch(sema_type.clone(), ret_type.clone(), ret.loc) {
+                if !self.is_assignable_to(sema_type.clone(), ret_type.clone(), ret.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
@@ -961,101 +938,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // }
     }
 
-    fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
-        if let Some(mut expr) = global_var.expr.clone() {
-            match self.analyze_expr(&mut expr, global_var.ty.clone()) {
-                Some(sema_type) => Some(sema_type),
-                None => return,
-            };
-
-            if !is_comptime_valid(&expr.kind) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
-                    loc: Some(global_var.loc),
-                    hint: None,
-                });
-                return;
-            }
-
-            global_var.expr = Some(expr);
-        }
-
-        global_var.ty = match &global_var.ty {
-            Some(sema_type) => self.normalize_and_check_sema_ty(sema_type.clone(), global_var.loc),
-            None => match global_var.expr.as_ref().and_then(|expr| expr.sema_type.clone()) {
-                Some(sema_type) => Some(sema_type),
-                None => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::GlobalVarRequiresTypeAnnotation),
-                        loc: Some(global_var.loc),
-                        hint: None,
-                    });
-                    return;
-                }
-            },
-        };
-
-        if let Some(sema_type) = &global_var.ty {
-            self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc);
-        }
-
-        if let Some(expr) = &global_var.expr {
-            if !is_comptime_valid(&expr.kind) && !matches!(global_var.ty, Some(SemanticType::Const(..))) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
-                    loc: Some(global_var.loc),
-                    hint: None,
-                });
-                return;
-            }
-        }
-
-        let is_type_const = global_var.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false);
-
-        if !global_var.is_const && is_type_const {
-            // example:
-            // var x: const int = 10;
-            self.reporter.report(Diag {
-                level: DiagLevel::Warning,
-                kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
-                loc: Some(global_var.loc),
-                hint: Some(
-                    "Prefer declaring the global variable itself as const instead of using a const-qualified type."
-                        .to_string(),
-                ),
-            });
-        }
-
-        if let Some(expr) = &global_var.expr {
-            if let Some(target_type) = &global_var.ty {
-                let expr_type = expr.sema_type.clone().unwrap();
-
-                if *expr_type.const_inner() != *target_type.const_inner() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(target_type.clone(), fmt_symbol),
-                            rhs_type: format_sema_type(expr_type.clone(), fmt_symbol),
-                        }),
-                        loc: Some(global_var.loc),
-                        hint: Some("Global variable initializers must exactly match the declared type.".into()),
-                    });
-                }
-            }
-        }
-
-        self.symbol_mut
-            .with_global_var_mut(global_var.symbol_id, |resolved_var| {
-                resolved_var.global_var_sig.rhs = global_var.expr.clone();
-                resolved_var.global_var_sig.ty = global_var.ty.clone();
-            });
-    }
-
     fn analyze_struct(&mut self, struct_stmt: &mut TypedStructStmt) {
         self.validate_struct_repr_attr(
             &struct_stmt.modifiers.repr_attr,
@@ -1069,7 +951,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
+        self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
             struct_stmt.symbol_id,
         )));
 
@@ -1104,7 +986,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+        self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
             union_stmt.symbol_id,
         )));
 
@@ -1130,7 +1012,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+        self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
             enum_stmt.symbol_id,
         )));
 
@@ -1167,7 +1049,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
-        self.fn_env.current_func_type = Some(TypedFuncType {
+        self.fenv.current_func_type = Some(TypedFuncType {
             symbol_id: Some(func_def.symbol_id),
             params: typed_func_params_as_func_type_params(&func_def.params),
             ret_type: Box::new(func_def.ret_type.clone()),
@@ -1223,17 +1105,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_interface(&mut self, interface: &TypedInterfaceStmt) {
+        let interface_name = &interface.name;
+
         if let Some(generic_params) = &interface.generic_params {
             self.analyze_generic_params(generic_params);
         }
 
-        self.nameconv_check_interface_name(interface.name.clone(), interface.loc);
+        self.nameconv_check_interface_name(interface_name.clone(), interface.loc);
 
         let mut methods: Vec<String> = Vec::new();
-
-        let resolved_interface = self.query.get_interface(interface.symbol_id).unwrap();
-
-        let interface_name = resolved_interface.interface_sig.name.clone();
 
         for method in &interface.methods {
             if !method.params.is_instance_method() {
@@ -1274,6 +1154,92 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
     }
 
+    fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
+        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+
+        if let Some(mut expr) = global_var.expr.clone() {
+            match self.analyze_expr(&mut expr, global_var.ty.clone()) {
+                Some(sema_type) => Some(sema_type),
+                None => return,
+            };
+
+            if !is_comptime_valid(&expr.kind) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
+                    loc: Some(global_var.loc),
+                    hint: None,
+                });
+                return;
+            }
+
+            global_var.expr = Some(expr);
+        }
+
+        global_var.ty = match &global_var.ty {
+            Some(sema_type) => self.normalize_and_check_sema_ty(sema_type.clone(), global_var.loc),
+            None => match global_var.expr.as_ref().and_then(|expr| expr.sema_type.clone()) {
+                Some(sema_type) => Some(sema_type),
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::GlobalVarRequiresTypeAnnotation),
+                        loc: Some(global_var.loc),
+                        hint: None,
+                    });
+                    return;
+                }
+            },
+        };
+
+        if let Some(sema_type) = &global_var.ty {
+            self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc);
+        }
+
+        if let Some(expr) = &global_var.expr {
+            if !is_comptime_valid(&expr.kind) && !matches!(global_var.ty, Some(SemanticType::Const(..))) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
+                    loc: Some(global_var.loc),
+                    hint: None,
+                });
+                return;
+            }
+        }
+
+        if self.is_const_qualified_type_assigned_to_non_const_variable(
+            &global_var.ty.as_ref().unwrap(),
+            global_var.is_const,
+        ) {
+            self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
+        }
+
+        if let Some(expr) = &global_var.expr {
+            if let Some(target_type) = &global_var.ty {
+                let expr_type = expr.sema_type.clone().unwrap();
+
+                if *expr_type.const_inner() != *target_type.const_inner() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                            lhs_type: format_sema_type(target_type.clone(), fmt_symbol),
+                            rhs_type: format_sema_type(expr_type.clone(), fmt_symbol),
+                        }),
+                        loc: Some(global_var.loc),
+                        hint: Some("Global variable initializers must exactly match the declared type.".into()),
+                    });
+                }
+            }
+        }
+
+        self.symbol_mut
+            .with_global_var_mut(global_var.symbol_id, |resolved_var| {
+                resolved_var.global_var_sig.rhs = global_var.expr.clone();
+                resolved_var.global_var_sig.ty = global_var.ty.clone();
+            });
+    }
+
     fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
         let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
@@ -1291,20 +1257,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        let is_type_const = var.ty.as_ref().map(|ty| ty.is_const()).unwrap_or(false);
-
-        if !var.is_const && is_type_const {
-            // example:
-            // var x: const int = 10;
-            self.reporter.report(Diag {
-                level: DiagLevel::Warning,
-                kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
-                loc: Some(var.loc),
-                hint: Some(
-                    "Prefer declaring the variable itself as const instead of using a const-qualified type."
-                        .to_string(),
-                ),
-            });
+        if self.is_const_qualified_type_assigned_to_non_const_variable(&var.ty.as_ref().unwrap(), var.is_const) {
+            self.report_const_qualified_type_assigned_to_non_const_variable(var.loc);
         }
 
         if let Some(sema_type) = &var.ty {
@@ -1313,7 +1267,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         if let Some(expr) = &mut var.rhs {
             if let Some(target_type) = &var.ty {
-                if !self.check_type_mismatch(expr.sema_type.clone().unwrap(), target_type.clone(), var.loc) {
+                if !self.is_assignable_to(expr.sema_type.clone().unwrap(), target_type.clone(), var.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -1358,7 +1312,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         assert!(assign.kind == AssignKind::Default);
 
-        if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone(), assign.loc) {
+        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), assign.loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -1374,6 +1328,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
 // Helper Functions
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+    /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
+    ///
+    /// Example:
+    ///     var x: const int = 10;
+    fn is_const_qualified_type_assigned_to_non_const_variable(
+        &mut self,
+        ty: &SemanticType,
+        is_const_qualified: bool,
+    ) -> bool {
+        is_const_qualified || !ty.is_const()
+    }
+
     fn is_const_qualified_lvalue(&self, expr: &TypedExprStmt) -> bool {
         expr.kind
             .as_symbol_id()
@@ -2075,57 +2041,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None
         }
     }
-
-    fn report_if_duplicate_param_names(
-        &mut self,
-        params: &[TypedFuncParamKind],
-        variadic: Option<&TypedFuncVariadicParams>,
-        loc: Loc,
-    ) {
-        let mut param_names: Vec<String> = Vec::new();
-
-        for (param_idx, param) in params.iter().enumerate() {
-            match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    if param_names.contains(&typed_func_param.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
-                                param_name: typed_func_param.name.clone(),
-                                param_idx: param_idx.try_into().unwrap(),
-                            }),
-                            loc: Some(loc),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                        continue;
-                    }
-
-                    param_names.push(typed_func_param.name.clone());
-                }
-                TypedFuncParamKind::SelfModifier(_) => {
-                    param_names.push("self".to_string());
-                }
-            }
-        }
-
-        if let Some(variadic_param) = variadic {
-            match variadic_param {
-                TypedFuncVariadicParams::Typed(ident, _) => {
-                    if param_names.contains(&ident.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::DuplicateFuncVariadicParameter {
-                                param_name: ident.name.clone(),
-                            }),
-                            loc: Some(loc),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                    }
-                }
-                TypedFuncVariadicParams::UntypedCStyle => {}
-            }
-        }
-    }
 }
 
 impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
@@ -2141,45 +2056,6 @@ impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
             Some(expr) => expr.sema_type.as_ref().map(|t| t.is_const()).unwrap_or(false),
 
             None => false,
-        }
-    }
-}
-
-impl EntryPoints {
-    pub fn new(source_map: Arc<SourceMap>) -> Self {
-        Self {
-            locs: Mutex::new(Vec::new()),
-            source_map,
-        }
-    }
-
-    pub(crate) fn add(&self, loc: Loc) {
-        self.locs.lock().unwrap().push(loc);
-    }
-
-    /// Validates that the program defines exactly one entry point and reports an
-    /// error if none or multiple entry points are found.
-    pub fn validate(&self) {
-        let entry_points = self.locs.lock().unwrap();
-
-        if entry_points.len() == 1 {
-            // valid
-        } else if entry_points.len() == 0 {
-            exit_with_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
-                loc: None,
-                hint: None,
-            });
-        } else {
-            let hint_loc = entry_points.get(entry_points.len().saturating_sub(2)).copied();
-
-            exit_with_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
-                loc: entry_points.last().copied(),
-                hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(&self.source_map, loc))),
-            });
         }
     }
 }

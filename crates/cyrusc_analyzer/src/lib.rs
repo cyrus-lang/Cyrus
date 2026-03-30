@@ -15,11 +15,128 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::{diagnostics::AnalyzerDiagKind, normalizer::TypeCache, typecheck::typecheck::FuncEnv};
+use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
+use cyrusc_internal::{
+    flow_state::ControlRegion,
+    symbols::table::{Query, SymbolEntryMut},
+    vtable::VTableRegistry,
+};
+use cyrusc_source_loc::{Loc, SourceMap};
+use cyrusc_typed_ast::{
+    TypedProgramTree,
+    format::format_loc,
+    generics::{mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry},
+};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
+
 pub mod analyze;
-pub mod config;
-mod lower;
 mod diagnostics;
 mod generics;
+mod lower;
 mod nameconv;
 mod normalizer;
-mod type_checking;
+mod typecheck;
+
+pub struct AnalysisContext<'a, M: SymbolEntryMut> {
+    pub(crate) config: AnalyzerConfig,
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    pub entry_points: Arc<EntryPoints>,
+    pub program_tree: Rc<RefCell<TypedProgramTree>>,
+    pub vtable_registry: Arc<Mutex<VTableRegistry>>,
+    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    pub(crate) reporter: Arc<DiagReporter>,
+
+    pub(crate) query: &'a dyn Query,
+    pub(crate) symbol_mut: &'a M,
+
+    pub(crate) fenv: FuncEnv,
+    pub(crate) type_cache: TypeCache,
+
+    control_stack: Vec<ControlRegion>,
+}
+
+pub struct EntryPoints {
+    locs: Mutex<Vec<Loc>>,
+    source_map: Arc<SourceMap>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnalyzerConfig {
+    pub warnings: WarningConfig,
+    pub strict_mode: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WarningConfig {
+    pub enabled: bool,
+    pub warnings_as_errors: bool,
+
+    pub unused_variables: bool,
+    pub unreachable_code: bool,
+    pub dead_code: bool,
+}
+
+impl Default for WarningConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            warnings_as_errors: false,
+            unused_variables: true,
+            unreachable_code: true,
+            dead_code: true,
+        }
+    }
+}
+
+impl Default for AnalyzerConfig {
+    fn default() -> Self {
+        Self {
+            warnings: WarningConfig::default(),
+            strict_mode: false,
+        }
+    }
+}
+
+impl EntryPoints {
+    pub fn new(source_map: Arc<SourceMap>) -> Self {
+        Self {
+            locs: Mutex::new(Vec::new()),
+            source_map,
+        }
+    }
+
+    pub(crate) fn add(&self, loc: Loc) {
+        self.locs.lock().unwrap().push(loc);
+    }
+
+    /// Validates that the program defines exactly one entry point and reports an
+    /// error if none or multiple entry points are found.
+    pub fn validate(&self) {
+        let entry_points = self.locs.lock().unwrap();
+
+        if entry_points.len() == 1 {
+            // valid
+        } else if entry_points.len() == 0 {
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MissingEntryPoint),
+                loc: None,
+                hint: None,
+            });
+        } else {
+            let hint_loc = entry_points.get(entry_points.len().saturating_sub(2)).copied();
+
+            exit_with_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MultipleEntryPoints),
+                loc: entry_points.last().copied(),
+                hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(&self.source_map, loc))),
+            });
+        }
+    }
+}
