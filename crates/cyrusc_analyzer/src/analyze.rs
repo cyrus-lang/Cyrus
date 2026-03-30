@@ -63,7 +63,6 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub(crate) query: &'a dyn Query,
     pub(crate) symbol_mut: &'a M,
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-    pub(crate) source_map: Arc<SourceMap>,
     pub(crate) reporter: Arc<DiagReporter>,
 
     pub(crate) fn_env: FuncEnv,
@@ -84,7 +83,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub fn new(
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
-        source_map: Arc<SourceMap>,
         query: &'a dyn Query,
         symbol_mut: &'a M,
         program_tree: Rc<RefCell<TypedProgramTree>>,
@@ -98,7 +96,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             type_cache: TypeCache::default(),
             fn_env: FuncEnv::new(),
             reporter,
-            source_map,
             control_stack: Vec::new(),
             program_tree,
             query,
@@ -1348,12 +1345,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None => return,
         };
 
-        let lhs_symbol_entry = self
-            .query
-            .lookup_symbol_entry(assign.lhs.kind.as_symbol_id().unwrap())
-            .unwrap();
-
-        let is_lhs_const = lhs_symbol_entry.is_const_qualified();
+        let is_lhs_const = self.is_const_qualified_lvalue(&assign.lhs);
 
         if is_lhs_const {
             self.reporter.report(Diag {
@@ -1382,6 +1374,17 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
 // Helper Functions
 impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+    fn is_const_qualified_lvalue(&self, expr: &TypedExprStmt) -> bool {
+        expr.kind
+            .as_symbol_id()
+            .and_then(|symbol_id| {
+                self.query
+                    .lookup_symbol_entry(symbol_id)
+                    .map(|symbol_entry| symbol_entry.is_const_qualified())
+            })
+            .unwrap_or(false)
+    }
+
     /// Validates that an object correctly implements its declared interfaces.
     ///
     /// Ensures the referenced symbols are valid interfaces, checks visibility

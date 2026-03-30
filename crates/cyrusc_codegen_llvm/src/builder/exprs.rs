@@ -595,15 +595,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let field_ty = struct_field_access.field_ty.clone();
                 InternalValue::new(field_ty, InternalValueKind::LValue(field_ptr))
             }
-            _ => {
-                let value = self.emit_expr(expr);
-
-                if let InternalValueKind::LValue(_) = &value.kind {
-                    value
-                } else {
-                    unreachable!("attempted to take lvalue of an rvalue expression")
-                }
-            }
+            _ => self.emit_expr(expr),
         }
     }
 

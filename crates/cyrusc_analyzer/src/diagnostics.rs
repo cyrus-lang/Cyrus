@@ -22,7 +22,7 @@ use thiserror::Error;
 pub enum AnalyzerDiagKind {
     #[error("Cannot discard 'const' qualifier when converting from '{from}' to '{to}'.")]
     CannotDiscardConst { from: String, to: String },
-    
+
     #[error(
         "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
     )]
@@ -260,7 +260,7 @@ pub enum AnalyzerDiagKind {
     #[error("Global variable expression is not valid at compile time.")]
     GlobalVariableExprNotComptimeValid,
 
-    #[error("Expr is not valid at compile time.")]
+    #[error("Expression is not valid at compile time.")]
     ExprNotComptimeValid,
 
     #[error("Cannot assign to immutable lvalue.")]

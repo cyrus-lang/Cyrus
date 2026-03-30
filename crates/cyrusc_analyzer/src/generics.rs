@@ -160,11 +160,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         func_sig: &mut FuncSig,
         generic_type: &GenericType,
         // only used for methods (optional)
-        self_modifier_ty: Option<SemanticType>,
+        self_modifier_type: Option<SemanticType>,
         func_call_loc: &Loc,
     ) -> Option<MonomorphID> {
         todo!();
-
         // let current_diag_len = self.reporter.len();
 
         // let (mut template_body, mapping_ctx, base_symbol) = {
@@ -244,10 +243,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         // {
         //     let mut monomorph_registry = self.monomorph_registry.lock().unwrap();
-        //     monomorph_registry.register_specialized_func_instance(
-        //         monomorph_id.clone(),
-        //         SpecializedFuncEntry { body: analyzed_body },
-        //     );
+        //     monomorph_registry
+        //         .register_specialized_func_instance(monomorph_id.clone(), SpecializedFuncEntry { body: analyzed_body });
         // }
 
         // Some(monomorph_id)
@@ -416,10 +413,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) {
         match (target_ty.const_inner(), expr_ty.const_inner()) {
             (SemanticType::GenericParam(generic_param), _) => {
-                mapping_ctx.insert_named(
-                    GenericMappingEntry::from(generic_param.name.clone()),
-                    expr_ty.clone(),
-                );
+                mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.name.clone()), expr_ty.clone());
             }
             (SemanticType::Pointer(target_pointer_inner), SemanticType::Pointer(expr_pointer_inner)) => {
                 self.unify_generic_types(
@@ -498,8 +492,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             None => continue,
                         };
 
-                        mapping_ctx
-                            .insert_named(GenericMappingEntry::from(generic_param.name.clone()), sema_type);
+                        mapping_ctx.insert_named(GenericMappingEntry::from(generic_param.name.clone()), sema_type);
                     }
                 }
             }

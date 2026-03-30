@@ -210,7 +210,6 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 let mut analyzer = AnalysisContext::new(
                     config.clone(),
                     reporter.clone(),
-                    source_map.clone(),
                     &resolver,
                     &resolver,
                     program_tree_entry.program_tree.clone(),

@@ -115,7 +115,6 @@ pub fn main() {
                     let mut analyzer = AnalysisContext::new(
                         config.clone(),
                         reporter.clone(),
-                        source_map.clone(),
                         &resolver,
                         &resolver,
                         program_tree_entry.program_tree.clone(),

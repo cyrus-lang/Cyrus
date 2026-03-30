@@ -1248,17 +1248,17 @@ impl Resolver {
                 }
             }
 
-            let method_id = self
+            let method_symbol_id = self
                 .global_symbols
                 .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
 
             self.global_symbols
-                .insert_symbol_name(self.current_scope.unwrap(), method_id, &unique_name);
+                .insert_symbol_name(self.current_scope.unwrap(), method_symbol_id, &unique_name);
 
-            methods.insert(original_name.clone(), method_id);
+            methods.insert(original_name.clone(), method_symbol_id);
 
             let func_sig = FuncSig {
-                symbol_id: Some(method_id),
+                symbol_id: Some(method_symbol_id),
                 name: original_name,
                 is_func_decl: false,
                 generic_params: generic_params.clone(),
@@ -1270,11 +1270,15 @@ impl Resolver {
 
             let is_generic = func_sig.is_generic() || generic_object;
 
-            self.with_method_mut(method_id, |resolved_method| {
-                resolved_method.func_sig = func_sig;
+            self.with_global_symbol_mut(method_symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Method(ResolvedMethod {
+                    symbol_id: method_symbol_id,
+                    func_sig,
+                    func_body: None,
+                })
             });
 
-            method_bodies.insert(method_id, (scope, &func_def.body, is_generic));
+            method_bodies.insert(method_symbol_id, (scope, &func_def.body, is_generic));
         }
 
         for (method_id, (scope, body, is_generic)) in method_bodies {
@@ -1285,10 +1289,11 @@ impl Resolver {
             with_local_scope!(self, scope, {
                 for param in &mut resolved_method.func_sig.params.list {
                     if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_id = self
+                        let self_symbol_id = self
                             .global_symbols
                             .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
-                        self_modifier.self_id = Some(self_id);
+
+                        self_modifier.self_id = Some(self_symbol_id);
 
                         let ty = match self_modifier.kind {
                             SelfModifierKind::Copied => Some(SemanticType::UnresolvedSymbol(object_symbol_id)),
@@ -1300,7 +1305,7 @@ impl Resolver {
                         let self_name = "self";
 
                         let self_var = TypedVarStmt {
-                            symbol_id: self_id,
+                            symbol_id: self_symbol_id,
                             name: self_name.to_string(),
                             ty,
                             rhs: None,
@@ -1308,11 +1313,16 @@ impl Resolver {
                             loc: resolved_method.func_sig.loc,
                         };
 
-                        self.with_var_mut(self_id, |resolved_var| resolved_var.variable = self_var);
+                        self.with_global_symbol_mut(self_symbol_id, |symbol_entry| {
+                            symbol_entry.kind = SymbolEntryKind::Var(ResolvedVar {
+                                symbol_id: self_symbol_id,
+                                variable: self_var,
+                            })
+                        });
 
                         self.current_local_scope_mut()
                             .unwrap()
-                            .insert(self_name.to_string().clone(), self_id);
+                            .insert(self_name.to_string().clone(), self_symbol_id);
                     }
                 }
 
