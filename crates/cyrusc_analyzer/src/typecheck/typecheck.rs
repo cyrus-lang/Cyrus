@@ -28,8 +28,8 @@ use cyrusc_tokens::{
 };
 use cyrusc_typed_ast::{
     exprs::*,
-    format::{SymbolFormatterFn, format_func_type, format_missing_fields, format_sema_type, format_unnamed_enum_type},
-    generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::*},
+    format::{DeclFormatterFn, format_func_type, format_missing_fields, format_sema_type, format_unnamed_enum_type},
+    backup_typed_ast_generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::*},
     sigs::*,
     stmts::*,
     types::*,
@@ -61,7 +61,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         expr: &mut TypedExprStmt,
         mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
@@ -303,7 +303,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         unnamed_union_value: &mut TypedUnnamedUnionValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         // REVIEW: Use helper instead of this!!
         let unnamed_union_type = match expected_type.as_ref().and_then(|sema_type| {
@@ -313,20 +313,20 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let resolved_union = self.query.get_union(union_id)?;
 
                 return Some(union_sig_as_unnamed_union_type(
-                    &resolved_union.union_sig,
+                    &resolved_union.union_decl,
                     unnamed_union_value.loc,
                 ));
             } else if let Some(generic_type) = sema_type.as_generic_type() {
                 let resolved_union = self.query.get_union(generic_type.base)?;
 
-                let union_sig = substitute_union_sig(
+                let union_decl = substitute_union_sig(
                     self.mapping_ctx_arena.clone(),
-                    &resolved_union.union_sig,
+                    &resolved_union.union_decl,
                     generic_type.mapping_ctx.clone(),
                 )
                 .unwrap();
 
-                return Some(union_sig_as_unnamed_union_type(&union_sig, unnamed_union_value.loc));
+                return Some(union_sig_as_unnamed_union_type(&union_decl, unnamed_union_value.loc));
             }
 
             None
@@ -346,7 +346,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let Some(mut field) = unnamed_union_type
             .fields
             .iter()
-            .find(|field| field.name == unnamed_union_value.field_name.as_string())
+            .find(|field| field.name == unnamed_union_value.name.as_string())
             .cloned()
         else {
             let object_name = format_sema_type(expected_type.unwrap(), fmt_symbol);
@@ -355,7 +355,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
                     struct_name: object_name,
-                    field_name: unnamed_union_value.field_name.as_string(),
+                    field_name: unnamed_union_value.name.as_string(),
                 }),
                 loc: Some(unnamed_union_value.loc),
                 hint: None,
@@ -365,7 +365,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         field.ty = Box::new(self.normalize_sema_type(*field.ty.clone(), field.loc)?);
 
-        self.analyze_expr(&mut unnamed_union_value.field_value, Some(*field.ty.clone()));
+        self.analyze_expr(&mut unnamed_union_value.value, Some(*field.ty.clone()));
 
         unnamed_union_value.union_ty = Some(unnamed_union_type.clone());
         Some(SemanticType::UnnamedUnion(unnamed_union_type))
@@ -395,15 +395,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             let (generic_type_opt, enum_sig_opt) = self.extract_enum_sig_from_expected_type(sema_type);
 
-            if let Some(enum_sig) = enum_sig_opt {
-                return self.analyze_unnamed_enum_value_from_enum_sig(unnamed_enum_value, generic_type_opt, enum_sig);
+            if let Some(enum_decl) = enum_sig_opt {
+                return self.analyze_unnamed_enum_value_from_enum_sig(unnamed_enum_value, generic_type_opt, enum_decl);
             }
         }
 
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::UnnamedEnumValueInfering {
-                variant_name: unnamed_enum_value.ident.as_string(),
+                variant_name: unnamed_enum_value.variant_name.as_string(),
             }),
             loc: Some(unnamed_enum_value.loc),
             hint: None,
@@ -421,7 +421,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         unnamed_struct_value: &mut TypedUnnamedStructValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         self.validate_struct_repr_attr(
             &unnamed_struct_value.repr_attr,
@@ -438,7 +438,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         for field in &mut unnamed_struct_value.fields {
             let field_expected_type = field.ty.clone().or(infer_ctx.get(&field.name).cloned());
 
-            let field_value_type = match self.analyze_expr(&mut field.field_value, field_expected_type) {
+            let field_value_type = match self.analyze_expr(&mut field.value, field_expected_type) {
                 Some(sema_type) => sema_type,
                 None => continue,
             };
@@ -481,7 +481,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// indexable (array or pointer). Returns the element type with proper
     /// const qualification.
     fn analyze_array_index(&mut self, array_index: &mut TypedArrayIndexExpr) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = match self.analyze_expr(&mut array_index.operand, None) {
             Some(sema_type) => sema_type,
@@ -647,11 +647,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         false,
                     ),
                     FieldAccessKind::NamedStruct(resolved_struct) => {
-                        let mut struct_sig = resolved_struct.struct_sig.clone();
+                        let mut struct_decl = resolved_struct.struct_decl.clone();
                         if let Some(generic_type) = generic_type_opt {
-                            struct_sig = substitute_struct_sig(
+                            struct_decl = substitute_struct_sig(
                                 self.mapping_ctx_arena.clone(),
-                                &struct_sig,
+                                &struct_decl,
                                 generic_type.mapping_ctx.clone(),
                             )?;
                         }
@@ -659,27 +659,27 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         (
                             self.analyze_struct_field_access(
                                 field_access,
-                                struct_sig.name.clone(),
-                                struct_sig.fields.clone(),
-                                struct_sig.methods.clone(),
+                                struct_decl.name.clone(),
+                                struct_decl.fields.clone(),
+                                struct_decl.methods.clone(),
                                 resolved_struct.symbol_id,
                             ),
-                            struct_sig.generic_params.is_some(),
+                            struct_decl.generic_params.is_some(),
                         )
                     }
                     FieldAccessKind::Union(resolved_union) => {
-                        let mut union_sig = resolved_union.union_sig.clone();
+                        let mut union_decl = resolved_union.union_decl.clone();
                         if let Some(generic_type) = generic_type_opt {
-                            union_sig = substitute_union_sig(
+                            union_decl = substitute_union_sig(
                                 self.mapping_ctx_arena.clone(),
-                                &union_sig,
+                                &union_decl,
                                 generic_type.mapping_ctx.clone(),
                             )?;
                         }
 
                         (
-                            self.analyze_union_field_access(&union_sig, field_access, expected_type),
-                            union_sig.generic_params.is_some(),
+                            self.analyze_union_field_access(&union_decl, field_access, expected_type),
+                            union_decl.generic_params.is_some(),
                         )
                     }
                     FieldAccessKind::UnnamedUnion(unnamed_union_type) => (
@@ -717,7 +717,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         struct_init: &mut TypedStructInitExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let symbol_entry = self.query.lookup_symbol_entry(struct_init.symbol_id).unwrap();
 
@@ -804,19 +804,19 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         func_call: &mut TypedFuncCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
         #[allow(unused_assignments)]
         let mut generic_type_opt: Option<GenericType> = None;
-        let mut func_sig: FuncSig;
+        let mut func_decl: FuncDecl;
 
         if let Some(mut func_type) = operand_type.const_inner().as_func_type().cloned() {
             if let Some(symbol_id) = func_type.symbol_id {
-                func_sig = self.query.get_func(symbol_id).unwrap().func_sig;
+                func_decl = self.query.get_func(symbol_id).unwrap().func_decl;
 
-                if self.report_if_unexpected_type_args(&func_sig.generic_params, &func_call.type_args, func_call.loc) {
+                if self.report_if_unexpected_type_args(&func_decl.generic_params, &func_call.type_args, func_call.loc) {
                     return None;
                 }
 
@@ -826,7 +826,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     symbol_id,
                     &mut func_call.type_args,
                     expected_mapping_ctx,
-                    func_sig.generic_params.as_ref(),
+                    func_decl.generic_params.as_ref(),
                     func_call.loc,
                 ) {
                     Ok(opt) => opt?,
@@ -868,10 +868,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             return None;
         }
 
-        self.normalize_func_params(&mut func_sig.params, func_call.loc);
+        self.normalize_func_params(&mut func_decl.params, func_call.loc);
 
         self.check_func_call(
-            &mut func_sig,
+            &mut func_decl,
             &generic_type_opt,
             &mut func_call.args,
             func_call.loc,
@@ -879,34 +879,34 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         )?;
 
         self.symbol_mut
-            .with_func_mut(func_sig.symbol_id.unwrap(), |resolved_func| {
-                resolved_func.func_sig.params = resolved_func.func_sig.params.clone();
-                resolved_func.func_sig.ret_type = func_sig.ret_type.clone();
+            .with_func_mut(func_decl.symbol_id.unwrap(), |resolved_func| {
+                resolved_func.func_decl.params = resolved_func.func_decl.params.clone();
+                resolved_func.func_decl.ret_type = func_decl.ret_type.clone();
             });
 
         // validate generic type instantiation
         if let Some(generic_type) = generic_type_opt {
             // substitute before analyzing body
-            func_sig = substitute_func_sig(
+            func_decl = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
-                &func_sig,
+                &func_decl,
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
 
             if let Err(diag) = generic_type.finalize(
                 self.mapping_ctx_arena.clone(),
-                func_sig.generic_params.clone().unwrap(),
+                func_decl.generic_params.clone().unwrap(),
                 fmt_symbol,
             ) {
                 self.reporter.report(diag);
                 return None;
             }
 
-            if !func_sig.is_func_decl {
+            if !func_decl.is_func_decl {
                 // only specialize function definition which necessarily includes the body block
                 func_call.monomorph_id =
-                    self.register_specialized_generic_func(&mut func_sig, &generic_type, None, &func_call.loc);
+                    self.register_specialized_generic_func(&mut func_decl, &generic_type, None, &func_call.loc);
             }
 
             // substitutes the func type inside of the func_call operand
@@ -917,8 +917,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             );
         }
 
-        func_call.ret_type = Some(func_sig.ret_type.clone());
-        Some(func_sig.ret_type)
+        func_call.ret_type = Some(func_decl.ret_type.clone());
+        Some(func_decl.ret_type)
     }
 
     // REVIEW: Refactor required.
@@ -1072,7 +1072,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         None => None,
                     }
                 } else if let Some(resolved_interface) = symbol_entry.as_interface() {
-                    Some(resolved_interface.interface_sig.symbol_id)
+                    Some(resolved_interface.interface_decl.symbol_id)
                 } else {
                     None
                 }
@@ -1126,7 +1126,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         array: &mut TypedArrayExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         macro_rules! array_type {
             () => {
@@ -1324,7 +1324,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         dynamic: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = self.analyze_expr(&mut dynamic.operand, None)?;
 
@@ -1351,11 +1351,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let interface_name = fmt_symbol(interface_type.symbol_id);
 
-        interface_type.methods.iter_mut().for_each(|func_sig| {
-            set_self_modifier_type_in_func_sig(func_sig, &dynamic.operand.sema_type.as_ref().unwrap());
+        interface_type.methods.iter_mut().for_each(|func_decl| {
+            set_self_modifier_type_in_func_sig(func_decl, &dynamic.operand.sema_type.as_ref().unwrap());
 
             // FIXME: We have to set this ??
-            // set_self_modifier_symbol_id_in_func_sig(func_sig, SymbolID::new());
+            // set_self_modifier_symbol_id_in_func_sig(func_decl, SymbolID::new());
             todo!();
         });
 
@@ -1400,10 +1400,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         &mut self,
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
         generic_type_opt: Option<GenericType>,
-        enum_sig: EnumSig,
+        enum_decl: EnumDecl,
     ) -> Option<SemanticType> {
         let (sema_type, enum_ty) =
-            self.validate_unnamed_enum_variant_from_enum_sig(unnamed_enum_value, generic_type_opt.as_ref(), &enum_sig)?;
+            self.validate_unnamed_enum_variant_from_enum_sig(unnamed_enum_value, generic_type_opt.as_ref(), &enum_decl)?;
 
         unnamed_enum_value.enum_ty = Some(enum_ty);
         self.normalize_sema_type(sema_type, unnamed_enum_value.loc)
@@ -1412,23 +1412,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn extract_enum_sig_from_expected_type(
         &mut self,
         sema_type: SemanticType,
-    ) -> (Option<GenericType>, Option<EnumSig>) {
+    ) -> (Option<GenericType>, Option<EnumDecl>) {
         if let Some(enum_id) = sema_type.as_enum_symbol_id() {
             if let Some(resolved_enum) = self.query.get_enum(enum_id) {
-                return (None, Some(resolved_enum.enum_sig));
+                return (None, Some(resolved_enum.enum_decl));
             }
         }
 
         if let Some(generic_type) = sema_type.as_generic_type() {
             if let Some(resolved_enum) = self.query.get_enum(generic_type.base) {
-                let enum_sig = substitute_enum_sig(
+                let enum_decl = substitute_enum_sig(
                     self.mapping_ctx_arena.clone(),
-                    &resolved_enum.enum_sig,
+                    &resolved_enum.enum_decl,
                     generic_type.mapping_ctx.clone(),
                 )
                 .unwrap();
 
-                return (Some(generic_type.clone()), Some(enum_sig));
+                return (Some(generic_type.clone()), Some(enum_decl));
             }
         }
 
@@ -1440,18 +1440,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
         unnamed_enum_type: &TypedUnnamedEnumType,
     ) -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let variant = unnamed_enum_type
             .variants
             .iter()
-            .find(|v| *v.ident() == unnamed_enum_value.ident)
+            .find(|v| *v.ident() == unnamed_enum_value.variant_name)
             .or_else(|| {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
                         enum_name: format_unnamed_enum_type(unnamed_enum_type, fmt_symbol),
-                        variant_name: unnamed_enum_value.ident.as_string(),
+                        variant_name: unnamed_enum_value.variant_name.as_string(),
                     }),
                     loc: Some(unnamed_enum_value.loc),
                     hint: None,
@@ -1471,24 +1471,24 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         &mut self,
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
         generic_type_opt: Option<&GenericType>,
-        enum_sig: &EnumSig,
+        enum_decl: &EnumDecl,
     ) -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
-        let variant = enum_sig
+        let variant = enum_decl
             .variants
             .iter()
-            .find(|v| *v.ident() == unnamed_enum_value.ident)?;
+            .find(|v| *v.ident() == unnamed_enum_value.variant_name)?;
 
-        self.validate_unnamed_enum_value_from_enum_sig_variant_kind(unnamed_enum_value, enum_sig, variant)?;
+        self.validate_unnamed_enum_value_from_enum_sig_variant_kind(unnamed_enum_value, enum_decl, variant)?;
 
         if let Some(generic_type) = generic_type_opt {
             Some((
                 SemanticType::GenericType(generic_type.clone()),
-                TypedUnnamedEnumValueTy::EnumSig(enum_sig.clone()),
+                TypedUnnamedEnumValueTy::EnumDecl(enum_decl.clone()),
             ))
         } else {
             Some((
-                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_sig.symbol_id)),
-                TypedUnnamedEnumValueTy::EnumSig(enum_sig.clone()),
+                SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_decl.symbol_id)),
+                TypedUnnamedEnumValueTy::EnumDecl(enum_decl.clone()),
             ))
         }
     }
@@ -1538,7 +1538,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn validate_unnamed_enum_value_from_enum_sig_variant_kind(
         &mut self,
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
-        enum_sig: &EnumSig,
+        enum_decl: &EnumDecl,
         variant: &TypedEnumVariant,
     ) -> Option<()> {
         match &mut unnamed_enum_value.kind {
@@ -1547,8 +1547,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
-                            enum_name: enum_sig.name.clone(),
-                            variant_name: unnamed_enum_value.ident.as_string(),
+                            enum_name: enum_decl.name.clone(),
+                            variant_name: unnamed_enum_value.variant_name.as_string(),
                         }),
                         loc: Some(unnamed_enum_value.loc),
                         hint: None,
@@ -1562,7 +1562,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
-                            variant_name: unnamed_enum_value.ident.as_string(),
+                            variant_name: unnamed_enum_value.variant_name.as_string(),
                         }),
                         loc: Some(unnamed_enum_value.loc),
                         hint: None,
@@ -1575,7 +1575,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
-                                variant_name: unnamed_enum_value.ident.as_string(),
+                                variant_name: unnamed_enum_value.variant_name.as_string(),
                                 expected: values_fields.len() as u32,
                                 provided: values_fields.len() as u32,
                             }),
@@ -1597,13 +1597,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn check_generic_typedef_missing_args(&mut self, symbol_id: SymbolID, loc: Loc) -> bool {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let Some(resolved_typedef) = self.query.get_typedef(symbol_id) else {
             return true; // it's okay
         };
 
-        let includes_generic_params = resolved_typedef.typedef_sig.generic_params.is_some();
+        let includes_generic_params = resolved_typedef.typedef_decl.generic_params.is_some();
 
         if includes_generic_params {
             self.reporter.report(Diag {
@@ -1626,7 +1626,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// has the required type arguments specified. Reports an error if type args
     /// are used without type arguments in a context where they're mandatory.
     pub(crate) fn is_sema_type_missing_type_args(&mut self, sema_type: &SemanticType, loc: Loc) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(symbol_id) = sema_type.maybe_generic_base_symbol_id() {
             let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
@@ -1659,31 +1659,31 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .iter()
             .position(|method| method.name == method_call.method_name)?;
 
-        let mut func_sig = interface_type.methods[method_idx].clone();
+        let mut func_decl = interface_type.methods[method_idx].clone();
 
         // interface uses void* for SelfType
         let self_type = SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void)));
-        set_self_modifier_type_in_func_sig(&mut func_sig, &self_type);
-        set_self_modifier_symbol_id_in_func_sig(&mut func_sig, SymbolID::from(0));
+        set_self_modifier_type_in_func_sig(&mut func_decl, &self_type);
+        set_self_modifier_symbol_id_in_func_sig(&mut func_decl, SymbolID::from(0));
 
         method_call.method_call_on_interface = Some(TypedInterfaceMethodCallMetadata {
             method_idx,
             methods_len: interface_type.methods.len(),
-            method_sig: func_sig.clone(),
+            method_sig: func_decl.clone(),
         });
 
         // always instance method call for interfaces
         let instance_method_call = true;
 
         let ret_type = self.check_func_call(
-            &mut func_sig,
+            &mut func_decl,
             &None,
             &mut method_call.args,
             method_call.loc,
             instance_method_call,
         )?;
 
-        method_call.func_sig = Some(func_sig.clone());
+        method_call.func_decl = Some(func_decl.clone());
         Some(ret_type)
     }
 
@@ -1701,7 +1701,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         is_instance_method_operand: bool,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         fn infer_generic_method_params<'a, M: SymbolEntryMut>(
             this: &mut AnalysisContext<'a, M>,
@@ -1736,35 +1736,35 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     Some(method_id) => self
                         .query
                         .get_method(*method_id)
-                        .and_then(|resolved_method| Some(resolved_method.func_sig)),
+                        .and_then(|resolved_method| Some(resolved_method.func_decl)),
                     None => None,
                 }
             }};
         }
 
-        let mut func_sig = {
+        let mut func_decl = {
             match match symbol_entry.kind.clone() {
                 SymbolEntryKind::Struct(resolved_struct) => {
-                    object_name = resolved_struct.struct_sig.name;
-                    object_methods = Some(resolved_struct.struct_sig.methods);
+                    object_name = resolved_struct.struct_decl.name;
+                    object_methods = Some(resolved_struct.struct_decl.methods);
                     lookup_object_method!()
                 }
                 SymbolEntryKind::Enum(resolved_enum) => {
-                    object_name = resolved_enum.enum_sig.name;
-                    object_methods = Some(resolved_enum.enum_sig.methods);
+                    object_name = resolved_enum.enum_decl.name;
+                    object_methods = Some(resolved_enum.enum_decl.methods);
                     lookup_object_method!()
                 }
                 SymbolEntryKind::Union(resolved_union) => {
-                    object_name = resolved_union.union_sig.name;
-                    object_methods = Some(resolved_union.union_sig.methods);
+                    object_name = resolved_union.union_decl.name;
+                    object_methods = Some(resolved_union.union_decl.methods);
                     lookup_object_method!()
                 }
                 SymbolEntryKind::Interface(resolved_interface) => {
-                    object_name = resolved_interface.interface_sig.name.clone();
+                    object_name = resolved_interface.interface_decl.name.clone();
                     object_methods = None;
 
                     let Some(interface_method_idx) = resolved_interface
-                        .interface_sig
+                        .interface_decl
                         .methods
                         .iter()
                         .position(|method| method.name == method_call.method_name.clone())
@@ -1781,27 +1781,27 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         return None;
                     };
 
-                    let func_decl = &resolved_interface.interface_sig.methods[interface_method_idx];
-                    let mut func_sig = typed_func_decl_as_func_sig(func_decl);
+                    let func_decl = &resolved_interface.interface_decl.methods[interface_method_idx];
+                    let mut func_decl = typed_func_decl_as_func_sig(func_decl);
 
                     // NOTE: Interface is not sensitive to SelfType, that's why we can fake it with a `void*` type.
                     set_self_modifier_type_in_func_sig(
-                        &mut func_sig,
+                        &mut func_decl,
                         &SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void))),
                     );
-                    set_self_modifier_symbol_id_in_func_sig(&mut func_sig, SymbolID::from(0));
+                    set_self_modifier_symbol_id_in_func_sig(&mut func_decl, SymbolID::from(0));
 
                     method_call.method_call_on_interface = Some(TypedInterfaceMethodCallMetadata {
                         method_idx: interface_method_idx,
-                        methods_len: resolved_interface.interface_sig.methods.len(),
-                        method_sig: func_sig.clone(),
+                        methods_len: resolved_interface.interface_decl.methods.len(),
+                        method_sig: func_decl.clone(),
                     });
 
-                    Some(func_sig)
+                    Some(func_decl)
                 }
                 _ => return None,
             } {
-                Some(func_sig) => func_sig,
+                Some(func_decl) => func_decl,
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1820,12 +1820,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // object name used later to make mangled abi name
         method_call.object_name = Some(object_name.clone());
 
-        if self.report_if_unexpected_type_args(&func_sig.generic_params, &method_call.type_args, method_call.loc) {
+        if self.report_if_unexpected_type_args(&func_decl.generic_params, &method_call.type_args, method_call.loc) {
             return None;
         }
 
-        let is_instance_method_sig = func_sig.is_instance_method();
-        let first_param_opt = func_sig.params.list.first();
+        let is_instance_method_sig = func_decl.is_instance_method();
+        let first_param_opt = func_decl.params.list.first();
 
         // invalid if static method called on instance
         let invalid_call = !is_instance_method_sig && is_instance_method_operand;
@@ -1854,13 +1854,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             first_param_opt,
             object_methods,
             object_name.clone(),
-            &func_sig,
+            &func_decl,
             method_call.loc,
         ) {
             return None;
         }
 
-        self.fenv.current_method_symbol_id = Some(func_sig.symbol_id.unwrap());
+        self.fenv.current_method_symbol_id = Some(func_decl.symbol_id.unwrap());
 
         let instance_method_call =
             (is_instance_method_sig && is_instance_method_operand) || method_call.method_call_on_interface.is_some();
@@ -1869,10 +1869,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let mut method_generic_type_opt = {
             match self.init_generic_type_with_symbol_id(
-                func_sig.symbol_id.unwrap(),
+                func_decl.symbol_id.unwrap(),
                 &mut method_call.type_args,
                 None,
-                func_sig.generic_params.as_ref(),
+                func_decl.generic_params.as_ref(),
                 method_call.loc,
             ) {
                 Ok(opt) => opt?.1,
@@ -1896,7 +1896,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             infer_generic_method_params(
                 self,
                 Some(&merged_generic_type),
-                &&func_sig.params.list,
+                &&func_decl.params.list,
                 &mut method_call.args,
             );
 
@@ -1912,13 +1912,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             infer_generic_method_params(
                 self,
                 Some(generic_method),
-                &&func_sig.params.list,
+                &&func_decl.params.list,
                 &mut method_call.args,
             );
 
             method_generic_type_opt = match generic_method.finalize(
                 self.mapping_ctx_arena.clone(),
-                func_sig.generic_params.clone().unwrap(),
+                func_decl.generic_params.clone().unwrap(),
                 fmt_symbol,
             ) {
                 Ok(generic_type) => Some(generic_type.clone()),
@@ -1938,7 +1938,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             infer_generic_method_params(
                 self,
                 Some(generic_operand),
-                &&func_sig.params.list,
+                &&func_decl.params.list,
                 &mut method_call.args,
             );
         }
@@ -1955,7 +1955,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     operand_generic_type_opt = sema_type.as_generic_type().cloned();
 
                     self.set_ty_ctx_self_type(method_call, &sema_type);
-                    set_self_modifier_type_in_func_sig(&mut func_sig, &sema_type);
+                    set_self_modifier_type_in_func_sig(&mut func_decl, &sema_type);
                 }
             }
         }
@@ -1976,8 +1976,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // instance self type
         self.set_ty_ctx_self_type(method_call, &operand_type);
 
-        func_sig.ret_type = self.check_func_call(
-            &mut func_sig,
+        func_decl.ret_type = self.check_func_call(
+            &mut func_decl,
             &operand_generic_type_opt,
             &mut method_call.args,
             method_call.loc,
@@ -1985,9 +1985,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         )?;
 
         if let Some(generic_type) = &merged_generic_type_opt {
-            func_sig.ret_type = substitute_type(
+            func_decl.ret_type = substitute_type(
                 self.mapping_ctx_arena.clone(),
-                func_sig.ret_type.clone(),
+                func_decl.ret_type.clone(),
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
@@ -1995,23 +1995,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         // validate generic type instantiation
         if let Some(generic_type) = &merged_generic_type_opt {
-            func_sig = substitute_func_sig(
+            func_decl = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
-                &func_sig,
+                &func_decl,
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
 
-            if let Some(generic_params) = func_sig.generic_params.clone() {
+            if let Some(generic_params) = func_decl.generic_params.clone() {
                 if let Err(diag) = generic_type.finalize(self.mapping_ctx_arena.clone(), generic_params, fmt_symbol) {
                     self.reporter.report(diag);
                     return None;
                 }
             }
 
-            let func_call_loc = func_sig.loc;
+            let func_call_loc = func_decl.loc;
             method_call.monomorph_id = self.register_specialized_generic_func(
-                &mut func_sig,
+                &mut func_decl,
                 &generic_type,
                 Some(SemanticType::GenericType(merged_generic_type_opt.clone().unwrap())),
                 &func_call_loc,
@@ -2026,11 +2026,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         if instance_method_call {
-            let self_modifier_type = self_modifier_param_type(&func_sig.params, operand_type).unwrap();
+            let self_modifier_type = self_modifier_param_type(&func_decl.params, operand_type).unwrap();
 
-            set_self_modifier_type_in_func_sig(&mut func_sig, &self_modifier_type);
+            set_self_modifier_type_in_func_sig(&mut func_decl, &self_modifier_type);
 
-            let self_modifier = func_sig.params.list.first().unwrap().as_self_modifier().unwrap();
+            let self_modifier = func_decl.params.list.first().unwrap().as_self_modifier().unwrap();
 
             if method_call.method_call_on_interface.is_none() {
                 method_call.args.insert(
@@ -2044,8 +2044,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        method_call.func_sig = Some(func_sig.clone());
-        Some(func_sig.ret_type.clone())
+        method_call.func_decl = Some(func_decl.clone());
+        Some(func_decl.ret_type.clone())
     }
 
     // REVIEW: Move to normalizer.
@@ -2064,19 +2064,19 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// functions and instance methods (with self parameter adjustment).
     fn check_func_call(
         &mut self,
-        func_sig: &mut FuncSig,
+        func_decl: &mut FuncDecl,
         generic_type_opt: &Option<GenericType>,
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
         instance_method_call: bool,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let is_variadic = func_sig.params.variadic.is_some();
-        let mut expected_args_len = func_sig.params.list.len();
+        let is_variadic = func_decl.params.variadic.is_some();
+        let mut expected_args_len = func_decl.params.list.len();
 
         // if this is an instance method call, self modifier will be pushed later
-        if instance_method_call && !func_sig.params.list.is_empty() {
+        if instance_method_call && !func_decl.params.list.is_empty() {
             expected_args_len = expected_args_len.saturating_sub(1);
         }
 
@@ -2087,7 +2087,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 kind: Box::new(AnalyzerDiagKind::FuncCallArgsCountMismatch {
                     args: args.len() as u32,
                     expected: expected_args_len as u32,
-                    func_name: func_sig.name.clone(),
+                    func_name: func_decl.name.clone(),
                 }),
                 loc: Some(loc),
                 hint: None,
@@ -2097,13 +2097,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         // handle variadic arguments
         if is_variadic {
-            self.check_func_variadic_arguments(&func_sig, args, loc);
+            self.check_func_variadic_arguments(&func_decl, args, loc);
         }
 
         // analyze static arguments
         let start_idx = if instance_method_call { 1 } else { 0 };
 
-        for (param_idx, (param, arg)) in func_sig
+        for (param_idx, (param, arg)) in func_decl
             .params
             .list
             .iter_mut()
@@ -2154,7 +2154,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         }
 
-        self.normalize_sema_type(func_sig.ret_type.clone(), loc)
+        self.normalize_sema_type(func_decl.ret_type.clone(), loc)
     }
 
     /// Validates variadic arguments in function calls, ensuring type compatibility and proper analysis.
@@ -2163,13 +2163,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// handling both typed variadic parameters (with explicit type requirements) and untyped
     /// C-style variadic parameters. This function processes arguments beyond the static
     /// parameter list according to the function's variadic specification.
-    fn check_func_variadic_arguments(&mut self, func_sig: &FuncSig, args: &mut Vec<TypedExprStmt>, loc: Loc) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+    fn check_func_variadic_arguments(&mut self, func_decl: &FuncDecl, args: &mut Vec<TypedExprStmt>, loc: Loc) {
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let static_params_len = func_sig.params.list.len();
+        let static_params_len = func_decl.params.list.len();
         let variadic_args = &mut args[static_params_len..];
 
-        if let Some(var_param) = &func_sig.params.variadic {
+        if let Some(var_param) = &func_decl.params.variadic {
             match var_param.clone() {
                 TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
@@ -2209,7 +2209,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
@@ -2332,7 +2332,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         resolved_union: &ResolvedUnion,
         generic_type_opt: &Option<GenericType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if union_init.fields.len() != 1 {
             self.reporter.report(Diag {
@@ -2347,7 +2347,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let field_init = &mut union_init.fields[0];
 
         let field = match resolved_union
-            .union_sig
+            .union_decl
             .fields
             .iter()
             .find(|f| f.name == field_init.name)
@@ -2361,7 +2361,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: resolved_union.union_sig.name.clone(),
+                        struct_name: resolved_union.union_decl.name.clone(),
                         field_name: field_init.name.clone(),
                     }),
                     loc: Some(field_init.loc),
@@ -2409,7 +2409,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // validate generic type instantiation
             let final_generic_type = match generic_type.finalize(
                 self.mapping_ctx_arena.clone(),
-                resolved_union.union_sig.generic_params.clone().unwrap(),
+                resolved_union.union_decl.generic_params.clone().unwrap(),
                 fmt_symbol,
             ) {
                 Ok(generic_type) => generic_type,
@@ -2445,7 +2445,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_type_opt: &Option<GenericType>,
         infer_ctx: &FieldEnv,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -2469,7 +2469,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         let mut missing_fields: Vec<String> = resolved_struct
-            .struct_sig
+            .struct_decl
             .fields
             .iter()
             .map(|field| field.name.clone())
@@ -2477,7 +2477,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         for field_init in struct_init.fields.iter_mut() {
             let field = match resolved_struct
-                .struct_sig
+                .struct_decl
                 .fields
                 .iter()
                 .cloned()
@@ -2570,7 +2570,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 // validate generic type instantiation
                 match generic_type.finalize(
                     self.mapping_ctx_arena.clone(),
-                    resolved_struct.struct_sig.generic_params.clone().unwrap(),
+                    resolved_struct.struct_decl.generic_params.clone().unwrap(),
                     fmt_symbol,
                 ) {
                     Ok(generic_type) => generic_type,
@@ -2621,7 +2621,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         {
             let (generic_params, mapping_ctx) = self.extract_and_merge_generic_context(
                 &operand_type,
-                resolved_enum.enum_sig.generic_params.as_ref(),
+                resolved_enum.enum_decl.generic_params.as_ref(),
                 expected_type,
             );
 
@@ -2655,7 +2655,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         method_call.enum_constructor = Some(resolved_enum.symbol_id);
 
         let enum_variant_opt = resolved_enum
-            .enum_sig
+            .enum_decl
             .variants
             .iter()
             .find(|v| v.ident().as_string() == method_call.method_name);
@@ -2668,7 +2668,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let (generic_params, mapping_ctx) = self.extract_and_merge_generic_context(
             &operand_type,
-            resolved_enum.enum_sig.generic_params.as_ref(),
+            resolved_enum.enum_decl.generic_params.as_ref(),
             expected_type,
         );
 
@@ -2691,7 +2691,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_union_field_access(
         &mut self,
 
-        union_sig: &UnionSig,
+        union_decl: &UnionDecl,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
@@ -2702,7 +2702,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         field_access.operand.sema_type = Some(operand_type.clone());
 
-        let union_field_idx = match union_sig
+        let union_field_idx = match union_decl
             .fields
             .iter()
             .position(|field| *field.name == field_access.field_name.clone())
@@ -2712,7 +2712,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: union_sig.name.clone(),
+                        struct_name: union_decl.name.clone(),
                         field_name: field_access.field_name.clone(),
                     }),
                     loc: Some(field_access.loc),
@@ -2722,7 +2722,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             }
         };
 
-        let field = &union_sig.fields[union_field_idx];
+        let field = &union_decl.fields[union_field_idx];
         let field_ty = match self.normalize_sema_type(field.ty.clone(), field_access.loc) {
             Some(sema_type) => sema_type,
             None => return None,
@@ -2734,7 +2734,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         field_access.field_index = Some(union_field_idx);
         field_access.field_ty = Some(field_ty.clone());
-        field_access.object_symbol_id = Some(union_sig.symbol_id);
+        field_access.object_symbol_id = Some(union_decl.symbol_id);
 
         Some(field_ty)
     }
@@ -2745,7 +2745,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = match self.analyze_expr(&mut field_access.operand, expected_type) {
             Some(sema_type) => sema_type,
@@ -2801,7 +2801,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = match self.analyze_expr(&mut field_access.operand, expected_type) {
             Some(sema_type) => sema_type,
@@ -2913,7 +2913,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let mut valued_fields = self.analyze_enum_fielded_variant(&mut enum_variant, method_call)?;
 
@@ -2975,7 +2975,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // validate generic type instantiation
 
             let generic_params = generic_params
-                .or(resolved_enum.enum_sig.generic_params.as_ref())
+                .or(resolved_enum.enum_decl.generic_params.as_ref())
                 .cloned()
                 .unwrap();
 
@@ -3066,23 +3066,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
         let enum_variant_idx_opt = resolved_enum
-            .enum_sig
+            .enum_decl
             .variants
             .iter()
             .position(|variant| variant.ident().as_string() == field_access.field_name);
 
-        let enum_variant_opt = enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_sig.variants.get(i).unwrap()));
+        let enum_variant_opt = enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_decl.variants.get(i).unwrap()));
 
         if enum_variant_opt.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VariantNotDefinedForEnum {
-                    enum_name: resolved_enum.enum_sig.name.clone(),
+                    enum_name: resolved_enum.enum_decl.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 }),
                 loc: Some(field_access.loc),
@@ -3093,7 +3093,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
-                    enum_name: resolved_enum.enum_sig.name.clone(),
+                    enum_name: resolved_enum.enum_decl.name.clone(),
                     variant_name: field_access.field_name.clone(),
                 }),
                 loc: Some(field_access.loc),
@@ -3124,7 +3124,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             // validate generic type instantiation
             let final_generic_type = match generic_type.finalize(
                 self.mapping_ctx_arena.clone(),
-                resolved_enum.enum_sig.generic_params.clone().unwrap(),
+                resolved_enum.enum_decl.generic_params.clone().unwrap(),
                 fmt_symbol,
             ) {
                 Ok(generic_type) => generic_type,
@@ -3261,7 +3261,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub(crate) fn set_ty_ctx_self_type(&mut self, method_call: &mut TypedMethodCall, sema_type: &SemanticType) {
         self.fenv.current_object_type = Some(sema_type.const_inner().pointer_inner().const_inner().clone());
         self.fenv.current_self_type = Some(sema_type.clone());
-        method_call.self_ty = Some(sema_type.clone());
+        method_call.self_type = Some(sema_type.clone());
     }
 
     // FIXME: Must be removed.
@@ -3451,13 +3451,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         first_param_opt: Option<&TypedFuncParamKind>,
         object_methods_opt: Option<HashMap<String, SymbolID>>,
         object_name: String,
-        func_sig: &FuncSig,
+        func_decl: &FuncDecl,
         loc: Loc,
     ) -> bool {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let mut result = true;
-        let vis = &func_sig.modifiers.vis;
+        let vis = &func_decl.modifiers.vis;
 
         let access_violation = if let Some(current_method_symbol_id) = self.fenv.current_method_symbol_id {
             let object_contains_method = {
@@ -3485,7 +3485,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InternalMethodCall {
-                    method_name: func_sig.name.clone(),
+                    method_name: func_decl.name.clone(),
                     object_name,
                 }),
                 loc: Some(loc),
@@ -3559,18 +3559,18 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         } else if let Some(struct_id) = sema_type.as_struct_symbol_id() {
             let resolved_struct = self.query.get_struct(struct_id).unwrap();
 
-            field_env_from_struct_sig(&resolved_struct.struct_sig)
+            field_env_from_struct_sig(&resolved_struct.struct_decl)
         } else if let Some(generic_type) = sema_type.as_generic_type() {
             let resolved_struct = self.query.get_struct(generic_type.base).unwrap();
 
-            let struct_sig = substitute_struct_sig(
+            let struct_decl = substitute_struct_sig(
                 self.mapping_ctx_arena.clone(),
-                &resolved_struct.struct_sig,
+                &resolved_struct.struct_decl,
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
 
-            field_env_from_struct_sig(&struct_sig)
+            field_env_from_struct_sig(&struct_decl)
         } else {
             FieldEnv::default()
         }
@@ -3621,9 +3621,9 @@ fn field_env_from_unnamed_struct_type(unnamed_struct_type: &TypedUnnamedStructTy
 }
 
 // REVIEW: Maybe we should have a leading crate for envs?
-fn field_env_from_struct_sig(struct_sig: &StructSig) -> FieldEnv {
+fn field_env_from_struct_sig(struct_decl: &StructDecl) -> FieldEnv {
     let mut infer_ctx = FieldEnv::new();
-    for field in &struct_sig.fields {
+    for field in &struct_decl.fields {
         infer_ctx.insert(field.name.clone(), field.ty.clone());
     }
     infer_ctx

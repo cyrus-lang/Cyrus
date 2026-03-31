@@ -41,7 +41,7 @@ use cyrusc_internal::{
             CIRBlockStmt, CIRGlobalVarStmt, CIRProgramTree, CIRStmt, CIRVarStmt, cir_enum_as_enum_ty,
             cir_func_decl_as_func_ty, cir_func_def_as_decl, cir_struct_as_struct_ty, cir_union_as_union_ty,
         },
-        monomorph::CIRMonomorphRegistry,
+        instances::CIRInstanceRegistry,
     },
 };
 use cyrusc_typed_ast::LabelID;
@@ -73,7 +73,7 @@ pub(crate) struct IRBuilderCtx<'ll> {
     pub(crate) cur_abi_func_info: Option<ABIFunctionInfo>,
     pub(crate) blockreg: BlockRegistry<'ll>,
     pub(crate) defer_stack: Vec<Vec<CIRStmt>>,
-    pub(crate) monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    pub(crate) monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
 
     // lambda abi name (auto increment)
     pub(crate) lambda_id: usize,
@@ -95,7 +95,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         target: &'ll ABITarget,
         llvmbuilder: &'ll Builder<'ll>,
         llvmtm: &'ll TargetMachine,
-        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         dctx: DebugContext,
     ) -> Self {
         let llvmmodule = unsafe {

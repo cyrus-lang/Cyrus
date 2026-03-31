@@ -20,12 +20,12 @@ use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    format::SymbolFormatterFn,
-    generics::{
+    format::DeclFormatterFn,
+    backup_typed_ast_generics::{
         mapping_ctx::mapping_ctx_eq_refcell,
         substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig},
     },
-    sigs::{EnumSig, StructSig, UnionSig},
+    sigs::{EnumDecl, StructDecl, UnionDecl},
     stmts::TypedEnumVariant,
     types::{
         PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayType, TypedUnnamedEnumType,
@@ -102,7 +102,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_enum = symbol_entry.as_enum().unwrap();
 
-                self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
+                self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_decl)
             }
             (
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(struct_id)),
@@ -111,21 +111,21 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_enum = symbol_entry.as_enum().unwrap();
 
-                self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
+                self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_decl)
             }
             (SemanticType::UnnamedEnum(unnamed_enum_type), SemanticType::GenericType(generic_type)) => {
                 let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 
                 match symbol_entry.as_enum().cloned() {
                     Some(mut resolved_enum) => {
-                        resolved_enum.enum_sig = substitute_enum_sig(
+                        resolved_enum.enum_decl = substitute_enum_sig(
                             self.mapping_ctx_arena.clone(),
-                            &resolved_enum.enum_sig,
+                            &resolved_enum.enum_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
-                        self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
+                        self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_decl)
                     }
                     None => false, // not compatible!
                 }
@@ -135,14 +135,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 match symbol_entry.as_enum().cloned() {
                     Some(mut resolved_enum) => {
-                        resolved_enum.enum_sig = substitute_enum_sig(
+                        resolved_enum.enum_decl = substitute_enum_sig(
                             self.mapping_ctx_arena.clone(),
-                            &resolved_enum.enum_sig,
+                            &resolved_enum.enum_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
-                        self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_sig)
+                        self.is_unnamed_enum_assignable_to_named_enum(&unnamed_enum_type, &resolved_enum.enum_decl)
                     }
                     None => false, // not compatible!
                 }
@@ -157,7 +157,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(union_id).unwrap();
                 let resolved_union = symbol_entry.as_union().unwrap();
 
-                self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
+                self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_decl)
             }
             (
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Union(union_id)),
@@ -166,21 +166,21 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(union_id).unwrap();
                 let resolved_union = symbol_entry.as_union().unwrap();
 
-                self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
+                self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_decl)
             }
             (SemanticType::UnnamedUnion(unnamed_union_type), SemanticType::GenericType(generic_type)) => {
                 let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 
                 match symbol_entry.as_union().cloned() {
                     Some(mut resolved_union) => {
-                        resolved_union.union_sig = substitute_union_sig(
+                        resolved_union.union_decl = substitute_union_sig(
                             self.mapping_ctx_arena.clone(),
-                            &resolved_union.union_sig,
+                            &resolved_union.union_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
-                        self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
+                        self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_decl)
                     }
                     None => false, // not compatible!
                 }
@@ -190,14 +190,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 match symbol_entry.as_union().cloned() {
                     Some(mut resolved_union) => {
-                        resolved_union.union_sig = substitute_union_sig(
+                        resolved_union.union_decl = substitute_union_sig(
                             self.mapping_ctx_arena.clone(),
-                            &resolved_union.union_sig,
+                            &resolved_union.union_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
-                        self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_sig)
+                        self.is_unnamed_union_assignable_to_named_union(&unnamed_union_type, &resolved_union.union_decl)
                     }
                     None => false, // not compatible!
                 }
@@ -222,7 +222,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_struct = symbol_entry.as_struct().unwrap();
 
-                self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct_type, &resolved_struct.struct_sig)
+                self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct_type, &resolved_struct.struct_decl)
             }
             (
                 SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(struct_id)),
@@ -231,23 +231,23 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let symbol_entry = self.query.lookup_symbol_entry(struct_id).unwrap();
                 let resolved_struct = symbol_entry.as_struct().unwrap();
 
-                self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct_type, &resolved_struct.struct_sig)
+                self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct_type, &resolved_struct.struct_decl)
             }
             (SemanticType::UnnamedStruct(unnamed_struct_type), SemanticType::GenericType(generic_type)) => {
                 let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 
                 match symbol_entry.as_struct().cloned() {
                     Some(mut resolved_struct) => {
-                        resolved_struct.struct_sig = substitute_struct_sig(
+                        resolved_struct.struct_decl = substitute_struct_sig(
                             self.mapping_ctx_arena.clone(),
-                            &resolved_struct.struct_sig,
+                            &resolved_struct.struct_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
                         self.is_unnamed_struct_assignable_to_named_struct(
                             &unnamed_struct_type,
-                            &resolved_struct.struct_sig,
+                            &resolved_struct.struct_decl,
                         )
                     }
                     None => false, // not compatible!
@@ -258,14 +258,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 match symbol_entry.as_struct().cloned() {
                     Some(mut resolved_struct) => {
-                        resolved_struct.struct_sig = substitute_struct_sig(
+                        resolved_struct.struct_decl = substitute_struct_sig(
                             self.mapping_ctx_arena.clone(),
-                            &resolved_struct.struct_sig,
+                            &resolved_struct.struct_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
-                        self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct, &resolved_struct.struct_sig)
+                        self.is_unnamed_struct_assignable_to_named_struct(&unnamed_struct, &resolved_struct.struct_decl)
                     }
                     None => false, // not compatible!
                 }
@@ -295,25 +295,25 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn is_unnamed_union_assignable_to_named_union(
         &self,
         unnamed_union_type: &TypedUnnamedUnionType,
-        union_sig: &UnionSig,
+        union_decl: &UnionDecl,
     ) -> bool {
         let fields = unnamed_union_type
             .fields
             .iter()
-            .zip(&union_sig.fields)
+            .zip(&union_decl.fields)
             .any(|(field1, field2)| *field1.ty == field2.ty);
 
-        unnamed_union_type.repr_attr == union_sig.modifiers.repr_attr
-            && unnamed_union_type.align == union_sig.align
+        unnamed_union_type.repr_attr == union_decl.modifiers.repr_attr
+            && unnamed_union_type.align == union_decl.align
             && fields
     }
 
     fn is_unnamed_enum_assignable_to_named_enum(
         &self,
         unnamed_enum_type: &TypedUnnamedEnumType,
-        enum_sig: &EnumSig,
+        enum_decl: &EnumDecl,
     ) -> bool {
-        enum_sig
+        enum_decl
             .variants
             .iter()
             .zip(&unnamed_enum_type.variants)
@@ -342,7 +342,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn is_unnamed_struct_assignable_to_named_struct(
         &self,
         unnamed_struct: &TypedUnnamedStructType,
-        struct_sig: &StructSig,
+        struct_decl: &StructDecl,
     ) -> bool {
         let unnamed_struct_fields = unnamed_struct
             .fields
@@ -350,14 +350,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .map(|field| *field.ty.clone())
             .collect::<Vec<_>>();
 
-        let named_struct_fields = struct_sig
+        let named_struct_fields = struct_decl
             .fields
             .iter()
             .map(|field| field.ty.clone())
             .collect::<Vec<_>>();
 
-        unnamed_struct.repr_attr == struct_sig.modifiers.repr_attr
-            && unnamed_struct.align == struct_sig.align
+        unnamed_struct.repr_attr == struct_decl.modifiers.repr_attr
+            && unnamed_struct.align == struct_decl.align
             && unnamed_struct_fields == named_struct_fields
     }
 

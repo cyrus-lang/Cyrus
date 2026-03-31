@@ -15,18 +15,17 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_source_loc::FileID;
-
 use crate::stmts::TypedStmt;
+use cyrusc_source_loc::FileID;
 use std::fmt;
 
+pub mod decls;
 pub mod exprs;
 pub mod format;
-pub mod generics;
-pub mod sigs;
 pub mod stmts;
 mod tests;
 pub mod types;
+pub mod substitute;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolID(pub u32);

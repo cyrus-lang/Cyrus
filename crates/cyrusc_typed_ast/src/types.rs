@@ -15,13 +15,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, UnionDeclID};
 use crate::exprs::{TypedExprStmt, TypedSelfType};
-use crate::generics::generic_type::GenericType;
-use crate::sigs::{EnumSig, FuncSig, InterfaceSig, UnionSig, typed_func_decl_as_func_sig};
-use crate::stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedGenericParam};
+use crate::stmts::{TypedFuncTypeParams, TypedGenericParam, TypedTypeArgs};
 use crate::{SymbolID, VTableID};
-use cyrusc_ast::Ident;
-use cyrusc_ast::abi::{ReprAttr, ReprKind};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -29,22 +26,37 @@ use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SemanticType {
-    UnresolvedSymbol(SymbolID),
-    ResolvedSymbol(ResolvedSymbol),
+    Unresolved(UnresolvedType),
+    Named(NamedType),
     PlainType(PlainType),
     Array(TypedArrayType),
     Const(Box<SemanticType>),
     Pointer(Box<SemanticType>),
-    UnnamedStruct(TypedUnnamedStructType),
-    UnnamedUnion(TypedUnnamedUnionType),
-    UnnamedEnum(TypedUnnamedEnumType),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
-    GenericType(GenericType),
     GenericParam(TypedGenericParam),
     SelfType(TypedSelfType),
     DynamicType(DynamicType),
-    Interface(InterfaceType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum UnresolvedType {
+    Symbol(SymbolID),
+    GenericInst { base: SymbolID, type_args: TypedTypeArgs },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NamedType {
+    pub decl_id: TypeDeclID,
+    pub type_args: TypedTypeArgs,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeDeclID {
+    Struct(StructDeclID),
+    Enum(EnumDeclID),
+    Union(UnionDeclID),
+    Interface(InterfaceDeclID),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -75,19 +87,6 @@ pub enum PlainType {
     Null,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ResolvedSymbol {
-    Enum(SymbolID),
-    Union(SymbolID),
-    Typedef(SymbolID),
-    Struct(SymbolID),
-    Interface(SymbolID),
-    GlobalVar(SymbolID),
-    Variable(SymbolID),
-    Func(SymbolID),
-    Method(SymbolID),
-}
-
 #[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
     pub elements: Vec<SemanticType>,
@@ -100,45 +99,6 @@ pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub ret_type: Box<SemanticType>,
     pub is_public: bool,
-    pub loc: Loc,
-}
-
-pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::PlainType(match suffix {
-        TokenKind::UIntPtr => PlainType::UIntPtr,
-        TokenKind::IntPtr => PlainType::IntPtr,
-        TokenKind::USize => PlainType::USize,
-        TokenKind::ISize => PlainType::ISize,
-        TokenKind::Int => PlainType::Int,
-        TokenKind::Int8 => PlainType::Int8,
-        TokenKind::Int16 => PlainType::Int16,
-        TokenKind::Int32 => PlainType::Int32,
-        TokenKind::Int64 => PlainType::Int64,
-        TokenKind::Int128 => PlainType::Int128,
-        TokenKind::UInt => PlainType::UInt,
-        TokenKind::UInt8 => PlainType::UInt8,
-        TokenKind::UInt16 => PlainType::UInt16,
-        TokenKind::UInt32 => PlainType::UInt32,
-        TokenKind::UInt64 => PlainType::UInt64,
-        TokenKind::UInt128 => PlainType::UInt128,
-        _ => return None,
-    }))
-}
-
-pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::PlainType(match suffix {
-        TokenKind::Float16 => PlainType::Float16,
-        TokenKind::Float32 => PlainType::Float32,
-        TokenKind::Float64 => PlainType::Float64,
-        TokenKind::Float128 => PlainType::Float128,
-        _ => return None,
-    }))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InterfaceType {
-    pub symbol_id: SymbolID,
-    pub methods: Vec<FuncSig>,
     pub loc: Loc,
 }
 
@@ -162,313 +122,82 @@ pub enum TypedArrayCapacity {
     Dynamic,
 }
 
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedStructType {
-    pub fields: Vec<TypedUnnamedStructTypeField>,
-    pub repr_attr: Option<ReprAttr>,
-    pub align: Option<usize>,
-    pub loc: Loc,
-}
+impl TypeDeclID {
+    #[inline]
+    pub fn is_struct(&self) -> bool {
+        matches!(self, Self::Struct(_))
+    }
 
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedUnionType {
-    pub fields: Vec<TypedUnnamedUnionTypeField>,
-    pub repr_attr: Option<ReprAttr>,
-    pub align: Option<usize>,
-    pub loc: Loc,
-}
+    #[inline]
+    pub fn is_enum(&self) -> bool {
+        matches!(self, Self::Enum(_))
+    }
 
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedEnumType {
-    pub variants: Vec<TypedUnnamedEnumVariant>,
-    pub repr_attr: Option<ReprAttr>,
-    pub tag_type: Option<Box<SemanticType>>,
-    pub align: Option<usize>,
-    pub loc: Loc,
-}
+    #[inline]
+    pub fn is_union(&self) -> bool {
+        matches!(self, Self::Union(_))
+    }
 
-#[derive(Debug, Clone)]
-pub enum TypedUnnamedEnumVariant {
-    Ident(Ident),
-    Valued(Ident, Box<TypedExprStmt>),
-    Variant(Ident, Vec<TypedUnnamedEnumValuedField>),
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedEnumValuedField {
-    pub ty: SemanticType,
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedStructTypeField {
-    pub name: String,
-    pub ty: Box<SemanticType>,
-    pub loc: Loc,
-}
-
-#[derive(Debug, Clone, Eq)]
-pub struct TypedUnnamedUnionTypeField {
-    pub name: String,
-    pub ty: Box<SemanticType>,
-    pub loc: Loc,
-}
-
-pub fn interface_sig_as_interface_type(interface_sig: &InterfaceSig) -> InterfaceType {
-    let methods = interface_sig
-        .methods
-        .clone()
-        .iter()
-        .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
-        .collect();
-
-    InterfaceType {
-        symbol_id: interface_sig.symbol_id,
-        methods,
-        loc: interface_sig.loc,
+    #[inline]
+    pub fn is_interface(&self) -> bool {
+        matches!(self, Self::Interface(_))
     }
 }
 
-pub fn enum_sig_as_unnamed_enum_type(enum_sig: &EnumSig, loc: Loc) -> TypedUnnamedEnumType {
-    let variants = enum_sig
-        .variants
-        .iter()
-        .map(|variant| match variant {
-            TypedEnumVariant::Ident(ident) => TypedUnnamedEnumVariant::Ident(ident.clone()),
-            TypedEnumVariant::Valued(ident, typed_expr_stmt) => {
-                TypedUnnamedEnumVariant::Valued(ident.clone(), typed_expr_stmt.clone())
-            }
-            TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
-                let valued_fields = typed_enum_valued_fields
-                    .iter()
-                    .map(|field| TypedUnnamedEnumValuedField {
-                        ty: field.ty.clone(),
-                        loc: field.loc,
-                    })
-                    .collect();
-                TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields)
-            }
-        })
-        .collect();
-
-    TypedUnnamedEnumType {
-        variants,
-        tag_type: enum_sig.tag_type.clone().map(Box::new),
-        repr_attr: enum_sig.modifiers.repr_attr.clone(),
-        align: enum_sig.align.clone(),
-        loc,
-    }
+#[inline]
+pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
+    Some(SemanticType::PlainType(match suffix {
+        TokenKind::UIntPtr => PlainType::UIntPtr,
+        TokenKind::IntPtr => PlainType::IntPtr,
+        TokenKind::USize => PlainType::USize,
+        TokenKind::ISize => PlainType::ISize,
+        TokenKind::Int => PlainType::Int,
+        TokenKind::Int8 => PlainType::Int8,
+        TokenKind::Int16 => PlainType::Int16,
+        TokenKind::Int32 => PlainType::Int32,
+        TokenKind::Int64 => PlainType::Int64,
+        TokenKind::Int128 => PlainType::Int128,
+        TokenKind::UInt => PlainType::UInt,
+        TokenKind::UInt8 => PlainType::UInt8,
+        TokenKind::UInt16 => PlainType::UInt16,
+        TokenKind::UInt32 => PlainType::UInt32,
+        TokenKind::UInt64 => PlainType::UInt64,
+        TokenKind::UInt128 => PlainType::UInt128,
+        _ => return None,
+    }))
 }
 
-pub fn union_sig_as_unnamed_union_type(union_sig: &UnionSig, loc: Loc) -> TypedUnnamedUnionType {
-    let fields = union_sig
-        .fields
-        .iter()
-        .map(|field| TypedUnnamedUnionTypeField {
-            name: field.name.clone(),
-            ty: Box::new(field.ty.clone()),
-            loc: field.loc,
-        })
-        .collect();
-
-    TypedUnnamedUnionType {
-        fields,
-        repr_attr: union_sig.modifiers.repr_attr.clone(),
-        align: union_sig.align.clone(),
-        loc,
-    }
+#[inline]
+pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
+    Some(SemanticType::PlainType(match suffix {
+        TokenKind::Float16 => PlainType::Float16,
+        TokenKind::Float32 => PlainType::Float32,
+        TokenKind::Float64 => PlainType::Float64,
+        TokenKind::Float128 => PlainType::Float128,
+        _ => return None,
+    }))
 }
 
-impl ResolvedSymbol {
-    pub fn symbol_id(&self) -> SymbolID {
+impl UnresolvedType {
+    #[inline]
+    pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            ResolvedSymbol::Union(symbol_id) => *symbol_id,
-            ResolvedSymbol::Enum(symbol_id) => *symbol_id,
-            ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
-            ResolvedSymbol::Struct(symbol_id) => *symbol_id,
-            ResolvedSymbol::Interface(symbol_id) => *symbol_id,
-            ResolvedSymbol::GlobalVar(symbol_id) => *symbol_id,
-            ResolvedSymbol::Variable(symbol_id) => *symbol_id,
-            ResolvedSymbol::Func(symbol_id) => *symbol_id,
-            ResolvedSymbol::Method(symbol_id) => *symbol_id,
+            UnresolvedType::Symbol(symbol_id) => Some(*symbol_id),
+            UnresolvedType::GenericInst { .. } => None,
         }
     }
 }
 
 impl SemanticType {
-    // Returns symbol ID only if the type is a concrete resolved symbol.
-    pub fn symbol_id(&self) -> Option<SymbolID> {
-        match self.const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
-            _ => None,
-        }
-    }
-
-    /// Extracts the base symbol ID from either a resolved symbol or generic type.
-    /// Returns `None` for non-symbol types.
-    pub fn maybe_generic_base_symbol_id(&self) -> Option<SymbolID> {
-        match self.const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.symbol_id()),
-            SemanticType::GenericType(generic_type) => Some(generic_type.base),
-            SemanticType::Interface(interface_type) => Some(interface_type.symbol_id),
-            _ => None,
-        }
-    }
-
-    pub fn as_interface_type(&self) -> Option<&InterfaceType> {
-        match self.const_inner() {
-            SemanticType::Interface(interface_type) => Some(interface_type),
-            _ => None,
-        }
-    }
-
-    pub fn as_generic_type(&self) -> Option<&GenericType> {
-        match self.const_inner() {
-            SemanticType::GenericType(generic_type) => Some(generic_type),
-            _ => None,
-        }
-    }
-
-    pub fn as_generic_type_mut(&mut self) -> Option<&mut GenericType> {
-        match self.const_inner_mut() {
-            SemanticType::GenericType(generic_type) => Some(generic_type),
-            _ => None,
-        }
-    }
-
-    pub fn as_generic_param(&self) -> Option<&TypedGenericParam> {
-        match self.const_inner() {
-            SemanticType::GenericParam(generic_param) => Some(generic_param),
-            _ => None,
-        }
-    }
-
-    pub fn count_const_layers(&self) -> usize {
-        match self {
-            SemanticType::Const(inner) => 1 + inner.count_const_layers(),
-            _ => 0,
-        }
-    }
-
-    pub fn is_generic_type(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::GenericType(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_integer(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::PlainType(basic) => basic.is_integer(),
-            _ => false,
-        }
-    }
-
-    pub fn is_float(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::PlainType(basic) => basic.is_float(),
-            _ => false,
-        }
-    }
-
-    pub fn is_enum(&self) -> bool {
-        matches!(
-            self.const_inner(),
-            SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(..)) | SemanticType::UnnamedEnum(..)
-        )
-    }
-
-    pub fn is_interface(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Interface(_))
-    }
-
-    pub fn is_bool(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Bool))
-    }
-
-    pub fn is_array(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Array(..))
-    }
-
-    pub fn is_func_type(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::FuncType(..))
-    }
-
-    pub fn is_const(&self) -> bool {
-        matches!(self, SemanticType::Const(_))
-    }
-
-    pub fn is_void(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Void))
-    }
-
-    pub fn is_pointer(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Pointer(..))
-    }
-
-    pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
+    #[inline]
+    pub fn as_unresolved_symbol_id(&self) -> Option<SymbolID> {
         match &self.const_inner() {
-            SemanticType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
+            SemanticType::Unresolved(unresolved_type) => unresolved_type.as_symbol_id(),
             _ => None,
         }
     }
 
-    pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
-        match &self.const_inner() {
-            SemanticType::Tuple(tuple_type) => Some(tuple_type),
-            _ => None,
-        }
-    }
-
-    pub fn as_func_type(&self) -> Option<&TypedFuncType> {
-        match &self.const_inner() {
-            SemanticType::FuncType(func_type) => Some(func_type),
-            _ => None,
-        }
-    }
-
-    pub fn is_resolved_symbol(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::ResolvedSymbol(..) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_char(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::PlainType(PlainType::Char) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_scalar(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::PlainType(plain_type) => plain_type.is_scalar(),
-            _ => false,
-        }
-    }
-
-    pub fn is_self_type(&self) -> bool {
-        match self.const_inner() {
-            SemanticType::SelfType(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn as_basic_type(&self) -> Option<&PlainType> {
-        match self.const_inner() {
-            SemanticType::PlainType(ty) => Some(ty),
-            _ => None,
-        }
-    }
-
-    pub fn pointer_inner(&self) -> &SemanticType {
-        match self {
-            SemanticType::Pointer(sema_type) => sema_type,
-            ty @ _ => ty,
-        }
-    }
-
+    #[inline]
     pub fn const_inner(&self) -> &SemanticType {
         match self {
             SemanticType::Const(sema_type) => sema_type,
@@ -476,6 +205,7 @@ impl SemanticType {
         }
     }
 
+    #[inline]
     pub fn const_inner_mut(&mut self) -> &mut SemanticType {
         match self {
             SemanticType::Const(sema_type) => sema_type,
@@ -483,14 +213,55 @@ impl SemanticType {
         }
     }
 
+    #[inline]
+    pub fn count_const_layers(&self) -> usize {
+        match self {
+            SemanticType::Const(inner) => 1 + inner.count_const_layers(),
+            _ => 0,
+        }
+    }
+
+    #[inline]
+    pub fn pointer_inner(&self) -> &SemanticType {
+        match self {
+            SemanticType::Pointer(sema_type) => sema_type,
+            ty @ _ => ty,
+        }
+    }
+
+    #[inline]
     pub fn as_const(&self) -> SemanticType {
         if self.is_const() {
             return self.clone();
         }
-
         SemanticType::Const(Box::new(self.clone()))
     }
 
+    #[inline]
+    pub fn as_plain_type(&self) -> Option<&PlainType> {
+        match self.const_inner() {
+            SemanticType::PlainType(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
+        match &self.const_inner() {
+            SemanticType::Tuple(tuple_type) => Some(tuple_type),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_func_type(&self) -> Option<&TypedFuncType> {
+        match &self.const_inner() {
+            SemanticType::FuncType(func_type) => Some(func_type),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
         match self.const_inner() {
             SemanticType::Array(ty) => Some(ty),
@@ -498,87 +269,105 @@ impl SemanticType {
         }
     }
 
-    pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
-        match self.const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
-                ResolvedSymbol::Struct(symbol_id) => Some(*symbol_id),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    pub fn as_union_symbol_id(&self) -> Option<SymbolID> {
-        match self.const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
-                ResolvedSymbol::Union(symbol_id) => Some(*symbol_id),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    pub fn as_enum_symbol_id(&self) -> Option<SymbolID> {
-        match self.const_inner() {
-            SemanticType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
-                ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    pub fn as_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
-        match self.const_inner() {
-            SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_unnamed_struct_mut(&mut self) -> Option<&mut TypedUnnamedStructType> {
-        match self.const_inner_mut() {
-            SemanticType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type),
-            _ => None,
-        }
-    }
-
-    pub fn as_unnamed_enum(&self) -> Option<TypedUnnamedEnumType> {
-        match self.const_inner() {
-            SemanticType::UnnamedEnum(unnamed_enum_type) => Some(unnamed_enum_type.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_unnamed_enum_mut(&mut self) -> Option<&mut TypedUnnamedEnumType> {
-        match self.const_inner_mut() {
-            SemanticType::UnnamedEnum(unnamed_enum_type) => Some(unnamed_enum_type),
-            _ => None,
-        }
-    }
-
-    pub fn as_unnamed_union(&self) -> Option<TypedUnnamedUnionType> {
-        match self.const_inner() {
-            SemanticType::UnnamedUnion(unnamed_union_type) => Some(unnamed_union_type.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_unnamed_union_mut(&mut self) -> Option<&mut TypedUnnamedUnionType> {
-        match self.const_inner_mut() {
-            SemanticType::UnnamedUnion(unnamed_union_type) => Some(unnamed_union_type),
-            _ => None,
-        }
-    }
-
+    #[inline]
     pub fn as_self_type(&self) -> Option<&TypedSelfType> {
         match self.const_inner() {
             SemanticType::SelfType(self_type) => Some(self_type),
             _ => None,
         }
     }
+
+    #[inline]
+    pub fn as_generic_param(&self) -> Option<&TypedGenericParam> {
+        match self.const_inner() {
+            SemanticType::GenericParam(generic_param) => Some(generic_param),
+            _ => None,
+        }
+    }
+}
+
+impl SemanticType {
+    #[inline]
+    pub fn is_char(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::PlainType(PlainType::Char) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_scalar(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::PlainType(plain_type) => plain_type.is_scalar(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_self_type(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::SelfType(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_integer(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::PlainType(basic) => basic.is_integer(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_float(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::PlainType(basic) => basic.is_float(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_enum(&self) -> bool {
+        match self.const_inner() {
+            SemanticType::Named(named_type) => named_type.decl_id.is_enum(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_bool(&self) -> bool {
+        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Bool))
+    }
+
+    #[inline]
+    pub fn is_array(&self) -> bool {
+        matches!(self.const_inner(), SemanticType::Array(..))
+    }
+
+    #[inline]
+    pub fn is_func_type(&self) -> bool {
+        matches!(self.const_inner(), SemanticType::FuncType(..))
+    }
+
+    #[inline]
+    pub fn is_const(&self) -> bool {
+        matches!(self, SemanticType::Const(_))
+    }
+
+    #[inline]
+    pub fn is_void(&self) -> bool {
+        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Void))
+    }
+
+    #[inline]
+    pub fn is_pointer(&self) -> bool {
+        matches!(self.const_inner(), SemanticType::Pointer(..))
+    }
 }
 
 impl PlainType {
+    #[inline]
     pub fn is_scalar(&self) -> bool {
         match self {
             PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => true,
@@ -608,22 +397,27 @@ impl PlainType {
         }
     }
 
+    #[inline]
     pub fn is_void(&self) -> bool {
         matches!(self, PlainType::Void)
     }
 
+    #[inline]
     pub fn is_bool(&self) -> bool {
         matches!(self, PlainType::Bool)
     }
 
+    #[inline]
     pub fn is_char(&self) -> bool {
         matches!(self, PlainType::Char)
     }
 
+    #[inline]
     pub fn is_integer_or_bool(&self) -> bool {
         self.is_integer() || self.is_bool()
     }
 
+    #[inline]
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
@@ -646,6 +440,7 @@ impl PlainType {
         )
     }
 
+    #[inline]
     pub fn is_float(&self) -> bool {
         matches!(
             self,
@@ -653,6 +448,7 @@ impl PlainType {
         )
     }
 
+    #[inline]
     pub fn is_signed(&self) -> bool {
         match self {
             PlainType::UIntPtr
@@ -683,6 +479,7 @@ impl PlainType {
         }
     }
 
+    #[inline]
     pub fn plain_type_rank(ty: &PlainType) -> Option<u8> {
         use PlainType::*;
 
@@ -709,6 +506,7 @@ impl PlainType {
         }
     }
 
+    #[inline]
     pub fn widen_type(a: PlainType, b: PlainType) -> Option<PlainType> {
         let a_rank = PlainType::plain_type_rank(&a)?;
         let b_rank = PlainType::plain_type_rank(&b)?;
@@ -716,61 +514,9 @@ impl PlainType {
     }
 }
 
-impl TypedUnnamedEnumType {
-    pub fn is_repr_c(&self) -> bool {
-        if let Some(repr_attr) = &self.repr_attr {
-            if let Some(kind) = repr_attr.kind() {
-                return match kind {
-                    ReprKind::C => true,
-                    ReprKind::Cyrus => false,
-                    ReprKind::Transparent => false,
-                };
-            }
-        }
-        false
-    }
-
-    #[inline]
-    pub fn includes_payload(&self) -> bool {
-        self.variants
-            .iter()
-            .any(|v| !matches!(v, TypedUnnamedEnumVariant::Ident(_)))
-    }
-}
-
-impl TypedUnnamedEnumVariant {
-    pub fn ident(&self) -> &Ident {
-        match self {
-            TypedUnnamedEnumVariant::Ident(ident) => ident,
-            TypedUnnamedEnumVariant::Valued(ident, _) => ident,
-            TypedUnnamedEnumVariant::Variant(ident, _) => ident,
-        }
-    }
-}
-
 impl Hash for DynamicType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.vtable_id.hash(state);
-    }
-}
-
-impl Hash for InterfaceType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.symbol_id.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedUnionTypeField {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.ty.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedStructTypeField {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.ty.hash(state);
     }
 }
 
@@ -794,77 +540,9 @@ impl Hash for TypedTupleType {
     }
 }
 
-impl Hash for TypedUnnamedEnumType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.variants.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedEnumVariant {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-    }
-}
-
 impl Hash for TypedArrayCapacity {
     fn hash<H: Hasher>(&self, state: &mut H) {
         core::mem::discriminant(self).hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedUnionType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-    }
-}
-
-impl Hash for TypedUnnamedStructType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-        self.repr_attr.hash(state);
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumValuedField {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumType {
-    fn eq(&self, other: &Self) -> bool {
-        self.variants == other.variants
-    }
-}
-
-impl PartialEq for TypedUnnamedEnumVariant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
-            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1 == expr2,
-            (Self::Variant(ident1, fields1), Self::Variant(ident2, fields2)) => {
-                if ident1 != ident2 {
-                    return false;
-                }
-                if fields1.len() != fields2.len() {
-                    return false;
-                }
-                fields1.iter().zip(fields2.iter()).all(|(f1, f2)| f1.ty == f2.ty)
-            }
-            _ => false,
-        }
-    }
-}
-
-impl PartialEq for TypedUnnamedUnionType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields
-    }
-}
-
-impl PartialEq for TypedUnnamedStructType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields && self.repr_attr == other.repr_attr
     }
 }
 
@@ -877,18 +555,6 @@ impl PartialEq for TypedArrayType {
 impl PartialEq for DynamicType {
     fn eq(&self, other: &Self) -> bool {
         self.interface_id == other.interface_id
-    }
-}
-
-impl PartialEq for TypedUnnamedUnionTypeField {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.ty == other.ty
-    }
-}
-
-impl PartialEq for TypedUnnamedStructTypeField {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.ty == other.ty
     }
 }
 
@@ -973,5 +639,4 @@ impl fmt::Display for PlainType {
 }
 
 impl Eq for TypedArrayCapacity {}
-impl Eq for TypedUnnamedEnumVariant {}
 impl Eq for TypedFuncType {}

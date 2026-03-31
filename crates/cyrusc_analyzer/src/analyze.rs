@@ -27,19 +27,19 @@ use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_co
 use cyrusc_diagcentral::{Diag, DiagLevel, reporter::DiagReporter};
 use cyrusc_internal::{
     flow_state::{ControlRegion, FlowState},
-    symbols::table::{Query, SymbolEntryMut},
+    symbols::table::{SymbolQuery, SymbolEntryMut},
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
-    format::{SymbolFormatterFn, format_sema_type, format_unnamed_enum_type},
-    generics::{
+    format::{DeclFormatterFn, format_sema_type, format_unnamed_enum_type},
+    backup_typed_ast_generics::{
         mapping_ctx_arena::GenericMappingCtxArena,
         monomorph::MonomorphRegistry,
         substitute::{substitute_enum_sig, substitute_func_sig},
     },
-    sigs::{FuncSig, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
+    sigs::{FuncDecl, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
     stmts::*,
     types::{
         PlainType, SemanticType, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
@@ -60,7 +60,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     pub fn new(
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
-        query: &'a dyn Query,
+        query: &'a dyn SymbolQuery,
         symbol_mut: &'a M,
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<EntryPoints>,
@@ -227,7 +227,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedExportTupleStmt) -> Option<()> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let mut explicit_sema_ty: Option<SemanticType> = None;
 
@@ -572,7 +572,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_switch(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         self.control_stack.push(ControlRegion::Switch);
 
@@ -626,19 +626,19 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             None
         } {
             Some((enum_id, generic_type_opt)) => {
-                let mut enum_sig = self.query.get_enum(enum_id).unwrap().enum_sig.clone();
+                let mut enum_decl = self.query.get_enum(enum_id).unwrap().enum_decl.clone();
 
                 if let Some(generic_type) = generic_type_opt {
-                    enum_sig = substitute_enum_sig(
+                    enum_decl = substitute_enum_sig(
                         self.mapping_ctx_arena.clone(),
-                        &enum_sig,
+                        &enum_decl,
                         generic_type.mapping_ctx.clone(),
                     )
                     .unwrap()
                 }
 
-                let mut unnamed_enum_type = enum_sig_as_unnamed_enum_type(&enum_sig, switch_stmt.loc);
-                return self.analyze_switch_on_enum(switch_stmt, &mut unnamed_enum_type, &enum_sig.name);
+                let mut unnamed_enum_type = enum_sig_as_unnamed_enum_type(&enum_decl, switch_stmt.loc);
+                return self.analyze_switch_on_enum(switch_stmt, &mut unnamed_enum_type, &enum_decl.name);
             }
             None => {}
         }
@@ -850,7 +850,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let func_type = self.fenv.current_func_type.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
@@ -973,7 +973,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.symbol_mut
             .with_struct_mut(struct_stmt.symbol_id, |resolved_struct| {
-                resolved_struct.struct_sig.fields = struct_stmt.fields.clone();
+                resolved_struct.struct_decl.fields = struct_stmt.fields.clone();
             });
     }
 
@@ -1003,7 +1003,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.analyze_object_implements_interface_list(union_stmt.name.clone(), &union_stmt.impls, &union_stmt.methods);
 
         self.symbol_mut.with_union_mut(union_stmt.symbol_id, |resolved_union| {
-            resolved_union.union_sig.fields = union_stmt.fields.clone();
+            resolved_union.union_decl.fields = union_stmt.fields.clone();
         });
     }
 
@@ -1035,7 +1035,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.validate_enum_tag_type(&enum_stmt.tag_type, enum_stmt.loc);
 
         self.symbol_mut.with_enum_mut(enum_stmt.symbol_id, |resolved_enum| {
-            resolved_enum.enum_sig.variants = enum_stmt.variants.clone();
+            resolved_enum.enum_decl.variants = enum_stmt.variants.clone();
         });
     }
 
@@ -1070,8 +1070,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         self.symbol_mut.with_func_mut(func_def.symbol_id, |resolved_func| {
-            resolved_func.func_sig.params = func_def.params.clone();
-            resolved_func.func_sig.ret_type = func_def.ret_type.clone();
+            resolved_func.func_decl.params = func_def.params.clone();
+            resolved_func.func_decl.ret_type = func_def.ret_type.clone();
         });
     }
 
@@ -1099,8 +1099,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         self.normalize_func_params(&mut func_decl.params, func_decl.loc);
 
         self.symbol_mut.with_func_mut(func_decl.symbol_id, |resolved_func| {
-            resolved_func.func_sig.params = func_decl.params.clone();
-            resolved_func.func_sig.ret_type = func_decl.ret_type.clone();
+            resolved_func.func_decl.params = func_decl.params.clone();
+            resolved_func.func_decl.ret_type = func_decl.ret_type.clone();
         });
     }
 
@@ -1150,12 +1150,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.symbol_mut
             .with_typedef_mut(typed_typedef.symbol_id, |resolved_typedef| {
-                resolved_typedef.typedef_sig.ty = typed_typedef.ty.clone();
+                resolved_typedef.typedef_decl.ty = typed_typedef.ty.clone();
             });
     }
 
     fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(mut expr) = global_var.expr.clone() {
             match self.analyze_expr(&mut expr, global_var.ty.clone()) {
@@ -1241,7 +1241,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(ty) = &var.ty {
             var.ty = self.normalize_sema_type(ty.clone(), var.loc);
@@ -1287,7 +1287,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn analyze_assign(&mut self, assign: &mut TypedAssignExpr) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let lhs_type = match self.analyze_expr(&mut assign.lhs, None) {
             Some(sema_type) => sema_type,
@@ -1379,10 +1379,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             };
 
-            let interface_method_decls = &resolved_interface.interface_sig.methods;
-            let mut interface_method_sigs: Vec<FuncSig> = Vec::new();
+            let interface_method_decls = &resolved_interface.interface_decl.methods;
+            let mut interface_method_sigs: Vec<FuncDecl> = Vec::new();
 
-            if let Some(generic_params) = &resolved_interface.interface_sig.generic_params {
+            if let Some(generic_params) = &resolved_interface.interface_decl.generic_params {
                 let Some(type_args) = &implement_interface.type_args else {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -1414,15 +1414,15 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 if let Some(generic_type) = generic_type_opt {
                     for func_decl in interface_method_decls {
-                        let mut func_sig = typed_func_decl_as_func_sig(func_decl);
-                        func_sig = substitute_func_sig(
+                        let mut func_decl = typed_func_decl_as_func_sig(func_decl);
+                        func_decl = substitute_func_sig(
                             self.mapping_ctx_arena.clone(),
-                            &func_sig,
+                            &func_decl,
                             generic_type.mapping_ctx.clone(),
                         )
                         .unwrap();
 
-                        interface_method_sigs.push(func_sig);
+                        interface_method_sigs.push(func_decl);
                     }
                 }
             }
@@ -1447,7 +1447,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 let resolved_method = self.query.get_method(*method_id).unwrap();
 
                 // check method signature mismatch
-                if resolved_method.func_sig != interface_method_sig {
+                if resolved_method.func_decl != interface_method_sig {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
@@ -1455,7 +1455,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                             interface_name: name.clone(),
                             method_name: interface_method_sig.name.clone(),
                         }),
-                        loc: Some(resolved_method.func_sig.loc),
+                        loc: Some(resolved_method.func_decl.loc),
                         hint: None,
                     });
                 }
@@ -1665,17 +1665,17 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn analyze_non_generic_methods(&mut self, _methods: &HashMap<String, SymbolID>) {
         todo!();
 
-        // let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStmt>)> = Vec::new();
+        // let mut local_methods_list: Vec<(SymbolID, FuncDecl, Box<TypedBlockStmt>)> = Vec::new();
 
         // // forward method declaration resolving
         // for symbol_id in methods.values() {
-        //     let (mut func_sig, func_body_opt) = {
+        //     let (mut func_decl, func_body_opt) = {
         //         let mut global_symbols = self.resolver.global_symbols_registry.lock().unwrap();
         //         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         //         let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
 
         //         match &mut symbol_entry.kind {
-        //             SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take()),
+        //             SymbolEntryKind::Method(m) => (m.func_decl.clone(), m.func_body.take()),
         //             _ => unreachable!(),
         //         }
         //     };
@@ -1684,55 +1684,55 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //     self.tctx.current_func = Some(TypedFuncType {
         //         symbol_id: Some(*symbol_id),
         //         def_module_id: Some(self.module_id),
-        //         params: typed_func_params_as_func_type_params(&func_sig.params),
-        //         ret_type: Box::new(func_sig.ret_type.clone()),
-        //         is_public: func_sig.modifiers.vis.is_public(),
-        //         loc: func_sig.loc,
+        //         params: typed_func_params_as_func_type_params(&func_decl.params),
+        //         ret_type: Box::new(func_decl.ret_type.clone()),
+        //         is_public: func_decl.modifiers.vis.is_public(),
+        //         loc: func_decl.loc,
         //     });
-        //     self.check_method_name(func_sig.name.clone(), func_sig.loc);
+        //     self.check_method_name(func_decl.name.clone(), func_decl.loc);
 
-        //     self.normalize_func_params(&mut func_sig.params, func_sig.loc);
+        //     self.normalize_func_params(&mut func_decl.params, func_decl.loc);
 
-        //     func_sig.ret_type = match self.normalize_sema_type( func_sig.ret_type.clone(), func_sig.loc) {
+        //     func_decl.ret_type = match self.normalize_sema_type( func_decl.ret_type.clone(), func_decl.loc) {
         //         Some(sema_type) => sema_type,
         //         None => return,
         //     };
 
-        //     if let Some(typed_func_param_kind) = func_sig.params.list.first() {
+        //     if let Some(typed_func_param_kind) = func_decl.params.list.first() {
         //         if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = typed_func_param_kind.clone() {
-        //             func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
+        //             func_decl.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
         //         }
         //     }
 
         //     if let Some(func_body) = func_body_opt {
-        //         local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
+        //         local_methods_list.push((*symbol_id, func_decl.clone(), func_body));
         //     }
 
         //     let mut global_symbols = self.resolver.global_symbols_registry.lock().unwrap();
         //     let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         //     let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
         //     if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
-        //         m.func_sig = func_sig;
+        //         m.func_decl = func_decl;
         //     }
         // }
 
         // // analyze methods bodies
-        // for (symbol_id, func_sig, mut func_body) in local_methods_list {
+        // for (symbol_id, func_decl, mut func_body) in local_methods_list {
         //     self.tctx.current_method_symbol_id = Some(symbol_id);
         //     self.tctx.current_func = Some(TypedFuncType {
         //         symbol_id: Some(symbol_id),
-        //         params: typed_func_params_as_func_type_params(&func_sig.params),
-        //         ret_type: Box::new(func_sig.ret_type.clone()),
-        //         is_public: func_sig.modifiers.vis.is_public(),
-        //         loc: func_sig.loc,
+        //         params: typed_func_params_as_func_type_params(&func_decl.params),
+        //         ret_type: Box::new(func_decl.ret_type.clone()),
+        //         is_public: func_decl.modifiers.vis.is_public(),
+        //         loc: func_decl.loc,
         //     });
         //     let state = self.analyze_block_stmt(&mut func_body);
 
-        //     if !func_sig.ret_type.is_void() && state != FlowState::Returns {
+        //     if !func_decl.ret_type.is_void() && state != FlowState::Returns {
         //         self.reporter.report(Diag {
         //             level: DiagLevel::Error,
         //             kind: Box::new(AnalyzerDiagKind::MissingReturn),
-        //             loc: Some(DiagLoc::new(func_sig.loc)),
+        //             loc: Some(DiagLoc::new(func_decl.loc)),
         //             hint: Some("Not all control paths return a value.".to_string()),
         //         });
         //     }
@@ -1741,7 +1741,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         //     let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         //     let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
         //     if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
-        //         m.func_sig = func_sig;
+        //         m.func_decl = func_decl;
         //         m.func_body = Some(func_body);
         //     }
         // }
@@ -1798,7 +1798,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn validate_field_type(&mut self, object_id_opt: Option<SymbolID>, sema_type: &SemanticType, loc: Loc) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let sema_type = sema_type.const_inner();
 
@@ -2006,7 +2006,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn validate_enum_tag_type(&mut self, tag_type: &Option<SemanticType>, loc: Loc) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(tag_type) = tag_type {
             let tag_type = tag_type.const_inner();

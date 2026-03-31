@@ -16,9 +16,10 @@
  */
 
 use crate::{
-    SymbolID, VTableID, generics::monomorph::MonomorphID, sigs::{EnumSig, FuncSig}, stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs}, types::{
-        SemanticType, TypedUnnamedEnumType, TypedUnnamedStructType, TypedUnnamedStructTypeField, TypedUnnamedUnionType,
-    }
+    SymbolID, VTableID,
+    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, UnionDeclID},
+    stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
+    types::SemanticType,
 };
 use cyrusc_ast::{
     AssignKind, Ident,
@@ -216,7 +217,7 @@ pub struct TypedFuncCall {
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
     pub ret_type: Option<SemanticType>,
-    pub monomorph_id: Option<MonomorphID>, // only used when calling a generic func
+    pub monomorph_id: Option<MonomorphID>, // only set when calling a generic func
     pub loc: Loc,
 }
 
@@ -236,27 +237,37 @@ pub struct TypedFieldAccess {
 pub struct TypedInterfaceMethodCallMetadata {
     pub method_idx: usize,
     pub methods_len: usize,
-    pub method_sig: FuncSig,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
     pub method_name: String,
-    pub object_name: Option<String>,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
+
+    pub dispatch: TypedMethodCallDispatch,
+
     pub is_fat_arrow: bool,
-
-    pub func_sig: Option<FuncSig>,
-    pub self_ty: Option<SemanticType>,
-
-    pub enum_constructor: Option<SymbolID>,
-    pub method_call_on_interface: Option<TypedInterfaceMethodCallMetadata>,
-
-    // only used when calling a generic method
-    pub monomorph_id: Option<MonomorphID>,
     pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedMethodCallDispatch {
+    Unresolved,
+    Direct {
+        decl_id: FuncDeclID,
+        self_type: SemanticType,
+    },
+    Interface {
+        decl_id: InterfaceDeclID,
+        self_type: SemanticType,
+    },
+    Monomorph {
+        decl_id: FuncDeclID,
+        monomorph_id: MonomorphID,
+        self_type: SemanticType,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -269,25 +280,21 @@ pub struct TypedUnnamedStructValue {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedUnionValue {
-    pub field_name: Ident,
-    pub field_value: Box<TypedExprStmt>,
-    pub union_ty: Option<TypedUnnamedUnionType>,
+    pub inferred_type: Option<UnionDeclID>,
+
+    pub name: Ident,
+    pub value: Box<TypedExprStmt>,
     pub is_const: bool,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedEnumValue {
-    pub ident: Ident,
-    pub kind: TypedUnnamedEnumValueKind,
-    pub enum_ty: Option<TypedUnnamedEnumValueTy>,
-    pub loc: Loc,
-}
+    pub inferred_type: Option<EnumDeclID>,
 
-#[derive(Debug, Clone)]
-pub enum TypedUnnamedEnumValueTy {
-    EnumSig(EnumSig),
-    UnnamedEnum(TypedUnnamedEnumType),
+    pub variant_name: Ident,
+    pub kind: TypedUnnamedEnumValueKind,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -299,7 +306,7 @@ pub enum TypedUnnamedEnumValueKind {
 pub struct TypedUnnamedStructValueField {
     pub name: String,
     pub ty: Option<SemanticType>,
-    pub field_value: Box<TypedExprStmt>,
+    pub value: Box<TypedExprStmt>,
     pub loc: Loc,
 }
 
@@ -377,29 +384,6 @@ impl TypedLiteralExpr {
     }
 }
 
-impl TypedUnnamedStructValue {
-    pub fn as_unnamed_struct_type(&self) -> TypedUnnamedStructType {
-        let fields = self
-            .fields
-            .iter()
-            .map(|field| -> _ {
-                TypedUnnamedStructTypeField {
-                    name: field.name.clone(),
-                    ty: Box::new(field.ty.clone().or(field.field_value.sema_type.clone()).unwrap()),
-                    loc: field.loc,
-                }
-            })
-            .collect();
-
-        TypedUnnamedStructType {
-            fields,
-            repr_attr: self.repr_attr.clone(),
-            align: self.align.clone(),
-            loc: self.loc,
-        }
-    }
-}
-
 impl TypedUnnamedEnumValueKind {
     pub fn as_fielded(&self) -> Option<&Vec<TypedExprStmt>> {
         match self {
@@ -411,7 +395,7 @@ impl TypedUnnamedEnumValueKind {
 
 impl PartialEq for TypedUnnamedEnumValue {
     fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident && self.kind == other.kind
+        self.variant_name == other.variant_name && self.kind == other.kind
     }
 }
 
@@ -430,7 +414,7 @@ impl std::hash::Hash for TypedSelfType {
 
 impl PartialEq for TypedUnnamedUnionValue {
     fn eq(&self, other: &Self) -> bool {
-        self.field_name == other.field_name && self.field_value == other.field_value
+        self.name == other.name && self.value == other.value
     }
 }
 

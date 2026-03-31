@@ -17,6 +17,7 @@
 
 use crate::{
     LabelID, SymbolID,
+    decls::{MethodDecls, VarDeclID},
     exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
@@ -134,7 +135,7 @@ pub struct TypedEnumStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
-    pub methods: HashMap<String, SymbolID>,
+    pub methods: MethodDecls,
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: EnumModifiers,
@@ -161,7 +162,7 @@ pub struct TypedStructStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedStructField>,
-    pub methods: HashMap<String, SymbolID>,
+    pub methods: MethodDecls,
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: StructModifiers,
@@ -175,7 +176,7 @@ pub struct TypedUnionStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedUnionField>,
-    pub methods: HashMap<String, SymbolID>,
+    pub methods: MethodDecls,
     pub generic_params: Option<TypedGenericParamsList>,
     pub impls: Vec<TypedImplementInterface>,
     pub align: Option<usize>,
@@ -308,8 +309,7 @@ pub enum TypedFuncParamKind {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedSelfModifier {
-    pub symbol_id: Option<SymbolID>,
-    pub self_id: Option<SymbolID>,
+    pub var_decl_id: Option<VarDeclID>,
     pub ty: Option<SemanticType>,
     pub kind: SelfModifierKind,
     pub loc: Loc,
@@ -317,7 +317,7 @@ pub struct TypedSelfModifier {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedFuncParam {
-    pub symbol_id: Option<SymbolID>, // none if used in func decl
+    pub var_decl_id: Option<VarDeclID>, // none if used in func decl
     pub name: String,
     pub ty: SemanticType,
     pub loc: Loc,

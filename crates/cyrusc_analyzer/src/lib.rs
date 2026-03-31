@@ -19,14 +19,14 @@ use crate::{diagnostics::AnalyzerDiagKind, normalizer::TypeCache, typecheck::typ
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
 use cyrusc_internal::{
     flow_state::ControlRegion,
-    symbols::table::{Query, SymbolEntryMut},
+    symbols::table::{SymbolQuery, SymbolEntryMut},
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_typed_ast::{
     TypedProgramTree,
     format::format_loc,
-    generics::{mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry},
+    backup_typed_ast_generics::{mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry},
 };
 use std::{
     cell::RefCell,
@@ -51,7 +51,7 @@ pub struct AnalysisContext<'a, M: SymbolEntryMut> {
     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) reporter: Arc<DiagReporter>,
 
-    pub(crate) query: &'a dyn Query,
+    pub(crate) query: &'a dyn SymbolQuery,
     pub(crate) symbol_mut: &'a M,
 
     pub(crate) fenv: FuncEnv,

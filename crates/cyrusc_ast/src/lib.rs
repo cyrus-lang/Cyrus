@@ -21,6 +21,7 @@ use crate::operators::{InfixOperator, PrefixOperator, UnaryOperator};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::{Token, literals::ASTLiteralExpr};
+use std::fmt;
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
@@ -1011,6 +1012,13 @@ impl ProgramTree {
 }
 
 impl Ident {
+    pub fn new(value: &str, loc: Loc) -> Self {
+        Self {
+            value: value.to_string(),
+            loc,
+        }
+    }
+
     pub fn as_string(&self) -> String {
         self.value.clone()
     }
@@ -1104,6 +1112,24 @@ impl AssignKind {
             AssignKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
             AssignKind::LeftShiftAssign => InfixOperator::ShiftLeft,
             AssignKind::RightShiftAssign => InfixOperator::ShiftRight,
+        }
+    }
+}
+
+impl fmt::Display for AssignKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AssignKind::Default => write!(f, "="),
+            AssignKind::AddAssign => write!(f, "+="),
+            AssignKind::SubAssign => write!(f, "-="),
+            AssignKind::MulAssign => write!(f, "*="),
+            AssignKind::DivAssign => write!(f, "/="),
+            AssignKind::ModAssign => write!(f, "%="),
+            AssignKind::BitwiseAndAssign => write!(f, "&="),
+            AssignKind::BitwiseXorAssign => write!(f, "^="),
+            AssignKind::BitwiseAndNotAssign => write!(f, "&~="),
+            AssignKind::LeftShiftAssign => write!(f, "<<="),
+            AssignKind::RightShiftAssign => write!(f, ">>="),
         }
     }
 }

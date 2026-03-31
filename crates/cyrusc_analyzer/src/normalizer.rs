@@ -27,9 +27,9 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
     exprs::TypedSelfType,
-    format::{SymbolFormatterFn, format_unnamed_enum_type, format_unnamed_struct_type, format_unnamed_union_type},
-    generics::{generic_type::GenericType, substitute::substitute_func_sig},
-    sigs::{FuncSig, InterfaceSig, typed_func_decl_as_func_sig},
+    format::{DeclFormatterFn, format_unnamed_enum_type, format_unnamed_struct_type, format_unnamed_union_type},
+    backup_typed_ast_generics::{generic_type::GenericType, substitute::substitute_func_sig},
+    sigs::{FuncDecl, InterfaceDecl, typed_func_decl_as_func_sig},
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
@@ -70,7 +70,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// Validate a semantic type.
     /// This does NOT normalize the type.
     pub fn check_sema_ty(&mut self, mut sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if sema_type.count_const_layers() > 1 {
             self.reporter.report(Diag {
@@ -111,7 +111,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn check_unnamed_union_type(&mut self, unnamed_union_type: &mut TypedUnnamedUnionType) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         self.validate_union_repr_attr(
             &unnamed_union_type.repr_attr,
@@ -151,7 +151,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn check_unnamed_struct_type(&mut self, unnamed_struct_type: &mut TypedUnnamedStructType) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         self.validate_struct_repr_attr(
             &unnamed_struct_type.repr_attr,
@@ -191,7 +191,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn check_unnamed_enum_type(&mut self, unnamed_enum_type: &mut TypedUnnamedEnumType) {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         self.validate_enum_repr_attr(
             &unnamed_enum_type.repr_attr,
@@ -523,7 +523,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_generic_type(&mut self, mut generic_type: GenericType) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 
@@ -538,14 +538,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         debug_assert!(generic_type.generic_params.list.is_empty() == false);
 
         if let Some(typedef) = symbol_entry.as_typedef() {
-            self.resolve_generic_typedef(typedef, generic_type.type_args, typedef.typedef_sig.loc)
+            self.resolve_generic_typedef(typedef, generic_type.type_args, typedef.typedef_decl.loc)
         } else if let Some(resolved_interface) = symbol_entry.as_interface() {
             if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
                 self.reporter.report(diag);
                 return None;
             }
 
-            self.normalize_generic_interface_type(&generic_type, &resolved_interface.interface_sig)
+            self.normalize_generic_interface_type(&generic_type, &resolved_interface.interface_decl)
         } else {
             if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
                 self.reporter.report(diag);
@@ -582,8 +582,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_interface_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
         let resolved_interface = self.query.get_interface(symbol_id)?;
 
-        let methods: Vec<FuncSig> = resolved_interface
-            .interface_sig
+        let methods: Vec<FuncDecl> = resolved_interface
+            .interface_decl
             .methods
             .iter()
             .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
@@ -599,20 +599,20 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     fn normalize_generic_interface_type(
         &mut self,
         generic_type: &GenericType,
-        interface_sig: &InterfaceSig,
+        interface_decl: &InterfaceDecl,
     ) -> Option<SemanticType> {
-        let mut methods: Vec<FuncSig> = Vec::new();
+        let mut methods: Vec<FuncDecl> = Vec::new();
 
-        for func_decl in &interface_sig.methods {
-            let mut func_sig = typed_func_decl_as_func_sig(func_decl);
-            func_sig = substitute_func_sig(
+        for func_decl in &interface_decl.methods {
+            let mut func_decl = typed_func_decl_as_func_sig(func_decl);
+            func_decl = substitute_func_sig(
                 self.mapping_ctx_arena.clone(),
-                &func_sig,
+                &func_decl,
                 generic_type.mapping_ctx.clone(),
             )
             .unwrap();
 
-            methods.push(func_sig);
+            methods.push(func_decl);
         }
 
         Some(SemanticType::Interface(InterfaceType {
@@ -630,10 +630,10 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         // let fmt_symbol = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
-        let generic_params = resolved_typedef.typedef_sig.generic_params.as_ref().unwrap();
+        let generic_params = resolved_typedef.typedef_decl.generic_params.as_ref().unwrap();
 
         // typedef is generating an another generic
-        if let Some(mut generic_type) = resolved_typedef.typedef_sig.ty.as_generic_type().cloned() {
+        if let Some(mut generic_type) = resolved_typedef.typedef_decl.ty.as_generic_type().cloned() {
             let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
 
             match self
@@ -681,17 +681,17 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
             // substitute_type(
             //     self.mapping_ctx_arena.clone(),
-            //     resolved_typedef.typedef_sig.ty.clone(),
+            //     resolved_typedef.typedef_decl.ty.clone(),
             //     mapping_ctx,
             // )
         }
     }
 
     fn resolve_typedef_inner_type(&mut self, resolved_typedef: &ResolvedTypedef) -> Option<SemanticType> {
-        let inner_ty = resolved_typedef.typedef_sig.ty.clone();
+        let inner_ty = resolved_typedef.typedef_decl.ty.clone();
 
         if let Some(mut generic_type) = inner_ty.as_generic_type().cloned() {
-            if let Some(generic_params) = &resolved_typedef.typedef_sig.generic_params {
+            if let Some(generic_params) = &resolved_typedef.typedef_decl.generic_params {
                 generic_type.generic_params = generic_params.clone();
             }
 
@@ -775,7 +775,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         if let Some(cached_sema_ty) = self.type_cache.cache.get(&symbol_id) {
             return Some(cached_sema_ty.clone());
@@ -817,7 +817,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             SymbolEntryKind::Var(resolved_var) => resolved_var.variable.ty.clone(),
             SymbolEntryKind::Func(resolved_func) => {
                 let params_list = resolved_func
-                    .func_sig
+                    .func_decl
                     .params
                     .list
                     .iter()
@@ -829,7 +829,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     })
                     .collect();
 
-                let params_variadic = resolved_func.func_sig.params.variadic.as_ref().map(|v| match v {
+                let params_variadic = resolved_func.func_decl.params.variadic.as_ref().map(|v| match v {
                     TypedFuncVariadicParams::UntypedCStyle => Box::new(TypedFuncTypeVariadicParams::UntypedCStyle),
                     TypedFuncVariadicParams::Typed(_, sema_type) => {
                         Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone()))
@@ -842,9 +842,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         list: params_list,
                         variadic: params_variadic,
                     },
-                    is_public: resolved_func.func_sig.modifiers.vis.is_public(),
-                    ret_type: Box::new(resolved_func.func_sig.ret_type.clone()),
-                    loc: resolved_func.func_sig.loc,
+                    is_public: resolved_func.func_decl.modifiers.vis.is_public(),
+                    ret_type: Box::new(resolved_func.func_decl.ret_type.clone()),
+                    loc: resolved_func.func_decl.loc,
                 }))
             }
             SymbolEntryKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(
@@ -857,7 +857,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 resolved_union.symbol_id,
             ))),
             SymbolEntryKind::Interface(interface) => {
-                self.normalize_interface_type(interface.symbol_id, interface.interface_sig.loc)
+                self.normalize_interface_type(interface.symbol_id, interface.interface_decl.loc)
             }
             SymbolEntryKind::Typedef(typedef) => self.resolve_typedef_inner_type(typedef),
             SymbolEntryKind::ProxiedSymbol {

@@ -38,12 +38,12 @@ use cyrusc_internal::{
     },
     cir::{
         cir::{CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty},
-        monomorph::CIRMonomorphEntry,
+        instances::CIRMonomorphEntry,
         types::{CIRFuncTy, CIRTy},
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::generics::monomorph::MonomorphID;
+use cyrusc_typed_ast::backup_typed_ast_generics::monomorph::MonomorphID;
 use inkwell::{
     AddressSpace,
     context::AsContextRef,

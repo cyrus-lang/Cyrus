@@ -19,15 +19,13 @@ use cyrusc_ast::abi::Visibility;
 use cyrusc_diagcentral::reporter::DiagReporter;
 use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::module_loader::ModuleLoader;
-use cyrusc_internal::symbols::symbols::{
-    Module, Namespace, ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod,
-    ResolvedStruct, ResolvedTypedef, ResolvedUnion, ResolvedVar, SymbolEntry, SymbolEntryKind,
-};
-use cyrusc_internal::symbols::table::{Query, ScopeTable, SymbolEntryMut};
+use cyrusc_internal::symbols::symbols::{Module, Namespace, SymbolEntry, SymbolEntryKind};
+use cyrusc_internal::symbols::table::{ScopeTable, SymbolQuery};
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
-use cyrusc_typed_ast::generics::mapping_ctx_arena::GenericMappingCtxArena;
-use cyrusc_typed_ast::generics::monomorph::{
-    MonomorphEntry, MonomorphFuncEntry, MonomorphID, MonomorphRegistry, SpecializedFuncEntry,
+use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
+use cyrusc_typed_ast::decls::{
+    EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID, UnionDeclID,
+    VarDeclID,
 };
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::*;
@@ -67,8 +65,6 @@ pub struct Resolver {
     /// Acts as the semantic output collected during resolution.
     pub program_trees: Arc<Mutex<Vec<Rc<ResolvedProgramTree>>>>,
 
-    module_names: Arc<Mutex<HashMap<FileID, String>>>,
-
     /// Diagnostic reporter used to emit compiler errors and warnings.
     pub reporter: Arc<DiagReporter>,
 
@@ -76,25 +72,17 @@ pub struct Resolver {
     /// Typically backed by a filesystem implementation.
     pub module_loader: Box<dyn ModuleLoader>,
 
-    /// Registry storing generic monomorphization templates.
-    ///
-    /// The resolver registers untyped templates for generic entities here.
-    /// Actual type checking and specialization are performed later by the analyzer.
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-
     /// Tracks files that have already been analyzed.
     /// Prevents resolving the same file multiple times.
     analyzed_files: Arc<Mutex<HashSet<FileID>>>,
 
-    pub module_symbols: HashMap<FileID, SymbolID>,
+    module_names: Arc<Mutex<HashMap<FileID, String>>>,
+
+    module_symbols: HashMap<FileID, SymbolID>,
+
+    decl_tables: Arc<DeclTablesRegistry>,
 
     source_map: Arc<SourceMap>,
-
-    /// Arena managing generic mapping contexts.
-    ///
-    /// This is primarily required for constructing `GenericType` instances,
-    /// which indirectly depend on a shared mapping context arena.
-    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 
     current_module_file_id: Option<FileID>,
 
@@ -134,8 +122,7 @@ impl Resolver {
         module_loader: Box<dyn ModuleLoader>,
         source_map: Arc<SourceMap>,
         reporter: Arc<DiagReporter>,
-        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+        decl_tables: Arc<DeclTablesRegistry>,
     ) -> Self {
         Self {
             global_symbols: Arc::new(GlobalSymbolRegistry::new()),
@@ -146,9 +133,8 @@ impl Resolver {
             module_loader,
             current_object_generic_params: None,
             current_object: None,
-            monomorph_registry,
-            mapping_ctx_arena,
             reporter,
+            decl_tables,
             source_map,
             id_gen: IDGen::new(),
             current_scope: None,
@@ -362,6 +348,7 @@ impl GlobalSymbolRegistry {
             }),
             None,
             None,
+            None,
         )));
 
         global_symbols
@@ -404,6 +391,7 @@ impl GlobalSymbolRegistry {
             },
             target_vis,
             Some(current_scope_id),
+            None,
         ));
 
         self.insert_symbol_name(current_scope_id, proxy_id, name);
@@ -420,6 +408,7 @@ impl GlobalSymbolRegistry {
             },
             None,
             Some(parent_scope_id),
+            None,
         ));
 
         self.insert_symbol_name(parent_scope_id, symbol_id, name);
@@ -444,6 +433,7 @@ impl GlobalSymbolRegistry {
             }),
             vis_opt,
             Some(parent_scope_id),
+            Some(loc),
         ));
 
         self.insert_symbol_name(parent_scope_id, namespace_symbol, name);
@@ -460,6 +450,7 @@ impl GlobalSymbolRegistry {
             }),
             None,
             Some(parent_scope_id),
+            None,
         ));
 
         self.insert_symbol_name(parent_scope_id, module_symbol_id, name);
@@ -579,24 +570,24 @@ impl GlobalSymbolRegistry {
     }
 }
 
-impl Query for Resolver {
-    impl_helper_method__get_kind!(get_var, Var, ResolvedVar);
+impl SymbolQuery for Resolver {
+    impl_helper_method__get_kind!(get_var, Var, VarDeclID);
 
-    impl_helper_method__get_kind!(get_global_var, GlobalVar, ResolvedGlobalVar);
+    impl_helper_method__get_kind!(get_global_var, GlobalVar, GlobalVarDeclID);
 
-    impl_helper_method__get_kind!(get_method, Method, ResolvedMethod);
+    impl_helper_method__get_kind!(get_method, Method, MethodDeclID);
 
-    impl_helper_method__get_kind!(get_func, Func, ResolvedFunc);
+    impl_helper_method__get_kind!(get_func, Func, FuncDeclID);
 
-    impl_helper_method__get_kind!(get_typedef, Typedef, ResolvedTypedef);
+    impl_helper_method__get_kind!(get_typedef, Typedef, TypedefDeclID);
 
-    impl_helper_method__get_kind!(get_union, Union, ResolvedUnion);
+    impl_helper_method__get_kind!(get_union, Union, UnionDeclID);
 
-    impl_helper_method__get_kind!(get_enum, Enum, ResolvedEnum);
+    impl_helper_method__get_kind!(get_enum, Enum, EnumDeclID);
 
-    impl_helper_method__get_kind!(get_struct, Struct, ResolvedStruct);
+    impl_helper_method__get_kind!(get_struct, Struct, StructDeclID);
 
-    impl_helper_method__get_kind!(get_interface, Interface, ResolvedInterface);
+    impl_helper_method__get_kind!(get_interface, Interface, InterfaceDeclID);
 
     /// Get the symbol entry for a symbol.
     fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
@@ -627,127 +618,72 @@ impl Query for Resolver {
     }
 
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
+        const UNRESOLVED_SYMBOL: &str = "<UNRESOLVED_SYMBOL>";
+        const PROXIED_SYMBOL: &str = "<PROXIED_SYMBOL>";
+        const PROXIED_MODULE: &str = "<PROXIED_MODULE>";
+
         match self.lookup_symbol_entry(symbol_id) {
-            Some(symbol_entry) => symbol_entry.decl_name(),
-            None => "<UNRESOLVED_SYMBOL>".to_string(),
-        }
-    }
+            Some(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Unresolved => String::from(UNRESOLVED_SYMBOL),
+                SymbolEntryKind::Module(module) => module.name.clone(),
+                SymbolEntryKind::Namespace(namespace) => namespace.name.clone(),
+                SymbolEntryKind::Func(func_decl_id) => self.decl_tables.func_decl(*func_decl_id).name.clone(),
+                SymbolEntryKind::Method(method_decl_id) => {
+                    self.decl_tables.method_decl(*method_decl_id).func_decl.name.clone()
+                }
+                SymbolEntryKind::Struct(struct_decl_id) => {
+                    let struct_decl = self.decl_tables.struct_decl(*struct_decl_id);
 
-    fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry> {
-        {
-            let monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let monomorph_entry = monomorph_registry.resolve_by_monomorph_id(monomorph_id).unwrap();
-            let monomorph_func_entry = match monomorph_entry.clone() {
-                MonomorphEntry::Func(monomorph_func_entry) => monomorph_func_entry,
-            };
-            Some(monomorph_func_entry)
-        }
-    }
+                    if let Some(name) = &struct_decl.name {
+                        name.clone()
+                    } else {
+                        struct_decl.to_string()
+                    }
+                }
+                SymbolEntryKind::Enum(enum_decl_id) => {
+                    let enum_decl = self.decl_tables.enum_decl(*enum_decl_id);
 
-    fn lookup_specialized_func_instance(&self, monomorph_id: MonomorphID) -> Option<SpecializedFuncEntry> {
-        {
-            let monomorph_registry = self.monomorph_registry.lock().unwrap();
-            monomorph_registry
-                .resolve_specialized_func_instance(monomorph_id)
-                .cloned()
+                    if let Some(name) = &enum_decl.name {
+                        name.clone()
+                    } else {
+                        enum_decl.to_string()
+                    }
+                }
+                SymbolEntryKind::Union(union_decl_id) => {
+                    let union_decl = self.decl_tables.union_decl(*union_decl_id);
+
+                    if let Some(name) = &union_decl.name {
+                        name.clone()
+                    } else {
+                        union_decl.to_string()
+                    }
+                }
+                SymbolEntryKind::Interface(interface_decl_id) => {
+                    self.decl_tables.interface_decl(*interface_decl_id).name.clone()
+                }
+                SymbolEntryKind::Var(var_decl_id) => self.decl_tables.var_decl(*var_decl_id).name.clone(),
+                SymbolEntryKind::GlobalVar(global_var_decl_id) => {
+                    self.decl_tables.global_var_decl(*global_var_decl_id).name.clone()
+                }
+                SymbolEntryKind::Typedef(typedef_decl_id) => {
+                    self.decl_tables.typedef_decl(*typedef_decl_id).name.clone()
+                }
+                SymbolEntryKind::ProxiedSymbol { symbol_id, .. } => self
+                    .lookup_symbol_entry(*symbol_id)
+                    .map(|_| self.format_symbol_name(*symbol_id))
+                    .unwrap_or_else(|| String::from(PROXIED_SYMBOL)),
+                SymbolEntryKind::ProxiedModule { symbol_id } => self
+                    .lookup_symbol_entry(*symbol_id)
+                    .map(|_| self.format_symbol_name(*symbol_id))
+                    .unwrap_or_else(|| String::from(PROXIED_MODULE)),
+            },
+            None => String::from(UNRESOLVED_SYMBOL),
         }
     }
 
     fn lookup_module_name(&self, file_id: FileID) -> Option<String> {
         let map = self.module_names.lock().unwrap();
         map.get(&file_id).cloned()
-    }
-}
-
-impl SymbolEntryMut for Resolver {
-    fn with_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedVar) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Var(resolved_var) => Some(f(resolved_var)),
-            _ => None,
-        })?
-    }
-
-    fn with_global_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedGlobalVar) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::GlobalVar(resolved_global_var) => Some(f(resolved_global_var)),
-            _ => None,
-        })?
-    }
-
-    fn with_method_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedMethod) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Method(resolved_method) => Some(f(resolved_method)),
-            _ => None,
-        })?
-    }
-
-    fn with_func_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedFunc) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Func(resolved_func) => Some(f(resolved_func)),
-            _ => None,
-        })?
-    }
-
-    fn with_typedef_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedTypedef) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Typedef(resolved_typedef) => Some(f(resolved_typedef)),
-            _ => None,
-        })?
-    }
-
-    fn with_union_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedUnion) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Union(resolved_union) => Some(f(resolved_union)),
-            _ => None,
-        })?
-    }
-
-    fn with_enum_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedEnum) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Enum(resolved_enum) => Some(f(resolved_enum)),
-            _ => None,
-        })?
-    }
-
-    fn with_struct_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedStruct) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Struct(resolved_struct) => Some(f(resolved_struct)),
-            _ => None,
-        })?
-    }
-
-    fn with_interface_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedInterface) -> R,
-    {
-        self.with_global_symbol_mut(symbol_id, |entry| match &mut entry.kind {
-            SymbolEntryKind::Interface(resolved_interface) => Some(f(resolved_interface)),
-            _ => None,
-        })?
     }
 }
 

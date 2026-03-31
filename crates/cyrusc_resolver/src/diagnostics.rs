@@ -1,3 +1,4 @@
+use cyrusc_ast::ASTFuncDefStmt;
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -14,8 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::DiagKind;
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
+use cyrusc_internal::symbols::table::SymbolQuery;
+use cyrusc_source_loc::Loc;
+use cyrusc_typed_ast::SymbolID;
 use thiserror::Error;
+
+use crate::Resolver;
 
 #[derive(Debug, Error, Clone)]
 pub enum ModuleFSLoaderDiagKind {
@@ -38,9 +44,6 @@ impl DiagKind for ModuleFSLoaderDiagKind {}
 
 #[derive(Debug, Error, Clone)]
 pub enum ResolverDiagKind {
-    #[error("Namespace '{namespace}' does not exist in module '{module}'.")]
-    NamespaceNotFoundInModule { namespace: String, module: String },
-
     #[error("Label '{label_name}' already defined in this scope.")]
     LabelAlreadyDefined { label_name: String },
 
@@ -99,3 +102,61 @@ pub enum ResolverDiagKind {
 }
 
 impl DiagKind for ResolverDiagKind {}
+
+impl Resolver {
+    pub(crate) fn report_if_duplicate_symbol(&mut self, scope_id: SymbolID, symbol_name: String, loc: Loc) -> bool {
+        match self.lookup_symbol_id_in_scope(scope_id, &symbol_name) {
+            Some(_) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::DuplicateSymbol { symbol_name }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub(crate) fn report_if_symbol_is_private(&mut self, symbol_id: SymbolID, loc: Loc) {
+        let symbol_entry = self.lookup_symbol_entry(symbol_id).unwrap();
+
+        // report if private symbol is being accessed if visibility specified for symbol
+        if let Some(vis) = &symbol_entry.vis_opt {
+            if vis.is_private() {
+                let symbol_name = self.format_symbol_name(symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::ImportSinglePrivateSymbol { symbol_name }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+            }
+        }
+    }
+
+    pub(crate) fn report_if_duplicate_method_names(&mut self, struct_name: &str, ast_methods: &[ASTFuncDefStmt]) {
+        let mut method_names: Vec<String> = Vec::new();
+
+        for func_def in ast_methods {
+            let method_name = func_def.ident.as_string();
+
+            if method_names.contains(&method_name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::DuplicateMethodName {
+                        struct_name: struct_name.to_string(),
+                        method_name: method_name.clone(),
+                    }),
+                    loc: Some(func_def.loc),
+                    hint: Some("Consider to rename the method to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            method_names.push(method_name);
+        }
+    }
+}

@@ -79,22 +79,14 @@ impl FuncModifiers {
 #[derive(Debug, Clone)]
 pub struct StructModifiers {
     pub vis: Visibility,
-    pub linkage: Option<Linkage>,
-    pub export: Option<ExportKind>,
     pub repr_attr: Option<ReprAttr>,
-    pub section: Option<SectionAttr>,
-    pub optional_flags: Vec<OptionalFlag>,
 }
 
 impl Default for StructModifiers {
     fn default() -> Self {
         Self {
             vis: Visibility::default(),
-            linkage: None,
-            export: None,
             repr_attr: None,
-            section: None,
-            optional_flags: Vec::new(),
         }
     }
 }
@@ -102,20 +94,14 @@ impl Default for StructModifiers {
 #[derive(Debug, Clone)]
 pub struct EnumModifiers {
     pub vis: Visibility,
-    pub export: Option<ExportKind>,
     pub repr_attr: Option<ReprAttr>,
-    pub section: Option<SectionAttr>,
-    pub optional_flags: Vec<OptionalFlag>,
 }
 
 impl Default for EnumModifiers {
     fn default() -> Self {
         Self {
             vis: Visibility::default(),
-            export: None,
             repr_attr: None,
-            section: None,
-            optional_flags: Vec::new(),
         }
     }
 }
@@ -144,22 +130,14 @@ impl EnumModifiers {
 #[derive(Debug, Clone)]
 pub struct UnionModifiers {
     pub vis: Visibility,
-    pub linkage: Option<Linkage>,
-    pub export: Option<ExportKind>,
     pub repr_attr: Option<ReprAttr>,
-    pub section: Option<SectionAttr>,
-    pub optional_flags: Vec<OptionalFlag>,
 }
 
 impl Default for UnionModifiers {
     fn default() -> Self {
         Self {
             vis: Visibility::default(),
-            linkage: None,
-            export: None,
             repr_attr: None,
-            section: None,
-            optional_flags: Vec::new(),
         }
     }
 }
@@ -172,7 +150,6 @@ pub struct GlobalVarModifiers {
     pub section: Option<SectionAttr>,
     pub placement: Vec<SectionAttr>,
     pub weak: bool,
-    pub optional_flags: Vec<OptionalFlag>,
 }
 
 impl Default for GlobalVarModifiers {
@@ -184,7 +161,6 @@ impl Default for GlobalVarModifiers {
             section: None,
             placement: Vec::new(),
             weak: false,
-            optional_flags: Vec::new(),
         }
     }
 }

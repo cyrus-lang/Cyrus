@@ -15,34 +15,31 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::symbols::symbols::{
-    ResolvedEnum, ResolvedFunc, ResolvedGlobalVar, ResolvedInterface, ResolvedMethod, ResolvedStruct, ResolvedTypedef,
-    ResolvedUnion, ResolvedVar, SymbolEntry,
-};
+use crate::symbols::symbols::SymbolEntry;
 use cyrusc_source_loc::FileID;
 use cyrusc_typed_ast::{
     SymbolID,
-    generics::monomorph::{MonomorphFuncEntry, MonomorphID, SpecializedFuncEntry},
+    decls::{
+        EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
+        UnionDeclID, VarDeclID,
+    },
 };
 use std::collections::HashMap;
 
-pub trait Query: Sync + Send {
-    fn get_var(&self, symbol_id: SymbolID) -> Option<ResolvedVar>;
-    fn get_global_var(&self, symbol_id: SymbolID) -> Option<ResolvedGlobalVar>;
-    fn get_method(&self, symbol_id: SymbolID) -> Option<ResolvedMethod>;
-    fn get_func(&self, symbol_id: SymbolID) -> Option<ResolvedFunc>;
-    fn get_typedef(&self, symbol_id: SymbolID) -> Option<ResolvedTypedef>;
-    fn get_union(&self, symbol_id: SymbolID) -> Option<ResolvedUnion>;
-    fn get_enum(&self, symbol_id: SymbolID) -> Option<ResolvedEnum>;
-    fn get_struct(&self, symbol_id: SymbolID) -> Option<ResolvedStruct>;
-    fn get_interface(&self, symbol_id: SymbolID) -> Option<ResolvedInterface>;
+pub trait SymbolQuery: Sync + Send {
+    fn get_var(&self, symbol_id: SymbolID) -> Option<VarDeclID>;
+    fn get_global_var(&self, symbol_id: SymbolID) -> Option<GlobalVarDeclID>;
+    fn get_func(&self, symbol_id: SymbolID) -> Option<FuncDeclID>;
+    fn get_method(&self, symbol_id: SymbolID) -> Option<MethodDeclID>;
+    fn get_typedef(&self, symbol_id: SymbolID) -> Option<TypedefDeclID>;
+    fn get_union(&self, symbol_id: SymbolID) -> Option<UnionDeclID>;
+    fn get_enum(&self, symbol_id: SymbolID) -> Option<EnumDeclID>;
+    fn get_struct(&self, symbol_id: SymbolID) -> Option<StructDeclID>;
+    fn get_interface(&self, symbol_id: SymbolID) -> Option<InterfaceDeclID>;
 
     fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
     fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
-
-    fn lookup_monomorph_func(&self, monomorph_id: MonomorphID) -> Option<MonomorphFuncEntry>;
-    fn lookup_specialized_func_instance(&self, monomorph_id: MonomorphID) -> Option<SpecializedFuncEntry>;
 
     /// Returns the declaration name of a symbol visible from the given module
     /// and optional local scope.
@@ -51,58 +48,6 @@ pub trait Query: Sync + Send {
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
 
     fn lookup_module_name(&self, file_id: FileID) -> Option<String>;
-}
-
-///  Analyzer‑Only Mutation Helpers
-///
-///  These accessors MUST NOT be used during symbol resolution.
-///
-///  - Resolver phase is responsible for assigning the final `SymbolEntryKind`
-///    using `with_global_symbol_mut` (Unresolved -> Var/Func/Struct/...).
-///
-///  - These helpers are ONLY valid in the analyzer/type‑checking phase, where
-///    symbol kinds are already fixed. They mutate the *interior* of an already-
-///    resolved variant and will assert/fail if called on an Unresolved entry.
-///
-///  Using these in the resolver will silently no‑op or corrupt symbol state.
-///  Resolver code MUST set `entry.kind` explicitly and never rely on these.
-///
-pub trait SymbolEntryMut {
-    fn with_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedVar) -> R;
-
-    fn with_global_var_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedGlobalVar) -> R;
-
-    fn with_method_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedMethod) -> R;
-
-    fn with_func_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedFunc) -> R;
-
-    fn with_typedef_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedTypedef) -> R;
-
-    fn with_union_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedUnion) -> R;
-
-    fn with_enum_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedEnum) -> R;
-
-    fn with_struct_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedStruct) -> R;
-
-    fn with_interface_mut<F, R>(&self, symbol_id: SymbolID, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ResolvedInterface) -> R;
 }
 
 /// A collection of symbols and their metadata within a specific scope or module.

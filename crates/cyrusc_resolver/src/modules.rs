@@ -20,7 +20,7 @@ use cyrusc_ast::{ASTImportStmt, ModuleSegment, ModuleSegmentSingle, ProgramTree,
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::{
     module_loader::{LoadedModule, ModuleAlias},
-    symbols::table::Query,
+    symbols::table::SymbolQuery,
 };
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};
@@ -88,7 +88,7 @@ impl Resolver {
     pub fn resolve_module(
         &mut self,
         module_symbol_id: SymbolID,
-        ast: &ProgramTree,
+        program_tree: &ProgramTree,
         mut visiting: &mut VisitingModule,
         file_id: FileID,
         is_master: bool,
@@ -115,23 +115,23 @@ impl Resolver {
         self.current_module_file_id = Some(file_id);
 
         // collect symbol names (first pass)
-        self.resolve_decl_names(&ast.body);
+        self.resolve_decl_names(&program_tree.body);
 
         // analyze `import statements` of this module
-        for import in ast.import_stmts() {
+        for import in program_tree.import_stmts() {
             self.resolve_import(module_symbol_id, import, &mut visiting);
         }
 
         // collect full definitions and details of the symbols (second pass)
-        let body = self.resolve_decl_full(&ast);
+        let body = self.resolve_decl_full(&program_tree);
 
-        let program_tree = Rc::new(RefCell::new(TypedProgramTree { file_id, body }));
+        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { file_id, body }));
 
         {
             let mut program_trees = self.program_trees.lock().unwrap();
             program_trees.push(Rc::new(ResolvedProgramTree {
                 file_id,
-                program_tree: program_tree.clone(),
+                program_tree: typed_program_tree.clone(),
             }));
         }
 
@@ -144,7 +144,7 @@ impl Resolver {
         visiting.active.remove(&file_id);
         visiting.done.insert(file_id);
 
-        Some(program_tree)
+        Some(typed_program_tree)
     }
 
     /// Resolves a module import with duplicate and cycle detection.

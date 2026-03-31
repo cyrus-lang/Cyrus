@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{SymbolID, VTableID, sigs::FuncSig, types::SemanticType};
+use cyrusc_typed_ast::{SymbolID, VTableID, decls::FuncDecl, types::SemanticType};
 use std::collections::HashMap;
 
 /// Uniquely identifies a vtable by the pair:
@@ -66,14 +66,14 @@ pub struct VTableInfo {
     pub sema_type: SemanticType,
 
     /// The interface being implemented.
-    pub interface_id: SymbolID,
+    pub interface_symbol_id: SymbolID,
     pub interface_name: String,
 
     /// Ordered list of method symbols.
     ///
     /// The index into this vector is the **vtable slot index**.
     /// This order must exactly match the interface method order.
-    pub methods: Vec<FuncSig>,
+    pub methods: Vec<FuncDecl>,
 
     /// Global variable symbol representing the emitted vtable.
     ///
@@ -108,7 +108,7 @@ impl VTableRegistry {
         sema_type: SemanticType,
         interface_id: SymbolID,
         interface_name: String,
-        methods: Vec<FuncSig>,
+        methods: Vec<FuncDecl>,
     ) -> VTableID {
         assert!(!methods.is_empty(), "vtable must contain at least one method");
 
@@ -133,7 +133,7 @@ impl VTableRegistry {
 
         self.tables.push(VTableInfo {
             sema_type,
-            interface_id,
+            interface_symbol_id: interface_id,
             interface_name,
             methods,
             vtable_id,

@@ -31,7 +31,7 @@ use cyrusc_compiler::{
     tm_info::TargetMachineInfo,
 };
 use cyrusc_diagcentral::exit_with_msg;
-use cyrusc_internal::cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry};
+use cyrusc_internal::cir::{cir::CIRProgramTree, instances::CIRInstanceRegistry};
 use cyrusc_scaffold_parser::OBJECT_CACHE_DIR_FILENAME;
 use cyrusc_tui_utils::tui_skipped;
 use inkwell::{
@@ -57,7 +57,7 @@ pub struct CodeGenLLVM {
     opts: CodeGenOptions,
     build_dir: PathBuf,
     llvmtm: TargetMachine,
-    monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
     build_manifest: Arc<Mutex<BuildManifest>>,
     entry_module_file_path: PathBuf,
 }
@@ -69,7 +69,7 @@ impl CodeGenLLVM {
         target_triple: &TargetTriple,
         opts: CodeGenOptions,
         build_dir: PathBuf,
-        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         build_manifest: Arc<Mutex<BuildManifest>>,
         entry_module_file_path: PathBuf,
     ) -> Self {
@@ -98,7 +98,7 @@ impl CodeGenLLVM {
         owned_module: &'ctx OwnedModule,
         builder: Rc<Builder<'ctx>>,
         cir_program_tree: &'ctx CIRProgramTree,
-        monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+        monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
         dctx: DebugContext,
     ) {
         {

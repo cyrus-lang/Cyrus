@@ -25,10 +25,7 @@ use cyrusc_resolver::{
     modules::VisitingModule,
 };
 use cyrusc_source_loc::SourceMap;
-use cyrusc_typed_ast::{
-    SymbolID,
-    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
-};
+use cyrusc_typed_ast::{SymbolID, decls::table::DeclTablesRegistry};
 
 use std::{
     env,
@@ -36,7 +33,7 @@ use std::{
     io::{BufWriter, Write},
     path::Path,
     process::exit,
-    sync::{Arc, Mutex},
+    sync::Arc,
     vec,
 };
 
@@ -75,16 +72,13 @@ pub fn main() {
 
             let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, module_loader_opts);
 
-            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
-
-            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+            let decl_tables = Arc::new(DeclTablesRegistry::new());
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
                 source_map.clone(),
                 reporter.clone(),
-                monomorph_registry,
-                mapping_ctx_arena,
+                decl_tables,
             );
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
@@ -132,25 +126,30 @@ fn dump_global_symbols(resolver: &Resolver, writer: &mut BufWriter<File>) {
 
     writeln!(writer, "=========== GLOBAL SYMBOL TABLE ===========\n").unwrap();
 
-    dump_flat_table(resolver, &inner.entries, writer);
+    dump_flat_table(&inner.entries, writer);
 
     writeln!(writer, "\n=========== SCOPE GRAPH ===========\n").unwrap();
 
     dump_scope_tree(resolver, &inner.entries, writer);
 }
 
-fn dump_flat_table(resolver: &Resolver, entries: &Vec<SymbolEntry>, writer: &mut BufWriter<File>) {
-    for (id, entry) in entries.iter().enumerate() {
-        let parent = match entry.parent_scope_id {
+fn dump_flat_table(entries: &Vec<SymbolEntry>, writer: &mut BufWriter<File>) {
+    for (id, symbol_entry) in entries.iter().enumerate() {
+        let parent = match symbol_entry.parent_scope_id {
             Some(p) => p.to_string(),
             None => "ROOT".into(),
         };
 
-        let kind = simplify_kind(resolver, &entry);
+        let kind = simplify_kind(&symbol_entry);
 
-        writeln!(writer, "[{}] parent={} kind={} used={}", id, parent, kind, entry.used).unwrap();
+        writeln!(
+            writer,
+            "[{}] parent={} kind={} used={}",
+            id, parent, kind, symbol_entry.used
+        )
+        .unwrap();
 
-        if let Some(proxy) = proxy_target(&entry.kind) {
+        if let Some(proxy) = proxy_target(&symbol_entry.kind) {
             writeln!(writer, "     -> proxy_target={}", proxy).unwrap();
         }
     }
@@ -159,16 +158,16 @@ fn dump_flat_table(resolver: &Resolver, entries: &Vec<SymbolEntry>, writer: &mut
 fn dump_scope_tree(resolver: &Resolver, entries: &Vec<SymbolEntry>, writer: &mut BufWriter<File>) {
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); entries.len()];
 
-    for (i, entry) in entries.iter().enumerate() {
-        if let Some(parent) = entry.parent_scope_id {
+    for (i, symbol_entry) in entries.iter().enumerate() {
+        if let Some(parent) = symbol_entry.parent_scope_id {
             if parent.0 < children.len().try_into().unwrap() {
                 children[parent.0 as usize].push(i);
             }
         }
     }
 
-    for (id, entry) in entries.iter().enumerate() {
-        if entry.parent_scope_id.is_none() {
+    for (id, symbol_entry) in entries.iter().enumerate() {
+        if symbol_entry.parent_scope_id.is_none() {
             print_node(resolver, id, entries, &children, writer, 0);
         }
     }
@@ -182,15 +181,15 @@ fn print_node(
     writer: &mut BufWriter<File>,
     depth: usize,
 ) {
-    let entry = &entries[id];
+    let symbol_entry = &entries[id];
 
     let indent = "  ".repeat(depth);
 
-    let kind = simplify_kind(resolver, &entry);
+    let kind = simplify_kind(&symbol_entry);
 
     writeln!(writer, "{}[{}] {}", indent, id, kind).unwrap();
 
-    if let Some(proxy) = proxy_target(&entry.kind) {
+    if let Some(proxy) = proxy_target(&symbol_entry.kind) {
         writeln!(writer, "{}   -> {}", indent, proxy).unwrap();
     }
 
@@ -199,8 +198,8 @@ fn print_node(
     }
 }
 
-fn simplify_kind(_resolver: &Resolver, entry: &SymbolEntry) -> String {
-    let kind_str = match &entry.kind {
+fn simplify_kind(symbol_entry: &SymbolEntry) -> String {
+    let kind_str = match &symbol_entry.kind {
         SymbolEntryKind::Unresolved => "Unresolved",
 
         SymbolEntryKind::Module(_) => "Module",
@@ -223,9 +222,7 @@ fn simplify_kind(_resolver: &Resolver, entry: &SymbolEntry) -> String {
         SymbolEntryKind::ProxiedModule { .. } => "ProxiedModule",
     };
 
-    let name = entry.decl_name();
-
-    format!("{}({})", kind_str, name)
+    kind_str.to_string()
 }
 
 fn proxy_target(kind: &SymbolEntryKind) -> Option<SymbolID> {

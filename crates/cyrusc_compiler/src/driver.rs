@@ -26,7 +26,7 @@ use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRProgramTree, monomorph::CIRMonomorphRegistry, traverse::walk_program_trees_in_parallel},
+    cir::{cir::CIRProgramTree, instances::CIRInstanceRegistry, traverse::walk_program_trees_in_parallel},
     vtable::VTableRegistry,
 };
 use cyrusc_parser::SourceParser;
@@ -43,7 +43,7 @@ use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
 use cyrusc_typed_ast::{
     TypedProgramTree,
-    generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
+    backup_typed_ast_generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
 };
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
@@ -60,7 +60,7 @@ pub struct CodeGenContextBundle {
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
     pub program_trees: Vec<Box<CIRProgramTree>>,
-    pub monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
+    pub monomorph_registry: Arc<Mutex<CIRInstanceRegistry>>,
     pub target: ABITarget,
     pub llvm_target: InkwellTarget,
     pub llvm_target_triple: TargetTriple,
@@ -261,7 +261,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         })
         .collect();
 
-    let cir_monomorph_registry = Arc::new(Mutex::new(CIRMonomorphRegistry::new()));
+    let cir_monomorph_registry = Arc::new(Mutex::new(CIRInstanceRegistry::new()));
 
     // target
 

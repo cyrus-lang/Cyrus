@@ -22,8 +22,8 @@ use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::*,
-    format::{SymbolFormatterFn, format_sema_type},
-    generics::mapping_ctx::mapping_ctx_eq_refcell,
+    format::{DeclFormatterFn, format_sema_type},
+    backup_typed_ast_generics::mapping_ctx::mapping_ctx_eq_refcell,
     types::{PlainType, SemanticType},
 };
 
@@ -168,7 +168,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         prefix: &mut TypedPrefixExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
             Some(sema_type) => sema_type.const_inner().clone(),
@@ -275,7 +275,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn analyze_unary_expr_type(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let expected_type = unary.operand.sema_type.clone();
         let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
@@ -349,7 +349,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         cmp_eq: bool,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
@@ -439,7 +439,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         loc: Loc,
         type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
 
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
@@ -581,7 +581,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     ) -> Option<SemanticType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             // only allow integer types
-            if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_basic_type(), rhs.as_basic_type()) {
+            if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_plain_type(), rhs.as_plain_type()) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
                     return Some(SemanticType::PlainType(
                         PlainType::widen_type(lhs_basic.clone(), rhs_basic.clone()).unwrap(),

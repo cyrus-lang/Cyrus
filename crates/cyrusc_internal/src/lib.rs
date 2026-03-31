@@ -22,3 +22,4 @@ pub mod symbols;
 pub mod module_loader;
 pub mod vtable;
 pub mod flow_state;
+pub mod monomorph;

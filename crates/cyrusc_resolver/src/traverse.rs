@@ -18,7 +18,11 @@
 use crate::Resolver;
 use crate::diagnostics::ResolverDiagKind;
 use crate::with_local_scope;
+use cyrusc_ast::abi::Visibility;
 use cyrusc_ast::format::format_module_segments;
+use cyrusc_ast::modifiers::EnumModifiers;
+use cyrusc_ast::modifiers::StructModifiers;
+use cyrusc_ast::modifiers::UnionModifiers;
 use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::DiagLevel;
@@ -29,16 +33,12 @@ use cyrusc_source_loc::Loc;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
 use cyrusc_tokens::literals::{ASTLiteralExpr, LiteralKind, StringPrefix};
+use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::exprs::*;
-use cyrusc_typed_ast::generics::generic_type::GenericType;
-use cyrusc_typed_ast::generics::mapping_ctx::GenericMappingCtx;
-use cyrusc_typed_ast::sigs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 // Resolver endpoints.
 impl Resolver {
@@ -60,9 +60,11 @@ impl Resolver {
                 continue;
             }
 
-            let symbol_id = self
-                .global_symbols
-                .insert_symbol_entry(SymbolEntry::unresolved(stmt.vis(), self.current_scope));
+            let symbol_id = self.global_symbols.insert_symbol_entry(SymbolEntry::unresolved(
+                stmt.vis(),
+                self.current_scope,
+                Some(stmt.loc()),
+            ));
 
             self.global_symbols
                 .insert_symbol_name(self.current_scope.unwrap(), symbol_id, &decl_name.value);
@@ -417,25 +419,27 @@ impl Resolver {
         loc: Loc,
     ) -> Option<SemanticType> {
         match type_spec {
-            TypeSpecifier::GenericInst(inst) => self.resolve_generic_inst_type(generic_params, inst, loc),
-            TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(generic_params, tuple),
-            TypeSpecifier::FuncType(func) => self.resolve_func_type(generic_params, *func, loc),
-            TypeSpecifier::Array(array) => self.resolve_array_type(generic_params, array, loc),
+            TypeSpecifier::Ident(ident) => self.resolve_ident_type(generic_params, ident),
+            TypeSpecifier::ModuleImport(import) => self.resolve_module_import_type(import),
+            TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
+
             TypeSpecifier::Const(inner) => {
                 let inner = self.resolve_type(generic_params, *inner, loc)?;
                 Some(SemanticType::Const(Box::new(inner)))
             }
+            TypeSpecifier::SelfType(self_ty) => Some(SemanticType::SelfType(TypedSelfType { loc: self_ty.loc })),
+            TypeSpecifier::GenericInst(inst) => self.resolve_generic_inst_type(generic_params, inst, loc),
+            TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(generic_params, tuple),
+            TypeSpecifier::FuncType(func) => self.resolve_func_type(generic_params, *func, loc),
+            TypeSpecifier::Array(array) => self.resolve_array_type(generic_params, array, loc),
             TypeSpecifier::Deref(inner) => {
                 let inner = self.resolve_type(generic_params, *inner, loc)?;
                 Some(SemanticType::Pointer(Box::new(inner)))
             }
-            TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
-            TypeSpecifier::Ident(ident) => self.resolve_ident_type(generic_params, ident),
-            TypeSpecifier::ModuleImport(import) => self.resolve_module_import_type(import),
-            TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_union_type(generic_params, union_ty),
-            TypeSpecifier::UnnamedEnum(enum_ty) => self.resolve_enum_type(enum_ty),
-            TypeSpecifier::UnnamedStruct(struct_ty) => self.resolve_struct_type(generic_params, struct_ty),
-            TypeSpecifier::SelfType(self_ty) => Some(SemanticType::SelfType(TypedSelfType { loc: self_ty.loc })),
+
+            TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(generic_params, union_ty),
+            TypeSpecifier::UnnamedEnum(enum_ty) => self.resolve_unnamed_enum_type(enum_ty),
+            TypeSpecifier::UnnamedStruct(struct_ty) => self.resolve_unnamed_struct_type(generic_params, struct_ty),
         }
     }
 
@@ -466,11 +470,11 @@ impl Resolver {
         }
 
         if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
-            return Some(SemanticType::UnresolvedSymbol(symbol_id));
+            return Some(SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)));
         }
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
-            return Some(SemanticType::UnresolvedSymbol(symbol_id));
+            return Some(SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)));
         }
 
         self.reporter.report(Diag {
@@ -513,7 +517,7 @@ impl Resolver {
 
     fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemanticType> {
         self.resolve_module_import(module_import.clone())
-            .map(SemanticType::UnresolvedSymbol)
+            .map(|symbol_id| SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)))
             .or_else(|| {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -568,9 +572,9 @@ impl Resolver {
         inst: GenericInst,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let base = self.resolve_type(generic_params, *inst.base.clone(), loc)?;
+        let base_type = self.resolve_type(generic_params, *inst.base.clone(), loc)?;
 
-        let symbol_id = match base.const_inner().as_unresolved_symbol() {
+        let base = match base_type.const_inner().as_unresolved_symbol_id() {
             Some(id) => id,
             None => {
                 self.reporter.report(Diag {
@@ -588,13 +592,9 @@ impl Resolver {
 
         let type_args = self.resolve_type_args(generic_params, &inst.type_args, loc)?;
 
-        Some(SemanticType::GenericType(GenericType {
-            base: symbol_id,
-            type_args: Some(type_args),
-            mapping_ctx: Rc::new(RefCell::new(GenericMappingCtx::new_root())),
-            mapping_ctx_arena: self.mapping_ctx_arena.clone(),
-            generic_params: TypedGenericParamsList::new(),
-            loc: inst.loc,
+        Some(SemanticType::Unresolved(UnresolvedType::GenericInst {
+            base,
+            type_args,
         }))
     }
 
@@ -638,74 +638,86 @@ impl Resolver {
         }))
     }
 
-    fn resolve_union_type(
+    fn resolve_unnamed_union_type(
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
-        union: UnnamedUnionType,
+        union_type: UnnamedUnionType,
     ) -> Option<SemanticType> {
-        let fields = self.resolve_union_fields(generic_params, &union)?;
+        let mut fields = Vec::with_capacity(union_type.fields.len());
 
-        Some(SemanticType::UnnamedUnion(TypedUnnamedUnionType {
-            fields,
-            repr_attr: union.repr_attr,
-            align: union.align,
-            loc: union.loc,
-        }))
-    }
-
-    fn resolve_union_fields(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        union: &UnnamedUnionType,
-    ) -> Option<Vec<TypedUnnamedUnionTypeField>> {
-        let mut fields = Vec::with_capacity(union.fields.len());
-
-        for field in &union.fields {
+        for field in &union_type.fields {
             let ty = self.resolve_type(generic_params, field.field_ty.clone(), field.loc)?;
 
-            fields.push(TypedUnnamedUnionTypeField {
+            fields.push(TypedUnionField {
                 name: field.field_name.value.clone(),
-                ty: Box::new(ty),
+                ty,
                 loc: field.loc,
             });
         }
 
-        Some(fields)
-    }
+        let mut union_modifiers = UnionModifiers::default();
+        union_modifiers.repr_attr = union_type.repr_attr;
 
-    fn resolve_enum_type(&mut self, unnamed_enum_type: UnnamedEnumType) -> Option<SemanticType> {
-        let variants = self.resolve_enum_variants(&unnamed_enum_type)?;
+        let union_decl_id = self.decl_tables.insert_union(UnionDecl {
+            symbol_id: None,
+            name: None,
+            fields,
+            methods: MethodDecls::new(),
+            impls: Vec::new(),
+            generic_params: None,
+            modifiers: union_modifiers,
+            align: union_type.align,
+            loc: union_type.loc,
+        });
 
-        let tag_type = match unnamed_enum_type.tag_type {
-            Some(tag) => {
-                let ty = self.resolve_type(&None, *tag, unnamed_enum_type.loc)?;
-                Some(Box::new(ty))
-            }
-            None => None,
-        };
-
-        Some(SemanticType::UnnamedEnum(TypedUnnamedEnumType {
-            variants,
-            tag_type,
-            repr_attr: unnamed_enum_type.repr_attr,
-            align: unnamed_enum_type.align,
-            loc: unnamed_enum_type.loc,
+        Some(SemanticType::Named(NamedType {
+            decl_id: TypeDeclID::Union(union_decl_id),
+            type_args: Vec::new(),
         }))
     }
 
-    fn resolve_enum_variants(&mut self, unnamed_enum_type: &UnnamedEnumType) -> Option<Vec<TypedUnnamedEnumVariant>> {
+    fn resolve_unnamed_enum_type(&mut self, enum_type: UnnamedEnumType) -> Option<SemanticType> {
+        let variants = self.resolve_enum_variants(&enum_type)?;
+
+        let tag_type = enum_type
+            .tag_type
+            .and_then(|type_spec| self.resolve_type(&None, *type_spec, enum_type.loc));
+
+        let mut enum_modifiers = EnumModifiers::default();
+        enum_modifiers.repr_attr = enum_type.repr_attr;
+
+        let enum_decl_id = self.decl_tables.insert_enum(EnumDecl {
+            symbol_id: None,
+            name: None,
+            variants,
+            tag_type,
+            methods: MethodDecls::new(),
+            impls: Vec::new(),
+            generic_params: None,
+            modifiers: enum_modifiers,
+            align: enum_type.align,
+            loc: enum_type.loc,
+        });
+
+        Some(SemanticType::Named(NamedType {
+            decl_id: TypeDeclID::Enum(enum_decl_id),
+            type_args: Vec::new(),
+        }))
+    }
+
+    fn resolve_enum_variants(&mut self, unnamed_enum_type: &UnnamedEnumType) -> Option<Vec<TypedEnumVariant>> {
         let mut variants = Vec::with_capacity(unnamed_enum_type.variants.len());
 
         for variant in &unnamed_enum_type.variants {
             let typed_variant = match variant {
-                UnnamedEnumVariant::Ident(ident) => TypedUnnamedEnumVariant::Ident(ident.clone()),
+                UnnamedEnumVariant::Ident(ident) => TypedEnumVariant::Ident(ident.clone()),
                 UnnamedEnumVariant::Valued(ident, expr) => {
                     let expr = self.resolve_expr(expr)?;
-                    TypedUnnamedEnumVariant::Valued(ident.clone(), Box::new(expr))
+                    TypedEnumVariant::Valued(ident.clone(), Box::new(expr))
                 }
                 UnnamedEnumVariant::Variant(ident, fields) => {
                     let valued_fields = self.resolve_enum_variant_fields(fields)?;
-                    TypedUnnamedEnumVariant::Variant(ident.clone(), valued_fields)
+                    TypedEnumVariant::Variant(ident.clone(), valued_fields)
                 }
             };
 
@@ -715,54 +727,58 @@ impl Resolver {
         Some(variants)
     }
 
-    fn resolve_enum_variant_fields(
-        &mut self,
-        fields: &[UnnamedEnumValuedField],
-    ) -> Option<Vec<TypedUnnamedEnumValuedField>> {
+    fn resolve_enum_variant_fields(&mut self, fields: &[UnnamedEnumValuedField]) -> Option<Vec<TypedEnumValuedField>> {
         let mut typed_fields = Vec::with_capacity(fields.len());
 
         for field in fields {
             let ty = self.resolve_type(&None, field.ty.clone(), field.loc)?;
 
-            typed_fields.push(TypedUnnamedEnumValuedField { ty, loc: field.loc });
+            typed_fields.push(TypedEnumValuedField { ty, loc: field.loc });
         }
 
         Some(typed_fields)
     }
 
-    fn resolve_struct_type(
+    fn resolve_unnamed_struct_type(
         &mut self,
         generic_params: &Option<TypedGenericParamsList>,
-        unnamed_struct_type: UnnamedStructType,
+        struct_type: UnnamedStructType,
     ) -> Option<SemanticType> {
-        let fields = self.resolve_struct_fields(generic_params, &unnamed_struct_type)?;
+        let mut fields = Vec::with_capacity(struct_type.fields.len());
 
-        Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
-            fields,
-            repr_attr: unnamed_struct_type.repr_attr,
-            align: unnamed_struct_type.align,
-            loc: unnamed_struct_type.loc,
-        }))
-    }
+        // unnamed struct field visibility is always public
+        let field_vis = Visibility::Public;
 
-    fn resolve_struct_fields(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        unnamed_struct_type: &UnnamedStructType,
-    ) -> Option<Vec<TypedUnnamedStructTypeField>> {
-        let mut fields = Vec::with_capacity(unnamed_struct_type.fields.len());
-
-        for field in &unnamed_struct_type.fields {
+        for field in &struct_type.fields {
             let ty = self.resolve_type(generic_params, field.ty.clone(), field.loc)?;
 
-            fields.push(TypedUnnamedStructTypeField {
+            fields.push(TypedStructField {
                 name: field.name.value.clone(),
-                ty: Box::new(ty),
+                ty,
+                vis: field_vis,
                 loc: field.loc,
             });
         }
 
-        Some(fields)
+        let mut struct_modifiers = StructModifiers::default();
+        struct_modifiers.repr_attr = struct_type.repr_attr;
+
+        let struct_decl_id = self.decl_tables.insert_struct(StructDecl {
+            symbol_id: None,
+            name: None,
+            fields,
+            impls: Vec::new(),
+            methods: MethodDecls::new(),
+            generic_params: None,
+            modifiers: struct_modifiers,
+            align: struct_type.align,
+            loc: struct_type.loc,
+        });
+
+        Some(SemanticType::Named(NamedType {
+            decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_args: Vec::new(),
+        }))
     }
 
     fn resolve_type_args(
@@ -855,16 +871,16 @@ impl Resolver {
 
         let sema_type = self.resolve_type(&generic_params, typedef.type_spec.clone(), typedef.loc)?;
 
-        let typedef_sig = TypedefSig {
+        let typedef_decl_id = self.decl_tables.insert_typedef(TypedefDecl {
             name: typedef.ident.as_string(),
             generic_params: generic_params.clone(),
-            ty: sema_type.clone(),
+            ty: Box::new(sema_type.clone()),
             vis: typedef.vis.clone(),
             loc: typedef.loc,
-        };
+        });
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Typedef(ResolvedTypedef { symbol_id, typedef_sig })
+            symbol_entry.kind = SymbolEntryKind::Typedef(typedef_decl_id)
         });
 
         Some(TypedStmt::Typedef(TypedTypedefStmt {
@@ -969,20 +985,17 @@ impl Resolver {
             });
         }
 
-        let interface_sig = InterfaceSig {
+        let interface_decl_id = self.decl_tables.insert_interface(InterfaceDecl {
             symbol_id,
             name: name.clone(),
             methods: typed_methods.clone(),
             generic_params: Some(typed_generic_params.clone()),
             vis: interface.vis.clone(),
             loc,
-        };
+        });
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Interface(ResolvedInterface {
-                symbol_id,
-                interface_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Interface(interface_decl_id)
         });
 
         Some(TypedStmt::Interface(TypedInterfaceStmt {
@@ -1024,26 +1037,27 @@ impl Resolver {
             });
         }
 
-        self.check_duplicate_method_names(&name, union_decl.methods.clone());
+        self.report_if_duplicate_method_names(&name, &union_decl.methods);
 
-        let methods = self.resolve_methods(&union_decl.methods, symbol_id, generic_params.is_some())?;
+        let methods = self.resolve_methods(&union_decl.methods, &name, generic_params.is_some());
 
-        let union_sig = UnionSig {
-            symbol_id,
-            name: name.clone(),
+        let impls = self.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
+
+        let union_decl_id = self.decl_tables.insert_union(UnionDecl {
+            symbol_id: Some(symbol_id),
+            name: Some(name.clone()),
             fields: typed_union_fields.clone(),
             methods: methods.clone(),
+            impls: impls.clone(),
             generic_params: generic_params.clone(),
             modifiers: union_decl.modifiers.clone(),
             align: union_decl.align.clone(),
             loc,
-        };
-
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Union(ResolvedUnion { symbol_id, union_sig })
         });
 
-        let impls = self.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
+        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
+            symbol_entry.kind = SymbolEntryKind::Union(union_decl_id)
+        });
 
         Some(TypedStmt::Union(TypedUnionStmt {
             symbol_id,
@@ -1053,8 +1067,8 @@ impl Resolver {
             generic_params,
             modifiers: union_decl.modifiers.clone(),
             impls,
-            loc: union_decl.ident.loc,
             align: union_decl.align.clone(),
+            loc: union_decl.ident.loc,
         }))
     }
 
@@ -1109,32 +1123,33 @@ impl Resolver {
             variants.push(typed_variant);
         }
 
-        self.check_duplicate_method_names(&name, enum_decl.methods.clone());
-
-        let methods = self.resolve_methods(&enum_decl.methods, symbol_id, generic_params.is_some())?;
+        self.report_if_duplicate_method_names(&name, &enum_decl.methods);
 
         let tag_type = match &enum_decl.tag_type {
             Some(ty) => self.resolve_type(&None, ty.clone(), enum_decl.loc),
             None => None,
         };
 
-        let enum_sig = EnumSig {
-            symbol_id,
-            name: name.clone(),
-            methods: methods.clone(),
+        let methods = self.resolve_methods(&enum_decl.methods, &name, generic_params.is_some());
+
+        let impls = self.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
+
+        let enum_decl_id = self.decl_tables.insert_enum(EnumDecl {
+            symbol_id: Some(symbol_id),
+            name: Some(name.clone()),
             variants: variants.clone(),
+            methods: methods.clone(),
+            impls: impls.clone(),
             generic_params: generic_params.clone(),
             tag_type: tag_type.clone(),
             modifiers: enum_decl.modifiers.clone(),
             align: enum_decl.align.clone(),
             loc,
-        };
-
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Enum(ResolvedEnum { symbol_id, enum_sig })
         });
 
-        let impls = self.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
+        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
+            symbol_entry.kind = SymbolEntryKind::Enum(enum_decl_id)
+        });
 
         Some(TypedStmt::Enum(TypedEnumStmt {
             symbol_id,
@@ -1165,7 +1180,7 @@ impl Resolver {
             None => None,
         };
 
-        let global_var_sig = GlobalVarSig {
+        let global_var_decl_id = self.decl_tables.insert_global_var(GlobalVarDecl {
             symbol_id,
             name: name.clone(),
             ty: sema_type.clone(),
@@ -1174,14 +1189,10 @@ impl Resolver {
             is_const: global_var.is_const,
             modifiers: global_var.modifiers.clone(),
             loc,
-        };
+        });
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::GlobalVar(ResolvedGlobalVar {
-                file_id: self.current_module_file_id.unwrap(),
-                symbol_id,
-                global_var_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::GlobalVar(global_var_decl_id)
         });
 
         Some(TypedStmt::GlobalVar(TypedGlobalVarStmt {
@@ -1196,153 +1207,93 @@ impl Resolver {
         }))
     }
 
-    fn check_duplicate_method_names(&mut self, struct_name: &str, methods_list: Vec<ASTFuncDefStmt>) {
-        let mut method_names: Vec<String> = Vec::new();
+    fn resolve_method_decls(&mut self, methods: &[ASTFuncDefStmt]) -> MethodDecls {
+        let mut method_decl_ids = MethodDecls::new_with_capacity(methods.len());
 
-        for func_def in methods_list {
-            let method_name = func_def.ident.as_string();
+        for ast_method in methods {
+            let method_name = &ast_method.ident.value;
 
-            if method_names.contains(&method_name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::DuplicateMethodName {
-                        struct_name: struct_name.to_string(),
-                        method_name: method_name.clone(),
-                    }),
-                    loc: Some(func_def.loc),
-                    hint: Some("Consider to rename the method to a different name.".to_string()),
-                });
+            let Some((ret_type, params, variadic, generic_params)) =
+                self.resolve_func(&ast_method.as_func_decl(), false)
+            else {
                 continue;
-            }
+            };
 
-            method_names.push(method_name);
+            let method_decl_id = self.decl_tables.insert_method(MethodDecl {
+                func_decl: FuncDecl {
+                    is_func_decl: false,
+                    symbol_id: None,
+                    name: method_name.clone(),
+                    params: TypedFuncParams { list: params, variadic },
+                    ret_type,
+                    generic_params,
+                    modifiers: ast_method.modifiers.clone(),
+                    loc: ast_method.loc,
+                },
+                body: None,
+            });
+
+            method_decl_ids.insert(method_name.to_string(), method_decl_id);
+        }
+
+        method_decl_ids
+    }
+
+    fn resolve_method_bodies(&mut self, method_decls: &MethodDecls, ast_methods: &[ASTFuncDefStmt]) {
+        for ((_, method_decl_id), ast_method) in method_decls.iter().zip(ast_methods) {
+            let scope = LocalScope::new();
+
+            let typed_body = with_local_scope!(self, scope.clone(), {
+                let method_decl = self.decl_tables.method_decl(*method_decl_id).func_decl;
+
+                let self_modifier_opt = method_decl.params.list.first().and_then(|p| p.as_self_modifier());
+
+                if let Some(self_modifier) = self_modifier_opt {
+                    let is_self_const = false;
+                    let self_ident = Ident::new("self", self_modifier.loc);
+
+                    let var_decl_id = self.insert_variable_decl(&self_ident, None, is_self_const);
+
+                    self.insert_variable_symbol_to_current_scope(&self_ident, var_decl_id);
+
+                    // store later
+                    Some((var_decl_id, self.resolve_block_stmt(&ast_method.body)))
+                } else {
+                    None
+                }
+            });
+
+            if let Some((var_decl_id, body)) = typed_body {
+                if let Some(typed_body) = body {
+                    self.decl_tables.with_method_decl_mut(*method_decl_id, |method_decl| {
+                        if let Some(param) = method_decl.func_decl.params.list.first_mut() {
+                            if let Some(self_modifier) = param.as_self_modifier_mut() {
+                                self_modifier.var_decl_id = Some(var_decl_id);
+                            }
+                        }
+
+                        method_decl.body = Some(Box::new(typed_body));
+                    });
+                }
+            }
         }
     }
 
     fn resolve_methods(
         &mut self,
-        methods_list: &[ASTFuncDefStmt],
-        object_symbol_id: SymbolID,
+        ast_methods: &[ASTFuncDefStmt],
+        object_name: &String,
         generic_object: bool,
-    ) -> Option<HashMap<String, SymbolID>> {
-        let mut methods = HashMap::with_capacity(methods_list.len());
-        let mut method_bodies: HashMap<SymbolID, (LocalScope, &ASTBlockStmt, bool)> =
-            HashMap::with_capacity(methods_list.len());
+    ) -> MethodDecls {
+        self.report_if_duplicate_method_names(object_name, ast_methods);
 
-        for func_def in methods_list {
-            let scope = LocalScope::new();
+        let method_decls = self.resolve_method_decls(ast_methods);
 
-            let (ret_type, mut params, variadic, generic_params) = match with_local_scope!(self, scope.clone(), {
-                self.resolve_func(&func_def.as_func_decl(), false)
-            }) {
-                Some(v) => v,
-                None => continue,
-            };
-
-            let original_name = func_def.ident.as_string();
-            let unique_name = unique_object_method_name(object_symbol_id, original_name.clone());
-
-            for param in &mut params {
-                if let TypedFuncParamKind::SelfModifier(self_mod) = param {
-                    self_mod.symbol_id = Some(object_symbol_id);
-                }
-            }
-
-            let method_symbol_id = self
-                .global_symbols
-                .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
-
-            self.global_symbols
-                .insert_symbol_name(self.current_scope.unwrap(), method_symbol_id, &unique_name);
-
-            methods.insert(original_name.clone(), method_symbol_id);
-
-            let func_sig = FuncSig {
-                symbol_id: Some(method_symbol_id),
-                name: original_name,
-                is_func_decl: false,
-                generic_params: generic_params.clone(),
-                params: TypedFuncParams { list: params, variadic },
-                ret_type,
-                modifiers: func_def.modifiers.clone(),
-                loc: func_def.loc,
-            };
-
-            let is_generic = func_sig.is_generic() || generic_object;
-
-            self.with_global_symbol_mut(method_symbol_id, |symbol_entry| {
-                symbol_entry.kind = SymbolEntryKind::Method(ResolvedMethod {
-                    symbol_id: method_symbol_id,
-                    func_sig,
-                    func_body: None,
-                })
-            });
-
-            method_bodies.insert(method_symbol_id, (scope, &func_def.body, is_generic));
+        if !generic_object {
+            self.resolve_method_bodies(&method_decls, ast_methods);
         }
 
-        for (method_id, (scope, body, is_generic)) in method_bodies {
-            let SymbolEntryKind::Method(mut resolved_method) = self.lookup_symbol_entry(method_id).unwrap().kind else {
-                unreachable!();
-            };
-
-            with_local_scope!(self, scope, {
-                for param in &mut resolved_method.func_sig.params.list {
-                    if let TypedFuncParamKind::SelfModifier(self_modifier) = param {
-                        let self_symbol_id = self
-                            .global_symbols
-                            .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
-
-                        self_modifier.self_id = Some(self_symbol_id);
-
-                        let ty = match self_modifier.kind {
-                            SelfModifierKind::Copied => Some(SemanticType::UnresolvedSymbol(object_symbol_id)),
-                            SelfModifierKind::Referenced => Some(SemanticType::Pointer(Box::new(
-                                SemanticType::UnresolvedSymbol(object_symbol_id),
-                            ))),
-                        };
-
-                        let self_name = "self";
-
-                        let self_var = TypedVarStmt {
-                            symbol_id: self_symbol_id,
-                            name: self_name.to_string(),
-                            ty,
-                            rhs: None,
-                            is_const: false,
-                            loc: resolved_method.func_sig.loc,
-                        };
-
-                        self.with_global_symbol_mut(self_symbol_id, |symbol_entry| {
-                            symbol_entry.kind = SymbolEntryKind::Var(ResolvedVar {
-                                symbol_id: self_symbol_id,
-                                variable: self_var,
-                            })
-                        });
-
-                        self.current_local_scope_mut()
-                            .unwrap()
-                            .insert(self_name.to_string().clone(), self_symbol_id);
-                    }
-                }
-
-                let Some(typed_body) = self.resolve_block_stmt(&body) else {
-                    return None;
-                };
-
-                if is_generic {
-                    monomorph_registry!(self, ctx, {
-                        ctx.register_template(method_id, typed_body);
-                    });
-                } else {
-                    self.with_method_mut(method_id, |resolved_method| {
-                        resolved_method.func_body = Some(Box::new(typed_body));
-                    });
-                }
-            });
-        }
-
-        Some(methods)
+        method_decls
     }
 
     fn resolve_object_implements_interface_list(
@@ -1371,7 +1322,7 @@ impl Resolver {
                 TypeSpecifier::GenericInst(generic_inst) => {
                     let base_symbol_id = match self
                         .resolve_type(&None, *generic_inst.base.clone(), loc)
-                        .and_then(|sema_type| sema_type.as_unresolved_symbol())
+                        .and_then(|sema_type| sema_type.as_unresolved_symbol_id())
                     {
                         Some(symbol_id) => symbol_id,
                         None => {
@@ -1437,15 +1388,13 @@ impl Resolver {
             })
             .collect();
 
-        self.check_duplicate_method_names(&struct_decl.ident.value, struct_decl.methods.clone());
-
-        let methods = self.resolve_methods(&struct_decl.methods, symbol_id, generic_params.is_some())?;
+        let methods = self.resolve_methods(&struct_decl.methods, &name, generic_params.is_some());
 
         let impls = self.resolve_object_implements_interface_list(&struct_decl.impls, struct_decl.loc);
 
-        let struct_sig = StructSig {
-            symbol_id,
-            name: struct_decl.ident.as_string(),
+        let struct_decl_id = self.decl_tables.insert_struct(StructDecl {
+            symbol_id: Some(symbol_id),
+            name: Some(name.clone()),
             fields: typed_struct_fields.clone(),
             generic_params: generic_params.clone(),
             impls: impls.clone(),
@@ -1453,10 +1402,10 @@ impl Resolver {
             modifiers: struct_decl.modifiers.clone(),
             align: struct_decl.align.clone(),
             loc: struct_decl.loc,
-        };
+        });
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Struct(ResolvedStruct { symbol_id, struct_sig })
+            symbol_entry.kind = SymbolEntryKind::Struct(struct_decl_id)
         });
 
         Some(TypedStmt::Struct(TypedStructStmt {
@@ -1554,16 +1503,18 @@ impl Resolver {
         // TODO: Const func param not implemented yet.
         let is_const_param = false;
 
-        let symbol_id = {
+        let var_decl_id = {
             if !is_decl {
-                Some(self.insert_variable(&param.ident, Some(ty.clone()), is_const_param)?)
+                let var_decl_id = self.insert_variable_decl(&param.ident, Some(ty.clone()), is_const_param);
+                self.insert_variable_symbol_to_current_scope(&param.ident, var_decl_id)?;
+                Some(var_decl_id)
             } else {
                 None
             }
         };
 
         Some(TypedFuncParam {
-            symbol_id,
+            var_decl_id,
             name: param.ident.as_string(),
             ty,
             loc: param.loc,
@@ -1572,8 +1523,7 @@ impl Resolver {
 
     fn resolve_self_modifier_param(&mut self, self_modifier: &SelfModifier) -> TypedSelfModifier {
         TypedSelfModifier {
-            symbol_id: None,
-            self_id: None,
+            var_decl_id: None,
             ty: None,
             kind: self_modifier.kind.clone(),
             loc: self_modifier.loc,
@@ -1589,7 +1539,8 @@ impl Resolver {
             FuncVariadicParams::Typed(ident, type_spec) => {
                 let ty = self.resolve_type(&None, type_spec.clone(), ident.loc)?;
 
-                let symbol_id = self.insert_variable(ident, Some(ty.clone()), false)?;
+                let var_decl_id = self.insert_variable_decl(ident, Some(ty.clone()), false);
+                let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 
                 Some(Some(TypedFuncVariadicParams::Typed(
                     TypedIdent {
@@ -1603,13 +1554,14 @@ impl Resolver {
         }
     }
 
-    fn resolve_func_decl(&mut self, func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
-        let name = func_decl.usable_name();
+    fn resolve_func_decl(&mut self, ast_func_decl: &ASTFuncDeclStmt) -> Option<TypedStmt> {
+        let name = ast_func_decl.usable_name();
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
 
-        let (ret_type, typed_func_params, typed_variadic_param, generic_params) = self.resolve_func(func_decl, true)?;
+        let (ret_type, typed_func_params, typed_variadic_param, generic_params) =
+            self.resolve_func(ast_func_decl, true)?;
 
-        let func_sig = FuncSig {
+        let func_decl = FuncDecl {
             symbol_id: Some(symbol_id),
             name,
             is_func_decl: true,
@@ -1619,30 +1571,28 @@ impl Resolver {
                 variadic: typed_variadic_param.clone(),
             },
             ret_type: ret_type.clone(),
-            modifiers: func_decl.modifiers.clone(),
-            loc: func_decl.loc,
+            modifiers: ast_func_decl.modifiers.clone(),
+            loc: ast_func_decl.loc,
         };
 
+        let func_decl_id = self.decl_tables.insert_func(func_decl);
+
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc {
-                file_id: self.current_module_file_id.unwrap(),
-                symbol_id,
-                func_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Func(func_decl_id)
         });
 
         Some(TypedStmt::FuncDecl(TypedFuncDeclStmt {
             symbol_id,
-            name: func_decl.ident.as_string(),
+            name: ast_func_decl.ident.as_string(),
             generic_params,
             params: TypedFuncParams {
                 list: typed_func_params,
                 variadic: typed_variadic_param,
             },
             ret_type,
-            modifiers: func_decl.modifiers.clone(),
-            renamed_as: func_decl.renamed_as.as_ref().map(|id| id.as_string()),
-            loc: func_decl.loc,
+            modifiers: ast_func_decl.modifiers.clone(),
+            renamed_as: ast_func_decl.renamed_as.as_ref().map(|id| id.as_string()),
+            loc: ast_func_decl.loc,
         }))
     }
 
@@ -1651,12 +1601,10 @@ impl Resolver {
 
         let scope = LocalScope::new();
 
-        self.enter_local_scope(scope);
-
         let (ret_type, typed_func_params, typed_variadic_param, generic_params) =
             self.resolve_func(&func_def.as_func_decl(), false)?;
 
-        let func_sig = FuncSig {
+        let func_decl = FuncDecl {
             symbol_id: Some(symbol_id),
             name: func_def.ident.as_string(),
             generic_params: generic_params.clone(),
@@ -1670,21 +1618,13 @@ impl Resolver {
             loc: func_def.loc,
         };
 
+        let func_decl_id = self.decl_tables.insert_func(func_decl);
+
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Func(ResolvedFunc {
-                file_id: self.current_module_file_id.unwrap(),
-                symbol_id,
-                func_sig,
-            })
+            symbol_entry.kind = SymbolEntryKind::Func(func_decl_id)
         });
 
-        let typed_func_body = self.resolve_block_stmt(&func_def.body)?;
-
-        self.exit_local_scope();
-
-        monomorph_registry!(self, ctx, {
-            ctx.register_template(symbol_id, typed_func_body.clone());
-        });
+        let typed_func_body = with_local_scope!(self, scope, { self.resolve_block_stmt(&func_def.body)? });
 
         Some(TypedStmt::FuncDef(TypedFuncDefStmt {
             symbol_id,
@@ -1776,7 +1716,8 @@ impl Resolver {
 
         let pattern = match &export_tuple.pattern {
             ExportPattern::Ident(ident) => {
-                let symbol_id = self.insert_variable(ident, None, export_tuple.is_const)?;
+                let var_decl_id = self.insert_variable_decl(&ident, None, export_tuple.is_const);
+                let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
 
                 TypedExportPattern::Ident(symbol_id)
             }
@@ -1786,7 +1727,8 @@ impl Resolver {
                 for sub_pattern in patterns {
                     match sub_pattern {
                         ExportPattern::Ident(ident) => {
-                            let symbol_id = self.insert_variable(ident, None, export_tuple.is_const)?;
+                            let var_decl_id = self.insert_variable_decl(&ident, None, export_tuple.is_const);
+                            let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
 
                             typed_patterns.push(TypedExportPattern::Ident(symbol_id));
                         }
@@ -1929,7 +1871,8 @@ impl Resolver {
                 let mut fields = Vec::with_capacity(valued_fields.len());
 
                 for ident in valued_fields {
-                    let symbol_id = self.insert_variable(ident, None, false)?;
+                    let var_decl_id = self.insert_variable_decl(&ident, None, false);
+                    let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
 
                     fields.push(TypedIdent {
                         name: ident.as_string(),
@@ -1966,23 +1909,24 @@ impl Resolver {
         }
     }
 
-    fn resolve_var(&mut self, variable: &ASTVarStmt) -> Option<TypedVarStmt> {
-        let ty = variable
+    fn resolve_var(&mut self, var: &ASTVarStmt) -> Option<TypedVarStmt> {
+        let ty = var
             .ty
             .as_ref()
-            .and_then(|type_spec| self.resolve_type(&None, type_spec.clone(), variable.loc));
+            .and_then(|type_spec| self.resolve_type(&None, type_spec.clone(), var.loc));
 
-        let typed_rhs = variable.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
+        let rhs = var.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
 
-        let symbol_id = self.insert_variable(&variable.ident, ty.clone(), variable.is_const)?;
+        let var_decl_id = self.insert_variable_decl(&var.ident, ty.clone(), var.is_const);
+        let symbol_id = self.insert_variable_symbol_to_current_scope(&var.ident, var_decl_id)?;
 
         Some(TypedVarStmt {
             symbol_id,
-            name: variable.ident.as_string(),
+            name: var.ident.as_string(),
             ty,
-            rhs: typed_rhs,
-            is_const: variable.is_const,
-            loc: variable.loc,
+            rhs,
+            is_const: var.is_const,
+            loc: var.loc,
         })
     }
 
@@ -2056,9 +2000,10 @@ impl Resolver {
         let field_value = self.resolve_expr(&unnamed_union_value.field_value)?;
 
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
-            field_name: unnamed_union_value.field_name.clone(),
-            field_value: Box::new(field_value),
-            union_ty: None,
+            inferred_type: None,
+
+            name: unnamed_union_value.field_name.clone(),
+            value: Box::new(field_value),
             is_const: unnamed_union_value.is_const,
             loc: unnamed_union_value.loc,
         });
@@ -2088,9 +2033,10 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::UnnamedEnumValue(TypedUnnamedEnumValue {
-                ident: unnamed_enum_value.ident.clone(),
+                inferred_type: None,
+
+                variant_name: unnamed_enum_value.ident.clone(),
                 kind,
-                enum_ty: None,
                 loc: unnamed_enum_value.loc,
             }),
             mloc: MemoryLocation::RValue,
@@ -2221,17 +2167,14 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
-                func_sig: None,
-                type_args,
-                object_name: None,
                 method_name: method_call.method_name.value.clone(),
-                is_fat_arrow: method_call.is_fat_arrow,
-                monomorph_id: None,
-                self_ty: None,
-                enum_constructor: None,
-                method_call_on_interface: None,
-                loc: method_call.loc,
                 args,
+                type_args,
+
+                dispatch: TypedMethodCallDispatch::Unresolved,
+
+                is_fat_arrow: method_call.is_fat_arrow,
+                loc: method_call.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_type: None,
@@ -2592,7 +2535,7 @@ impl Resolver {
             fields.push(TypedUnnamedStructValueField {
                 name,
                 ty,
-                field_value: Box::new(value),
+                value: Box::new(value),
                 loc: field.loc,
             });
         }
@@ -2613,10 +2556,18 @@ impl Resolver {
 
 // Resolver helper methods.
 impl Resolver {
-    fn insert_variable(&mut self, ident: &Ident, ty: Option<SemanticType>, is_const: bool) -> Option<SymbolID> {
-        let name = ident.as_string();
+    fn insert_variable_decl(&mut self, ident: &Ident, ty: Option<SemanticType>, is_const: bool) -> VarDeclID {
+        self.decl_tables.insert_var(VarDecl {
+            name: ident.as_string(),
+            ty,
+            analyzed: false,
+            is_const,
+            loc: ident.loc,
+        })
+    }
 
-        if self.current_local_scope().unwrap().contains(&name) {
+    fn insert_variable_symbol_to_current_scope(&mut self, ident: &Ident, var_decl_id: VarDeclID) -> Option<SymbolID> {
+        if self.current_local_scope().unwrap().contains(&ident.value) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(ResolverDiagKind::DuplicateSymbolInThisScope {
@@ -2629,66 +2580,18 @@ impl Resolver {
             return None;
         }
 
-        // allocate placeholder entry
-        let symbol_id = self
-            .global_symbols
-            .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope));
-
-        let variable = TypedVarStmt {
-            symbol_id,
-            name: name.clone(),
-            ty,
-            rhs: None,
-            is_const,
-            loc: ident.loc,
-        };
+        let symbol_id =
+            self.global_symbols
+                .insert_symbol_entry(SymbolEntry::unresolved(None, self.current_scope, Some(ident.loc)));
 
         self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Var(ResolvedVar { symbol_id, variable })
+            symbol_entry.kind = SymbolEntryKind::Var(var_decl_id)
         });
 
-        // insert into current scope
-        self.current_local_scope_mut().unwrap().insert(name.clone(), symbol_id);
+        self.current_local_scope_mut()
+            .unwrap()
+            .insert(ident.as_string(), symbol_id);
 
         Some(symbol_id)
     }
-
-    fn report_if_duplicate_symbol(&mut self, scope_id: SymbolID, symbol_name: String, loc: Loc) -> bool {
-        match self.lookup_symbol_id_in_scope(scope_id, &symbol_name) {
-            Some(_) => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::DuplicateSymbol { symbol_name }),
-                    loc: Some(loc),
-                    hint: None,
-                });
-                true
-            }
-            None => false,
-        }
-    }
-
-    fn report_if_symbol_is_private(&mut self, symbol_id: SymbolID, loc: Loc) {
-        let symbol_entry = self.lookup_symbol_entry(symbol_id).unwrap();
-
-        // report if private symbol is being accessed if visibility specified for symbol
-        if let Some(vis) = &symbol_entry.vis_opt {
-            if vis.is_private() {
-                let symbol_name = self.format_symbol_name(symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::ImportSinglePrivateSymbol { symbol_name }),
-                    loc: Some(loc),
-                    hint: None,
-                });
-            }
-        }
-    }
-}
-
-/// Constructs a unique name for an object method by prefixing with the object's SymbolID.
-/// This allows the resolver to differentiate between for example `Point.distance()` and `Circle.distance()`.
-fn unique_object_method_name(object_id: SymbolID, method_name: String) -> String {
-    format!("object${}.{}", object_id, method_name)
 }

@@ -25,7 +25,7 @@ use cyrusc_ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{LabelID, exprs::TypedIdent, generics::monomorph::MonomorphID};
+use cyrusc_typed_ast::{LabelID, decls::MonomorphID, exprs::TypedIdent};
 use std::fmt::Debug;
 
 pub type IRValueID = u32;
@@ -58,7 +58,7 @@ pub enum CIRStmt {
     Goto(CIRGotoStmt),
     Defer(CIRDeferStmt),
     Continue(Loc), // FIXME Let it have it's own DS
-    Break(Loc), // FIXME Let it have it's own DS
+    Break(Loc),    // FIXME Let it have it's own DS
 }
 
 #[derive(Debug, Clone)]

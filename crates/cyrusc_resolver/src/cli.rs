@@ -24,14 +24,8 @@ use cyrusc_resolver::{
     modules::VisitingModule,
 };
 use cyrusc_source_loc::SourceMap;
-use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
-use std::{
-    env,
-    path::Path,
-    process::exit,
-    sync::{Arc, Mutex},
-    vec,
-};
+use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
+use std::{env, path::Path, process::exit, sync::Arc, vec};
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
@@ -74,16 +68,9 @@ pub fn main() {
 
             let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, fs_module_loader_opts);
 
-            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
-            let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
+            let decl_tables = Arc::new(DeclTablesRegistry::new());
 
-            let mut resolver = Resolver::new(
-                Box::new(fs_module_loader),
-                source_map.clone(),
-                reporter,
-                monomorph_registry,
-                mapping_ctx_arena.clone(),
-            );
+            let mut resolver = Resolver::new(Box::new(fs_module_loader), source_map.clone(), reporter, decl_tables);
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&file_path), file_id);
 

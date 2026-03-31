@@ -66,13 +66,13 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         TypedExprKind::UnnamedStructValue(unnamed_struct_value) => unnamed_struct_value
             .fields
             .iter()
-            .all(|field| is_comptime_valid(&field.field_value.kind)),
+            .all(|field| is_comptime_valid(&field.value.kind)),
         TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => match &unnamed_enum_value.kind {
             TypedUnnamedEnumValueKind::Plain => true,
             TypedUnnamedEnumValueKind::Fielded(values) => values.iter().any(|expr| is_comptime_valid(&expr.kind)),
         },
         TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
-            is_comptime_valid(&unnamed_union_value.field_value.kind)
+            is_comptime_valid(&unnamed_union_value.value.kind)
         }
         TypedExprKind::Symbol(..)
         | TypedExprKind::ArrayIndex(_)

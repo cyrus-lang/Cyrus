@@ -295,6 +295,15 @@ impl Linkage {
     }
 }
 
+impl fmt::Display for Visibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Visibility::Public => write!(f, "pub"),
+            Visibility::Private => write!(f, ""),
+        }
+    }
+}
+
 impl fmt::Display for ReprAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let items_fmt = self

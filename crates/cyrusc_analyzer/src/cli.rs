@@ -26,7 +26,7 @@ use cyrusc_resolver::{
     modules::VisitingModule,
 };
 use cyrusc_source_loc::SourceMap;
-use cyrusc_typed_ast::generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
+use cyrusc_typed_ast::backup_typed_ast_generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry};
 use std::{
     env,
     path::Path,

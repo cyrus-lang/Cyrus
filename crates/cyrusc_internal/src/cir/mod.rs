@@ -17,5 +17,5 @@
 
 pub mod cir;
 pub mod types;
-pub mod monomorph;
+pub mod instances;
 pub mod traverse;
