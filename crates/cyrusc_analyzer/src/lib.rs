@@ -17,17 +17,9 @@
 
 use crate::{diagnostics::AnalyzerDiagKind, normalizer::TypeCache, typecheck::typecheck::FuncEnv};
 use cyrusc_diagcentral::{Diag, DiagLevel, exit_with_single_diag, reporter::DiagReporter};
-use cyrusc_internal::{
-    flow_state::ControlRegion,
-    symbols::table::{SymbolQuery, SymbolEntryMut},
-    vtable::VTableRegistry,
-};
+use cyrusc_internal::{flow_state::ControlRegion, symbols::table::SymbolQuery, vtable::VTableRegistry};
 use cyrusc_source_loc::{Loc, SourceMap};
-use cyrusc_typed_ast::{
-    TypedProgramTree,
-    format::format_loc,
-    backup_typed_ast_generics::{mapping_ctx_arena::GenericMappingCtxArena, monomorph::MonomorphRegistry},
-};
+use cyrusc_typed_ast::{TypedProgramTree, decls::table::DeclTablesRegistry, format::{Formatter, format_loc}};
 use std::{
     cell::RefCell,
     rc::Rc,
@@ -42,17 +34,17 @@ mod nameconv;
 mod normalizer;
 mod typecheck;
 
-pub struct AnalysisContext<'a, M: SymbolEntryMut> {
+pub struct AnalysisContext<'a> {
     pub(crate) config: AnalyzerConfig,
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     pub entry_points: Arc<EntryPoints>,
     pub program_tree: Rc<RefCell<TypedProgramTree>>,
-    pub vtable_registry: Arc<Mutex<VTableRegistry>>,
-    pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
     pub(crate) reporter: Arc<DiagReporter>,
+    pub vtable_registry: Arc<Mutex<VTableRegistry>>,
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 
     pub(crate) query: &'a dyn SymbolQuery,
-    pub(crate) symbol_mut: &'a M,
+    pub(crate) formatter: Formatter<'a>,
+    pub(crate) decl_tables: Arc<DeclTablesRegistry>,
 
     pub(crate) fenv: FuncEnv,
     pub(crate) type_cache: TypeCache,

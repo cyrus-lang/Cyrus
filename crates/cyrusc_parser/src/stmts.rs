@@ -89,7 +89,7 @@ impl<'source_file> Parser<'source_file> {
         } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
             return Ok(vec![self.parse_global_var(modifiers.clone())?]);
         } else if self.current_token_is(TokenKind::Interface) {
-            let interface_modifiers = modifiers.into_module_decl_modifiers(loc)?;
+            let interface_modifiers = modifiers.into_interface_modifiers(loc)?;
             return Ok(vec![self.parse_interface(interface_modifiers.vis)?]);
         }
 
@@ -466,59 +466,68 @@ impl<'source_file> Parser<'source_file> {
         Ok(ASTStmt::Expr(expr))
     }
 
-    fn parse_enum_variant(&mut self) -> Result<EnumVariant, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
-        let ident = self.parse_ident()?;
+    pub(crate) fn parse_enum_variant(&mut self) -> Result<EnumVariant, Diag> {
+        let variant_name = self.parse_ident()?;
         self.next_token();
 
-        let mut valued_fields: Vec<EnumValuedField> = Vec::new();
-
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(EnumVariant::Ident(ident));
-        } else if self.current_token_is(TokenKind::Assign) {
+            return Ok(EnumVariant::Unit(variant_name));
+        }
+
+        if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
+
             let value = self.parse_expr(Precedence::Lowest)?;
             self.next_token(); // consume last token of the expression
-            return Ok(EnumVariant::Valued(ident, Box::new(value)));
+
+            Ok(EnumVariant::Valued {
+                ident: variant_name,
+                value: Box::new(value),
+            })
         } else if self.current_token_is(TokenKind::LeftParen) {
-            self.next_token(); // consume left paren
+            let fields = self.parse_enum_tuple_variant()?;
 
-            loop {
-                if self.current_token_is(TokenKind::RightParen) {
-                    return Err(self.error_with_hint(
-                        &self.current_token(),
-                        ParserDiagKind::InvalidToken(self.current_token().kind),
-                        "Consider to add a field to enum variant or remove the parenthesis.",
-                    ));
-                }
+            Ok(EnumVariant::Tuple {
+                ident: variant_name,
+                fields,
+            })
+        } else if self.current_token_is(TokenKind::LeftBrace) {
+            // TODO Struct Enum Variant
+            unimplemented!("Struct Enum Variant Not Implemented Yet.");
+        } else {
+            Ok(EnumVariant::Unit(variant_name))
+        }
+    }
 
-                let field_type = self.parse_type_specifier()?;
+    pub(crate) fn parse_enum_tuple_variant(&mut self) -> Result<Vec<TypeSpecifier>, Diag> {
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let mut fields = Vec::new();
+
+        loop {
+            if self.current_token_is(TokenKind::RightParen) {
+                return Err(self.error_with_hint(
+                    &self.current_token(),
+                    ParserDiagKind::InvalidToken(self.current_token().kind),
+                    "Consider to add a field to enum tuple variant or remove the parenthesis.",
+                ));
+            }
+
+            let ty = self.parse_type_specifier()?;
+            self.next_token();
+
+            fields.push(ty);
+
+            if self.current_token_is(TokenKind::RightParen) {
                 self.next_token();
-
-                let end = self.current_token().loc.end;
-
-                valued_fields.push(EnumValuedField {
-                    ty: field_type,
-                    loc: Loc::new(self.file_id(), line, column, start, end),
-                });
-
-                if self.current_token_is(TokenKind::RightParen) {
-                    self.next_token();
-                    break;
-                } else {
-                    self.expect_current(TokenKind::Comma)?;
-                    continue;
-                }
+                break;
+            } else {
+                self.expect_current(TokenKind::Comma)?;
+                continue;
             }
         }
 
-        if valued_fields.is_empty() {
-            Ok(EnumVariant::Ident(ident))
-        } else {
-            Ok(EnumVariant::Variant(ident, valued_fields))
-        }
+        Ok(fields)
     }
 
     fn parse_union_field(&mut self) -> Result<UnionField, Diag> {

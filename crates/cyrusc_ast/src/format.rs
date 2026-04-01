@@ -218,18 +218,52 @@ impl fmt::Display for UnnamedUnionType {
     }
 }
 
+impl fmt::Display for EnumVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EnumVariant::Unit(ident) => {
+                write!(f, "{}", ident)
+            }
+            EnumVariant::Valued { ident, value } => {
+                write!(f, "{}({})", ident, value)
+            }
+            EnumVariant::Tuple { ident, fields } => {
+                write!(f, "{}(", ident)?;
+
+                for (i, field_type) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    write!(f, "{}", field_type)?;
+                }
+
+                write!(f, ")")
+            }
+            EnumVariant::Struct { ident, fields } => {
+                write!(f, "{} {{", ident)?; // Start with identifier and opening brace
+
+                for (i, field_info) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    write!(f, "{}: {}", field_info.name, field_info.ty)?;
+                }
+
+                write!(f, " }}")
+            }
+        }
+    }
+}
+
 impl fmt::Display for UnnamedEnumType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "enum {{ ")?;
+
         for (i, variant) in self.variants.iter().enumerate() {
-            match variant {
-                UnnamedEnumVariant::Ident(ident) => write!(f, "{}", ident.as_string())?,
-                UnnamedEnumVariant::Valued(ident, expr) => write!(f, "{} = {}", ident.as_string(), expr)?,
-                UnnamedEnumVariant::Variant(ident, fields) => {
-                    let field_str = fields.iter().map(|f| f.ty.to_string()).collect::<Vec<_>>().join(", ");
-                    write!(f, "{}({})", ident.as_string(), field_str)?;
-                }
-            }
+            write!(f, "{}", variant)?;
+            
             if i == self.variants.len() - 1 {
                 write!(f, " ")?;
             } else {

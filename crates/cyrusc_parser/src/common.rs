@@ -875,63 +875,6 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_unnamed_enum_field(&mut self) -> Result<UnnamedEnumVariant, Diag> {
-        let variant_name = self.parse_ident()?;
-        self.next_token();
-
-        let mut variant_fields: Vec<UnnamedEnumValuedField> = Vec::new();
-
-        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(UnnamedEnumVariant::Ident(variant_name));
-        } else if self.current_token_is(TokenKind::Assign) {
-            self.next_token(); // consume assign
-
-            let value = self.parse_expr(Precedence::Lowest)?;
-            self.next_token(); // consume last token of the expression
-
-            return Ok(UnnamedEnumVariant::Valued(variant_name, Box::new(value)));
-        } else if self.current_token_is(TokenKind::LeftParen) {
-            self.next_token(); // consume left paren
-
-            loop {
-                if self.current_token_is(TokenKind::RightParen) {
-                    return Err(self.error_with_hint(
-                        &self.current_token(),
-                        ParserDiagKind::InvalidToken(self.current_token().kind),
-                        "Consider to add a field to enum variant or remove the parenthesis.",
-                    ));
-                }
-
-                let loc = self.current_token().loc;
-                let (line, column, start) = (loc.line, loc.column, loc.start);
-
-                let ty = self.parse_type_specifier()?;
-                self.next_token();
-
-                let end = self.current_token().loc.end;
-
-                variant_fields.push(UnnamedEnumValuedField {
-                    ty,
-                    loc: Loc::new(self.file_id(), line, column, start, end),
-                });
-
-                if self.current_token_is(TokenKind::RightParen) {
-                    self.next_token();
-                    break;
-                } else {
-                    self.expect_current(TokenKind::Comma)?;
-                    continue;
-                }
-            }
-        }
-
-        if variant_fields.is_empty() {
-            Ok(UnnamedEnumVariant::Ident(variant_name))
-        } else {
-            Ok(UnnamedEnumVariant::Variant(variant_name, variant_fields))
-        }
-    }
-
     fn parse_unnamed_enum_type(&mut self, repr_attr: Option<ReprAttr>) -> Result<TypeSpecifier, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -943,7 +886,7 @@ impl<'source_file> Parser<'source_file> {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut enum_fields: Vec<UnnamedEnumVariant> = Vec::new();
+        let mut enum_fields = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
             let end = self.current_token().loc.end;
@@ -957,7 +900,7 @@ impl<'source_file> Parser<'source_file> {
             }));
         }
 
-        enum_fields.push(self.parse_unnamed_enum_field()?);
+        enum_fields.push(self.parse_enum_variant()?);
 
         while self.current_token_is(TokenKind::Comma) {
             self.expect_current(TokenKind::Comma)?;
@@ -966,7 +909,7 @@ impl<'source_file> Parser<'source_file> {
                 break;
             }
 
-            enum_fields.push(self.parse_unnamed_enum_field()?);
+            enum_fields.push(self.parse_enum_variant()?);
             if self.peek_token_is(TokenKind::RightBrace) {
                 break;
             }

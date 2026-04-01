@@ -19,25 +19,17 @@ use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::SelfModifierKind;
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::symbols::{
-    symbols::{ResolvedTypedef, SymbolEntry, SymbolEntryKind},
-    table::SymbolEntryMut,
-};
+use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
     exprs::TypedSelfType,
-    format::{DeclFormatterFn, format_unnamed_enum_type, format_unnamed_struct_type, format_unnamed_union_type},
-    backup_typed_ast_generics::{generic_type::GenericType, substitute::substitute_func_sig},
-    sigs::{FuncDecl, InterfaceDecl, typed_func_decl_as_func_sig},
+    format::format_union_decl,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
-    types::{
-        InterfaceType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
-        TypedUnnamedEnumType, TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
-    },
+    types::{SemanticType, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType},
 };
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
@@ -66,12 +58,10 @@ impl TypeCache {
     }
 }
 
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     /// Validate a semantic type.
     /// This does NOT normalize the type.
     pub fn check_sema_ty(&mut self, mut sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         if sema_type.count_const_layers() > 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -90,8 +80,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             });
         }
 
-        if let Some(generic_type) = sema_type.as_generic_type_mut() {
-            generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol).ok();
+        if let Some(named_type) = sema_type.as_named_type() {
+            named_type.
         }
 
         if let Some(unnamed_enum_type) = sema_type.as_unnamed_enum_mut() {
@@ -111,8 +101,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn check_unnamed_union_type(&mut self, unnamed_union_type: &mut TypedUnnamedUnionType) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         self.validate_union_repr_attr(
             &unnamed_union_type.repr_attr,
             unnamed_union_type.fields.len(),
@@ -121,13 +109,13 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         self.validate_align(&unnamed_union_type.align, unnamed_union_type.loc);
 
-        let union_name = format_unnamed_union_type(unnamed_union_type, fmt_symbol);
+        let union_name = format_union_decl(unnamed_union_type, &self.formatter);
 
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &mut unnamed_union_type.fields {
             field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_type) => Box::new(sema_type),
+                Some(sema_type) => sema_type,
                 None => continue,
             };
 
@@ -151,8 +139,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn check_unnamed_struct_type(&mut self, unnamed_struct_type: &mut TypedUnnamedStructType) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         self.validate_struct_repr_attr(
             &unnamed_struct_type.repr_attr,
             unnamed_struct_type.fields.len(),
@@ -191,8 +177,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn check_unnamed_enum_type(&mut self, unnamed_enum_type: &mut TypedUnnamedEnumType) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         self.validate_enum_repr_attr(
             &unnamed_enum_type.repr_attr,
             unnamed_enum_type.align.is_some(),
@@ -298,49 +282,49 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             )),
             SemanticType::UnnamedUnion(unnamed_union_type) => self.normalize_unnamed_union_type(unnamed_union_type),
             SemanticType::UnnamedStruct(unnamed_struct_type) => self.normalize_unnamed_struct_ty(unnamed_struct_type),
-            SemanticType::PlainType(_) | SemanticType::DynamicType(_) | SemanticType::Interface(_) => Some(ty),
+            SemanticType::Plain(_) | SemanticType::DynamicType(_) | SemanticType::Interface(_) => Some(ty),
         }
     }
 
-    fn normalize_unnamed_union_type(&mut self, mut unnamed_union_type: TypedUnnamedUnionType) -> Option<SemanticType> {
-        for field in &mut unnamed_union_type.fields {
-            field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_type) => Box::new(sema_type),
-                None => continue,
-            };
-        }
-        Some(SemanticType::UnnamedUnion(unnamed_union_type))
-    }
+    // fn normalize_unnamed_union_type(&mut self, mut unnamed_union_type: TypedUnnamedUnionType) -> Option<SemanticType> {
+    //     for field in &mut unnamed_union_type.fields {
+    //         field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
+    //             Some(sema_type) => Box::new(sema_type),
+    //             None => continue,
+    //         };
+    //     }
+    //     Some(SemanticType::UnnamedUnion(unnamed_union_type))
+    // }
 
-    fn normalize_unnamed_struct_ty(&mut self, mut unnamed_struct_type: TypedUnnamedStructType) -> Option<SemanticType> {
-        for field in &mut unnamed_struct_type.fields {
-            field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_type) => Box::new(sema_type),
-                None => continue,
-            };
-        }
-        Some(SemanticType::UnnamedStruct(unnamed_struct_type))
-    }
+    // fn normalize_unnamed_struct_ty(&mut self, mut unnamed_struct_type: TypedUnnamedStructType) -> Option<SemanticType> {
+    //     for field in &mut unnamed_struct_type.fields {
+    //         field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
+    //             Some(sema_type) => Box::new(sema_type),
+    //             None => continue,
+    //         };
+    //     }
+    //     Some(SemanticType::UnnamedStruct(unnamed_struct_type))
+    // }
 
-    fn normalize_unnamed_enum_ty(&mut self, mut unnamed_enum_type: TypedUnnamedEnumType) -> TypedUnnamedEnumType {
-        for variant in &mut unnamed_enum_type.variants {
-            match variant {
-                TypedUnnamedEnumVariant::Ident(_) => continue,
-                TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
-                    for valued_field in valued_fields {
-                        match self.normalize_sema_type(valued_field.ty.clone(), valued_field.loc) {
-                            Some(sema_type) => valued_field.ty = sema_type,
-                            None => continue,
-                        }
-                    }
-                }
-                TypedUnnamedEnumVariant::Valued(_, expr) => {
-                    self.analyze_expr(expr, None);
-                }
-            }
-        }
-        unnamed_enum_type
-    }
+    // fn normalize_unnamed_enum_ty(&mut self, mut unnamed_enum_type: TypedUnnamedEnumType) -> TypedUnnamedEnumType {
+    //     for variant in &mut unnamed_enum_type.variants {
+    //         match variant {
+    //             TypedUnnamedEnumVariant::Ident(_) => continue,
+    //             TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
+    //                 for valued_field in valued_fields {
+    //                     match self.normalize_sema_type(valued_field.ty.clone(), valued_field.loc) {
+    //                         Some(sema_type) => valued_field.ty = sema_type,
+    //                         None => continue,
+    //                     }
+    //                 }
+    //             }
+    //             TypedUnnamedEnumVariant::Valued(_, expr) => {
+    //                 self.analyze_expr(expr, None);
+    //             }
+    //         }
+    //     }
+    //     unnamed_enum_type
+    // }
 
     fn normalize_func_type(&mut self, mut func_type: TypedFuncType) -> Option<SemanticType> {
         let params_len = func_type.params.list.len();
@@ -446,23 +430,25 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
+    // FIXME
     fn normalize_var(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let resolved_var = self.query.get_var(symbol_id)?;
-        let var_type = &resolved_var.variable.ty;
-        let var_rhs = &resolved_var.variable.rhs;
+        todo!();
+        // let resolved_var = self.query.get_var(symbol_id)?;
+        // let var_type = &resolved_var.variable.ty;
+        // let var_rhs = &resolved_var.variable.rhs;
 
-        // try to get type from annotation
-        if let Some(ty) = var_type {
-            return self.normalize_sema_type(ty.clone(), loc);
-        }
+        // // try to get type from annotation
+        // if let Some(ty) = var_type {
+        //     return self.normalize_sema_type(ty.clone(), loc);
+        // }
 
-        // try to infer from RHS
-        if let Some(rhs) = var_rhs {
-            let rhs_ty = self.analyze_expr_non_terminal(&mut rhs.clone(), var_type.clone())?;
-            return self.normalize_sema_type(rhs_ty, loc);
-        }
+        // // try to infer from RHS
+        // if let Some(rhs) = var_rhs {
+        //     let rhs_ty = self.analyze_expr_non_terminal(&mut rhs.clone(), var_type.clone())?;
+        //     return self.normalize_sema_type(rhs_ty, loc);
+        // }
 
-        None
+        // None
     }
 
     fn normalize_typedef(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
@@ -523,8 +509,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn normalize_generic_type(&mut self, mut generic_type: GenericType) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 
         if generic_type.generic_params.list.is_empty() {
@@ -775,8 +759,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         if let Some(cached_sema_ty) = self.type_cache.cache.get(&symbol_id) {
             return Some(cached_sema_ty.clone());
         }

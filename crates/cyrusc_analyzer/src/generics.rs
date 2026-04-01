@@ -46,7 +46,7 @@
 //     rc::Rc,
 // };
 
-// impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+// impl<'a> AnalysisContext<'a> {
     // pub(crate) fn merge_generic_type(&self, generic_type1: &GenericType, generic_type2: &GenericType) -> GenericType {
     //     let mut merged_generic_type = generic_type1.clone();
 

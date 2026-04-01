@@ -17,29 +17,19 @@
 
 use crate::AnalysisContext;
 use cyrusc_const_eval::fold::ConstFolder;
-use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    format::DeclFormatterFn,
-    backup_typed_ast_generics::{
-        mapping_ctx::mapping_ctx_eq_refcell,
-        substitute::{substitute_enum_sig, substitute_struct_sig, substitute_union_sig},
-    },
-    sigs::{EnumDecl, StructDecl, UnionDecl},
     stmts::TypedEnumVariant,
-    types::{
-        PlainType, ResolvedSymbol, SemanticType, TypedArrayCapacity, TypedArrayType, TypedUnnamedEnumType,
-        TypedUnnamedEnumVariant, TypedUnnamedStructType, TypedUnnamedUnionType,
-    },
+    types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayType},
 };
 
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn is_assignable_to(&mut self, rhs: SemanticType, lhs: SemanticType, loc: Loc) -> bool {
         match (rhs.const_inner().clone(), lhs.const_inner().clone()) {
             (SemanticType::ResolvedSymbol(resolved_symbol1), SemanticType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
             }
-            (SemanticType::PlainType(basic_concrete_type1), SemanticType::PlainType(basic_concrete_type2)) => {
+            (SemanticType::Plain(basic_concrete_type1), SemanticType::Plain(basic_concrete_type2)) => {
                 self.is_plain_type_assignable_to(basic_concrete_type1, basic_concrete_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
@@ -287,7 +277,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             (SemanticType::Interface(interface_type1), SemanticType::Interface(interface_type2)) => {
                 interface_type1.symbol_id == interface_type2.symbol_id
             }
-            (SemanticType::PlainType(PlainType::Null), SemanticType::Pointer(..)) => true,
+            (SemanticType::Plain(PlainType::Null), SemanticType::Pointer(..)) => true,
             _ => false,
         }
     }
@@ -324,7 +314,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         ident1 == ident2 && expr1 == expr2
                     }
                     (
-                        TypedEnumVariant::Variant(ident1, valued_fields1),
+                        TypedEnumVariant::Tuple(ident1, valued_fields1),
                         TypedUnnamedEnumVariant::Variant(ident2, valued_fields2),
                     ) => {
                         let valued_fields = valued_fields1

@@ -288,76 +288,6 @@ impl PartialEq for FuncDecl {
 //     }
 // }
 
-// pub fn typed_struct_as_struct_sig(struct_stmt: &TypedStructStmt) -> StructDecl {
-//     StructDecl {
-//         symbol_id: struct_stmt.symbol_id,
-//         name: struct_stmt.name.clone(),
-//         fields: struct_stmt.fields.clone(),
-//         impls: struct_stmt.impls.clone(),
-//         methods: struct_stmt.methods.clone(),
-//         generic_params: struct_stmt.generic_params.clone(),
-//         modifiers: struct_stmt.modifiers.clone(),
-//         align: struct_stmt.align.clone(),
-//         loc: struct_stmt.loc,
-//     }
-// }
-
-// pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnumStmt) -> EnumDecl {
-//     EnumDecl {
-//         symbol_id: typed_enum.symbol_id,
-//         name: typed_enum.name.clone(),
-//         methods: typed_enum.methods.clone(),
-//         variants: typed_enum.variants.clone(),
-//         generic_params: typed_enum.generic_params.clone(),
-//         modifiers: typed_enum.modifiers.clone(),
-//         tag_type: typed_enum.tag_type.clone(),
-//         align: typed_enum.align.clone(),
-//         loc: typed_enum.loc,
-//     }
-// }
-
-// pub fn typed_union_as_union_sig(union_stmt: &TypedUnionStmt) -> UnionDecl {
-//     UnionDecl {
-//         symbol_id: union_stmt.symbol_id,
-//         name: union_stmt.name.clone(),
-//         fields: union_stmt.fields.clone(),
-//         methods: union_stmt.methods.clone(),
-//         generic_params: union_stmt.generic_params.clone(),
-//         modifiers: union_stmt.modifiers.clone(),
-//         align: union_stmt.align.clone(),
-//         loc: union_stmt.loc,
-//     }
-// }
-
-// pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedFuncTypeParams {
-//     let list = params
-//         .list
-//         .iter()
-//         .map(|param| match param {
-//             TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-//             TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-//                 let ty = SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
-//                 match typed_self_modifier.kind {
-//                     SelfModifierKind::Copied => ty,
-//                     SelfModifierKind::Referenced => SemanticType::Pointer(Box::new(ty)),
-//                 }
-//             }
-//         })
-//         .collect();
-
-//     let variadic = match &params.variadic {
-//         Some(variadic) => match variadic {
-//             TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-//             TypedFuncVariadicParams::Typed(_, sema_type) => {
-//                 Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone())))
-//             }
-//         },
-//         None => None,
-//     };
-
-//     TypedFuncTypeParams { list, variadic }
-// }
-
 impl StructDecl {
     pub fn is_packed(&self) -> bool {
         match &self.modifiers.repr_attr {
@@ -368,16 +298,6 @@ impl StructDecl {
 }
 
 impl FuncDecl {
-    // pub fn is_instance_method(&self) -> bool {
-    //     match self.params.list.first() {
-    //         Some(typed_func_param_kind) => match typed_func_param_kind {
-    //             TypedFuncParamKind::FuncParam(..) => false,
-    //             TypedFuncParamKind::SelfModifier(..) => true,
-    //         },
-    //         None => false,
-    //     }
-    // }
-
     pub fn is_generic(&self) -> bool {
         self.generic_params.is_some()
     }

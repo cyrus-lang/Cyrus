@@ -27,25 +27,18 @@ use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_co
 use cyrusc_diagcentral::{Diag, DiagLevel, reporter::DiagReporter};
 use cyrusc_internal::{
     flow_state::{ControlRegion, FlowState},
-    symbols::table::{SymbolQuery, SymbolEntryMut},
+    monomorph::MonomorphRegistry,
+    symbols::table::SymbolQuery,
     vtable::VTableRegistry,
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    SymbolID, TypedProgramTree,
+    decls::table::DeclTablesRegistry,
     exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
-    format::{DeclFormatterFn, format_sema_type, format_unnamed_enum_type},
-    backup_typed_ast_generics::{
-        mapping_ctx_arena::GenericMappingCtxArena,
-        monomorph::MonomorphRegistry,
-        substitute::{substitute_enum_sig, substitute_func_sig},
-    },
-    sigs::{FuncDecl, typed_func_decl_as_func_sig, typed_func_params_as_func_type_params},
+    format::{Formatter, format_sema_type},
     stmts::*,
-    types::{
-        PlainType, SemanticType, TypedFuncType, TypedUnnamedEnumType, TypedUnnamedEnumVariant,
-        enum_sig_as_unnamed_enum_type,
-    },
-    *,
+    types::*,
 };
 use std::{
     cell::RefCell,
@@ -56,18 +49,22 @@ use std::{
 };
 
 // Analysis Context Public API
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     pub fn new(
         config: AnalyzerConfig,
         reporter: Arc<DiagReporter>,
         query: &'a dyn SymbolQuery,
-        symbol_mut: &'a M,
+        decl_tables: Arc<DeclTablesRegistry>,
         program_tree: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<EntryPoints>,
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-        mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
     ) -> Self {
+        let formatter = Formatter {
+            fmt_symbol: &|symbol_id| query.format_symbol_name(symbol_id),
+            fmt_decl: &|type_decl_id| query.format_type_decl(type_decl_id),
+        };
+
         Self {
             config,
             type_cache: TypeCache::default(),
@@ -76,11 +73,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             control_stack: Vec::new(),
             program_tree,
             query,
-            symbol_mut,
+            decl_tables,
             entry_points,
             vtable_registry,
             monomorph_registry,
-            mapping_ctx_arena,
+            formatter,
         }
     }
 
@@ -97,7 +94,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 TypedStmt::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStmt::Interface(typed_interface) => self.analyze_interface(typed_interface),
-                TypedStmt::Struct(struct_stmt) => self.analyze_struct(struct_stmt),
+                TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
                 TypedStmt::Enum(typed_enum) => self.analyze_enum(typed_enum),
                 TypedStmt::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef),
                 TypedStmt::Union(union_stmt) => self.analyze_union(union_stmt),
@@ -130,7 +127,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 // These functions are the primary entry points for type checking different
 // expression categories. They handle top-level analysis and dispatch to
 // specialized helpers for detailed checking.
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_block_stmt(&mut self, block_stmt: &mut TypedBlockStmt) -> FlowState {
         let mut flow_state = FlowState::Reachable;
         let mut terminated = false;
@@ -227,8 +224,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedExportTupleStmt) -> Option<()> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         let mut explicit_sema_ty: Option<SemanticType> = None;
 
         if let Some(sema_type) = &export_tuple.ty {
@@ -274,8 +269,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_sema_type(target_type, fmt_symbol),
-                        rhs_type: format_sema_type(expr_sema_ty, fmt_symbol),
+                        lhs_type: format_sema_type(target_type, &self.formatter),
+                        rhs_type: format_sema_type(expr_sema_ty, &self.formatter),
                     }),
                     loc: Some(export_tuple.loc),
                     hint: None,
@@ -389,406 +384,408 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
     }
 
-    fn analyze_switch_on_enum(
-        &mut self,
-        switch_stmt: &mut TypedSwitchStmt,
-        unnamed_enum_type: &mut TypedUnnamedEnumType,
-        enum_name: &String,
-    ) -> FlowState {
-        let mut branch_states = Vec::new();
-        let mut used_enum_variants: Vec<String> = Vec::new();
+    // fn analyze_switch_on_enum(
+    //     &mut self,
+    //     switch_stmt: &mut TypedSwitchStmt,
+    //     unnamed_enum_type: &mut TypedUnnamedEnumType,
+    //     enum_name: &String,
+    // ) -> FlowState {
+    //     todo!();
 
-        'cases: for i in 0..switch_stmt.cases.len() {
-            let case = &mut switch_stmt.cases[i];
+    // let mut branch_states = Vec::new();
+    // let mut used_enum_variants: Vec<String> = Vec::new();
 
-            'patterns: for pattern in &case.patterns {
-                let ident = match &pattern {
-                    TypedSwitchCasePattern::Ident(ident) => ident,
-                    TypedSwitchCasePattern::EnumVariant(ident, valued_fields, _) => {
-                        let mut field_names: Vec<String> = Vec::new();
+    // 'cases: for i in 0..switch_stmt.cases.len() {
+    //     let case = &mut switch_stmt.cases[i];
 
-                        for valued_field in valued_fields {
-                            if field_names.contains(&valued_field.name) {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
-                                        enum_name: enum_name.clone(),
-                                        variant_name: valued_field.name.clone(),
-                                    }),
-                                    loc: Some(case.loc),
-                                    hint: None,
-                                });
-                                continue 'patterns;
-                            }
+    //     'patterns: for pattern in &case.patterns {
+    //         let ident = match &pattern {
+    //             TypedSwitchCasePattern::Ident(ident) => ident,
+    //             TypedSwitchCasePattern::EnumVariant(ident, valued_fields, _) => {
+    //                 let mut field_names: Vec<String> = Vec::new();
 
-                            field_names.push(valued_field.name.clone());
-                        }
+    //                 for valued_field in valued_fields {
+    //                     if field_names.contains(&valued_field.name) {
+    //                         self.reporter.report(Diag {
+    //                             level: DiagLevel::Error,
+    //                             kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
+    //                                 enum_name: enum_name.clone(),
+    //                                 variant_name: valued_field.name.clone(),
+    //                             }),
+    //                             loc: Some(case.loc),
+    //                             hint: None,
+    //                         });
+    //                         continue 'patterns;
+    //                     }
 
-                        ident
-                    }
-                    TypedSwitchCasePattern::Expr(..) | TypedSwitchCasePattern::Range(..) => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ExpressionPatternInAEnumSwitch),
-                            loc: Some(case.loc),
-                            hint: None,
-                        });
-                        continue 'patterns;
-                    }
-                };
+    //                     field_names.push(valued_field.name.clone());
+    //                 }
 
-                if used_enum_variants.contains(&ident.value) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantInSwitchPatterns {
-                            variant_name: ident.as_string(),
-                        }),
-                        loc: Some(case.loc),
-                        hint: Some("Remove the duplicate to avoid redundancy.".to_string()),
-                    });
-                }
+    //                 ident
+    //             }
+    //             TypedSwitchCasePattern::Expr(..) | TypedSwitchCasePattern::Range(..) => {
+    //                 self.reporter.report(Diag {
+    //                     level: DiagLevel::Error,
+    //                     kind: Box::new(AnalyzerDiagKind::ExpressionPatternInAEnumSwitch),
+    //                     loc: Some(case.loc),
+    //                     hint: None,
+    //                 });
+    //                 continue 'patterns;
+    //             }
+    //         };
 
-                let variant_opt = unnamed_enum_type
-                    .variants
-                    .iter_mut()
-                    .find(|variant| variant.ident().value == ident.value);
+    //         if used_enum_variants.contains(&ident.value) {
+    //             self.reporter.report(Diag {
+    //                 level: DiagLevel::Error,
+    //                 kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantInSwitchPatterns {
+    //                     variant_name: ident.as_string(),
+    //                 }),
+    //                 loc: Some(case.loc),
+    //                 hint: Some("Remove the duplicate to avoid redundancy.".to_string()),
+    //             });
+    //         }
 
-                if variant_opt.is_none() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
-                            enum_name: enum_name.clone(),
-                            variant_name: ident.as_string(),
-                        }),
-                        loc: Some(switch_stmt.loc),
-                        hint: None,
-                    });
-                    continue 'patterns;
-                }
+    //         let variant_opt = unnamed_enum_type
+    //             .variants
+    //             .iter_mut()
+    //             .find(|variant| variant.ident().value == ident.value);
 
-                if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, _) = &pattern {
-                    if let Some(variant) = variant_opt {
-                        match variant {
-                            TypedUnnamedEnumVariant::Variant(ident, enum_valued_fields) => {
-                                let actual_enum_fields_len = enum_valued_fields.len();
+    //         if variant_opt.is_none() {
+    //             self.reporter.report(Diag {
+    //                 level: DiagLevel::Error,
+    //                 kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
+    //                     enum_name: enum_name.clone(),
+    //                     variant_name: ident.as_string(),
+    //                 }),
+    //                 loc: Some(switch_stmt.loc),
+    //                 hint: None,
+    //             });
+    //             continue 'patterns;
+    //         }
 
-                                if valued_fields.len() != actual_enum_fields_len {
-                                    self.reporter.report(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
-                                            variant_name: variant.ident().as_string(),
-                                            expected: actual_enum_fields_len as u32,
-                                            provided: valued_fields.len() as u32,
-                                        }),
-                                        loc: Some(case.loc),
-                                        hint: None,
-                                    });
-                                    continue 'cases;
-                                }
+    //         if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, _) = &pattern {
+    //             if let Some(variant) = variant_opt {
+    //                 match variant {
+    //                     TypedUnnamedEnumVariant::Variant(ident, enum_valued_fields) => {
+    //                         let actual_enum_fields_len = enum_valued_fields.len();
 
-                                // normalize and then update valued_field type in local scope
+    //                         if valued_fields.len() != actual_enum_fields_len {
+    //                             self.reporter.report(Diag {
+    //                                 level: DiagLevel::Error,
+    //                                 kind: Box::new(AnalyzerDiagKind::EnumVariantArgCountMismatch {
+    //                                     variant_name: variant.ident().as_string(),
+    //                                     expected: actual_enum_fields_len as u32,
+    //                                     provided: valued_fields.len() as u32,
+    //                                 }),
+    //                                 loc: Some(case.loc),
+    //                                 hint: None,
+    //                             });
+    //                             continue 'cases;
+    //                         }
 
-                                for (enum_valued_field_idx, enum_valued_field) in
-                                    enum_valued_fields.iter_mut().enumerate()
-                                {
-                                    enum_valued_field.ty =
-                                        match self.normalize_sema_type(enum_valued_field.ty.clone(), ident.loc) {
-                                            Some(sema_type) => sema_type,
-                                            None => continue 'patterns,
-                                        };
+    //                         // normalize and then update valued_field type in local scope
 
-                                    let valued_field = &valued_fields[enum_valued_field_idx];
+    //                         for (enum_valued_field_idx, enum_valued_field) in
+    //                             enum_valued_fields.iter_mut().enumerate()
+    //                         {
+    //                             enum_valued_field.ty =
+    //                                 match self.normalize_sema_type(enum_valued_field.ty.clone(), ident.loc) {
+    //                                     Some(sema_type) => sema_type,
+    //                                     None => continue 'patterns,
+    //                                 };
 
-                                    self.symbol_mut.with_var_mut(valued_field.symbol_id, |resolved_var| {
-                                        resolved_var.variable.ty = Some(enum_valued_field.ty.clone());
-                                    });
-                                }
-                            }
-                            TypedUnnamedEnumVariant::Valued(ident, valued) => {
-                                if valued_fields.len() > 1 {
-                                    self.reporter.report(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
-                                            variant_name: ident.as_string(),
-                                        }),
-                                        loc: Some(case.loc),
-                                        hint: None,
-                                    });
-                                    return FlowState::Reachable;
-                                }
+    //                             let valued_field = &valued_fields[enum_valued_field_idx];
 
-                                let valued_field = valued_fields.first().unwrap();
+    //                             self.symbol_mut.with_var_mut(valued_field.symbol_id, |resolved_var| {
+    //                                 resolved_var.variable.ty = Some(enum_valued_field.ty.clone());
+    //                             });
+    //                         }
+    //                     }
+    //                     TypedUnnamedEnumVariant::Valued(ident, valued) => {
+    //                         if valued_fields.len() > 1 {
+    //                             self.reporter.report(Diag {
+    //                                 level: DiagLevel::Error,
+    //                                 kind: Box::new(AnalyzerDiagKind::ValuedEnumVariantCanOnlyExportOneField {
+    //                                     variant_name: ident.as_string(),
+    //                                 }),
+    //                                 loc: Some(case.loc),
+    //                                 hint: None,
+    //                             });
+    //                             return FlowState::Reachable;
+    //                         }
 
-                                valued.sema_type = match self.analyze_expr(valued, None) {
-                                    Some(sema_type) => Some(sema_type),
-                                    None => continue 'patterns,
-                                };
+    //                         let valued_field = valued_fields.first().unwrap();
 
-                                self.symbol_mut.with_var_mut(valued_field.symbol_id, |resolved_var| {
-                                    resolved_var.variable.ty = Some(valued.sema_type.clone().unwrap());
-                                });
-                            }
-                            TypedUnnamedEnumVariant::Ident(ident) => {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: Box::new(AnalyzerDiagKind::VariantDoesNotExportAnyField {
-                                        variant_name: ident.as_string(),
-                                    }),
-                                    loc: Some(case.loc),
-                                    hint: None,
-                                });
-                                return FlowState::Reachable;
-                            }
-                        }
-                    }
-                }
+    //                         valued.sema_type = match self.analyze_expr(valued, None) {
+    //                             Some(sema_type) => Some(sema_type),
+    //                             None => continue 'patterns,
+    //                         };
 
-                used_enum_variants.push(ident.as_string());
-            }
+    //                         self.symbol_mut.with_var_mut(valued_field.symbol_id, |resolved_var| {
+    //                             resolved_var.variable.ty = Some(valued.sema_type.clone().unwrap());
+    //                         });
+    //                     }
+    //                     TypedUnnamedEnumVariant::Ident(ident) => {
+    //                         self.reporter.report(Diag {
+    //                             level: DiagLevel::Error,
+    //                             kind: Box::new(AnalyzerDiagKind::VariantDoesNotExportAnyField {
+    //                                 variant_name: ident.as_string(),
+    //                             }),
+    //                             loc: Some(case.loc),
+    //                             hint: None,
+    //                         });
+    //                         return FlowState::Reachable;
+    //                     }
+    //                 }
+    //             }
+    //         }
 
-            let body_flow_state = self.analyze_block_stmt(&mut case.body);
-            branch_states.push(body_flow_state);
-        }
+    //         used_enum_variants.push(ident.as_string());
+    //     }
 
-        if let Some(default_case) = &mut switch_stmt.default_case {
-            let body_flow_state = self.analyze_block_stmt(default_case);
-            branch_states.push(body_flow_state);
-        } else {
-            branch_states.push(FlowState::Reachable);
-        }
+    //     let body_flow_state = self.analyze_block_stmt(&mut case.body);
+    //     branch_states.push(body_flow_state);
+    // }
 
-        self.control_stack.pop();
+    // if let Some(default_case) = &mut switch_stmt.default_case {
+    //     let body_flow_state = self.analyze_block_stmt(default_case);
+    //     branch_states.push(body_flow_state);
+    // } else {
+    //     branch_states.push(FlowState::Reachable);
+    // }
 
-        // final merge
-        let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
-            FlowState::Returns
-        } else if used_enum_variants.len() == unnamed_enum_type.variants.len() {
-            FlowState::Returns
-        } else {
-            FlowState::Reachable
-        };
+    // self.control_stack.pop();
 
-        flow_state
-    }
+    // // final merge
+    // let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+    //     FlowState::Returns
+    // } else if used_enum_variants.len() == unnamed_enum_type.variants.len() {
+    //     FlowState::Returns
+    // } else {
+    //     FlowState::Reachable
+    // };
+
+    // flow_state
+    // }
 
     fn analyze_switch(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        todo!();
 
-        self.control_stack.push(ControlRegion::Switch);
+        // self.control_stack.push(ControlRegion::Switch);
 
-        if switch_stmt.cases.is_empty() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::EmptyCaseSwitchStatement),
-                loc: Some(switch_stmt.loc),
-                hint: None,
-            });
-            return FlowState::Reachable;
-        }
+        // if switch_stmt.cases.is_empty() {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::EmptyCaseSwitchStatement),
+        //         loc: Some(switch_stmt.loc),
+        //         hint: None,
+        //     });
+        //     return FlowState::Reachable;
+        // }
 
-        let operand_type = match self.analyze_expr(&mut switch_stmt.operand, None) {
-            Some(sema_type) => sema_type.const_inner().clone(),
-            None => return FlowState::Reachable,
-        };
+        // let operand_type = match self.analyze_expr(&mut switch_stmt.operand, None) {
+        //     Some(sema_type) => sema_type.const_inner().clone(),
+        //     None => return FlowState::Reachable,
+        // };
 
-        match if let Some(enum_id) = operand_type.const_inner().as_enum_symbol_id() {
-            Some((enum_id, None))
-        } else if let Some(generic_type) = operand_type.const_inner().as_generic_type() {
-            let Some(symbol_entry) = self.query.lookup_symbol_entry(generic_type.base) else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum {
-                        expr_type: fmt_symbol(generic_type.base),
-                    }),
-                    loc: Some(switch_stmt.loc),
-                    hint: None,
-                });
-                return FlowState::Reachable;
-            };
+        // match if let Some(enum_id) = operand_type.const_inner().as_enum_symbol_id() {
+        //     Some((enum_id, None))
+        // } else if let Some(generic_type) = operand_type.const_inner().as_generic_type() {
+        //     let Some(symbol_entry) = self.query.lookup_symbol_entry(generic_type.base) else {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum {
+        //                 expr_type: fmt_symbol(generic_type.base),
+        //             }),
+        //             loc: Some(switch_stmt.loc),
+        //             hint: None,
+        //         });
+        //         return FlowState::Reachable;
+        //     };
 
-            let Some(resolved_enum) = symbol_entry.as_enum() else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum {
-                        expr_type: fmt_symbol(generic_type.base),
-                    }),
-                    loc: Some(switch_stmt.loc),
-                    hint: None,
-                });
-                return FlowState::Reachable;
-            };
+        //     let Some(resolved_enum) = symbol_entry.as_enum() else {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum {
+        //                 expr_type: fmt_symbol(generic_type.base),
+        //             }),
+        //             loc: Some(switch_stmt.loc),
+        //             hint: None,
+        //         });
+        //         return FlowState::Reachable;
+        //     };
 
-            Some((resolved_enum.symbol_id, Some(generic_type)))
-        } else if let Some(mut unnamed_enum_type) = operand_type.const_inner().as_unnamed_enum() {
-            let enum_name = format_unnamed_enum_type(&unnamed_enum_type, fmt_symbol);
-            return self.analyze_switch_on_enum(switch_stmt, &mut unnamed_enum_type, &enum_name);
-        } else {
-            None
-        } {
-            Some((enum_id, generic_type_opt)) => {
-                let mut enum_decl = self.query.get_enum(enum_id).unwrap().enum_decl.clone();
+        //     Some((resolved_enum.symbol_id, Some(generic_type)))
+        // } else if let Some(mut unnamed_enum_type) = operand_type.const_inner().as_unnamed_enum() {
+        //     let enum_name = format_unnamed_enum_type(&unnamed_enum_type, fmt_symbol);
+        //     return self.analyze_switch_on_enum(switch_stmt, &mut unnamed_enum_type, &enum_name);
+        // } else {
+        //     None
+        // } {
+        //     Some((enum_id, generic_type_opt)) => {
+        //         let mut enum_decl = self.query.get_enum(enum_id).unwrap().enum_decl.clone();
 
-                if let Some(generic_type) = generic_type_opt {
-                    enum_decl = substitute_enum_sig(
-                        self.mapping_ctx_arena.clone(),
-                        &enum_decl,
-                        generic_type.mapping_ctx.clone(),
-                    )
-                    .unwrap()
-                }
+        //         if let Some(generic_type) = generic_type_opt {
+        //             enum_decl = substitute_enum_sig(
+        //                 self.mapping_ctx_arena.clone(),
+        //                 &enum_decl,
+        //                 generic_type.mapping_ctx.clone(),
+        //             )
+        //             .unwrap()
+        //         }
 
-                let mut unnamed_enum_type = enum_sig_as_unnamed_enum_type(&enum_decl, switch_stmt.loc);
-                return self.analyze_switch_on_enum(switch_stmt, &mut unnamed_enum_type, &enum_decl.name);
-            }
-            None => {}
-        }
+        //         let mut unnamed_enum_type = enum_sig_as_unnamed_enum_type(&enum_decl, switch_stmt.loc);
+        //         return self.analyze_switch_on_enum(switch_stmt, &mut unnamed_enum_type, &enum_decl.name);
+        //     }
+        //     None => {}
+        // }
 
-        let mut branch_states = Vec::new();
+        // let mut branch_states = Vec::new();
 
-        let mut range_table: Vec<(usize, usize)> = Vec::new();
+        // let mut range_table: Vec<(usize, usize)> = Vec::new();
 
-        fn is_valid_range(existing: &[(usize, usize)], new_ranges: &[(usize, usize)]) -> bool {
-            for (new_start, new_end) in new_ranges {
-                if new_start > new_end {
-                    return false;
-                }
-                for (old_start, old_end) in existing {
-                    let overlaps = new_start <= old_end && old_start <= new_end;
-                    if overlaps {
-                        return false;
-                    }
-                }
-            }
+        // fn is_valid_range(existing: &[(usize, usize)], new_ranges: &[(usize, usize)]) -> bool {
+        //     for (new_start, new_end) in new_ranges {
+        //         if new_start > new_end {
+        //             return false;
+        //         }
+        //         for (old_start, old_end) in existing {
+        //             let overlaps = new_start <= old_end && old_start <= new_end;
+        //             if overlaps {
+        //                 return false;
+        //             }
+        //         }
+        //     }
 
-            true
-        }
+        //     true
+        // }
 
-        for case in &mut switch_stmt.cases {
-            let mut local_range_table: Vec<(usize, usize)> = Vec::new();
+        // for case in &mut switch_stmt.cases {
+        //     let mut local_range_table: Vec<(usize, usize)> = Vec::new();
 
-            for pattern in &mut case.patterns {
-                match pattern {
-                    TypedSwitchCasePattern::Expr(typed_expr) => {
-                        let Some(pattern_type) = self.analyze_expr(typed_expr, Some(operand_type.clone())) else {
-                            continue;
-                        };
+        //     for pattern in &mut case.patterns {
+        //         match pattern {
+        //             TypedSwitchCasePattern::Expr(typed_expr) => {
+        //                 let Some(pattern_type) = self.analyze_expr(typed_expr, Some(operand_type.clone())) else {
+        //                     continue;
+        //                 };
 
-                        if !self.is_assignable_to(pattern_type.clone(), operand_type.clone(), switch_stmt.loc) {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::TypeMismatchInCasePattern {
-                                    operand_type: format_sema_type(operand_type.clone(), fmt_symbol),
-                                    pattern_type: format_sema_type(pattern_type, fmt_symbol),
-                                }),
-                                loc: Some(case.loc),
-                                hint: None,
-                            });
-                            continue;
-                        }
-                    }
-                    TypedSwitchCasePattern::Ident(..) | TypedSwitchCasePattern::EnumVariant(..) => {
-                        let expr_type = format_sema_type(operand_type.clone(), fmt_symbol);
+        //                 if !self.is_assignable_to(pattern_type.clone(), operand_type.clone(), switch_stmt.loc) {
+        //                     self.reporter.report(Diag {
+        //                         level: DiagLevel::Error,
+        //                         kind: Box::new(AnalyzerDiagKind::TypeMismatchInCasePattern {
+        //                             operand_type: format_sema_type(operand_type.clone(), fmt_symbol),
+        //                             pattern_type: format_sema_type(pattern_type, fmt_symbol),
+        //                         }),
+        //                         loc: Some(case.loc),
+        //                         hint: None,
+        //                     });
+        //                     continue;
+        //                 }
+        //             }
+        //             TypedSwitchCasePattern::Ident(..) | TypedSwitchCasePattern::EnumVariant(..) => {
+        //                 let expr_type = format_sema_type(operand_type.clone(), fmt_symbol);
 
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type }),
-                            loc: Some(switch_stmt.loc),
-                            hint: None,
-                        });
-                        continue;
-                    }
-                    TypedSwitchCasePattern::Range(range) => {
-                        self.analyze_expr(&mut range.lower, Some(operand_type.clone()));
-                        self.analyze_expr(&mut range.upper, Some(operand_type.clone()));
+        //                 self.reporter.report(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: Box::new(AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type }),
+        //                     loc: Some(switch_stmt.loc),
+        //                     hint: None,
+        //                 });
+        //                 continue;
+        //             }
+        //             TypedSwitchCasePattern::Range(range) => {
+        //                 self.analyze_expr(&mut range.lower, Some(operand_type.clone()));
+        //                 self.analyze_expr(&mut range.upper, Some(operand_type.clone()));
 
-                        if !is_comptime_valid(&range.lower.kind) {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                                loc: Some(range.lower.loc),
-                                hint: None,
-                            });
-                            continue;
-                        }
+        //                 if !is_comptime_valid(&range.lower.kind) {
+        //                     self.reporter.report(Diag {
+        //                         level: DiagLevel::Error,
+        //                         kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
+        //                         loc: Some(range.lower.loc),
+        //                         hint: None,
+        //                     });
+        //                     continue;
+        //                 }
 
-                        if !is_comptime_valid(&range.upper.kind) {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
-                                loc: Some(range.upper.loc),
-                                hint: None,
-                            });
-                            continue;
-                        }
+        //                 if !is_comptime_valid(&range.upper.kind) {
+        //                     self.reporter.report(Diag {
+        //                         level: DiagLevel::Error,
+        //                         kind: Box::new(AnalyzerDiagKind::ExprNotComptimeValid),
+        //                         loc: Some(range.upper.loc),
+        //                         hint: None,
+        //                     });
+        //                     continue;
+        //                 }
 
-                        let mut folder = ConstFolder::new(self);
-                        let lower_int = folder.expr_as_const_int(&range.lower).unwrap();
-                        let upper_int = folder.expr_as_const_int(&range.upper).unwrap();
+        //                 let mut folder = ConstFolder::new(self);
+        //                 let lower_int = folder.expr_as_const_int(&range.lower).unwrap();
+        //                 let upper_int = folder.expr_as_const_int(&range.upper).unwrap();
 
-                        if lower_int >= upper_int {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(AnalyzerDiagKind::InvalidRange),
-                                loc: Some(case.loc),
-                                hint: None,
-                            });
-                            continue;
-                        }
+        //                 if lower_int >= upper_int {
+        //                     self.reporter.report(Diag {
+        //                         level: DiagLevel::Error,
+        //                         kind: Box::new(AnalyzerDiagKind::InvalidRange),
+        //                         loc: Some(case.loc),
+        //                         hint: None,
+        //                     });
+        //                     continue;
+        //                 }
 
-                        local_range_table.push((lower_int.try_into().unwrap(), upper_int.try_into().unwrap()));
-                    }
-                }
-            }
+        //                 local_range_table.push((lower_int.try_into().unwrap(), upper_int.try_into().unwrap()));
+        //             }
+        //         }
+        //     }
 
-            if is_valid_range(&range_table, &local_range_table) {
-                range_table.extend(local_range_table);
-            } else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::OverlappingSwitchCaseRange),
-                    loc: Some(case.loc),
-                    hint: None,
-                });
-                continue;
-            }
+        //     if is_valid_range(&range_table, &local_range_table) {
+        //         range_table.extend(local_range_table);
+        //     } else {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::OverlappingSwitchCaseRange),
+        //             loc: Some(case.loc),
+        //             hint: None,
+        //         });
+        //         continue;
+        //     }
 
-            let body_flow_state = self.analyze_block_stmt(&mut case.body);
-            branch_states.push(body_flow_state);
-        }
+        //     let body_flow_state = self.analyze_block_stmt(&mut case.body);
+        //     branch_states.push(body_flow_state);
+        // }
 
-        if let Some(default_case) = &mut switch_stmt.default_case {
-            let body_flow_state = self.analyze_block_stmt(default_case);
-            branch_states.push(body_flow_state);
-        } else {
-            branch_states.push(FlowState::Reachable);
-        }
+        // if let Some(default_case) = &mut switch_stmt.default_case {
+        //     let body_flow_state = self.analyze_block_stmt(default_case);
+        //     branch_states.push(body_flow_state);
+        // } else {
+        //     branch_states.push(FlowState::Reachable);
+        // }
 
-        let mut branch_states = Vec::new();
+        // let mut branch_states = Vec::new();
 
-        // normalize each case body
-        for case in &mut switch_stmt.cases {
-            let body_flow_state = self.analyze_block_stmt(&mut case.body);
-            branch_states.push(body_flow_state);
-        }
+        // // normalize each case body
+        // for case in &mut switch_stmt.cases {
+        //     let body_flow_state = self.analyze_block_stmt(&mut case.body);
+        //     branch_states.push(body_flow_state);
+        // }
 
-        // default case
-        if let Some(default_case) = &mut switch_stmt.default_case {
-            let body_flow_state = self.analyze_block_stmt(default_case);
-            branch_states.push(body_flow_state);
-        } else {
-            branch_states.push(FlowState::Reachable);
-        }
+        // // default case
+        // if let Some(default_case) = &mut switch_stmt.default_case {
+        //     let body_flow_state = self.analyze_block_stmt(default_case);
+        //     branch_states.push(body_flow_state);
+        // } else {
+        //     branch_states.push(FlowState::Reachable);
+        // }
 
-        self.control_stack.pop();
+        // self.control_stack.pop();
 
-        // final merge
-        let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
-            FlowState::Returns
-        } else {
-            FlowState::Reachable
-        };
+        // // final merge
+        // let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+        //     FlowState::Returns
+        // } else {
+        //     FlowState::Reachable
+        // };
 
-        flow_state
+        // flow_state
     }
 
     fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt, expected_type: Option<SemanticType>) -> FlowState {
@@ -815,7 +812,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
     fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
         if let Some(sema_type) =
-            self.analyze_expr(&mut typed_while.cond, Some(SemanticType::PlainType(PlainType::Bool)))
+            self.analyze_expr(&mut typed_while.cond, Some(SemanticType::Plain(PlainType::Bool)))
         {
             self.report_if_not_cond_expr(sema_type, typed_while.loc);
         }
@@ -833,7 +830,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         }
 
         if let Some(typed_expr) = &mut typed_for.cond {
-            if let Some(sema_type) = self.analyze_expr(typed_expr, Some(SemanticType::PlainType(PlainType::Bool))) {
+            if let Some(sema_type) = self.analyze_expr(typed_expr, Some(SemanticType::Plain(PlainType::Bool))) {
                 self.report_if_not_cond_expr(sema_type, typed_for.loc);
             }
         }
@@ -850,8 +847,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         let func_type = self.fenv.current_func_type.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
 
@@ -868,8 +863,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
-                            expected: format_sema_type(ret_type.const_inner().clone(), fmt_symbol),
-                            got: format_sema_type(sema_type.const_inner().clone(), fmt_symbol),
+                            expected: format_sema_type(ret_type.const_inner().clone(), &self.formatter),
+                            got: format_sema_type(sema_type.const_inner().clone(), &self.formatter),
                         }),
                         loc: Some(ret.loc),
                         hint: None,
@@ -877,7 +872,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 }
             }
         } else if !ret_type.is_void() && ret.arg.is_none() {
-            let argument_type = format_sema_type(ret_type.clone(), fmt_symbol);
+            let argument_type = format_sema_type(ret_type.clone(), &self.formatter);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -938,105 +933,113 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         // }
     }
 
-    fn analyze_struct(&mut self, struct_stmt: &mut TypedStructStmt) {
-        self.validate_struct_repr_attr(
-            &struct_stmt.modifiers.repr_attr,
-            struct_stmt.fields.len(),
-            struct_stmt.loc,
-        );
+    // FIXME
+    fn analyze_struct_stmt(&mut self, struct_stmt: &mut TypedStructStmt) {
+        todo!();
 
-        self.validate_align(&struct_stmt.align, struct_stmt.loc);
+        // self.validate_struct_repr_attr(
+        //     &struct_stmt.modifiers.repr_attr,
+        //     struct_stmt.fields.len(),
+        //     struct_stmt.loc,
+        // );
 
-        if let Some(generic_params) = &struct_stmt.generic_params {
-            self.analyze_generic_params(generic_params);
-        }
+        // self.validate_align(&struct_stmt.align, struct_stmt.loc);
 
-        self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Struct(
-            struct_stmt.symbol_id,
-        )));
+        // if let Some(generic_params) = &struct_stmt.generic_params {
+        //     self.analyze_generic_params(generic_params);
+        // }
 
-        self.nameconv_check_struct_name(struct_stmt.name.clone(), struct_stmt.loc);
+        // self.fenv.current_self_type = Some(SemanticType::Named(ResolvedSymbol::Struct(
+        //     struct_stmt.symbol_id,
+        // )));
 
-        self.analyze_struct_fields(struct_stmt);
+        // self.nameconv_check_struct_name(struct_stmt.name.clone(), struct_stmt.loc);
 
-        if struct_stmt.generic_params.is_none() {
-            self.analyze_non_generic_methods(&struct_stmt.methods);
-        }
+        // self.analyze_struct_fields(struct_stmt);
 
-        self.analyze_method_generic_params(&struct_stmt.name, &struct_stmt.methods, &struct_stmt.generic_params);
+        // if struct_stmt.generic_params.is_none() {
+        //     self.analyze_non_generic_methods(&struct_stmt.methods);
+        // }
 
-        self.analyze_object_implements_interface_list(
-            struct_stmt.name.clone(),
-            &struct_stmt.impls,
-            &struct_stmt.methods,
-        );
+        // self.analyze_method_generic_params(&struct_stmt.name, &struct_stmt.methods, &struct_stmt.generic_params);
 
-        self.symbol_mut
-            .with_struct_mut(struct_stmt.symbol_id, |resolved_struct| {
-                resolved_struct.struct_decl.fields = struct_stmt.fields.clone();
-            });
+        // self.analyze_object_implements_interface_list(
+        //     struct_stmt.name.clone(),
+        //     &struct_stmt.impls,
+        //     &struct_stmt.methods,
+        // );
+
+        // self.symbol_mut
+        //     .with_struct_mut(struct_stmt.symbol_id, |resolved_struct| {
+        //         resolved_struct.struct_decl.fields = struct_stmt.fields.clone();
+        //     });
     }
 
+    // FIXME
     fn analyze_union(&mut self, union_stmt: &mut TypedUnionStmt) {
-        self.validate_union_repr_attr(&union_stmt.modifiers.repr_attr, union_stmt.fields.len(), union_stmt.loc);
+        todo!();
+        // self.validate_union_repr_attr(&union_stmt.modifiers.repr_attr, union_stmt.fields.len(), union_stmt.loc);
 
-        self.validate_align(&union_stmt.align, union_stmt.loc);
+        // self.validate_align(&union_stmt.align, union_stmt.loc);
 
-        if let Some(generic_params) = &union_stmt.generic_params {
-            self.analyze_generic_params(generic_params);
-        }
+        // if let Some(generic_params) = &union_stmt.generic_params {
+        //     self.analyze_generic_params(generic_params);
+        // }
 
-        self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
-            union_stmt.symbol_id,
-        )));
+        // self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Union(
+        //     union_stmt.symbol_id,
+        // )));
 
-        self.nameconv_check_union_name(union_stmt.name.clone(), union_stmt.loc);
+        // self.nameconv_check_union_name(union_stmt.name.clone(), union_stmt.loc);
 
-        self.analyze_union_fields(union_stmt);
+        // self.analyze_union_fields(union_stmt);
 
-        if union_stmt.generic_params.is_none() {
-            self.analyze_non_generic_methods(&union_stmt.methods);
-        }
+        // if union_stmt.generic_params.is_none() {
+        //     self.analyze_non_generic_methods(&union_stmt.methods);
+        // }
 
-        self.analyze_method_generic_params(&union_stmt.name, &union_stmt.methods, &union_stmt.generic_params);
+        // self.analyze_method_generic_params(&union_stmt.name, &union_stmt.methods, &union_stmt.generic_params);
 
-        self.analyze_object_implements_interface_list(union_stmt.name.clone(), &union_stmt.impls, &union_stmt.methods);
+        // self.analyze_object_implements_interface_list(union_stmt.name.clone(), &union_stmt.impls, &union_stmt.methods);
 
-        self.symbol_mut.with_union_mut(union_stmt.symbol_id, |resolved_union| {
-            resolved_union.union_decl.fields = union_stmt.fields.clone();
-        });
+        // self.symbol_mut.with_union_mut(union_stmt.symbol_id, |resolved_union| {
+        //     resolved_union.union_decl.fields = union_stmt.fields.clone();
+        // });
     }
 
+    // FIXME
     fn analyze_enum(&mut self, enum_stmt: &mut TypedEnumStmt) {
-        if let Some(generic_params) = &enum_stmt.generic_params {
-            self.analyze_generic_params(generic_params);
-        }
+        todo!();
 
-        self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
-            enum_stmt.symbol_id,
-        )));
+        // if let Some(generic_params) = &enum_stmt.generic_params {
+        //     self.analyze_generic_params(generic_params);
+        // }
 
-        self.nameconv_check_enum_name(enum_stmt.name.clone(), enum_stmt.loc);
+        // self.fenv.current_self_type = Some(SemanticType::ResolvedSymbol(types::ResolvedSymbol::Enum(
+        //     enum_stmt.symbol_id,
+        // )));
 
-        self.analyze_enum_variants(enum_stmt);
+        // self.nameconv_check_enum_name(enum_stmt.name.clone(), enum_stmt.loc);
 
-        if enum_stmt.generic_params.is_none() {
-            self.analyze_non_generic_methods(&enum_stmt.methods);
-        }
+        // self.analyze_enum_variants(enum_stmt);
 
-        self.analyze_method_generic_params(&enum_stmt.name, &enum_stmt.methods, &enum_stmt.generic_params);
+        // if enum_stmt.generic_params.is_none() {
+        //     self.analyze_non_generic_methods(&enum_stmt.methods);
+        // }
 
-        self.analyze_object_implements_interface_list(enum_stmt.name.clone(), &enum_stmt.impls, &enum_stmt.methods);
+        // self.analyze_method_generic_params(&enum_stmt.name, &enum_stmt.methods, &enum_stmt.generic_params);
 
-        self.validate_enum_repr_attr(&enum_stmt.modifiers.repr_attr, enum_stmt.align.is_some(), enum_stmt.loc);
+        // self.analyze_object_implements_interface_list(enum_stmt.name.clone(), &enum_stmt.impls, &enum_stmt.methods);
 
-        self.validate_align(&enum_stmt.align, enum_stmt.loc);
+        // self.validate_enum_repr_attr(&enum_stmt.modifiers.repr_attr, enum_stmt.align.is_some(), enum_stmt.loc);
 
-        self.validate_enum_tag_type(&enum_stmt.tag_type, enum_stmt.loc);
+        // self.validate_align(&enum_stmt.align, enum_stmt.loc);
 
-        self.symbol_mut.with_enum_mut(enum_stmt.symbol_id, |resolved_enum| {
-            resolved_enum.enum_decl.variants = enum_stmt.variants.clone();
-        });
+        // self.validate_enum_tag_type(&enum_stmt.tag_type, enum_stmt.loc);
+
+        // self.symbol_mut.with_enum_mut(enum_stmt.symbol_id, |resolved_enum| {
+        //     resolved_enum.enum_decl.variants = enum_stmt.variants.clone();
+        // });
     }
 
     fn analyze_func_def(&mut self, func_def: &mut TypedFuncDefStmt) {
@@ -1049,9 +1052,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.analyze_generic_params(generic_params);
         }
 
+        let func_type_params = func_def.params.as_func_type_params();
+
         self.fenv.current_func_type = Some(TypedFuncType {
             symbol_id: Some(func_def.symbol_id),
-            params: typed_func_params_as_func_type_params(&func_def.params),
+            params: func_type_params,
             ret_type: Box::new(func_def.ret_type.clone()),
             is_public,
             loc: func_def.loc,
@@ -1155,8 +1160,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         if let Some(mut expr) = global_var.expr.clone() {
             match self.analyze_expr(&mut expr, global_var.ty.clone()) {
                 Some(sema_type) => Some(sema_type),
@@ -1223,8 +1226,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(target_type.clone(), fmt_symbol),
-                            rhs_type: format_sema_type(expr_type.clone(), fmt_symbol),
+                            lhs_type: format_sema_type(target_type.clone(), &self.formatter),
+                            rhs_type: format_sema_type(expr_type.clone(), &self.formatter),
                         }),
                         loc: Some(global_var.loc),
                         hint: Some("Global variable initializers must exactly match the declared type.".into()),
@@ -1241,8 +1244,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         if let Some(ty) = &var.ty {
             var.ty = self.normalize_sema_type(ty.clone(), var.loc);
         }
@@ -1271,8 +1272,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(target_type.clone(), fmt_symbol),
-                            rhs_type: format_sema_type(expr.sema_type.clone().unwrap(), fmt_symbol),
+                            lhs_type: format_sema_type(target_type.clone(), &self.formatter),
+                            rhs_type: format_sema_type(expr.sema_type.clone().unwrap(), &self.formatter),
                         }),
                         loc: Some(var.loc),
                         hint: None,
@@ -1287,8 +1288,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn analyze_assign(&mut self, assign: &mut TypedAssignExpr) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         let lhs_type = match self.analyze_expr(&mut assign.lhs, None) {
             Some(sema_type) => sema_type,
             None => return,
@@ -1316,8 +1315,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                    lhs_type: format_sema_type(lhs_type, fmt_symbol),
-                    rhs_type: format_sema_type(rhs_type, fmt_symbol),
+                    lhs_type: format_sema_type(lhs_type, &self.formatter),
+                    rhs_type: format_sema_type(rhs_type, &self.formatter),
                 }),
                 loc: Some(assign.loc),
                 hint: None,
@@ -1327,7 +1326,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 }
 
 // Helper Functions
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
     ///
     /// Example:
@@ -1351,6 +1350,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .unwrap_or(false)
     }
 
+    // FIXME
     /// Validates that an object correctly implements its declared interfaces.
     ///
     /// Ensures the referenced symbols are valid interfaces, checks visibility
@@ -1362,105 +1362,106 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         impls: &Vec<TypedImplementInterface>,
         method_ids: &HashMap<String, SymbolID>,
     ) {
-        for implement_interface in impls {
-            let symbol_entry = self.query.lookup_symbol_entry(implement_interface.symbol_id).unwrap();
-            let name = symbol_entry.decl_name();
+        todo!();
+        // for implement_interface in impls {
+        //     let symbol_entry = self.query.lookup_symbol_entry(implement_interface.symbol_id).unwrap();
+        //     let name = symbol_entry.decl_name();
 
-            let resolved_interface = match symbol_entry.as_interface() {
-                Some(resolved_interface) => resolved_interface,
-                None => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name: name }),
-                        loc: Some(implement_interface.loc),
-                        hint: None,
-                    });
-                    continue;
-                }
-            };
+        //     let resolved_interface = match symbol_entry.as_interface() {
+        //         Some(resolved_interface) => resolved_interface,
+        //         None => {
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name: name }),
+        //                 loc: Some(implement_interface.loc),
+        //                 hint: None,
+        //             });
+        //             continue;
+        //         }
+        //     };
 
-            let interface_method_decls = &resolved_interface.interface_decl.methods;
-            let mut interface_method_sigs: Vec<FuncDecl> = Vec::new();
+        //     let interface_method_decls = &resolved_interface.interface_decl.methods;
+        //     let mut interface_method_sigs: Vec<FuncDecl> = Vec::new();
 
-            if let Some(generic_params) = &resolved_interface.interface_decl.generic_params {
-                let Some(type_args) = &implement_interface.type_args else {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::MissingTypeArgs {
-                            type_name: name.clone(),
-                        }),
-                        loc: Some(implement_interface.loc),
-                        hint: None,
-                    });
-                    continue;
-                };
+        //     if let Some(generic_params) = &resolved_interface.interface_decl.generic_params {
+        //         let Some(type_args) = &implement_interface.type_args else {
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: Box::new(AnalyzerDiagKind::MissingTypeArgs {
+        //                     type_name: name.clone(),
+        //                 }),
+        //                 loc: Some(implement_interface.loc),
+        //                 hint: None,
+        //             });
+        //             continue;
+        //         };
 
-                let generic_type_opt = match self.init_generic_type_with_symbol_id(
-                    implement_interface.symbol_id,
-                    &mut Some(type_args.clone()),
-                    None,
-                    Some(generic_params),
-                    implement_interface.loc,
-                ) {
-                    Ok(result) => match result {
-                        Some((_, generic_type)) => generic_type,
-                        None => unreachable!(),
-                    },
-                    Err(diag) => {
-                        self.reporter.report(diag);
-                        continue;
-                    }
-                };
+        //         let generic_type_opt = match self.init_generic_type_with_symbol_id(
+        //             implement_interface.symbol_id,
+        //             &mut Some(type_args.clone()),
+        //             None,
+        //             Some(generic_params),
+        //             implement_interface.loc,
+        //         ) {
+        //             Ok(result) => match result {
+        //                 Some((_, generic_type)) => generic_type,
+        //                 None => unreachable!(),
+        //             },
+        //             Err(diag) => {
+        //                 self.reporter.report(diag);
+        //                 continue;
+        //             }
+        //         };
 
-                if let Some(generic_type) = generic_type_opt {
-                    for func_decl in interface_method_decls {
-                        let mut func_decl = typed_func_decl_as_func_sig(func_decl);
-                        func_decl = substitute_func_sig(
-                            self.mapping_ctx_arena.clone(),
-                            &func_decl,
-                            generic_type.mapping_ctx.clone(),
-                        )
-                        .unwrap();
+        //         if let Some(generic_type) = generic_type_opt {
+        //             for func_decl in interface_method_decls {
+        //                 let mut func_decl = typed_func_decl_as_func_sig(func_decl);
+        //                 func_decl = substitute_func_sig(
+        //                     self.mapping_ctx_arena.clone(),
+        //                     &func_decl,
+        //                     generic_type.mapping_ctx.clone(),
+        //                 )
+        //                 .unwrap();
 
-                        interface_method_sigs.push(func_decl);
-                    }
-                }
-            }
+        //                 interface_method_sigs.push(func_decl);
+        //             }
+        //         }
+        //     }
 
-            for interface_method_sig in interface_method_sigs.clone() {
-                if !method_ids.contains_key(&interface_method_sig.name) {
-                    // method missing
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
-                            object_name: object_name.clone(),
-                            method_name: interface_method_sig.name.clone(),
-                            interface_name: name.clone(),
-                        }),
-                        loc: Some(implement_interface.loc),
-                        hint: None,
-                    });
-                    continue;
-                }
+        //     for interface_method_sig in interface_method_sigs.clone() {
+        //         if !method_ids.contains_key(&interface_method_sig.name) {
+        //             // method missing
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: Box::new(AnalyzerDiagKind::MissingInterfaceMethodImpl {
+        //                     object_name: object_name.clone(),
+        //                     method_name: interface_method_sig.name.clone(),
+        //                     interface_name: name.clone(),
+        //                 }),
+        //                 loc: Some(implement_interface.loc),
+        //                 hint: None,
+        //             });
+        //             continue;
+        //         }
 
-                let method_id = method_ids.get(&interface_method_sig.name).unwrap();
-                let resolved_method = self.query.get_method(*method_id).unwrap();
+        //         let method_id = method_ids.get(&interface_method_sig.name).unwrap();
+        //         let resolved_method = self.query.get_method(*method_id).unwrap();
 
-                // check method signature mismatch
-                if resolved_method.func_decl != interface_method_sig {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
-                            object_name: object_name.clone(),
-                            interface_name: name.clone(),
-                            method_name: interface_method_sig.name.clone(),
-                        }),
-                        loc: Some(resolved_method.func_decl.loc),
-                        hint: None,
-                    });
-                }
-            }
-        }
+        //         // check method signature mismatch
+        //         if resolved_method.func_decl != interface_method_sig {
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: Box::new(AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+        //                     object_name: object_name.clone(),
+        //                     interface_name: name.clone(),
+        //                     method_name: interface_method_sig.name.clone(),
+        //                 }),
+        //                 loc: Some(resolved_method.func_decl.loc),
+        //                 hint: None,
+        //             });
+        //         }
+        //     }
+        // }
     }
 
     /// Checks method-level generic parameters against the object's generic parameters.
@@ -1544,7 +1545,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                     ident
                 }
-                TypedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
+                TypedEnumVariant::Tuple(ident, typed_enum_valued_fields) => {
                     if is_repr_c {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -1798,8 +1799,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn validate_field_type(&mut self, object_id_opt: Option<SymbolID>, sema_type: &SemanticType, loc: Loc) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         let sema_type = sema_type.const_inner();
 
         if sema_type.is_void() {
@@ -1824,7 +1823,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         if let Some(object_id) = object_id_opt {
             if sema_ty_as_symbol_id_opt.map(|symbol_id| symbol_id == object_id) == Some(true) {
-                let type_name = format_sema_type(sema_type.clone(), fmt_symbol);
+                let type_name = format_sema_type(sema_type.clone(), &self.formatter);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -2006,14 +2005,12 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn validate_enum_tag_type(&mut self, tag_type: &Option<SemanticType>, loc: Loc) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
         if let Some(tag_type) = tag_type {
             let tag_type = tag_type.const_inner();
             let valid = tag_type.is_integer() || tag_type.is_char() || tag_type.is_bool();
 
             if !valid {
-                let got = format_sema_type(tag_type.clone(), fmt_symbol);
+                let got = format_sema_type(tag_type.clone(), &self.formatter);
 
                 self.reporter.report(Diag {
                     kind: Box::new(AnalyzerDiagKind::InvalidEnumTagType { got }),
@@ -2043,7 +2040,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 }
 
-impl<'ctx, M: SymbolEntryMut> ConstResolver for AnalysisContext<'ctx, M> {
+impl<'a> ConstResolver for AnalysisContext<'a> {
     fn resolve_symbol_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
         let resolved = self.resolve_variable_rhs_expr(symbol_id)?;
         Some(resolved)

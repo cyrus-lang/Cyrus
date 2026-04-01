@@ -444,90 +444,107 @@ impl UnresolvedModifiers {
     pub(crate) fn into_struct_modifiers(self, loc: Loc) -> Result<StructModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
-        if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
+        if self.linkage.is_some()
+            || self.inline.is_some()
+            || self.prologue.is_some()
+            || self.export.is_some()
+            || self.callconv.is_some()
+            || !self.optional_flags.is_empty()
+            || !self.placement.is_empty()
+        {
             return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Invalid modifier for struct declaration.".to_string(),
-                )),
-                level: DiagLevel::Error,
-                loc: Some(loc),
-                hint: None,
-            });
+            kind: Box::new(ParserDiagKind::InvalidModifier(
+                "Only visibility and repr attributes are allowed on struct declarations."
+                    .to_string(),
+            )),
+            level: DiagLevel::Error,
+            loc: Some(loc),
+            hint: Some(
+                "Remove unsupported modifiers such as linkage, export, inline, callconv, flags, or section placement."
+                    .to_string(),
+            ),
+        });
         }
 
-        if self.placement.len() > 1 {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Multiple section placements are not allowed for structs.".to_string(),
-                )),
-                level: DiagLevel::Error,
-                loc: Some(loc),
-                hint: None,
-            });
+        if let Some(repr) = &self.repr_attr {
+            if repr.is_packed() {
+                if let Some(kind) = repr.kind() {
+                    if matches!(kind, ReprKind::Transparent) {
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::InvalidModifier(
+                                "repr(transparent) cannot be combined with repr(packed).".to_string(),
+                            )),
+                            level: DiagLevel::Error,
+                            loc: Some(loc),
+                            hint: Some("Remove either 'packed' or 'transparent'.".to_string()),
+                        });
+                    }
+                }
+            }
         }
-
-        let section = self.placement.get(0).cloned();
 
         Ok(StructModifiers {
             vis,
-            linkage: self.linkage,
-            export: self.export,
-            repr_attr: self.repr_attr.clone(),
-            section,
-            optional_flags: self.optional_flags,
+            repr_attr: self.repr_attr,
         })
     }
 
     pub(crate) fn into_enum_modifiers(self, loc: Loc) -> Result<EnumModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
-        if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
+        // Enums only allow: visibility + repr_attr.
+        if self.linkage.is_some()
+            || self.inline.is_some()
+            || self.prologue.is_some()
+            || self.export.is_some()
+            || self.callconv.is_some()
+            || !self.optional_flags.is_empty()
+            || !self.placement.is_empty()
+        {
             return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Invalid modifier for enum declaration.".to_string(),
-                )),
-                level: DiagLevel::Error,
-                loc: Some(loc),
-                hint: None,
-            });
+            kind: Box::new(ParserDiagKind::InvalidModifier(
+                "Only visibility and repr attributes are allowed on enum declarations."
+                    .to_string(),
+            )),
+            level: DiagLevel::Error,
+            loc: Some(loc),
+            hint: Some(
+                "Remove unsupported modifiers such as inline, export, callconv, section placement, or optional flags."
+                    .to_string(),
+            ),
+        });
         }
 
-        if self.placement.len() > 1 {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Multiple section placements are not allowed for enums.".to_string(),
-                )),
-                level: DiagLevel::Error,
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        let section = self.placement.get(0).cloned();
-
-        if let Some(repr_attr) = &self.repr_attr {
-            if repr_attr.is_packed() {
+        if let Some(repr) = &self.repr_attr {
+            // packed enums not allowed
+            if repr.is_packed() {
                 return Err(Diag {
                     kind: Box::new(ParserDiagKind::InvalidModifier(
-                        "Repr 'packed' is not supported for enums".to_string(),
+                        "repr(packed) is not supported for enums.".to_string(),
                     )),
                     level: DiagLevel::Error,
                     loc: Some(loc),
-                    hint: Some("If you need packed enum-like behavior, consider using a manually packed struct with a tag field".to_string()),
+                    hint: Some(
+                        "Packed enums are not safe. Use repr(C) with a fixed-size tag field instead.".to_string(),
+                    ),
                 });
             }
 
-            if let Some(kind) = repr_attr.kind() {
+            // only repr(c) & repr(cyrus) allowed
+            if let Some(kind) = repr.kind() {
                 match kind {
                     ReprKind::C | ReprKind::Cyrus => { /* valid */ }
                     ReprKind::Transparent => {
                         return Err(Diag {
                             kind: Box::new(ParserDiagKind::InvalidModifier(
-                                "Repr 'transparent' cannot be applied to enums. Enums only support 'c' and 'cyrus' layouts.".to_string(),
+                                "repr(transparent) is not valid for enums.".to_string(),
                             )),
                             level: DiagLevel::Error,
                             loc: Some(loc),
-                            hint: None,
+                            hint: Some(
+                                "Transparent representation applies only to structs with exactly one field."
+                                    .to_string(),
+                            ),
                         });
                     }
                 }
@@ -536,78 +553,75 @@ impl UnresolvedModifiers {
 
         Ok(EnumModifiers {
             vis,
-            section,
-            export: self.export,
             repr_attr: self.repr_attr,
-            optional_flags: self.optional_flags,
         })
     }
 
     pub(crate) fn into_union_modifiers(self, loc: Loc) -> Result<UnionModifiers, Diag> {
         let vis = self.visibility.unwrap_or_default();
 
-        if self.inline.is_some() || self.prologue.is_some() || self.callconv.is_some() {
+        // Unions only allow visibility and repr
+        if self.linkage.is_some()
+            || self.inline.is_some()
+            || self.prologue.is_some()
+            || self.export.is_some()
+            || self.callconv.is_some()
+            || !self.optional_flags.is_empty()
+            || !self.placement.is_empty()
+        {
             return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Invalid modifier for union declaration.".to_string(),
-                )),
-                level: DiagLevel::Error,
-                loc: Some(loc),
-                hint: None,
-            });
+            kind: Box::new(ParserDiagKind::InvalidModifier(
+                "Only visibility and repr attributes are allowed on union declarations."
+                    .to_string(),
+            )),
+            level: DiagLevel::Error,
+            loc: Some(loc),
+            hint: Some(
+                "Remove unsupported modifiers such as linkage, inline, export, callconv, flags, or section placement."
+                    .to_string(),
+            ),
+        });
         }
 
-        if self.placement.len() > 1 {
-            return Err(Diag {
-                kind: Box::new(ParserDiagKind::InvalidModifier(
-                    "Multiple section placements are not allowed for unions.".to_string(),
-                )),
-                level: DiagLevel::Error,
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        if let Some(repr_attr) = &self.repr_attr {
-            if repr_attr.is_packed() {
+        // Validate repr attribute
+        if let Some(repr) = &self.repr_attr {
+            if repr.is_packed() {
                 return Err(Diag {
                     kind: Box::new(ParserDiagKind::InvalidModifier(
-                        "Packed layout is not supported for unions. Packed unions would cause unaligned accesses to fields.".to_string(),
+                        "Packed layout is not supported for unions.".to_string(),
                     )),
                     level: DiagLevel::Error,
                     loc: Some(loc),
-                    hint: Some("If you need explicit control over union layout, Consider using 'repr(C)' with manual padding or a packed struct wrapper.".to_string()),
+                    hint: Some(
+                        "Packed unions can cause unaligned field accesses. Use repr(C) with manual padding if needed."
+                            .to_string(),
+                    ),
                 });
             }
 
-            if let Some(kind) = repr_attr.kind() {
+            if let Some(kind) = repr.kind() {
                 match kind {
-                    ReprKind::C | ReprKind::Cyrus => { /* valid */ }
+                    ReprKind::C | ReprKind::Cyrus => {}
                     ReprKind::Transparent => {
-                        if repr_attr.is_packed() {
-                            return Err(Diag {
-                                kind: Box::new(ParserDiagKind::InvalidModifier(
-                                    "Repr 'packed' cannot be combined with 'transparent' on unions.".to_string(),
-                                )),
-                                level: DiagLevel::Error,
-                                loc: Some(loc),
-                                hint: Some("Remove either packed or transparent.".to_string()),
-                            });
-                        }
+                        return Err(Diag {
+                            kind: Box::new(ParserDiagKind::InvalidModifier(
+                                "repr(transparent) is not valid for unions.".to_string(),
+                            )),
+                            level: DiagLevel::Error,
+                            loc: Some(loc),
+                            hint: Some(
+                                "Transparent representation requires exactly one field and is only valid for structs."
+                                    .to_string(),
+                            ),
+                        });
                     }
                 }
             }
         }
 
-        let section = self.placement.get(0).cloned();
-
         Ok(UnionModifiers {
             vis,
-            section,
-            linkage: self.linkage,
-            export: self.export,
             repr_attr: self.repr_attr,
-            optional_flags: self.optional_flags,
         })
     }
 
@@ -647,6 +661,17 @@ impl UnresolvedModifiers {
             });
         }
 
+        if !self.optional_flags.is_empty() {
+            return Err(Diag {
+                kind: Box::new(ParserDiagKind::InvalidModifier(
+                    "Global variables cannot have optional flags.".to_string(),
+                )),
+                level: DiagLevel::Error,
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
         let section = self.placement.get(0).cloned();
 
         Ok(GlobalVarModifiers {
@@ -656,7 +681,6 @@ impl UnresolvedModifiers {
             section,
             placement: self.placement,
             weak: matches!(self.linkage, Some(Linkage::Weak)),
-            optional_flags: self.optional_flags,
         })
     }
 

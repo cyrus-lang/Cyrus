@@ -23,6 +23,8 @@ use cyrusc_typed_ast::{
         EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
         UnionDeclID, VarDeclID,
     },
+    format::Formatter,
+    types::TypeDeclID,
 };
 use std::collections::HashMap;
 
@@ -46,6 +48,7 @@ pub trait SymbolQuery: Sync + Send {
     ///
     /// If the symbol cannot be resolved, a fallback string is returned.
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
+    fn format_type_decl(&self, id: TypeDeclID) -> String;
 
     fn lookup_module_name(&self, file_id: FileID) -> Option<String>;
 }

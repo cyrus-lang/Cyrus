@@ -27,7 +27,9 @@ use cyrusc_typed_ast::decls::{
     EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID, UnionDeclID,
     VarDeclID,
 };
+use cyrusc_typed_ast::format::{Formatter, format_enum_decl, format_struct_decl, format_union_decl};
 use cyrusc_typed_ast::stmts::*;
+use cyrusc_typed_ast::types::TypeDeclID;
 use cyrusc_typed_ast::*;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -617,10 +619,53 @@ impl SymbolQuery for Resolver {
         self.global_symbols.lookup_symbol_id_in_scope(scope_id, name)
     }
 
+    fn format_type_decl(&self, id: TypeDeclID) -> String {
+        let f = Formatter {
+            fmt_symbol: &|sym| self.format_symbol_name(sym),
+            fmt_decl: &|decl| self.format_type_decl(decl),
+        };
+
+        match id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let decl = self.decl_tables.struct_decl(struct_decl_id);
+
+                if let Some(name) = decl.name {
+                    name
+                } else {
+                    format_struct_decl(&decl, &f)
+                }
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                if let Some(name) = decl.name {
+                    name
+                } else {
+                    format_enum_decl(&decl, &f)
+                }
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let decl = self.decl_tables.union_decl(union_decl_id);
+
+                if let Some(name) = decl.name {
+                    name
+                } else {
+                    format_union_decl(&decl, &f)
+                }
+            }
+            TypeDeclID::Interface(interface_decl_id) => self.decl_tables.interface_decl(interface_decl_id).name,
+        }
+    }
+
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String {
         const UNRESOLVED_SYMBOL: &str = "<UNRESOLVED_SYMBOL>";
         const PROXIED_SYMBOL: &str = "<PROXIED_SYMBOL>";
         const PROXIED_MODULE: &str = "<PROXIED_MODULE>";
+
+        let formatter = Formatter {
+            fmt_symbol: &|symbol_id| self.format_symbol_name(symbol_id),
+            fmt_decl: &|type_decl_id| self.format_type_decl(type_decl_id),
+        };
 
         match self.lookup_symbol_entry(symbol_id) {
             Some(symbol_entry) => match &symbol_entry.kind {
@@ -629,7 +674,9 @@ impl SymbolQuery for Resolver {
                 SymbolEntryKind::Namespace(namespace) => namespace.name.clone(),
                 SymbolEntryKind::Func(func_decl_id) => self.decl_tables.func_decl(*func_decl_id).name.clone(),
                 SymbolEntryKind::Method(method_decl_id) => {
-                    self.decl_tables.method_decl(*method_decl_id).func_decl.name.clone()
+                    let method_decl = self.decl_tables.method_decl(*method_decl_id);
+                    let func_decl = method_decl.func_decl;
+                    func_decl.name.clone()
                 }
                 SymbolEntryKind::Struct(struct_decl_id) => {
                     let struct_decl = self.decl_tables.struct_decl(*struct_decl_id);
@@ -637,7 +684,7 @@ impl SymbolQuery for Resolver {
                     if let Some(name) = &struct_decl.name {
                         name.clone()
                     } else {
-                        struct_decl.to_string()
+                        format_struct_decl(&struct_decl, &formatter)
                     }
                 }
                 SymbolEntryKind::Enum(enum_decl_id) => {
@@ -646,7 +693,7 @@ impl SymbolQuery for Resolver {
                     if let Some(name) = &enum_decl.name {
                         name.clone()
                     } else {
-                        enum_decl.to_string()
+                        format_enum_decl(&enum_decl, &formatter)
                     }
                 }
                 SymbolEntryKind::Union(union_decl_id) => {
@@ -655,7 +702,7 @@ impl SymbolQuery for Resolver {
                     if let Some(name) = &union_decl.name {
                         name.clone()
                     } else {
-                        union_decl.to_string()
+                        format_union_decl(&union_decl, &formatter)
                     }
                 }
                 SymbolEntryKind::Interface(interface_decl_id) => {

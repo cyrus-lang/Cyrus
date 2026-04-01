@@ -1842,7 +1842,7 @@
 //     }
 
 //     fn lower_generic_type(&mut self, mut generic_type: GenericType) -> CIRTy {
-//         let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+//         
 
 //         let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
 

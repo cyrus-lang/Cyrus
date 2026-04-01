@@ -38,7 +38,6 @@ use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
-use std::collections::HashMap;
 
 // Resolver endpoints.
 impl Resolver {
@@ -677,7 +676,7 @@ impl Resolver {
     }
 
     fn resolve_unnamed_enum_type(&mut self, enum_type: UnnamedEnumType) -> Option<SemanticType> {
-        let variants = self.resolve_enum_variants(&enum_type)?;
+        let variants = self.resolve_enum_variants(&enum_type.variants)?;
 
         let tag_type = enum_type
             .tag_type
@@ -703,40 +702,6 @@ impl Resolver {
             decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: Vec::new(),
         }))
-    }
-
-    fn resolve_enum_variants(&mut self, unnamed_enum_type: &UnnamedEnumType) -> Option<Vec<TypedEnumVariant>> {
-        let mut variants = Vec::with_capacity(unnamed_enum_type.variants.len());
-
-        for variant in &unnamed_enum_type.variants {
-            let typed_variant = match variant {
-                UnnamedEnumVariant::Ident(ident) => TypedEnumVariant::Ident(ident.clone()),
-                UnnamedEnumVariant::Valued(ident, expr) => {
-                    let expr = self.resolve_expr(expr)?;
-                    TypedEnumVariant::Valued(ident.clone(), Box::new(expr))
-                }
-                UnnamedEnumVariant::Variant(ident, fields) => {
-                    let valued_fields = self.resolve_enum_variant_fields(fields)?;
-                    TypedEnumVariant::Variant(ident.clone(), valued_fields)
-                }
-            };
-
-            variants.push(typed_variant);
-        }
-
-        Some(variants)
-    }
-
-    fn resolve_enum_variant_fields(&mut self, fields: &[UnnamedEnumValuedField]) -> Option<Vec<TypedEnumValuedField>> {
-        let mut typed_fields = Vec::with_capacity(fields.len());
-
-        for field in fields {
-            let ty = self.resolve_type(&None, field.ty.clone(), field.loc)?;
-
-            typed_fields.push(TypedEnumValuedField { ty, loc: field.loc });
-        }
-
-        Some(typed_fields)
     }
 
     fn resolve_unnamed_struct_type(
@@ -1072,6 +1037,50 @@ impl Resolver {
         }))
     }
 
+    fn resolve_enum_variants(&mut self, variants: &[EnumVariant]) -> Option<Vec<TypedEnumVariant>> {
+        let mut typed_variants: Vec<TypedEnumVariant> = Vec::with_capacity(variants.len());
+
+        for variant in variants {
+            let typed_variant = match variant {
+                EnumVariant::Unit(ident) => TypedEnumVariant::Ident(ident.clone()),
+                EnumVariant::Valued { ident, value } => {
+                    let typed_expr = match self.resolve_expr(&value) {
+                        Some(expr) => expr,
+                        None => continue,
+                    };
+
+                    TypedEnumVariant::Valued {
+                        ident: ident.clone(),
+                        value: Box::new(typed_expr),
+                    }
+                }
+                EnumVariant::Tuple { ident, fields } => {
+                    let mut typed_fields = Vec::new();
+
+                    for type_spec in fields {
+                        match self.resolve_type(&None, type_spec.clone(), ident.loc) {
+                            Some(sema_type) => typed_fields.push(sema_type),
+                            None => continue,
+                        }
+                    }
+
+                    TypedEnumVariant::Tuple {
+                        ident: ident.clone(),
+                        fields: typed_fields,
+                    }
+                }
+                EnumVariant::Struct { ident: _, fields: _ } => {
+                    // TODO Struct Enum Variant
+                    unimplemented!("Struct Enum Variant Not Implemented Yet.");
+                }
+            };
+
+            typed_variants.push(typed_variant);
+        }
+
+        Some(typed_variants)
+    }
+
     fn resolve_enum_stmt(&mut self, enum_decl: &ASTEnumStmt) -> Option<TypedStmt> {
         let name = enum_decl.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
@@ -1086,42 +1095,7 @@ impl Resolver {
 
         self.current_object_generic_params = generic_params.clone();
 
-        let mut variants: Vec<TypedEnumVariant> = Vec::with_capacity(enum_decl.variants.len());
-
-        for variant in &enum_decl.variants {
-            let typed_variant = match variant {
-                EnumVariant::Ident(ident) => TypedEnumVariant::Ident(ident.clone()),
-
-                EnumVariant::Variant(ident, valued_fields) => {
-                    let mut fields = Vec::with_capacity(valued_fields.len());
-
-                    for valued_field in valued_fields {
-                        let ty = match self.resolve_type(&generic_params, valued_field.ty.clone(), valued_field.loc) {
-                            Some(ty) => ty,
-                            None => continue,
-                        };
-
-                        fields.push(TypedEnumValuedField {
-                            ty,
-                            loc: valued_field.loc,
-                        });
-                    }
-
-                    TypedEnumVariant::Variant(ident.clone(), fields)
-                }
-
-                EnumVariant::Valued(ident, expr) => {
-                    let typed_expr = match self.resolve_expr(expr) {
-                        Some(expr) => expr,
-                        None => continue,
-                    };
-
-                    TypedEnumVariant::Valued(ident.clone(), Box::new(typed_expr))
-                }
-            };
-
-            variants.push(typed_variant);
-        }
+        let variants = self.resolve_enum_variants(&enum_decl.variants)?;
 
         self.report_if_duplicate_method_names(&name, &enum_decl.methods);
 
@@ -2423,17 +2397,17 @@ impl Resolver {
                 let len_expr = literal_expr_from_const_int(len.try_into().unwrap(), loc);
 
                 Some(SemanticType::Array(TypedArrayType {
-                    element_type: Box::new(SemanticType::PlainType(PlainType::Char)),
+                    element_type: Box::new(SemanticType::Plain(PlainType::Char)),
                     capacity: TypedArrayCapacity::Fixed(Box::new(len_expr)),
                     loc,
                 }))
             }
 
-            Some(StringPrefix::C) => Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+            Some(StringPrefix::C) => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
                 PlainType::Char,
             )))),
 
-            None => Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+            None => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
                 PlainType::Char,
             )))),
         }
@@ -2441,9 +2415,9 @@ impl Resolver {
 
     fn resolve_plain_literal_type(&self, kind: &LiteralKind) -> Option<SemanticType> {
         match kind {
-            LiteralKind::Bool(_) => Some(SemanticType::PlainType(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
-            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+            LiteralKind::Bool(_) => Some(SemanticType::Plain(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::Plain(PlainType::Char)),
+            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
                 PlainType::Void,
             )))),
             _ => None,

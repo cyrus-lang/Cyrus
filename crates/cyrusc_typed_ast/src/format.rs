@@ -15,6 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::decls::{EnumDecl, StructDecl, UnionDecl};
+use crate::stmts::TypedEnumVariant;
 use crate::{
     SymbolID,
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
@@ -23,10 +25,6 @@ use crate::{
         TypedTypeArgs,
     },
     types::{SemanticType, TypeDeclID, TypedArrayCapacity, TypedFuncType, UnresolvedType},
-};
-use crate::{
-    decls::{EnumDecl, StructDecl, UnionDecl},
-    format::format_sema_type,
 };
 use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_source_loc::{Loc, SourceMap};
@@ -44,17 +42,91 @@ fn join_exprs(exprs: &[TypedExprStmt], f: &Formatter) -> String {
         .join(", ")
 }
 
-pub fn format_struct_decl(struct_decl: &StructDecl, f: &Formatter) -> String {
-    if let Some(name) = &struct_decl.name {
-        name.clone()
-    } else {
-        let mut out = String::from("struct {{ ");
-        for field in &struct_decl.fields {
-            out.push_str(&format!("{}: {},", field.name, format_sema_type(field.ty.clone(), f)));
-        }
-        out.push_str(" }}");
-        out
+pub fn format_union_decl(union_decl: &UnionDecl, f: &Formatter) -> String {
+    // named union: just return the name
+    if let Some(name) = &union_decl.name {
+        return name.clone();
     }
+
+    // unnamed struct
+    let mut out = String::from("union { ");
+
+    for (i, field) in union_decl.fields.iter().enumerate() {
+        let formatted_ty = format_sema_type(field.ty.clone(), f);
+
+        out.push_str(&format!("{}: {}", field.name, formatted_ty));
+
+        if i + 1 != union_decl.fields.len() {
+            out.push_str(", ");
+        }
+    }
+
+    out.push_str(" }");
+    out
+}
+
+pub fn format_enum_decl(enum_decl: &EnumDecl, f: &Formatter) -> String {
+    // named enum: just return the name
+    if let Some(name) = &enum_decl.name {
+        return name.clone();
+    }
+
+    // unnamed enum
+    let mut out = String::from("enum { ");
+
+    let variants: Vec<String> = enum_decl
+        .variants
+        .iter()
+        .map(|variant| match variant {
+            TypedEnumVariant::Ident(ident) => ident.value.clone(),
+            TypedEnumVariant::Valued { ident, value } => {
+                format!("{} = {}", ident.value, format_typed_expr(value, f))
+            }
+            TypedEnumVariant::Tuple { ident, fields } => {
+                let types = fields
+                    .iter()
+                    .map(|ty| format_sema_type(ty.clone(), f))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}({})", ident.value, types)
+            }
+            TypedEnumVariant::Struct { ident, fields } => {
+                let fields_str = fields
+                    .iter()
+                    .map(|fld| format!("{}: {}", fld.name.value, format_sema_type(fld.ty.clone(), f)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{} {{ {} }}", ident.value, fields_str)
+            }
+        })
+        .collect();
+
+    out.push_str(&variants.join(", "));
+    out.push_str(" }");
+    out
+}
+
+pub fn format_struct_decl(struct_decl: &StructDecl, f: &Formatter) -> String {
+    // named struct: just return the name
+    if let Some(name) = &struct_decl.name {
+        return name.clone();
+    }
+
+    // unnamed struct
+    let mut out = String::from("struct { ");
+
+    for (i, field) in struct_decl.fields.iter().enumerate() {
+        let formatted_ty = format_sema_type(field.ty.clone(), f);
+
+        out.push_str(&format!("{}: {}", field.name, formatted_ty));
+
+        if i + 1 != struct_decl.fields.len() {
+            out.push_str(", ");
+        }
+    }
+
+    out.push_str(" }");
+    out
 }
 
 pub fn format_typed_expr(expr: &TypedExprStmt, f: &Formatter) -> String {
@@ -211,7 +283,7 @@ pub fn format_sema_type(sema_type: SemanticType, f: &Formatter) -> String {
             let name = (f.fmt_decl)(named_type.decl_id);
             format!("{}{}", name, format_type_args(&named_type.type_args, f))
         }
-        SemanticType::PlainType(plain_type) => plain_type.to_string(),
+        SemanticType::Plain(plain_type) => plain_type.to_string(),
         SemanticType::Array(typed_array_type) => {
             let mut fmt = String::new();
             fmt.push_str(&format_sema_type(*typed_array_type.element_type, f));

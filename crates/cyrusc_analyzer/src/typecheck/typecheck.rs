@@ -19,7 +19,7 @@ use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{SelfModifierKind, abi::Visibility};
 use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::symbols::{symbols::*, table::SymbolEntryMut};
+use cyrusc_internal::symbols::symbols::*;
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::unescape_string;
 use cyrusc_tokens::{
@@ -27,10 +27,9 @@ use cyrusc_tokens::{
     literals::{LiteralKind, StringPrefix},
 };
 use cyrusc_typed_ast::{
+    decls::*,
     exprs::*,
-    format::{DeclFormatterFn, format_func_type, format_missing_fields, format_sema_type, format_unnamed_enum_type},
-    backup_typed_ast_generics::{generic_type::GenericType, mapping_ctx::GenericMappingCtx, substitute::*},
-    sigs::*,
+    format::{format_func_type, format_missing_fields, format_sema_type},
     stmts::*,
     types::*,
     *,
@@ -55,13 +54,13 @@ struct FieldEnv {
 // These functions are the primary entry points for type checking different
 // expression categories. They handle top-level analysis and dispatch to
 // specialized helpers for detailed checking.
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr(
         &mut self,
         expr: &mut TypedExprStmt,
         mut expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
@@ -213,9 +212,9 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
-                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char))),
+                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char))),
                         StringPrefix::B => SemanticType::Array(TypedArrayType {
-                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::PlainType(
+                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::Plain(
                                 PlainType::Char,
                             )))),
                             capacity: TypedArrayCapacity::Fixed(Box::new(capacity)),
@@ -223,14 +222,14 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                         }),
                     }
                 } else {
-                    SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Char)))
+                    SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char)))
                 };
 
                 Some(ty)
             }
-            LiteralKind::Bool(_) => Some(SemanticType::PlainType(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::PlainType(PlainType::Char)),
-            LiteralKind::Null => Some(SemanticType::PlainType(PlainType::Null)),
+            LiteralKind::Bool(_) => Some(SemanticType::Plain(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemanticType::Plain(PlainType::Char)),
+            LiteralKind::Null => Some(SemanticType::Plain(PlainType::Null)),
         };
 
         if let Some(ty) = &ty_opt {
@@ -303,7 +302,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         unnamed_union_value: &mut TypedUnnamedUnionValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         // REVIEW: Use helper instead of this!!
         let unnamed_union_type = match expected_type.as_ref().and_then(|sema_type| {
@@ -421,7 +420,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         unnamed_struct_value: &mut TypedUnnamedStructValue,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         self.validate_struct_repr_attr(
             &unnamed_struct_value.repr_attr,
@@ -481,7 +480,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// indexable (array or pointer). Returns the element type with proper
     /// const qualification.
     fn analyze_array_index(&mut self, array_index: &mut TypedArrayIndexExpr) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let operand_type = match self.analyze_expr(&mut array_index.operand, None) {
             Some(sema_type) => sema_type,
@@ -717,7 +716,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         struct_init: &mut TypedStructInitExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let symbol_entry = self.query.lookup_symbol_entry(struct_init.symbol_id).unwrap();
 
@@ -804,7 +803,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         func_call: &mut TypedFuncCall,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
@@ -1126,7 +1125,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         array: &mut TypedArrayExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         macro_rules! array_type {
             () => {
@@ -1324,7 +1323,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         dynamic: &mut TypedDynamicExpr,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let operand_type = self.analyze_expr(&mut dynamic.operand, None)?;
 
@@ -1383,7 +1382,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 }
 
 // Helper Functions
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     fn analyze_unnamed_enum_value_from_unnamed_type(
         &mut self,
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
@@ -1402,8 +1401,11 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_type_opt: Option<GenericType>,
         enum_decl: EnumDecl,
     ) -> Option<SemanticType> {
-        let (sema_type, enum_ty) =
-            self.validate_unnamed_enum_variant_from_enum_sig(unnamed_enum_value, generic_type_opt.as_ref(), &enum_decl)?;
+        let (sema_type, enum_ty) = self.validate_unnamed_enum_variant_from_enum_sig(
+            unnamed_enum_value,
+            generic_type_opt.as_ref(),
+            &enum_decl,
+        )?;
 
         unnamed_enum_value.enum_ty = Some(enum_ty);
         self.normalize_sema_type(sema_type, unnamed_enum_value.loc)
@@ -1440,7 +1442,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         unnamed_enum_value: &mut TypedUnnamedEnumValue,
         unnamed_enum_type: &TypedUnnamedEnumType,
     ) -> Option<(SemanticType, TypedUnnamedEnumValueTy)> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let variant = unnamed_enum_type
             .variants
@@ -1570,7 +1572,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     return None;
                 }
 
-                TypedEnumVariant::Variant(_, values_fields) => {
+                TypedEnumVariant::Tuple(_, values_fields) => {
                     if values_fields.len() != values.len() {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -1597,7 +1599,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 
     pub(crate) fn check_generic_typedef_missing_args(&mut self, symbol_id: SymbolID, loc: Loc) -> bool {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let Some(resolved_typedef) = self.query.get_typedef(symbol_id) else {
             return true; // it's okay
@@ -1626,7 +1628,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// has the required type arguments specified. Reports an error if type args
     /// are used without type arguments in a context where they're mandatory.
     pub(crate) fn is_sema_type_missing_type_args(&mut self, sema_type: &SemanticType, loc: Loc) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         if let Some(symbol_id) = sema_type.maybe_generic_base_symbol_id() {
             let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
@@ -1662,7 +1664,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         let mut func_decl = interface_type.methods[method_idx].clone();
 
         // interface uses void* for SelfType
-        let self_type = SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void)));
+        let self_type = SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Void)));
         set_self_modifier_type_in_func_sig(&mut func_decl, &self_type);
         set_self_modifier_symbol_id_in_func_sig(&mut func_decl, SymbolID::from(0));
 
@@ -1701,7 +1703,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         is_instance_method_operand: bool,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         fn infer_generic_method_params<'a, M: SymbolEntryMut>(
             this: &mut AnalysisContext<'a, M>,
@@ -1787,7 +1789,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                     // NOTE: Interface is not sensitive to SelfType, that's why we can fake it with a `void*` type.
                     set_self_modifier_type_in_func_sig(
                         &mut func_decl,
-                        &SemanticType::Pointer(Box::new(SemanticType::PlainType(PlainType::Void))),
+                        &SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Void))),
                     );
                     set_self_modifier_symbol_id_in_func_sig(&mut func_decl, SymbolID::from(0));
 
@@ -2070,7 +2072,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         loc: Loc,
         instance_method_call: bool,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let is_variadic = func_decl.params.variadic.is_some();
         let mut expected_args_len = func_decl.params.list.len();
@@ -2164,7 +2166,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     /// C-style variadic parameters. This function processes arguments beyond the static
     /// parameter list according to the function's variadic specification.
     fn check_func_variadic_arguments(&mut self, func_decl: &FuncDecl, args: &mut Vec<TypedExprStmt>, loc: Loc) {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let static_params_len = func_decl.params.list.len();
         let variadic_args = &mut args[static_params_len..];
@@ -2209,7 +2211,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
@@ -2332,7 +2334,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         resolved_union: &ResolvedUnion,
         generic_type_opt: &Option<GenericType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         if union_init.fields.len() != 1 {
             self.reporter.report(Diag {
@@ -2445,7 +2447,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_type_opt: &Option<GenericType>,
         infer_ctx: &FieldEnv,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -2745,7 +2747,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let operand_type = match self.analyze_expr(&mut field_access.operand, expected_type) {
             Some(sema_type) => sema_type,
@@ -2801,7 +2803,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         field_access: &mut TypedFieldAccess,
         expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let operand_type = match self.analyze_expr(&mut field_access.operand, expected_type) {
             Some(sema_type) => sema_type,
@@ -2913,7 +2915,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let mut valued_fields = self.analyze_enum_fielded_variant(&mut enum_variant, method_call)?;
 
@@ -3019,7 +3021,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         method_call: &TypedMethodCall,
     ) -> Option<Vec<TypedEnumValuedField>> {
         match &mut enum_variant {
-            TypedEnumVariant::Variant(_, valued_fields) => {
+            TypedEnumVariant::Tuple(_, valued_fields) => {
                 if valued_fields.len() != method_call.args.len() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -3066,7 +3068,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         generic_params: Option<&TypedGenericParamsList>,
         mapping_ctx: Option<Rc<GenericMappingCtx>>,
     ) -> Option<SemanticType> {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         field_access.object_symbol_id = Some(resolved_enum.symbol_id);
 
@@ -3076,7 +3078,8 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
             .iter()
             .position(|variant| variant.ident().as_string() == field_access.field_name);
 
-        let enum_variant_opt = enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_decl.variants.get(i).unwrap()));
+        let enum_variant_opt =
+            enum_variant_idx_opt.and_then(|i| Some(resolved_enum.enum_decl.variants.get(i).unwrap()));
 
         if enum_variant_opt.is_none() {
             self.reporter.report(Diag {
@@ -3089,7 +3092,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
                 hint: None,
             });
             return None;
-        } else if matches!(enum_variant_opt, Some(TypedEnumVariant::Variant(..))) {
+        } else if matches!(enum_variant_opt, Some(TypedEnumVariant::Tuple(..))) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::VariantMissingFields {
@@ -3454,7 +3457,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
         func_decl: &FuncDecl,
         loc: Loc,
     ) -> bool {
-        let fmt_symbol: DeclFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
+        
 
         let mut result = true;
         let vis = &func_decl.modifiers.vis;
@@ -3577,7 +3580,6 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
     }
 }
 
-
 impl FuncEnv {
     pub fn new() -> Self {
         Self {
@@ -3671,7 +3673,7 @@ fn infer_integer_type(
     }
 
     // default integer type
-    Ok(SemanticType::PlainType(PlainType::Int))
+    Ok(SemanticType::Plain(PlainType::Int))
 }
 
 fn infer_float_type(
@@ -3696,5 +3698,5 @@ fn infer_float_type(
     }
 
     // default float type
-    Ok(SemanticType::PlainType(PlainType::Float64))
+    Ok(SemanticType::Plain(PlainType::Float64))
 }

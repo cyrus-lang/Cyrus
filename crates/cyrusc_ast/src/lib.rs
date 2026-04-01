@@ -206,35 +206,33 @@ pub struct ASTEnumStmt {
 
 #[derive(Debug, Clone)]
 pub struct UnnamedEnumType {
-    pub variants: Vec<UnnamedEnumVariant>,
+    pub variants: Vec<EnumVariant>,
     pub tag_type: Option<Box<TypeSpecifier>>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub loc: Loc,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UnnamedEnumVariant {
-    Ident(Ident),
-    Variant(Ident, Vec<UnnamedEnumValuedField>),
-    Valued(Ident, Box<ASTExpr>),
-}
-
-#[derive(Debug, Clone)]
-pub struct UnnamedEnumValuedField {
-    pub ty: TypeSpecifier,
-    pub loc: Loc,
-}
-
 #[derive(Debug, Clone)]
 pub enum EnumVariant {
-    Ident(Ident),
-    Variant(Ident, Vec<EnumValuedField>),
-    Valued(Ident, Box<ASTExpr>),
+    Unit(Ident),
+    Valued {
+        ident: Ident,
+        value: Box<ASTExpr>,
+    },
+    Tuple {
+        ident: Ident,
+        fields: Vec<TypeSpecifier>,
+    },
+    Struct {
+        ident: Ident,
+        fields: Vec<EnumVariantStructField>,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumValuedField {
+pub struct EnumVariantStructField {
+    pub name: Ident,
     pub ty: TypeSpecifier,
     pub loc: Loc,
 }
@@ -1211,9 +1209,48 @@ impl PartialEq for UnnamedEnumType {
     }
 }
 
-impl PartialEq for UnnamedEnumValuedField {
+impl PartialEq for EnumVariant {
     fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty
+        match (self, other) {
+            (Self::Unit(l0), Self::Unit(r0)) => l0 == r0,
+            (
+                Self::Valued {
+                    ident: l_ident,
+                    value: l_value,
+                },
+                Self::Valued {
+                    ident: r_ident,
+                    value: r_value,
+                },
+            ) => l_ident == r_ident && l_value == r_value,
+            (
+                Self::Tuple {
+                    ident: l_ident,
+                    fields: l_fields,
+                },
+                Self::Tuple {
+                    ident: r_ident,
+                    fields: r_fields,
+                },
+            ) => l_ident == r_ident && l_fields == r_fields,
+            (
+                Self::Struct {
+                    ident: l_ident,
+                    fields: l_fields,
+                },
+                Self::Struct {
+                    ident: r_ident,
+                    fields: r_fields,
+                },
+            ) => l_ident == r_ident && l_fields == r_fields,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for EnumVariantStructField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
     }
 }
 
@@ -1432,6 +1469,6 @@ impl Eq for UnnamedUnionTypeField {}
 impl Eq for FuncType {}
 impl Eq for TupleType {}
 impl Eq for UnnamedEnumType {}
-impl Eq for UnnamedEnumValuedField {}
 impl Eq for GenericInst {}
 impl Eq for SelfType {}
+impl Eq for EnumVariantStructField {}

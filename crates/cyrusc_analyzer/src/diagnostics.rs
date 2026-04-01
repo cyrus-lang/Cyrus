@@ -1,5 +1,3 @@
-use std::ops::RangeInclusive;
-
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -16,14 +14,15 @@ use std::ops::RangeInclusive;
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+
 use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
-use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncParamKind, TypedFuncVariadicParams, TypedGenericParamsList, TypedTypeArgs, TypedVarStmt},
+    stmts::{TypedFuncParamKind, TypedFuncVariadicParams, TypedGenericParamsList, TypedTypeArgs},
     types::SemanticType,
 };
+use std::ops::RangeInclusive;
 use thiserror::Error;
 
 use crate::AnalysisContext;
@@ -407,7 +406,7 @@ pub enum AnalyzerDiagKind {
     UnescapeError(UnescapeError),
 }
 
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn report_const_qualified_type_assigned_to_non_const_variable(&mut self, loc: Loc) {
         self.reporter.report(Diag {
             level: DiagLevel::Warning,

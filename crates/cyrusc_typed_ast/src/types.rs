@@ -28,7 +28,7 @@ use std::hash::{Hash, Hasher};
 pub enum SemanticType {
     Unresolved(UnresolvedType),
     Named(NamedType),
-    PlainType(PlainType),
+    Plain(PlainType),
     Array(TypedArrayType),
     Const(Box<SemanticType>),
     Pointer(Box<SemanticType>),
@@ -146,7 +146,7 @@ impl TypeDeclID {
 
 #[inline]
 pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::PlainType(match suffix {
+    Some(SemanticType::Plain(match suffix {
         TokenKind::UIntPtr => PlainType::UIntPtr,
         TokenKind::IntPtr => PlainType::IntPtr,
         TokenKind::USize => PlainType::USize,
@@ -169,7 +169,7 @@ pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticTyp
 
 #[inline]
 pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::PlainType(match suffix {
+    Some(SemanticType::Plain(match suffix {
         TokenKind::Float16 => PlainType::Float16,
         TokenKind::Float32 => PlainType::Float32,
         TokenKind::Float64 => PlainType::Float64,
@@ -240,7 +240,15 @@ impl SemanticType {
     #[inline]
     pub fn as_plain_type(&self) -> Option<&PlainType> {
         match self.const_inner() {
-            SemanticType::PlainType(ty) => Some(ty),
+            SemanticType::Plain(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_named_type(&self) -> Option<&NamedType> {
+        match self.const_inner() {
+            SemanticType::Named(named_type) => Some(named_type),
             _ => None,
         }
     }
@@ -290,7 +298,7 @@ impl SemanticType {
     #[inline]
     pub fn is_char(&self) -> bool {
         match self.const_inner() {
-            SemanticType::PlainType(PlainType::Char) => true,
+            SemanticType::Plain(PlainType::Char) => true,
             _ => false,
         }
     }
@@ -298,7 +306,7 @@ impl SemanticType {
     #[inline]
     pub fn is_scalar(&self) -> bool {
         match self.const_inner() {
-            SemanticType::PlainType(plain_type) => plain_type.is_scalar(),
+            SemanticType::Plain(plain_type) => plain_type.is_scalar(),
             _ => false,
         }
     }
@@ -314,7 +322,7 @@ impl SemanticType {
     #[inline]
     pub fn is_integer(&self) -> bool {
         match self.const_inner() {
-            SemanticType::PlainType(basic) => basic.is_integer(),
+            SemanticType::Plain(basic) => basic.is_integer(),
             _ => false,
         }
     }
@@ -322,7 +330,7 @@ impl SemanticType {
     #[inline]
     pub fn is_float(&self) -> bool {
         match self.const_inner() {
-            SemanticType::PlainType(basic) => basic.is_float(),
+            SemanticType::Plain(basic) => basic.is_float(),
             _ => false,
         }
     }
@@ -337,7 +345,7 @@ impl SemanticType {
 
     #[inline]
     pub fn is_bool(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Bool))
+        matches!(self.const_inner(), SemanticType::Plain(PlainType::Bool))
     }
 
     #[inline]
@@ -357,7 +365,7 @@ impl SemanticType {
 
     #[inline]
     pub fn is_void(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::PlainType(PlainType::Void))
+        matches!(self.const_inner(), SemanticType::Plain(PlainType::Void))
     }
 
     #[inline]
@@ -601,7 +609,7 @@ impl TryFrom<TokenKind> for SemanticType {
             _ => return Err(()),
         };
 
-        Ok(SemanticType::PlainType(basic_type))
+        Ok(SemanticType::Plain(basic_type))
     }
 }
 

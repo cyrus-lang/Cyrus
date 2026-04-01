@@ -17,7 +17,6 @@
 
 use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
-use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_source_loc::Loc;
 
 enum NamingConvDeclKind {
@@ -27,7 +26,7 @@ enum NamingConvDeclKind {
     Union,
 }
 
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     pub(crate) fn nameconv_check_struct_name(&mut self, name: String, loc: Loc) {
         self.nameconv_check_name(NamingConvDeclKind::Struct, &name, loc);
     }

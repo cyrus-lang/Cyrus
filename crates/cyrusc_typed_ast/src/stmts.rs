@@ -27,7 +27,7 @@ use cyrusc_ast::{
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::{FileID, Loc};
-use std::{collections::HashMap, hash::Hash};
+use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub enum TypedStmt {
@@ -147,12 +147,23 @@ pub struct TypedEnumStmt {
 #[derive(Debug, Clone)]
 pub enum TypedEnumVariant {
     Ident(Ident),
-    Valued(Ident, Box<TypedExprStmt>),
-    Variant(Ident, Vec<TypedEnumValuedField>),
+    Valued {
+        ident: Ident,
+        value: Box<TypedExprStmt>,
+    },
+    Tuple {
+        ident: Ident,
+        fields: Vec<SemanticType>,
+    },
+    Struct {
+        ident: Ident,
+        fields: Vec<TypedEnumVariantStructField>,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedEnumValuedField {
+pub struct TypedEnumVariantStructField {
+    pub name: Ident,
     pub ty: SemanticType,
     pub loc: Loc,
 }
@@ -404,6 +415,31 @@ pub enum TypedTypeArg {
     Named { key: String, ty: SemanticType, loc: Loc },
 }
 
+impl TypedFuncParams {
+    pub fn as_func_type_params(&self) -> TypedFuncTypeParams {
+        let list = self
+            .list
+            .iter()
+            .map(|param_kind| match param_kind {
+                TypedFuncParamKind::FuncParam(param) => param.ty.clone(),
+                TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone().unwrap(),
+            })
+            .collect();
+
+        let variadic = match &self.variadic {
+            Some(variadic) => match variadic {
+                TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
+                TypedFuncVariadicParams::Typed(_, sema_type) => {
+                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone())))
+                }
+            },
+            None => None,
+        };
+
+        TypedFuncTypeParams { list, variadic }
+    }
+}
+
 impl TypedStmt {
     pub fn loc(&self) -> Loc {
         match self {
@@ -464,23 +500,6 @@ impl TypedEnumStmt {
             }
         }
         false
-    }
-}
-
-impl TypedEnumVariant {
-    pub fn ident(&self) -> &Ident {
-        match self {
-            TypedEnumVariant::Ident(ident) => ident,
-            TypedEnumVariant::Valued(ident, ..) => ident,
-            TypedEnumVariant::Variant(ident, ..) => ident,
-        }
-    }
-
-    pub fn as_fielded_variant(&self) -> Option<&Vec<TypedEnumValuedField>> {
-        match self {
-            TypedEnumVariant::Variant(_, valued_fields) => Some(valued_fields),
-            _ => None,
-        }
     }
 }
 

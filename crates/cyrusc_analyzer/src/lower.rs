@@ -20,7 +20,6 @@ use cyrusc_ast::{
     AssignKind,
     operators::{InfixOperator, PrefixOperator},
 };
-use cyrusc_internal::symbols::table::SymbolEntryMut;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::{
     exprs::{
@@ -30,7 +29,7 @@ use cyrusc_typed_ast::{
     types::{PlainType, SemanticType},
 };
 
-impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
+impl<'a> AnalysisContext<'a> {
     /// Rewrites special expression forms (e.g. compound assignments, pointer negation)
     /// into their canonical AST representation.
     pub(crate) fn lower_special_exprs(&mut self, typed_expr: &mut TypedExprStmt, expected_type: Option<SemanticType>) {
@@ -67,7 +66,7 @@ impl<'a, M: SymbolEntryMut> AnalysisContext<'a, M> {
 
         let null_literal_expr = TypedExprStmt {
             kind: TypedExprKind::Literal(TypedLiteralExpr {
-                ty: Some(SemanticType::Pointer(Box::new(SemanticType::PlainType(
+                ty: Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
                     PlainType::Void,
                 )))),
                 kind: LiteralKind::Null,
