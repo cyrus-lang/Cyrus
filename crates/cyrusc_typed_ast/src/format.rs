@@ -15,26 +15,29 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::SymbolID;
 use crate::decls::{EnumDecl, StructDecl, UnionDecl};
 use crate::stmts::TypedEnumVariant;
+use crate::types::TypeDeclID;
 use crate::{
-    SymbolID,
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{
         TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg,
         TypedTypeArgs,
     },
-    types::{SemanticType, TypeDeclID, TypedArrayCapacity, TypedFuncType, UnresolvedType},
+    types::{SemanticType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
 use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_source_loc::{Loc, SourceMap};
 
-pub struct Formatter<'a> {
-    pub fmt_symbol: &'a dyn Fn(SymbolID) -> String,
-    pub fmt_decl: &'a dyn Fn(TypeDeclID) -> String,
+/// Provides human‑readable formatting utilities for compiler diagnostics
+/// and debugging output.
+pub trait Formatter {
+    fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
+    fn format_type_decl(&self, type_decl_id: TypeDeclID) -> String;
 }
 
-fn join_exprs(exprs: &[TypedExprStmt], f: &Formatter) -> String {
+fn join_exprs(exprs: &[TypedExprStmt], f: &dyn Formatter) -> String {
     exprs
         .iter()
         .map(|expr| format_typed_expr(expr, f))
@@ -42,7 +45,7 @@ fn join_exprs(exprs: &[TypedExprStmt], f: &Formatter) -> String {
         .join(", ")
 }
 
-pub fn format_union_decl(union_decl: &UnionDecl, f: &Formatter) -> String {
+pub fn format_union_decl(union_decl: &UnionDecl, f: &dyn Formatter) -> String {
     // named union: just return the name
     if let Some(name) = &union_decl.name {
         return name.clone();
@@ -65,7 +68,7 @@ pub fn format_union_decl(union_decl: &UnionDecl, f: &Formatter) -> String {
     out
 }
 
-pub fn format_enum_decl(enum_decl: &EnumDecl, f: &Formatter) -> String {
+pub fn format_enum_decl(enum_decl: &EnumDecl, f: &dyn Formatter) -> String {
     // named enum: just return the name
     if let Some(name) = &enum_decl.name {
         return name.clone();
@@ -106,7 +109,7 @@ pub fn format_enum_decl(enum_decl: &EnumDecl, f: &Formatter) -> String {
     out
 }
 
-pub fn format_struct_decl(struct_decl: &StructDecl, f: &Formatter) -> String {
+pub fn format_struct_decl(struct_decl: &StructDecl, f: &dyn Formatter) -> String {
     // named struct: just return the name
     if let Some(name) = &struct_decl.name {
         return name.clone();
@@ -129,22 +132,22 @@ pub fn format_struct_decl(struct_decl: &StructDecl, f: &Formatter) -> String {
     out
 }
 
-pub fn format_typed_expr(expr: &TypedExprStmt, f: &Formatter) -> String {
+pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> String {
     use TypedExprKind::*;
 
     match &expr.kind {
-        Symbol(TypedSymbolExpr { symbol_id, .. }) => (f.fmt_symbol)(*symbol_id),
+        Symbol(TypedSymbolExpr { symbol_id, .. }) => formatter.format_symbol_name(*symbol_id),
         Literal(literal) => literal.to_string(),
-        Prefix(p) => format!("{}{}", p.op, format_typed_expr(&p.operand, f)),
+        Prefix(p) => format!("{}{}", p.op, format_typed_expr(&p.operand, formatter)),
 
         Infix(inf) => format!(
             "{}{}{}",
-            format_typed_expr(&inf.lhs, f),
+            format_typed_expr(&inf.lhs, formatter),
             inf.op,
-            format_typed_expr(&inf.rhs, f)
+            format_typed_expr(&inf.rhs, formatter)
         ),
         Unary(unary) => {
-            let operand = format_typed_expr(&unary.operand, f);
+            let operand = format_typed_expr(&unary.operand, formatter);
             match unary.op {
                 UnaryOperator::PreIncrement => format!("++{}", operand),
                 UnaryOperator::PreDecrement => format!("--{}", operand),
@@ -153,31 +156,37 @@ pub fn format_typed_expr(expr: &TypedExprStmt, f: &Formatter) -> String {
             }
         }
         Assign(assign) => {
-            let lhs = format_typed_expr(&assign.lhs, f);
-            let rhs = format_typed_expr(&assign.rhs, f);
+            let lhs = format_typed_expr(&assign.lhs, formatter);
+            let rhs = format_typed_expr(&assign.rhs, formatter);
             format!("{}{}{}", lhs, assign.kind, rhs)
         }
         Array(array) => {
             let ty = array
                 .ty
                 .as_ref()
-                .map(|t| format_sema_type(t.clone(), f))
+                .map(|t| format_sema_type(t.clone(), formatter))
                 .unwrap_or_default();
-            format!("{}{{{}}}", ty, join_exprs(&array.elements, f))
+            format!("{}{{{}}}", ty, join_exprs(&array.elements, formatter))
         }
         ArrayIndex(array_index) => format!(
             "{}[{}]",
-            format_typed_expr(&array_index.operand, f),
-            format_typed_expr(&array_index.index, f)
+            format_typed_expr(&array_index.operand, formatter),
+            format_typed_expr(&array_index.index, formatter)
         ),
-        AddrOf(addr_of) => format!("&{}", format_typed_expr(&addr_of.operand, f)),
-        Deref(deref) => format!("*{}", format_typed_expr(&deref.operand, f)),
+        AddrOf(addr_of) => format!("&{}", format_typed_expr(&addr_of.operand, formatter)),
+        Deref(deref) => format!("*{}", format_typed_expr(&deref.operand, formatter)),
         StructInit(struct_init) => {
-            let name = (f.fmt_symbol)(struct_init.symbol_id);
+            let name = formatter.format_symbol_name(struct_init.symbol_id);
             let fields = struct_init
                 .fields
                 .iter()
-                .map(|field_init| format!("{}: {}", field_init.name, format_typed_expr(&field_init.value, f)))
+                .map(|field_init| {
+                    format!(
+                        "{}: {}",
+                        field_init.name,
+                        format_typed_expr(&field_init.value, formatter)
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -185,24 +194,28 @@ pub fn format_typed_expr(expr: &TypedExprStmt, f: &Formatter) -> String {
         }
         FuncCall(func_call) => format!(
             "{}({})",
-            format_typed_expr(&func_call.operand, f),
-            join_exprs(&func_call.args, f)
+            format_typed_expr(&func_call.operand, formatter),
+            join_exprs(&func_call.args, formatter)
         ),
         FieldAccess(field_access) => {
-            let op = format_typed_expr(&field_access.operand, f);
+            let op = format_typed_expr(&field_access.operand, formatter);
             let sep = if field_access.is_fat_arrow { "->" } else { "." };
             format!("{}{}{}", op, sep, field_access.field_name)
         }
-        TupleAccess(tuple_access) => format!("{}.{}", format_typed_expr(&tuple_access.operand, f), tuple_access.index),
+        TupleAccess(tuple_access) => format!(
+            "{}.{}",
+            format_typed_expr(&tuple_access.operand, formatter),
+            tuple_access.index
+        ),
         MethodCall(method_call) => {
-            let operand = format_typed_expr(&method_call.operand, f);
+            let operand = format_typed_expr(&method_call.operand, formatter);
             let separator = if method_call.is_fat_arrow { "->" } else { "." };
             format!("{}{}{}", operand, separator, method_call.method_name)
         }
         UnnamedUnionValue(unnamed_union_value) => format!(
             "union {{ {} = {} }}",
             unnamed_union_value.name.as_string(),
-            format_typed_expr(&unnamed_union_value.value, f)
+            format_typed_expr(&unnamed_union_value.value, formatter)
         ),
         UnnamedStructValue(unnamed_struct_value) => {
             let mut out = String::new();
@@ -228,9 +241,9 @@ pub fn format_typed_expr(expr: &TypedExprStmt, f: &Formatter) -> String {
                         x.push_str(&field.name);
                         if let Some(ty) = &field.ty {
                             x.push_str(": ");
-                            x.push_str(&format_sema_type(ty.clone(), f));
+                            x.push_str(&format_sema_type(ty.clone(), formatter));
                         }
-                        x.push_str(&format_typed_expr(&field.value, f));
+                        x.push_str(&format_typed_expr(&field.value, formatter));
                         x
                     })
                     .collect::<Vec<_>>()
@@ -243,36 +256,36 @@ pub fn format_typed_expr(expr: &TypedExprStmt, f: &Formatter) -> String {
         UnnamedEnumValue(unnamed_enum_value) => {
             let mut out = format!(".{}", unnamed_enum_value.variant_name.as_string());
             if let TypedUnnamedEnumValueKind::Fielded(vals) = &unnamed_enum_value.kind {
-                out.push_str(&format!("({})", join_exprs(vals, f)));
+                out.push_str(&format!("({})", join_exprs(vals, formatter)));
             }
             out
         }
-        SemanticType(sema_type) => format_sema_type(sema_type.clone(), f),
-        Lambda(lambda) => format_lambda(lambda, f),
+        SemanticType(sema_type) => format_sema_type(sema_type.clone(), formatter),
+        Lambda(lambda) => format_lambda(lambda, formatter),
         Tuple(tuple) => format!(
             "({})",
             tuple
                 .elements
                 .iter()
-                .map(|v| format_typed_expr(v, f))
+                .map(|v| format_typed_expr(v, formatter))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Dynamic(dynamic) => format!("dynamic {}", format_typed_expr(&dynamic.operand, f)),
+        Dynamic(dynamic) => format!("dynamic {}", format_typed_expr(&dynamic.operand, formatter)),
         Builtin(builtin) => match builtin {
             TypedBuiltin::BuiltinFunc(builtin_func) => {
-                format!("@{}({})", builtin_func.name, join_exprs(&builtin_func.args, f))
+                format!("@{}({})", builtin_func.name, join_exprs(&builtin_func.args, formatter))
             }
             TypedBuiltin::BuiltinScope(builtin_scope) => format!(
                 "@{}({}) {{ ... }}",
                 builtin_scope.name,
-                join_exprs(&builtin_scope.args, f)
+                join_exprs(&builtin_scope.args, formatter)
             ),
         },
     }
 }
 
-pub fn format_sema_type(sema_type: SemanticType, f: &Formatter) -> String {
+pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> String {
     match sema_type {
         SemanticType::Unresolved(unresolved_type) => match unresolved_type {
             UnresolvedType::Symbol(_) => format!("<unresolved_symbol>"),
@@ -280,17 +293,17 @@ pub fn format_sema_type(sema_type: SemanticType, f: &Formatter) -> String {
         },
         SemanticType::GenericParam(generic_param) => generic_param.name.as_string(),
         SemanticType::Named(named_type) => {
-            let name = (f.fmt_decl)(named_type.decl_id);
-            format!("{}{}", name, format_type_args(&named_type.type_args, f))
+            let name = formatter.format_type_decl(named_type.decl_id);
+            format!("{}{}", name, format_type_args(&named_type.type_args, formatter))
         }
         SemanticType::Plain(plain_type) => plain_type.to_string(),
         SemanticType::Array(typed_array_type) => {
             let mut fmt = String::new();
-            fmt.push_str(&format_sema_type(*typed_array_type.element_type, f));
+            fmt.push_str(&format_sema_type(*typed_array_type.element_type, formatter));
             fmt.push_str("[");
             match typed_array_type.capacity {
                 TypedArrayCapacity::Fixed(expr) => {
-                    fmt.push_str(&format_typed_expr(&expr, f));
+                    fmt.push_str(&format_typed_expr(&expr, formatter));
                 }
                 TypedArrayCapacity::Dynamic => {}
             }
@@ -298,31 +311,31 @@ pub fn format_sema_type(sema_type: SemanticType, f: &Formatter) -> String {
             fmt
         }
         SemanticType::Const(sema_type) => {
-            format!("const {}", format_sema_type(*sema_type, f))
+            format!("const {}", format_sema_type(*sema_type, formatter))
         }
         SemanticType::Pointer(sema_type) => {
-            format!("{}*", format_sema_type(*sema_type, f))
+            format!("{}*", format_sema_type(*sema_type, formatter))
         }
-        SemanticType::FuncType(func_type) => format_func_type(&func_type, f),
+        SemanticType::FuncType(func_type) => format_func_type(&func_type, formatter),
         SemanticType::Tuple(tuple_type) => {
             format!(
                 "({})",
                 tuple_type
                     .elements
                     .iter()
-                    .map(|t| format_sema_type(t.clone(), f))
+                    .map(|t| format_sema_type(t.clone(), formatter))
                     .collect::<Vec<String>>()
                     .join(", ")
             )
         }
-        SemanticType::DynamicType(dynamic_type) => {
-            format!("dynamic {}", (f.fmt_symbol)(dynamic_type.interface_id))
+        SemanticType::InterfaceType(dynamic_type) => {
+            format!("dynamic {}", formatter.format_symbol_name(dynamic_type.interface_id))
         }
         SemanticType::SelfType(_) => "Self".to_string(),
     }
 }
 
-fn format_type_args(type_args: &TypedTypeArgs, f: &Formatter) -> String {
+fn format_type_args(type_args: &TypedTypeArgs, formatter: &dyn Formatter) -> String {
     if type_args.is_empty() {
         return String::new();
     }
@@ -331,10 +344,10 @@ fn format_type_args(type_args: &TypedTypeArgs, f: &Formatter) -> String {
     for type_arg in type_args {
         match type_arg {
             TypedTypeArg::Positional { ty, .. } => {
-                out.push_str(&format_sema_type(ty.clone(), f));
+                out.push_str(&format_sema_type(ty.clone(), formatter));
             }
             TypedTypeArg::Named { key, ty, .. } => {
-                out.push_str(&format!("{} = {}", key, format_sema_type(ty.clone(), f)));
+                out.push_str(&format!("{} = {}", key, format_sema_type(ty.clone(), formatter)));
             }
         }
     }
@@ -342,12 +355,12 @@ fn format_type_args(type_args: &TypedTypeArgs, f: &Formatter) -> String {
     out
 }
 
-pub fn format_func_type<'a>(func_type: &TypedFuncType, f: &Formatter) -> String {
+pub fn format_func_type<'a>(func_type: &TypedFuncType, formatter: &dyn Formatter) -> String {
     let mut params = func_type
         .params
         .list
         .iter()
-        .map(|param| format_sema_type(param.clone(), f))
+        .map(|param| format_sema_type(param.clone(), formatter))
         .collect::<Vec<String>>()
         .join(", ");
 
@@ -355,23 +368,23 @@ pub fn format_func_type<'a>(func_type: &TypedFuncType, f: &Formatter) -> String 
         match *variadic {
             TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
             TypedFuncTypeVariadicParams::Typed(sema_type) => {
-                params.push_str(&format!(", {}...", format_sema_type(sema_type, f)))
+                params.push_str(&format!(", {}...", format_sema_type(sema_type, formatter)))
             }
         }
     }
 
-    let ret = format_sema_type(*func_type.ret_type.clone(), f);
+    let ret = format_sema_type(*func_type.ret_type.clone(), formatter);
     format!("fn({}) {}", params, ret)
 }
 
-pub fn format_lambda(lambda: &TypedLambdaExpr, f: &Formatter) -> String {
+pub fn format_lambda(lambda: &TypedLambdaExpr, formatter: &dyn Formatter) -> String {
     let mut params = lambda
         .params
         .list
         .iter()
         .map(|param_kind| match param_kind {
             TypedFuncParamKind::FuncParam(param) => {
-                format!("{}: {}", param.name, format_sema_type(param.ty.clone(), f))
+                format!("{}: {}", param.name, format_sema_type(param.ty.clone(), formatter))
             }
             TypedFuncParamKind::SelfModifier(..) => unreachable!(),
         })
@@ -384,12 +397,12 @@ pub fn format_lambda(lambda: &TypedLambdaExpr, f: &Formatter) -> String {
             TypedFuncVariadicParams::Typed(ident, sema_type) => params.push_str(&format!(
                 ", {}: ...{}",
                 ident.name,
-                format_sema_type(sema_type.clone(), f)
+                format_sema_type(sema_type.clone(), formatter)
             )),
         }
     }
 
-    let ret = format_sema_type(lambda.ret_type.clone(), f);
+    let ret = format_sema_type(lambda.ret_type.clone(), formatter);
     format!("fn({}) {} {{ ... }}", params, ret)
 }
 

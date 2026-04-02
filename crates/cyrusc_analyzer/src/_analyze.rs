@@ -15,72 +15,29 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-    AnalysisContext, AnalyzerConfig, EntryPoints, diagnostics::AnalyzerDiagKind, normalizer::TypeCache,
-    typecheck::typecheck::FuncEnv,
-};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{
     AssignKind,
     abi::{ReprAttr, ReprKind},
 };
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver, value::is_comptime_valid};
-use cyrusc_diagcentral::{Diag, DiagLevel, reporter::DiagReporter};
+use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::{
     flow_state::{ControlRegion, FlowState},
-    monomorph::MonomorphRegistry,
-    symbols::table::SymbolQuery,
-    vtable::VTableRegistry,
+    symbols::symbols::SymbolEntryKind,
 };
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    SymbolID, TypedProgramTree,
-    decls::table::DeclTablesRegistry,
-    exprs::{MemoryLocation, TypedAssignExpr, TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
-    format::{Formatter, format_sema_type},
+    SymbolID,
+    decls::VarDeclID,
+    exprs::{TypedAssignExpr, TypedExprStmt},
+    format::format_sema_type,
     stmts::*,
     types::*,
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    mem,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, mem};
 
-// Analysis Context Public API
 impl<'a> AnalysisContext<'a> {
-    pub fn new(
-        config: AnalyzerConfig,
-        reporter: Arc<DiagReporter>,
-        query: &'a dyn SymbolQuery,
-        decl_tables: Arc<DeclTablesRegistry>,
-        program_tree: Rc<RefCell<TypedProgramTree>>,
-        entry_points: Arc<EntryPoints>,
-        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
-        vtable_registry: Arc<Mutex<VTableRegistry>>,
-    ) -> Self {
-        let formatter = Formatter {
-            fmt_symbol: &|symbol_id| query.format_symbol_name(symbol_id),
-            fmt_decl: &|type_decl_id| query.format_type_decl(type_decl_id),
-        };
-
-        Self {
-            config,
-            type_cache: TypeCache::default(),
-            fenv: FuncEnv::new(),
-            reporter,
-            control_stack: Vec::new(),
-            program_tree,
-            query,
-            decl_tables,
-            entry_points,
-            vtable_registry,
-            monomorph_registry,
-            formatter,
-        }
-    }
-
     // Traverse TypedAST
     pub fn analyze(&mut self) {
         let mut body = {
@@ -223,78 +180,82 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    // FIXME
     pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedExportTupleStmt) -> Option<()> {
-        let mut explicit_sema_ty: Option<SemanticType> = None;
+        todo!();
 
-        if let Some(sema_type) = &export_tuple.ty {
-            match self.normalize_and_check_sema_ty(sema_type.clone(), export_tuple.loc) {
-                Some(sema_type) => {
-                    explicit_sema_ty = Some(sema_type);
-                }
-                None => return None,
-            }
-        }
+        // let mut explicit_sema_ty: Option<SemanticType> = None;
 
-        match &mut export_tuple.rhs {
-            Some(expr) => expr.clone(),
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DestructureTupleWithNoRhs),
-                    loc: Some(export_tuple.loc),
-                    hint: None,
-                });
-                return None;
-            }
-        };
+        // if let Some(sema_type) = &export_tuple.ty {
+        //     match self.normalize_and_check_sema_ty(sema_type.clone(), export_tuple.loc) {
+        //         Some(sema_type) => {
+        //             explicit_sema_ty = Some(sema_type);
+        //         }
+        //         None => return None,
+        //     }
+        // }
 
-        let expr_sema_ty = self.analyze_expr(&mut export_tuple.rhs.as_mut().unwrap(), explicit_sema_ty.clone())?;
+        // match &mut export_tuple.rhs {
+        //     Some(expr) => expr.clone(),
+        //     None => {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::DestructureTupleWithNoRhs),
+        //             loc: Some(export_tuple.loc),
+        //             hint: None,
+        //         });
+        //         return None;
+        //     }
+        // };
 
-        let Some(tuple_type) = expr_sema_ty.as_tuple_type() else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                loc: Some(export_tuple.loc),
-                hint: None,
-            });
-            return None;
-        };
+        // let expr_sema_ty = self.analyze_expr(&mut export_tuple.rhs.as_mut().unwrap(), explicit_sema_ty.clone())?;
 
-        if explicit_sema_ty.is_none() {
-            export_tuple.ty = Some(expr_sema_ty.clone());
-        }
+        // let Some(tuple_type) = expr_sema_ty.as_tuple_type() else {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
+        //         loc: Some(export_tuple.loc),
+        //         hint: None,
+        //     });
+        //     return None;
+        // };
 
-        if let Some(target_type) = explicit_sema_ty {
-            if !self.is_assignable_to(expr_sema_ty.clone(), target_type.clone(), export_tuple.loc) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_sema_type(target_type, &self.formatter),
-                        rhs_type: format_sema_type(expr_sema_ty, &self.formatter),
-                    }),
-                    loc: Some(export_tuple.loc),
-                    hint: None,
-                });
-                return None;
-            }
-        }
+        // if explicit_sema_ty.is_none() {
+        //     export_tuple.ty = Some(expr_sema_ty.clone());
+        // }
 
-        let tuple_patterns = export_tuple.pattern.into_tuple();
-        for (i, (pattern, sema_type)) in tuple_patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
-            self.analyze_tuple_pattern(
-                pattern,
-                sema_type,
-                &export_tuple.rhs.as_mut().unwrap(),
-                export_tuple.is_const,
-                export_tuple.loc,
-                vec![i],
-            );
-        }
+        // if let Some(target_type) = explicit_sema_ty {
+        //     if !self.is_assignable_to(expr_sema_ty.clone(), target_type.clone(), export_tuple.loc) {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+        //                 lhs_type: format_sema_type(target_type, self.formatter),
+        //                 rhs_type: format_sema_type(expr_sema_ty, self.formatter),
+        //             }),
+        //             loc: Some(export_tuple.loc),
+        //             hint: None,
+        //         });
+        //         return None;
+        //     }
+        // }
 
-        self.normalize_and_check_sema_ty(export_tuple.ty.clone()?, export_tuple.loc)?;
-        Some(())
+        // let tuple_patterns = export_tuple.pattern.into_tuple();
+        // for (i, (pattern, sema_type)) in tuple_patterns.iter().zip(tuple_type.elements.iter()).enumerate() {
+        //     self.analyze_tuple_pattern(
+        //         pattern,
+        //         sema_type,
+        //         &export_tuple.rhs.as_mut().unwrap(),
+        //         export_tuple.is_const,
+        //         export_tuple.loc,
+        //         vec![i],
+        //     );
+        // }
+
+        // self.normalize_and_check_sema_ty(export_tuple.ty.clone()?, export_tuple.loc)?;
+        // Some(())
     }
 
+    // FIXME
     /// Assigns the resolved type and RHS expression to a variable introduced
     /// by a tuple destructuring pattern.
     ///
@@ -302,23 +263,25 @@ impl<'a> AnalysisContext<'a> {
     /// the corresponding variable symbol entry.
     fn analyze_tuple_ident_pattern(
         &mut self,
-        symbol_id: SymbolID,
+        var_decl_id: VarDeclID,
         sema_type: &SemanticType,
         rhs: &TypedExprStmt,
         is_const: bool,
     ) {
-        let mut ty = sema_type.clone();
+        todo!();
+        // let mut ty = sema_type.clone();
 
-        if is_const && !matches!(ty, SemanticType::Const(..)) {
-            ty = ty.as_const();
-        }
+        // if is_const && !matches!(ty, SemanticType::Const(..)) {
+        //     ty = ty.as_const();
+        // }
 
-        self.symbol_mut.with_var_mut(symbol_id, |var_mut| {
-            var_mut.variable.ty = Some(ty);
-            var_mut.variable.rhs = Some(rhs.clone());
-        });
+        // self.decl_tables.with_var_decl_mut(var_decl_id, |var_decl| {
+        //     var_decl.ty = Some(ty);
+        //     var_decl.rhs = Some(rhs.clone());
+        // });
     }
 
+    // FIXME
     /// Analyzes a tuple destructuring pattern.
     ///
     /// Recursively walks tuple patterns, constructs the appropriate tuple
@@ -334,54 +297,55 @@ impl<'a> AnalysisContext<'a> {
         loc: Loc,
         access_path: Vec<usize>,
     ) {
-        match pattern {
-            TypedExportPattern::Ident(symbol_id) => {
-                let mut rhs = expr.clone();
-                let rhs_ty = rhs.sema_type.clone().unwrap();
-                let tuple_type = rhs_ty.as_tuple_type().unwrap();
+        todo!();
+        // match pattern {
+        //     TypedExportPattern::Ident(symbol_id) => {
+        //         let mut rhs = expr.clone();
+        //         let rhs_ty = rhs.sema_type.clone().unwrap();
+        //         let tuple_type = rhs_ty.as_tuple_type().unwrap();
 
-                for &i in &access_path {
-                    rhs = TypedExprStmt {
-                        kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
-                            operand: Box::new(rhs),
-                            index: i,
-                            loc: loc,
-                        }),
-                        sema_type: Some(tuple_type.elements.get(i).unwrap().clone()),
-                        mloc: MemoryLocation::LValue,
-                        loc: loc,
-                    };
-                }
+        //         for &i in &access_path {
+        //             rhs = TypedExprStmt {
+        //                 kind: TypedExprKind::TupleAccess(TypedTupleAccessExpr {
+        //                     operand: Box::new(rhs),
+        //                     index: i,
+        //                     loc: loc,
+        //                 }),
+        //                 sema_type: Some(tuple_type.elements.get(i).unwrap().clone()),
+        //                 mloc: MemoryLocation::LValue,
+        //                 loc: loc,
+        //             };
+        //         }
 
-                self.analyze_tuple_ident_pattern(*symbol_id, sema_type, &rhs, is_const);
-            }
-            TypedExportPattern::Tuple(patterns) => {
-                if let Some(tuple_type) = sema_type.as_tuple_type() {
-                    if patterns.len() != tuple_type.elements.len() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
-                            loc: Some(loc),
-                            hint: None,
-                        });
-                        return;
-                    }
-                    for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.elements).enumerate() {
-                        let mut new_access_path = access_path.clone();
-                        new_access_path.push(i);
+        //         self.analyze_tuple_ident_pattern(*symbol_id, sema_type, &rhs, is_const);
+        //     }
+        //     TypedExportPattern::Tuple(patterns) => {
+        //         if let Some(tuple_type) = sema_type.as_tuple_type() {
+        //             if patterns.len() != tuple_type.elements.len() {
+        //                 self.reporter.report(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: Box::new(AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch),
+        //                     loc: Some(loc),
+        //                     hint: None,
+        //                 });
+        //                 return;
+        //             }
+        //             for (i, (sub_pattern, sub_ty)) in patterns.iter().zip(&tuple_type.elements).enumerate() {
+        //                 let mut new_access_path = access_path.clone();
+        //                 new_access_path.push(i);
 
-                        self.analyze_tuple_pattern(sub_pattern, sub_ty, expr, is_const, loc, new_access_path);
-                    }
-                } else {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                }
-            }
-        }
+        //                 self.analyze_tuple_pattern(sub_pattern, sub_ty, expr, is_const, loc, new_access_path);
+        //             }
+        //         } else {
+        //             self.reporter.report(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: Box::new(AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand),
+        //                 loc: Some(loc),
+        //                 hint: None,
+        //             });
+        //         }
+        //     }
+        // }
     }
 
     // fn analyze_switch_on_enum(
@@ -811,9 +775,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
-        if let Some(sema_type) =
-            self.analyze_expr(&mut typed_while.cond, Some(SemanticType::Plain(PlainType::Bool)))
-        {
+        if let Some(sema_type) = self.analyze_expr(&mut typed_while.cond, Some(SemanticType::Plain(PlainType::Bool))) {
             self.report_if_not_cond_expr(sema_type, typed_while.loc);
         }
 
@@ -863,8 +825,8 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
-                            expected: format_sema_type(ret_type.const_inner().clone(), &self.formatter),
-                            got: format_sema_type(sema_type.const_inner().clone(), &self.formatter),
+                            expected: format_sema_type(ret_type.const_inner().clone(), self.formatter),
+                            got: format_sema_type(sema_type.const_inner().clone(), self.formatter),
                         }),
                         loc: Some(ret.loc),
                         hint: None,
@@ -872,7 +834,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if !ret_type.is_void() && ret.arg.is_none() {
-            let argument_type = format_sema_type(ret_type.clone(), &self.formatter);
+            let argument_type = format_sema_type(ret_type.clone(), self.formatter);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1074,49 +1036,51 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_func_body(&mut func_def.body, &func_def.ret_type);
         }
 
-        self.symbol_mut.with_func_mut(func_def.symbol_id, |resolved_func| {
-            resolved_func.func_decl.params = func_def.params.clone();
-            resolved_func.func_decl.ret_type = func_def.ret_type.clone();
+        let func_decl_id = self.query.get_func(func_def.symbol_id).unwrap();
+        self.decl_tables.with_func_decl_mut(func_decl_id, |func_decl| {
+            func_decl.params = func_def.params.clone();
+            func_decl.ret_type = func_def.ret_type.clone();
         });
     }
 
-    fn analyze_func_decl(&mut self, func_decl: &mut TypedFuncDeclStmt) {
-        if func_decl.generic_params.is_some() {
+    fn analyze_func_decl(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
+        if func_decl_stmt.generic_params.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::GenericFunctionDeclaration),
-                loc: Some(func_decl.loc),
+                loc: Some(func_decl_stmt.loc),
                 hint: None,
             });
         }
 
         self.report_if_duplicate_param_names(
-            &func_decl.params.list,
-            func_decl.params.variadic.as_ref(),
-            func_decl.loc,
+            &func_decl_stmt.params.list,
+            func_decl_stmt.params.variadic.as_ref(),
+            func_decl_stmt.loc,
         );
 
-        func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc) {
+        func_decl_stmt.ret_type = match self.normalize_sema_type(func_decl_stmt.ret_type.clone(), func_decl_stmt.loc) {
             Some(sema_type) => sema_type,
             None => return,
         };
 
-        self.normalize_func_params(&mut func_decl.params, func_decl.loc);
+        self.normalize_func_params(&mut func_decl_stmt.params, func_decl_stmt.loc);
 
-        self.symbol_mut.with_func_mut(func_decl.symbol_id, |resolved_func| {
-            resolved_func.func_decl.params = func_decl.params.clone();
-            resolved_func.func_decl.ret_type = func_decl.ret_type.clone();
+        let func_decl_id = self.query.get_func(func_decl_stmt.symbol_id).unwrap();
+        self.decl_tables.with_func_decl_mut(func_decl_id, |func_decl| {
+            func_decl.params = func_decl_stmt.params.clone();
+            func_decl.ret_type = func_decl_stmt.ret_type.clone();
         });
     }
 
     fn analyze_interface(&mut self, interface: &TypedInterfaceStmt) {
         let interface_name = &interface.name;
 
+        self.nameconv_check_interface_name(interface_name.clone(), interface.loc);
+
         if let Some(generic_params) = &interface.generic_params {
             self.analyze_generic_params(generic_params);
         }
-
-        self.nameconv_check_interface_name(interface_name.clone(), interface.loc);
 
         let mut methods: Vec<String> = Vec::new();
 
@@ -1147,16 +1111,16 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_typedef(&mut self, typed_typedef: &mut TypedTypedefStmt) {
-        typed_typedef.ty = match self.normalize_sema_type(typed_typedef.ty.clone(), typed_typedef.loc) {
+    fn analyze_typedef(&mut self, typedef: &mut TypedTypedefStmt) {
+        typedef.ty = match self.normalize_sema_type(typedef.ty.clone(), typedef.loc) {
             Some(sema_type) => sema_type,
             None => return,
         };
 
-        self.symbol_mut
-            .with_typedef_mut(typed_typedef.symbol_id, |resolved_typedef| {
-                resolved_typedef.typedef_decl.ty = typed_typedef.ty.clone();
-            });
+        let typedef_decl_id = self.query.get_typedef(typedef.symbol_id).unwrap();
+        self.decl_tables.with_typedef_decl_mut(typedef_decl_id, |typedef_decl| {
+            typedef_decl.ty = Box::new(typedef.ty.clone());
+        });
     }
 
     fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
@@ -1226,8 +1190,8 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(target_type.clone(), &self.formatter),
-                            rhs_type: format_sema_type(expr_type.clone(), &self.formatter),
+                            lhs_type: format_sema_type(target_type.clone(), self.formatter),
+                            rhs_type: format_sema_type(expr_type.clone(), self.formatter),
                         }),
                         loc: Some(global_var.loc),
                         hint: Some("Global variable initializers must exactly match the declared type.".into()),
@@ -1236,10 +1200,12 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.symbol_mut
-            .with_global_var_mut(global_var.symbol_id, |resolved_var| {
-                resolved_var.global_var_sig.rhs = global_var.expr.clone();
-                resolved_var.global_var_sig.ty = global_var.ty.clone();
+        let global_var_decl_id = self.query.get_global_var(global_var.symbol_id).unwrap();
+        self.decl_tables
+            .with_global_var_decl_mut(global_var_decl_id, |global_var_decl| {
+                // FIXME: Remove later.
+                // global_var_decl.rhs = global_var.expr.clone();
+                global_var_decl.ty = global_var.ty.clone();
             });
     }
 
@@ -1272,8 +1238,8 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(target_type.clone(), &self.formatter),
-                            rhs_type: format_sema_type(expr.sema_type.clone().unwrap(), &self.formatter),
+                            lhs_type: format_sema_type(target_type.clone(), self.formatter),
+                            rhs_type: format_sema_type(expr.sema_type.clone().unwrap(), self.formatter),
                         }),
                         loc: Some(var.loc),
                         hint: None,
@@ -1282,8 +1248,11 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        self.symbol_mut.with_var_mut(var.symbol_id, |resolved_var| {
-            resolved_var.variable.ty = var.ty.clone();
+        let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
+        self.decl_tables.with_var_decl_mut(var_decl_id, |var_decl| {
+            // FIXME: Remove later.
+            // global_var_decl.rhs = global_var.expr.clone();
+            var_decl.ty = var.ty.clone();
         });
     }
 
@@ -1315,8 +1284,8 @@ impl<'a> AnalysisContext<'a> {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                    lhs_type: format_sema_type(lhs_type, &self.formatter),
-                    rhs_type: format_sema_type(rhs_type, &self.formatter),
+                    lhs_type: format_sema_type(lhs_type, self.formatter),
+                    rhs_type: format_sema_type(rhs_type, self.formatter),
                 }),
                 loc: Some(assign.loc),
                 hint: None,
@@ -1342,10 +1311,19 @@ impl<'a> AnalysisContext<'a> {
     fn is_const_qualified_lvalue(&self, expr: &TypedExprStmt) -> bool {
         expr.kind
             .as_symbol_id()
-            .and_then(|symbol_id| {
-                self.query
-                    .lookup_symbol_entry(symbol_id)
-                    .map(|symbol_entry| symbol_entry.is_const_qualified())
+            .and_then(|symbol_id| match self.query.lookup_symbol_entry(symbol_id) {
+                Some(symbol_entry) => match symbol_entry.kind {
+                    SymbolEntryKind::Var(var_decl_id) => {
+                        let var_decl = self.decl_tables.var_decl(var_decl_id);
+                        Some(var_decl.is_const)
+                    }
+                    SymbolEntryKind::GlobalVar(global_var_decl_id) => {
+                        let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
+                        Some(global_var_decl.is_const)
+                    }
+                    _ => None,
+                },
+                None => None,
             })
             .unwrap_or(false)
     }
@@ -1464,6 +1442,7 @@ impl<'a> AnalysisContext<'a> {
         // }
     }
 
+    // FIXME
     /// Checks method-level generic parameters against the object's generic parameters.
     ///
     /// Ensures that no method generic parameter reuses a name already defined
@@ -1475,29 +1454,30 @@ impl<'a> AnalysisContext<'a> {
         methods: &HashMap<String, SymbolID>,
         generic_params_opt: &Option<TypedGenericParamsList>,
     ) {
-        let Some(generic_params) = generic_params_opt else {
-            return;
-        };
+        todo!();
+        // let Some(generic_params) = generic_params_opt else {
+        //     return;
+        // };
 
-        for method_id in methods.values().cloned() {
-            let symbol_entry = self.query.lookup_symbol_entry(method_id).unwrap();
+        // for method_id in methods.values().cloned() {
+        //     let symbol_entry = self.query.lookup_symbol_entry(method_id).unwrap();
 
-            if let Some(method_generic_params) = symbol_entry.method_generic_params() {
-                for method_generic_param in &method_generic_params.list {
-                    if generic_params.lookup_named(&method_generic_param.name.value).is_some() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
-                                param_name: method_generic_param.name.as_string(),
-                                object_name: object_name.clone(),
-                            }),
-                            loc: Some(method_generic_param.name.loc),
-                            hint: Some("Consider to rename the generic param to a different name.".to_string()),
-                        });
-                    }
-                }
-            }
-        }
+        //     if let Some(method_generic_params) = symbol_entry.method_generic_params() {
+        //         for method_generic_param in &method_generic_params.list {
+        //             if generic_params.lookup_named(&method_generic_param.name.value).is_some() {
+        //                 self.reporter.report(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
+        //                         param_name: method_generic_param.name.as_string(),
+        //                         object_name: object_name.clone(),
+        //                     }),
+        //                     loc: Some(method_generic_param.name.loc),
+        //                     hint: Some("Consider to rename the generic param to a different name.".to_string()),
+        //                 });
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     /// Validates a list of generic parameters for duplicate names.
@@ -1520,133 +1500,138 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    // FIXME
     fn analyze_enum_variants(&mut self, typed_enum: &mut TypedEnumStmt) {
-        let is_repr_c = typed_enum.is_repr_c();
-        let mut variant_names: Vec<String> = Vec::new();
+        todo!();
 
-        for variant in &mut typed_enum.variants {
-            let variant_ident = match variant {
-                TypedEnumVariant::Ident(ident) => ident,
-                TypedEnumVariant::Valued(ident, typed_expr) => {
-                    typed_expr.sema_type = match self.analyze_expr(typed_expr, None) {
-                        Some(sema_type) => Some(sema_type),
-                        None => continue,
-                    };
+        // let is_repr_c = typed_enum.is_repr_c();
+        // let mut variant_names: Vec<String> = Vec::new();
 
-                    if is_repr_c && !typed_expr.sema_type.as_ref().unwrap().is_integer() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            loc: Some(ident.loc),
-                            hint: None,
-                        });
-                        continue;
-                    }
+        // for variant in &mut typed_enum.variants {
+        //     let variant_ident = match variant {
+        //         TypedEnumVariant::Ident(ident) => ident,
+        //         TypedEnumVariant::Valued(ident, typed_expr) => {
+        //             typed_expr.sema_type = match self.analyze_expr(typed_expr, None) {
+        //                 Some(sema_type) => Some(sema_type),
+        //                 None => continue,
+        //             };
 
-                    ident
-                }
-                TypedEnumVariant::Tuple(ident, typed_enum_valued_fields) => {
-                    if is_repr_c {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            loc: Some(ident.loc),
-                            hint: None,
-                        });
-                        continue;
-                    }
+        //             if is_repr_c && !typed_expr.sema_type.as_ref().unwrap().is_integer() {
+        //                 self.reporter.report(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
+        //                     loc: Some(ident.loc),
+        //                     hint: None,
+        //                 });
+        //                 continue;
+        //             }
 
-                    for field in typed_enum_valued_fields {
-                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                            Some(sema_type) => sema_type,
-                            None => continue,
-                        };
+        //             ident
+        //         }
+        //         TypedEnumVariant::Tuple { ident, fields } => {
+        //             if is_repr_c {
+        //                 self.reporter.report(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
+        //                     loc: Some(ident.loc),
+        //                     hint: None,
+        //                 });
+        //                 continue;
+        //             }
 
-                        self.validate_field_type(Some(typed_enum.symbol_id), &field.ty, field.loc);
-                    }
-                    ident
-                }
-            };
+        //             for ty in fields {
+        //                 *ty = match self.normalize_sema_type(ty.clone(), ident.loc) {
+        //                     Some(sema_type) => sema_type,
+        //                     None => continue,
+        //                 };
 
-            if variant_names.contains(&variant_ident.value) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
-                        enum_name: typed_enum.name.clone(),
-                        variant_name: variant_ident.value.clone(),
-                    }),
-                    loc: Some(variant_ident.loc),
-                    hint: Some("Consider to rename the variant to a different name.".to_string()),
-                });
-                continue;
-            }
+        //                 self.validate_field_type(Some(typed_enum.symbol_id), &ty.ty, ty.loc);
+        //             }
+        //             ident
+        //         }
+        //     };
 
-            variant_names.push(variant_ident.value.clone());
-        }
+        //     if variant_names.contains(&variant_ident.value) {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
+        //                 enum_name: typed_enum.name.clone(),
+        //                 variant_name: variant_ident.value.clone(),
+        //             }),
+        //             loc: Some(variant_ident.loc),
+        //             hint: Some("Consider to rename the variant to a different name.".to_string()),
+        //         });
+        //         continue;
+        //     }
+
+        //     variant_names.push(variant_ident.value.clone());
+        // }
     }
 
+    // FIXME
     /// Analyzes struct fields for semantic correctness.
     ///
     /// Checks for duplicate field names within the struct and validates each field's type.
     /// Ensures type normalization and semantic validation are applied to all fields.
     fn analyze_struct_fields(&mut self, struct_stmt: &mut TypedStructStmt) {
-        let mut field_names: Vec<String> = Vec::new();
+        todo!();
+        // let mut field_names: Vec<String> = Vec::new();
 
-        for field in &mut struct_stmt.fields {
-            if field_names.contains(&field.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        object_name: struct_stmt.name.clone(),
-                        field_name: field.name.clone(),
-                    }),
-                    loc: Some(field.loc),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-                continue;
-            }
+        // for field in &mut struct_stmt.fields {
+        //     if field_names.contains(&field.name) {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+        //                 object_name: struct_stmt.name.clone(),
+        //                 field_name: field.name.clone(),
+        //             }),
+        //             loc: Some(field.loc),
+        //             hint: Some("Consider to rename the field to a different name.".to_string()),
+        //         });
+        //         continue;
+        //     }
 
-            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                Some(sema_type) => sema_type,
-                None => continue,
-            };
+        //     field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
+        //         Some(sema_type) => sema_type,
+        //         None => continue,
+        //     };
 
-            self.validate_field_type(Some(struct_stmt.symbol_id), &field.ty, field.loc);
-            field_names.push(field.name.clone());
-        }
+        //     self.validate_field_type(Some(struct_stmt.symbol_id), &field.ty, field.loc);
+        //     field_names.push(field.name.clone());
+        // }
     }
 
+    // FIXME
     /// Analyzes union fields for semantic correctness.
     ///
     /// Checks for duplicate field names within the union and validates each field's type.
     /// Ensures type normalization and semantic validation are applied to all fields.
     fn analyze_union_fields(&mut self, union_stmt: &mut TypedUnionStmt) {
-        let mut field_names: Vec<String> = Vec::new();
+        todo!();
+        // let mut field_names = FxHashSet::default();
 
-        for field in &mut union_stmt.fields {
-            if field_names.contains(&field.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        field_name: field.name.clone(),
-                        object_name: union_stmt.name.clone(),
-                    }),
-                    loc: Some(field.loc),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-            }
+        // for field in &mut union_stmt.fields {
+        //     if !field_names.insert(field.name.clone()) {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+        //                 field_name: field.name.clone(),
+        //                 object_name: union_stmt.name.clone(),
+        //             }),
+        //             loc: Some(field.loc),
+        //             hint: Some("Consider to rename the field to a different name.".to_string()),
+        //         });
+        //     }
 
-            match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                Some(sema_type) => {
-                    field.ty = sema_type;
-                }
-                None => continue,
-            }
+        //     match self.normalize_sema_type(field.ty.clone(), field.loc) {
+        //         Some(sema_type) => {
+        //             field.ty = sema_type;
+        //         }
+        //         None => continue,
+        //     }
 
-            self.validate_field_type(Some(union_stmt.symbol_id), &field.ty, field.loc);
-
-            field_names.push(field.name.clone());
-        }
+        //     self.validate_field_type(Some(union_stmt.symbol_id), &field.ty, field.loc);
+        // }
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemanticType) {
@@ -1798,44 +1783,49 @@ impl<'a> AnalysisContext<'a> {
         self.check_sema_ty(sema_type.clone(), loc);
     }
 
+    // FIXME
     pub(crate) fn validate_field_type(&mut self, object_id_opt: Option<SymbolID>, sema_type: &SemanticType, loc: Loc) {
-        let sema_type = sema_type.const_inner();
+        todo!();
+        // let sema_type = sema_type.const_inner();
 
-        if sema_type.is_void() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::VoidFieldType),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
+        // if sema_type.is_void() {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::VoidFieldType),
+        //         loc: Some(loc),
+        //         hint: None,
+        //     });
+        // }
 
-        if sema_type.count_const_layers() >= 1 {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
+        // if sema_type.count_const_layers() >= 1 {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+        //         loc: Some(loc),
+        //         hint: None,
+        //     });
+        // }
 
-        let sema_ty_as_symbol_id_opt = sema_type.maybe_generic_base_symbol_id();
+        // let object_type = SemanticType::Named(NamedType {
+        //     decl_id: todo!(),
+        //     type_args: todo!(),
+        // });
 
-        if let Some(object_id) = object_id_opt {
-            if sema_ty_as_symbol_id_opt.map(|symbol_id| symbol_id == object_id) == Some(true) {
-                let type_name = format_sema_type(sema_type.clone(), &self.formatter);
+        // if let Some(object_id) = object_id_opt {
+        //     if sema_ty_as_symbol_id_opt.map(|symbol_id| symbol_id == object_id) == Some(true) {
+        //         let type_name = format_sema_type(sema_type.clone(), self.formatter);
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InfiniteSizeRecursiveType { type_name }),
-                    loc: Some(loc),
-                    hint: None,
-                });
-                return;
-            }
-        }
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: Box::new(AnalyzerDiagKind::InfiniteSizeRecursiveType { type_name }),
+        //             loc: Some(loc),
+        //             hint: None,
+        //         });
+        //         return;
+        //     }
+        // }
 
-        self.check_sema_ty(sema_type.clone(), loc);
+        // self.check_sema_ty(sema_type.clone(), loc);
     }
 
     pub(crate) fn validate_param_type(&mut self, sema_type: &SemanticType, loc: Loc) {
@@ -2010,7 +2000,7 @@ impl<'a> AnalysisContext<'a> {
             let valid = tag_type.is_integer() || tag_type.is_char() || tag_type.is_bool();
 
             if !valid {
-                let got = format_sema_type(tag_type.clone(), &self.formatter);
+                let got = format_sema_type(tag_type.clone(), self.formatter);
 
                 self.reporter.report(Diag {
                     kind: Box::new(AnalyzerDiagKind::InvalidEnumTagType { got }),
@@ -2027,13 +2017,15 @@ impl<'a> AnalysisContext<'a> {
         folder.fold_expr(expr);
     }
 
-    fn resolve_variable_rhs_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
+    fn resolve_variable_initializer(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
         let symbol_entry = self.query.lookup_symbol_entry(symbol_id)?;
 
-        if let Some(resolved_var) = symbol_entry.as_var() {
-            resolved_var.variable.rhs.clone()
-        } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-            resolved_global_var.global_var_sig.rhs.clone()
+        if let Some(var_decl_id) = symbol_entry.as_var() {
+            let var_decl = self.decl_tables.var_decl(var_decl_id);
+            var_decl.rhs.clone()
+        } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
+            let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
+            global_var_decl.rhs.clone()
         } else {
             None
         }
@@ -2042,16 +2034,12 @@ impl<'a> AnalysisContext<'a> {
 
 impl<'a> ConstResolver for AnalysisContext<'a> {
     fn resolve_symbol_expr(&mut self, symbol_id: SymbolID) -> Option<TypedExprStmt> {
-        let resolved = self.resolve_variable_rhs_expr(symbol_id)?;
-        Some(resolved)
+        self.resolve_variable_initializer(symbol_id)
     }
 
     fn is_symbol_const(&mut self, symbol_id: SymbolID) -> bool {
-        let resolved = self.resolve_variable_rhs_expr(symbol_id);
-
-        match resolved {
-            Some(expr) => expr.sema_type.as_ref().map(|t| t.is_const()).unwrap_or(false),
-
+        match self.resolve_variable_initializer(symbol_id) {
+            Some(expr) => expr.sema_type.as_ref().map(|ty| ty.is_const()).unwrap_or(false),
             None => false,
         }
     }

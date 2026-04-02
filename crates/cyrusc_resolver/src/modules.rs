@@ -20,7 +20,7 @@ use cyrusc_ast::{ASTImportStmt, ModuleSegment, ModuleSegmentSingle, ProgramTree,
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::{
     module_loader::{LoadedModule, ModuleAlias},
-    symbols::table::SymbolQuery,
+    symbols::SymbolQuery,
 };
 use cyrusc_source_loc::{FileID, Loc, SourceMap};
 use cyrusc_typed_ast::{SymbolID, TypedProgramTree};

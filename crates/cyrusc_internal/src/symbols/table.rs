@@ -15,43 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::symbols::symbols::SymbolEntry;
-use cyrusc_source_loc::FileID;
-use cyrusc_typed_ast::{
-    SymbolID,
-    decls::{
-        EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
-        UnionDeclID, VarDeclID,
-    },
-    format::Formatter,
-    types::TypeDeclID,
-};
 use std::collections::HashMap;
-
-pub trait SymbolQuery: Sync + Send {
-    fn get_var(&self, symbol_id: SymbolID) -> Option<VarDeclID>;
-    fn get_global_var(&self, symbol_id: SymbolID) -> Option<GlobalVarDeclID>;
-    fn get_func(&self, symbol_id: SymbolID) -> Option<FuncDeclID>;
-    fn get_method(&self, symbol_id: SymbolID) -> Option<MethodDeclID>;
-    fn get_typedef(&self, symbol_id: SymbolID) -> Option<TypedefDeclID>;
-    fn get_union(&self, symbol_id: SymbolID) -> Option<UnionDeclID>;
-    fn get_enum(&self, symbol_id: SymbolID) -> Option<EnumDeclID>;
-    fn get_struct(&self, symbol_id: SymbolID) -> Option<StructDeclID>;
-    fn get_interface(&self, symbol_id: SymbolID) -> Option<InterfaceDeclID>;
-
-    fn lookup_symbol_id(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_id_in_scope(&self, scope_id: SymbolID, name: &str) -> Option<SymbolID>;
-    fn lookup_symbol_entry(&self, symbol_id: SymbolID) -> Option<SymbolEntry>;
-
-    /// Returns the declaration name of a symbol visible from the given module
-    /// and optional local scope.
-    ///
-    /// If the symbol cannot be resolved, a fallback string is returned.
-    fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
-    fn format_type_decl(&self, id: TypeDeclID) -> String;
-
-    fn lookup_module_name(&self, file_id: FileID) -> Option<String>;
-}
+use cyrusc_typed_ast::SymbolID;
 
 /// A collection of symbols and their metadata within a specific scope or module.
 #[derive(Debug, Clone)]

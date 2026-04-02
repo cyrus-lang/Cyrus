@@ -15,11 +15,26 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod analyze;
-pub(crate) mod context;
-pub(crate) mod diagnostics;
-pub(crate) mod env;
-pub(crate) mod lint;
-pub(crate) mod lower;
-pub(crate) mod normalizer;
-pub(crate) mod typecheck;
+use cyrusc_typed_ast::{
+    SymbolID,
+    types::{SemanticType, TypedFuncType},
+};
+
+#[derive(Debug, Clone)]
+pub(crate) struct FuncEnv {
+    pub(crate) current_func_type: Option<TypedFuncType>,
+    pub(crate) current_self_type: Option<SemanticType>,
+    pub(crate) current_object_type: Option<SemanticType>,
+    pub(crate) current_method_symbol_id: Option<SymbolID>,
+}
+
+impl FuncEnv {
+    pub fn new() -> Self {
+        Self {
+            current_func_type: None,
+            current_self_type: None,
+            current_object_type: None,
+            current_method_symbol_id: None,
+        }
+    }
+}

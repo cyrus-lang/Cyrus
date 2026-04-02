@@ -124,9 +124,26 @@ impl SymbolEntry {
         }
     }
 
+    #[inline]
     pub fn as_proxied_symbol(&self) -> Option<(SymbolID, SymbolID)> {
         match self.kind {
             SymbolEntryKind::ProxiedSymbol { scope_id, symbol_id } => Some((scope_id, symbol_id)),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_var(&self) -> Option<VarDeclID> {
+        match &self.kind {
+            SymbolEntryKind::Var(var_decl_id) => Some(*var_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_global_var(&self) -> Option<GlobalVarDeclID> {
+        match &self.kind {
+            SymbolEntryKind::GlobalVar(global_var_decl_id) => Some(*global_var_decl_id),
             _ => None,
         }
     }

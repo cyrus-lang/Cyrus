@@ -1,4 +1,3 @@
-use cyrusc_ast::ASTFuncDefStmt;
 /*
  * Copyright (c) 2026 The Cyrus Language
  *
@@ -15,13 +14,14 @@ use cyrusc_ast::ASTFuncDefStmt;
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
-use cyrusc_internal::symbols::table::SymbolQuery;
-use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::SymbolID;
-use thiserror::Error;
 
 use crate::Resolver;
+use cyrusc_ast::ASTFuncDefStmt;
+use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
+use cyrusc_internal::symbols::SymbolQuery;
+use cyrusc_source_loc::Loc;
+use cyrusc_typed_ast::{SymbolID, format::Formatter};
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ModuleFSLoaderDiagKind {

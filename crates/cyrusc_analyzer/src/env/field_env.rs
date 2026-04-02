@@ -15,11 +15,24 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod analyze;
-pub(crate) mod context;
-pub(crate) mod diagnostics;
-pub(crate) mod env;
-pub(crate) mod lint;
-pub(crate) mod lower;
-pub(crate) mod normalizer;
-pub(crate) mod typecheck;
+use cyrusc_typed_ast::types::SemanticType;
+use fx_hash::FxHashMap;
+
+#[derive(Debug, Clone)]
+pub(crate) struct FieldEnv {
+    fields: FxHashMap<String, SemanticType>,
+}
+
+impl FieldEnv {
+    pub fn new() -> Self {
+        Self { fields: FxHashMap::default() }
+    }
+
+    pub fn insert(&mut self, key: String, value: SemanticType) {
+        self.fields.insert(key, value);
+    }
+
+    pub fn get(&self, key: &str) -> Option<&SemanticType> {
+        self.fields.get(key)
+    }
+}

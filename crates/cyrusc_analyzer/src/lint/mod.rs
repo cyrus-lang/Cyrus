@@ -15,11 +15,4 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod analyze;
-pub(crate) mod context;
-pub(crate) mod diagnostics;
-pub(crate) mod env;
-pub(crate) mod lint;
-pub(crate) mod lower;
-pub(crate) mod normalizer;
-pub(crate) mod typecheck;
+pub(crate) mod nameconv;

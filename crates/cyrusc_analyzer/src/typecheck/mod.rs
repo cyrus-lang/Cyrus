@@ -15,6 +15,4 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod types;
-pub(crate) mod operations;
-pub(crate) mod typecheck;
+pub(crate) mod type_cache; 

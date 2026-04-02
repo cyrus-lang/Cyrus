@@ -22,7 +22,7 @@ use crate::{
         TypedBlockStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncParams, TypedGenericParamsList,
         TypedImplementInterface, TypedStructField, TypedUnionField,
     },
-    types::SemanticType,
+    types::{SemanticType, TypedFuncType},
 };
 use cyrusc_ast::{
     abi::Visibility,
@@ -159,6 +159,7 @@ pub struct GlobalVarDecl {
 pub struct VarDecl {
     pub name: String,
     pub ty: Option<SemanticType>,
+    pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub analyzed: bool,
     pub loc: Loc,
@@ -210,84 +211,6 @@ impl PartialEq for FuncDecl {
     }
 }
 
-// // FIXME: Make this method for FuncDecl
-// pub fn set_self_modifier_type_in_func_sig(func_decl: &mut FuncDecl, sema_type: &SemanticType) {
-//     let first_param = func_decl.params.list.first_mut();
-
-//     if let Some(func_param_kind) = first_param {
-//         if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
-//             match self_modifier.kind {
-//                 SelfModifierKind::Copied => {
-//                     self_modifier.ty = Some(sema_type.clone());
-//                 }
-//                 SelfModifierKind::Referenced => {
-//                     self_modifier.ty = Some(sema_type.clone());
-//                 }
-//             }
-//         }
-//     }
-// }
-
-// // FIXME: Make this method for FuncDecl
-// pub fn set_self_modifier_symbol_id_in_func_sig(func_decl: &mut FuncDecl, symbol_id: SymbolID) {
-//     let first_param = func_decl.params.list.first_mut();
-
-//     if let Some(func_param_kind) = first_param {
-//         if let Some(self_modifier) = func_param_kind.as_self_modifier_mut() {
-//             self_modifier.self_id = Some(symbol_id);
-//         }
-//     }
-// }
-
-// pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDeclStmt) -> FuncDecl {
-//     FuncDecl {
-//         symbol_id: Some(func_decl.symbol_id),
-//         name: func_decl.name.clone(),
-//         generic_params: func_decl.generic_params.clone(),
-//         params: func_decl.params.clone(),
-//         ret_type: func_decl.ret_type.clone(),
-//         is_func_decl: true,
-//         modifiers: func_decl.modifiers.clone(),
-//         loc: func_decl.loc,
-//     }
-// }
-
-// pub fn typed_func_decl_from_func_sig(sig: &FuncDecl) -> TypedFuncDeclStmt {
-//     TypedFuncDeclStmt {
-//         symbol_id: sig.symbol_id.unwrap(),
-//         name: sig.name.clone(),
-//         generic_params: sig.generic_params.clone(),
-//         params: sig.params.clone(),
-//         ret_type: sig.ret_type.clone(),
-//         modifiers: sig.modifiers.clone(),
-//         loc: sig.loc,
-//         renamed_as: None,
-//     }
-// }
-
-// pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDefStmt) -> FuncDecl {
-//     FuncDecl {
-//         symbol_id: Some(func_def.symbol_id),
-//         name: func_def.name.clone(),
-//         generic_params: func_def.generic_params.clone(),
-//         params: func_def.params.clone(),
-//         ret_type: func_def.ret_type.clone(),
-//         is_func_decl: false,
-//         modifiers: func_def.modifiers.clone(),
-//         loc: func_def.loc,
-//     }
-// }
-
-// pub fn typed_func_type_from_func_sig(func_decl: &FuncDecl) -> TypedFuncType {
-//     TypedFuncType {
-//         symbol_id: func_decl.symbol_id,
-//         params: typed_func_params_as_func_type_params(&func_decl.params),
-//         ret_type: Box::new(func_decl.ret_type.clone()),
-//         is_public: func_decl.modifiers.vis.is_public(),
-//         loc: func_decl.loc,
-//     }
-// }
-
 impl StructDecl {
     pub fn is_packed(&self) -> bool {
         match &self.modifiers.repr_attr {
@@ -300,5 +223,18 @@ impl StructDecl {
 impl FuncDecl {
     pub fn is_generic(&self) -> bool {
         self.generic_params.is_some()
+    }
+
+    pub fn as_func_type(&self) -> TypedFuncType {
+        let params = self.params.as_func_type_params();
+        let is_public = self.modifiers.vis.is_public();
+
+        TypedFuncType {
+            symbol_id: self.symbol_id,
+            params,
+            ret_type: Box::new(self.ret_type.clone()),
+            is_public,
+            loc: self.loc,
+        }
     }
 }

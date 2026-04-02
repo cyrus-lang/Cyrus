@@ -27,8 +27,8 @@ use cyrusc_ast::*;
 use cyrusc_diagcentral::Diag;
 use cyrusc_diagcentral::DiagLevel;
 use cyrusc_internal::local_scope::LocalScope;
+use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::symbols::symbols::*;
-use cyrusc_internal::symbols::table::*;
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::Token;
 use cyrusc_tokens::TokenKind;
@@ -1226,7 +1226,7 @@ impl Resolver {
                     let is_self_const = false;
                     let self_ident = Ident::new("self", self_modifier.loc);
 
-                    let var_decl_id = self.insert_variable_decl(&self_ident, None, is_self_const);
+                    let var_decl_id = self.insert_variable_decl(&self_ident, None, None, is_self_const);
 
                     self.insert_variable_symbol_to_current_scope(&self_ident, var_decl_id);
 
@@ -1296,7 +1296,7 @@ impl Resolver {
                 TypeSpecifier::GenericInst(generic_inst) => {
                     let base_symbol_id = match self
                         .resolve_type(&None, *generic_inst.base.clone(), loc)
-                        .and_then(|sema_type| sema_type.as_unresolved_symbol_id())
+                        .and_then(|ty| ty.as_unresolved_symbol_id())
                     {
                         Some(symbol_id) => symbol_id,
                         None => {
@@ -1479,7 +1479,7 @@ impl Resolver {
 
         let var_decl_id = {
             if !is_decl {
-                let var_decl_id = self.insert_variable_decl(&param.ident, Some(ty.clone()), is_const_param);
+                let var_decl_id = self.insert_variable_decl(&param.ident, Some(ty.clone()), None, is_const_param);
                 self.insert_variable_symbol_to_current_scope(&param.ident, var_decl_id)?;
                 Some(var_decl_id)
             } else {
@@ -1513,7 +1513,7 @@ impl Resolver {
             FuncVariadicParams::Typed(ident, type_spec) => {
                 let ty = self.resolve_type(&None, type_spec.clone(), ident.loc)?;
 
-                let var_decl_id = self.insert_variable_decl(ident, Some(ty.clone()), false);
+                let var_decl_id = self.insert_variable_decl(ident, Some(ty.clone()), None, false);
                 let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
 
                 Some(Some(TypedFuncVariadicParams::Typed(
@@ -1690,7 +1690,7 @@ impl Resolver {
 
         let pattern = match &export_tuple.pattern {
             ExportPattern::Ident(ident) => {
-                let var_decl_id = self.insert_variable_decl(&ident, None, export_tuple.is_const);
+                let var_decl_id = self.insert_variable_decl(&ident, None, None, export_tuple.is_const);
                 let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
 
                 TypedExportPattern::Ident(symbol_id)
@@ -1701,7 +1701,7 @@ impl Resolver {
                 for sub_pattern in patterns {
                     match sub_pattern {
                         ExportPattern::Ident(ident) => {
-                            let var_decl_id = self.insert_variable_decl(&ident, None, export_tuple.is_const);
+                            let var_decl_id = self.insert_variable_decl(&ident, None, None, export_tuple.is_const);
                             let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
 
                             typed_patterns.push(TypedExportPattern::Ident(symbol_id));
@@ -1845,7 +1845,7 @@ impl Resolver {
                 let mut fields = Vec::with_capacity(valued_fields.len());
 
                 for ident in valued_fields {
-                    let var_decl_id = self.insert_variable_decl(&ident, None, false);
+                    let var_decl_id = self.insert_variable_decl(&ident, None, None, false);
                     let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
 
                     fields.push(TypedIdent {
@@ -1891,7 +1891,7 @@ impl Resolver {
 
         let rhs = var.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
 
-        let var_decl_id = self.insert_variable_decl(&var.ident, ty.clone(), var.is_const);
+        let var_decl_id = self.insert_variable_decl(&var.ident, ty.clone(), rhs.clone(), var.is_const);
         let symbol_id = self.insert_variable_symbol_to_current_scope(&var.ident, var_decl_id)?;
 
         Some(TypedVarStmt {
@@ -2403,13 +2403,9 @@ impl Resolver {
                 }))
             }
 
-            Some(StringPrefix::C) => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
-                PlainType::Char,
-            )))),
+            Some(StringPrefix::C) => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char)))),
 
-            None => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
-                PlainType::Char,
-            )))),
+            None => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char)))),
         }
     }
 
@@ -2417,9 +2413,7 @@ impl Resolver {
         match kind {
             LiteralKind::Bool(_) => Some(SemanticType::Plain(PlainType::Bool)),
             LiteralKind::Char(_) => Some(SemanticType::Plain(PlainType::Char)),
-            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(
-                PlainType::Void,
-            )))),
+            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Void)))),
             _ => None,
         }
     }
@@ -2530,10 +2524,17 @@ impl Resolver {
 
 // Resolver helper methods.
 impl Resolver {
-    fn insert_variable_decl(&mut self, ident: &Ident, ty: Option<SemanticType>, is_const: bool) -> VarDeclID {
+    fn insert_variable_decl(
+        &mut self,
+        ident: &Ident,
+        ty: Option<SemanticType>,
+        rhs: Option<TypedExprStmt>,
+        is_const: bool,
+    ) -> VarDeclID {
         self.decl_tables.insert_var(VarDecl {
             name: ident.as_string(),
             ty,
+            rhs,
             analyzed: false,
             is_const,
             loc: ident.loc,

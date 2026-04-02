@@ -15,11 +15,15 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod analyze;
-pub(crate) mod context;
-pub(crate) mod diagnostics;
-pub(crate) mod env;
-pub(crate) mod lint;
-pub(crate) mod lower;
-pub(crate) mod normalizer;
-pub(crate) mod typecheck;
+pub(crate) mod assign_stmt;
+pub(crate) mod block_stmt;
+pub(crate) mod enum_stmt;
+pub(crate) mod func_stmt;
+pub(crate) mod if_stmt;
+pub(crate) mod interface_stmt;
+pub(crate) mod loop_stmt;
+pub(crate) mod struct_stmt;
+pub(crate) mod switch_stmt;
+pub(crate) mod tuple_export_stmt;
+pub(crate) mod union_stmt;
+pub(crate) mod var_stmt;

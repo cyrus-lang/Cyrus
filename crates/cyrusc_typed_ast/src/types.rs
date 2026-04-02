@@ -36,7 +36,7 @@ pub enum SemanticType {
     Tuple(TypedTupleType),
     GenericParam(TypedGenericParam),
     SelfType(TypedSelfType),
-    DynamicType(DynamicType),
+    InterfaceType(InterfaceType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -103,7 +103,7 @@ pub struct TypedFuncType {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub struct DynamicType {
+pub struct InterfaceType {
     pub interface_id: SymbolID,
     pub vtable_id: VTableID,
     pub loc: Loc,
@@ -522,7 +522,7 @@ impl PlainType {
     }
 }
 
-impl Hash for DynamicType {
+impl Hash for InterfaceType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.vtable_id.hash(state);
     }
@@ -560,7 +560,7 @@ impl PartialEq for TypedArrayType {
     }
 }
 
-impl PartialEq for DynamicType {
+impl PartialEq for InterfaceType {
     fn eq(&self, other: &Self) -> bool {
         self.interface_id == other.interface_id
     }

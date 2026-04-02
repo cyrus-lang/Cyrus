@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::context::AnalysisContext;
 use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
@@ -24,8 +25,6 @@ use cyrusc_typed_ast::{
 };
 use std::ops::RangeInclusive;
 use thiserror::Error;
-
-use crate::AnalysisContext;
 
 #[derive(Debug, Error, Clone)]
 pub enum AnalyzerDiagKind {

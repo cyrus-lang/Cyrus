@@ -15,53 +15,29 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{AnalysisContext, diagnostics::AnalyzerDiagKind};
-use cyrusc_ast::SelfModifierKind;
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
+    decls::{FuncDecl, InterfaceDeclID, TypedefDeclID},
     exprs::TypedSelfType,
-    format::format_union_decl,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
-    types::{SemanticType, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType},
+    types::{
+        NamedType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
+        UnresolvedType,
+    },
 };
-use fx_hash::FxHashMap;
-use smallvec::SmallVec;
-use std::rc::Rc;
-
-#[derive(Default)]
-pub struct TypeCache {
-    // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef)
-    pub cache: FxHashMap<SymbolID, SemanticType>,
-    // Guard against cycles
-    pub in_progress: SmallVec<[SymbolID; 16]>,
-}
-
-impl TypeCache {
-    pub fn push(&mut self, symbol_id: SymbolID) -> Result<(), ()> {
-        if self.in_progress.contains(&symbol_id) {
-            return Err(());
-        }
-        self.in_progress.push(symbol_id);
-        Ok(())
-    }
-
-    pub fn pop(&mut self, symbol_id: SymbolID) {
-        debug_assert!(self.in_progress.last() == Some(&symbol_id));
-        self.in_progress.pop();
-    }
-}
 
 impl<'a> AnalysisContext<'a> {
     /// Validate a semantic type.
     /// This does NOT normalize the type.
-    pub fn check_sema_ty(&mut self, mut sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+    pub fn check_sema_ty(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
         if sema_type.count_const_layers() > 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -80,180 +56,8 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if let Some(named_type) = sema_type.as_named_type() {
-            named_type.
-        }
-
-        if let Some(unnamed_enum_type) = sema_type.as_unnamed_enum_mut() {
-            self.check_unnamed_enum_type(unnamed_enum_type);
-        }
-
-        if let Some(unnamed_struct_type) = sema_type.as_unnamed_struct_mut() {
-            self.check_unnamed_struct_type(unnamed_struct_type);
-        }
-
-        if let Some(unnamed_union_type) = sema_type.as_unnamed_union_mut() {
-            self.check_unnamed_union_type(unnamed_union_type);
-        }
-
-        self.is_sema_type_missing_type_args(&sema_type, loc);
+        // TODO: Check NamedTypes
         Some(sema_type)
-    }
-
-    fn check_unnamed_union_type(&mut self, unnamed_union_type: &mut TypedUnnamedUnionType) {
-        self.validate_union_repr_attr(
-            &unnamed_union_type.repr_attr,
-            unnamed_union_type.fields.len(),
-            unnamed_union_type.loc,
-        );
-
-        self.validate_align(&unnamed_union_type.align, unnamed_union_type.loc);
-
-        let union_name = format_union_decl(unnamed_union_type, &self.formatter);
-
-        let mut field_names: Vec<String> = Vec::new();
-
-        for field in &mut unnamed_union_type.fields {
-            field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_type) => sema_type,
-                None => continue,
-            };
-
-            self.validate_field_type(None, &field.ty, field.loc);
-
-            if field_names.contains(&field.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        object_name: union_name.clone(),
-                        field_name: field.name.clone(),
-                    }),
-                    loc: Some(field.loc),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-                continue;
-            }
-
-            field_names.push(field.name.clone());
-        }
-    }
-
-    fn check_unnamed_struct_type(&mut self, unnamed_struct_type: &mut TypedUnnamedStructType) {
-        self.validate_struct_repr_attr(
-            &unnamed_struct_type.repr_attr,
-            unnamed_struct_type.fields.len(),
-            unnamed_struct_type.loc,
-        );
-
-        self.validate_align(&unnamed_struct_type.align, unnamed_struct_type.loc);
-
-        let struct_name = format_unnamed_struct_type(unnamed_struct_type, fmt_symbol);
-
-        let mut field_names: Vec<String> = Vec::new();
-
-        for field in &mut unnamed_struct_type.fields {
-            field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-                Some(sema_type) => Box::new(sema_type),
-                None => continue,
-            };
-
-            self.validate_field_type(None, &field.ty, field.loc);
-
-            if field_names.contains(&field.name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
-                        object_name: struct_name.clone(),
-                        field_name: field.name.clone(),
-                    }),
-                    loc: Some(field.loc),
-                    hint: Some("Consider to rename the field to a different name.".to_string()),
-                });
-                continue;
-            }
-
-            field_names.push(field.name.clone());
-        }
-    }
-
-    fn check_unnamed_enum_type(&mut self, unnamed_enum_type: &mut TypedUnnamedEnumType) {
-        self.validate_enum_repr_attr(
-            &unnamed_enum_type.repr_attr,
-            unnamed_enum_type.align.is_some(),
-            unnamed_enum_type.loc,
-        );
-
-        self.validate_align(&unnamed_enum_type.align, unnamed_enum_type.loc);
-
-        self.validate_enum_tag_type(
-            &unnamed_enum_type.tag_type.clone().map(|sema_type| *sema_type),
-            unnamed_enum_type.loc,
-        );
-
-        let is_repr_c = unnamed_enum_type.is_repr_c();
-        let mut variant_names: Vec<String> = Vec::new();
-
-        let enum_name = format_unnamed_enum_type(unnamed_enum_type, fmt_symbol);
-
-        for variant in &mut unnamed_enum_type.variants {
-            let variant_ident = match variant {
-                TypedUnnamedEnumVariant::Ident(ident) => ident,
-                TypedUnnamedEnumVariant::Valued(ident, typed_expr) => {
-                    typed_expr.sema_type = match self.analyze_expr(typed_expr, None) {
-                        Some(sema_type) => Some(sema_type),
-                        None => continue,
-                    };
-
-                    if is_repr_c && !typed_expr.sema_type.as_ref().unwrap().is_integer() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            loc: Some(ident.loc),
-                            hint: None,
-                        });
-                        continue;
-                    }
-
-                    ident
-                }
-                TypedUnnamedEnumVariant::Variant(ident, typed_enum_valued_fields) => {
-                    if is_repr_c {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
-                            loc: Some(ident.loc),
-                            hint: None,
-                        });
-                        continue;
-                    }
-
-                    for field in typed_enum_valued_fields {
-                        field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
-                            Some(sema_type) => sema_type,
-                            None => continue,
-                        };
-
-                        self.validate_field_type(None, &field.ty, field.loc);
-                    }
-                    ident
-                }
-            };
-
-            if variant_names.contains(&variant_ident.value) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateEnumVariantName {
-                        enum_name: enum_name.clone(),
-                        variant_name: variant_ident.value.clone(),
-                    }),
-                    loc: Some(variant_ident.loc),
-                    hint: Some("Consider to rename the variant to a different name.".to_string()),
-                });
-                continue;
-            }
-
-            variant_names.push(variant_ident.value.clone());
-        }
     }
 
     /// Fully normalize AND validate a type
@@ -267,22 +71,23 @@ impl<'a> AnalysisContext<'a> {
     // and recursively normalize children. Never returns UnresolvedSymbol.
     pub fn normalize_sema_type(&mut self, ty: SemanticType, loc: Loc) -> Option<SemanticType> {
         match ty {
+            SemanticType::Unresolved(unresolved_type) => self.normalize_unresolved_type(&unresolved_type, loc),
+            SemanticType::Named(_) => Some(ty), // already normalized
             SemanticType::GenericParam(generic_param) => self.normalize_generic_param(generic_param),
-            SemanticType::GenericType(generic_type) => self.normalize_generic_type(generic_type),
-            SemanticType::UnresolvedSymbol(symbol_id) => self.normalize_unresolved_symbol(symbol_id, loc),
-            SemanticType::ResolvedSymbol(resolved) => self.normalize_resolved_symbol(resolved, loc),
             SemanticType::Pointer(inner) => self.normalize_pointer(*inner, loc),
             SemanticType::Const(inner) => self.normalize_const(*inner, loc),
             SemanticType::Array(arr) => self.normalize_array(arr, loc),
             SemanticType::FuncType(func_type) => self.normalize_func_type(func_type),
             SemanticType::Tuple(tuple_type) => self.normalize_tuple(tuple_type),
             SemanticType::SelfType(self_type) => self.normalize_self_type(self_type),
-            SemanticType::UnnamedEnum(unnamed_enum_type) => Some(SemanticType::UnnamedEnum(
-                self.normalize_unnamed_enum_ty(unnamed_enum_type),
-            )),
-            SemanticType::UnnamedUnion(unnamed_union_type) => self.normalize_unnamed_union_type(unnamed_union_type),
-            SemanticType::UnnamedStruct(unnamed_struct_type) => self.normalize_unnamed_struct_ty(unnamed_struct_type),
-            SemanticType::Plain(_) | SemanticType::DynamicType(_) | SemanticType::Interface(_) => Some(ty),
+            SemanticType::Plain(_) | SemanticType::InterfaceType(_) => Some(ty),
+        }
+    }
+
+    fn normalize_unresolved_type(&mut self, unresolved_type: &UnresolvedType, loc: Loc) -> Option<SemanticType> {
+        match unresolved_type {
+            UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(*symbol_id, loc),
+            UnresolvedType::GenericInst { base: _, type_args: _ } => todo!(),
         }
     }
 
@@ -363,21 +168,27 @@ impl<'a> AnalysisContext<'a> {
         Some(SemanticType::FuncType(func_type))
     }
 
+    fn normalize_func_decl_as_func_type(&mut self, func_decl: &FuncDecl) -> Option<SemanticType> {
+        let func_type = func_decl.as_func_type();
+        self.normalize_func_type(func_type)
+    }
+
     fn normalize_tuple(&mut self, tuple_type: TypedTupleType) -> Option<SemanticType> {
-        let type_list_len = tuple_type.elements.len();
-        let type_list: Vec<_> = tuple_type
+        let elements_len = tuple_type.elements.len();
+
+        let elements: Vec<_> = tuple_type
             .elements
             .into_iter()
-            .filter_map(|sema_type| self.normalize_sema_type(sema_type, tuple_type.loc))
+            .filter_map(|ty| self.normalize_sema_type(ty, tuple_type.loc))
             .collect();
 
         // if we lost any types, return None
-        if type_list.len() != type_list_len {
+        if elements.len() != elements_len {
             return None;
         }
 
         Some(SemanticType::Tuple(TypedTupleType {
-            elements: type_list,
+            elements,
             loc: tuple_type.loc,
         }))
     }
@@ -420,85 +231,29 @@ impl<'a> AnalysisContext<'a> {
         Some(SemanticType::Pointer(Box::new(ty)))
     }
 
-    fn normalize_global_var(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let resolved_global_var = self.query.get_global_var(symbol_id)?;
-
-        if let Some(ty) = &resolved_global_var.global_var_sig.ty {
-            self.normalize_sema_type(ty.clone(), loc)
-        } else {
-            None
-        }
+    fn normalize_typedef(&mut self, typedef_decl_id: TypedefDeclID) -> Option<SemanticType> {
+        let typedef_decl = self.decl_tables.typedef_decl(typedef_decl_id);
+        Some(*typedef_decl.ty.clone())
     }
 
     // FIXME
-    fn normalize_var(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        todo!();
-        // let resolved_var = self.query.get_var(symbol_id)?;
-        // let var_type = &resolved_var.variable.ty;
-        // let var_rhs = &resolved_var.variable.rhs;
-
-        // // try to get type from annotation
-        // if let Some(ty) = var_type {
-        //     return self.normalize_sema_type(ty.clone(), loc);
-        // }
-
-        // // try to infer from RHS
-        // if let Some(rhs) = var_rhs {
-        //     let rhs_ty = self.analyze_expr_non_terminal(&mut rhs.clone(), var_type.clone())?;
-        //     return self.normalize_sema_type(rhs_ty, loc);
-        // }
-
-        // None
-    }
-
-    fn normalize_typedef(&mut self, symbol_id: SymbolID) -> Option<SemanticType> {
-        let resolved_typedef = self.query.get_typedef(symbol_id)?;
-        self.resolve_typedef_inner_type(&resolved_typedef)
-    }
-
-    fn normalize_resolved_symbol(&mut self, resolved_symbol: ResolvedSymbol, loc: Loc) -> Option<SemanticType> {
-        match resolved_symbol {
-            ResolvedSymbol::Typedef(symbol_id) => self.normalize_typedef(symbol_id),
-            ResolvedSymbol::Variable(symbol_id) => self.normalize_var(symbol_id, loc),
-            ResolvedSymbol::GlobalVar(symbol_id) => self.normalize_global_var(symbol_id, loc),
-            ResolvedSymbol::Interface(symbol_id) => self.normalize_interface_type(symbol_id, loc),
-            ResolvedSymbol::Struct(_) | ResolvedSymbol::Enum(_) | ResolvedSymbol::Union(_) => {
-                Some(SemanticType::ResolvedSymbol(resolved_symbol))
-            }
-            ResolvedSymbol::Func(..) | ResolvedSymbol::Method(..) => {
-                unreachable!("Function symbols should not appear as types")
-            }
-        }
-    }
-
-    fn normalize_unresolved_symbol(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        // check generic typedef argument completeness
-        if !self.check_generic_typedef_missing_args(symbol_id, loc) {
-            return None;
-        }
-
-        // resolve the symbol to a semantic_type
-        let unresolved_type = self.resolve_symbol_type(symbol_id, loc)?;
-
-        // Normalize the resulting type
-        self.normalize_sema_type(unresolved_type, loc)
-    }
-
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
-        // try to resolve from current object operand context
-        if let Some(sema_type) = &self.fenv.current_object_type {
-            if let Some(generic_type) = sema_type.as_generic_type() {
-                let mapping_ctx = generic_type.mapping_ctx.borrow();
+        todo!();
 
-                if let Some(sema_type) =
-                    mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
-                {
-                    return Some(sema_type);
-                }
-            }
-        }
+        // // try to resolve from current object operand context
+        // if let Some(sema_type) = &self.fenv.current_object_type {
+        //     if let Some(generic_type) = sema_type.as_generic_type() {
+        //         let mapping_ctx = generic_type.mapping_ctx.borrow();
 
-        Some(SemanticType::GenericParam(generic_param))
+        //         if let Some(sema_type) =
+        //             mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
+        //         {
+        //             return Some(sema_type);
+        //         }
+        //     }
+        // }
+
+        // Some(SemanticType::GenericParam(generic_param))
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
@@ -506,38 +261,6 @@ impl<'a> AnalysisContext<'a> {
             .current_self_type
             .clone()
             .or(Some(SemanticType::SelfType(self_type)))
-    }
-
-    fn normalize_generic_type(&mut self, mut generic_type: GenericType) -> Option<SemanticType> {
-        let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
-
-        if generic_type.generic_params.list.is_empty() {
-            if let Some(generic_params) = symbol_entry.symbol_generic_params() {
-                generic_type.generic_params = generic_params;
-            }
-        }
-
-        self.normalize_type_args(generic_type.type_args.as_mut());
-
-        debug_assert!(generic_type.generic_params.list.is_empty() == false);
-
-        if let Some(typedef) = symbol_entry.as_typedef() {
-            self.resolve_generic_typedef(typedef, generic_type.type_args, typedef.typedef_decl.loc)
-        } else if let Some(resolved_interface) = symbol_entry.as_interface() {
-            if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
-                self.reporter.report(diag);
-                return None;
-            }
-
-            self.normalize_generic_interface_type(&generic_type, &resolved_interface.interface_decl)
-        } else {
-            if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
-                self.reporter.report(diag);
-                return None;
-            }
-
-            Some(SemanticType::GenericType(generic_type))
-        }
     }
 
     pub(crate) fn normalize_type_args(&mut self, type_args_opt: Option<&mut TypedTypeArgs>) {
@@ -563,126 +286,22 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn normalize_interface_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
-        let resolved_interface = self.query.get_interface(symbol_id)?;
+    // FIXME
+    fn normalize_interface_type(&mut self, interface_decl_id: InterfaceDeclID) -> Option<SemanticType> {
+        todo!();
+        // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
 
-        let methods: Vec<FuncDecl> = resolved_interface
-            .interface_decl
-            .methods
-            .iter()
-            .map(|func_decl| typed_func_decl_as_func_sig(func_decl))
-            .collect();
+        // let methods: Vec<FuncDecl> = interface_decl
+        //     .methods
+        //     .iter()
+        //     .map(|func_decl| func_decl)
+        //     .collect();
 
-        Some(SemanticType::Interface(InterfaceType {
-            symbol_id: resolved_interface.symbol_id,
-            methods,
-            loc,
-        }))
-    }
-
-    fn normalize_generic_interface_type(
-        &mut self,
-        generic_type: &GenericType,
-        interface_decl: &InterfaceDecl,
-    ) -> Option<SemanticType> {
-        let mut methods: Vec<FuncDecl> = Vec::new();
-
-        for func_decl in &interface_decl.methods {
-            let mut func_decl = typed_func_decl_as_func_sig(func_decl);
-            func_decl = substitute_func_sig(
-                self.mapping_ctx_arena.clone(),
-                &func_decl,
-                generic_type.mapping_ctx.clone(),
-            )
-            .unwrap();
-
-            methods.push(func_decl);
-        }
-
-        Some(SemanticType::Interface(InterfaceType {
-            symbol_id: generic_type.base,
-            methods,
-            loc: generic_type.loc,
-        }))
-    }
-
-    fn resolve_generic_typedef(
-        &mut self,
-        resolved_typedef: &ResolvedTypedef,
-        mut type_args: Option<TypedTypeArgs>,
-        loc: Loc,
-    ) -> Option<SemanticType> {
-        // let fmt_symbol = &|symbol_id| self.query.format_symbol_name(symbol_id);
-
-        let generic_params = resolved_typedef.typedef_decl.generic_params.as_ref().unwrap();
-
-        // typedef is generating an another generic
-        if let Some(mut generic_type) = resolved_typedef.typedef_decl.ty.as_generic_type().cloned() {
-            let parent_mapping_ctx = Some(Rc::new(generic_type.mapping_ctx.borrow().clone()));
-
-            match self
-                .init_generic_type_with_symbol_id(
-                    generic_type.base,
-                    &mut type_args,
-                    parent_mapping_ctx,
-                    Some(&generic_params),
-                    loc,
-                )
-                .transpose()
-                .unwrap()
-            {
-                Ok((_, new_generic_type_opt)) => {
-                    // update generic params
-                    generic_type.generic_params = generic_params.clone();
-
-                    new_generic_type_opt.map(|generic_type| SemanticType::GenericType(generic_type))
-                }
-                Err(diag) => {
-                    self.reporter.report(diag);
-                    None
-                }
-            }
-        } else {
-            // typedef itself is generic but it does not generate generic,
-            // so simply initialize generic mapping ctx and substitute the type
-
-            // FIXME
-            todo!();
-            // let mapping_ctx = Rc::new(RefCell::new(GenericMappingCtx::new_root()));
-            // let mut generic_type = GenericType::new_unresolved(
-            //     SymbolID::new(), // FIXME: Change to None
-            //     type_args.clone(),
-            //     mapping_ctx.clone(),
-            //     self.mapping_ctx_arena.clone(),
-            //     generic_params.clone(),
-            //     loc,
-            // );
-
-            // if let Err(diag) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
-            //     self.reporter.report(diag);
-            //     return None;
-            // }
-
-            // substitute_type(
-            //     self.mapping_ctx_arena.clone(),
-            //     resolved_typedef.typedef_decl.ty.clone(),
-            //     mapping_ctx,
-            // )
-        }
-    }
-
-    fn resolve_typedef_inner_type(&mut self, resolved_typedef: &ResolvedTypedef) -> Option<SemanticType> {
-        let inner_ty = resolved_typedef.typedef_decl.ty.clone();
-
-        if let Some(mut generic_type) = inner_ty.as_generic_type().cloned() {
-            if let Some(generic_params) = &resolved_typedef.typedef_decl.generic_params {
-                generic_type.generic_params = generic_params.clone();
-            }
-
-            Some(SemanticType::GenericType(generic_type))
-        } else {
-            Some(inner_ty)
-        }
+        // Some(SemanticType::Interface(InterfaceType {
+        //     symbol_id: interface_decl_id.symbol_id,
+        //     methods,
+        //     loc,
+        // }))
     }
 
     pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Loc) {
@@ -698,24 +317,11 @@ impl<'a> AnalysisContext<'a> {
 
                     self.validate_param_type(&typed_func_param.ty, typed_func_param.loc);
                 }
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    let normalized_type = self
-                        .normalize_sema_type(
-                            SemanticType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
-                            typed_self_modifier.loc,
-                        )
-                        .unwrap();
+                TypedFuncParamKind::SelfModifier(self_modifier) => {
+                    // we make sure that to apply normalized type to self modifier,
+                    // so it never reaches this point.
 
-                    match typed_self_modifier.kind {
-                        SelfModifierKind::Copied => {
-                            typed_self_modifier.ty = Some(normalized_type);
-                        }
-                        SelfModifierKind::Referenced => {
-                            typed_self_modifier.ty = Some(SemanticType::Pointer(Box::new(normalized_type)));
-                        }
-                    }
-
-                    self.validate_param_type(&typed_self_modifier.ty.as_ref().unwrap(), typed_self_modifier.loc);
+                    self.validate_param_type(&self_modifier.ty.as_ref().unwrap(), self_modifier.loc);
                 }
             }
         }
@@ -764,11 +370,11 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if self.type_cache.push(symbol_id).is_err() {
+            let symbol_name = self.formatter.format_symbol_name(symbol_id);
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition {
-                    symbol_name: fmt_symbol(symbol_id),
-                }),
+                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
                 loc: Some(loc),
                 hint: None,
             });
@@ -795,59 +401,34 @@ impl<'a> AnalysisContext<'a> {
 
     fn resolve_symbol_type_internal(&mut self, symbol_entry: &SymbolEntry) -> Option<SemanticType> {
         match &symbol_entry.kind {
-            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.ty.clone(),
-            SymbolEntryKind::Var(resolved_var) => resolved_var.variable.ty.clone(),
-            SymbolEntryKind::Func(resolved_func) => {
-                let params_list = resolved_func
-                    .func_decl
-                    .params
-                    .list
-                    .iter()
-                    .map(|param| match param {
-                        TypedFuncParamKind::FuncParam(p) => p.ty.clone(),
-                        TypedFuncParamKind::SelfModifier(self_mod) => {
-                            self_mod.ty.clone().expect("self modifier must have type")
-                        }
-                    })
-                    .collect();
-
-                let params_variadic = resolved_func.func_decl.params.variadic.as_ref().map(|v| match v {
-                    TypedFuncVariadicParams::UntypedCStyle => Box::new(TypedFuncTypeVariadicParams::UntypedCStyle),
-                    TypedFuncVariadicParams::Typed(_, sema_type) => {
-                        Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone()))
-                    }
-                });
-
-                Some(SemanticType::FuncType(TypedFuncType {
-                    symbol_id: Some(resolved_func.symbol_id),
-                    params: TypedFuncTypeParams {
-                        list: params_list,
-                        variadic: params_variadic,
-                    },
-                    is_public: resolved_func.func_decl.modifiers.vis.is_public(),
-                    ret_type: Box::new(resolved_func.func_decl.ret_type.clone()),
-                    loc: resolved_func.func_decl.loc,
-                }))
+            SymbolEntryKind::GlobalVar(global_var_decl_id) => {
+                let global_var_decl = self.decl_tables.global_var_decl(*global_var_decl_id);
+                global_var_decl.ty.clone()
             }
-            SymbolEntryKind::Struct(resolved_struct) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Struct(
-                resolved_struct.symbol_id,
-            ))),
-            SymbolEntryKind::Enum(resolved_enum) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(
-                resolved_enum.symbol_id,
-            ))),
-            SymbolEntryKind::Union(resolved_union) => Some(SemanticType::ResolvedSymbol(ResolvedSymbol::Union(
-                resolved_union.symbol_id,
-            ))),
-            SymbolEntryKind::Interface(interface) => {
-                self.normalize_interface_type(interface.symbol_id, interface.interface_decl.loc)
+            SymbolEntryKind::Var(var_decl_id) => {
+                let var_decl = self.decl_tables.var_decl(*var_decl_id);
+                var_decl.ty.clone()
             }
-            SymbolEntryKind::Typedef(typedef) => self.resolve_typedef_inner_type(typedef),
-            SymbolEntryKind::ProxiedSymbol {
-                symbol_id: target_symbol_id,
-                ..
-            } => {
-                let target_entry = self.query.lookup_symbol_entry(*target_symbol_id)?;
-                self.resolve_symbol_type_internal(&target_entry)
+            SymbolEntryKind::Func(func_decl_id) => {
+                let func_decl = self.decl_tables.func_decl(*func_decl_id);
+                self.normalize_func_decl_as_func_type(&func_decl)
+            }
+            SymbolEntryKind::Struct(strut_decl_id) => Some(SemanticType::Named(NamedType {
+                decl_id: TypeDeclID::Struct(*strut_decl_id),
+                type_args: Vec::new(),
+            })),
+            SymbolEntryKind::Enum(enum_decl_id) => Some(SemanticType::Named(NamedType {
+                decl_id: TypeDeclID::Enum(*enum_decl_id),
+                type_args: Vec::new(),
+            })),
+            SymbolEntryKind::Union(union_decl_id) => Some(SemanticType::Named(NamedType {
+                decl_id: TypeDeclID::Union(*union_decl_id),
+                type_args: Vec::new(),
+            })),
+            SymbolEntryKind::Interface(interface_decl_id) => self.normalize_interface_type(*interface_decl_id),
+            SymbolEntryKind::Typedef(typedef_decl_id) => self.normalize_typedef(*typedef_decl_id),
+            SymbolEntryKind::ProxiedSymbol { .. } => {
+                unreachable!("proxied symbol entry kind should not appear here")
             }
             SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),
             SymbolEntryKind::ProxiedModule { .. } => {
