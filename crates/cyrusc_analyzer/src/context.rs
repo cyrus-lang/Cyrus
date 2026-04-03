@@ -48,7 +48,7 @@ pub struct AnalysisContext<'a> {
     pub(crate) fenv: FuncEnv,
     pub(crate) type_cache: TypeCache,
 
-    control_stack: Vec<ControlRegion>,
+    pub(crate) control_stack: Vec<ControlRegion>,
 }
 
 impl<'a> AnalysisContext<'a> {

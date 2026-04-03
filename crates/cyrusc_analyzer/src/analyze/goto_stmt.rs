@@ -15,16 +15,24 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod array_expr;
-pub(crate) mod call_expr;
-pub(crate) mod dynamic_expr;
-pub(crate) mod enum_const;
-pub(crate) mod expr;
-pub(crate) mod field_access_expr;
-pub(crate) mod lambda_expr;
-pub(crate) mod literal_expr;
-pub(crate) mod operations;
-pub(crate) mod struct_init;
-pub(crate) mod tuple_expr;
-pub(crate) mod type_cache;
-pub(crate) mod union_init;
+use crate::context::AnalysisContext;
+use cyrusc_typed_ast::stmts::TypedGotoStmt;
+
+impl<'a> AnalysisContext<'a> {
+    // FIXME
+    fn analyze_goto(&mut self, goto: &mut TypedGotoStmt) {
+        todo!();
+        // if let Some(label_id) = scope_ref.resolve_label(&goto.name) {
+        //     goto.label_id = Some(label_id);
+        // } else {
+        //     self.reporter.report(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: Box::new(AnalyzerDiagKind::UndefinedGotoLabel {
+        //             label_name: goto.name.clone(),
+        //         }),
+        //         loc: Some(goto.loc),
+        //         hint: None,
+        //     });
+        // }
+    }
+}

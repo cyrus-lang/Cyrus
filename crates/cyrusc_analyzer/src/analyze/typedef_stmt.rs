@@ -15,16 +15,19 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod array_expr;
-pub(crate) mod call_expr;
-pub(crate) mod dynamic_expr;
-pub(crate) mod enum_const;
-pub(crate) mod expr;
-pub(crate) mod field_access_expr;
-pub(crate) mod lambda_expr;
-pub(crate) mod literal_expr;
-pub(crate) mod operations;
-pub(crate) mod struct_init;
-pub(crate) mod tuple_expr;
-pub(crate) mod type_cache;
-pub(crate) mod union_init;
+use crate::context::AnalysisContext;
+use cyrusc_typed_ast::stmts::TypedTypedefStmt;
+
+impl<'a> AnalysisContext<'a> {
+    fn analyze_typedef(&mut self, typedef: &mut TypedTypedefStmt) {
+        typedef.ty = match self.normalize_sema_type(typedef.ty.clone(), typedef.loc) {
+            Some(sema_type) => sema_type,
+            None => return,
+        };
+
+        let typedef_decl_id = self.query.get_typedef(typedef.symbol_id).unwrap();
+        self.decl_tables.with_typedef_decl_mut(typedef_decl_id, |typedef_decl| {
+            typedef_decl.ty = Box::new(typedef.ty.clone());
+        });
+    }
+}

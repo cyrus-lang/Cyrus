@@ -27,3 +27,5 @@ pub(crate) mod switch_stmt;
 pub(crate) mod tuple_export_stmt;
 pub(crate) mod union_stmt;
 pub(crate) mod var_stmt;
+pub(crate) mod goto_stmt;
+pub(crate) mod typedef_stmt;

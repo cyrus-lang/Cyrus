@@ -296,6 +296,11 @@ impl SemanticType {
 
 impl SemanticType {
     #[inline]
+    pub fn is_unresolved(&self) -> bool {
+        matches!(self, SemanticType::Unresolved(_))
+    }
+
+    #[inline]
     pub fn is_char(&self) -> bool {
         match self.const_inner() {
             SemanticType::Plain(PlainType::Char) => true,

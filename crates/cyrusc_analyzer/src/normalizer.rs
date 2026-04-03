@@ -91,46 +91,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // fn normalize_unnamed_union_type(&mut self, mut unnamed_union_type: TypedUnnamedUnionType) -> Option<SemanticType> {
-    //     for field in &mut unnamed_union_type.fields {
-    //         field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-    //             Some(sema_type) => Box::new(sema_type),
-    //             None => continue,
-    //         };
-    //     }
-    //     Some(SemanticType::UnnamedUnion(unnamed_union_type))
-    // }
-
-    // fn normalize_unnamed_struct_ty(&mut self, mut unnamed_struct_type: TypedUnnamedStructType) -> Option<SemanticType> {
-    //     for field in &mut unnamed_struct_type.fields {
-    //         field.ty = match self.normalize_sema_type(*field.ty.clone(), field.loc) {
-    //             Some(sema_type) => Box::new(sema_type),
-    //             None => continue,
-    //         };
-    //     }
-    //     Some(SemanticType::UnnamedStruct(unnamed_struct_type))
-    // }
-
-    // fn normalize_unnamed_enum_ty(&mut self, mut unnamed_enum_type: TypedUnnamedEnumType) -> TypedUnnamedEnumType {
-    //     for variant in &mut unnamed_enum_type.variants {
-    //         match variant {
-    //             TypedUnnamedEnumVariant::Ident(_) => continue,
-    //             TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
-    //                 for valued_field in valued_fields {
-    //                     match self.normalize_sema_type(valued_field.ty.clone(), valued_field.loc) {
-    //                         Some(sema_type) => valued_field.ty = sema_type,
-    //                         None => continue,
-    //                     }
-    //                 }
-    //             }
-    //             TypedUnnamedEnumVariant::Valued(_, expr) => {
-    //                 self.analyze_expr(expr, None);
-    //             }
-    //         }
-    //     }
-    //     unnamed_enum_type
-    // }
-
     fn normalize_func_type(&mut self, mut func_type: TypedFuncType) -> Option<SemanticType> {
         let params_len = func_type.params.list.len();
         let params: Vec<_> = func_type

@@ -147,4 +147,17 @@ impl SymbolEntry {
             _ => None,
         }
     }
+
+    #[inline]
+    pub fn as_func(&self) -> Option<FuncDeclID> {
+        match &self.kind {
+            SymbolEntryKind::Func(func_decl_id) => Some(*func_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn is_var_or_global_var(&self) -> bool {
+        matches!(self.kind, SymbolEntryKind::Var(_) | SymbolEntryKind::GlobalVar(_))
+    }
 }
