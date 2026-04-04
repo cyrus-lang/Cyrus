@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
-        let parent_func = self.fenv.current_func_type.clone();
+        let parent_func = self.func_env.current_func_type.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
         let params = lambda.params.as_func_type_params();
@@ -38,10 +38,10 @@ impl<'a> AnalysisContext<'a> {
             loc: lambda.loc,
         };
 
-        self.fenv.current_func_type = Some(func_type.clone());
+        self.func_env.current_func_type = Some(func_type.clone());
         self.analyze_block_stmt(&mut lambda.body);
 
-        self.fenv.current_func_type = parent_func;
+        self.func_env.current_func_type = parent_func;
         Some(SemanticType::FuncType(func_type))
     }
 }

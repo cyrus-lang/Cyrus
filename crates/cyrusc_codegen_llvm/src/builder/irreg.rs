@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_internal::cir::types::CIRTy;
+use cyrusc_internal::cir::types::CIRType;
 use inkwell::values::{FunctionValue, GlobalValue, PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -33,9 +33,9 @@ pub struct LocalIRValueRegistry<'a> {
 /// Represents a local LLVM IR value.
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
-    Func(FunctionValue<'a>, CIRTy),
-    Global(GlobalValue<'a>, CIRTy),
-    LValue(PointerValue<'a>, CIRTy),
+    Func(FunctionValue<'a>, CIRType),
+    Global(GlobalValue<'a>, CIRType),
+    LValue(PointerValue<'a>, CIRType),
 }
 
 impl<'a> LocalIRValueRegistry<'a> {

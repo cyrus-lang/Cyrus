@@ -27,9 +27,9 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn is_const_qualified_type_assigned_to_non_const_variable(
         &mut self,
         ty: &SemanticType,
-        is_const_qualified: bool,
+        is_variable_const: bool,
     ) -> bool {
-        is_const_qualified || !ty.is_const()
+        !is_variable_const && ty.is_const()
     }
 
     pub(crate) fn is_const_qualified_lvalue(&self, expr: &TypedExprStmt) -> bool {

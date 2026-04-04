@@ -19,7 +19,7 @@ use crate::builder::{
     builder::IRBuilderCtx,
     values::{InternalValue, InternalValueKind},
 };
-use cyrusc_internal::cir::types::CIRTy;
+use cyrusc_internal::cir::types::CIRType;
 use inkwell::{
     AddressSpace,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
@@ -30,7 +30,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_inbounds_checked_array_index(
         &mut self,
         ptr: PointerValue<'ll>,
-        pointee_ty: CIRTy,
+        pointee_ty: CIRType,
         index: InternalValue<'ll>,
         array_length: u32,
     ) -> InternalValue<'ll> {

@@ -23,7 +23,7 @@ use crate::{
         target::{ABITargetInfo, ABITargetOS, RegisterClass, TargetABI},
         types::{ABIFloatKind, ABIType},
     },
-    cir::types::{CIRArrayTy, CIRFuncTy, CIRTy},
+    cir::types::{CIRArrayType, CIRFuncType, CIRType},
     is_integer_type,
 };
 use cyrusc_ast::abi::CallConv;
@@ -40,7 +40,7 @@ impl X86_64 {
         Self { info }
     }
 
-    fn classify_parameter(&self, ty: &CIRTy, available_regs: &mut Registers, is_named: bool) -> ABIArgInfo {
+    fn classify_parameter(&self, ty: &CIRType, available_regs: &mut Registers, is_named: bool) -> ABIArgInfo {
         let (abi_arg_info, needed_regs) = self.classify_argument(ty, available_regs.int_regs, is_named);
 
         if try_use_registers(available_regs, &needed_regs) {
@@ -50,7 +50,7 @@ impl X86_64 {
         }
     }
 
-    fn abi_arg_info_indirect_result(&self, ty: &CIRTy, free_int_regs: u32) -> ABIArgInfo {
+    fn abi_arg_info_indirect_result(&self, ty: &CIRType, free_int_regs: u32) -> ABIArgInfo {
         // if this is a scalar LLVM value then assume LLVM will pass it in the right place naturally
         if !is_cir_type_abi_aggregate(ty) {
             if ty.is_integer_or_bool() {
@@ -122,9 +122,9 @@ impl X86_64 {
     }
 
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2486
-    fn get_int_type_at_offset(&self, ty: &CIRTy, offset: u32, source_type: &CIRTy, source_offset: u32) -> ABIType {
+    fn get_int_type_at_offset(&self, ty: &CIRType, offset: u32, source_type: &CIRType, source_offset: u32) -> ABIType {
         match ty {
-            CIRTy::PlainType(plain_type) => match plain_type {
+            CIRType::PlainType(plain_type) => match plain_type {
                 PlainType::UIntPtr
                 | PlainType::IntPtr
                 | PlainType::ISize
@@ -167,34 +167,34 @@ impl X86_64 {
 
                 PlainType::Null | PlainType::Void => unreachable!(),
             },
-            CIRTy::Const(ty) => {
+            CIRType::Const(ty) => {
                 return self.get_int_type_at_offset(ty, offset, source_type, source_offset);
             }
-            CIRTy::Pointer(_) | CIRTy::FuncType(_) => {
+            CIRType::Pointer(_) | CIRType::FuncType(_) => {
                 if offset == 0 {
                     return cir_type_to_abi_type(&self.info, ty);
                 }
             }
-            CIRTy::Tuple(tuple_ty) => {
+            CIRType::Tuple(tuple_ty) => {
                 // tuple lowered as struct in codegen
                 let struct_type = tuple_ty.as_struct_ty();
 
-                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRTy::Struct(struct_type), offset) {
+                if let Some((field_ty, field_offset)) = self.get_member_at_offset(&CIRType::Struct(struct_type), offset) {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
                 }
             }
-            CIRTy::Struct(_) => {
+            CIRType::Struct(_) => {
                 if let Some((field_ty, field_offset)) = self.get_member_at_offset(ty, offset) {
                     return self.get_int_type_at_offset(&field_ty, offset - field_offset, source_type, source_offset);
                 }
             }
-            CIRTy::Array(array_type) => {
+            CIRType::Array(array_type) => {
                 let element_ty = &array_type.element_ty;
                 let element_layout = type_layout(&self.info, element_ty);
                 let element_offset = (offset / element_layout.size) * element_layout.size;
                 return self.get_int_type_at_offset(element_ty, offset - element_offset, source_type, source_offset);
             }
-            CIRTy::Dynamic(_) => {
+            CIRType::Dynamic(_) => {
                 if offset < 8 {
                     return ABIType::Pointer; // data_ptr (first 8 bytes)
                 }
@@ -202,7 +202,7 @@ impl X86_64 {
                     return ABIType::Pointer; // vtable_ptr (next 8 bytes)
                 }
             }
-            CIRTy::Union(_) | CIRTy::Enum(_) => {
+            CIRType::Union(_) | CIRType::Enum(_) => {
                 // fallback
             }
         }
@@ -221,7 +221,7 @@ impl X86_64 {
         }
     }
 
-    fn get_member_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<(CIRTy, u32)> {
+    fn get_member_at_offset(&self, ty: &CIRType, offset: u32) -> Option<(CIRType, u32)> {
         let fields = ty.as_struct()?.fields;
 
         let layout = type_layout(&self.info, ty);
@@ -253,7 +253,7 @@ impl X86_64 {
         None
     }
 
-    fn get_fp_type_at_offset(&self, ty: &CIRTy, offset: u32) -> Option<ABIType> {
+    fn get_fp_type_at_offset(&self, ty: &CIRType, offset: u32) -> Option<ABIType> {
         if offset == 0 && ty.is_float() {
             return Some(cir_type_to_abi_type(&self.info, ty));
         }
@@ -277,9 +277,9 @@ impl X86_64 {
 
     fn get_sse_type_at_offset(
         &self,
-        ty: &CIRTy,
+        ty: &CIRType,
         offset: u32,
-        source_type: &CIRTy,
+        source_type: &CIRType,
         source_offset: u32,
     ) -> Option<ABIType> {
         let abi_float_type = self.get_fp_type_at_offset(ty, offset)?;
@@ -345,8 +345,8 @@ impl X86_64 {
     }
 
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2321
-    fn bits_contain_no_user_data(&self, ty: &CIRTy, start: u32, end: u32) -> bool {
-        let check_for_struct_or_union = |fields: &Vec<CIRTy>, is_union: bool| {
+    fn bits_contain_no_user_data(&self, ty: &CIRType, start: u32, end: u32) -> bool {
+        let check_for_struct_or_union = |fields: &Vec<CIRType>, is_union: bool| {
             let mut current_offset = 0;
 
             for field_ty in fields {
@@ -423,7 +423,7 @@ impl X86_64 {
         }
     }
 
-    fn param_types_from_arg_info(&self, abi_arg: &ABIArgInfo, param_type: &CIRTy) -> Vec<ABIType> {
+    fn param_types_from_arg_info(&self, abi_arg: &ABIArgInfo, param_type: &CIRType) -> Vec<ABIType> {
         let mut types = Vec::new();
 
         match &abi_arg.kind {
@@ -468,7 +468,7 @@ impl X86_64 {
 }
 
 impl X86_64 {
-    fn classify_func_naked(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+    fn classify_func_naked(&self, fn_ty: &CIRFuncType) -> ABIFunctionInfo {
         // naked functions just pass arguments as-is, NO ABI TRANSFORMATIONS
         let mut params_types = Vec::new();
         let mut params_infos = Vec::new();
@@ -501,7 +501,7 @@ impl X86_64 {
         }
     }
 
-    fn classify_func_sysv(&self, fn_ty: &CIRFuncTy) -> ABIFunctionInfo {
+    fn classify_func_sysv(&self, fn_ty: &CIRFuncType) -> ABIFunctionInfo {
         let mut available_regs = Registers {
             int_regs: 6,
             sse_regs: 8,
@@ -542,7 +542,7 @@ impl X86_64 {
 
 impl TargetABI for X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2732
-    fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
+    fn classify_argument(&self, ty: &CIRType, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers) {
         let ty = {
             if !is_named {
                 &self.apply_variadic_argument_promote(ty)
@@ -679,7 +679,7 @@ impl TargetABI for X86_64 {
         (ABIArgInfo::direct(), needed_regs)
     }
 
-    fn classify_func(&self, fn_ty: &CIRFuncTy) -> Result<ABIFunctionInfo, String> {
+    fn classify_func(&self, fn_ty: &CIRFuncType) -> Result<ABIFunctionInfo, String> {
         match fn_ty.callconv {
             // SysV64, explicit System V AMD64 ABI
             CallConv::SysV64 => Ok(self.classify_func_sysv(fn_ty)),
@@ -734,23 +734,23 @@ impl TargetABI for X86_64 {
         }
     }
 
-    fn apply_variadic_argument_promote(&self, ty: &CIRTy) -> CIRTy {
+    fn apply_variadic_argument_promote(&self, ty: &CIRType) -> CIRType {
         match ty {
-            CIRTy::Const(ty) => self.apply_variadic_argument_promote(ty),
+            CIRType::Const(ty) => self.apply_variadic_argument_promote(ty),
 
-            CIRTy::PlainType(plain_type) => match plain_type {
+            CIRType::PlainType(plain_type) => match plain_type {
                 // pointers and pointer-sized types remain as-is
                 PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => ty.clone(),
 
                 // integer types smaller than int (32-bit) get promoted to int
                 PlainType::Int8 | PlainType::Int16 => {
                     if plain_type.is_signed() {
-                        CIRTy::PlainType(PlainType::Int)
+                        CIRType::PlainType(PlainType::Int)
                     } else {
-                        CIRTy::PlainType(PlainType::UInt32)
+                        CIRType::PlainType(PlainType::UInt32)
                     }
                 }
-                PlainType::UInt8 | PlainType::UInt16 => CIRTy::PlainType(PlainType::UInt32),
+                PlainType::UInt8 | PlainType::UInt16 => CIRType::PlainType(PlainType::UInt32),
 
                 // int and int32 remain as-is (int-sized)
                 PlainType::Int | PlainType::Int32 => ty.clone(),
@@ -761,31 +761,31 @@ impl TargetABI for X86_64 {
                 PlainType::Int128 | PlainType::UInt128 => ty.clone(),
 
                 // float16 promotes to double
-                PlainType::Float16 => CIRTy::PlainType(PlainType::Float64),
+                PlainType::Float16 => CIRType::PlainType(PlainType::Float64),
 
                 // float32 promotes to float64
-                PlainType::Float32 => CIRTy::PlainType(PlainType::Float64),
+                PlainType::Float32 => CIRType::PlainType(PlainType::Float64),
 
                 // float64 and float128 remain as-is
                 PlainType::Float64 | PlainType::Float128 => ty.clone(),
 
                 // char promotes to int
-                PlainType::Char => CIRTy::PlainType(PlainType::Int),
+                PlainType::Char => CIRType::PlainType(PlainType::Int),
 
                 // bool promotes to int
-                PlainType::Bool => CIRTy::PlainType(PlainType::Int),
+                PlainType::Bool => CIRType::PlainType(PlainType::Int),
 
                 PlainType::Void | PlainType::Null => panic!("void or null type in varargs"),
             },
 
-            CIRTy::Array(array_type) => CIRTy::Pointer(array_type.element_ty.clone()),
+            CIRType::Array(array_type) => CIRType::Pointer(array_type.element_ty.clone()),
 
-            CIRTy::Pointer(_) | CIRTy::FuncType(_) => ty.clone(),
-            CIRTy::Struct(_) | CIRTy::Tuple(_) | CIRTy::Dynamic(_) | CIRTy::Enum(_) | CIRTy::Union(_) => ty.clone(),
+            CIRType::Pointer(_) | CIRType::FuncType(_) => ty.clone(),
+            CIRType::Struct(_) | CIRType::Tuple(_) | CIRType::Dynamic(_) | CIRType::Enum(_) | CIRType::Union(_) => ty.clone(),
         }
     }
 
-    fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo {
+    fn classify_return(&self, ty: &CIRType) -> ABIRetInfo {
         let mut lo_class = RegisterClass::NoClass;
         let mut hi_class = RegisterClass::NoClass;
         classify(&self.info, ty, 0, &mut lo_class, &mut hi_class);
@@ -897,7 +897,7 @@ impl TargetABI for X86_64 {
 
 fn classify(
     info: &ABITargetInfo,
-    ty: &CIRTy,
+    ty: &CIRType,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
@@ -909,30 +909,30 @@ fn classify(
     unsafe { *current = RegisterClass::Memory };
 
     match ty {
-        CIRTy::PlainType(plain_type) => classify_plain_type(plain_type, offset_base, lo_class, hi_class),
-        CIRTy::Const(inner) => classify(info, inner, offset_base, lo_class, hi_class),
-        CIRTy::Pointer(_) | CIRTy::FuncType(_) => {
+        CIRType::PlainType(plain_type) => classify_plain_type(plain_type, offset_base, lo_class, hi_class),
+        CIRType::Const(inner) => classify(info, inner, offset_base, lo_class, hi_class),
+        CIRType::Pointer(_) | CIRType::FuncType(_) => {
             unsafe { *current = RegisterClass::Integer };
         }
-        CIRTy::Struct(_) | CIRTy::Union(_) => {
+        CIRType::Struct(_) | CIRType::Union(_) => {
             classify_struct_or_union(info, ty, offset_base, current, lo_class, hi_class)
         }
-        CIRTy::Tuple(tuple_type) => {
+        CIRType::Tuple(tuple_type) => {
             // tuple lowered as struct in codegen
             let struct_type = tuple_type.as_struct_ty();
 
             classify_struct_or_union(
                 info,
-                &CIRTy::Struct(struct_type),
+                &CIRType::Struct(struct_type),
                 offset_base,
                 current,
                 lo_class,
                 hi_class,
             );
         }
-        CIRTy::Array(array_type) => classify_array(info, array_type, offset_base, lo_class, hi_class),
-        CIRTy::Dynamic(_) => classify_dynamic(info, offset_base, lo_class, hi_class),
-        CIRTy::Enum(_) => classify_enum(info, ty, offset_base, lo_class, hi_class),
+        CIRType::Array(array_type) => classify_array(info, array_type, offset_base, lo_class, hi_class),
+        CIRType::Dynamic(_) => classify_dynamic(info, offset_base, lo_class, hi_class),
+        CIRType::Enum(_) => classify_enum(info, ty, offset_base, lo_class, hi_class),
     }
 }
 
@@ -951,7 +951,7 @@ fn classify_dynamic(
     // first pointer (data_ptr)
     classify(
         info,
-        &CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+        &CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
         offset_base,
         &mut temp_lo,
         &mut temp_hi,
@@ -966,7 +966,7 @@ fn classify_dynamic(
 
     classify(
         info,
-        &CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+        &CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
         offset_base + 8,
         &mut temp_lo2,
         &mut temp_hi2,
@@ -978,12 +978,12 @@ fn classify_dynamic(
 
 fn classify_array(
     info: &ABITargetInfo,
-    array_type: &CIRArrayTy,
+    array_type: &CIRArrayType,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
 ) {
-    let layout = type_layout(info, &CIRTy::Array(array_type.clone()));
+    let layout = type_layout(info, &CIRType::Array(array_type.clone()));
     let element_ty = &array_type.element_ty;
     let element_layout = type_layout(info, element_ty);
 
@@ -1032,7 +1032,7 @@ fn classify_array(
 
 fn classify_enum(
     info: &ABITargetInfo,
-    ty: &CIRTy,
+    ty: &CIRType,
     offset_base: u32,
     lo_class: *mut RegisterClass,
     hi_class: *mut RegisterClass,
@@ -1086,8 +1086,8 @@ fn classify_enum(
 
     if payload_size > 0 {
         // payload is a byte array, classify based on its size
-        let payload_ty = CIRTy::Array(CIRArrayTy {
-            element_ty: Box::new(CIRTy::PlainType(PlainType::UInt8)),
+        let payload_ty = CIRType::Array(CIRArrayType {
+            element_ty: Box::new(CIRType::PlainType(PlainType::UInt8)),
             len: payload_size as usize,
         });
 
@@ -1104,7 +1104,7 @@ fn classify_enum(
 
 fn classify_struct_or_union(
     info: &ABITargetInfo,
-    ty: &CIRTy,
+    ty: &CIRType,
     offset_base: u32,
     current: *mut RegisterClass,
     lo_class: *mut RegisterClass,

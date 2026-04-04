@@ -30,7 +30,7 @@ use cyrusc_internal::{
             CIRBlockStmt, CIRForStmt, CIRGotoStmt, CIRIfStmt, CIRLabelStmt, CIRReturnStmt, CIRStmt,
             CIRSwitchOnEnumPattern, CIRSwitchOnEnumStmt, CIRSwitchStmt, CIRWhileStmt,
         },
-        types::{CIREnumTy, CIRTupleTy, CIRTy},
+        types::{CIREnumType, CIRTupleType, CIRType},
     },
 };
 use cyrusc_source_loc::Loc;
@@ -314,15 +314,15 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_switch_on_enum_export_fields(
         &self,
         payload_alloca: PointerValue<'ll>,
-        variant_field_types: Vec<CIRTy>,
+        variant_field_types: Vec<CIRType>,
         payload_struct_ty: StructType<'ll>,
-        exported_fields: &Vec<(TypedIdent, CIRTy)>,
+        exported_fields: &Vec<(TypedIdent, CIRType)>,
         loc: Loc,
     ) {
         let mut irreg = self.irreg.borrow_mut();
 
-        let elements: Vec<CIRTy> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
-        let tuple_type = CIRTy::Tuple(CIRTupleTy { elements, loc });
+        let elements: Vec<CIRType> = exported_fields.iter().map(|(_, ty)| ty.clone()).collect();
+        let tuple_type = CIRType::Tuple(CIRTupleType { elements, loc });
         let layout = type_layout(&self.target.info, &tuple_type);
 
         for (i, (exported_field, _)) in exported_fields.iter().enumerate() {
@@ -352,7 +352,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         &mut self,
         switch_on_enum_stmt: &CIRSwitchOnEnumStmt,
         enum_value: IntValue<'ll>,
-        enum_ty: &CIREnumTy,
+        enum_ty: &CIREnumType,
     ) {
         let parent_block = self.blockreg.cur_block.unwrap();
         let exit_block = self.new_basic_block("switch_on_enum.exit");

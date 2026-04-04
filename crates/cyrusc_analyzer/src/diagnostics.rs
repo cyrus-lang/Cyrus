@@ -274,7 +274,7 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot assign to immutable lvalue.")]
     CannotAssignToConstLValue,
 
-    #[error("Missing required fields {missing_field_names} in struct '{struct_name}'.")]
+    #[error("Missing required field {missing_field_names} in struct '{struct_name}'.")]
     StructMissingFields {
         struct_name: String,
         missing_field_names: String,
@@ -324,6 +324,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("Duplicate declaration of field '{field_name}' in '{object_name}'.")]
     DuplicateFieldName { object_name: String, field_name: String },
+
+    #[error("Duplicate initializer for field '{field_name}'.")]
+    DuplicateFieldInitializer { field_name: String },
 
     #[error("Function '{func_name}' expects {expected} arguments, but {args} was provided.")]
     FuncCallArgsCountMismatch {
@@ -412,7 +415,7 @@ impl<'a> AnalysisContext<'a> {
             kind: Box::new(AnalyzerDiagKind::ConstQualifiedTypeAssignedToNonConstVariable),
             loc: Some(loc),
             hint: Some(
-                "Prefer declaring the variable itself as const instead of using a const‑qualified type.".to_string(),
+                "Prefer declaring the variable itself as const instead of using a const-qualified type.".to_string(),
             ),
         });
     }

@@ -168,7 +168,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 Box::new(fs_module_loader),
                 source_map.clone(),
                 reporter.clone(),
-                decl_tables,
+                decl_tables.clone(),
             );
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&entry_file), file_id);
@@ -204,7 +204,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                     config.clone(),
                     reporter.clone(),
                     &resolver,
-                    decl_tables,
+                    decl_tables.clone(),
                     &resolver,
                     program_tree_entry.program_tree.clone(),
                     entry_points.clone(),
@@ -278,7 +278,6 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         &*codegen_semantic_bundle.resolver,
         codegen_semantic_bundle.source_map.clone(),
         cir_monomorph_registry.clone(),
-        codegen_semantic_bundle.mapping_ctx_arena.clone(),
         &codegen_semantic_bundle.vtable_registries,
         &target,
     );

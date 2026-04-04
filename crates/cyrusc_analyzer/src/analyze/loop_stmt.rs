@@ -62,7 +62,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
-        let func_type = self.fenv.current_func_type.clone().unwrap();
+        let func_type = self.func_env.current_func_type.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {

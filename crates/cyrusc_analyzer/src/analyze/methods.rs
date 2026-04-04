@@ -15,24 +15,22 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{
-    decls::MethodDeclID,
-    types::{SemanticType, TypedFuncType},
-};
+use crate::context::AnalysisContext;
+use cyrusc_typed_ast::decls::{MethodDecl, MethodDecls};
 
-#[derive(Debug, Clone)]
-pub(crate) struct FuncEnv {
-    pub(crate) current_func_type: Option<TypedFuncType>,
-    pub(crate) current_object: Option<SemanticType>,
-    pub(crate) current_method: Option<MethodDeclID>,
-}
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn analyze_object_methods(&mut self, object_name: &String, method_decls: &MethodDecls) {
+        for (_, method_decl_id) in method_decls.iter() {
+            let method_decl = self.decl_tables.method_decl(*method_decl_id);
 
-impl FuncEnv {
-    pub fn new() -> Self {
-        Self {
-            current_func_type: None,
-            current_object: None,
-            current_method: None,
+            self.analyze_method_generic_params(object_name, method_decls, &method_decl.func_decl.generic_params);
+
+            self.analyze_method(&method_decl);
         }
+    }
+
+    pub(crate) fn analyze_method(&self, method_decl: &MethodDecl) {
+        // self.analyze_func_decl(method_decl.func_decl);
+        todo!();
     }
 }

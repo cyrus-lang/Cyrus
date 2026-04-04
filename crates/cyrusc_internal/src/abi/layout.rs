@@ -22,7 +22,7 @@ use crate::{
     },
     cir::{
         cir::CIREnumTyVariant,
-        types::{CIRStructTy, CIRTupleTy, CIRTy},
+        types::{CIRStructType, CIRTupleType, CIRType},
     },
 };
 use cyrusc_typed_ast::types::PlainType;
@@ -51,15 +51,15 @@ pub enum ABIFieldOffsetInfo {
     },
 }
 
-pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
+pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
     match ty {
-        CIRTy::PlainType(plain_type) => plain_type_layout(info, plain_type),
-        CIRTy::Const(ty) => type_layout(info, ty.const_inner()),
-        CIRTy::Pointer(_) => {
+        CIRType::PlainType(plain_type) => plain_type_layout(info, plain_type),
+        CIRType::Const(ty) => type_layout(info, ty.const_inner()),
+        CIRType::Pointer(_) => {
             let size = info.pointer_size();
             ABITypeLayout::normal(size, size, Vec::new())
         }
-        CIRTy::Struct(struct_type) => {
+        CIRType::Struct(struct_type) => {
             let mut offset = 0;
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
@@ -118,7 +118,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             ABITypeLayout::aggregate(total_size, max_align, field_offsets)
         }
-        CIRTy::Union(union_type) => {
+        CIRType::Union(union_type) => {
             let mut max_size = 0;
             let mut max_align = 1;
             let mut field_offsets = Vec::new();
@@ -140,7 +140,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
             let total_size = align_offset(max_size, max_align);
             ABITypeLayout::aggregate(total_size, max_align, field_offsets)
         }
-        CIRTy::Enum(enum_type) => {
+        CIRType::Enum(enum_type) => {
             let tag_type = enum_type.tag_type_or_infer_or_default();
 
             if enum_type.is_scalar_optimizable() {
@@ -164,13 +164,13 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                     }
 
                     CIREnumTyVariant::Fielded(_, field_types) => {
-                        let tuple_type = CIRTupleTy {
+                        let tuple_type = CIRTupleType {
                             elements: field_types.clone(),
                             loc: enum_type.loc,
                         };
                         let tuple_struct_type = tuple_type.as_struct_ty();
 
-                        let struct_type = CIRStructTy {
+                        let struct_type = CIRStructType {
                             name: None,
                             fields: tuple_struct_type.fields.clone(),
                             fields_info: tuple_struct_type.fields_info.clone(),
@@ -179,7 +179,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
                             loc: enum_type.loc,
                         };
 
-                        let layout = type_layout(info, &CIRTy::Struct(struct_type));
+                        let layout = type_layout(info, &CIRType::Struct(struct_type));
                         (layout.size, layout.align)
                     }
                 };
@@ -213,16 +213,16 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             ABITypeLayout::aggregate(total_size, total_align, Vec::new())
         }
-        CIRTy::FuncType(_) => {
+        CIRType::FuncType(_) => {
             let size = info.pointer_size();
             ABITypeLayout::normal(size, size, Vec::new())
         }
-        CIRTy::Tuple(tuple_type) => {
+        CIRType::Tuple(tuple_type) => {
             // tuple lowered as struct in codegen
             let struct_type = tuple_type.as_struct_ty();
-            type_layout(info, &CIRTy::Struct(struct_type))
+            type_layout(info, &CIRType::Struct(struct_type))
         }
-        CIRTy::Array(array_type) => {
+        CIRType::Array(array_type) => {
             let element_layout = type_layout(info, &array_type.element_ty);
             let total_size = element_layout.size * array_type.len as u32;
 
@@ -237,7 +237,7 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRTy) -> ABITypeLayout {
 
             ABITypeLayout::aggregate(total_size, element_layout.align, field_offsets)
         }
-        CIRTy::Dynamic(_) => {
+        CIRType::Dynamic(_) => {
             let size = info.pointer_size() * 2; // data_ptr + vtable_ptr
             ABITypeLayout::normal(size, info.pointer_size(), Vec::new())
         }

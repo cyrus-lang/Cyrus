@@ -23,6 +23,7 @@ pub(crate) mod goto_stmt;
 pub(crate) mod if_stmt;
 pub(crate) mod interface_stmt;
 pub(crate) mod loop_stmt;
+pub(crate) mod methods;
 pub(crate) mod stmt;
 pub(crate) mod struct_stmt;
 pub(crate) mod switch_stmt;

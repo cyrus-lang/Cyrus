@@ -25,7 +25,6 @@ use crate::{
     types::{SemanticType, TypedFuncType},
 };
 use cyrusc_ast::{
-    ASTUnnamedStructValueExpr,
     abi::Visibility,
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };

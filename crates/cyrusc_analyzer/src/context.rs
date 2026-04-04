@@ -45,7 +45,7 @@ pub struct AnalysisContext<'a> {
     pub(crate) decl_tables: Arc<DeclTablesRegistry>,
     pub(crate) formatter: &'a dyn Formatter,
 
-    pub(crate) fenv: FuncEnv,
+    pub(crate) func_env: FuncEnv,
     pub(crate) type_cache: TypeCache,
 
     pub(crate) control_stack: Vec<ControlRegion>,
@@ -69,7 +69,7 @@ impl<'a> AnalysisContext<'a> {
 
         Self {
             type_cache,
-            fenv,
+            func_env: fenv,
             config,
             reporter,
             control_stack,

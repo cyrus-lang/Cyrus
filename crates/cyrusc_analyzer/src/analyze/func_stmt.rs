@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
 
         let func_type_params = func_def.params.as_func_type_params();
 
-        self.fenv.current_func_type = Some(TypedFuncType {
+        self.func_env.current_func_type = Some(TypedFuncType {
             symbol_id: Some(func_def.symbol_id),
             params: func_type_params,
             ret_type: Box::new(func_def.ret_type.clone()),
@@ -64,7 +64,7 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    pub(crate) fn analyze_func_decl(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
+    pub(crate) fn analyze_func_decl_stmt(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
         if func_decl_stmt.generic_params.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

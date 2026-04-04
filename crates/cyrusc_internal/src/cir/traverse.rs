@@ -1731,8 +1731,8 @@
 //             SemanticType::GenericType(generic_type) => self.lower_generic_type(generic_type.clone()),
 //             SemanticType::UnresolvedSymbol(_) => unreachable!("unexpected unresolved symbol"),
 //             SemanticType::SelfType(_) => {
-//                 if let Some(cir_ty) = &self.current_self_ty {
-//                     cir_ty.clone()
+//                 if let Some(cir_type) = &self.current_self_ty {
+//                     cir_type.clone()
 //                 } else {
 //                     unreachable!("unexpected self type which is not resolved")
 //                 }
@@ -1743,12 +1743,12 @@
 //                         {
 //                             let mapping_ctx = generic_type.mapping_ctx.borrow();
 
-//                             let cir_ty = mapping_ctx
+//                             let cir_type = mapping_ctx
 //                                 .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
 //                                 .map(|sema_type| self.lower_sema_ty(&sema_type))
 //                                 .unwrap();
 
-//                             return cir_ty;
+//                             return cir_type;
 //                         }
 //                     }
 //                 }

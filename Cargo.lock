@@ -282,6 +282,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrusc_cir_traverse"
+version = "0.1.0"
+dependencies = [
+ "cyrusc_ast",
+ "cyrusc_diagcentral",
+ "cyrusc_internal",
+ "cyrusc_source_loc",
+ "cyrusc_tokens",
+ "cyrusc_typed_ast",
+ "num_cpus",
+ "once_cell",
+ "rayon",
+]
+
+[[package]]
 name = "cyrusc_codegen_llvm"
 version = "0.1.0"
 dependencies = [
@@ -308,6 +323,7 @@ dependencies = [
  "cyrusc_analyzer",
  "cyrusc_ast",
  "cyrusc_buildmanifest",
+ "cyrusc_cir_traverse",
  "cyrusc_diagcentral",
  "cyrusc_fs_utils",
  "cyrusc_internal",

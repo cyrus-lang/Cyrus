@@ -18,6 +18,7 @@ members = [
     "crates/cyrusc_asan_wrapper",
     "crates/cyrusc_tokens",
     "crates/cyrusc_internal",
+    "crates/cyrusc_cir_traverse",
     "crates/cyrusc_const_eval",
     "crates/cyrusc_source_loc",
 ]

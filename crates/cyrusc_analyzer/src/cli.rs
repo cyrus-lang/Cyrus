@@ -121,12 +121,12 @@ pub fn main() {
 
                     analyzer.analyze();
 
-                    reporter.display();
                     if reporter.has_errors() {
+                        reporter.display();
                         continue;
+                    } else {
+                        dbg!(program_tree_entry.program_tree.clone());
                     }
-
-                    dbg!(program_tree_entry.program_tree.clone());
                 }
 
                 entry_points.validate();

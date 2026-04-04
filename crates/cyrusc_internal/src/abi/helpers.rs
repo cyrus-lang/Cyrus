@@ -22,7 +22,7 @@ use crate::{
         targets::x86_64::types::X86_64TargetDependentType,
         types::{ABIFloatKind, ABIType, TargetIntegerType},
     },
-    cir::{cir::CIREnumTyVariant, types::CIRTy},
+    cir::{cir::CIREnumTyVariant, types::CIRType},
 };
 use cyrusc_typed_ast::types::PlainType;
 
@@ -36,11 +36,11 @@ pub(crate) fn align_offset(offset: u32, align: u32) -> u32 {
     (offset + align - 1) / align * align
 }
 
-pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
+pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType {
     use PlainType::*;
 
     match cir_type {
-        CIRTy::PlainType(plain_type) => {
+        CIRType::PlainType(plain_type) => {
             match plain_type {
                 // Target-dependent types
                 UIntPtr | IntPtr | ISize | USize | Int | UInt => match info.arch {
@@ -68,9 +68,9 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
                 Null => ABIType::Pointer,
             }
         }
-        CIRTy::Const(ty) => cir_type_to_abi_type(info, ty),
-        CIRTy::Pointer(_) => ABIType::Pointer,
-        CIRTy::Struct(struct_ty) => {
+        CIRType::Const(ty) => cir_type_to_abi_type(info, ty),
+        CIRType::Pointer(_) => ABIType::Pointer,
+        CIRType::Struct(struct_ty) => {
             let fields = struct_ty
                 .fields
                 .iter()
@@ -79,7 +79,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
 
             ABIType::Struct(fields, struct_ty.is_packed())
         }
-        CIRTy::Union(union_ty) => {
+        CIRType::Union(union_ty) => {
             let fields = union_ty
                 .fields
                 .iter()
@@ -88,8 +88,8 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
 
             ABIType::Union(fields)
         }
-        CIRTy::FuncType(_) => ABIType::Pointer,
-        CIRTy::Tuple(tuple_ty) => {
+        CIRType::FuncType(_) => ABIType::Pointer,
+        CIRType::Tuple(tuple_ty) => {
             let elements = tuple_ty
                 .elements
                 .iter()
@@ -98,14 +98,14 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
 
             ABIType::Struct(elements, false)
         }
-        CIRTy::Array(array_ty) => {
+        CIRType::Array(array_ty) => {
             let element_ty = Box::new(cir_type_to_abi_type(info, &array_ty.element_ty));
             ABIType::Array {
                 element_ty,
                 count: array_ty.len,
             }
         }
-        CIRTy::Dynamic(_) => {
+        CIRType::Dynamic(_) => {
             ABIType::Struct(
                 vec![
                     ABIType::Pointer, // data pointer
@@ -114,7 +114,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
                 false,
             )
         }
-        CIRTy::Enum(enum_ty) => {
+        CIRType::Enum(enum_ty) => {
             // enums are represented as a struct with tag and payload
             // first, determine if this is a simple C-style enum (no payload)
             if !enum_ty.includes_payload() {
@@ -176,9 +176,9 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRTy) -> ABIType {
     }
 }
 
-pub(crate) fn is_cir_type_abi_aggregate(cir_type: &CIRTy) -> bool {
+pub(crate) fn is_cir_type_abi_aggregate(cir_type: &CIRType) -> bool {
     match cir_type {
-        CIRTy::Struct(_) | CIRTy::Enum(_) | CIRTy::Union(_) | CIRTy::Tuple(_) => true,
+        CIRType::Struct(_) | CIRType::Enum(_) | CIRType::Union(_) | CIRType::Tuple(_) => true,
         _ => false,
     }
 }

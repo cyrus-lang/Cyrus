@@ -22,15 +22,15 @@ use crate::{
         targets::x86_64::classify::X86_64,
         types::{ABIFloatKind, ABIType},
     },
-    cir::types::{CIRFuncTy, CIRTy},
+    cir::types::{CIRFuncType, CIRType},
 };
 
 pub trait TargetABI: Send + Sync {
     fn stack_alignment(&self) -> u32;
-    fn classify_return(&self, ty: &CIRTy) -> ABIRetInfo;
-    fn classify_argument(&self, ty: &CIRTy, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers);
-    fn classify_func(&self, fn_ty: &CIRFuncTy) -> Result<ABIFunctionInfo, String>;
-    fn apply_variadic_argument_promote(&self, ty: &CIRTy) -> CIRTy;
+    fn classify_return(&self, ty: &CIRType) -> ABIRetInfo;
+    fn classify_argument(&self, ty: &CIRType, free_int_regs: u32, is_named: bool) -> (ABIArgInfo, Registers);
+    fn classify_func(&self, fn_ty: &CIRFuncType) -> Result<ABIFunctionInfo, String>;
+    fn apply_variadic_argument_promote(&self, ty: &CIRType) -> CIRType;
 }
 
 pub fn create_target_abi<'a>(target_info: ABITargetInfo) -> Result<Box<dyn TargetABI + 'a>, String> {

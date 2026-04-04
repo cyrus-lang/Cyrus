@@ -1,5 +1,5 @@
 [package]
-name = "cyrusc_internal"
+name = "cyrusc_cir_traverse"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,10 +9,11 @@ cyrusc_typed_ast = { path = "../cyrusc_typed_ast", version = "*" }
 cyrusc_ast = { path = "../cyrusc_ast", version = "*" }
 cyrusc_diagcentral = { path = "../cyrusc_diagcentral", version = "*" }
 cyrusc_tokens = { path = "../cyrusc_tokens", version = "*" }
+cyrusc_internal = { path = "../cyrusc_internal", version = "*" }
 rayon = "1.11.0"
 num_cpus = "1.17.0"
 once_cell = "1.21.3"
 
 [lib]
-name = "cyrusc_internal"
+name = "cyrusc_cir_traverse"
 path = "./src/lib.rs"

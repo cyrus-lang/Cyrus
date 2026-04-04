@@ -17,7 +17,7 @@
 
 use crate::{
     SymbolID, VTableID,
-    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
+    decls::{FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::SemanticType,
 };

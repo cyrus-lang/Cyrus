@@ -47,7 +47,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_type.is_self_type() && self.fenv.current_self_type.is_none() {
+        if sema_type.is_self_type() && self.func_env.current_object.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -217,8 +217,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
-        self.fenv
-            .current_self_type
+        self.func_env
+            .current_object
             .clone()
             .or(Some(SemanticType::SelfType(self_type)))
     }
@@ -375,15 +375,15 @@ impl<'a> AnalysisContext<'a> {
             }
             SymbolEntryKind::Struct(strut_decl_id) => Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Struct(*strut_decl_id),
-                type_args: Vec::new(),
+                type_args: None,
             })),
             SymbolEntryKind::Enum(enum_decl_id) => Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Enum(*enum_decl_id),
-                type_args: Vec::new(),
+                type_args: None,
             })),
             SymbolEntryKind::Union(union_decl_id) => Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Union(*union_decl_id),
-                type_args: Vec::new(),
+                type_args: None,
             })),
             SymbolEntryKind::Interface(interface_decl_id) => self.normalize_interface_type(*interface_decl_id),
             SymbolEntryKind::Typedef(typedef_decl_id) => self.normalize_typedef(*typedef_decl_id),

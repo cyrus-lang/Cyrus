@@ -26,7 +26,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
 use cyrusc_internal::cir::cir::CIREnumTyVariant;
-use cyrusc_internal::cir::types::{CIRArrayTy, CIREnumTy, CIRFuncTy, CIRStructTy, CIRTupleTy, CIRTy, CIRUnionTy};
+use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
 use inkwell::{
@@ -36,7 +36,7 @@ use inkwell::{
 };
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_debug_ty_metadata(&self, ty: &CIRTy) -> LLVMMetadataRef {
+    pub(crate) fn emit_debug_ty_metadata(&self, ty: &CIRType) -> LLVMMetadataRef {
         let llvm_ty = self.emit_ty(ty.clone());
 
         if let Some(metadata) = self.dctx.type_cache.get(&llvm_ty.as_type_ref()) {
@@ -44,9 +44,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         match ty {
-            CIRTy::PlainType(plain_type) => {
+            CIRType::PlainType(plain_type) => {
                 let name = plain_type.to_string();
-                let layout = type_layout(&self.target.info, &CIRTy::PlainType(plain_type.clone()));
+                let layout = type_layout(&self.target.info, &CIRType::PlainType(plain_type.clone()));
                 let bits = layout.size * 8;
 
                 let encoding = match plain_type {
@@ -79,18 +79,18 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 unsafe { debug_simple_type(&self.dctx, &name, bits as u64, encoding as u32) }
             }
-            CIRTy::Const(inner_ty) => {
+            CIRType::Const(inner_ty) => {
                 let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
                 unsafe { debug_const_type(&self.dctx, inner_ty_metadata) }
             }
-            CIRTy::Pointer(inner_ty) => {
+            CIRType::Pointer(inner_ty) => {
                 let inner_ty_metadata = self.emit_debug_ty_metadata(inner_ty);
                 let ptr_size_bits = self.target.info.pointer_size() * 8;
                 let ptr_align = self.target.info.pointer_align() * 8;
                 unsafe { debug_pointer_type(&self.dctx, inner_ty_metadata, ptr_size_bits as u64, ptr_align, "T*") }
             }
-            CIRTy::Struct(struct_ty) => unsafe {
-                let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_ty.clone()));
+            CIRType::Struct(struct_ty) => unsafe {
+                let layout = type_layout(&self.target.info, &CIRType::Struct(struct_ty.clone()));
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -125,8 +125,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                     struct_ty.loc.line.try_into().unwrap(),
                 )
             },
-            CIRTy::Tuple(tuple_ty) => {
-                let layout = type_layout(&self.target.info, &CIRTy::Tuple(tuple_ty.clone()));
+            CIRType::Tuple(tuple_ty) => {
+                let layout = type_layout(&self.target.info, &CIRType::Tuple(tuple_ty.clone()));
 
                 let mut elements_metadata: Vec<LLVMMetadataRef> = tuple_ty
                     .elements
@@ -166,8 +166,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                     )
                 }
             }
-            CIRTy::Enum(enum_ty) => {
-                let layout = type_layout(&self.target.info, &CIRTy::Enum(enum_ty.clone()));
+            CIRType::Enum(enum_ty) => {
+                let layout = type_layout(&self.target.info, &CIRType::Enum(enum_ty.clone()));
                 let size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
@@ -219,12 +219,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                                     (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
                                 CIREnumTyVariant::Fielded(_, elements) => {
-                                    let tuple_type = CIRTupleTy {
+                                    let tuple_type = CIRTupleType {
                                         elements: elements.to_vec(),
                                         loc: enum_ty.loc,
                                     };
 
-                                    let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRTy::Tuple(tuple_type));
+                                    let tuple_type_metadata = self.emit_debug_ty_metadata(&CIRType::Tuple(tuple_type));
 
                                     (ident.clone(), tag as i64, tuple_type_metadata)
                                 }
@@ -245,8 +245,8 @@ impl<'ll> IRBuilderCtx<'ll> {
                     }
                 }
             }
-            CIRTy::Union(union_ty) => {
-                let layout = type_layout(&self.target.info, &CIRTy::Union(union_ty.clone()));
+            CIRType::Union(union_ty) => {
+                let layout = type_layout(&self.target.info, &CIRType::Union(union_ty.clone()));
 
                 let mut elements_metadata: Vec<LLVMMetadataRef> = union_ty
                     .fields
@@ -283,10 +283,10 @@ impl<'ll> IRBuilderCtx<'ll> {
                     )
                 }
             }
-            CIRTy::FuncType(func_ty) => self.emit_func_metadata(func_ty),
-            CIRTy::Array(array_ty) => {
+            CIRType::FuncType(func_ty) => self.emit_func_metadata(func_ty),
+            CIRType::Array(array_ty) => {
                 let element_ty_metadata = self.emit_debug_ty_metadata(&array_ty.element_ty);
-                let layout = type_layout(&self.target.info, &CIRTy::Array(array_ty.clone()));
+                let layout = type_layout(&self.target.info, &CIRType::Array(array_ty.clone()));
 
                 unsafe {
                     debug_array_type(
@@ -298,12 +298,12 @@ impl<'ll> IRBuilderCtx<'ll> {
                     )
                 }
             }
-            CIRTy::Dynamic(dynamic_ty) => {
-                let layout = type_layout(&self.target.info, &CIRTy::Dynamic(dynamic_ty.clone()));
+            CIRType::Dynamic(dynamic_ty) => {
+                let layout = type_layout(&self.target.info, &CIRType::Dynamic(dynamic_ty.clone()));
                 let ptr_size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
-                let cir_void_ptr_ty = CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void)));
+                let cir_void_ptr_ty = CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void)));
                 let data_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
                 let vtable_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
 
@@ -312,27 +312,27 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_ty(&self, ty: CIRTy) -> AnyTypeEnum<'ll> {
+    pub(crate) fn emit_ty(&self, ty: CIRType) -> AnyTypeEnum<'ll> {
         match ty {
-            CIRTy::Const(inner_ty) => self.emit_ty(*inner_ty),
-            CIRTy::PlainType(plain_ty) => self.emit_plain_ty(plain_ty),
-            CIRTy::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRTy::Struct(struct_ty) => self.emit_struct_ty(struct_ty).as_any_type_enum(),
-            CIRTy::Enum(enum_ty) => self.emit_enum_ty(enum_ty).as_any_type_enum(),
-            CIRTy::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
-            CIRTy::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
-            CIRTy::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
-            CIRTy::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
-            CIRTy::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
+            CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
+            CIRType::PlainType(plain_ty) => self.emit_plain_ty(plain_ty),
+            CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
+            CIRType::Struct(struct_ty) => self.emit_struct_ty(struct_ty).as_any_type_enum(),
+            CIRType::Enum(enum_ty) => self.emit_enum_ty(enum_ty).as_any_type_enum(),
+            CIRType::Union(union_ty) => self.emit_union_ty(union_ty).as_any_type_enum(),
+            CIRType::Tuple(tuple_ty) => self.emit_tuple_ty(tuple_ty).as_any_type_enum(),
+            CIRType::Array(array_ty) => self.emit_arr_ty(array_ty).as_any_type_enum(),
+            CIRType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
+            CIRType::Dynamic(..) => self.emit_dynamic_ty().as_any_type_enum(),
         }
     }
 
-    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRTy, loc: Loc) -> CIRTy {
-        CIRTy::Struct(CIRStructTy {
+    pub(crate) fn cir_dynamic_ty(&self, data_ptr_inner_ty: CIRType, loc: Loc) -> CIRType {
+        CIRType::Struct(CIRStructType {
             name: None,
             fields: vec![
-                CIRTy::Pointer(Box::new(data_ptr_inner_ty)),
-                CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
+                CIRType::Pointer(Box::new(data_ptr_inner_ty)),
+                CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
             ],
             fields_info: vec![
                 ("data_ptr".to_string(), loc),
@@ -360,7 +360,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         )
     }
 
-    pub(crate) fn emit_types(&self, tys: &[CIRTy]) -> Vec<AnyTypeEnum<'ll>> {
+    pub(crate) fn emit_types(&self, tys: &[CIRType]) -> Vec<AnyTypeEnum<'ll>> {
         tys.iter().map(|ty| self.emit_ty(ty.clone())).collect()
     }
 
@@ -398,9 +398,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_struct_ty(&self, struct_ty: CIRStructTy) -> StructType<'ll> {
+    pub(crate) fn emit_struct_ty(&self, struct_ty: CIRStructType) -> StructType<'ll> {
         let is_packed = struct_ty.is_packed();
-        let layout = type_layout(&self.target.info, &CIRTy::Struct(struct_ty.clone()));
+        let layout = type_layout(&self.target.info, &CIRType::Struct(struct_ty.clone()));
 
         let mut llvm_field_types: Vec<BasicTypeEnum<'ll>> = Vec::new();
         let mut next_field_index = 0;
@@ -434,7 +434,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_enum_fielded_variant_payload_ty(
         &self,
         variant_idx: usize,
-        enum_ty: &CIREnumTy,
+        enum_ty: &CIREnumType,
     ) -> Option<StructType<'ll>> {
         if !enum_ty.includes_payload() {
             return None;
@@ -442,13 +442,13 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         let variant = &enum_ty.variants[variant_idx];
         let elements = variant.as_fielded()?.clone();
-        let tuple_type = CIRTupleTy {
+        let tuple_type = CIRTupleType {
             elements,
             loc: enum_ty.loc,
         };
         let struct_tuple_type = tuple_type.as_struct_ty();
 
-        Some(self.emit_struct_ty(CIRStructTy {
+        Some(self.emit_struct_ty(CIRStructType {
             name: None,
             fields: struct_tuple_type.fields,
             fields_info: struct_tuple_type.fields_info,
@@ -458,7 +458,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }))
     }
 
-    pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_ty: &CIREnumTy) -> (ArrayType<'ll>, u64) {
+    pub(crate) fn emit_enum_buffer_payload_ty(&self, enum_ty: &CIREnumType) -> (ArrayType<'ll>, u64) {
         let target_data = self.llvmtm.get_target_data();
         let mut max_payload_size: u64 = 0;
         let mut max_payload_align: u64 = 1;
@@ -514,12 +514,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         (payload_buffer_ty, aligned_size)
     }
 
-    fn emit_repr_c_enum_ty(&self, enum_ty: &CIREnumTy) -> BasicTypeEnum<'ll> {
+    fn emit_repr_c_enum_ty(&self, enum_ty: &CIREnumType) -> BasicTypeEnum<'ll> {
         let cir_tag_type = enum_ty.tag_type_or_infer_or_default();
         self.emit_ty(*cir_tag_type.clone()).try_into().unwrap()
     }
 
-    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumTy) -> BasicTypeEnum<'ll> {
+    pub(crate) fn emit_enum_ty(&self, enum_ty: CIREnumType) -> BasicTypeEnum<'ll> {
         if enum_ty.is_scalar_optimizable() {
             // c-compatible enum
             self.emit_repr_c_enum_ty(&enum_ty)
@@ -535,8 +535,8 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionTy) -> BasicTypeEnum<'ll> {
-        let layout = type_layout(&self.target.info, &CIRTy::Union(union_ty.clone()));
+    pub(crate) fn emit_union_ty(&self, union_ty: CIRUnionType) -> BasicTypeEnum<'ll> {
+        let layout = type_layout(&self.target.info, &CIRType::Union(union_ty.clone()));
         let target_data = self.llvmtm.get_target_data();
 
         let mut ty = None;
@@ -572,12 +572,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleTy) -> StructType<'ll> {
+    pub(crate) fn emit_tuple_ty(&self, tuple_ty: CIRTupleType) -> StructType<'ll> {
         let struct_ty = tuple_ty.as_struct_ty();
         self.emit_struct_ty(struct_ty)
     }
 
-    pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayTy) -> AnyTypeEnum<'ll> {
+    pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {
         let elm_ty: BasicTypeEnum<'ll> = self
             .emit_ty(*array_ty.element_ty)
             .try_into()
@@ -654,7 +654,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         param_types
     }
 
-    pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncTy) -> FunctionType<'ll> {
+    pub(crate) fn emit_func_ty(&self, func_ty: CIRFuncType) -> FunctionType<'ll> {
         let abi_func_info = func_ty.abi_func_info.as_ref().unwrap();
 
         let ret_type = if abi_func_info.ret_info.kind.is_indirect_sret() {

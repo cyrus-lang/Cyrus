@@ -18,9 +18,45 @@
 use crate::context::AnalysisContext;
 use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::types::{PlainType, SemanticType, TypedArrayCapacity, TypedArrayType};
+use cyrusc_typed_ast::{
+    decls::StructDeclID,
+    types::{PlainType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType},
+};
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn struct_field_contains_self_by_value(
+        &self,
+        field_type: &SemanticType,
+        struct_decl_id: StructDeclID,
+    ) -> bool {
+        match field_type {
+            SemanticType::Unresolved(_) => unreachable!(),
+
+            SemanticType::Pointer(_) => {
+                false // indirect
+            }
+            SemanticType::FuncType(_) => {
+                // func type lowered as pointer-size value in codegen,
+                // hence it's never harmful for self-recursion situations.
+                false
+            }
+            SemanticType::Named(named_type) => named_type.decl_id == TypeDeclID::Struct(struct_decl_id),
+            SemanticType::Const(inner) => self.struct_field_contains_self_by_value(inner, struct_decl_id),
+            SemanticType::Array(array_type) => {
+                self.struct_field_contains_self_by_value(&array_type.element_type, struct_decl_id)
+            }
+            SemanticType::Tuple(tuple_type) => tuple_type
+                .elements
+                .iter()
+                .any(|ty| self.struct_field_contains_self_by_value(ty, struct_decl_id)),
+
+            SemanticType::InterfaceType(_) => false,
+            SemanticType::SelfType(_) => false,
+            SemanticType::Plain(_) => false,
+            SemanticType::GenericParam(_) => false,
+        }
+    }
+
     pub(crate) fn is_assignable_to(&mut self, rhs: SemanticType, lhs: SemanticType, loc: Loc) -> bool {
         match (rhs.const_inner().clone(), lhs.const_inner().clone()) {
             (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => named_type1 == named_type2,

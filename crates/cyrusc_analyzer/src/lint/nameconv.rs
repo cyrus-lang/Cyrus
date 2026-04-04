@@ -27,29 +27,29 @@ enum NamingConvDeclKind {
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn nameconv_check_struct_name(&mut self, name: String, loc: Loc) {
-        self.nameconv_check_name(NamingConvDeclKind::Struct, &name, loc);
+    pub(crate) fn nameconv_check_struct_name(&mut self, name: &str, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Struct, name, loc);
     }
 
-    pub(crate) fn nameconv_check_enum_name(&mut self, name: String, loc: Loc) {
-        self.nameconv_check_name(NamingConvDeclKind::Enum, &name, loc);
+    pub(crate) fn nameconv_check_enum_name(&mut self, name: &str, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Enum, name, loc);
     }
 
-    pub(crate) fn nameconv_check_union_name(&mut self, name: String, loc: Loc) {
-        self.nameconv_check_name(NamingConvDeclKind::Union, &name, loc);
+    pub(crate) fn nameconv_check_union_name(&mut self, name: &str, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Union, name, loc);
     }
 
-    pub(crate) fn nameconv_check_interface_name(&mut self, name: String, loc: Loc) {
-        self.nameconv_check_name(NamingConvDeclKind::Interface, &name, loc);
+    pub(crate) fn nameconv_check_interface_name(&mut self, name: &str, loc: Loc) {
+        self.nameconv_check_name(NamingConvDeclKind::Interface, name, loc);
     }
 
-    pub(crate) fn nameconv_check_method_name(&mut self, name: String, loc: Loc) {
+    pub(crate) fn nameconv_check_method_name(&mut self, name: &str, loc: Loc) {
         if self.config.warnings.enabled {
             if !is_snake_case(&name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Warning,
                     kind: Box::new(AnalyzerDiagKind::NamingConv {
-                        name,
+                        name: name.to_string(),
                         kind: "Method".to_string(),
                         expected: "snake_case".to_string(),
                     }),
@@ -71,17 +71,17 @@ impl<'a> AnalysisContext<'a> {
                 NamingConvDeclKind::Union => "Union",
             };
 
-            self.report_nameconv_diag(kind_str.to_string(), name.to_string(), loc);
+            self.report_nameconv_diag(kind_str.to_string(), name, loc);
         }
     }
 
-    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Loc) {
+    fn report_nameconv_diag(&mut self, kind: String, name: &str, loc: Loc) {
         if self.config.warnings.enabled {
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
                 kind: Box::new(AnalyzerDiagKind::NamingConv {
                     kind,
-                    name,
+                    name: name.to_string(),
                     expected: "PascalCase".to_string(),
                 }),
                 loc: Some(loc),

@@ -17,7 +17,7 @@
 
 use crate::{
     LabelID, SymbolID,
-    decls::{MethodDecls, VarDeclID},
+    decls::{FuncDecl, MethodDecls, VarDeclID},
     exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
@@ -178,7 +178,6 @@ pub struct TypedStructStmt {
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
-    pub is_packed: bool,
     pub loc: Loc,
 }
 
@@ -565,6 +564,29 @@ impl TypedFuncParamKind {
         match self {
             TypedFuncParamKind::SelfModifier(self_modifier) => Some(self_modifier),
             TypedFuncParamKind::FuncParam(_) => None,
+        }
+    }
+}
+
+impl TypedFuncDeclStmt {
+    pub fn as_func_decl(&self) -> FuncDecl {
+        FuncDecl {
+            symbol_id: Some(self.symbol_id),
+            name: self.usable_name(),
+            params: self.params.clone(),
+            generic_params: self.generic_params.clone(),
+            ret_type: self.ret_type.clone(),
+            modifiers: self.modifiers.clone(),
+            loc: self.loc,
+            is_func_decl: true,
+        }
+    }
+
+    /// Returns the function's effective name, preferring the renamed version if available.
+    pub fn usable_name(&self) -> String {
+        match &self.renamed_as {
+            Some(name) => name.clone(),
+            None => self.name.clone(),
         }
     }
 }

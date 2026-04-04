@@ -16,7 +16,7 @@
  */
 
 use crate::builder::builder::IRBuilderCtx;
-use cyrusc_internal::cir::{cir::CIRExpr, types::CIRTy};
+use cyrusc_internal::cir::{cir::CIRExpr, types::CIRType};
 use inkwell::{
     types::BasicTypeEnum,
     values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
@@ -24,7 +24,7 @@ use inkwell::{
 
 #[derive(Debug, Clone)]
 pub struct InternalValue<'a> {
-    pub ty: CIRTy,
+    pub ty: CIRType,
     pub kind: InternalValueKind<'a>,
 }
 
@@ -36,7 +36,7 @@ pub enum InternalValueKind<'a> {
 }
 
 impl<'a> InternalValue<'a> {
-    pub fn new(ty: CIRTy, kind: InternalValueKind<'a>) -> Self {
+    pub fn new(ty: CIRType, kind: InternalValueKind<'a>) -> Self {
         InternalValue { ty, kind }
     }
 
@@ -57,7 +57,7 @@ impl<'a> InternalValue<'a> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRTy) {
+    pub(crate) fn emit_store(&self, ptr: PointerValue<'ll>, mut rvalue: InternalValue<'ll>, target_cir_ty: CIRType) {
         if target_cir_ty.is_union() {
             self.emit_union_init(&target_cir_ty.as_union().as_ref().unwrap(), ptr, rvalue);
             return;

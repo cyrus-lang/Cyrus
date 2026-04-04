@@ -18,7 +18,12 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
-use cyrusc_typed_ast::stmts::TypedStmt;
+use cyrusc_source_loc::Loc;
+use cyrusc_typed_ast::{
+    decls::MethodDecls,
+    stmts::{TypedGenericParamsList, TypedStmt},
+};
+use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     // Traverse TypedAST
@@ -32,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
             match &mut typed_stmt {
                 TypedStmt::GlobalVar(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStmt::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
-                TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
+                TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl_stmt(typed_func_decl),
                 TypedStmt::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
                 TypedStmt::Enum(typed_enum) => {
@@ -80,7 +85,7 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
             TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
-            TypedStmt::ExportTuple(typed_export_tuple_values) => {
+            TypedStmt::ExportTuple(export_tuple) => {
                 // self.analyze_export_tuple_values(typed_export_tuple_values);
                 // FlowState::Reachable
 
@@ -119,6 +124,79 @@ impl<'a> AnalysisContext<'a> {
                     hint: None,
                 });
                 return FlowState::Reachable;
+            }
+        }
+    }
+
+    /// Checks method-level generic parameters against the object's generic parameters.
+    ///
+    /// Ensures that no method generic parameter reuses a name already defined
+    /// at the object level. If a conflict is found, an error diagnostic is emitted
+    /// because the method generic would shadow the object's generic parameter.
+    pub(crate) fn analyze_method_generic_params(
+        &mut self,
+        object_name: &String,
+        method_decls: &MethodDecls,
+        generic_params_opt: &Option<TypedGenericParamsList>,
+    ) {
+        let Some(generic_params) = generic_params_opt else {
+            return;
+        };
+
+        for (_, method_decl_id) in method_decls.iter() {
+            let method_decl = self.decl_tables.method_decl(*method_decl_id);
+
+            if let Some(method_generic_params) = &method_decl.func_decl.generic_params {
+                for method_generic_param in &method_generic_params.list {
+                    if generic_params.lookup_named(&method_generic_param.name.value).is_some() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
+                                param_name: method_generic_param.name.as_string(),
+                                object_name: object_name.clone(),
+                            }),
+                            loc: Some(method_generic_param.name.loc),
+                            hint: Some("Consider to rename the generic param to a different name.".to_string()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Validates a list of generic parameters for duplicate names.
+    pub(crate) fn analyze_generic_params(&mut self, generic_params_opt: &Option<TypedGenericParamsList>) {
+        let Some(generic_params) = generic_params_opt else {
+            return;
+        };
+
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
+
+        for generic_param in &generic_params.list {
+            let name = generic_param.name.value.as_str();
+
+            if !seen.insert(name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateGenericParam {
+                        param_name: generic_param.name.as_string(),
+                    }),
+                    loc: Some(generic_param.name.loc),
+                    hint: Some("Consider renaming the generic parameter to a different name.".to_string()),
+                });
+            }
+        }
+    }
+
+    pub(crate) fn validate_align(&mut self, align: &Option<usize>, loc: Loc) {
+        if let Some(align) = align {
+            if !align.is_power_of_two() {
+                self.reporter.report(Diag {
+                    kind: Box::new(AnalyzerDiagKind::InvalidAlign { value: *align }),
+                    level: DiagLevel::Error,
+                    loc: Some(loc),
+                    hint: Some("Alignment values must be powers of two (1, 2, 4, 8, 16, ...).".to_string()),
+                });
             }
         }
     }

@@ -15,15 +15,156 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::context::AnalysisContext;
-use cyrusc_typed_ast::{decls::StructDecl, stmts::TypedStructStmt};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_ast::abi::{ReprAttr, ReprKind};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
+use cyrusc_typed_ast::{
+    decls::{StructDecl, StructDeclID},
+    format::{format_sema_type, format_struct_decl},
+    stmts::{TypedStructField, TypedStructStmt},
+    types::SemanticType,
+};
+use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_struct_stmt(&self, struct_stmt: &mut TypedStructStmt) {
-        todo!()
+    pub(crate) fn analyze_struct_stmt(&mut self, struct_stmt: &mut TypedStructStmt) {
+        let struct_decl_id = self.query.get_struct(struct_stmt.symbol_id).unwrap();
+        let mut struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+
+        self.analyze_struct_decl(struct_decl_id, &mut struct_decl);
     }
 
-    pub(crate) fn analyze_struct_decl(&self, struct_decl: &mut StructDecl) {
-        todo!()
+    pub(crate) fn analyze_struct_decl(&mut self, struct_decl_id: StructDeclID, struct_decl: &mut StructDecl) {
+        self.validate_align(&struct_decl.align, struct_decl.loc);
+        self.validate_struct_repr_attr(
+            &struct_decl.modifiers.repr_attr,
+            struct_decl.fields.len(),
+            struct_decl.loc,
+        );
+
+        self.analyze_generic_params(&struct_decl.generic_params);
+
+        if let Some(struct_name) = &struct_decl.name {
+            self.nameconv_check_struct_name(struct_name, struct_decl.loc);
+        }
+
+        let object_name = format_struct_decl(struct_decl, self.formatter);
+
+        self.check_duplicate_struct_field(&object_name, &struct_decl.fields);
+
+        self.analyze_struct_fields(struct_decl_id, &mut struct_decl.fields);
+
+        self.analyze_object_implements_interface_list(&object_name, &struct_decl.impls, &struct_decl.methods);
+
+        self.analyze_object_methods(&object_name, &struct_decl.methods);
+
+        self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
+            *_struct_decl = struct_decl.clone();
+        });
+    }
+
+    fn analyze_struct_fields(&mut self, struct_decl_id: StructDeclID, struct_fields: &mut [TypedStructField]) {
+        for field in struct_fields {
+            field.ty = match self.normalize_sema_type(field.ty.clone(), field.loc) {
+                Some(sema_type) => sema_type,
+                None => continue,
+            };
+
+            self.validate_field_type(struct_decl_id, &field.ty, field.loc);
+        }
+    }
+
+    fn check_duplicate_struct_field(&self, object_name: &String, fields: &[TypedStructField]) {
+        let mut field_names: FxHashSet<&str> = FxHashSet::default();
+
+        for field in fields {
+            if !field_names.insert(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DuplicateFieldName {
+                        object_name: object_name.clone(),
+                        field_name: field.name.clone(),
+                    }),
+                    loc: Some(field.loc),
+                    hint: None,
+                });
+            }
+        }
+    }
+
+    fn validate_struct_repr_attr(&mut self, repr_attr: &Option<ReprAttr>, fields_count: usize, loc: Loc) {
+        let Some(repr_attr) = repr_attr else {
+            return;
+        };
+
+        if let Some(kind) = repr_attr.kind() {
+            match kind {
+                ReprKind::C | ReprKind::Cyrus => { /* valid */ }
+                ReprKind::Transparent => {
+                    // transparent is allowed on structs and requires exactly one field
+                    if fields_count != 1 {
+                        self.reporter.report(Diag {
+                            kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                                err: "Repr 'transparent' structs must have exactly one field.".to_string(),
+                            }),
+                            level: DiagLevel::Error,
+                            loc: Some(loc),
+                            hint: Some(
+                                "Add or remove fields to have exactly one field, or remove the 'transparent' attribute."
+                                    .to_string(),
+                            ),
+                        });
+                    }
+
+                    if repr_attr.is_packed() {
+                        self.reporter.report(Diag {
+                            kind: Box::new(AnalyzerDiagKind::InvalidReprAttr {
+                                err: "Cannot combine 'packed' with repr 'transparent' on structs.".to_string(),
+                            }),
+                            level: DiagLevel::Error,
+                            loc: Some(loc),
+                            hint: Some("Remove either 'packed' or 'transparent'.".to_string()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn validate_field_type(&mut self, struct_decl_id: StructDeclID, sema_type: &SemanticType, loc: Loc) {
+        let sema_type = sema_type.const_inner();
+
+        if sema_type.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VoidFieldType),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        if sema_type.count_const_layers() >= 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        if self.struct_field_contains_self_by_value(sema_type, struct_decl_id) {
+            let type_name = format_sema_type(sema_type.clone(), self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::InfiniteSizeRecursiveType { type_name }),
+                loc: Some(loc),
+                hint: None,
+            });
+            return;
+        }
+
+        self.check_sema_ty(sema_type.clone(), loc);
     }
 }

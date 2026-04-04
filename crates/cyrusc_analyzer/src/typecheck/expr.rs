@@ -85,11 +85,12 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
-            TypedExprKind::StructInit(struct_init) => todo!(),
+            
+            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
+            TypedExprKind::UnnamedStructValue(unnamed_struct_value) => todo!(),
 
-            TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
-            TypedExprKind::UnnamedEnumValue(typed_unnamed_enum_value) => todo!(),
-            TypedExprKind::UnnamedUnionValue(typed_unnamed_union_value) => todo!(),
+            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => todo!(),
+            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => todo!(),
 
             TypedExprKind::FuncCall(func_call) => {
                 todo!()

@@ -27,7 +27,7 @@ mod tests {
             target::{ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, TargetABI},
             targets::x86_64::classify::X86_64,
         },
-        cir::types::{CIRArrayTy, CIRDynamicTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy},
+        cir::types::{CIRArrayType, CIRDynamicType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
     };
 
     fn abi() -> X86_64 {
@@ -39,34 +39,34 @@ mod tests {
         X86_64::new(info)
     }
 
-    fn i8() -> CIRTy {
-        CIRTy::PlainType(PlainType::Int8)
+    fn i8() -> CIRType {
+        CIRType::PlainType(PlainType::Int8)
     }
 
-    fn i32() -> CIRTy {
-        CIRTy::PlainType(PlainType::Int32)
+    fn i32() -> CIRType {
+        CIRType::PlainType(PlainType::Int32)
     }
 
-    fn i64() -> CIRTy {
-        CIRTy::PlainType(PlainType::Int64)
+    fn i64() -> CIRType {
+        CIRType::PlainType(PlainType::Int64)
     }
 
-    fn u8() -> CIRTy {
-        CIRTy::PlainType(PlainType::UInt8)
+    fn u8() -> CIRType {
+        CIRType::PlainType(PlainType::UInt8)
     }
 
-    fn f32() -> CIRTy {
-        CIRTy::PlainType(PlainType::Float32)
+    fn f32() -> CIRType {
+        CIRType::PlainType(PlainType::Float32)
     }
 
-    fn f64() -> CIRTy {
-        CIRTy::PlainType(PlainType::Float64)
+    fn f64() -> CIRType {
+        CIRType::PlainType(PlainType::Float64)
     }
 
-    fn struct_ty(fields: Vec<CIRTy>) -> CIRTy {
+    fn struct_ty(fields: Vec<CIRType>) -> CIRType {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
-        CIRTy::Struct(CIRStructTy {
+        CIRType::Struct(CIRStructType {
             name: None,
             fields,
             fields_info: Vec::new(), // won't be used
@@ -76,10 +76,10 @@ mod tests {
         })
     }
 
-    fn union_ty(fields: Vec<CIRTy>) -> CIRTy {
+    fn union_ty(fields: Vec<CIRType>) -> CIRType {
         let fields = fields.iter().map(|ty| ty.clone()).collect();
 
-        CIRTy::Union(CIRUnionTy {
+        CIRType::Union(CIRUnionType {
             name: None,
             fields,
             fields_info: Vec::new(), // won't be used
@@ -89,8 +89,8 @@ mod tests {
         })
     }
 
-    fn array_ty(ty: CIRTy, len: usize) -> CIRTy {
-        CIRTy::Array(CIRArrayTy { element_ty: Box::new(ty), len })
+    fn array_ty(ty: CIRType, len: usize) -> CIRType {
+        CIRType::Array(CIRArrayType { element_ty: Box::new(ty), len })
     }
 
     #[test]
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn classify_return_dynamic_interface_object() {
         let abi = abi();
-        let ty = CIRTy::Dynamic(CIRDynamicTy { vtable_id: VTableID(1) });
+        let ty = CIRType::Dynamic(CIRDynamicType { vtable_id: VTableID(1) });
 
         let ret = abi.classify_return(&ty);
 
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn classify_dynamic_two_pointers() {
         let abi = abi();
-        let ty = CIRTy::Dynamic(CIRDynamicTy {
+        let ty = CIRType::Dynamic(CIRDynamicType {
             vtable_id: VTableID(0),
         });
 
@@ -342,9 +342,9 @@ mod tests {
     fn sysv_integer_register_exhaustion() {
         let abi = abi();
 
-        let fn_ty = CIRFuncTy {
+        let fn_ty = CIRFuncType {
             params: vec![i64(), i64(), i64(), i64(), i64(), i64(), i64()],
-            ret: Box::new(CIRTy::PlainType(PlainType::Void)),
+            ret: Box::new(CIRType::PlainType(PlainType::Void)),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,
@@ -366,9 +366,9 @@ mod tests {
 
         let params = vec![f64(), f64(), f64(), f64(), f64(), f64(), f64(), f64(), f64()];
 
-        let fn_ty = CIRFuncTy {
+        let fn_ty = CIRFuncType {
             params,
-            ret: Box::new(CIRTy::PlainType(PlainType::Void)),
+            ret: Box::new(CIRType::PlainType(PlainType::Void)),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,
@@ -384,7 +384,7 @@ mod tests {
         let abi = abi();
         let promoted = abi.apply_variadic_argument_promote(&i8());
 
-        assert!(matches!(promoted, CIRTy::PlainType(PlainType::Int)));
+        assert!(matches!(promoted, CIRType::PlainType(PlainType::Int)));
     }
 
     #[test]
@@ -392,7 +392,7 @@ mod tests {
         let abi = abi();
         let promoted = abi.apply_variadic_argument_promote(&f32());
 
-        assert!(matches!(promoted, CIRTy::PlainType(PlainType::Float64)));
+        assert!(matches!(promoted, CIRType::PlainType(PlainType::Float64)));
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod tests {
         let abi = abi();
         let promoted = abi.apply_variadic_argument_promote(&array_ty(u8(), 8));
 
-        assert!(matches!(promoted, CIRTy::Pointer(_)));
+        assert!(matches!(promoted, CIRType::Pointer(_)));
     }
 
     #[test]
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn classify_return_i128() {
         let abi = abi();
-        let ty = CIRTy::PlainType(PlainType::Int128);
+        let ty = CIRType::PlainType(PlainType::Int128);
 
         let ret = abi.classify_return(&ty);
 
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn classify_return_u128() {
         let abi = abi();
-        let ty = CIRTy::PlainType(PlainType::UInt128);
+        let ty = CIRType::PlainType(PlainType::UInt128);
 
         let ret = abi.classify_return(&ty);
 
@@ -457,7 +457,7 @@ mod tests {
     fn classify_return_pointer() {
         let abi = abi();
 
-        let ty = CIRTy::Pointer(Box::new(i32()));
+        let ty = CIRType::Pointer(Box::new(i32()));
 
         let ret = abi.classify_return(&ty);
 
@@ -468,7 +468,7 @@ mod tests {
     fn classify_return_function_pointer() {
         let abi = abi();
 
-        let fn_ty = CIRTy::FuncType(CIRFuncTy {
+        let fn_ty = CIRType::FuncType(CIRFuncType {
             params: vec![],
             ret: Box::new(i32()),
             callconv: CallConv::SysV64,
@@ -648,7 +648,7 @@ mod tests {
     fn classify_return_void_ignore() {
         let abi = abi();
 
-        let ret = abi.classify_return(&CIRTy::PlainType(PlainType::Void));
+        let ret = abi.classify_return(&CIRType::PlainType(PlainType::Void));
 
         assert!(matches!(ret.kind, ABIRetInfoKind::Ignore));
     }

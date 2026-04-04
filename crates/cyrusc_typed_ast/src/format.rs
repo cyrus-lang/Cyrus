@@ -311,7 +311,11 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
         SemanticType::GenericParam(generic_param) => generic_param.name.as_string(),
         SemanticType::Named(named_type) => {
             let name = formatter.format_type_decl(named_type.decl_id);
-            format!("{}{}", name, format_type_args(&named_type.type_args, formatter))
+            if let Some(type_args) = &named_type.type_args {
+                format!("{}{}", name, format_type_args(&type_args, formatter))
+            } else {
+                name
+            }
         }
         SemanticType::Plain(plain_type) => plain_type.to_string(),
         SemanticType::Array(typed_array_type) => {
@@ -426,13 +430,15 @@ pub fn format_lambda(lambda: &TypedLambdaExpr, formatter: &dyn Formatter) -> Str
     format!("fn({}) {} {{ ... }}", params, ret)
 }
 
-pub fn format_missing_fields(list: &Vec<String>) -> String {
+#[inline]
+pub fn format_missing_fields(list: &[&str]) -> String {
     list.iter()
         .map(|str| format!("'{str}'"))
         .collect::<Vec<String>>()
         .join(", ")
 }
 
+#[inline]
 pub fn format_loc(source_map: &SourceMap, loc: Loc) -> String {
     let source_file = { source_map.get_file(loc.file_id).unwrap().clone() };
     format!(

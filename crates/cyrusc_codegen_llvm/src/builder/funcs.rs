@@ -39,7 +39,7 @@ use cyrusc_internal::{
     cir::{
         cir::{CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty},
         instances::CIRMonomorphEntry,
-        types::{CIRFuncTy, CIRTy},
+        types::{CIRFuncType, CIRType},
     },
 };
 use cyrusc_source_loc::Loc;
@@ -63,7 +63,7 @@ pub(crate) enum FuncCallKind<'ll> {
 }
 
 impl<'ll> IRBuilderCtx<'ll> {
-    pub(crate) fn emit_func_metadata(&self, func_ty: &CIRFuncTy) -> LLVMMetadataRef {
+    pub(crate) fn emit_func_metadata(&self, func_ty: &CIRFuncType) -> LLVMMetadataRef {
         let ret_ty_meta = if !func_ty.ret.is_void() {
             Some(self.emit_debug_ty_metadata(&func_ty.ret))
         } else {
@@ -82,7 +82,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_func_args(
         &mut self,
         args: &Vec<CIRExpr>,
-        fn_ty: &CIRFuncTy,
+        fn_ty: &CIRFuncType,
     ) -> Vec<BasicMetadataValueEnum<'ll>> {
         let abi_func_info = fn_ty.abi_func_info.as_ref().unwrap();
 
@@ -384,10 +384,10 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_monomorph_func_instance(
         &mut self,
         monomorph_id: MonomorphID,
-    ) -> (FunctionValue<'ll>, CIRFuncTy) {
+    ) -> (FunctionValue<'ll>, CIRFuncType) {
         {
             let monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let monomorph_entry = monomorph_registry.get(&monomorph_id).cloned().unwrap();
+            let monomorph_entry = monomorph_registry.get_func(&monomorph_id).cloned().unwrap();
             let monomorph_func_entry = match monomorph_entry {
                 CIRMonomorphEntry::Func(entry) => entry,
             };
@@ -418,7 +418,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                     irreg.insert(
                         monomorph_func_entry.irv_id,
-                        LocalIRValue::Func(fn_value, CIRTy::FuncType(monomorph_func_entry.func_type.clone())),
+                        LocalIRValue::Func(fn_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
                     );
 
                     fn_value
@@ -690,7 +690,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         let cir_fn_ty = cir_func_decl_as_func_ty(&cir_func_decl);
-        InternalValue::new(CIRTy::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
+        InternalValue::new(CIRType::FuncType(cir_fn_ty), InternalValueKind::FuncValue(fn_value))
     }
 
     pub(crate) fn emit_func_decl(&mut self, func_decl: &CIRFuncDeclStmt) -> FunctionValue<'ll> {
@@ -712,7 +712,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             let mut irreg = self.irreg.borrow_mut();
             irreg.insert(
                 func_decl.irv_id,
-                LocalIRValue::Func(fn_value, CIRTy::FuncType(cir_func_ty)),
+                LocalIRValue::Func(fn_value, CIRType::FuncType(cir_func_ty)),
             );
         }
 

@@ -17,7 +17,7 @@
 
 use crate::{
     abi::args::ABIFunctionInfo,
-    cir::types::{CIREnumTy, CIRFuncTy, CIRStructTy, CIRTy, CIRUnionTy},
+    cir::types::{CIREnumType, CIRFuncType, CIRStructType, CIRType, CIRUnionType},
 };
 use cyrusc_ast::{
     abi::ReprKind,
@@ -57,14 +57,14 @@ pub enum CIRStmt {
     Label(CIRLabelStmt),
     Goto(CIRGotoStmt),
     Defer(CIRDeferStmt),
-    Continue(Loc), // FIXME Let it have it's own DS
-    Break(Loc),    // FIXME Let it have it's own DS
+    Continue(CIRContinueStmt),
+    Break(CIRContinueStmt),
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRExpr {
     pub kind: CIRExprKind,
-    pub ty: CIRTy,
+    pub ty: CIRType,
     pub loc: Loc,
 }
 
@@ -109,7 +109,7 @@ pub struct CIRDynamicExpr {
 pub struct CIRLambda {
     pub irv_id: IRValueID,
     pub params: CIRFuncParams,
-    pub ret: CIRTy,
+    pub ret: CIRType,
     pub inline: bool,
     pub body: Box<CIRBlockStmt>,
     pub abi_func_info: ABIFunctionInfo,
@@ -120,22 +120,22 @@ pub struct CIRLambda {
 pub struct CIRFuncCall {
     pub operand: Box<CIRExpr>,
     pub args: Vec<CIRExpr>,
-    pub ret_ty: CIRTy,
+    pub ret_ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRMonomorphFuncInstanceCall {
     pub monomorph_id: MonomorphID,
     pub args: Vec<CIRExpr>,
-    pub ret_ty: CIRTy,
+    pub ret_ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRInterfaceMethodCall {
     pub operand: Box<CIRExpr>,
     pub args: Vec<CIRExpr>,
-    pub ret_ty: CIRTy,
-    pub func_type: CIRFuncTy,
+    pub ret_ty: CIRType,
+    pub func_type: CIRFuncType,
     pub method_idx: usize,
     pub methods_len: usize,
 }
@@ -143,19 +143,19 @@ pub struct CIRInterfaceMethodCall {
 #[derive(Debug, Clone)]
 pub struct CIRUnionFieldAccessExpr {
     pub operand: Box<CIRExpr>,
-    pub field_ty: CIRTy,
+    pub field_ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRStructFieldAccessExpr {
     pub operand: Box<CIRExpr>,
     pub field_idx: usize,
-    pub field_ty: CIRTy,
+    pub field_ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRStructInitExpr {
-    pub ty: CIRStructTy,
+    pub ty: CIRStructType,
     pub fields: Vec<CIRExpr>,
 }
 
@@ -163,13 +163,13 @@ pub struct CIRStructInitExpr {
 pub struct CIREnumInitExpr {
     pub tag: usize,
     pub variant: CIREnumInitVariant,
-    pub enum_ty: CIREnumTy,
+    pub enum_ty: CIREnumType,
 }
 
 #[derive(Debug, Clone)]
 pub struct CIRUnionInitExpr {
     pub expr: Box<CIRExpr>,
-    pub ty: CIRTy,
+    pub ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
@@ -192,7 +192,7 @@ pub struct CIRArrayIndexExpr {
 
 #[derive(Debug, Clone)]
 pub struct CIRArrayExpr {
-    pub ty: CIRTy,
+    pub ty: CIRType,
     pub elements: Vec<CIRExpr>,
     pub loc: Loc,
 }
@@ -210,7 +210,7 @@ pub struct CIRAddrOfExpr {
 #[derive(Debug, Clone)]
 pub struct CIRCastExpr {
     pub operand: Box<CIRExpr>,
-    pub ty: Box<CIRTy>,
+    pub ty: Box<CIRType>,
 }
 
 #[derive(Debug, Clone)]
@@ -221,7 +221,7 @@ pub struct CIRAssignExpr {
 
 #[derive(Debug, Clone)]
 pub struct CIRSizeOfExpr {
-    pub ty: CIRTy,
+    pub ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
@@ -246,7 +246,7 @@ pub struct CIRUnaryExpr {
 #[derive(Debug, Clone)]
 pub struct CIRLiteral {
     pub kind: CIRLiteralKind,
-    pub ty: CIRTy,
+    pub ty: CIRType,
 }
 
 #[derive(Debug, Clone)]
@@ -277,7 +277,7 @@ pub enum CIRValueKind {
 pub struct CIRGlobalVarStmt {
     pub irv_id: IRValueID,
     pub name: String,
-    pub ty: CIRTy,
+    pub ty: CIRType,
     pub expr: Option<CIRExpr>,
     pub modifiers: GlobalVarModifiers,
     pub loc: Loc,
@@ -287,7 +287,7 @@ pub struct CIRGlobalVarStmt {
 pub struct CIRVarStmt {
     pub irv_id: IRValueID,
     pub name: String,
-    pub ty: CIRTy,
+    pub ty: CIRType,
     pub expr: Option<CIRExpr>,
     pub loc: Loc,
 }
@@ -298,7 +298,7 @@ pub struct CIRFuncDefStmt {
     pub name: String,
     pub params: CIRFuncParams,
     pub body: Box<CIRBlockStmt>,
-    pub ret: CIRTy,
+    pub ret: CIRType,
     pub modifiers: FuncModifiers,
     pub abi_func_info: Option<ABIFunctionInfo>,
     pub loc: Loc,
@@ -309,7 +309,7 @@ pub struct CIRFuncDeclStmt {
     pub irv_id: IRValueID,
     pub name: String,
     pub params: CIRFuncParams,
-    pub ret: CIRTy,
+    pub ret: CIRType,
     pub modifiers: FuncModifiers,
     pub abi_func_info: Option<ABIFunctionInfo>,
     pub loc: Loc,
@@ -319,7 +319,7 @@ pub struct CIRFuncDeclStmt {
 pub struct CIRFuncParam {
     pub name: Option<String>,
     pub irv_id: Option<IRValueID>,
-    pub ty: CIRTy,
+    pub ty: CIRType,
     pub loc: Loc,
 }
 
@@ -393,7 +393,7 @@ pub struct CIRSwitchOnEnumCase {
 pub enum CIRSwitchOnEnumPattern {
     Ident(String, usize),
     Valued(String, usize, (TypedIdent, CIRExpr)),
-    ExportFields(String, usize, Vec<(TypedIdent, CIRTy)>),
+    ExportFields(String, usize, Vec<(TypedIdent, CIRType)>),
 }
 
 impl CIRSwitchOnEnumPattern {
@@ -421,9 +421,19 @@ pub struct CIRReturnStmt {
 }
 
 #[derive(Debug, Clone)]
+pub struct CIRContinueStmt {
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub struct CIRBreakStmt {
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
 pub struct CIRStructStmt {
     pub name: String,
-    pub fields: Vec<CIRTy>,
+    pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
     pub align: Option<usize>,
     pub modifiers: StructModifiers,
@@ -435,7 +445,7 @@ pub struct CIREnumStmt {
     pub name: String,
     pub variants: Vec<CIREnumTyVariant>,
     pub align: Option<usize>,
-    pub tag_type: Option<Box<CIRTy>>,
+    pub tag_type: Option<Box<CIRType>>,
     pub modifiers: EnumModifiers,
     pub loc: Loc,
 }
@@ -444,7 +454,7 @@ pub struct CIREnumStmt {
 pub enum CIREnumTyVariant {
     Ident(String),
     Valued(String, Box<CIRExpr>),
-    Fielded(String, Vec<CIRTy>),
+    Fielded(String, Vec<CIRType>),
 }
 
 impl PartialEq for CIREnumTyVariant {
@@ -459,7 +469,7 @@ impl PartialEq for CIREnumTyVariant {
 }
 
 impl CIREnumTyVariant {
-    pub fn as_fielded(&self) -> Option<&Vec<CIRTy>> {
+    pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
         match self {
             CIREnumTyVariant::Fielded(_, fields) => Some(fields),
             _ => None,
@@ -485,7 +495,7 @@ pub enum CIREnumInitVariant {
 #[derive(Debug, Clone)]
 pub struct CIRUnionStmt {
     pub name: String,
-    pub fields: Vec<CIRTy>,
+    pub fields: Vec<CIRType>,
     pub fields_info: Vec<(String, Loc)>,
     pub align: Option<usize>,
     pub modifiers: UnionModifiers,
@@ -533,8 +543,8 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
     }
 }
 
-pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncTy {
-    CIRFuncTy {
+pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
+    CIRFuncType {
         params: func_decl.params.list.iter().map(|param| param.ty.clone()).collect(),
         is_var: func_decl.params.is_var,
         ret: Box::new(func_decl.ret.clone()),
@@ -543,8 +553,8 @@ pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncTy {
     }
 }
 
-pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
-    CIRStructTy {
+pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructType {
+    CIRStructType {
         name: Some(struct_stmt.name.clone()),
         fields: struct_stmt.fields.clone(),
         fields_info: struct_stmt.fields_info.clone(),
@@ -554,8 +564,8 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructTy {
     }
 }
 
-pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
-    CIREnumTy {
+pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumType {
+    CIREnumType {
         name: Some(enum_stmt.name.clone()),
         variants: enum_stmt.variants.clone(),
         tag_type: enum_stmt.tag_type.clone(),
@@ -565,8 +575,8 @@ pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumTy {
     }
 }
 
-pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionTy {
-    CIRUnionTy {
+pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionType {
+    CIRUnionType {
         name: Some(union_stmt.name.clone()),
         fields: union_stmt.fields.clone(),
         fields_info: union_stmt.fields_info.clone(),
@@ -585,7 +595,7 @@ impl Debug for CIRProgramTree {
     }
 }
 
-impl CIREnumTy {
+impl CIREnumType {
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.repr_attr {
             if let Some(kind) = repr_attr.kind() {
@@ -621,8 +631,8 @@ impl CIRStmt {
             CIRStmt::Label(label_stmt) => &label_stmt.loc,
             CIRStmt::Goto(goto_stmt) => &goto_stmt.loc,
             CIRStmt::Defer(defer_stmt) => &defer_stmt.loc,
-            CIRStmt::Continue(loc) => loc,
-            CIRStmt::Break(loc) => loc,
+            CIRStmt::Continue(continue_stmt) => &continue_stmt.loc,
+            CIRStmt::Break(break_stmt) => &break_stmt.loc,
         }
     }
 }

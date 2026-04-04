@@ -671,7 +671,7 @@ impl Resolver {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
-            type_args: Vec::new(),
+            type_args: None,
         }))
     }
 
@@ -700,7 +700,7 @@ impl Resolver {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: Vec::new(),
+            type_args: None,
         }))
     }
 
@@ -742,7 +742,7 @@ impl Resolver {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: Vec::new(),
+            type_args: None,
         }))
     }
 
@@ -1391,7 +1391,6 @@ impl Resolver {
             impls,
             modifiers: struct_decl.modifiers.clone(),
             align: struct_decl.align.clone(),
-            is_packed: struct_decl.is_packed,
             loc: struct_decl.loc,
         }))
     }
