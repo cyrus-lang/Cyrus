@@ -15,12 +15,16 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext};
+use crate::context::AnalysisContext;
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_typed_ast::{stmts::TypedIfStmt, types::SemanticType};
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt, expected_type: Option<SemanticType>) -> FlowState {
+    pub(crate) fn analyze_if_stmt(
+        &mut self,
+        if_stmt: &mut TypedIfStmt,
+        expected_type: Option<SemanticType>,
+    ) -> FlowState {
         let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
 
         if let Some(sema_type) = self.analyze_expr(&mut if_stmt.cond, expected_type.clone()) {

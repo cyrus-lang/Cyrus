@@ -17,7 +17,7 @@
 
 use crate::{
     SymbolID, VTableID,
-    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, UnionDeclID},
+    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::SemanticType,
 };
@@ -197,10 +197,10 @@ pub struct TypedDerefExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInitExpr {
-    pub symbol_id: SymbolID,
+    pub symbol_id: Option<SymbolID>,
+    pub struct_decl_id: Option<StructDeclID>,
     pub type_args: Option<TypedTypeArgs>,
     pub fields: Vec<TypedStructFieldInit>,
-    pub is_const: bool,
     pub loc: Loc,
 }
 
@@ -280,19 +280,14 @@ pub struct TypedUnnamedStructValue {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedUnionValue {
-    pub inferred_type: Option<UnionDeclID>,
-
     pub name: Ident,
     pub value: Box<TypedExprStmt>,
-    pub is_const: bool,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedEnumValue {
-    pub inferred_type: Option<EnumDeclID>,
-
-    pub variant_name: Ident,
+    pub ident: Ident,
     pub kind: TypedUnnamedEnumValueKind,
     pub loc: Loc,
 }
@@ -395,7 +390,7 @@ impl TypedUnnamedEnumValueKind {
 
 impl PartialEq for TypedUnnamedEnumValue {
     fn eq(&self, other: &Self) -> bool {
-        self.variant_name == other.variant_name && self.kind == other.kind
+        self.ident == other.ident && self.kind == other.kind
     }
 }
 

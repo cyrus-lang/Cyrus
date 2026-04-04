@@ -1971,14 +1971,11 @@ impl Resolver {
     }
 
     fn resolve_unnamed_union_value(&mut self, unnamed_union_value: &ASTUnnamedUnionValueExpr) -> Option<TypedExprStmt> {
-        let field_value = self.resolve_expr(&unnamed_union_value.field_value)?;
+        let value = self.resolve_expr(&unnamed_union_value.field_value)?;
 
         let kind = TypedExprKind::UnnamedUnionValue(TypedUnnamedUnionValue {
-            inferred_type: None,
-
             name: unnamed_union_value.field_name.clone(),
-            value: Box::new(field_value),
-            is_const: unnamed_union_value.is_const,
+            value: Box::new(value),
             loc: unnamed_union_value.loc,
         });
 
@@ -2007,9 +2004,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::UnnamedEnumValue(TypedUnnamedEnumValue {
-                inferred_type: None,
-
-                variant_name: unnamed_enum_value.ident.clone(),
+                ident: unnamed_enum_value.ident.clone(),
                 kind,
                 loc: unnamed_enum_value.loc,
             }),
@@ -2158,8 +2153,9 @@ impl Resolver {
 
     fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_local_module_import(&struct_init.struct_name)?;
+        let struct_decl_id = self.get_struct(symbol_id).unwrap();
 
-        let field_inits: Vec<TypedStructFieldInit> = struct_init
+        let fields: Vec<TypedStructFieldInit> = struct_init
             .field_inits
             .iter()
             .filter_map(|field_init| {
@@ -2178,15 +2174,46 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
-                symbol_id,
-                fields: field_inits,
+                symbol_id: Some(symbol_id),
+                struct_decl_id: Some(struct_decl_id),
+                fields,
                 type_args,
-                is_const: struct_init.is_const,
                 loc: struct_init.loc,
             }),
             mloc: MemoryLocation::RValue,
             sema_type: None,
             loc: struct_init.loc,
+        })
+    }
+
+    fn resolve_unnamed_struct_value(
+        &mut self,
+        unnamed_struct_value: &ASTUnnamedStructValueExpr,
+    ) -> Option<TypedExprStmt> {
+        let fields = unnamed_struct_value
+            .fields
+            .iter()
+            .filter_map(|field| {
+                self.resolve_expr(&field.value)
+                    .map(|value| TypedUnnamedStructValueField {
+                        name: field.name.as_string(),
+                        ty: None,
+                        value: Box::new(value),
+                        loc: field.loc,
+                    })
+            })
+            .collect();
+
+        Some(TypedExprStmt {
+            kind: TypedExprKind::UnnamedStructValue(TypedUnnamedStructValue {
+                fields,
+                loc: unnamed_struct_value.loc,
+                repr_attr: unnamed_struct_value.repr_attr.clone(),
+                align: unnamed_struct_value.align,
+            }),
+            sema_type: None,
+            mloc: MemoryLocation::RValue,
+            loc: unnamed_struct_value.loc,
         })
     }
 
@@ -2474,50 +2501,6 @@ impl Resolver {
             mloc: MemoryLocation::RValue,
             sema_type: None,
             loc: deref.loc,
-        })
-    }
-
-    fn resolve_unnamed_struct_value(
-        &mut self,
-        unnamed_struct_value: &ASTUnnamedStructValueExpr,
-    ) -> Option<TypedExprStmt> {
-        let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
-
-        for field in &unnamed_struct_value.fields {
-            let name = field.field_name.as_string();
-
-            let ty = if let Some(type_spec) = &field.field_ty {
-                match self.resolve_type(&None, type_spec.clone(), field.loc) {
-                    Some(sema_type) => Some(sema_type),
-                    None => continue,
-                }
-            } else {
-                None
-            };
-
-            let value = match self.resolve_expr(&field.field_value) {
-                Some(typed_expr) => typed_expr,
-                None => continue,
-            };
-
-            fields.push(TypedUnnamedStructValueField {
-                name,
-                ty,
-                value: Box::new(value),
-                loc: field.loc,
-            });
-        }
-
-        Some(TypedExprStmt {
-            kind: TypedExprKind::UnnamedStructValue(TypedUnnamedStructValue {
-                fields,
-                repr_attr: unnamed_struct_value.repr_attr.clone(),
-                align: unnamed_struct_value.align.clone(),
-                loc: unnamed_struct_value.loc,
-            }),
-            mloc: MemoryLocation::RValue,
-            sema_type: None,
-            loc: unnamed_struct_value.loc,
         })
     }
 }

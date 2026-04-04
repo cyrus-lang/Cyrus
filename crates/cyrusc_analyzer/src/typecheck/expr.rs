@@ -35,7 +35,7 @@ impl<'a> AnalysisContext<'a> {
 
                 debug_assert!(!matches!(symbol_entry.kind, SymbolEntryKind::Unresolved));
 
-                if !symbol_entry.is_var_or_global_var() && !symbol_entry.as_func().is_some() {
+                if !symbol_entry.is_var_or_global_var() && !symbol_entry.is_func() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnknownSymbol {
@@ -77,24 +77,29 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_assign(assign);
                 assign.rhs.sema_type.clone()
             }
-            TypedExprKind::Literal(typed_literal_expr) => todo!(),
-            TypedExprKind::Prefix(typed_prefix_expr) => todo!(),
-            TypedExprKind::Infix(typed_infix_expr) => todo!(),
-            TypedExprKind::Unary(typed_unary_expr) => todo!(),
-            TypedExprKind::AddrOf(typed_addr_of_expr) => todo!(),
-            TypedExprKind::Deref(typed_deref_expr) => todo!(),
-            TypedExprKind::Array(typed_array_expr) => todo!(),
-            TypedExprKind::ArrayIndex(typed_array_index_expr) => todo!(),
-            TypedExprKind::StructInit(typed_struct_init_expr) => todo!(),
+            TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type),
+            TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type),
+            TypedExprKind::Infix(infix) => self.analyze_infix(infix, expected_type),
+            TypedExprKind::Unary(unary) => self.analyze_unary(unary),
+            TypedExprKind::AddrOf(addr_of) => self.analyze_addr_of(addr_of),
+            TypedExprKind::Deref(deref) => self.analyze_deref(deref),
+            TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
+            TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
+            TypedExprKind::StructInit(struct_init) => todo!(),
+
             TypedExprKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
             TypedExprKind::UnnamedEnumValue(typed_unnamed_enum_value) => todo!(),
             TypedExprKind::UnnamedUnionValue(typed_unnamed_union_value) => todo!(),
-            TypedExprKind::FuncCall(typed_func_call) => todo!(),
+
+            TypedExprKind::FuncCall(func_call) => {
+                todo!()
+            }
             TypedExprKind::MethodCall(typed_method_call) => todo!(),
             TypedExprKind::FieldAccess(typed_field_access) => todo!(),
-            TypedExprKind::Lambda(typed_lambda_expr) => todo!(),
-            TypedExprKind::Tuple(typed_tuple_expr) => todo!(),
-            TypedExprKind::TupleAccess(typed_tuple_access_expr) => todo!(),
+
+            TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
+            TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
+            TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type),
             TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
             TypedExprKind::Builtin(typed_builtin) => todo!(),
 

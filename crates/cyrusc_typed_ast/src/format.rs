@@ -176,21 +176,38 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         AddrOf(addr_of) => format!("&{}", format_typed_expr(&addr_of.operand, formatter)),
         Deref(deref) => format!("*{}", format_typed_expr(&deref.operand, formatter)),
         StructInit(struct_init) => {
-            let name = formatter.format_symbol_name(struct_init.symbol_id);
-            let fields = struct_init
-                .fields
-                .iter()
-                .map(|field_init| {
-                    format!(
-                        "{}: {}",
-                        field_init.name,
-                        format_typed_expr(&field_init.value, formatter)
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
+            if let Some(symbol_id) = struct_init.symbol_id {
+                let name = formatter.format_symbol_name(symbol_id);
+                let fields = struct_init
+                    .fields
+                    .iter()
+                    .map(|field_init| {
+                        format!(
+                            "{}: {}",
+                            field_init.name,
+                            format_typed_expr(&field_init.value, formatter)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
 
-            format!("{}{{ {} }}", name, fields)
+                format!("{}{{ {} }}", name, fields)
+            } else {
+                let fields = struct_init
+                    .fields
+                    .iter()
+                    .map(|field_init| {
+                        format!(
+                            "{} = {}",
+                            field_init.name,
+                            format_typed_expr(&field_init.value, formatter)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                format!("struct {{ {} }}", fields)
+            }
         }
         FuncCall(func_call) => format!(
             "{}({})",
@@ -254,7 +271,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
             out
         }
         UnnamedEnumValue(unnamed_enum_value) => {
-            let mut out = format!(".{}", unnamed_enum_value.variant_name.as_string());
+            let mut out = format!(".{}", unnamed_enum_value.ident.as_string());
             if let TypedUnnamedEnumValueKind::Fielded(vals) = &unnamed_enum_value.kind {
                 out.push_str(&format!("({})", join_exprs(vals, formatter)));
             }
@@ -329,7 +346,10 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
             )
         }
         SemanticType::InterfaceType(dynamic_type) => {
-            format!("dynamic {}", formatter.format_symbol_name(dynamic_type.interface_id))
+            format!(
+                "dynamic {}",
+                formatter.format_symbol_name(dynamic_type.interface_decl_id)
+            )
         }
         SemanticType::SelfType(_) => "Self".to_string(),
     }

@@ -19,7 +19,7 @@ use crate::context::AnalysisContext;
 use cyrusc_typed_ast::stmts::TypedTypedefStmt;
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_typedef(&mut self, typedef: &mut TypedTypedefStmt) {
+    pub(crate) fn analyze_typedef(&mut self, typedef: &mut TypedTypedefStmt) {
         typedef.ty = match self.normalize_sema_type(typedef.ty.clone(), typedef.loc) {
             Some(sema_type) => sema_type,
             None => return,

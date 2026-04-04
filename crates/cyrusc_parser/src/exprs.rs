@@ -740,7 +740,6 @@ impl<'source_file> Parser<'source_file> {
                 struct_name,
                 field_inits,
                 type_args,
-                is_const: false,
                 loc: Loc::new(self.file_id(), line, column, start, end),
             });
         }
@@ -798,7 +797,6 @@ impl<'source_file> Parser<'source_file> {
             struct_name,
             field_inits,
             type_args,
-            is_const: false,
             loc: Loc::new(self.file_id(), line, column, start, end),
         })
     }
@@ -1077,20 +1075,20 @@ impl<'source_file> Parser<'source_file> {
                         let end = self.current_token().loc.end;
 
                         fields.push(UnnamedStructValueField {
-                            field_name: ident.clone(),
-                            field_ty: None,
-                            field_value: Box::new(ident_expr),
+                            name: ident.clone(),
+                            ty: None,
+                            value: Box::new(ident_expr),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     } else {
-                        let mut field_ty: Option<TypeSpecifier> = None;
+                        let mut ty: Option<TypeSpecifier> = None;
                         if self.current_token_is(TokenKind::Colon) {
                             self.next_token();
 
                             let type_spec = self.parse_type_specifier()?;
                             self.next_token();
 
-                            field_ty = Some(type_spec);
+                            ty = Some(type_spec);
                         }
 
                         self.expect_current(TokenKind::Assign)?;
@@ -1100,9 +1098,9 @@ impl<'source_file> Parser<'source_file> {
                         let end = self.current_token().loc.end;
 
                         fields.push(UnnamedStructValueField {
-                            field_name: ident.clone(),
-                            field_ty,
-                            field_value: Box::new(field_value),
+                            name: ident.clone(),
+                            ty,
+                            value: Box::new(field_value),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     }

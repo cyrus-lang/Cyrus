@@ -17,13 +17,15 @@
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::flow_state::FlowState;
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncDeclStmt, TypedFuncDefStmt},
-    types::TypedFuncType,
+    stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt},
+    types::{SemanticType, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_func_def(&mut self, func_def: &mut TypedFuncDefStmt) {
+    pub(crate) fn analyze_func_def(&mut self, func_def: &mut TypedFuncDefStmt) {
         self.analyze_entry_func(func_def);
 
         let is_public = func_def.modifiers.vis.is_public();
@@ -62,7 +64,7 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    fn analyze_func_decl(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
+    pub(crate) fn analyze_func_decl(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
         if func_decl_stmt.generic_params.is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -90,5 +92,50 @@ impl<'a> AnalysisContext<'a> {
             func_decl.params = func_decl_stmt.params.clone();
             func_decl.ret_type = func_decl_stmt.ret_type.clone();
         });
+    }
+
+    pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemanticType) {
+        let state = self.analyze_block_stmt(body);
+
+        if !ret_type.is_void() && state != FlowState::Returns {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::MissingReturn),
+                loc: Some(body.loc),
+                hint: Some("Not all control paths return a value.".to_string()),
+            });
+        }
+    }
+
+    fn analyze_entry_func(&mut self, func_def: &mut TypedFuncDefStmt) {
+        let is_public = func_def.modifiers.vis.is_public();
+
+        if func_def.name == "main" {
+            self.entry_points.add(func_def.loc);
+
+            if !is_public {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::PrivateEntryPoint),
+                    loc: Some(func_def.loc),
+                    hint: Some("Declare it as 'pub' so the runtime and linker can reliably discover it.".to_string()),
+                });
+            }
+        }
+    }
+
+    pub(crate) fn validate_param_type(&mut self, sema_type: &SemanticType, loc: Loc) {
+        let sema_type = sema_type.const_inner();
+
+        if sema_type.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VoidParameterType),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        self.check_sema_ty(sema_type.clone(), loc);
     }
 }

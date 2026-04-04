@@ -15,9 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext};
+use crate::context::AnalysisContext;
 use cyrusc_internal::flow_state::FlowState;
-use cyrusc_typed_ast::{stmts::TypedIfStmt, types::SemanticType};
+use cyrusc_typed_ast::stmts::TypedSwitchStmt;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_switch(&mut self, switch_stmt: &mut TypedSwitchStmt) -> FlowState {

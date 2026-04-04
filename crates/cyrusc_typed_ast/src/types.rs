@@ -104,7 +104,7 @@ pub struct TypedFuncType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct InterfaceType {
-    pub interface_id: SymbolID,
+    pub interface_decl_id: SymbolID,
     pub vtable_id: VTableID,
     pub loc: Loc,
 }
@@ -567,7 +567,7 @@ impl PartialEq for TypedArrayType {
 
 impl PartialEq for InterfaceType {
     fn eq(&self, other: &Self) -> bool {
-        self.interface_id == other.interface_id
+        self.interface_decl_id == other.interface_decl_id
     }
 }
 

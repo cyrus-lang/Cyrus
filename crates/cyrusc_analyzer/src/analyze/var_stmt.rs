@@ -18,6 +18,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     format::format_sema_type,
     stmts::{TypedGlobalVarStmt, TypedVarStmt},
@@ -25,7 +26,7 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
+    pub(crate) fn analyze_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) {
         if let Some(mut expr) = global_var.expr.clone() {
             match self.analyze_expr(&mut expr, global_var.ty.clone()) {
                 Some(sema_type) => Some(sema_type),
@@ -111,7 +112,7 @@ impl<'a> AnalysisContext<'a> {
             });
     }
 
-    fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
+    pub(crate) fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
         if let Some(ty) = &var.ty {
             var.ty = self.normalize_sema_type(ty.clone(), var.loc);
         }
@@ -155,5 +156,36 @@ impl<'a> AnalysisContext<'a> {
             var_decl.rhs = var.rhs.clone();
             var_decl.ty = var.ty.clone();
         });
+    }
+
+    fn validate_variable_type(&mut self, sema_type: &SemanticType, is_init: bool, loc: Loc) {
+        if sema_type.const_inner().is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::VoidVariableType),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        if sema_type.const_inner().is_const() && !is_init {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ConstVariableMustBeInitialized),
+                loc: Some(loc),
+                hint: Some("Declare the variable with an initializer or remove the 'const' qualifier.".to_string()),
+            });
+        }
+
+        if sema_type.const_inner().is_func_type() && !is_init {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UninitializedLambda),
+                loc: Some(loc),
+                hint: Some("Assign a function or lambda expression to this variable at declaration.".to_string()),
+            });
+        }
+
+        self.check_sema_ty(sema_type.clone(), loc);
     }
 }

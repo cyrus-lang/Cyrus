@@ -263,7 +263,7 @@ impl fmt::Display for UnnamedEnumType {
 
         for (i, variant) in self.variants.iter().enumerate() {
             write!(f, "{}", variant)?;
-            
+
             if i == self.variants.len() - 1 {
                 write!(f, " ")?;
             } else {
@@ -468,13 +468,7 @@ impl fmt::Display for ASTUnnamedStructValueExpr {
 
         let mut field_iter = self.fields.iter().peekable();
         while let Some(field) = field_iter.next() {
-            write!(f, "{}", field.field_name.value)?;
-
-            if let Some(field_ty) = &field.field_ty {
-                write!(f, ": {}", field_ty)?;
-            }
-
-            write!(f, " = {}", *field.field_value)?;
+            write!(f, "{} = {}", field.name.value, *field.value)?;
 
             if field_iter.peek().is_some() {
                 write!(f, ", ")?;

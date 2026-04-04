@@ -19,7 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::{fold::ConstFolder, value::is_comptime_valid};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
-    exprs::{TypedArrayExpr, literal_expr_from_const_int},
+    exprs::{TypedArrayExpr, TypedArrayIndexExpr, literal_expr_from_const_int},
     format::format_sema_type,
     types::{SemanticType, TypedArrayCapacity, TypedArrayType},
 };
@@ -29,7 +29,7 @@ impl<'a> AnalysisContext<'a> {
     ///
     /// Type-checks array literals by validating each element type matches the array's
     /// element type and verifying the element count matches the declared array capacity.
-    fn analyze_array(
+    pub(crate) fn analyze_array(
         &mut self,
         array: &mut TypedArrayExpr,
         expected_type: Option<SemanticType>,
@@ -164,5 +164,83 @@ impl<'a> AnalysisContext<'a> {
         Some(SemanticType::Array(
             array.ty.clone().unwrap().as_array_type().unwrap().clone(),
         ))
+    }
+
+    /// Analyzes array index expressions with bounds and type validation.
+    ///
+    /// Type-checks array indexing operations on both arrays and pointers.
+    /// Validates the index expression is integer type and the operand is
+    /// indexable (array or pointer). Returns the element type with proper
+    /// const qualification.
+    pub(crate) fn analyze_array_index(&mut self, array_index: &mut TypedArrayIndexExpr) -> Option<SemanticType> {
+        let operand_type = match self.analyze_expr(&mut array_index.operand, None) {
+            Some(sema_type) => sema_type,
+            None => return None,
+        };
+
+        let is_operand_const = operand_type.is_const();
+        let is_operand_array = operand_type.const_inner().is_array();
+
+        if !(operand_type.is_pointer() || is_operand_array) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ArrayIndexOnNonArrayOperand),
+                loc: Some(array_index.loc),
+                hint: None,
+            });
+            return None;
+        }
+
+        let expected_index_type = array_index.index.sema_type.clone();
+
+        let index_concrete_type = match self.analyze_expr(&mut array_index.index, expected_index_type) {
+            Some(sema_type) => sema_type,
+            None => return None,
+        };
+
+        if !index_concrete_type
+            .const_inner()
+            .as_plain_type()
+            .and_then(|b| Some(b.is_integer()))
+            .is_some()
+        {
+            let found_type = format_sema_type(index_concrete_type, self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::ArrayNonIntegerIndex { found_type }),
+                loc: Some(array_index.loc),
+                hint: None,
+            });
+            return None;
+        }
+
+        let sema_type = array_index.operand.sema_type.clone().unwrap();
+
+        let element_type: SemanticType;
+
+        if is_operand_array {
+            let array_type = sema_type.as_array_type().unwrap();
+            element_type = *array_type.element_type.clone();
+        } else {
+            // array index on pointer operand
+            element_type = sema_type.pointer_inner().clone();
+
+            if element_type.is_void() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::DerefVoidPointerValue),
+                    loc: Some(array_index.loc),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+
+        if is_operand_const {
+            Some(element_type.as_const())
+        } else {
+            Some(element_type)
+        }
     }
 }

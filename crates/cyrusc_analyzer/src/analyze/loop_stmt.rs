@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
 };
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
+    pub(crate) fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
         // REVIEW: Replace it with analyze_cond_expr.
         if let Some(sema_type) = self.analyze_expr(&mut typed_while.cond, Some(SemanticType::Plain(PlainType::Bool))) {
             self.report_if_not_cond_expr(sema_type, typed_while.loc);
@@ -38,7 +38,7 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Reachable
     }
 
-    fn analyze_for_loop(&mut self, typed_for: &mut TypedForStmt) -> FlowState {
+    pub(crate) fn analyze_for_loop(&mut self, typed_for: &mut TypedForStmt) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
             self.analyze_variable(initializer);
         }
@@ -61,7 +61,7 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Reachable
     }
 
-    fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
+    pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.fenv.current_func_type.clone().unwrap();
         let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
 
@@ -100,7 +100,7 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Returns
     }
 
-    fn analyze_break(&mut self, break_stmt: &TypedBreakStmt) -> FlowState {
+    pub(crate) fn analyze_break(&mut self, break_stmt: &TypedBreakStmt) -> FlowState {
         let valid = self.control_stack.iter().rev().any(|c| c.allows_break());
 
         if !valid {
@@ -116,7 +116,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_continue(&mut self, continue_stmt: &TypedContinueStmt) -> FlowState {
+    pub(crate) fn analyze_continue(&mut self, continue_stmt: &TypedContinueStmt) -> FlowState {
         let valid = self.control_stack.iter().rev().any(|c| c.allows_continue());
 
         if !valid {

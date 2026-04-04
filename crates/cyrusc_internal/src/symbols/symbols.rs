@@ -157,6 +157,11 @@ impl SymbolEntry {
     }
 
     #[inline]
+    pub fn is_func(&self) -> bool {
+        matches!(self.kind, SymbolEntryKind::Func(_))
+    }
+
+    #[inline]
     pub fn is_var_or_global_var(&self) -> bool {
         matches!(self.kind, SymbolEntryKind::Var(_) | SymbolEntryKind::GlobalVar(_))
     }

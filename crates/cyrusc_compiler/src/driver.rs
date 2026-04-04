@@ -20,13 +20,14 @@ use crate::{
     linker::Linker,
     options::{BuildDir, CodeGenOptions, CodeGenOptionsProjectType, LinkerOutputKind},
 };
-use cyrusc_analyzer::{AnalysisContext, AnalyzerConfig, EntryPoints};
+use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
     abi::target::{ABITarget, ABITargetArch, ABITargetInfo, ABITargetOS, ABITargetObjectFormat, create_target_abi},
-    cir::{cir::CIRProgramTree, instances::CIRInstanceRegistry, traverse::walk_program_trees_in_parallel},
+    cir::{cir::CIRProgramTree, instances::CIRInstanceRegistry},
+    monomorph::MonomorphRegistry,
     vtable::VTableRegistry,
 };
 use cyrusc_parser::SourceParser;
@@ -41,10 +42,7 @@ use cyrusc_scaffold_parser::{
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
-use cyrusc_typed_ast::{
-    TypedProgramTree,
-    backup_typed_ast_generics::{mapping_ctx_arena::GenericMappingCtxArenaImpl, monomorph::MonomorphRegistry},
-};
+use cyrusc_typed_ast::{TypedProgramTree, decls::table::DeclTablesRegistry};
 use inkwell::targets::{InitializationConfig, Target as InkwellTarget, TargetTriple};
 use std::{
     cell::RefCell,
@@ -69,7 +67,6 @@ pub struct CodeGenContextBundle {
 pub struct CodeGenSemanticBundle {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
     pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
-    pub mapping_ctx_arena: Arc<Mutex<GenericMappingCtxArenaImpl>>,
     pub resolver: Box<Resolver>,
     pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
@@ -164,15 +161,14 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
             let fs_module_loader = FsModuleLoader::new(source_map.clone(), source_parser, module_loader_opts);
 
+            let decl_tables = Arc::new(DeclTablesRegistry::new());
             let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
-            let mapping_ctx_arena = Arc::new(Mutex::new(GenericMappingCtxArenaImpl::new()));
 
             let mut resolver = Resolver::new(
                 Box::new(fs_module_loader),
                 source_map.clone(),
                 reporter.clone(),
-                monomorph_registry.clone(),
-                mapping_ctx_arena.clone(),
+                decl_tables,
             );
 
             let module_symbol_id = resolver.create_entry_module_symbol_id(Path::new(&entry_file), file_id);
@@ -193,7 +189,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
 
             let config = AnalyzerConfig::default();
 
-            let entry_points = Arc::new(EntryPoints::new(source_map.clone()));
+            let entry_points = Arc::new(EntryPoints::new(reporter.clone(), source_map.clone()));
             let resolved_program_trees = resolver.program_trees.lock().unwrap();
 
             let mut has_error = false;
@@ -208,11 +204,11 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                     config.clone(),
                     reporter.clone(),
                     &resolver,
+                    decl_tables,
                     &resolver,
                     program_tree_entry.program_tree.clone(),
                     entry_points.clone(),
                     monomorph_registry.clone(),
-                    mapping_ctx_arena.clone(),
                     vtable_registry,
                 );
 
@@ -238,7 +234,6 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
                 source_map,
                 analyzed_program_trees,
                 vtable_registries,
-                mapping_ctx_arena,
                 entry_file,
                 build_dir,
             })

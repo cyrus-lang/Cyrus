@@ -136,9 +136,9 @@ pub enum UnnamedEnumValueKind {
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
-    pub field_name: Ident,
-    pub field_ty: Option<TypeSpecifier>,
-    pub field_value: Box<ASTExpr>,
+    pub name: Ident,
+    pub ty: Option<TypeSpecifier>,
+    pub value: Box<ASTExpr>,
     pub loc: Loc,
 }
 
@@ -544,7 +544,6 @@ pub struct ASTStructInitExpr {
     pub struct_name: ASTModuleImport,
     pub field_inits: Vec<FieldInit>,
     pub type_args: Option<TypeArgs>,
-    pub is_const: bool,
     pub loc: Loc,
 }
 
@@ -1319,7 +1318,6 @@ impl PartialEq for ASTStructInitExpr {
         self.struct_name == other.struct_name
             && self.field_inits == other.field_inits
             && self.type_args == other.type_args
-            && self.is_const == other.is_const
     }
 }
 
@@ -1361,7 +1359,7 @@ impl PartialEq for ASTUnnamedUnionValueExpr {
 
 impl PartialEq for UnnamedStructValueField {
     fn eq(&self, other: &Self) -> bool {
-        self.field_name == other.field_name && self.field_ty == other.field_ty && self.field_value == other.field_value
+        self.name == other.name && self.value == other.value
     }
 }
 

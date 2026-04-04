@@ -670,7 +670,6 @@ impl PartialEq for TypedTypeArg {
             (Self::Positional { i: l_idx, ty: l_ty, .. }, Self::Positional { i: r_idx, ty: r_ty, .. }) => {
                 l_idx == r_idx && l_ty == r_ty
             }
-
             (
                 Self::Named {
                     key: l_key, ty: l_ty, ..
@@ -679,7 +678,6 @@ impl PartialEq for TypedTypeArg {
                     key: r_key, ty: r_ty, ..
                 },
             ) => l_key == r_key && l_ty == r_ty,
-
             _ => false,
         }
     }

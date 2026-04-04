@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::stmts::TypedInterfaceStmt;
 
 impl<'a> AnalysisContext<'a> {
-    fn analyze_interface(&mut self, interface: &TypedInterfaceStmt) {
+    pub(crate) fn analyze_interface(&mut self, interface: &TypedInterfaceStmt) {
         let interface_name = &interface.name;
 
         self.nameconv_check_interface_name(interface_name.clone(), interface.loc);
