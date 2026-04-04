@@ -35,22 +35,19 @@ impl<'a> AnalysisContext<'a> {
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
-                TypedStmt::GlobalVar(typed_global_var) => self.analyze_global_var(typed_global_var),
-                TypedStmt::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
-                TypedStmt::FuncDecl(typed_func_decl) => self.analyze_func_decl_stmt(typed_func_decl),
-                TypedStmt::Interface(typed_interface) => self.analyze_interface(typed_interface),
+                TypedStmt::GlobalVar(global_var) => self.analyze_global_var(global_var),
+                TypedStmt::FuncDef(func_def_stmt) => self.analyze_func_def(func_def_stmt),
+                TypedStmt::FuncDecl(func_decl_stmt) => self.analyze_func_decl_stmt(func_decl_stmt),
+                TypedStmt::Interface(interface) => self.analyze_interface(interface),
                 TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
-                TypedStmt::Enum(typed_enum) => {
-                    // self.analyze_enum(typed_enum)
-                    // FIXME
-                    todo!()
-                }
+                TypedStmt::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
                 TypedStmt::Union(union_stmt) => {
                     // self.analyze_union(union_stmt)
                     // FIXME
                     todo!()
                 }
-                TypedStmt::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef),
+                TypedStmt::Typedef(typedef) => self.analyze_typedef(typedef),
+
                 TypedStmt::Variable(_)
                 | TypedStmt::ExportTuple(_)
                 | TypedStmt::BlockStmt(_)
@@ -92,16 +89,10 @@ impl<'a> AnalysisContext<'a> {
                 // FIXME
                 todo!()
             }
-            TypedStmt::If(typed_if) => self.analyze_if_stmt(typed_if, None),
-            TypedStmt::Return(typed_return) => self.analyze_return(typed_return),
-            TypedStmt::Break(typed_break) => {
-                self.analyze_break(typed_break);
-                FlowState::Unreachable
-            }
-            TypedStmt::Continue(typed_continue) => {
-                self.analyze_continue(typed_continue);
-                FlowState::Unreachable
-            }
+            TypedStmt::If(typed_if) => self.analyze_if_stmt(typed_if),
+            TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
+            TypedStmt::Break(break_stmt) => self.analyze_break(break_stmt),
+            TypedStmt::Continue(continue_stmt) => self.analyze_continue(continue_stmt),
             TypedStmt::Goto(typed_goto) => {
                 // FIXME
                 // self.analyze_goto(typed_goto);
@@ -113,7 +104,7 @@ impl<'a> AnalysisContext<'a> {
             TypedStmt::Switch(typed_switch) => self.analyze_switch(typed_switch),
 
             // skipped
-            TypedStmt::Label(..) => FlowState::Reachable,
+            TypedStmt::Label(_) => FlowState::Reachable,
 
             // invalid statements
             _ => {

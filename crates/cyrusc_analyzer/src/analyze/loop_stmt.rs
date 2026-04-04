@@ -21,15 +21,11 @@ use cyrusc_internal::flow_state::{ControlRegion, FlowState};
 use cyrusc_typed_ast::{
     format::format_sema_type,
     stmts::{TypedBreakStmt, TypedContinueStmt, TypedForStmt, TypedReturnStmt, TypedWhileStmt},
-    types::{PlainType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_while_loop(&mut self, typed_while: &mut TypedWhileStmt) -> FlowState {
-        // REVIEW: Replace it with analyze_cond_expr.
-        if let Some(sema_type) = self.analyze_expr(&mut typed_while.cond, Some(SemanticType::Plain(PlainType::Bool))) {
-            self.report_if_not_cond_expr(sema_type, typed_while.loc);
-        }
+        self.analyze_cond_expr(&mut typed_while.cond);
 
         self.control_stack.push(ControlRegion::Loop);
         self.analyze_block_stmt(&mut typed_while.body);
@@ -43,11 +39,8 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_variable(initializer);
         }
 
-        if let Some(typed_expr) = &mut typed_for.cond {
-            // REVIEW: Replace it with analyze_cond_expr.
-            if let Some(sema_type) = self.analyze_expr(typed_expr, Some(SemanticType::Plain(PlainType::Bool))) {
-                self.report_if_not_cond_expr(sema_type, typed_for.loc);
-            }
+        if let Some(cond) = &mut typed_for.cond {
+            self.analyze_cond_expr(cond);
         }
 
         if let Some(typed_expr) = &mut typed_for.increment {

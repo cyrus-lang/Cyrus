@@ -499,7 +499,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    pub(crate) fn parse_enum_tuple_variant(&mut self) -> Result<Vec<TypeSpecifier>, Diag> {
+    pub(crate) fn parse_enum_tuple_variant(&mut self) -> Result<Vec<EnumVariantTupleField>, Diag> {
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut fields = Vec::new();
@@ -513,10 +513,18 @@ impl<'source_file> Parser<'source_file> {
                 ));
             }
 
+            let loc = self.current_token().loc;
+            let (line, column, start) = (loc.line, loc.column, loc.start);
+
             let ty = self.parse_type_specifier()?;
             self.next_token();
 
-            fields.push(ty);
+            let end = self.current_token().loc.end;
+
+            fields.push(EnumVariantTupleField {
+                ty,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            });
 
             if self.current_token_is(TokenKind::RightParen) {
                 self.next_token();

@@ -153,12 +153,18 @@ pub enum TypedEnumVariant {
     },
     Tuple {
         ident: Ident,
-        fields: Vec<SemanticType>,
+        fields: Vec<TypedEnumVariantTupleField>,
     },
     Struct {
         ident: Ident,
         fields: Vec<TypedEnumVariantStructField>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedEnumVariantTupleField {
+    pub ty: SemanticType,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -587,6 +593,18 @@ impl TypedFuncDeclStmt {
         match &self.renamed_as {
             Some(name) => name.clone(),
             None => self.name.clone(),
+        }
+    }
+}
+
+impl TypedEnumVariant {
+    #[inline]
+    pub fn ident(&self) -> &Ident {
+        match self {
+            TypedEnumVariant::Ident(ident) => ident,
+            TypedEnumVariant::Valued { ident, .. } => ident,
+            TypedEnumVariant::Tuple { ident, .. } => ident,
+            TypedEnumVariant::Struct { ident, .. } => ident,
         }
     }
 }

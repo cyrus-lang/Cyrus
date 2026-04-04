@@ -28,9 +28,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.nameconv_check_interface_name(&interface_name, interface.loc);
 
-        // if let Some(generic_params) = &interface.generic_params {
-        //     self.analyze_generic_params(generic_params);
-        // }
+        self.analyze_generic_params(&interface.generic_params);
 
         let mut methods: Vec<String> = Vec::new();
 
@@ -66,7 +64,7 @@ impl<'a> AnalysisContext<'a> {
     /// Ensures the referenced symbols are valid interfaces, checks visibility
     /// rules, resolves generic interface instantiations, and verifies that all
     /// required interface methods are implemented with matching signatures.
-    pub(crate) fn analyze_object_implements_interface_list(
+    pub(crate) fn analyze_object_implements_interfaces(
         &mut self,
         object_name: &String,
         impls: &Vec<TypedImplementInterface>,

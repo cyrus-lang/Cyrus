@@ -222,12 +222,18 @@ pub enum EnumVariant {
     },
     Tuple {
         ident: Ident,
-        fields: Vec<TypeSpecifier>,
+        fields: Vec<EnumVariantTupleField>,
     },
     Struct {
         ident: Ident,
         fields: Vec<EnumVariantStructField>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumVariantTupleField {
+    pub ty: TypeSpecifier,
+    pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
@@ -1247,6 +1253,12 @@ impl PartialEq for EnumVariant {
     }
 }
 
+impl PartialEq for EnumVariantTupleField {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
 impl PartialEq for EnumVariantStructField {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.ty == other.ty
@@ -1470,3 +1482,4 @@ impl Eq for UnnamedEnumType {}
 impl Eq for GenericInst {}
 impl Eq for SelfType {}
 impl Eq for EnumVariantStructField {}
+impl Eq for EnumVariantTupleField {}

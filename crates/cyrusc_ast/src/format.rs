@@ -230,12 +230,12 @@ impl fmt::Display for EnumVariant {
             EnumVariant::Tuple { ident, fields } => {
                 write!(f, "{}(", ident)?;
 
-                for (i, field_type) in fields.iter().enumerate() {
+                for (i, tuple_field) in fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
 
-                    write!(f, "{}", field_type)?;
+                    write!(f, "{}", tuple_field.ty)?;
                 }
 
                 write!(f, ")")

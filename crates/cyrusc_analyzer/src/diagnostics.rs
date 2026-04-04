@@ -31,11 +31,6 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot discard 'const' qualifier when converting from '{from}' to '{to}'.")]
     CannotDiscardConst { from: String, to: String },
 
-    #[error(
-        "Repr 'c' enum cannot contain non-integer variants, because their layout cannot be represented in the C ABI."
-    )]
-    ReprCEnumWithNonIntegerVariant,
-
     #[error("Enum tag type must be a scalar integer, char or bool but got '{got}'.")]
     InvalidEnumTagType { got: String },
 
@@ -71,6 +66,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("Unary operator minus is not permitted on unsigned types.")]
     UnaryOperatorMinusOnUnsignedInteger,
+
+    #[error("Value of type '{got_type}' is not compatible with the enum's tag type '{expected_type}'.")]
+    InvalidEnumVariantValueType { got_type: String, expected_type: String },
 
     #[error("Variant '.{variant_name}' has only one field, but multiple were provided.")]
     ValuedEnumVariantCanOnlyExportOneField { variant_name: String },

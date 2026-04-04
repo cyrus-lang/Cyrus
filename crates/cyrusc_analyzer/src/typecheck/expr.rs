@@ -18,9 +18,10 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::SymbolEntryKind;
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
-    types::SemanticType,
+    types::{PlainType, SemanticType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -85,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
-            
+
             TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
             TypedExprKind::UnnamedStructValue(unnamed_struct_value) => todo!(),
 
@@ -131,5 +132,11 @@ impl<'a> AnalysisContext<'a> {
 
         self.fold_const_expr(expr);
         normalized_type
+    }
+
+    pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExprStmt) {
+        if let Some(sema_type) = self.analyze_expr(cond, Some(SemanticType::Plain(PlainType::Bool))) {
+            self.report_if_not_cond_expr(sema_type, cond.loc);
+        }
     }
 }

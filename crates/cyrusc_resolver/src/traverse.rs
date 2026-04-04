@@ -1057,9 +1057,14 @@ impl Resolver {
                 EnumVariant::Tuple { ident, fields } => {
                     let mut typed_fields = Vec::new();
 
-                    for type_spec in fields {
-                        match self.resolve_type(&None, type_spec.clone(), ident.loc) {
-                            Some(sema_type) => typed_fields.push(sema_type),
+                    for tuple_field in fields {
+                        match self.resolve_type(&None, tuple_field.ty.clone(), ident.loc) {
+                            Some(sema_type) => {
+                                typed_fields.push(TypedEnumVariantTupleField {
+                                    ty: sema_type,
+                                    loc: tuple_field.loc,
+                                })
+                            },
                             None => continue,
                         }
                     }

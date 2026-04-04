@@ -17,19 +17,13 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_internal::flow_state::FlowState;
-use cyrusc_typed_ast::{stmts::TypedIfStmt, types::SemanticType};
+use cyrusc_typed_ast::stmts::TypedIfStmt;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_if_stmt(
-        &mut self,
-        if_stmt: &mut TypedIfStmt,
-        expected_type: Option<SemanticType>,
-    ) -> FlowState {
+    pub(crate) fn analyze_if_stmt(&mut self, if_stmt: &mut TypedIfStmt) -> FlowState {
         let then_state = self.analyze_block_stmt(&mut if_stmt.then_block);
 
-        if let Some(sema_type) = self.analyze_expr(&mut if_stmt.cond, expected_type.clone()) {
-            self.report_if_not_cond_expr(sema_type, if_stmt.loc);
-        }
+        self.analyze_cond_expr(&mut if_stmt.cond);
 
         let else_state = {
             if let Some(block_stmt) = &mut if_stmt.else_block {
@@ -40,7 +34,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if_stmt.branches.iter_mut().for_each(|branch| {
-            self.analyze_if_stmt(branch, expected_type.clone());
+            self.analyze_if_stmt(branch);
         });
 
         then_state.merge(else_state)

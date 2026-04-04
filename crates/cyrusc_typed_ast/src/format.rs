@@ -88,7 +88,7 @@ pub fn format_enum_decl(enum_decl: &EnumDecl, f: &dyn Formatter) -> String {
             TypedEnumVariant::Tuple { ident, fields } => {
                 let types = fields
                     .iter()
-                    .map(|ty| format_sema_type(ty.clone(), f))
+                    .map(|tuple_field| format_sema_type(tuple_field.ty.clone(), f))
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{}({})", ident.value, types)

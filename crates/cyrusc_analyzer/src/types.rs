@@ -15,20 +15,17 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::context::AnalysisContext;
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::fold::ConstFolder;
+use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::StructDeclID,
-    types::{PlainType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType},
+    format::format_sema_type,
+    types::{NamedType, PlainType, SemanticType, TypedArrayCapacity, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn struct_field_contains_self_by_value(
-        &self,
-        field_type: &SemanticType,
-        struct_decl_id: StructDeclID,
-    ) -> bool {
+    pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemanticType, named_type: NamedType) -> bool {
         match field_type {
             SemanticType::Unresolved(_) => unreachable!(),
 
@@ -40,15 +37,15 @@ impl<'a> AnalysisContext<'a> {
                 // hence it's never harmful for self-recursion situations.
                 false
             }
-            SemanticType::Named(named_type) => named_type.decl_id == TypeDeclID::Struct(struct_decl_id),
-            SemanticType::Const(inner) => self.struct_field_contains_self_by_value(inner, struct_decl_id),
+            SemanticType::Named(_named_type) => *_named_type == named_type,
+            SemanticType::Const(inner) => self.sema_type_contains_self_by_value(inner, named_type),
             SemanticType::Array(array_type) => {
-                self.struct_field_contains_self_by_value(&array_type.element_type, struct_decl_id)
+                self.sema_type_contains_self_by_value(&array_type.element_type, named_type)
             }
             SemanticType::Tuple(tuple_type) => tuple_type
                 .elements
                 .iter()
-                .any(|ty| self.struct_field_contains_self_by_value(ty, struct_decl_id)),
+                .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
             SemanticType::InterfaceType(_) => false,
             SemanticType::SelfType(_) => false,
@@ -57,11 +54,11 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn is_assignable_to(&mut self, rhs: SemanticType, lhs: SemanticType, loc: Loc) -> bool {
-        match (rhs.const_inner().clone(), lhs.const_inner().clone()) {
+    pub(crate) fn is_assignable_to(&mut self, rhs_type: SemanticType, lhs_type: SemanticType, loc: Loc) -> bool {
+        match (rhs_type.const_inner().clone(), lhs_type.const_inner().clone()) {
             (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => named_type1 == named_type2,
-            (SemanticType::Plain(basic_concrete_type1), SemanticType::Plain(basic_concrete_type2)) => {
-                self.is_plain_type_assignable_to(basic_concrete_type1, basic_concrete_type2)
+            (SemanticType::Plain(plain_type1), SemanticType::Plain(plain_type2)) => {
+                self.is_plain_type_assignable_to(plain_type1, plain_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
                 let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
@@ -69,19 +66,17 @@ impl<'a> AnalysisContext<'a> {
                 valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
             }
             (SemanticType::Array(array_type), SemanticType::Pointer(inner)) => {
-                // REVIEW: Maybe we don't need this really?
-                // let fmt_symbol: SymbolFormatterFn = &|symbol_id| self.query.format_symbol_name(symbol_id);
-                // if array_type.element_type.is_const() && !inner.is_const() {
-                //     self.reporter.report(Diag {
-                //         level: DiagLevel::Warning,
-                //         kind: Box::new(AnalyzerDiagKind::CannotDiscardConst {
-                //             from: format_sema_type(value_type, fmt_symbol),
-                //             to: format_sema_type(target_type, fmt_symbol),
-                //         }),
-                //         loc: Some(loc),
-                //         hint: None,
-                //     });
-                // }
+                if array_type.element_type.is_const() && !inner.is_const() {
+                    let from = format_sema_type(rhs_type, self.formatter);
+                    let to = format_sema_type(lhs_type, self.formatter);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: Box::new(AnalyzerDiagKind::CannotDiscardConst { from, to }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                }
 
                 // array-to-pointer decay
                 self.is_assignable_to(*array_type.element_type, *inner, loc)
@@ -94,6 +89,10 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::InterfaceType(interface_type1), SemanticType::InterfaceType(interface_type2)) => {
                 interface_type1.interface_decl_id == interface_type2.interface_decl_id
             }
+
+            // TODO: StructDecl 
+            // TODO: EnumDecl
+            // TODO: UnionDecl
 
             // allowed: null -> T*
             (SemanticType::Plain(PlainType::Null), SemanticType::Pointer(..)) => true,

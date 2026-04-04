@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     decls::{StructDecl, StructDeclID},
     format::{format_sema_type, format_struct_decl},
     stmts::{TypedStructField, TypedStructStmt},
-    types::SemanticType,
+    types::{NamedType, SemanticType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
 
@@ -59,7 +59,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_struct_fields(struct_decl_id, &mut struct_decl.fields);
 
-        self.analyze_object_implements_interface_list(&object_name, &struct_decl.impls, &struct_decl.methods);
+        self.analyze_object_implements_interfaces(&object_name, &struct_decl.impls, &struct_decl.methods);
 
         self.analyze_object_methods(&object_name, &struct_decl.methods);
     }
@@ -144,16 +144,12 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_type.count_const_layers() >= 1 {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
+        let ty = NamedType {
+            decl_id: TypeDeclID::Struct(struct_decl_id),
+            type_args: None,
+        };
 
-        if self.struct_field_contains_self_by_value(sema_type, struct_decl_id) {
+        if self.sema_type_contains_self_by_value(sema_type, ty) {
             let type_name = format_sema_type(sema_type.clone(), self.formatter);
 
             self.reporter.report(Diag {
