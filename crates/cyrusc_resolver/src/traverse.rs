@@ -1004,7 +1004,7 @@ impl Resolver {
 
         self.report_if_duplicate_method_names(&name, &union_decl.methods);
 
-        let methods = self.resolve_methods(&union_decl.methods, &name, generic_params.is_some());
+        let methods = self.resolve_methods(&union_decl.methods, &name);
 
         let impls = self.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
 
@@ -1104,7 +1104,7 @@ impl Resolver {
             None => None,
         };
 
-        let methods = self.resolve_methods(&enum_decl.methods, &name, generic_params.is_some());
+        let methods = self.resolve_methods(&enum_decl.methods, &name);
 
         let impls = self.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
 
@@ -1222,50 +1222,47 @@ impl Resolver {
 
                 let self_modifier_opt = method_decl.params.list.first().and_then(|p| p.as_self_modifier());
 
-                if let Some(self_modifier) = self_modifier_opt {
-                    let is_self_const = false;
-                    let self_ident = Ident::new("self", self_modifier.loc);
+                let self_decl_id_opt = {
+                    if let Some(self_modifier) = self_modifier_opt {
+                        let is_self_const = false;
+                        let self_ident = Ident::new("self", self_modifier.loc);
 
-                    let var_decl_id = self.insert_variable_decl(&self_ident, None, None, is_self_const);
+                        let var_decl_id = self.insert_variable_decl(&self_ident, None, None, is_self_const);
 
-                    self.insert_variable_symbol_to_current_scope(&self_ident, var_decl_id);
+                        self.insert_variable_symbol_to_current_scope(&self_ident, var_decl_id);
 
-                    // store later
-                    Some((var_decl_id, self.resolve_block_stmt(&ast_method.body)))
-                } else {
-                    None
-                }
+                        // store later
+                        Some(var_decl_id)
+                    } else {
+                        None
+                    }
+                };
+
+                (self_decl_id_opt, self.resolve_block_stmt(&ast_method.body))
             });
 
-            if let Some((var_decl_id, body)) = typed_body {
-                if let Some(typed_body) = body {
-                    self.decl_tables.with_method_decl_mut(*method_decl_id, |method_decl| {
-                        if let Some(param) = method_decl.func_decl.params.list.first_mut() {
-                            if let Some(self_modifier) = param.as_self_modifier_mut() {
-                                self_modifier.var_decl_id = Some(var_decl_id);
-                            }
-                        }
+            let (self_decl_id_opt, body) = typed_body;
 
-                        method_decl.body = Some(Box::new(typed_body));
-                    });
-                }
+            if let Some(typed_body) = body {
+                self.decl_tables.with_method_decl_mut(*method_decl_id, |method_decl| {
+                    if let Some(param) = method_decl.func_decl.params.list.first_mut() {
+                        if let Some(self_modifier) = param.as_self_modifier_mut() {
+                            self_modifier.var_decl_id = self_decl_id_opt;
+                        }
+                    }
+
+                    method_decl.body = Some(Box::new(typed_body));
+                });
             }
         }
     }
 
-    fn resolve_methods(
-        &mut self,
-        ast_methods: &[ASTFuncDefStmt],
-        object_name: &String,
-        generic_object: bool,
-    ) -> MethodDecls {
+    fn resolve_methods(&mut self, ast_methods: &[ASTFuncDefStmt], object_name: &String) -> MethodDecls {
         self.report_if_duplicate_method_names(object_name, ast_methods);
 
         let method_decls = self.resolve_method_decls(ast_methods);
 
-        if !generic_object {
-            self.resolve_method_bodies(&method_decls, ast_methods);
-        }
+        self.resolve_method_bodies(&method_decls, ast_methods);
 
         method_decls
     }
@@ -1362,7 +1359,7 @@ impl Resolver {
             })
             .collect();
 
-        let methods = self.resolve_methods(&struct_decl.methods, &name, generic_params.is_some());
+        let methods = self.resolve_methods(&struct_decl.methods, &name);
 
         let impls = self.resolve_object_implements_interface_list(&struct_decl.impls, struct_decl.loc);
 

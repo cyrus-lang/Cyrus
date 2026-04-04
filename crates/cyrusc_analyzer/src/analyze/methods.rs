@@ -16,21 +16,52 @@
  */
 
 use crate::context::AnalysisContext;
-use cyrusc_typed_ast::decls::{MethodDecl, MethodDecls};
+use cyrusc_typed_ast::decls::{MethodDecl, MethodDeclID, MethodDecls};
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_object_methods(&mut self, object_name: &String, method_decls: &MethodDecls) {
+        // pass 1: declarations
         for (_, method_decl_id) in method_decls.iter() {
-            let method_decl = self.decl_tables.method_decl(*method_decl_id);
+            let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
 
             self.analyze_method_generic_params(object_name, method_decls, &method_decl.func_decl.generic_params);
+            self.analyze_method_decl(&mut method_decl);
 
-            self.analyze_method(&method_decl);
+            self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                *_method_decl = method_decl;
+            });
+        }
+
+        // pass 2: bodies
+        for (_, method_decl_id) in method_decls.iter() {
+            let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
+
+            if !method_decl.func_decl.is_generic() {
+                self.analyze_method_body(*method_decl_id, &mut method_decl);
+            } else {
+                // generic methods are being analyzed in call-site
+            }
+
+            self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {
+                *_method_decl = method_decl.clone();
+            });
         }
     }
 
-    pub(crate) fn analyze_method(&self, method_decl: &MethodDecl) {
-        // self.analyze_func_decl(method_decl.func_decl);
-        todo!();
+    pub(crate) fn analyze_method_decl(&mut self, method_decl: &mut MethodDecl) {
+        self.analyze_func_decl(&mut method_decl.func_decl);
+
+        self.nameconv_check_method_name(&method_decl.func_decl.name, method_decl.func_decl.loc);
+    }
+
+    pub(crate) fn analyze_method_body(&mut self, method_decl_id: MethodDeclID, method_decl: &mut MethodDecl) {
+        let parent_method = self.func_env.current_method;
+        let parent_func = self.func_env.current_func.clone();
+
+        self.func_env.current_method = Some(method_decl_id);
+        self.func_env.current_func = Some(method_decl.func_decl.as_func_type());
+        self.analyze_func_body(&mut method_decl.body.as_mut().unwrap(), &method_decl.func_decl.ret_type);
+        self.func_env.current_method = parent_method;
+        self.func_env.current_func = parent_func;
     }
 }

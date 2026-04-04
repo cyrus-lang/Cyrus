@@ -33,6 +33,10 @@ impl<'a> AnalysisContext<'a> {
         let mut struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
         self.analyze_struct_decl(struct_decl_id, &mut struct_decl);
+
+        self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
+            *_struct_decl = struct_decl;
+        });
     }
 
     pub(crate) fn analyze_struct_decl(&mut self, struct_decl_id: StructDeclID, struct_decl: &mut StructDecl) {
@@ -58,10 +62,6 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_object_implements_interface_list(&object_name, &struct_decl.impls, &struct_decl.methods);
 
         self.analyze_object_methods(&object_name, &struct_decl.methods);
-
-        self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
-            *_struct_decl = struct_decl.clone();
-        });
     }
 
     fn analyze_struct_fields(&mut self, struct_decl_id: StructDeclID, struct_fields: &mut [TypedStructField]) {

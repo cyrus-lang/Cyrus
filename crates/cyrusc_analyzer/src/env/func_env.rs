@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
 
 #[derive(Debug, Clone)]
 pub(crate) struct FuncEnv {
-    pub(crate) current_func_type: Option<TypedFuncType>,
+    pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_object: Option<SemanticType>,
     pub(crate) current_method: Option<MethodDeclID>,
 }
@@ -30,7 +30,7 @@ pub(crate) struct FuncEnv {
 impl FuncEnv {
     pub fn new() -> Self {
         Self {
-            current_func_type: None,
+            current_func: None,
             current_object: None,
             current_method: None,
         }

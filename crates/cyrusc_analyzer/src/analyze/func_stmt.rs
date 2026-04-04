@@ -20,48 +20,30 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    decls::FuncDecl,
     stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt},
-    types::{SemanticType, TypedFuncType},
+    types::SemanticType,
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_func_def(&mut self, func_def: &mut TypedFuncDefStmt) {
-        self.analyze_entry_func(func_def);
-
-        let is_public = func_def.modifiers.vis.is_public();
         let is_generic_func = func_def.is_generic();
 
-        // if let Some(generic_params) = &func_def.generic_params {
-        //     self.analyze_generic_params(generic_params);
-        // }
-
-        let func_type_params = func_def.params.as_func_type_params();
-
-        self.func_env.current_func_type = Some(TypedFuncType {
-            symbol_id: Some(func_def.symbol_id),
-            params: func_type_params,
-            ret_type: Box::new(func_def.ret_type.clone()),
-            is_public,
-            loc: func_def.loc,
-        });
-
-        self.normalize_func_params(&mut func_def.params, func_def.loc);
-
-        let Some(ret_type) = self.normalize_sema_type(func_def.ret_type.clone(), func_def.loc) else {
-            return;
-        };
-
-        func_def.ret_type = ret_type;
-
-        if !is_generic_func {
-            self.analyze_func_body(&mut func_def.body, &func_def.ret_type);
-        }
+        self.analyze_entry_func(func_def);
+        self.analyze_generic_params(&func_def.generic_params);
 
         let func_decl_id = self.query.get_func(func_def.symbol_id).unwrap();
-        self.decl_tables.with_func_decl_mut(func_decl_id, |func_decl| {
-            func_decl.params = func_def.params.clone();
-            func_decl.ret_type = func_def.ret_type.clone();
-        });
+        let mut func_decl = self.decl_tables.func_decl(func_decl_id);
+
+        self.analyze_func_decl(&mut func_decl);
+
+        if !is_generic_func {
+            let parent_func = self.func_env.current_func.clone();
+
+            self.func_env.current_func = Some(func_decl.as_func_type());
+            self.analyze_func_body(&mut func_def.body, &func_def.ret_type);
+            self.func_env.current_func = parent_func;
+        }
     }
 
     pub(crate) fn analyze_func_decl_stmt(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
@@ -74,24 +56,30 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        let func_decl_id = self.query.get_func(func_decl_stmt.symbol_id).unwrap();
+        let mut func_decl = self.decl_tables.func_decl(func_decl_id);
+
+        self.analyze_func_decl(&mut func_decl);
+
+        self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
+            _func_decl.params = func_decl.params.clone();
+            _func_decl.ret_type = func_decl.ret_type.clone();
+        });
+    }
+
+    pub(crate) fn analyze_func_decl(&mut self, func_decl: &mut FuncDecl) {
         self.report_if_duplicate_param_names(
-            &func_decl_stmt.params.list,
-            func_decl_stmt.params.variadic.as_ref(),
-            func_decl_stmt.loc,
+            &func_decl.params.list,
+            func_decl.params.variadic.as_ref(),
+            func_decl.loc,
         );
 
-        func_decl_stmt.ret_type = match self.normalize_sema_type(func_decl_stmt.ret_type.clone(), func_decl_stmt.loc) {
+        func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc) {
             Some(sema_type) => sema_type,
             None => return,
         };
 
-        self.normalize_func_params(&mut func_decl_stmt.params, func_decl_stmt.loc);
-
-        let func_decl_id = self.query.get_func(func_decl_stmt.symbol_id).unwrap();
-        self.decl_tables.with_func_decl_mut(func_decl_id, |func_decl| {
-            func_decl.params = func_decl_stmt.params.clone();
-            func_decl.ret_type = func_decl_stmt.ret_type.clone();
-        });
+        self.normalize_func_params(&mut func_decl.params, func_decl.loc);
     }
 
     pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemanticType) {
