@@ -22,6 +22,7 @@ use crate::{
 };
 use cyrusc_analyzer::context::{AnalysisContext, AnalyzerConfig, EntryPoints};
 use cyrusc_buildmanifest::BuildManifest;
+use cyrusc_cir_traverse::walk_program_trees_in_parallel;
 use cyrusc_diagcentral::{exit_with_msg, reporter::DiagReporter};
 use cyrusc_fs_utils::{ensure_output_dir, file_name_without_extension, get_directory_of_file};
 use cyrusc_internal::{
@@ -68,6 +69,7 @@ pub struct CodeGenSemanticBundle {
     pub analyzed_program_trees: Vec<Rc<RefCell<TypedProgramTree>>>,
     pub vtable_registries: Vec<Arc<Mutex<VTableRegistry>>>,
     pub resolver: Box<Resolver>,
+    pub decl_tables: Arc<DeclTablesRegistry>,
     pub source_map: Arc<SourceMap>,
     pub entry_file: PathBuf,
     pub build_dir: PathBuf,
@@ -232,6 +234,7 @@ pub fn build_semantic_bundle(opts: &mut CodeGenOptions, file_path_opt: Option<St
             Box::new(CodeGenSemanticBundle {
                 resolver: Box::new(resolver),
                 source_map,
+                decl_tables,
                 analyzed_program_trees,
                 vtable_registries,
                 entry_file,
@@ -277,6 +280,7 @@ pub fn build_compilation_bundle(opts: &mut CodeGenOptions, file_path: Option<Str
         boxed_program_trees,
         &*codegen_semantic_bundle.resolver,
         codegen_semantic_bundle.source_map.clone(),
+        codegen_semantic_bundle.decl_tables.clone(),
         cir_monomorph_registry.clone(),
         &codegen_semantic_bundle.vtable_registries,
         &target,

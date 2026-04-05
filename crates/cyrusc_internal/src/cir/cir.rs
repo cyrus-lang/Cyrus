@@ -443,7 +443,7 @@ pub struct CIRStructStmt {
 #[derive(Debug, Clone)]
 pub struct CIREnumStmt {
     pub name: String,
-    pub variants: Vec<CIREnumTyVariant>,
+    pub variants: Vec<CIREnumVariant>,
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRType>>,
     pub modifiers: EnumModifiers,
@@ -451,13 +451,13 @@ pub struct CIREnumStmt {
 }
 
 #[derive(Debug, Clone)]
-pub enum CIREnumTyVariant {
+pub enum CIREnumVariant {
     Ident(String),
     Valued(String, Box<CIRExpr>),
     Fielded(String, Vec<CIRType>),
 }
 
-impl PartialEq for CIREnumTyVariant {
+impl PartialEq for CIREnumVariant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
@@ -468,19 +468,19 @@ impl PartialEq for CIREnumTyVariant {
     }
 }
 
-impl CIREnumTyVariant {
+impl CIREnumVariant {
     pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
         match self {
-            CIREnumTyVariant::Fielded(_, fields) => Some(fields),
+            CIREnumVariant::Fielded(_, fields) => Some(fields),
             _ => None,
         }
     }
 
     pub fn ident(&self) -> &String {
         match self {
-            CIREnumTyVariant::Ident(ident) => ident,
-            CIREnumTyVariant::Valued(ident, _) => ident,
-            CIREnumTyVariant::Fielded(ident, _) => ident,
+            CIREnumVariant::Ident(ident) => ident,
+            CIREnumVariant::Valued(ident, _) => ident,
+            CIREnumVariant::Fielded(ident, _) => ident,
         }
     }
 }

@@ -17,7 +17,7 @@
 
 use crate::{
     abi::args::ABIFunctionInfo,
-    cir::cir::{CIREnumTyVariant, cir_expr_as_const_integer_value},
+    cir::cir::{CIREnumVariant, cir_expr_as_const_integer_value},
 };
 use cyrusc_ast::abi::{CallConv, ReprAttr};
 use cyrusc_source_loc::Loc;
@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{VTableID, types::PlainType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CIRType {
-    PlainType(PlainType),
+    Plain(PlainType),
     Const(Box<CIRType>),
     Pointer(Box<CIRType>),
     Struct(CIRStructType),
@@ -86,7 +86,7 @@ pub struct CIRUnionType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIREnumType {
     pub name: Option<String>,
-    pub variants: Vec<CIREnumTyVariant>,
+    pub variants: Vec<CIREnumVariant>,
     pub repr_attr: Option<ReprAttr>,
     pub align: Option<usize>,
     pub tag_type: Option<Box<CIRType>>,
@@ -104,7 +104,7 @@ impl CIREnumType {
                     None
                 }
             })
-            .unwrap_or_else(|| Box::new(CIRType::PlainType(PlainType::Int32)))
+            .unwrap_or_else(|| Box::new(CIRType::Plain(PlainType::Int32)))
     }
 
     pub fn is_scalar_optimizable(&self) -> bool {
@@ -117,7 +117,7 @@ impl CIREnumType {
         let mut expr_ty: Option<Box<CIRType>> = None;
 
         for variant in &self.variants {
-            if let CIREnumTyVariant::Valued(_, expr) = variant {
+            if let CIREnumVariant::Valued(_, expr) = variant {
                 let ty = expr.ty.clone();
 
                 match &expr_ty {
@@ -140,14 +140,14 @@ impl CIREnumType {
 
     #[inline]
     pub fn includes_payload(&self) -> bool {
-        self.variants.iter().any(|v| !matches!(v, CIREnumTyVariant::Ident(_)))
+        self.variants.iter().any(|v| !matches!(v, CIREnumVariant::Ident(_)))
     }
 
     pub fn includes_only_integer_payload(&self) -> bool {
         self.variants.iter().all(|v| match v {
-            CIREnumTyVariant::Valued(_, expr) => expr.ty.is_integer_or_bool(),
-            CIREnumTyVariant::Ident(_) => true,
-            CIREnumTyVariant::Fielded(_, _) => false,
+            CIREnumVariant::Valued(_, expr) => expr.ty.is_integer_or_bool(),
+            CIREnumVariant::Ident(_) => true,
+            CIREnumVariant::Fielded(_, _) => false,
         })
     }
 
@@ -158,7 +158,7 @@ impl CIREnumType {
             .position(|variant| variant.ident() == lookup_ident)?;
 
         match &self.variants[variant_idx] {
-            CIREnumTyVariant::Valued(_, expr) => {
+            CIREnumVariant::Valued(_, expr) => {
                 if self.is_scalar_optimizable() {
                     let integer_value = match cir_expr_as_const_integer_value(expr) {
                         Some(value) => value,
@@ -169,8 +169,8 @@ impl CIREnumType {
                     Some(variant_idx.try_into().unwrap())
                 }
             }
-            CIREnumTyVariant::Fielded(_, _) => Some(variant_idx.try_into().unwrap()),
-            CIREnumTyVariant::Ident(_) => Some(variant_idx.try_into().unwrap()),
+            CIREnumVariant::Fielded(_, _) => Some(variant_idx.try_into().unwrap()),
+            CIREnumVariant::Ident(_) => Some(variant_idx.try_into().unwrap()),
         }
     }
 }
@@ -192,7 +192,7 @@ impl CIRType {
 
     pub fn as_plain(&self) -> Option<PlainType> {
         match self.const_inner() {
-            CIRType::PlainType(plain_type) => Some(plain_type.clone()),
+            CIRType::Plain(plain_type) => Some(plain_type.clone()),
             _ => None,
         }
     }
@@ -237,7 +237,7 @@ impl CIRType {
     pub fn is_scalar(&self) -> bool {
         match self.const_inner() {
             // plain types like int, float, bool, char, etc.
-            CIRType::PlainType(plain_type) => plain_type.is_scalar(),
+            CIRType::Plain(plain_type) => plain_type.is_scalar(),
 
             // const does not affect scalar-ness
             CIRType::Const(inner) => inner.is_scalar(),
@@ -266,35 +266,35 @@ impl CIRType {
 
     pub fn is_void(&self) -> bool {
         match self.const_inner() {
-            CIRType::PlainType(plain_type) => plain_type.is_void(),
+            CIRType::Plain(plain_type) => plain_type.is_void(),
             _ => false,
         }
     }
 
     pub fn is_bool(&self) -> bool {
         match self.const_inner() {
-            CIRType::PlainType(PlainType::Bool) => true,
+            CIRType::Plain(PlainType::Bool) => true,
             _ => false,
         }
     }
 
     pub fn is_float(&self) -> bool {
         match self.const_inner() {
-            CIRType::PlainType(plain_type) => plain_type.is_float(),
+            CIRType::Plain(plain_type) => plain_type.is_float(),
             _ => false,
         }
     }
 
     pub fn is_integer(&self) -> bool {
         match self.const_inner() {
-            CIRType::PlainType(plain_type) => plain_type.is_integer(),
+            CIRType::Plain(plain_type) => plain_type.is_integer(),
             _ => false,
         }
     }
 
     pub fn is_signed_integer(&self) -> bool {
         match self.const_inner() {
-            CIRType::PlainType(plain_type) => plain_type.is_integer() && plain_type.is_signed(),
+            CIRType::Plain(plain_type) => plain_type.is_integer() && plain_type.is_signed(),
             _ => false,
         }
     }
@@ -305,7 +305,7 @@ impl CIRType {
 
     pub fn is_char(&self) -> bool {
         match self.const_inner() {
-            CIRType::PlainType(plain_type) => plain_type.is_char(),
+            CIRType::Plain(plain_type) => plain_type.is_char(),
             _ => false,
         }
     }
@@ -395,7 +395,7 @@ impl PartialEq for CIRFuncType {
 macro_rules! is_integer_type {
     ($self:expr, $($patterns:pat_param)|+ $(if $guard:expr)?) => {
         match $self.const_inner() {
-            CIRType::PlainType(_plain_type) => {
+            CIRType::Plain(_plain_type) => {
                 matches!(_plain_type, $($patterns)|+ $(if $guard)?)
             }
             _ => false,

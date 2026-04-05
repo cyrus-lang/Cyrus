@@ -16,38 +16,32 @@
  */
 
 use cyrusc_ast::abi::CallConv;
-use cyrusc_ast::abi::Linkage;
 use cyrusc_ast::operators::*;
+use cyrusc_internal::abi::mangler::mangle_func;
+use cyrusc_internal::abi::mangler::mangle_global_var;
 use cyrusc_internal::abi::target::ABITarget;
-use cyrusc_internal::cir::cir::CIRProgramTree;
-use cyrusc_internal::cir::cir::CIRStmt;
-use cyrusc_internal::cir::cir::IRValueID;
-use cyrusc_internal::cir::instances::CIRInstanceFunc;
+use cyrusc_internal::cir::cir::*;
 use cyrusc_internal::cir::instances::CIRInstanceRegistry;
-use cyrusc_internal::cir::types::CIRType;
+use cyrusc_internal::cir::types::*;
 use cyrusc_internal::symbols::SymbolQuery;
 use cyrusc_internal::vtable::VTableRegistry;
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tokens::literals::*;
 use cyrusc_typed_ast::TypedProgramTree;
-use cyrusc_typed_ast::decls::MethodDecls;
+use cyrusc_typed_ast::decls::table::DeclTablesRegistry;
+use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::{SymbolID, exprs::*};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct CIRTraverse<'query> {
+pub(crate) struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
-    current_self_ty: Option<CIRType>,
-    pub(crate) query: &'query dyn SymbolQuery,
-    pub(crate) cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
-    pub(crate) current_obj_operand_ty: Option<SemanticType>,
-    pub(crate) vtable_registry: Arc<Mutex<VTableRegistry>>,
-    pub(crate) target: &'query ABITarget,
-
+    query: &'a dyn SymbolQuery,
+    decl_tables: Arc<DeclTablesRegistry>,
+    cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
+    vtable_registry: Arc<Mutex<VTableRegistry>>,
+    target: &'a ABITarget,
     module_name: String,
     lambda_id: u32,
 }
@@ -56,6 +50,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     pub fn new(
         program_tree: Box<TypedProgramTree>,
         query: &'resolver dyn SymbolQuery,
+        decl_tables: Arc<DeclTablesRegistry>,
         cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
         target: &'resolver ABITarget,
@@ -65,10 +60,8 @@ impl<'resolver> CIRTraverse<'resolver> {
         Self {
             program_tree,
             query,
+            decl_tables,
             cir_instance_registry,
-            current_self_ty: None,
-            current_obj_operand_ty: None,
-
             vtable_registry,
             target,
             module_name,
@@ -179,36 +172,44 @@ impl<'resolver> CIRTraverse<'resolver> {
         lowered_stmts
     }
 
+    // FIXME
     fn lower_non_generic_methods(&mut self, object_name: &String, methods: &MethodDecls) -> Vec<CIRStmt> {
-        let mut stmts: Vec<CIRStmt> = Vec::new();
+        todo!();
 
-        for method_id in methods.values().cloned() {
-            let resolved_method = self.query.get_method(method_id).unwrap();
-            let lowered_method = self.lower_method(&resolved_method, object_name).unwrap();
-            stmts.push(lowered_method);
-        }
+        // let mut stmts: Vec<CIRStmt> = Vec::new();
 
-        stmts
+        // for method_id in methods.values().cloned() {
+        //     let method_decl_id = self.query.get_method(method_id).unwrap();
+        //     let method_decl = self.decl_tables.method_decl(method_decl_id);
+
+        //     let lowered_method = self.lower_method(&method_decl, object_name).unwrap();
+        //     stmts.push(lowered_method);
+        // }
+
+        // stmts
     }
 
-    fn lower_method(&mut self, resolved_method: &ResolvedMethod, object_name: &String) -> Option<CIRStmt> {
-        let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
+    // FIXME
+    fn lower_method(&mut self, method_decl: &MethodDecl, object_name: &String) -> Option<CIRStmt> {
+        todo!();
 
-        // skip if has no body
-        let func_body = resolved_method.func_body.clone()?;
+        // let mangled_name = DEFAULT_ABI.method_name(&self.module_name, object_name, &resolved_method.func_decl.name);
 
-        let func_def = TypedFuncDefStmt {
-            symbol_id: resolved_method.symbol_id,
-            name: mangled_name,
-            params: resolved_method.func_decl.params.clone(),
-            generic_params: resolved_method.func_decl.generic_params.clone(),
-            body: func_body,
-            ret_type: resolved_method.func_decl.ret_type.clone(),
-            modifiers: resolved_method.func_decl.modifiers.clone(),
-            loc: resolved_method.func_decl.loc,
-        };
+        // // skip if has no body
+        // let func_body = resolved_method.func_body.clone()?;
 
-        Some(self.lower_func_def(&func_def, false))
+        // let func_def = TypedFuncDefStmt {
+        //     symbol_id: resolved_method.symbol_id,
+        //     name: mangled_name,
+        //     params: resolved_method.func_decl.params.clone(),
+        //     generic_params: resolved_method.func_decl.generic_params.clone(),
+        //     body: func_body,
+        //     ret_type: resolved_method.func_decl.ret_type.clone(),
+        //     modifiers: resolved_method.func_decl.modifiers.clone(),
+        //     loc: resolved_method.func_decl.loc,
+        // };
+
+        // Some(self.lower_func_def(&func_def, false))
     }
 
     fn lower_label(&self, label: &TypedLabelStmt) -> CIRStmt {
@@ -252,29 +253,32 @@ impl<'resolver> CIRTraverse<'resolver> {
         vars
     }
 
+    // FIXME
     fn lower_export_pattern_recursive(&mut self, pattern: &TypedExportPattern, vars: &mut Vec<CIRVarStmt>) {
-        match pattern {
-            TypedExportPattern::Ident(symbol_id) => {
-                let var = &self.query.get_var(*symbol_id).unwrap().variable;
+        todo!();
 
-                let var_name = var.name.clone();
-                let var_ty = self.lower_sema_ty(&var.ty.as_ref().unwrap());
-                let var_rhs = self.lower_expr(&var.rhs.as_ref().unwrap());
+        // match pattern {
+        //     TypedExportPattern::Ident(symbol_id) => {
+        //         let var = &self.query.get_var(*symbol_id).unwrap().variable;
 
-                vars.push(CIRVarStmt {
-                    irv_id: symbol_id.0,
-                    name: format!("tuple.{}", var_name),
-                    ty: var_ty,
-                    expr: Some(var_rhs),
-                    loc: var.loc,
-                });
-            }
-            TypedExportPattern::Tuple(patterns) => {
-                for pattern in patterns {
-                    self.lower_export_pattern_recursive(pattern, vars);
-                }
-            }
-        }
+        //         let var_name = var.name.clone();
+        //         let var_ty = self.lower_sema_ty(&var.ty.as_ref().unwrap());
+        //         let var_rhs = self.lower_expr(&var.rhs.as_ref().unwrap());
+
+        //         vars.push(CIRVarStmt {
+        //             irv_id: symbol_id.0,
+        //             name: format!("tuple.{}", var_name),
+        //             ty: var_ty,
+        //             expr: Some(var_rhs),
+        //             loc: var.loc,
+        //         });
+        //     }
+        //     TypedExportPattern::Tuple(patterns) => {
+        //         for pattern in patterns {
+        //             self.lower_export_pattern_recursive(pattern, vars);
+        //         }
+        //     }
+        // }
     }
 
     fn lower_if(&mut self, if_stmt: &TypedIfStmt) -> CIRStmt {
@@ -312,54 +316,57 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
+    // FIXME
     fn lower_switch(&mut self, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
-        let operand = self.lower_expr(&switch_stmt.operand);
-        let operand_type = switch_stmt.operand.sema_type.as_ref().unwrap().const_inner();
+        todo!();
 
-        let unnamed_enum_type_opt = operand_type
-            .as_enum_symbol_id()
-            .and_then(|symbol_id| {
-                self.query
-                    .get_enum(symbol_id)
-                    .map(|resolved_enum| enum_sig_as_unnamed_enum_type(&resolved_enum.enum_decl, switch_stmt.loc))
-            })
-            .or(operand_type.as_generic_type().and_then(|generic_type| {
-                Some(
-                    self.query
-                        .get_enum(generic_type.base)
-                        .map(|resolved_enum| {
-                            let enum_decl = substitute_enum_sig(
-                                self.mapping_ctx_arena.clone(),
-                                &resolved_enum.enum_decl,
-                                generic_type.mapping_ctx.clone(),
-                            )
-                            .unwrap();
+        // let operand = self.lower_expr(&switch_stmt.operand);
+        // let operand_type = switch_stmt.operand.sema_type.as_ref().unwrap().const_inner();
 
-                            enum_sig_as_unnamed_enum_type(&enum_decl, switch_stmt.loc)
-                        })
-                        .unwrap(),
-                )
-            }))
-            .or(operand_type.as_unnamed_enum());
+        // let unnamed_enum_type_opt = operand_type
+        //     .as_enum_symbol_id()
+        //     .and_then(|symbol_id| {
+        //         self.query
+        //             .get_enum(symbol_id)
+        //             .map(|resolved_enum| enum_sig_as_unnamed_enum_type(&resolved_enum.enum_decl, switch_stmt.loc))
+        //     })
+        //     .or(operand_type.as_generic_type().and_then(|generic_type| {
+        //         Some(
+        //             self.query
+        //                 .get_enum(generic_type.base)
+        //                 .map(|resolved_enum| {
+        //                     let enum_decl = substitute_enum_sig(
+        //                         self.mapping_ctx_arena.clone(),
+        //                         &resolved_enum.enum_decl,
+        //                         generic_type.mapping_ctx.clone(),
+        //                     )
+        //                     .unwrap();
 
-        let default = switch_stmt
-            .default_case
-            .as_ref()
-            .and_then(|default_case| Some(self.lower_body(&default_case)));
+        //                     enum_sig_as_unnamed_enum_type(&enum_decl, switch_stmt.loc)
+        //                 })
+        //                 .unwrap(),
+        //         )
+        //     }))
+        //     .or(operand_type.as_unnamed_enum());
 
-        if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
-            if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
-                self.lower_switch_on_scalar_enum(&operand, &unnamed_enum_type, &default, switch_stmt)
-            } else {
-                self.lower_switch_on_enum(&unnamed_enum_type, &operand, &default, switch_stmt)
-            }
-        } else {
-            if switch_stmt.includes_any_range() || !switch_stmt.includes_only_integer() {
-                return self.lower_switch_as_chained_if(&operand, &default, switch_stmt);
-            }
+        // let default = switch_stmt
+        //     .default_case
+        //     .as_ref()
+        //     .and_then(|default_case| Some(self.lower_body(&default_case)));
 
-            self.lower_pure_switch(&operand, &default, switch_stmt)
-        }
+        // if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
+        //     if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
+        //         self.lower_switch_on_scalar_enum(&operand, &unnamed_enum_type, &default, switch_stmt)
+        //     } else {
+        //         self.lower_switch_on_enum(&unnamed_enum_type, &operand, &default, switch_stmt)
+        //     }
+        // } else {
+        //     if switch_stmt.includes_any_range() || !switch_stmt.includes_only_integer() {
+        //         return self.lower_switch_as_chained_if(&operand, &default, switch_stmt);
+        //     }
+
+        //     self.lower_pure_switch(&operand, &default, switch_stmt)
+        // }
     }
 
     fn lower_switch_as_chained_if(
@@ -376,9 +383,9 @@ impl<'resolver> CIRTraverse<'resolver> {
             let mut cond_expr = CIRExpr {
                 kind: CIRExprKind::Literal(CIRLiteral {
                     kind: CIRLiteralKind::Bool(false),
-                    ty: CIRType::PlainType(PlainType::Bool),
+                    ty: CIRType::Plain(PlainType::Bool),
                 }),
-                ty: CIRType::PlainType(PlainType::Bool),
+                ty: CIRType::Plain(PlainType::Bool),
                 loc: case.loc,
             };
             for pattern in &case.patterns {
@@ -392,7 +399,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                                 lhs: Box::new(operand.clone()),
                                 rhs: Box::new(lowered_case_expr),
                             }),
-                            ty: CIRType::PlainType(PlainType::Bool),
+                            ty: CIRType::Plain(PlainType::Bool),
                             loc: expr.loc,
                         }
                     }
@@ -406,7 +413,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                                 lhs: Box::new(operand.clone()),
                                 rhs: Box::new(lower),
                             }),
-                            ty: CIRType::PlainType(PlainType::Bool),
+                            ty: CIRType::Plain(PlainType::Bool),
                             loc: range.loc,
                         };
 
@@ -424,7 +431,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                                 lhs: Box::new(operand.clone()),
                                 rhs: Box::new(upper),
                             }),
-                            ty: CIRType::PlainType(PlainType::Bool),
+                            ty: CIRType::Plain(PlainType::Bool),
                             loc: range.loc,
                         };
 
@@ -434,7 +441,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                                 lhs: Box::new(ge),
                                 rhs: Box::new(upper_cmp),
                             }),
-                            ty: CIRType::PlainType(PlainType::Bool),
+                            ty: CIRType::Plain(PlainType::Bool),
                             loc: range.loc,
                         }
                     }
@@ -449,7 +456,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                         lhs: Box::new(cond_expr),
                         rhs: Box::new(new_cond),
                     }),
-                    ty: CIRType::PlainType(PlainType::Bool),
+                    ty: CIRType::Plain(PlainType::Bool),
                     loc,
                 };
             }
@@ -501,63 +508,61 @@ impl<'resolver> CIRTraverse<'resolver> {
         CIRStmt::If(root_if)
     }
 
-    fn lower_switch_on_scalar_enum(
-        &mut self,
+    // fn lower_switch_on_scalar_enum(
+    //     &mut self,
+    //     operand: &CIRExpr,
+    //     unnamed_enum_type: &TypedUnnamedEnumType,
+    //     default: &Option<CIRBlockStmt>,
+    //     switch_stmt: &TypedSwitchStmt,
+    // ) -> CIRStmt {
+    //     let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(unnamed_enum_type);
 
-        operand: &CIRExpr,
-        unnamed_enum_type: &TypedUnnamedEnumType,
-        default: &Option<CIRBlockStmt>,
-        switch_stmt: &TypedSwitchStmt,
-    ) -> CIRStmt {
-        let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(unnamed_enum_type);
+    //     let cases: Vec<CIRSwitchCase> = switch_stmt
+    //         .cases
+    //         .iter()
+    //         .map(|case| {
+    //             let patterns: Vec<CIRExpr> = case
+    //                 .patterns
+    //                 .iter()
+    //                 .map(|pattern| {
+    //                     let (case_ident, case_loc) = match &pattern {
+    //                         TypedSwitchCasePattern::Ident(ident) => (ident, ident.loc),
+    //                         _ => unreachable!("Unexpected enum variant pattern when lowering switch on integer enum."),
+    //                     };
 
-        let cases: Vec<CIRSwitchCase> = switch_stmt
-            .cases
-            .iter()
-            .map(|case| {
-                let patterns: Vec<CIRExpr> = case
-                    .patterns
-                    .iter()
-                    .map(|pattern| {
-                        let (case_ident, case_loc) = match &pattern {
-                            TypedSwitchCasePattern::Ident(ident) => (ident, ident.loc),
-                            _ => unreachable!("Unexpected enum variant pattern when lowering switch on integer enum."),
-                        };
+    //                     let tag = enum_ty.compute_variant_tag(&case_ident.value).unwrap();
+    //                     let tag_type = enum_ty.tag_type_or_infer_or_default();
 
-                        let tag = enum_ty.compute_variant_tag(&case_ident.value).unwrap();
-                        let tag_type = enum_ty.tag_type_or_infer_or_default();
+    //                     CIRExpr {
+    //                         kind: CIRExprKind::Literal(CIRLiteral {
+    //                             kind: CIRLiteralKind::Integer(tag.try_into().unwrap(), tag_type.is_signed_integer()),
+    //                             ty: *tag_type.clone(),
+    //                         }),
+    //                         ty: *tag_type,
+    //                         loc: case_loc.clone(),
+    //                     }
+    //                 })
+    //                 .collect();
 
-                        CIRExpr {
-                            kind: CIRExprKind::Literal(CIRLiteral {
-                                kind: CIRLiteralKind::Integer(tag.try_into().unwrap(), tag_type.is_signed_integer()),
-                                ty: *tag_type.clone(),
-                            }),
-                            ty: *tag_type,
-                            loc: case_loc.clone(),
-                        }
-                    })
-                    .collect();
+    //             let body = self.lower_body(&case.body);
 
-                let body = self.lower_body(&case.body);
+    //             CIRSwitchCase { patterns, body }
+    //         })
+    //         .collect();
 
-                CIRSwitchCase { patterns, body }
-            })
-            .collect();
+    //     let explicit_all_cases_return = switch_stmt.cases.len() == enum_ty.variants.len();
 
-        let explicit_all_cases_return = switch_stmt.cases.len() == enum_ty.variants.len();
-
-        CIRStmt::Switch(CIRSwitchStmt {
-            value: operand.clone(),
-            cases,
-            default: default.clone(),
-            all_cases_covered: explicit_all_cases_return,
-            loc: switch_stmt.loc,
-        })
-    }
+    //     CIRStmt::Switch(CIRSwitchStmt {
+    //         value: operand.clone(),
+    //         cases,
+    //         default: default.clone(),
+    //         all_cases_covered: explicit_all_cases_return,
+    //         loc: switch_stmt.loc,
+    //     })
+    // }
 
     fn lower_pure_switch(
         &mut self,
-
         operand: &CIRExpr,
         default: &Option<CIRBlockStmt>,
         switch_stmt: &TypedSwitchStmt,
@@ -597,87 +602,88 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
-    fn lower_switch_on_enum(
-        &mut self,
+    // FIXME
+    // fn lower_switch_on_enum(
+    //     &mut self,
 
-        unnamed_enum_type: &TypedUnnamedEnumType,
-        operand: &CIRExpr,
-        default: &Option<CIRBlockStmt>,
-        switch_stmt: &TypedSwitchStmt,
-    ) -> CIRStmt {
-        let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();
+    //     unnamed_enum_type: &TypedUnnamedEnumType,
+    //     operand: &CIRExpr,
+    //     default: &Option<CIRBlockStmt>,
+    //     switch_stmt: &TypedSwitchStmt,
+    // ) -> CIRStmt {
+    //     let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();
 
-        for case in &switch_stmt.cases {
-            let mut lowered_patterns: Vec<CIRSwitchOnEnumPattern> = Vec::new();
+    //     for case in &switch_stmt.cases {
+    //         let mut lowered_patterns: Vec<CIRSwitchOnEnumPattern> = Vec::new();
 
-            for pattern in &case.patterns {
-                match pattern {
-                    TypedSwitchCasePattern::Ident(ident) => {
-                        let variant_idx = unnamed_enum_type
-                            .variants
-                            .iter()
-                            .position(|variant| variant.ident().value == ident.value)
-                            .unwrap();
+    //         for pattern in &case.patterns {
+    //             match pattern {
+    //                 TypedSwitchCasePattern::Ident(ident) => {
+    //                     let variant_idx = unnamed_enum_type
+    //                         .variants
+    //                         .iter()
+    //                         .position(|variant| variant.ident().value == ident.value)
+    //                         .unwrap();
 
-                        lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(ident.as_string(), variant_idx));
-                    }
-                    TypedSwitchCasePattern::EnumVariant(ident, exported_fields, _) => {
-                        let variant_idx = unnamed_enum_type
-                            .variants
-                            .iter()
-                            .position(|variant| variant.ident().value == ident.value)
-                            .unwrap();
+    //                     lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(ident.as_string(), variant_idx));
+    //                 }
+    //                 TypedSwitchCasePattern::EnumVariant(ident, exported_fields, _) => {
+    //                     let variant_idx = unnamed_enum_type
+    //                         .variants
+    //                         .iter()
+    //                         .position(|variant| variant.ident().value == ident.value)
+    //                         .unwrap();
 
-                        let variant = &unnamed_enum_type.variants[variant_idx];
+    //                     let variant = &unnamed_enum_type.variants[variant_idx];
 
-                        match variant {
-                            TypedUnnamedEnumVariant::Valued(_, expr) => {
-                                let exported_field = exported_fields.first().unwrap();
-                                let lowered_expr = self.lower_expr(&expr);
+    //                     match variant {
+    //                         TypedUnnamedEnumVariant::Valued(_, expr) => {
+    //                             let exported_field = exported_fields.first().unwrap();
+    //                             let lowered_expr = self.lower_expr(&expr);
 
-                                lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(
-                                    ident.as_string(),
-                                    variant_idx,
-                                    (exported_field.clone(), lowered_expr),
-                                ));
-                            }
-                            TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
-                                let exported_fields: Vec<(TypedIdent, CIRType)> = exported_fields
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, ident)| {
-                                        let field_ty = &valued_fields.get(i).as_ref().unwrap().ty;
-                                        (ident.clone(), self.lower_sema_ty(field_ty))
-                                    })
-                                    .collect();
+    //                             lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(
+    //                                 ident.as_string(),
+    //                                 variant_idx,
+    //                                 (exported_field.clone(), lowered_expr),
+    //                             ));
+    //                         }
+    //                         TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
+    //                             let exported_fields: Vec<(TypedIdent, CIRType)> = exported_fields
+    //                                 .iter()
+    //                                 .enumerate()
+    //                                 .map(|(i, ident)| {
+    //                                     let field_ty = &valued_fields.get(i).as_ref().unwrap().ty;
+    //                                     (ident.clone(), self.lower_sema_ty(field_ty))
+    //                                 })
+    //                                 .collect();
 
-                                lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(
-                                    ident.as_string(),
-                                    variant_idx,
-                                    exported_fields,
-                                ));
-                            }
-                            TypedUnnamedEnumVariant::Ident(_) => unreachable!(),
-                        }
-                    }
-                    _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
-                }
-            }
+    //                             lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(
+    //                                 ident.as_string(),
+    //                                 variant_idx,
+    //                                 exported_fields,
+    //                             ));
+    //                         }
+    //                         TypedUnnamedEnumVariant::Ident(_) => unreachable!(),
+    //                     }
+    //                 }
+    //                 _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
+    //             }
+    //         }
 
-            let body = self.lower_body(&case.body);
-            lowered_cases.push(CIRSwitchOnEnumCase {
-                patterns: lowered_patterns,
-                body,
-            });
-        }
+    //         let body = self.lower_body(&case.body);
+    //         lowered_cases.push(CIRSwitchOnEnumCase {
+    //             patterns: lowered_patterns,
+    //             body,
+    //         });
+    //     }
 
-        CIRStmt::SwitchOnEnum(CIRSwitchOnEnumStmt {
-            value: operand.clone(),
-            cases: lowered_cases,
-            default: default.clone(),
-            loc: switch_stmt.loc,
-        })
-    }
+    //     CIRStmt::SwitchOnEnum(CIRSwitchOnEnumStmt {
+    //         value: operand.clone(),
+    //         cases: lowered_cases,
+    //         default: default.clone(),
+    //         loc: switch_stmt.loc,
+    //     })
+    // }
 
     fn lower_while(&mut self, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(&while_stmt.cond));
@@ -711,11 +717,11 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_break(&self, break_stmt: &TypedBreakStmt) -> CIRStmt {
-        CIRStmt::Break(break_stmt.loc)
+        CIRStmt::Break(CIRContinueStmt { loc: break_stmt.loc })
     }
 
     fn lower_continue(&self, continue_stmt: &TypedContinueStmt) -> CIRStmt {
-        CIRStmt::Continue(continue_stmt.loc)
+        CIRStmt::Continue(CIRContinueStmt { loc: continue_stmt.loc })
     }
 
     fn lower_return(&mut self, return_stmt: &TypedReturnStmt) -> CIRStmt {
@@ -809,43 +815,46 @@ impl<'resolver> CIRTraverse<'resolver> {
             .collect()
     }
 
+    // FIXME
     fn lower_func_params(&mut self, func_params: &TypedFuncParams, is_decl: bool) -> CIRFuncParams {
-        CIRFuncParams {
-            list: func_params
-                .list
-                .iter()
-                .map(|param_kind| {
-                    let name = Some(param_kind.name());
-                    let loc = param_kind.loc();
+        todo!();
 
-                    match param_kind {
-                        TypedFuncParamKind::FuncParam(func_param) => {
-                            let irv_id = {
-                                if !is_decl {
-                                    Some(func_param.symbol_id.unwrap().0)
-                                } else {
-                                    None
-                                }
-                            };
+        // CIRFuncParams {
+        //     list: func_params
+        //         .list
+        //         .iter()
+        //         .map(|param_kind| {
+        //             let name = Some(param_kind.name());
+        //             let loc = param_kind.loc();
 
-                            CIRFuncParam {
-                                name,
-                                irv_id,
-                                ty: self.lower_sema_ty(&func_param.ty),
-                                loc,
-                            }
-                        }
-                        TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
-                            name,
-                            irv_id: Some(self_modifier.self_id.unwrap().0),
-                            ty: self.lower_sema_ty(&self_modifier.ty.as_ref().unwrap()),
-                            loc,
-                        },
-                    }
-                })
-                .collect(),
-            is_var: func_params.variadic.is_some(),
-        }
+        //             match param_kind {
+        //                 TypedFuncParamKind::FuncParam(func_param) => {
+        //                     let irv_id = {
+        //                         if !is_decl {
+        //                             Some(func_param.symbol_id.unwrap().0)
+        //                         } else {
+        //                             None
+        //                         }
+        //                     };
+
+        //                     CIRFuncParam {
+        //                         name,
+        //                         irv_id,
+        //                         ty: self.lower_sema_ty(&func_param.ty),
+        //                         loc,
+        //                     }
+        //                 }
+        //                 TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
+        //                     name,
+        //                     irv_id: Some(self_modifier.self_id.unwrap().0),
+        //                     ty: self.lower_sema_ty(&self_modifier.ty.as_ref().unwrap()),
+        //                     loc,
+        //                 },
+        //             }
+        //         })
+        //         .collect(),
+        //     is_var: func_params.variadic.is_some(),
+        // }
     }
 
     fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRStmt {
@@ -952,13 +961,6 @@ impl<'resolver> CIRTraverse<'resolver> {
             TypedExprKind::Deref(deref_expr) => self.lower_deref(deref_expr),
             TypedExprKind::Array(array_expr) => self.lower_array(array_expr),
             TypedExprKind::ArrayIndex(array_index_expr) => self.lower_array_index(array_index_expr),
-            TypedExprKind::UnnamedStructValue(unnamed_struct_value) => {
-                self.lower_unnamed_struct_value(unnamed_struct_value)
-            }
-            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => self.lower_unnamed_enum_value(unnamed_enum_value),
-            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => {
-                self.lower_unnamed_union_value(unnamed_union_value)
-            }
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
@@ -967,103 +969,19 @@ impl<'resolver> CIRTraverse<'resolver> {
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic_expr(dynamic),
-            TypedExprKind::SemanticType(..) => unreachable!(),
+            TypedExprKind::Builtin(_builtin) => todo!(), // TODO
 
-            TypedExprKind::Builtin(_builtin) => todo!(),
+            TypedExprKind::UnnamedStructValue(_)
+            | TypedExprKind::UnnamedEnumValue(_)
+            | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor"),
+
+            TypedExprKind::SemanticType(..) => unreachable!("unexpected semantic type as expression"),
         };
 
         CIRExpr {
             kind,
             ty,
             loc: expr.loc,
-        }
-    }
-
-    fn lower_unnamed_union_value(&mut self, unnamed_union_value: &TypedUnnamedUnionValue) -> CIRExprKind {
-        let ty = CIRType::Union(
-            self.lower_unnamed_union_type_as_cir_union_ty(&unnamed_union_value.union_ty.as_ref().unwrap()),
-        );
-
-        let expr = self.lower_expr(&unnamed_union_value.value);
-
-        CIRExprKind::UnionInit(CIRUnionInitExpr {
-            expr: Box::new(expr),
-            ty,
-        })
-    }
-
-    fn lower_unnamed_enum_value(&mut self, unnamed_enum_value: &TypedUnnamedEnumValue) -> CIRExprKind {
-        let unnamed_enum_value_type = unnamed_enum_value.enum_ty.clone().unwrap();
-
-        match unnamed_enum_value_type {
-            TypedUnnamedEnumValueTy::EnumDecl(enum_decl) => {
-                let enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
-
-                let tag = enum_ty
-                    .compute_variant_tag(&unnamed_enum_value.variant_name.value)
-                    .unwrap();
-
-                let variant_idx = enum_decl
-                    .variants
-                    .iter()
-                    .position(|variant| *variant.ident() == unnamed_enum_value.variant_name)
-                    .unwrap();
-
-                let variant = enum_decl.variants.get(variant_idx).unwrap();
-
-                let cir_enum_variant = match variant {
-                    TypedEnumVariant::Ident(_) => CIREnumInitVariant::Ident,
-                    TypedEnumVariant::Valued(_, value) => {
-                        let expr = self.lower_expr(value);
-                        CIREnumInitVariant::Valued(Box::new(expr))
-                    }
-                    TypedEnumVariant::Variant(_, _) => {
-                        let values = unnamed_enum_value.kind.as_fielded().unwrap();
-                        let exprs = values.iter().map(|expr| self.lower_expr(expr)).collect();
-                        CIREnumInitVariant::Fielded(exprs)
-                    }
-                };
-
-                CIRExprKind::EnumInit(CIREnumInitExpr {
-                    tag: tag.try_into().unwrap(),
-                    variant: cir_enum_variant,
-                    enum_ty,
-                })
-            }
-            TypedUnnamedEnumValueTy::UnnamedEnum(unnamed_enum_type) => {
-                let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(&unnamed_enum_type);
-
-                let tag = enum_ty
-                    .compute_variant_tag(&unnamed_enum_value.variant_name.value)
-                    .unwrap();
-
-                let variant_idx = unnamed_enum_type
-                    .variants
-                    .iter()
-                    .position(|variant| *variant.ident() == unnamed_enum_value.variant_name)
-                    .unwrap();
-
-                let variant = unnamed_enum_type.variants.get(variant_idx).unwrap();
-
-                let cir_enum_variant = match variant {
-                    TypedUnnamedEnumVariant::Ident(_) => CIREnumInitVariant::Ident,
-                    TypedUnnamedEnumVariant::Valued(_, value) => {
-                        let expr = self.lower_expr(value);
-                        CIREnumInitVariant::Valued(Box::new(expr))
-                    }
-                    TypedUnnamedEnumVariant::Variant(_, _) => {
-                        let values = unnamed_enum_value.kind.as_fielded().unwrap();
-                        let exprs = values.iter().map(|expr| self.lower_expr(expr)).collect();
-                        CIREnumInitVariant::Fielded(exprs)
-                    }
-                };
-
-                CIRExprKind::EnumInit(CIREnumInitExpr {
-                    tag: tag.try_into().unwrap(),
-                    variant: cir_enum_variant,
-                    enum_ty,
-                })
-            }
         }
     }
 
@@ -1115,120 +1033,125 @@ impl<'resolver> CIRTraverse<'resolver> {
         // })
     }
 
+    // FIXME
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
-        let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
+        todo!();
+        // let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
-        if let Some(resolved_func) = symbol_entry.as_func() {
-            let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_decl);
+        // if let Some(resolved_func) = symbol_entry.as_func() {
+        //     let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_decl);
 
-            let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-            cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+        //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        //     cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
-            let mangled_name = mangle_func(
-                &cir_func_decl.modifiers,
-                &self.query.lookup_module_name(resolved_func.file_id).unwrap(),
-                &resolved_func.func_decl.name,
-            );
+        //     let mangled_name = mangle_func(
+        //         &cir_func_decl.modifiers,
+        //         &self.query.lookup_module_name(resolved_func.file_id).unwrap(),
+        //         &resolved_func.func_decl.name,
+        //     );
 
-            cir_func_decl.name = mangled_name;
+        //     cir_func_decl.name = mangled_name;
 
-            CIRExprKind::Load(CIRValue {
-                irv_id: resolved_func.symbol_id.0,
-                kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-            })
-        } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-            let mut global_var_stmt =
-                self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
+        //     CIRExprKind::Load(CIRValue {
+        //         irv_id: resolved_func.symbol_id.0,
+        //         kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+        //     })
+        // } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+        //     let mut global_var_stmt =
+        //         self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
 
-            if global_var_stmt.modifiers.vis.is_public() {
-                if global_var_stmt.modifiers.linkage.is_none() {
-                    global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
-                }
-            }
+        //     if global_var_stmt.modifiers.vis.is_public() {
+        //         if global_var_stmt.modifiers.linkage.is_none() {
+        //             global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
+        //         }
+        //     }
 
-            let mangled_name = mangle_global_var(
-                &resolved_global_var.global_var_sig.modifiers,
-                &self.query.lookup_module_name(resolved_global_var.file_id).unwrap(),
-                &resolved_global_var.global_var_sig.name,
-            );
+        //     let mangled_name = mangle_global_var(
+        //         &resolved_global_var.global_var_sig.modifiers,
+        //         &self.query.lookup_module_name(resolved_global_var.file_id).unwrap(),
+        //         &resolved_global_var.global_var_sig.name,
+        //     );
 
-            global_var_stmt.name = mangled_name;
+        //     global_var_stmt.name = mangled_name;
 
-            CIRExprKind::Load(CIRValue {
-                irv_id: resolved_global_var.symbol_id.0,
-                kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
-            })
-        } else if let Some(resolved_variable) = symbol_entry.as_var() {
-            CIRExprKind::Load(CIRValue {
-                irv_id: resolved_variable.symbol_id.0,
-                kind: CIRValueKind::LocalVariable,
-            })
-        } else {
-            unreachable!("Unexpected symbol kind when lowering load symbol.")
-        }
+        //     CIRExprKind::Load(CIRValue {
+        //         irv_id: resolved_global_var.symbol_id.0,
+        //         kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
+        //     })
+        // } else if let Some(resolved_variable) = symbol_entry.as_var() {
+        //     CIRExprKind::Load(CIRValue {
+        //         irv_id: resolved_variable.symbol_id.0,
+        //         kind: CIRValueKind::LocalVariable,
+        //     })
+        // } else {
+        //     unreachable!("Unexpected symbol kind when lowering load symbol.")
+        // }
     }
 
+    // FIXME
     pub(crate) fn lower_struct_init(&mut self, struct_init_expr: &TypedStructInitExpr) -> CIRExprKind {
-        let symbol_entry = self.query.lookup_symbol_entry(struct_init_expr.symbol_id).unwrap();
+        todo!();
 
-        if let Some(resolved_struct) = symbol_entry.as_struct() {
-            let fields = struct_init_expr
-                .fields
-                .iter()
-                .map(|field| self.lower_sema_ty(&field.value.sema_type.clone().unwrap()))
-                .collect();
+        // let symbol_entry = self.query.lookup_symbol_entry(struct_init_expr.symbol_id).unwrap();
 
-            let fields_info = struct_init_expr
-                .fields
-                .iter()
-                .map(|field| (field.name.clone(), field.loc))
-                .collect();
+        // if let Some(resolved_struct) = symbol_entry.as_struct() {
+        //     let fields = struct_init_expr
+        //         .fields
+        //         .iter()
+        //         .map(|field| self.lower_sema_ty(&field.value.sema_type.clone().unwrap()))
+        //         .collect();
 
-            let struct_ty = CIRStructTy {
-                name: Some(resolved_struct.struct_decl.name.clone()),
-                repr_attr: resolved_struct.struct_decl.modifiers.repr_attr.clone(),
-                align: resolved_struct.struct_decl.align.clone(),
-                fields,
-                fields_info,
-                loc: resolved_struct.struct_decl.loc,
-            };
+        //     let fields_info = struct_init_expr
+        //         .fields
+        //         .iter()
+        //         .map(|field| (field.name.clone(), field.loc))
+        //         .collect();
 
-            let fields: Vec<CIRExpr> = struct_init_expr
-                .fields
-                .iter()
-                .map(|field| self.lower_expr(&field.value))
-                .collect();
+        //     let struct_ty = CIRStructType {
+        //         name: Some(resolved_struct.struct_decl.name.clone()),
+        //         repr_attr: resolved_struct.struct_decl.modifiers.repr_attr.clone(),
+        //         align: resolved_struct.struct_decl.align.clone(),
+        //         fields,
+        //         fields_info,
+        //         loc: resolved_struct.struct_decl.loc,
+        //     };
 
-            CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
-        } else if let Some(resolved_union) = symbol_entry.as_union() {
-            let fields = struct_init_expr
-                .fields
-                .iter()
-                .map(|field| self.lower_sema_ty(&field.value.sema_type.clone().unwrap()))
-                .collect();
+        //     let fields: Vec<CIRExpr> = struct_init_expr
+        //         .fields
+        //         .iter()
+        //         .map(|field| self.lower_expr(&field.value))
+        //         .collect();
 
-            let fields_info = struct_init_expr
-                .fields
-                .iter()
-                .map(|field| (field.name.clone(), field.loc))
-                .collect();
+        //     CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
+        // } else if let Some(resolved_union) = symbol_entry.as_union() {
+        //     let fields = struct_init_expr
+        //         .fields
+        //         .iter()
+        //         .map(|field| self.lower_sema_ty(&field.value.sema_type.clone().unwrap()))
+        //         .collect();
 
-            let union_ty = CIRType::Union(CIRUnionTy {
-                name: Some(resolved_union.union_decl.name.clone()),
-                fields,
-                fields_info,
-                repr_attr: resolved_union.union_decl.modifiers.repr_attr.clone(),
-                align: resolved_union.union_decl.align.clone(),
-                loc: resolved_union.union_decl.loc,
-            });
+        //     let fields_info = struct_init_expr
+        //         .fields
+        //         .iter()
+        //         .map(|field| (field.name.clone(), field.loc))
+        //         .collect();
 
-            let struct_field_init = struct_init_expr.fields.first().unwrap();
-            let expr = Box::new(self.lower_expr(&struct_field_init.value));
+        //     let union_ty = CIRType::Union(CIRUnionTy {
+        //         name: Some(resolved_union.union_decl.name.clone()),
+        //         fields,
+        //         fields_info,
+        //         repr_attr: resolved_union.union_decl.modifiers.repr_attr.clone(),
+        //         align: resolved_union.union_decl.align.clone(),
+        //         loc: resolved_union.union_decl.loc,
+        //     });
 
-            CIRExprKind::UnionInit(CIRUnionInitExpr { expr, ty: union_ty })
-        } else {
-            unreachable!()
-        }
+        //     let struct_field_init = struct_init_expr.fields.first().unwrap();
+        //     let expr = Box::new(self.lower_expr(&struct_field_init.value));
+
+        //     CIRExprKind::UnionInit(CIRUnionInitExpr { expr, ty: union_ty })
+        // } else {
+        //     unreachable!()
+        // }
     }
 
     fn lower_tuple_access(&mut self, tuple_access: &TypedTupleAccessExpr) -> CIRExprKind {
@@ -1253,7 +1176,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let body = Box::new(self.lower_body(&lambda.body));
         let ret = self.lower_sema_ty(&lambda.ret_type);
 
-        let cir_func_type = CIRFuncTy {
+        let cir_func_type = CIRFuncType {
             params: params.list.iter().map(|param| param.ty.clone()).collect(),
             is_var: params.is_var,
             ret: Box::new(ret.clone()),
@@ -1277,29 +1200,32 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
+    // FIXME
     fn lower_interface_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        let operand = self.lower_expr(&method_call.operand);
+        todo!();
 
-        let args = method_call
-            .args
-            .iter()
-            .map(|arg| self.lower_expr(arg))
-            .collect::<Vec<CIRExpr>>();
+        // let operand = self.lower_expr(&method_call.operand);
 
-        let ret_ty = self.lower_sema_ty(&method_call.func_decl.as_ref().unwrap().ret_type.clone());
+        // let args = method_call
+        //     .args
+        //     .iter()
+        //     .map(|arg| self.lower_expr(arg))
+        //     .collect::<Vec<CIRExpr>>();
 
-        let metadata = method_call.method_call_on_interface.as_ref().unwrap();
+        // let ret_ty = self.lower_sema_ty(&method_call.func_decl.as_ref().unwrap().ret_type.clone());
 
-        let cir_func_decl = self.lower_func_sig(metadata.method_sig.symbol_id.unwrap().0, &metadata.method_sig);
+        // let metadata = method_call.method_call_on_interface.as_ref().unwrap();
 
-        CIRExprKind::InterfaceMethodCall(CIRInterfaceMethodCall {
-            operand: Box::new(operand),
-            args,
-            ret_ty,
-            func_type: cir_func_decl_as_func_ty(&cir_func_decl),
-            method_idx: metadata.method_idx,
-            methods_len: metadata.methods_len,
-        })
+        // let cir_func_decl = self.lower_func_sig(metadata.method_sig.symbol_id.unwrap().0, &metadata.method_sig);
+
+        // CIRExprKind::InterfaceMethodCall(CIRInterfaceMethodCall {
+        //     operand: Box::new(operand),
+        //     args,
+        //     ret_ty,
+        //     func_type: cir_func_decl_as_func_ty(&cir_func_decl),
+        //     method_idx: metadata.method_idx,
+        //     methods_len: metadata.methods_len,
+        // })
     }
 
     // FIXME
@@ -1363,223 +1289,202 @@ impl<'resolver> CIRTraverse<'resolver> {
         // cir_expr_kind
     }
 
+    // FIXME: method_call is wrong! Use TypedEnumInit.
     fn lower_enum_init(&mut self, enum_decl: &EnumDecl, method_call: &TypedMethodCall) -> CIRExprKind {
-        let sema_type = method_call.operand.sema_type.as_ref().unwrap();
+        todo!();
 
-        let variant_idx_opt = enum_decl
-            .variants
-            .iter()
-            .position(|variant| variant.ident().as_string() == method_call.method_name);
+        // let sema_type = method_call.operand.sema_type.as_ref().unwrap();
 
-        // it's not a enum variant construction, so try again as a regular method call
-        let variant_idx = if let Some(i) = variant_idx_opt {
-            i
-        } else {
-            return self.lower_regular_method_call(method_call);
-        };
+        // let variant_idx_opt = enum_decl
+        //     .variants
+        //     .iter()
+        //     .position(|variant| variant.ident().as_string() == method_call.method_name);
 
-        let typed_variant = enum_decl.variants.get(variant_idx).unwrap();
+        // // it's not a enum variant construction, so try again as a regular method call
+        // let variant_idx = if let Some(i) = variant_idx_opt {
+        //     i
+        // } else {
+        //     return self.lower_regular_method_call(method_call);
+        // };
 
-        let variant: CIREnumInitVariant;
-        let enum_ty: CIREnumTy;
-        if let Some(generic_type) = sema_type.as_generic_type() {
-            let enum_decl = substitute_enum_sig(
-                self.mapping_ctx_arena.clone(),
-                &enum_decl,
-                generic_type.mapping_ctx.clone(),
-            )
-            .unwrap();
+        // let typed_variant = enum_decl.variants.get(variant_idx).unwrap();
 
-            enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
-        } else {
-            enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
-        }
+        // let variant: CIREnumInitVariant;
+        // let enum_ty: CIREnumTy;
+        // if let Some(generic_type) = sema_type.as_generic_type() {
+        //     let enum_decl = substitute_enum_sig(
+        //         self.mapping_ctx_arena.clone(),
+        //         &enum_decl,
+        //         generic_type.mapping_ctx.clone(),
+        //     )
+        //     .unwrap();
 
-        let tag = enum_ty.compute_variant_tag(&method_call.method_name).unwrap();
+        //     enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
+        // } else {
+        //     enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
+        // }
 
-        variant = match typed_variant {
-            TypedEnumVariant::Variant(..) => {
-                let values: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
-                CIREnumInitVariant::Fielded(values)
-            }
-            _ => unreachable!(),
-        };
+        // let tag = enum_ty.compute_variant_tag(&method_call.method_name).unwrap();
 
-        return CIRExprKind::EnumInit(CIREnumInitExpr {
-            tag: tag.try_into().unwrap(),
-            variant,
-            enum_ty,
-        });
+        // variant = match typed_variant {
+        //     TypedEnumVariant::Variant(..) => {
+        //         let values: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+        //         CIREnumInitVariant::Fielded(values)
+        //     }
+        //     _ => unreachable!(),
+        // };
+
+        // return CIRExprKind::EnumInit(CIREnumInitExpr {
+        //     tag: tag.try_into().unwrap(),
+        //     variant,
+        //     enum_ty,
+        // });
     }
 
+    // FIXME
     fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        if let Some(enum_id) = method_call.enum_constructor {
-            let resolved_enum = self.query.get_enum(enum_id).unwrap();
+        todo!();
 
-            return self.lower_enum_init(&resolved_enum.enum_decl, method_call);
-        }
+        // if let Some(enum_id) = method_call.enum_constructor {
+        //     let resolved_enum = self.query.get_enum(enum_id).unwrap();
 
-        self.lower_regular_method_call(method_call)
+        //     return self.lower_enum_init(&resolved_enum.enum_decl, method_call);
+        // }
+
+        // self.lower_regular_method_call(method_call)
     }
 
+    // FIXME
     fn lower_field_access(&mut self, mut field_access: TypedFieldAccess) -> CIRExprKind {
-        if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExprStmt {
-                kind: TypedExprKind::Deref(TypedDerefExpr {
-                    operand: field_access.operand.clone(),
-                    loc: field_access.loc,
-                }),
-                sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
-                mloc: MemoryLocation::LValue,
-                loc: field_access.loc,
-            })
-        }
+        todo!();
 
-        if let Some(sema_type) = &field_access.operand.sema_type {
-            if sema_type.as_unnamed_struct().is_some() {
-                return CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
-                    operand: Box::new(self.lower_expr(&field_access.operand)),
-                    field_idx: field_access.field_index.unwrap(),
-                    field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-                });
-            }
+        // if field_access.is_fat_arrow {
+        //     field_access.operand = Box::new(TypedExprStmt {
+        //         kind: TypedExprKind::Deref(TypedDerefExpr {
+        //             operand: field_access.operand.clone(),
+        //             loc: field_access.loc,
+        //         }),
+        //         sema_type: Some(field_access.operand.sema_type.clone().unwrap().pointer_inner().clone()),
+        //         mloc: MemoryLocation::LValue,
+        //         loc: field_access.loc,
+        //     })
+        // }
 
-            if sema_type.as_unnamed_union().is_some() {
-                return CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
-                    operand: Box::new(self.lower_expr(&field_access.operand)),
-                    field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-                });
-            }
-        }
+        // if let Some(sema_type) = &field_access.operand.sema_type {
+        //     if sema_type.as_unnamed_struct().is_some() {
+        //         return CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
+        //             operand: Box::new(self.lower_expr(&field_access.operand)),
+        //             field_idx: field_access.field_index.unwrap(),
+        //             field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
+        //         });
+        //     }
 
-        let symbol_entry = self
-            .query
-            .lookup_symbol_entry(field_access.object_symbol_id.unwrap())
-            .unwrap();
+        //     if sema_type.as_unnamed_union().is_some() {
+        //         return CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
+        //             operand: Box::new(self.lower_expr(&field_access.operand)),
+        //             field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
+        //         });
+        //     }
+        // }
 
-        if symbol_entry.as_struct().is_some() {
-            CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
-                operand: Box::new(self.lower_expr(&field_access.operand)),
-                field_idx: field_access.field_index.unwrap(),
-                field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-            })
-        } else if symbol_entry.as_union().is_some() {
-            CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
-                operand: Box::new(self.lower_expr(&field_access.operand)),
-                field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
-            })
-        } else if let Some(mut resolved_enum) = symbol_entry.as_enum().cloned() {
-            let sema_type = field_access.operand.sema_type.as_ref().unwrap();
+        // let symbol_entry = self
+        //     .query
+        //     .lookup_symbol_entry(field_access.object_symbol_id.unwrap())
+        //     .unwrap();
 
-            let variant: CIREnumInitVariant;
-            let enum_ty: CIREnumTy;
-            if let Some(generic_type) = sema_type.as_generic_type() {
-                resolved_enum.enum_decl = substitute_enum_sig(
-                    self.mapping_ctx_arena.clone(),
-                    &resolved_enum.enum_decl,
-                    generic_type.mapping_ctx.clone(),
-                )
-                .unwrap()
-            }
+        // if symbol_entry.as_struct().is_some() {
+        //     CIRExprKind::StructFieldAccess(CIRStructFieldAccessExpr {
+        //         operand: Box::new(self.lower_expr(&field_access.operand)),
+        //         field_idx: field_access.field_index.unwrap(),
+        //         field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
+        //     })
+        // } else if symbol_entry.as_union().is_some() {
+        //     CIRExprKind::UnionFieldAccess(CIRUnionFieldAccessExpr {
+        //         operand: Box::new(self.lower_expr(&field_access.operand)),
+        //         field_ty: self.lower_sema_ty(&field_access.field_ty.as_ref().unwrap()),
+        //     })
+        // } else if let Some(mut resolved_enum) = symbol_entry.as_enum().cloned() {
+        //     let sema_type = field_access.operand.sema_type.as_ref().unwrap();
 
-            let typed_variant = resolved_enum
-                .enum_decl
-                .variants
-                .get(field_access.field_index.unwrap())
-                .unwrap();
+        //     let variant: CIREnumInitVariant;
+        //     let enum_ty: CIREnumTy;
+        //     if let Some(generic_type) = sema_type.as_generic_type() {
+        //         resolved_enum.enum_decl = substitute_enum_sig(
+        //             self.mapping_ctx_arena.clone(),
+        //             &resolved_enum.enum_decl,
+        //             generic_type.mapping_ctx.clone(),
+        //         )
+        //         .unwrap()
+        //     }
 
-            variant = match typed_variant {
-                TypedEnumVariant::Ident(..) => CIREnumInitVariant::Ident,
-                TypedEnumVariant::Valued(_, expr) => CIREnumInitVariant::Valued(Box::new(self.lower_expr(expr))),
-                TypedEnumVariant::Variant(..) => unreachable!(),
-            };
+        //     let typed_variant = resolved_enum
+        //         .enum_decl
+        //         .variants
+        //         .get(field_access.field_index.unwrap())
+        //         .unwrap();
 
-            enum_ty = self.lower_enum_sig_as_enum_ty(&resolved_enum.enum_decl);
+        //     variant = match typed_variant {
+        //         TypedEnumVariant::Ident(..) => CIREnumInitVariant::Ident,
+        //         TypedEnumVariant::Valued(_, expr) => CIREnumInitVariant::Valued(Box::new(self.lower_expr(expr))),
+        //         TypedEnumVariant::Variant(..) => unreachable!(),
+        //     };
 
-            let tag = enum_ty.compute_variant_tag(&field_access.field_name).unwrap();
+        //     enum_ty = self.lower_enum_sig_as_enum_ty(&resolved_enum.enum_decl);
 
-            CIRExprKind::EnumInit(CIREnumInitExpr {
-                tag: tag.try_into().unwrap(),
-                variant,
-                enum_ty,
-            })
-        } else {
-            unreachable!()
-        }
+        //     let tag = enum_ty.compute_variant_tag(&field_access.field_name).unwrap();
+
+        //     CIRExprKind::EnumInit(CIREnumInitExpr {
+        //         tag: tag.try_into().unwrap(),
+        //         variant,
+        //         enum_ty,
+        //     })
+        // } else {
+        //     unreachable!()
+        // }
     }
 
+    // FIXME
     fn lower_func_call(&mut self, func_call: &TypedFuncCall) -> CIRExprKind {
-        let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+        todo!();
 
-        let ret_ty = self.lower_sema_ty(&func_call.ret_type.clone().unwrap());
+        // let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
 
-        if let Some(monomorph_id) = func_call.monomorph_id {
-            let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
+        // let ret_ty = self.lower_sema_ty(&func_call.ret_type.clone().unwrap());
 
-            let symbol_entry = self
-                .query
-                .lookup_symbol_entry(monomorph_func_entry.base_symbol)
-                .unwrap();
+        // if let Some(monomorph_id) = func_call.monomorph_id {
+        //     let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
 
-            let mut func_decl = symbol_entry
-                .as_func()
-                .map(|resolved_func| resolved_func.func_decl.clone())
-                .or(symbol_entry
-                    .as_method()
-                    .map(|resolved_method| resolved_method.func_decl.clone()))
-                .expect("Monomorphizaton not supported for the symbol.");
+        //     let symbol_entry = self
+        //         .query
+        //         .lookup_symbol_entry(monomorph_func_entry.base_symbol)
+        //         .unwrap();
 
-            func_decl = substitute_func_sig(
-                self.mapping_ctx_arena.clone(),
-                &func_decl,
-                Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
-            )
-            .unwrap();
+        //     let mut func_decl = symbol_entry
+        //         .as_func()
+        //         .map(|resolved_func| resolved_func.func_decl.clone())
+        //         .or(symbol_entry
+        //             .as_method()
+        //             .map(|resolved_method| resolved_method.func_decl.clone()))
+        //         .expect("Monomorphizaton not supported for the symbol.");
 
-            self.insert_monomorph_func_instance(monomorph_id, &func_decl);
+        //     func_decl = substitute_func_sig(
+        //         self.mapping_ctx_arena.clone(),
+        //         &func_decl,
+        //         Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
+        //     )
+        //     .unwrap();
 
-            CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
-                monomorph_id,
-                args,
-                ret_ty,
-            })
-        } else {
-            let operand = Box::new(self.lower_expr(&func_call.operand));
-            CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
-        }
-    }
+        //     self.insert_monomorph_func_instance(monomorph_id, &func_decl);
 
-    fn lower_unnamed_struct_value(&mut self, unnamed_struct_value: &TypedUnnamedStructValue) -> CIRExprKind {
-        let unnamed_struct_type = unnamed_struct_value.as_unnamed_struct_type();
-
-        let fields: Vec<CIRExpr> = unnamed_struct_value
-            .fields
-            .iter()
-            .map(|field| self.lower_expr(&field.value))
-            .collect();
-
-        let field_types = unnamed_struct_type
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_ty(&field.ty))
-            .collect();
-
-        let fields_info = unnamed_struct_type
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.loc))
-            .collect();
-
-        let struct_ty = CIRStructTy {
-            name: None,
-            fields: field_types,
-            fields_info,
-            repr_attr: unnamed_struct_value.repr_attr.clone(),
-            align: unnamed_struct_value.align.clone(),
-            loc: unnamed_struct_type.loc,
-        };
-
-        CIRExprKind::StructInit(CIRStructInitExpr { ty: struct_ty, fields })
+        //     CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
+        //         monomorph_id,
+        //         args,
+        //         ret_ty,
+        //     })
+        // } else {
+        //     let operand = Box::new(self.lower_expr(&func_call.operand));
+        //     CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
+        // }
     }
 
     fn lower_array_index(&mut self, array_index: &TypedArrayIndexExpr) -> CIRExprKind {
@@ -1643,7 +1548,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_literal(&mut self, literal: &TypedLiteralExpr) -> CIRExprKind {
         let kind = match &literal.kind {
             LiteralKind::Integer(value, ..) => {
-                let is_signed = literal.ty.clone().unwrap().as_basic_type().unwrap().is_signed();
+                let is_signed = literal.ty.clone().unwrap().as_plain_type().unwrap().is_signed();
                 CIRLiteralKind::Integer(*value, is_signed)
             }
             LiteralKind::Float(value, ..) => CIRLiteralKind::Float(*value),
@@ -1662,8 +1567,6 @@ impl<'resolver> CIRTraverse<'resolver> {
 
     fn lower_sema_ty(&mut self, sema_type: &SemanticType) -> CIRType {
         match sema_type {
-            SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(resolved_symbol),
-            SemanticType::PlainType(basic_type) => CIRType::PlainType(basic_type.clone()),
             SemanticType::Array(array_type) => {
                 let element_type = self.lower_sema_ty(&array_type.element_type);
                 let len = match &array_type.capacity {
@@ -1671,40 +1574,18 @@ impl<'resolver> CIRTraverse<'resolver> {
                     TypedArrayCapacity::Dynamic => todo!(),
                 };
 
-                CIRType::Array(CIRArrayTy {
+                CIRType::Array(CIRArrayType {
                     element_ty: Box::new(element_type),
                     len: len.try_into().unwrap(),
                 })
             }
             SemanticType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_ty(&*sema_type))),
             SemanticType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_ty(&*sema_type))),
-            SemanticType::UnnamedStruct(unnamed_struct_type) => {
-                let fields = unnamed_struct_type
-                    .fields
-                    .iter()
-                    .map(|field| self.lower_sema_ty(&field.ty))
-                    .collect();
-
-                let fields_info = unnamed_struct_type
-                    .fields
-                    .iter()
-                    .map(|field| (field.name.clone(), field.loc))
-                    .collect();
-
-                CIRType::Struct(CIRStructTy {
-                    name: None,
-                    fields,
-                    fields_info,
-                    repr_attr: unnamed_struct_type.repr_attr.clone(),
-                    align: unnamed_struct_type.align.clone(),
-                    loc: unnamed_struct_type.loc,
-                })
-            }
             SemanticType::FuncType(func_type) => {
                 let ret = Box::new(self.lower_sema_ty(&func_type.ret_type));
                 let params = self.lower_func_type_params(&func_type.params);
 
-                let mut cir_type = CIRFuncTy {
+                let mut cir_type = CIRFuncType {
                     params: params,
                     is_var: func_type.params.variadic.is_some(),
                     ret,
@@ -1722,46 +1603,16 @@ impl<'resolver> CIRTraverse<'resolver> {
                     .map(|sema_type| self.lower_sema_ty(sema_type))
                     .collect();
 
-                CIRType::Tuple(CIRTupleTy {
+                CIRType::Tuple(CIRTupleType {
                     elements,
                     loc: tuple_type.loc,
                 })
             }
-            SemanticType::GenericType(generic_type) => self.lower_generic_type(generic_type.clone()),
-            SemanticType::UnresolvedSymbol(_) => unreachable!("unexpected unresolved symbol"),
-            SemanticType::SelfType(_) => {
-                if let Some(cir_type) = &self.current_self_ty {
-                    cir_type.clone()
-                } else {
-                    unreachable!("unexpected self type which is not resolved")
-                }
-            }
-            SemanticType::GenericParam(generic_param) => {
-                if let Some(sema_type) = self.current_obj_operand_ty.clone() {
-                    if let Some(generic_type) = sema_type.as_generic_type() {
-                        {
-                            let mapping_ctx = generic_type.mapping_ctx.borrow();
-
-                            let cir_type = mapping_ctx
-                                .resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
-                                .map(|sema_type| self.lower_sema_ty(&sema_type))
-                                .unwrap();
-
-                            return cir_type;
-                        }
-                    }
-                }
-
-                unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
-            }
-            SemanticType::DynamicType(dynamic_type) => CIRType::Dynamic(CIRDynamicTy {
-                vtable_id: dynamic_type.vtable_id,
-            }),
-            SemanticType::Interface(interface_type) => CIRType::Struct(CIRStructTy {
+            SemanticType::InterfaceType(interface_type) => CIRType::Struct(CIRStructType {
                 name: None,
                 fields: vec![
-                    CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
-                    CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
+                    CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
+                    CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
                 ],
                 fields_info: vec![
                     ("data_ptr".to_string(), interface_type.loc),
@@ -1771,118 +1622,18 @@ impl<'resolver> CIRTraverse<'resolver> {
                 align: None,
                 loc: interface_type.loc,
             }),
-            SemanticType::UnnamedUnion(unnamed_union_type) => {
-                CIRType::Union(self.lower_unnamed_union_type_as_cir_union_ty(unnamed_union_type))
-            }
-            SemanticType::UnnamedEnum(unnamed_enum_type) => {
-                CIRType::Enum(self.lower_unnamed_enum_type_as_cir_enum_ty(unnamed_enum_type))
-            }
+            SemanticType::Named(named_type) => self.lower_named_type(named_type),
+            SemanticType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
+
+            SemanticType::Unresolved(_) => unreachable!("unexpected unresolved type"),
+            SemanticType::GenericParam(_) => unreachable!("Unexpected generic param"),
+            SemanticType::SelfType(_) => unreachable!("unexpected self type"),
         }
         .const_inner()
         .clone()
     }
 
-    fn lower_unnamed_union_type_as_cir_union_ty(&mut self, unnamed_union_type: &TypedUnnamedUnionType) -> CIRUnionTy {
-        let fields = unnamed_union_type
-            .fields
-            .iter()
-            .map(|field| self.lower_sema_ty(&field.ty))
-            .collect();
-
-        let fields_info = unnamed_union_type
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.loc))
-            .collect();
-
-        CIRUnionTy {
-            name: None,
-            fields,
-            fields_info,
-            repr_attr: unnamed_union_type.repr_attr.clone(),
-            align: unnamed_union_type.align.clone(),
-            loc: unnamed_union_type.loc,
-        }
-    }
-
-    fn lower_unnamed_enum_type_as_cir_enum_ty(&mut self, unnamed_enum_type: &TypedUnnamedEnumType) -> CIREnumTy {
-        let variants: Vec<CIREnumTyVariant> = unnamed_enum_type
-            .variants
-            .iter()
-            .map(|variant| self.lower_unnamed_enum_ty_variant(variant))
-            .collect();
-
-        let tag_type = unnamed_enum_type
-            .tag_type
-            .clone()
-            .map(|sema_type| Box::new(self.lower_sema_ty(&sema_type)));
-
-        CIREnumTy {
-            name: None,
-            variants,
-            tag_type,
-            repr_attr: unnamed_enum_type.repr_attr.clone(),
-            align: unnamed_enum_type.align.clone(),
-            loc: unnamed_enum_type.loc,
-        }
-    }
-
-    fn lower_unnamed_enum_ty_variant(&mut self, variant: &TypedUnnamedEnumVariant) -> CIREnumTyVariant {
-        match variant {
-            TypedUnnamedEnumVariant::Ident(ident) => CIREnumTyVariant::Ident(ident.as_string()),
-            TypedUnnamedEnumVariant::Valued(ident, expr) => {
-                CIREnumTyVariant::Valued(ident.as_string(), Box::new(self.lower_expr(expr)))
-            }
-            TypedUnnamedEnumVariant::Variant(ident, fields) => {
-                let fields: Vec<CIRType> = fields.iter().map(|field| self.lower_sema_ty(&field.ty)).collect();
-                CIREnumTyVariant::Fielded(ident.as_string(), fields)
-            }
-        }
-    }
-
-    fn lower_generic_type(&mut self, mut generic_type: GenericType) -> CIRType {
-        let symbol_entry = self.query.lookup_symbol_entry(generic_type.base).unwrap();
-
-        if let Err(err) = generic_type.init(self.mapping_ctx_arena.clone(), fmt_symbol) {
-            eprintln!("Failed to init generic type: {:?}.", err.kind.to_string())
-        }
-
-        if let Some(resolved_struct) = symbol_entry.as_struct() {
-            let struct_decl = substitute_struct_sig(
-                self.mapping_ctx_arena.clone(),
-                &resolved_struct.struct_decl,
-                generic_type.mapping_ctx,
-            )
-            .unwrap();
-
-            let cir_struct_ty = self.lower_struct_sig_as_struct_ty(&struct_decl);
-            CIRType::Struct(cir_struct_ty)
-        } else if let Some(resolved_enum) = symbol_entry.as_enum() {
-            let enum_decl = substitute_enum_sig(
-                self.mapping_ctx_arena.clone(),
-                &resolved_enum.enum_decl,
-                generic_type.mapping_ctx,
-            )
-            .unwrap();
-
-            let cir_enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
-            CIRType::Enum(cir_enum_ty)
-        } else if let Some(resolved_union) = symbol_entry.as_union() {
-            let union_decl = substitute_union_sig(
-                self.mapping_ctx_arena.clone(),
-                &resolved_union.union_decl,
-                generic_type.mapping_ctx,
-            )
-            .unwrap();
-
-            let cir_union_ty = self.lower_union_sig_as_union_ty(&union_decl);
-            CIRType::Union(cir_union_ty)
-        } else {
-            unreachable!("Object does not support generic type at CIR walk.")
-        }
-    }
-
-    fn lower_struct_sig_as_struct_ty(&mut self, struct_decl: &StructDecl) -> CIRStructTy {
+    fn lower_struct_decl(&mut self, struct_decl: &StructDecl) -> CIRStructType {
         let fields = struct_decl
             .fields
             .iter()
@@ -1895,8 +1646,8 @@ impl<'resolver> CIRTraverse<'resolver> {
             .map(|field| (field.name.clone(), field.loc))
             .collect();
 
-        CIRStructTy {
-            name: Some(struct_decl.name.clone()),
+        CIRStructType {
+            name: struct_decl.name.clone(),
             fields,
             fields_info,
             repr_attr: struct_decl.modifiers.repr_attr.clone(),
@@ -1905,21 +1656,23 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
     }
 
-    fn lower_enum_ty_variant(&mut self, variant: &TypedEnumVariant) -> CIREnumTyVariant {
-        match variant {
-            TypedEnumVariant::Ident(ident) => CIREnumTyVariant::Ident(ident.as_string()),
-            TypedEnumVariant::Valued(ident, expr) => {
-                CIREnumTyVariant::Valued(ident.as_string(), Box::new(self.lower_expr(expr)))
-            }
-            TypedEnumVariant::Variant(ident, fields) => {
-                let fields: Vec<CIRType> = fields.iter().map(|field| self.lower_sema_ty(&field.ty)).collect();
-                CIREnumTyVariant::Fielded(ident.as_string(), fields)
-            }
-        }
+    // FIXME
+    fn lower_enum_ty_variant(&mut self, variant: &TypedEnumVariant) -> CIREnumVariant {
+        todo!();
+        // match variant {
+        //     TypedEnumVariant::Ident(ident) => CIREnumTyVariant::Ident(ident.as_string()),
+        //     TypedEnumVariant::Valued(ident, expr) => {
+        //         CIREnumTyVariant::Valued(ident.as_string(), Box::new(self.lower_expr(expr)))
+        //     }
+        //     TypedEnumVariant::Variant(ident, fields) => {
+        //         let fields: Vec<CIRType> = fields.iter().map(|field| self.lower_sema_ty(&field.ty)).collect();
+        //         CIREnumTyVariant::Fielded(ident.as_string(), fields)
+        //     }
+        // }
     }
 
-    fn lower_enum_sig_as_enum_ty(&mut self, enum_decl: &EnumDecl) -> CIREnumTy {
-        let variants: Vec<CIREnumTyVariant> = enum_decl
+    fn lower_enum_decl(&mut self, enum_decl: &EnumDecl) -> CIREnumType {
+        let variants: Vec<CIREnumVariant> = enum_decl
             .variants
             .iter()
             .map(|variant| self.lower_enum_ty_variant(variant))
@@ -1930,8 +1683,8 @@ impl<'resolver> CIRTraverse<'resolver> {
             .clone()
             .map(|sema_type| Box::new(self.lower_sema_ty(&sema_type)));
 
-        CIREnumTy {
-            name: Some(enum_decl.name.clone()),
+        CIREnumType {
+            name: enum_decl.name.clone(),
             variants,
             tag_type,
             repr_attr: enum_decl.modifiers.repr_attr.clone(),
@@ -1940,7 +1693,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
     }
 
-    fn lower_union_sig_as_union_ty(&mut self, union_decl: &UnionDecl) -> CIRUnionTy {
+    fn lower_union_decl(&mut self, union_decl: &UnionDecl) -> CIRUnionType {
         let fields = union_decl
             .fields
             .iter()
@@ -1953,8 +1706,8 @@ impl<'resolver> CIRTraverse<'resolver> {
             .map(|field| (field.name.clone(), field.loc))
             .collect();
 
-        CIRUnionTy {
-            name: Some(union_decl.name.clone()),
+        CIRUnionType {
+            name: union_decl.name.clone(),
             fields,
             fields_info,
             repr_attr: union_decl.modifiers.repr_attr.clone(),
@@ -1963,73 +1716,83 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
     }
 
-    fn lower_resolved_symbol(&mut self, resolved_symbol: &ResolvedSymbol) -> CIRType {
-        let symbol_entry = self.query.lookup_symbol_entry(resolved_symbol.symbol_id()).unwrap();
-
-        if let Some(resolved_struct) = symbol_entry.as_struct() {
-            CIRType::Struct(self.lower_struct_sig_as_struct_ty(&resolved_struct.struct_decl))
-        } else if let Some(resolved_union) = symbol_entry.as_union() {
-            CIRType::Union(self.lower_union_sig_as_union_ty(&resolved_union.union_decl))
-        } else if let Some(resolved_enum) = symbol_entry.as_enum() {
-            CIRType::Enum(self.lower_enum_sig_as_enum_ty(&resolved_enum.enum_decl))
-        } else {
-            unreachable!()
+    fn lower_named_type(&mut self, named_type: &NamedType) -> CIRType {
+        match named_type.decl_id {
+            TypeDeclID::Struct(struct_decl_id) => {
+                let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
+                CIRType::Struct(self.lower_struct_decl(&struct_decl))
+            }
+            TypeDeclID::Enum(enum_decl_id) => {
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+                CIRType::Enum(self.lower_enum_decl(&enum_decl))
+            }
+            TypeDeclID::Union(union_decl_id) => {
+                let union_decl = self.decl_tables.union_decl(union_decl_id);
+                CIRType::Union(self.lower_union_decl(&union_decl))
+            }
+            TypeDeclID::Interface(interface_decl_id) => {
+                // FIXME
+                todo!()
+                // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+                // CIRType::Dynamic(self.lower_dynamic_expr(&interface_decl))
+            }
         }
     }
 
     pub fn insert_monomorph_func_instance(&mut self, monomorph_id: MonomorphID, func_decl: &FuncDecl) {
-        {
-            let cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
-            if cir_monomorph_registry.contains_key(&monomorph_id) {
-                // if it's a Placeholder, we are already lowering it (recursion detected).
-                // if it's a body, we've already finished it.
-                // either way, STOP here to break the loop.
-                return;
-            }
-        }
+        todo!();
+        //     {
+        //         let cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
+        //         if cir_monomorph_registry.contains_key(&monomorph_id) {
+        //             // if it's a Placeholder, we are already lowering it (recursion detected).
+        //             // if it's a body, we've already finished it.
+        //             // either way, STOP here to break the loop.
+        //             return;
+        //         }
+        //     }
 
-        let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
-        let specialized_func_entry = self.query.lookup_specialized_func_instance(monomorph_id).unwrap();
+        //     let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
+        //     let specialized_func_entry = self.query.lookup_specialized_func_instance(monomorph_id).unwrap();
 
-        let irv_id: IRValueID = monomorph_func_entry.id.0.try_into().unwrap();
+        //     let irv_id: IRValueID = monomorph_func_entry.id.0.try_into().unwrap();
 
-        let cir_func_decl = self.lower_func_sig(irv_id, func_decl);
+        //     let cir_func_decl = self.lower_func_sig(irv_id, func_decl);
 
-        let cir_func_params = cir_func_decl.params.clone();
-        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+        //     let cir_func_params = cir_func_decl.params.clone();
+        //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
 
-        let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
+        //     let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
-        {
-            // body placeholder to prevent infinite recursion during lowering
+        //     {
+        //         // body placeholder to prevent infinite recursion during lowering
 
-            let mut cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
-            cir_monomorph_registry.insert(
-                monomorph_id.clone(),
-                CIRMonomorphEntry::Func(CIRInstanceFunc {
-                    irv_id,
-                    func_params: cir_func_params,
-                    func_type: cir_func_type,
-                    func_body: CIRInstanceFuncBody::Placeholder,
-                    abi_func_info,
-                    loc: cir_func_decl.loc,
-                }),
-            );
-        }
+        //         let mut cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
+        //         cir_monomorph_registry.insert(
+        //             monomorph_id.clone(),
+        //             CIRMonomorphEntry::Func(CIRInstanceFunc {
+        //                 irv_id,
+        //                 func_params: cir_func_params,
+        //                 func_type: cir_func_type,
+        //                 func_body: CIRInstanceFuncBody::Placeholder,
+        //                 abi_func_info,
+        //                 loc: cir_func_decl.loc,
+        //             }),
+        //         );
+        //     }
 
-        // lower body
-        let cir_func_body = self.lower_body(&specialized_func_entry.body);
+        //     // lower body
+        //     let cir_func_body = self.lower_body(&specialized_func_entry.body);
 
-        {
-            let mut cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
-            let monomorph_entry = cir_monomorph_registry.get_mut(&monomorph_id).unwrap();
+        //     {
+        //         let mut cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
+        //         let monomorph_entry = cir_monomorph_registry.get_mut(&monomorph_id).unwrap();
 
-            match monomorph_entry {
-                CIRMonomorphEntry::Func(monomorph_func_entry) => {
-                    monomorph_func_entry.func_body = CIRInstanceFuncBody::Body(Box::new(cir_func_body));
-                }
-            }
-        }
+        //         match monomorph_entry {
+        //             CIRMonomorphEntry::Func(monomorph_func_entry) => {
+        //                 monomorph_func_entry.func_body = CIRInstanceFuncBody::Body(Box::new(cir_func_body));
+        //             }
+        //         }
+        //     }
     }
 }
 
@@ -2037,10 +1800,10 @@ impl<'resolver> CIRTraverse<'resolver> {
 pub fn walk_program_trees_in_parallel(
     threads: Option<usize>,
     program_trees: Vec<Box<TypedProgramTree>>,
-    query: &dyn Query,
+    query: &dyn SymbolQuery,
     source_map: Arc<SourceMap>,
-    cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-    mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
+    decl_tables: Arc<DeclTablesRegistry>,
+    cir_instance_registry: Arc<Mutex<CIRInstanceRegistry>>,
     vtable_registries: &Vec<Arc<Mutex<VTableRegistry>>>,
     target: &ABITarget,
 ) -> Vec<Box<CIRProgramTree>> {
@@ -2063,8 +1826,8 @@ pub fn walk_program_trees_in_parallel(
                 let mut cir_walk = CIRTraverse::new(
                     program_tree.clone(),
                     query,
-                    cir_monomorph_registry.clone(),
-                    mapping_ctx_arena.clone(),
+                    decl_tables.clone(),
+                    cir_instance_registry.clone(),
                     vtable_registry,
                     target,
                 );

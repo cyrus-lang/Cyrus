@@ -25,7 +25,7 @@ use crate::llvm::dwarf::{DW_ATE_BOOLEAN, DW_ATE_FLOAT, DW_ATE_SIGNED, DW_ATE_UNS
 use cyrusc_source_loc::Loc;
 use cyrusc_internal::abi::args::{ABIArgKind, ABIFunctionInfo, ExpandKind};
 use cyrusc_internal::abi::layout::{ABIFieldOffsetInfo, type_layout};
-use cyrusc_internal::cir::cir::CIREnumTyVariant;
+use cyrusc_internal::cir::cir::CIREnumVariant;
 use cyrusc_internal::cir::types::{CIRArrayType, CIREnumType, CIRFuncType, CIRStructType, CIRTupleType, CIRType, CIRUnionType};
 use cyrusc_typed_ast::types::PlainType;
 use inkwell::llvm_sys::prelude::{LLVMMetadataRef, LLVMTypeRef};
@@ -44,9 +44,9 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         match ty {
-            CIRType::PlainType(plain_type) => {
+            CIRType::Plain(plain_type) => {
                 let name = plain_type.to_string();
-                let layout = type_layout(&self.target.info, &CIRType::PlainType(plain_type.clone()));
+                let layout = type_layout(&self.target.info, &CIRType::Plain(plain_type.clone()));
                 let bits = layout.size * 8;
 
                 let encoding = match plain_type {
@@ -180,15 +180,15 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .variants
                         .iter()
                         .map(|variant| match variant {
-                            CIREnumTyVariant::Ident(ident) => {
+                            CIREnumVariant::Ident(ident) => {
                                 let tag = enum_ty.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
-                            CIREnumTyVariant::Valued(ident, _) => {
+                            CIREnumVariant::Valued(ident, _) => {
                                 let tag = enum_ty.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
-                            CIREnumTyVariant::Fielded(..) => unreachable!(),
+                            CIREnumVariant::Fielded(..) => unreachable!(),
                         })
                         .collect();
 
@@ -212,13 +212,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                             let tag = enum_ty.compute_variant_tag(ident).unwrap();
 
                             match variant {
-                                CIREnumTyVariant::Ident(_) => {
+                                CIREnumVariant::Ident(_) => {
                                     (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumTyVariant::Valued(_, _) => {
+                                CIREnumVariant::Valued(_, _) => {
                                     (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumTyVariant::Fielded(_, elements) => {
+                                CIREnumVariant::Fielded(_, elements) => {
                                     let tuple_type = CIRTupleType {
                                         elements: elements.to_vec(),
                                         loc: enum_ty.loc,
@@ -303,7 +303,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 let ptr_size_bits = layout.size * 8;
                 let align_bits = layout.align * 8;
 
-                let cir_void_ptr_ty = CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void)));
+                let cir_void_ptr_ty = CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void)));
                 let data_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
                 let vtable_ptr_ty = self.emit_debug_ty_metadata(&cir_void_ptr_ty);
 
@@ -315,7 +315,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     pub(crate) fn emit_ty(&self, ty: CIRType) -> AnyTypeEnum<'ll> {
         match ty {
             CIRType::Const(inner_ty) => self.emit_ty(*inner_ty),
-            CIRType::PlainType(plain_ty) => self.emit_plain_ty(plain_ty),
+            CIRType::Plain(plain_ty) => self.emit_plain_ty(plain_ty),
             CIRType::Pointer(_) => self.llvmctx.ptr_type(AddressSpace::default()).as_any_type_enum(),
             CIRType::Struct(struct_ty) => self.emit_struct_ty(struct_ty).as_any_type_enum(),
             CIRType::Enum(enum_ty) => self.emit_enum_ty(enum_ty).as_any_type_enum(),
@@ -332,7 +332,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             name: None,
             fields: vec![
                 CIRType::Pointer(Box::new(data_ptr_inner_ty)),
-                CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
+                CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
             ],
             fields_info: vec![
                 ("data_ptr".to_string(), loc),
@@ -465,14 +465,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for variant in &enum_ty.variants {
             let (payload_size, payload_align) = match variant {
-                CIREnumTyVariant::Ident(_) => (0, 1),
-                CIREnumTyVariant::Valued(_, expr) => {
+                CIREnumVariant::Ident(_) => (0, 1),
+                CIREnumVariant::Valued(_, expr) => {
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(expr.ty.clone()).try_into().unwrap();
                     let size = target_data.get_store_size(&llvm_ty);
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
                 }
-                CIREnumTyVariant::Fielded(_, field_tys) => {
+                CIREnumVariant::Fielded(_, field_tys) => {
                     if field_tys.is_empty() {
                         (0, 1)
                     } else {

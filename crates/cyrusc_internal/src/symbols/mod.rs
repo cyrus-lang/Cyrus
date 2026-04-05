@@ -23,7 +23,6 @@ use cyrusc_typed_ast::{
         EnumDeclID, FuncDeclID, GlobalVarDeclID, InterfaceDeclID, MethodDeclID, StructDeclID, TypedefDeclID,
         UnionDeclID, VarDeclID,
     },
-    types::TypeDeclID,
 };
 
 pub mod symbols;

@@ -124,7 +124,7 @@ impl X86_64 {
     // https://github.com/llvm/llvm-project/blob/a08cc6e0d5e3fa653649a7826f1ffafc2b3ea2dd/clang/lib/CodeGen/Targets/X86.cpp#L2486
     fn get_int_type_at_offset(&self, ty: &CIRType, offset: u32, source_type: &CIRType, source_offset: u32) -> ABIType {
         match ty {
-            CIRType::PlainType(plain_type) => match plain_type {
+            CIRType::Plain(plain_type) => match plain_type {
                 PlainType::UIntPtr
                 | PlainType::IntPtr
                 | PlainType::ISize
@@ -738,19 +738,19 @@ impl TargetABI for X86_64 {
         match ty {
             CIRType::Const(ty) => self.apply_variadic_argument_promote(ty),
 
-            CIRType::PlainType(plain_type) => match plain_type {
+            CIRType::Plain(plain_type) => match plain_type {
                 // pointers and pointer-sized types remain as-is
                 PlainType::UIntPtr | PlainType::IntPtr | PlainType::ISize | PlainType::USize => ty.clone(),
 
                 // integer types smaller than int (32-bit) get promoted to int
                 PlainType::Int8 | PlainType::Int16 => {
                     if plain_type.is_signed() {
-                        CIRType::PlainType(PlainType::Int)
+                        CIRType::Plain(PlainType::Int)
                     } else {
-                        CIRType::PlainType(PlainType::UInt32)
+                        CIRType::Plain(PlainType::UInt32)
                     }
                 }
-                PlainType::UInt8 | PlainType::UInt16 => CIRType::PlainType(PlainType::UInt32),
+                PlainType::UInt8 | PlainType::UInt16 => CIRType::Plain(PlainType::UInt32),
 
                 // int and int32 remain as-is (int-sized)
                 PlainType::Int | PlainType::Int32 => ty.clone(),
@@ -761,19 +761,19 @@ impl TargetABI for X86_64 {
                 PlainType::Int128 | PlainType::UInt128 => ty.clone(),
 
                 // float16 promotes to double
-                PlainType::Float16 => CIRType::PlainType(PlainType::Float64),
+                PlainType::Float16 => CIRType::Plain(PlainType::Float64),
 
                 // float32 promotes to float64
-                PlainType::Float32 => CIRType::PlainType(PlainType::Float64),
+                PlainType::Float32 => CIRType::Plain(PlainType::Float64),
 
                 // float64 and float128 remain as-is
                 PlainType::Float64 | PlainType::Float128 => ty.clone(),
 
                 // char promotes to int
-                PlainType::Char => CIRType::PlainType(PlainType::Int),
+                PlainType::Char => CIRType::Plain(PlainType::Int),
 
                 // bool promotes to int
-                PlainType::Bool => CIRType::PlainType(PlainType::Int),
+                PlainType::Bool => CIRType::Plain(PlainType::Int),
 
                 PlainType::Void | PlainType::Null => panic!("void or null type in varargs"),
             },
@@ -909,7 +909,7 @@ fn classify(
     unsafe { *current = RegisterClass::Memory };
 
     match ty {
-        CIRType::PlainType(plain_type) => classify_plain_type(plain_type, offset_base, lo_class, hi_class),
+        CIRType::Plain(plain_type) => classify_plain_type(plain_type, offset_base, lo_class, hi_class),
         CIRType::Const(inner) => classify(info, inner, offset_base, lo_class, hi_class),
         CIRType::Pointer(_) | CIRType::FuncType(_) => {
             unsafe { *current = RegisterClass::Integer };
@@ -951,7 +951,7 @@ fn classify_dynamic(
     // first pointer (data_ptr)
     classify(
         info,
-        &CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
+        &CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
         offset_base,
         &mut temp_lo,
         &mut temp_hi,
@@ -966,7 +966,7 @@ fn classify_dynamic(
 
     classify(
         info,
-        &CIRType::Pointer(Box::new(CIRType::PlainType(PlainType::Void))),
+        &CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
         offset_base + 8,
         &mut temp_lo2,
         &mut temp_hi2,
@@ -1087,7 +1087,7 @@ fn classify_enum(
     if payload_size > 0 {
         // payload is a byte array, classify based on its size
         let payload_ty = CIRType::Array(CIRArrayType {
-            element_ty: Box::new(CIRType::PlainType(PlainType::UInt8)),
+            element_ty: Box::new(CIRType::Plain(PlainType::UInt8)),
             len: payload_size as usize,
         });
 

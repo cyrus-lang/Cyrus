@@ -40,27 +40,27 @@ mod tests {
     }
 
     fn i8() -> CIRType {
-        CIRType::PlainType(PlainType::Int8)
+        CIRType::Plain(PlainType::Int8)
     }
 
     fn i32() -> CIRType {
-        CIRType::PlainType(PlainType::Int32)
+        CIRType::Plain(PlainType::Int32)
     }
 
     fn i64() -> CIRType {
-        CIRType::PlainType(PlainType::Int64)
+        CIRType::Plain(PlainType::Int64)
     }
 
     fn u8() -> CIRType {
-        CIRType::PlainType(PlainType::UInt8)
+        CIRType::Plain(PlainType::UInt8)
     }
 
     fn f32() -> CIRType {
-        CIRType::PlainType(PlainType::Float32)
+        CIRType::Plain(PlainType::Float32)
     }
 
     fn f64() -> CIRType {
-        CIRType::PlainType(PlainType::Float64)
+        CIRType::Plain(PlainType::Float64)
     }
 
     fn struct_ty(fields: Vec<CIRType>) -> CIRType {
@@ -344,7 +344,7 @@ mod tests {
 
         let fn_ty = CIRFuncType {
             params: vec![i64(), i64(), i64(), i64(), i64(), i64(), i64()],
-            ret: Box::new(CIRType::PlainType(PlainType::Void)),
+            ret: Box::new(CIRType::Plain(PlainType::Void)),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,
@@ -368,7 +368,7 @@ mod tests {
 
         let fn_ty = CIRFuncType {
             params,
-            ret: Box::new(CIRType::PlainType(PlainType::Void)),
+            ret: Box::new(CIRType::Plain(PlainType::Void)),
             callconv: CallConv::SysV64,
             abi_func_info: None,
             is_var: false,
@@ -384,7 +384,7 @@ mod tests {
         let abi = abi();
         let promoted = abi.apply_variadic_argument_promote(&i8());
 
-        assert!(matches!(promoted, CIRType::PlainType(PlainType::Int)));
+        assert!(matches!(promoted, CIRType::Plain(PlainType::Int)));
     }
 
     #[test]
@@ -392,7 +392,7 @@ mod tests {
         let abi = abi();
         let promoted = abi.apply_variadic_argument_promote(&f32());
 
-        assert!(matches!(promoted, CIRType::PlainType(PlainType::Float64)));
+        assert!(matches!(promoted, CIRType::Plain(PlainType::Float64)));
     }
 
     #[test]
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn classify_return_i128() {
         let abi = abi();
-        let ty = CIRType::PlainType(PlainType::Int128);
+        let ty = CIRType::Plain(PlainType::Int128);
 
         let ret = abi.classify_return(&ty);
 
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn classify_return_u128() {
         let abi = abi();
-        let ty = CIRType::PlainType(PlainType::UInt128);
+        let ty = CIRType::Plain(PlainType::UInt128);
 
         let ret = abi.classify_return(&ty);
 
@@ -648,7 +648,7 @@ mod tests {
     fn classify_return_void_ignore() {
         let abi = abi();
 
-        let ret = abi.classify_return(&CIRType::PlainType(PlainType::Void));
+        let ret = abi.classify_return(&CIRType::Plain(PlainType::Void));
 
         assert!(matches!(ret.kind, ABIRetInfoKind::Ignore));
     }

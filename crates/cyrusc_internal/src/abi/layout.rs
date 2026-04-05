@@ -21,7 +21,7 @@ use crate::{
         target::{ABITargetArch, ABITargetInfo},
     },
     cir::{
-        cir::CIREnumTyVariant,
+        cir::CIREnumVariant,
         types::{CIRStructType, CIRTupleType, CIRType},
     },
 };
@@ -53,7 +53,7 @@ pub enum ABIFieldOffsetInfo {
 
 pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
     match ty {
-        CIRType::PlainType(plain_type) => plain_type_layout(info, plain_type),
+        CIRType::Plain(plain_type) => plain_type_layout(info, plain_type),
         CIRType::Const(ty) => type_layout(info, ty.const_inner()),
         CIRType::Pointer(_) => {
             let size = info.pointer_size();
@@ -156,14 +156,14 @@ pub fn type_layout(info: &ABITargetInfo, ty: &CIRType) -> ABITypeLayout {
 
             for variant in &enum_type.variants {
                 let (variant_size, variant_align) = match variant {
-                    CIREnumTyVariant::Ident(_) => (0, 1),
+                    CIREnumVariant::Ident(_) => (0, 1),
 
-                    CIREnumTyVariant::Valued(_, expr) => {
+                    CIREnumVariant::Valued(_, expr) => {
                         let layout = type_layout(info, &expr.ty);
                         (layout.size, layout.align)
                     }
 
-                    CIREnumTyVariant::Fielded(_, field_types) => {
+                    CIREnumVariant::Fielded(_, field_types) => {
                         let tuple_type = CIRTupleType {
                             elements: field_types.clone(),
                             loc: enum_type.loc,

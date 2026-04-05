@@ -375,9 +375,7 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
- "num_cpus",
  "once_cell",
- "rayon",
 ]
 
 [[package]]

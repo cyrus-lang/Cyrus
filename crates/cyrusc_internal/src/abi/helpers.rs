@@ -22,7 +22,7 @@ use crate::{
         targets::x86_64::types::X86_64TargetDependentType,
         types::{ABIFloatKind, ABIType, TargetIntegerType},
     },
-    cir::{cir::CIREnumTyVariant, types::CIRType},
+    cir::{cir::CIREnumVariant, types::CIRType},
 };
 use cyrusc_typed_ast::types::PlainType;
 
@@ -40,7 +40,7 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
     use PlainType::*;
 
     match cir_type {
-        CIRType::PlainType(plain_type) => {
+        CIRType::Plain(plain_type) => {
             match plain_type {
                 // Target-dependent types
                 UIntPtr | IntPtr | ISize | USize | Int | UInt => match info.arch {
@@ -127,14 +127,14 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
 
                 for variant in &enum_ty.variants {
                     match variant {
-                        CIREnumTyVariant::Ident(_) => {
+                        CIREnumVariant::Ident(_) => {
                             // no payload
                         }
-                        CIREnumTyVariant::Valued(_, expr) => {
+                        CIREnumVariant::Valued(_, expr) => {
                             let layout = type_layout(info, &expr.ty);
                             max_payload_size = max_payload_size.max(layout.size);
                         }
-                        CIREnumTyVariant::Fielded(_, fields) => {
+                        CIREnumVariant::Fielded(_, fields) => {
                             let mut total_size = 0;
                             let mut max_align = 1;
 
