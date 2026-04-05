@@ -636,7 +636,7 @@ pub enum SwitchCasePattern {
     /// literal / constant expression
     Expr(ASTExpr),
 
-    // `1..10` or `1..=10`
+    /// `1..10` or `1..=10`
     Range(Range),
 
     /// .Variant

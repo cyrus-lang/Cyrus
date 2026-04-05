@@ -18,7 +18,6 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::SymbolEntryKind;
-use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
     types::{PlainType, SemanticType},
@@ -70,7 +69,7 @@ impl<'a> AnalysisContext<'a> {
             expected_type = Some(sema_type.const_inner().clone());
         }
 
-        self.lower_special_exprs(expr, expected_type.clone());
+        self.lower_expr_pre_analysis(expr, expected_type.clone());
 
         let ty_opt = match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.symbol_id, symbol_expr.loc),
@@ -87,20 +86,22 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
+
             TypedExprKind::UnnamedStructValue(unnamed_struct_value) => todo!(),
             TypedExprKind::UnnamedUnionValue(unnamed_union_value) => todo!(),
             TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => todo!(),
             TypedExprKind::EnumStructVariantInit(struct_variant_init) => todo!(),
-            TypedExprKind::FuncCall(func_call) => {
-                todo!()
-            }
             TypedExprKind::MethodCall(typed_method_call) => todo!(),
             TypedExprKind::FieldAccess(typed_field_access) => todo!(),
+            TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
+
+            TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type),
-            TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
-            TypedExprKind::Builtin(typed_builtin) => todo!(),
+            TypedExprKind::Builtin(_typed_builtin) => todo!(), // TODO
+
+            // invalid expressions
             TypedExprKind::SemanticType(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -126,6 +127,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.fold_const_expr(expr);
+
+        self.lower_expr_post_analysis(expr);
+
         normalized_type
     }
 

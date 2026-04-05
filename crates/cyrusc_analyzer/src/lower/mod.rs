@@ -27,7 +27,11 @@ pub(crate) mod lower_prefix_not;
 
 impl<'a> AnalysisContext<'a> {
     /// Rewrites special expression forms into their canonical AST representation.
-    pub(crate) fn lower_special_exprs(&mut self, typed_expr: &mut TypedExprStmt, expected_type: Option<SemanticType>) {
+    pub(crate) fn lower_expr_pre_analysis(
+        &mut self,
+        typed_expr: &mut TypedExprStmt,
+        expected_type: Option<SemanticType>,
+    ) {
         match &mut typed_expr.kind {
             TypedExprKind::Assign(assign) => {
                 if assign.kind != AssignKind::Default {
@@ -46,5 +50,9 @@ impl<'a> AnalysisContext<'a> {
             }
             _ => {}
         };
+    }
+
+    pub(crate) fn lower_expr_post_analysis(&mut self, typed_expr: &mut TypedExprStmt) {
+        
     }
 }

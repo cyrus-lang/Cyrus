@@ -380,10 +380,41 @@ pub struct TypedSwitchCase {
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
+    /// `_`
+    Wildcard,
+
+    Binding {
+        name: Ident,
+        symbol_id: SymbolID,
+    },
+
+    /// `1..10` or `1..=10`
     Range(TypedRange),
+
+    /// literal / constant expression
     Expr(TypedExprStmt),
-    Ident(Ident),
-    EnumVariant(Ident, Vec<TypedIdent>, Loc),
+
+    /// .Variant
+    EnumUnit(Ident),
+
+    /// .Variant(a, b, _)
+    EnumTupleVariant {
+        variant: Ident,
+        items: Vec<TypedSwitchCasePattern>,
+    },
+
+    /// .Variant { a, b: x, c: _, .. }
+    EnumStructVariant {
+        variant: Ident,
+        items: Vec<TypedSwitchCaseEnumStructPatternField>,
+        has_rest: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedSwitchCaseEnumStructPatternField {
+    pub name: Ident,
+    pub pattern: TypedSwitchCasePattern,
 }
 
 #[derive(Debug, Clone)]

@@ -19,7 +19,7 @@ use crate::{
     SymbolID, VTableID,
     decls::{FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
-    types::SemanticType,
+    types::{SemanticType, TypedFuncType},
 };
 use cyrusc_ast::{
     AssignKind, Ident,
@@ -217,9 +217,31 @@ pub struct TypedFuncCall {
     pub operand: Box<TypedExprStmt>,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
-    pub ret_type: Option<SemanticType>,
-    pub monomorph_id: Option<MonomorphID>, // only set when calling a generic func
+
+    pub dispatch: TypedFuncCallDispatch,
+
     pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedFuncCallDispatch {
+    Unresolved,
+
+    /// Normal function call
+    Direct {
+        func_decl_id: FuncDeclID,
+    },
+
+    /// Generic function instantiation
+    Monomorph {
+        decl_id: FuncDeclID,
+        monomorph_id: MonomorphID,
+    },
+
+    /// Calling a function pointer
+    FunctionPointer {
+        func_type: TypedFuncType,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -232,12 +254,6 @@ pub struct TypedFieldAccess {
     pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
     pub loc: Loc,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedInterfaceMethodCallMetadata {
-    pub method_idx: usize,
-    pub methods_len: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -263,6 +279,8 @@ pub enum TypedMethodCallDispatch {
     Interface {
         decl_id: InterfaceDeclID,
         self_type: SemanticType,
+        method_idx: usize,
+        methods_len: usize,
     },
     Monomorph {
         decl_id: FuncDeclID,

@@ -1887,29 +1887,16 @@ impl Resolver {
 
     fn resolve_switch_pattern(&mut self, pattern: &SwitchCasePattern) -> Option<TypedSwitchCasePattern> {
         match pattern {
-            SwitchCasePattern::EnumUnit(ident) => Some(TypedSwitchCasePattern::Ident(ident.clone())),
+            // `_`
+            SwitchCasePattern::Wildcard => Some(TypedSwitchCasePattern::Wildcard),
+
+            // literal / const expression
             SwitchCasePattern::Expr(expr) => {
-                let typed_expr = self.resolve_expr(expr)?;
-
-                Some(TypedSwitchCasePattern::Expr(typed_expr))
-            }
-            SwitchCasePattern::EnumTupleVariant(ident, valued_fields) => {
-                let mut fields = Vec::with_capacity(valued_fields.len());
-
-                for ident in valued_fields {
-                    let var_decl_id = self.insert_variable_decl(&ident, None, None, false);
-                    let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
-
-                    fields.push(TypedIdent {
-                        name: ident.as_string(),
-                        symbol_id,
-                        loc: ident.loc,
-                    });
-                }
-
-                Some(TypedSwitchCasePattern::EnumVariant(ident.clone(), fields, ident.loc))
+                let typed = self.resolve_expr(expr)?;
+                Some(TypedSwitchCasePattern::Expr(typed))
             }
 
+            // range: `1...10` or `1..=10`
             SwitchCasePattern::Range(range) => {
                 let lower = self.resolve_expr(&range.lower)?;
                 let upper = self.resolve_expr(&range.upper)?;
@@ -1920,6 +1907,69 @@ impl Resolver {
                     inclusive_upper: range.inclusive_upper,
                     loc: range.loc,
                 }))
+            }
+
+            // enum unit variant: `.A`
+            SwitchCasePattern::EnumUnit(variant) => Some(TypedSwitchCasePattern::EnumUnit(variant.clone())),
+
+            // enum tuple variant: `.C(a, b, _)`
+            //
+            // IMPORTANT:
+            //   - recursively resolve items
+            //   - bindings inside get inserted into the case-local scope
+            SwitchCasePattern::EnumTupleVariant { variant, items } => {
+                let mut typed_items = Vec::with_capacity(items.len());
+
+                for item in items {
+                    let typed_item = self.resolve_switch_pattern(item)?;
+                    typed_items.push(typed_item);
+                }
+
+                Some(TypedSwitchCasePattern::EnumTupleVariant {
+                    variant: variant.clone(),
+                    items: typed_items,
+                })
+            }
+
+            // `.D { a, b: x, c: _, .. }`
+            //
+            // IMPORTANT:
+            //   - resolve each field recursively
+            //   - bindings inserted into scope
+            SwitchCasePattern::EnumStructVariant {
+                variant,
+                items,
+                has_rest,
+            } => {
+                let mut typed_items = Vec::with_capacity(items.len());
+
+                for field in items {
+                    let typed_pattern = self.resolve_switch_pattern(&field.pattern)?;
+
+                    typed_items.push(TypedSwitchCaseEnumStructPatternField {
+                        name: field.name.clone(),
+                        pattern: typed_pattern,
+                    });
+                }
+
+                Some(TypedSwitchCasePattern::EnumStructVariant {
+                    variant: variant.clone(),
+                    items: typed_items,
+                    has_rest: *has_rest,
+                })
+            }
+
+            // ident binding
+            SwitchCasePattern::Binding(ident) => {
+                // treat like 'let ident'
+                let var_decl_id = self.insert_variable_decl(ident, None, None, false);
+
+                let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
+
+                Some(TypedSwitchCasePattern::Binding {
+                    name: ident.clone(),
+                    symbol_id,
+                })
             }
         }
     }
@@ -2316,8 +2366,7 @@ impl Resolver {
                 operand: Box::new(operand),
                 args,
                 type_args,
-                ret_type: None,
-                monomorph_id: None,
+                dispatch: TypedFuncCallDispatch::Unresolved,
                 loc,
             }),
             mloc: MemoryLocation::RValue,

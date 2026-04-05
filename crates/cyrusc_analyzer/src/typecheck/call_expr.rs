@@ -15,20 +15,76 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     SymbolID,
     decls::FuncDecl,
-    exprs::TypedExprStmt,
+    exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_sema_type},
     stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
     types::{SemanticType, TypedFuncType},
 };
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemanticType> {
+        let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
+
+        let Some(mut func_type) = operand_type.as_func_type().cloned() else {
+            let symbol_name = format_sema_type(operand_type, self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol { symbol_name }),
+                loc: Some(func_call.loc),
+                hint: None,
+            });
+            return None;
+        };
+
+        if let Some(symbol_id) = func_type.symbol_id {
+            // named func call
+
+            let func_decl_id = self.query.get_func(symbol_id).unwrap();
+            let mut func_decl = self.decl_tables.func_decl(func_decl_id);
+
+            self.normalize_func_params(&mut func_decl.params, func_call.loc);
+            func_decl.ret_type = self.normalize_sema_type(func_decl.ret_type.clone(), func_call.loc)?;
+
+            let ret_type = self.check_func_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
+
+            func_call.dispatch = TypedFuncCallDispatch::Direct {
+                func_decl_id: func_decl_id,
+            };
+
+            Some(ret_type)
+        } else {
+            // function pointer call
+
+            if func_call.type_args.is_some() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                    loc: Some(func_call.loc),
+                    hint: Some("Lambdas never accept type args.".to_string()),
+                });
+                return None;
+            }
+
+            self.normalize_func_type_params(&mut func_type.params, func_call.loc);
+            func_type.ret_type = Box::new(self.normalize_sema_type(*func_type.ret_type.clone(), func_call.loc)?);
+
+            let ret_type = self.check_func_type_call(&mut func_type, &mut func_call.args, func_call.loc)?;
+
+            func_call.dispatch = TypedFuncCallDispatch::FunctionPointer {
+                func_type: func_type.clone(),
+            };
+
+            Some(ret_type)
+        }
+    }
+
     /// Validates function calls against their signature, checking argument counts and types.
     ///
     /// Performs comprehensive validation of function calls including argument count checking,
