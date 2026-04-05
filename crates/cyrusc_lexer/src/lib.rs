@@ -658,6 +658,10 @@ impl<'source_map, 'source_file> Lexer<'source_map, 'source_file> {
             self.read_char();
         }
 
+        if final_ident == "_" {
+            return TokenKind::Underscore;
+        }
+
         lookup_identifier(final_ident)
     }
 

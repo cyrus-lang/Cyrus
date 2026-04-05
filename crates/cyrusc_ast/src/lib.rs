@@ -1036,11 +1036,6 @@ impl Ident {
     }
 
     #[inline]
-    pub fn is_ignore(&self) -> bool {
-        self.value == "_"
-    }
-
-    #[inline]
     pub fn as_string(&self) -> String {
         self.value.clone()
     }

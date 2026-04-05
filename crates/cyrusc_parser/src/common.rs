@@ -599,6 +599,18 @@ impl<'source_file> Parser<'source_file> {
         })))
     }
 
+    pub(crate) fn parse_mutability(&mut self) -> Option<Mutability> {
+        if self.current_token_is(TokenKind::Var) {
+            self.next_token();
+            Some(Mutability::Var)
+        } else if self.current_token_is(TokenKind::Const) {
+            self.next_token();
+            Some(Mutability::Const)
+        } else {
+            None
+        }
+    }
+
     fn parse_tuple(&mut self) -> Result<TypeSpecifier, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);

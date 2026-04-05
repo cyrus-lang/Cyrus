@@ -1232,32 +1232,20 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
-    fn parse_mutability(&mut self) -> Option<Mutability> {
-        if self.current_token_is(TokenKind::Var) {
-            self.next_token();
-            Some(Mutability::Var)
-        } else if self.current_token_is(TokenKind::Const) {
-            self.next_token();
-            Some(Mutability::Const)
-        } else {
-            None
-        }
-    }
-
     fn parse_export_pattern(&mut self) -> Result<ExportPattern, Diag> {
         let loc = self.current_token().loc;
         let mutability = self.parse_mutability();
 
         let kind = match &self.current_token().kind {
+            TokenKind::Underscore => {
+                self.next_token();
+                ExportPatternKind::Ignore
+            }
             TokenKind::Ident { .. } => {
                 let ident = self.parse_ident()?;
                 self.next_token();
 
-                if ident.is_ignore() {
-                    ExportPatternKind::Ignore
-                } else {
-                    ExportPatternKind::Ident(ident)
-                }
+                ExportPatternKind::Ident(ident)
             }
             TokenKind::LeftParen => {
                 self.next_token();
@@ -1309,7 +1297,7 @@ impl<'source_file> Parser<'source_file> {
 
                 let type_spec = self.parse_type_specifier()?;
                 self.next_token();
-                
+
                 Some(type_spec)
             } else {
                 None

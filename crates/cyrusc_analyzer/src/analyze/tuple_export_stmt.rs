@@ -27,6 +27,12 @@ use cyrusc_typed_ast::{
     types::{SemanticType, TypedTupleType, UnresolvedType},
 };
 
+// TODO: Warn for weird situations like:
+// const (const a: int64, const b) = (1, 2);
+// var (var a, var b) = (1, 2);
+// var (const a: int64, const b) = (1, 2);
+
+
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedExportTupleStmt) -> Option<()> {
         let rhs = match export_tuple.rhs.as_mut() {

@@ -80,6 +80,7 @@ pub enum TokenKind {
     And,
     Or,
     At,
+    Underscore,
 
     // Keywords
     Module,
@@ -222,6 +223,7 @@ impl fmt::Display for TokenKind {
             TokenKind::EOF => write!(f, "EOF"),
             TokenKind::Invalid => write!(f, "INVALID"),
             TokenKind::Ident(ident) => write!(f, "{}", ident),
+            TokenKind::Underscore => write!(f, "_"),
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),
             TokenKind::Asterisk => write!(f, "*"),
