@@ -159,6 +159,7 @@ dependencies = [
  "colorized",
  "cyrusc_analyzer",
  "cyrusc_ast",
+ "cyrusc_cir_traverse",
  "cyrusc_codegen_llvm",
  "cyrusc_compiler",
  "cyrusc_diagcentral",

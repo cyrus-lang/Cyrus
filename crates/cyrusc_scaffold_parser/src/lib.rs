@@ -25,6 +25,7 @@ pub const OBJECT_CACHE_DIR_FILENAME: &str = "obj-cache";
 pub const OBJECT_DIR_FILENAME: &str = "object";
 pub const OUTPUT_DIR_FILENAME: &str = "output";
 pub const LLVM_IR_DIR_PATH: &str = "llvm-ir";
+pub const CIR_DUMP_DIR_PATH: &str = "cir";
 pub const BITCODE_DIR_PATH: &str = "bitcode";
 pub const ASSEMBLY_DIR_PATH: &str = "assembly";
 pub const SHARED_LIB_DIR_PATH: &str = "shared-lib";

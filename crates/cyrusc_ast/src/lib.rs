@@ -790,11 +790,11 @@ pub struct FuncParam {
 #[derive(Debug, Clone)]
 pub struct FuncParams {
     pub list: Vec<FuncParamKind>,
-    pub variadic: Option<FuncVariadicParams>,
+    pub variadic: Option<FuncVariadicParam>,
 }
 
 #[derive(Debug, Clone)]
-pub enum FuncVariadicParams {
+pub enum FuncVariadicParam {
     UntypedCStyle,
     Typed(Ident, TypeSpecifier),
 }
@@ -1487,14 +1487,13 @@ impl PartialEq for SelfModifier {
     }
 }
 
-impl PartialEq for FuncVariadicParams {
+impl PartialEq for FuncVariadicParam {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (FuncVariadicParams::UntypedCStyle, FuncVariadicParams::UntypedCStyle) => true,
-            (
-                FuncVariadicParams::Typed(ident1, type_specifier1),
-                FuncVariadicParams::Typed(ident2, type_specifier2),
-            ) => ident1 == ident2 && type_specifier1 == type_specifier2,
+            (FuncVariadicParam::UntypedCStyle, FuncVariadicParam::UntypedCStyle) => true,
+            (FuncVariadicParam::Typed(ident1, type_specifier1), FuncVariadicParam::Typed(ident2, type_specifier2)) => {
+                ident1 == ident2 && type_specifier1 == type_specifier2
+            }
             _ => false,
         }
     }

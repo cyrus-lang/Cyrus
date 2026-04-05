@@ -38,8 +38,8 @@ use cyrusc_resolver::{
     modules::VisitingModule,
 };
 use cyrusc_scaffold_parser::{
-    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME, OBJECT_DIR_FILENAME,
-    OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
+    ASSEMBLY_DIR_PATH, BITCODE_DIR_PATH, CIR_DUMP_DIR_PATH, LLVM_IR_DIR_PATH, OBJECT_CACHE_DIR_FILENAME,
+    OBJECT_DIR_FILENAME, OUTPUT_DIR_FILENAME, SHARED_LIB_DIR_PATH, SRC_CACHE_DIR_PATH, STATIC_LIB_DIR_PATH,
 };
 use cyrusc_source_loc::SourceMap;
 use cyrusc_tui_utils::tui_error;
@@ -366,6 +366,17 @@ pub fn resolve_target_info_from_opts(opts: &CodeGenOptions) -> ABITargetInfo {
     };
 
     ABITargetInfo { arch, os, format }
+}
+
+pub fn get_cir_dump_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {
+    if let Some(output_path) = output_path_opt {
+        ensure_output_dir(output_path);
+        return Path::new(&output_path).to_path_buf();
+    }
+
+    let dir_path = build_dir.join(OUTPUT_DIR_FILENAME).join(CIR_DUMP_DIR_PATH);
+    ensure_output_dir(&dir_path);
+    return dir_path;
 }
 
 pub fn get_llvm_dir_output_path(build_dir: &PathBuf, output_path_opt: &Option<String>) -> PathBuf {

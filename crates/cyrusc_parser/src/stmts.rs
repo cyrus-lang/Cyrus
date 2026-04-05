@@ -344,7 +344,7 @@ impl<'source_file> Parser<'source_file> {
 
         let params_start_token = self.current_token();
 
-        let mut variadic: Option<FuncVariadicParams> = None;
+        let mut variadic: Option<FuncVariadicParam> = None;
         let mut list: Vec<FuncParamKind> = Vec::new();
         let mut self_modifier_count: u32 = 0;
 
@@ -361,7 +361,7 @@ impl<'source_file> Parser<'source_file> {
                         ));
                     }
 
-                    variadic = Some(FuncVariadicParams::UntypedCStyle);
+                    variadic = Some(FuncVariadicParam::UntypedCStyle);
                     break;
                 }
                 TokenKind::Ampersand => {
@@ -414,7 +414,7 @@ impl<'source_file> Parser<'source_file> {
                                 let variadic_data_type = self.parse_type_specifier()?;
                                 self.next_token();
 
-                                variadic = Some(FuncVariadicParams::Typed(ident, variadic_data_type));
+                                variadic = Some(FuncVariadicParam::Typed(ident, variadic_data_type));
                                 continue;
                             } else {
                                 var_type = Some(self.parse_type_specifier()?);

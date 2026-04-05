@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
     decls::{FuncDecl, InterfaceDeclID, TypedefDeclID},
     exprs::TypedSelfType,
     stmts::{
-        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
+        TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam,
         TypedGenericParam, TypedTypeArg, TypedTypeArgs,
     },
     types::{
@@ -288,14 +288,14 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(variadic_params) = &mut params.variadic {
-            if let TypedFuncVariadicParams::Typed(ident, sema_type) = variadic_params {
+            if let TypedFuncVariadicParam::Typed(ident, sema_type) = variadic_params {
                 let sema_type = match self.normalize_sema_type(sema_type.clone(), loc) {
                     Some(sema_type) => sema_type,
                     None => return,
                 };
 
                 self.validate_param_type(&sema_type, ident.loc);
-                *variadic_params = TypedFuncVariadicParams::Typed(ident.clone(), sema_type);
+                *variadic_params = TypedFuncVariadicParam::Typed(ident.clone(), sema_type);
             }
         }
     }

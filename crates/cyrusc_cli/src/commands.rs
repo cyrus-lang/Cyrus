@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use cyrusc_cir_traverse::cir_dump::process_cir_dump_for_program_trees;
 use cyrusc_codegen_llvm::CodeGenLLVM;
 use cyrusc_compiler::codegen_traits::CodeGenBackend;
 use cyrusc_compiler::driver::{
@@ -26,6 +27,7 @@ use cyrusc_compiler::object_file_info::ObjectFileInfo;
 use cyrusc_compiler::options::{CodeGenOptions, LinkerOutputKind};
 use cyrusc_diagcentral::exit_with_msg;
 use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_fs_utils::ensure_output_dir;
 use cyrusc_fs_utils::temp::TempExecutableBuilder;
 use cyrusc_lexer::Lexer;
 use cyrusc_parser::SourceParser;
@@ -232,6 +234,21 @@ pub(crate) fn command_emit_asm(mut opts: CodeGenOptions, file_path: Option<Strin
 
     let owned_modules = ctx.compile(llvm_backend, &mut bundle.program_trees);
     llvm_backend.save_modules_as_assembly(&owned_modules, &assembly_dir);
+}
+
+pub(crate) fn command_emit_cir_dump(
+    mut opts: CodeGenOptions,
+    file_path: Option<String>,
+    output_path_opt: Option<String>,
+) {
+    let bundle = build_compilation_bundle(&mut opts, file_path);
+
+    let output_path_opt = output_path_opt.map(|path| Path::new(&path).to_path_buf());
+    let output_path = get_executable_output_path(&opts, &bundle.build_dir, &bundle.entry_file, output_path_opt);
+
+    ensure_output_dir(&output_path);
+
+    process_cir_dump_for_program_trees(&bundle.program_trees, output_path);
 }
 
 pub(crate) fn command_object(mut opts: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {

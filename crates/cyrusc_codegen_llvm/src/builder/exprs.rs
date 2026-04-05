@@ -1233,7 +1233,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             _ => unreachable!(),
         };
 
-        InternalValue::new(field_access.field_ty.clone(), InternalValueKind::LValue(union_ptr))
+        InternalValue::new(field_access.field_type.clone(), InternalValueKind::LValue(union_ptr))
     }
 
     fn emit_struct_field_access(&mut self, field_access: &CIRStructFieldAccessExpr) -> InternalValue<'ll> {
@@ -1355,7 +1355,7 @@ impl<'ll> IRBuilderCtx<'ll> {
     }
 
     fn emit_enum_init(&mut self, enum_init_expr: &CIREnumInitExpr) -> InternalValue<'ll> {
-        let enum_ty = &enum_init_expr.enum_ty;
+        let enum_ty = &enum_init_expr.enum_type;
 
         // handle c-compatible enum init
         if enum_ty.is_scalar_optimizable() {
@@ -1430,7 +1430,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
 
         InternalValue::new(
-            CIRType::Enum(enum_init_expr.enum_ty.clone()),
+            CIRType::Enum(enum_init_expr.enum_type.clone()),
             InternalValueKind::RValue(enum_value.as_basic_value_enum()),
         )
     }

@@ -7,6 +7,7 @@ INPUT    ?= ./tmp/main.cyrus
 STDLIB   ?= ./stdlib
 LLVM_OUT ?= ./tmp/llvmir
 ASM_OUT ?= ./tmp/asm
+CIR_DUMP_OUT ?= ./tmp/cir_dump
 ARGS     ?=
 
 TARGET_DIR = ./target/$(PROFILE)
@@ -41,6 +42,9 @@ emit-llvm:
 
 emit-asm:
 	$(CARGO_RUN) -- emit-asm $(INPUT) -o $(ASM_OUT) --stdlib=$(STDLIB) $(ARGS)
+
+emit-cir-dump:
+	$(CARGO_RUN) -- emit-cir-dump $(INPUT) -o $(CIR_DUMP_OUT) --stdlib=$(STDLIB) $(ARGS)
 
 run:
 	$(CARGO_RUN) -- run $(INPUT) --stdlib=$(STDLIB) $(COMMON_FLAGS)

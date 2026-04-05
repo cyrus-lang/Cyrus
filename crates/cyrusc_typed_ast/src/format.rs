@@ -22,7 +22,7 @@ use crate::types::TypeDeclID;
 use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{
-        TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedTypeArg,
+        TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam, TypedTypeArg,
         TypedTypeArgs,
     },
     types::{SemanticType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
@@ -436,7 +436,7 @@ pub fn format_lambda(lambda: &TypedLambdaExpr, formatter: &dyn Formatter) -> Str
         .iter()
         .map(|param_kind| match param_kind {
             TypedFuncParamKind::FuncParam(param) => {
-                format!("{}: {}", param.name, format_sema_type(param.ty.clone(), formatter))
+                format!("{}: {}", param.ident, format_sema_type(param.ty.clone(), formatter))
             }
             TypedFuncParamKind::SelfModifier(..) => unreachable!(),
         })
@@ -445,8 +445,8 @@ pub fn format_lambda(lambda: &TypedLambdaExpr, formatter: &dyn Formatter) -> Str
 
     if let Some(variadic) = lambda.params.variadic.clone() {
         match &variadic {
-            TypedFuncVariadicParams::UntypedCStyle => params.push_str(", ..."),
-            TypedFuncVariadicParams::Typed(ident, sema_type) => params.push_str(&format!(
+            TypedFuncVariadicParam::UntypedCStyle => params.push_str(", ..."),
+            TypedFuncVariadicParam::Typed(ident, sema_type) => params.push_str(&format!(
                 ", {}: ...{}",
                 ident.name,
                 format_sema_type(sema_type.clone(), formatter)

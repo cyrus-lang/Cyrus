@@ -99,6 +99,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type),
+
             TypedExprKind::Builtin(_typed_builtin) => todo!(), // TODO
 
             // invalid expressions

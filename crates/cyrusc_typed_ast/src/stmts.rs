@@ -304,11 +304,11 @@ pub struct TypedFuncDeclStmt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedFuncParams {
     pub list: Vec<TypedFuncParamKind>,
-    pub variadic: Option<TypedFuncVariadicParams>,
+    pub variadic: Option<TypedFuncVariadicParam>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypedFuncVariadicParams {
+pub enum TypedFuncVariadicParam {
     UntypedCStyle,
     Typed(TypedIdent, SemanticType),
 }
@@ -342,7 +342,7 @@ pub struct TypedSelfModifier {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedFuncParam {
     pub var_decl_id: Option<VarDeclID>, // none if used in func decl
-    pub name: String,
+    pub ident: Ident,
     pub ty: SemanticType,
     pub loc: Loc,
 }
@@ -482,8 +482,8 @@ impl TypedFuncParams {
 
         let variadic = match &self.variadic {
             Some(variadic) => match variadic {
-                TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
-                TypedFuncVariadicParams::Typed(_, sema_type) => {
+                TypedFuncVariadicParam::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
+                TypedFuncVariadicParam::Typed(_, sema_type) => {
                     Some(Box::new(TypedFuncTypeVariadicParams::Typed(sema_type.clone())))
                 }
             },
@@ -580,7 +580,7 @@ impl TypedFuncTypeParams {
 impl TypedFuncParamKind {
     pub fn name(&self) -> String {
         match self {
-            TypedFuncParamKind::FuncParam(func_param) => func_param.name.clone(),
+            TypedFuncParamKind::FuncParam(func_param) => func_param.ident.as_string(),
             TypedFuncParamKind::SelfModifier(_) => "self".to_string(),
         }
     }
@@ -765,7 +765,7 @@ impl PartialEq for TypedTypeArg {
 
 impl PartialEq for TypedFuncParam {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.ty == other.ty
+        self.ident == other.ident && self.ty == other.ty
     }
 }
 

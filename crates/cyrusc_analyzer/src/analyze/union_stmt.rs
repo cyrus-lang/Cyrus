@@ -34,6 +34,8 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_union_decl(union_decl_id, &mut union_decl);
 
+        union_stmt.fields = union_decl.fields.clone();
+
         self.decl_tables.with_union_decl_mut(union_decl_id, |_union_decl| {
             *_union_decl = union_decl;
         });

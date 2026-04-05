@@ -34,6 +34,9 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_enum_decl(enum_decl_id, &mut enum_decl);
 
+        enum_stmt.variants = enum_decl.variants.clone();
+        enum_stmt.tag_type = enum_decl.tag_type.clone();
+
         self.decl_tables.with_enum_decl_mut(enum_decl_id, |_enum_decl| {
             *_enum_decl = enum_decl;
         });

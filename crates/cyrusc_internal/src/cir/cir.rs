@@ -136,7 +136,7 @@ pub enum CIRCallDispatch {
 #[derive(Debug, Clone)]
 pub struct CIRUnionFieldAccessExpr {
     pub operand: Box<CIRExpr>,
-    pub field_ty: CIRType,
+    pub field_type: CIRType,
 }
 
 #[derive(Debug, Clone)]
@@ -156,7 +156,7 @@ pub struct CIRStructInitExpr {
 pub struct CIREnumInitExpr {
     pub tag: usize,
     pub variant: CIREnumInitVariant,
-    pub enum_ty: CIREnumType,
+    pub enum_type: CIREnumType,
 }
 
 #[derive(Debug, Clone)]
@@ -389,24 +389,6 @@ pub enum CIRSwitchOnEnumPattern {
     ExportFields(String, usize, Vec<(TypedIdent, CIRType)>),
 }
 
-impl CIRSwitchOnEnumPattern {
-    pub fn variant_idx(&self) -> usize {
-        match self {
-            CIRSwitchOnEnumPattern::Ident(_, variant_idx) => *variant_idx,
-            CIRSwitchOnEnumPattern::ExportFields(_, variant_idx, ..) => *variant_idx,
-            CIRSwitchOnEnumPattern::Valued(_, variant_idx, ..) => *variant_idx,
-        }
-    }
-
-    pub fn variant_name(&self) -> &String {
-        match self {
-            CIRSwitchOnEnumPattern::Ident(ident, ..) => ident,
-            CIRSwitchOnEnumPattern::ExportFields(ident, ..) => ident,
-            CIRSwitchOnEnumPattern::Valued(ident, ..) => ident,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct CIRReturnStmt {
     pub arg: Option<CIRExpr>,
@@ -448,34 +430,6 @@ pub enum CIREnumVariant {
     Unit(String),
     Valued(String, Box<CIRExpr>),
     Tuple(String, Vec<CIRType>),
-}
-
-impl PartialEq for CIREnumVariant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Unit(ident1), Self::Unit(ident2)) => ident1 == ident2,
-            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1.ty == expr2.ty,
-            (Self::Tuple(ident1, fields1), Self::Tuple(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
-            _ => false,
-        }
-    }
-}
-
-impl CIREnumVariant {
-    pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
-        match self {
-            CIREnumVariant::Tuple(_, fields) => Some(fields),
-            _ => None,
-        }
-    }
-
-    pub fn ident(&self) -> &String {
-        match self {
-            CIREnumVariant::Unit(ident) => ident,
-            CIREnumVariant::Valued(ident, _) => ident,
-            CIREnumVariant::Tuple(ident, _) => ident,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -524,6 +478,7 @@ pub fn cir_expr_as_const_integer_value(expr: &CIRExpr) -> Option<i128> {
     }
 }
 
+#[inline]
 pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
     CIRFuncDeclStmt {
         irv_id: func_def.irv_id,
@@ -536,6 +491,7 @@ pub fn cir_func_def_as_decl(func_def: &CIRFuncDefStmt) -> CIRFuncDeclStmt {
     }
 }
 
+#[inline]
 pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
     CIRFuncType {
         params: func_decl.params.list.iter().map(|param| param.ty.clone()).collect(),
@@ -546,6 +502,7 @@ pub fn cir_func_decl_as_func_ty(func_decl: &CIRFuncDeclStmt) -> CIRFuncType {
     }
 }
 
+#[inline]
 pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructType {
     CIRStructType {
         name: Some(struct_stmt.name.clone()),
@@ -557,6 +514,7 @@ pub fn cir_struct_as_struct_ty(struct_stmt: &CIRStructStmt) -> CIRStructType {
     }
 }
 
+#[inline]
 pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumType {
     CIREnumType {
         name: Some(enum_stmt.name.clone()),
@@ -568,6 +526,7 @@ pub fn cir_enum_as_enum_ty(enum_stmt: &CIREnumStmt) -> CIREnumType {
     }
 }
 
+#[inline]
 pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionType {
     CIRUnionType {
         name: Some(union_stmt.name.clone()),
@@ -576,6 +535,52 @@ pub fn cir_union_as_union_ty(union_stmt: &CIRUnionStmt) -> CIRUnionType {
         repr_attr: union_stmt.modifiers.repr_attr.clone(),
         align: union_stmt.align.clone(),
         loc: union_stmt.loc,
+    }
+}
+
+impl CIRSwitchOnEnumPattern {
+    pub fn variant_idx(&self) -> usize {
+        match self {
+            CIRSwitchOnEnumPattern::Ident(_, variant_idx) => *variant_idx,
+            CIRSwitchOnEnumPattern::ExportFields(_, variant_idx, ..) => *variant_idx,
+            CIRSwitchOnEnumPattern::Valued(_, variant_idx, ..) => *variant_idx,
+        }
+    }
+
+    pub fn variant_name(&self) -> &String {
+        match self {
+            CIRSwitchOnEnumPattern::Ident(ident, ..) => ident,
+            CIRSwitchOnEnumPattern::ExportFields(ident, ..) => ident,
+            CIRSwitchOnEnumPattern::Valued(ident, ..) => ident,
+        }
+    }
+}
+
+impl PartialEq for CIREnumVariant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unit(ident1), Self::Unit(ident2)) => ident1 == ident2,
+            (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1.ty == expr2.ty,
+            (Self::Tuple(ident1, fields1), Self::Tuple(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
+            _ => false,
+        }
+    }
+}
+
+impl CIREnumVariant {
+    pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
+        match self {
+            CIREnumVariant::Tuple(_, fields) => Some(fields),
+            _ => None,
+        }
+    }
+
+    pub fn ident(&self) -> &String {
+        match self {
+            CIREnumVariant::Unit(ident) => ident,
+            CIREnumVariant::Valued(ident, _) => ident,
+            CIREnumVariant::Tuple(ident, _) => ident,
+        }
     }
 }
 

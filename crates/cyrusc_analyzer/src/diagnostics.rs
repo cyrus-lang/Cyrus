@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncParamKind, TypedFuncVariadicParams, TypedGenericParamsList, TypedTypeArgs},
+    stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParamsList, TypedTypeArgs},
     types::SemanticType,
 };
 use std::ops::RangeInclusive;
@@ -461,7 +461,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn report_if_duplicate_param_names(
         &mut self,
         params: &[TypedFuncParamKind],
-        variadic: Option<&TypedFuncVariadicParams>,
+        variadic: Option<&TypedFuncVariadicParam>,
         loc: Loc,
     ) {
         let mut param_names: Vec<String> = Vec::new();
@@ -469,11 +469,11 @@ impl<'a> AnalysisContext<'a> {
         for (param_idx, param) in params.iter().enumerate() {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    if param_names.contains(&typed_func_param.name) {
+                    if param_names.contains(&typed_func_param.ident.value) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::DuplicateFuncParameter {
-                                param_name: typed_func_param.name.clone(),
+                                param_name: typed_func_param.ident.as_string(),
                                 param_idx: param_idx.try_into().unwrap(),
                             }),
                             loc: Some(loc),
@@ -482,7 +482,7 @@ impl<'a> AnalysisContext<'a> {
                         continue;
                     }
 
-                    param_names.push(typed_func_param.name.clone());
+                    param_names.push(typed_func_param.ident.as_string());
                 }
                 TypedFuncParamKind::SelfModifier(_) => {
                     param_names.push("self".to_string());
@@ -492,7 +492,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(variadic_param) = variadic {
             match variadic_param {
-                TypedFuncVariadicParams::Typed(ident, _) => {
+                TypedFuncVariadicParam::Typed(ident, _) => {
                     if param_names.contains(&ident.name) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -504,7 +504,7 @@ impl<'a> AnalysisContext<'a> {
                         });
                     }
                 }
-                TypedFuncVariadicParams::UntypedCStyle => {}
+                TypedFuncVariadicParam::UntypedCStyle => {}
             }
         }
     }

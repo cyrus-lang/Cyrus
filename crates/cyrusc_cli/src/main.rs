@@ -470,20 +470,33 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Lexical analysis only.", display_order = 11)]
+    #[clap(
+        name = "emit-cir-dump",
+        about = "Emit the textual CIR representation as a .cir file per module.",
+        display_order = 11
+    )]
+    EmitCIRDump {
+        file_path: Option<String>,
+        #[clap(long, short)]
+        output_path: Option<String>,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+
+    #[clap(about = "Lexical analysis only.", display_order = 12)]
     LexOnly { file_path: String },
 
-    #[clap(about = "Display program tree.", display_order = 12)]
+    #[clap(about = "Display program tree.", display_order = 13)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness semantically.", display_order = 13)]
+    #[clap(about = "Check program correctness semantically.", display_order = 14)]
     SemanticOnly {
         file_path: String,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Print version information", display_order = 14)]
+    #[clap(about = "Print version information", display_order = 15)]
     Version,
 }
 
@@ -694,5 +707,16 @@ pub fn main() {
         }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),
+        Commands::EmitCIRDump {
+            file_path,
+            output_path,
+            compiler_options,
+        } => {
+            let scaffold_config = compiler_option_from_scaffold_parser(compiler_options.base_path.clone());
+            let mut codegen_options = compiler_options.as_codegen_options();
+            merge_and_validate_scaffold_config_with_codegen_options(&mut codegen_options, &scaffold_config);
+
+            command_emit_cir_dump(codegen_options, file_path, output_path);
+        }
     }
 }

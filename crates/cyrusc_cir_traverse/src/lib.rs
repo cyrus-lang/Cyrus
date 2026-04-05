@@ -16,7 +16,6 @@
  */
 
 use cyrusc_ast::abi::CallConv;
-use cyrusc_ast::operators::*;
 use cyrusc_internal::abi::mangler::mangle_func;
 use cyrusc_internal::abi::mangler::mangle_global_var;
 use cyrusc_internal::abi::target::ABITarget;
@@ -34,6 +33,8 @@ use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::{SymbolID, exprs::*};
 use std::sync::{Arc, Mutex};
+
+pub mod cir_dump;
 
 pub(crate) struct CIRTraverse<'a> {
     program_tree: Box<TypedProgramTree>,
@@ -90,7 +91,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 lowered_stmts.push(self.lower_func_def(func_def, true));
             }
             TypedStmt::FuncDecl(func_decl) => {
-                lowered_stmts.push(CIRStmt::FuncDecl(self.lower_func_decl(func_decl, true)));
+                lowered_stmts.push(CIRStmt::FuncDecl(self.lower_func_decl_stmt(func_decl, true)));
             }
             TypedStmt::Switch(switch_stmt) => {
                 lowered_stmts.push(self.lower_switch(switch_stmt));
@@ -515,15 +516,15 @@ impl<'resolver> CIRTraverse<'resolver> {
         CIRStmt::FuncDef(cir_func_def)
     }
 
-    fn lower_func_decl(&mut self, func_decl: &TypedFuncDeclStmt, mangle_name: bool) -> CIRFuncDeclStmt {
+    fn lower_func_decl(&mut self, func_decl: &FuncDecl, mangle_name: bool) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(&func_decl.params, true);
         let ret = self.lower_sema_type(&func_decl.ret_type);
 
-        let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
-
-        if mangle_name {
-            func_name = mangle_func(&func_decl.modifiers, &self.module_name, &func_name);
-        }
+        let func_name = if mangle_name {
+            mangle_func(&func_decl.modifiers, &self.module_name, &func_decl.name)
+        } else {
+            func_decl.name.clone()
+        };
 
         let irv_id = self.next_irv_id();
 
@@ -540,6 +541,11 @@ impl<'resolver> CIRTraverse<'resolver> {
         let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
         cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
         cir_func_decl
+    }
+
+    fn lower_func_decl_stmt(&mut self, func_decl_stmt: &TypedFuncDeclStmt, mangle_name: bool) -> CIRFuncDeclStmt {
+        let func_decl = func_decl_stmt.as_func_decl();
+        self.lower_func_decl(&func_decl, mangle_name)
     }
 
     pub(crate) fn lower_body(&mut self, block: &TypedBlockStmt) -> CIRBlockStmt {
@@ -650,18 +656,20 @@ impl<'resolver> CIRTraverse<'resolver> {
     // FIXME
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
         todo!();
+        
         // let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
-        // if let Some(resolved_func) = symbol_entry.as_func() {
-        //     let mut cir_func_decl = self.lower_func_sig(resolved_func.symbol_id.0, &resolved_func.func_decl);
+        // if let Some(func_decl_id) = symbol_entry.as_func() {
+        //     let func_decl = self.decl_tables.func_decl(func_decl_id);
+        //     let mut cir_func_decl = self.lower_func_decl(&func_decl, true);
 
         //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
         //     cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
         //     let mangled_name = mangle_func(
         //         &cir_func_decl.modifiers,
-        //         &self.query.lookup_module_name(resolved_func.file_id).unwrap(),
-        //         &resolved_func.func_decl.name,
+        //         &self.query.lookup_module_name(func_decl.file_id).unwrap(),
+        //         &func_decl.name,
         //     );
 
         //     cir_func_decl.name = mangled_name;

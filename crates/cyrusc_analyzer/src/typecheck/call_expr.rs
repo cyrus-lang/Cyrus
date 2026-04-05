@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     decls::FuncDecl,
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_sema_type},
-    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParams},
+    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
     types::{SemanticType, TypedFuncType},
 };
 
@@ -177,7 +177,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(var_param) = &func_decl.params.variadic {
             match var_param.clone() {
-                TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
+                TypedFuncVariadicParam::Typed(_, variadic_param_type) => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
                         if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
                             if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
@@ -195,7 +195,7 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
                 }
-                TypedFuncVariadicParams::UntypedCStyle => {
+                TypedFuncVariadicParam::UntypedCStyle => {
                     for arg in variadic_args.iter_mut() {
                         self.analyze_expr(arg, arg.sema_type.clone());
                     }

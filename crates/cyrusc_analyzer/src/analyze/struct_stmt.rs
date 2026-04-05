@@ -34,6 +34,8 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_struct_decl(struct_decl_id, &mut struct_decl);
 
+        struct_stmt.fields = struct_decl.fields.clone();
+
         self.decl_tables.with_struct_decl_mut(struct_decl_id, |_struct_decl| {
             *_struct_decl = struct_decl;
         });

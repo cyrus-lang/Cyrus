@@ -37,6 +37,14 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_func_decl(&mut func_decl);
 
+        func_def.params = func_decl.params.clone();
+        func_def.ret_type = func_decl.ret_type.clone();
+
+        self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
+            _func_decl.params = func_decl.params.clone();
+            _func_decl.ret_type = func_decl.ret_type.clone();
+        });
+
         if !is_generic_func {
             let parent_func = self.func_env.current_func.clone();
 
@@ -60,6 +68,9 @@ impl<'a> AnalysisContext<'a> {
         let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
         self.analyze_func_decl(&mut func_decl);
+
+        func_decl_stmt.params = func_decl.params.clone();
+        func_decl_stmt.ret_type = func_decl.ret_type.clone();
 
         self.decl_tables.with_func_decl_mut(func_decl_id, |_func_decl| {
             _func_decl.params = func_decl.params.clone();
