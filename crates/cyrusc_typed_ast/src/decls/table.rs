@@ -114,7 +114,7 @@ impl DeclTablesRegistry {
     #[inline]
     pub fn insert_var(&self, decl: VarDecl) -> VarDeclID {
         let mut tables = self.tables.write().unwrap();
-        let id = VarDeclID(tables.global_vars.len() as u32);
+        let id = VarDeclID(tables.vars.len() as u32);
         tables.vars.push(decl);
         id
     }
