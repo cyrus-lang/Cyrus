@@ -41,11 +41,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStmt::Interface(interface) => self.analyze_interface(interface),
                 TypedStmt::Struct(struct_stmt) => self.analyze_struct_stmt(struct_stmt),
                 TypedStmt::Enum(enum_stmt) => self.analyze_enum_stmt(enum_stmt),
-                TypedStmt::Union(union_stmt) => {
-                    // self.analyze_union(union_stmt)
-                    // FIXME
-                    todo!()
-                }
+                TypedStmt::Union(union_stmt) => self.analyze_union_stmt(union_stmt),
                 TypedStmt::Typedef(typedef) => self.analyze_typedef(typedef),
 
                 TypedStmt::Variable(_)
@@ -83,11 +79,8 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
             TypedStmt::ExportTuple(export_tuple) => {
-                // self.analyze_export_tuple_values(typed_export_tuple_values);
-                // FlowState::Reachable
-
-                // FIXME
-                todo!()
+                self.analyze_export_tuple_values(export_tuple);
+                FlowState::Reachable
             }
             TypedStmt::If(typed_if) => self.analyze_if_stmt(typed_if),
             TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),

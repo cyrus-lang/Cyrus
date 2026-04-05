@@ -1232,118 +1232,119 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
+    fn parse_mutability(&mut self) -> Option<Mutability> {
+        if self.current_token_is(TokenKind::Var) {
+            self.next_token();
+            Some(Mutability::Var)
+        } else if self.current_token_is(TokenKind::Const) {
+            self.next_token();
+            Some(Mutability::Const)
+        } else {
+            None
+        }
+    }
+
     fn parse_export_pattern(&mut self) -> Result<ExportPattern, Diag> {
-        match self.current_token().kind {
+        let loc = self.current_token().loc;
+        let mutability = self.parse_mutability();
+
+        let kind = match &self.current_token().kind {
             TokenKind::Ident { .. } => {
                 let ident = self.parse_ident()?;
-                Ok(ExportPattern::Ident(ident))
+                self.next_token();
+
+                if ident.is_ignore() {
+                    ExportPatternKind::Ignore
+                } else {
+                    ExportPatternKind::Ident(ident)
+                }
             }
             TokenKind::LeftParen => {
                 self.next_token();
+
                 let mut patterns = Vec::new();
 
-                loop {
-                    let pattern = self.parse_export_pattern()?;
-                    self.next_token();
+                if !matches!(self.current_token().kind, TokenKind::RightParen) {
+                    loop {
+                        let pattern = self.parse_export_pattern()?;
 
-                    patterns.push(pattern);
+                        patterns.push(pattern);
 
-                    match self.current_token().kind {
-                        TokenKind::Comma => {
-                            self.next_token();
-                            continue;
-                        }
-                        TokenKind::RightParen => {
-                            break;
-                        }
-                        _ => {
-                            return Err(self.error_with_hint(
-                                &self.current_token(),
-                                ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
-                                "Expected ',' or ')' in tuple pattern.",
-                            ));
+                        match self.current_token().kind {
+                            TokenKind::Comma => {
+                                self.next_token();
+                            }
+                            TokenKind::RightParen => {
+                                break;
+                            }
+                            _ => {
+                                dbg!(self.current_token());
+
+                                return Err(self.error_with_hint(
+                                    &self.current_token(),
+                                    ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                                    "Expected ',' or ')' in tuple pattern.",
+                                ));
+                            }
                         }
                     }
                 }
 
-                Ok(ExportPattern::Tuple(patterns))
+                self.must_be_right_paren()?;
+                ExportPatternKind::Tuple(patterns)
             }
-            _ => Err(self.error_with_hint(
-                &self.current_token(),
-                ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
-                "Expected ident or '('.",
-            )),
-        }
+            _ => {
+                return Err(self.error_with_hint(
+                    &self.current_token(),
+                    ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                    "Expected identifier, '_' or '(' for destructuring pattern.",
+                ));
+            }
+        };
+
+        // optional type annotation
+        let ty = {
+            if matches!(self.current_token().kind, TokenKind::Colon) {
+                self.next_token();
+
+                let type_spec = self.parse_type_specifier()?;
+                self.next_token();
+                
+                Some(type_spec)
+            } else {
+                None
+            }
+        };
+
+        Ok(ExportPattern {
+            kind,
+            ty,
+            mutability,
+            loc,
+        })
     }
 
-    fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<ASTStmt, Diag> {
+    fn parse_export_tuple(&mut self, is_const: bool) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
-        self.expect_current(TokenKind::LeftParen)?;
+        // parse the whole pattern (which must start with left paren)
+        let pattern = self.parse_export_pattern()?;
 
-        if self.current_token_is(TokenKind::RightParen) {
-            return Err(self.error_invalid_token());
+        if !matches!(pattern.kind, ExportPatternKind::Tuple(_)) {
+            return Err(self.error_at_current(ParserDiagKind::InvalidToken(self.current_token().kind.clone())));
         }
 
-        let mut items = Vec::new();
-
-        loop {
-            let pattern = self.parse_export_pattern()?;
-            self.next_token();
-
-            items.push(pattern);
-
-            match self.current_token().kind {
-                TokenKind::Comma => {
-                    self.next_token();
-                    continue;
-                }
-                TokenKind::RightParen => {
-                    break;
-                }
-                _ => {
-                    return Err(self.error_with_hint(
-                        &self.current_token(),
-                        ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
-                        "Expected ',' or ')' in tuple export.",
-                    ));
-                }
+        // optional initializer
+        let rhs = {
+            if self.peek_token_is(TokenKind::Assign) {
+                self.next_token();
+                self.next_token();
+                Some(self.parse_expr(Precedence::Lowest)?)
+            } else {
+                None
             }
-        }
-
-        let pattern = ExportPattern::Tuple(items);
-
-        if self.peek_token_is(TokenKind::Semicolon) {
-            return Err(self.error_at_current_with_hint(
-                ParserDiagKind::IncompleteVariableDeclaration,
-                "Expected type annotation or initializer after variable name.",
-            ));
-        }
-
-        let mut variable_type: Option<TypeSpecifier> = None;
-        if self.peek_token_is(TokenKind::Colon) {
-            self.next_token(); // consume last token
-            self.next_token(); // consume colon
-            variable_type = Some(self.parse_type_specifier()?);
-        }
-
-        if self.peek_token_is(TokenKind::Semicolon) {
-            let end = self.current_token().loc.end;
-
-            return Ok(ASTStmt::ExportTuple(ASTExportTupleStmt {
-                pattern,
-                ty: variable_type,
-                rhs: None,
-                is_const,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }));
-        }
-
-        self.expect_peek(TokenKind::Assign)?;
-        self.next_token(); // consume assign
-
-        let expr = self.parse_expr(Precedence::Lowest)?;
+        };
 
         self.expect_peek_semicolon()?;
 
@@ -1351,8 +1352,7 @@ impl<'source_file> Parser<'source_file> {
 
         Ok(ASTStmt::ExportTuple(ASTExportTupleStmt {
             pattern,
-            rhs: Some(expr),
-            ty: variable_type,
+            rhs,
             is_const,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
@@ -1373,7 +1373,7 @@ impl<'source_file> Parser<'source_file> {
 
         // considered as grouped tuple export
         if self.current_token_is(TokenKind::LeftParen) {
-            return self.parse_grouped_tuple_export(is_const);
+            return self.parse_export_tuple(is_const);
         }
 
         let ident = self.parse_ident()?;

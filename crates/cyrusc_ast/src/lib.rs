@@ -673,16 +673,23 @@ pub struct ASTVarStmt {
 #[derive(Debug, Clone)]
 pub struct ASTExportTupleStmt {
     pub pattern: ExportPattern,
-    pub ty: Option<TypeSpecifier>,
     pub rhs: Option<ASTExpr>,
     pub is_const: bool,
     pub loc: Loc,
 }
+#[derive(Debug, Clone)]
+pub struct ExportPattern {
+    pub kind: ExportPatternKind,
+    pub ty: Option<TypeSpecifier>,
+    pub mutability: Option<Mutability>,
+    pub loc: Loc,
+}
 
 #[derive(Debug, Clone)]
-pub enum ExportPattern {
+pub enum ExportPatternKind {
     Ident(Ident),
     Tuple(Vec<ExportPattern>),
+    Ignore,
 }
 
 #[derive(Debug, Clone)]
@@ -778,6 +785,12 @@ pub enum TypeArg {
 }
 
 pub type TypeArgs = Vec<TypeArg>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mutability {
+    Const,
+    Var,
+}
 
 // Returns the provided return type, or constructs a default `void` type.
 ///
@@ -1022,6 +1035,12 @@ impl Ident {
         }
     }
 
+    #[inline]
+    pub fn is_ignore(&self) -> bool {
+        self.value == "_"
+    }
+
+    #[inline]
     pub fn as_string(&self) -> String {
         self.value.clone()
     }

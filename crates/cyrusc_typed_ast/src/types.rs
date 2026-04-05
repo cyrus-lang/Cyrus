@@ -41,6 +41,7 @@ pub enum SemanticType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnresolvedType {
+    Infer,
     Symbol(SymbolID),
     GenericInst { base: SymbolID, type_args: TypedTypeArgs },
 }
@@ -182,8 +183,9 @@ impl UnresolvedType {
     #[inline]
     pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            UnresolvedType::Symbol(symbol_id) => Some(*symbol_id),
+            UnresolvedType::Infer => None,
             UnresolvedType::GenericInst { .. } => None,
+            UnresolvedType::Symbol(symbol_id) => Some(*symbol_id),
         }
     }
 }

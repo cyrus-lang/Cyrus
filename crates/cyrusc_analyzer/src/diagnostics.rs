@@ -86,7 +86,7 @@ pub enum AnalyzerDiagKind {
     UndefinedGotoLabel { label_name: String },
 
     #[error("Cannot destructure tuple in export without a value.")]
-    DestructureTupleWithNoRhs,
+    TupleDestructionWithNoRhs,
 
     #[error("Generic type '{type_name}' requires type arguments.")]
     MissingTypeArgs { type_name: String },

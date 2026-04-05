@@ -22,7 +22,7 @@ use crate::{
     types::SemanticType,
 };
 use cyrusc_ast::{
-    Ident, SelfModifierKind,
+    Ident, Mutability, SelfModifierKind,
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
@@ -95,16 +95,24 @@ pub struct TypedGotoStmt {
 #[derive(Debug, Clone)]
 pub struct TypedExportTupleStmt {
     pub pattern: TypedExportPattern,
-    pub ty: Option<SemanticType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
-pub enum TypedExportPattern {
+pub struct TypedExportPattern {
+    pub kind: TypedExportPatternKind,
+    pub ty: Option<SemanticType>,
+    pub mutability: Option<Mutability>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedExportPatternKind {
     Ident(SymbolID),
     Tuple(Vec<TypedExportPattern>),
+    Ignore,
 }
 
 #[derive(Debug, Clone)]
@@ -420,6 +428,16 @@ pub enum TypedTypeArg {
     Named { key: String, ty: SemanticType, loc: Loc },
 }
 
+impl TypedExportPattern {
+    #[inline]
+    pub fn as_tuple(&self) -> Option<&Vec<TypedExportPattern>> {
+        match &self.kind {
+            TypedExportPatternKind::Tuple(patterns) => Some(patterns),
+            _ => None,
+        }
+    }
+}
+
 impl TypedFuncParams {
     pub fn as_func_type_params(&self) -> TypedFuncTypeParams {
         let list = self
@@ -480,15 +498,6 @@ impl TypedBuiltin {
         match self {
             TypedBuiltin::BuiltinFunc(builtin_func) => builtin_func.loc,
             TypedBuiltin::BuiltinScope(builtin_scope) => builtin_scope.loc,
-        }
-    }
-}
-
-impl TypedExportPattern {
-    pub fn into_tuple(&self) -> &Vec<TypedExportPattern> {
-        match self {
-            TypedExportPattern::Ident(_) => unreachable!(),
-            TypedExportPattern::Tuple(patterns) => patterns,
         }
     }
 }

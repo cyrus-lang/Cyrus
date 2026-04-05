@@ -86,6 +86,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn normalize_unresolved_type(&mut self, unresolved_type: &UnresolvedType, loc: Loc) -> Option<SemanticType> {
         match unresolved_type {
+            UnresolvedType::Infer => unreachable!(),
             UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(*symbol_id, loc),
             UnresolvedType::GenericInst { base: _, type_args: _ } => todo!(),
         }

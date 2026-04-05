@@ -1059,12 +1059,10 @@ impl Resolver {
 
                     for tuple_field in fields {
                         match self.resolve_type(&None, tuple_field.ty.clone(), ident.loc) {
-                            Some(sema_type) => {
-                                typed_fields.push(TypedEnumVariantTupleField {
-                                    ty: sema_type,
-                                    loc: tuple_field.loc,
-                                })
-                            },
+                            Some(sema_type) => typed_fields.push(TypedEnumVariantTupleField {
+                                ty: sema_type,
+                                loc: tuple_field.loc,
+                            }),
                             None => continue,
                         }
                     }
@@ -1682,59 +1680,60 @@ impl Resolver {
     }
 
     fn resolve_export_tuple_stmt(&mut self, export_tuple: &ASTExportTupleStmt) -> Option<TypedStmt> {
-        let var_type = export_tuple
-            .ty
-            .as_ref()
-            .and_then(|ty_spec| self.resolve_type(&None, ty_spec.clone(), export_tuple.loc));
-
         let typed_rhs = export_tuple.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
 
-        let pattern = match &export_tuple.pattern {
-            ExportPattern::Ident(ident) => {
-                let var_decl_id = self.insert_variable_decl(&ident, None, None, export_tuple.is_const);
-                let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
-
-                TypedExportPattern::Ident(symbol_id)
-            }
-            ExportPattern::Tuple(patterns) => {
-                let mut typed_patterns = Vec::new();
-
-                for sub_pattern in patterns {
-                    match sub_pattern {
-                        ExportPattern::Ident(ident) => {
-                            let var_decl_id = self.insert_variable_decl(&ident, None, None, export_tuple.is_const);
-                            let symbol_id = self.insert_variable_symbol_to_current_scope(&ident, var_decl_id)?;
-
-                            typed_patterns.push(TypedExportPattern::Ident(symbol_id));
-                        }
-                        ExportPattern::Tuple(inner) => {
-                            let inner_stmt = self.resolve_export_tuple_stmt(&ASTExportTupleStmt {
-                                pattern: ExportPattern::Tuple(inner.clone()),
-                                ty: None,
-                                rhs: None,
-                                is_const: export_tuple.is_const,
-                                loc: export_tuple.loc,
-                            })?;
-
-                            if let TypedStmt::ExportTuple(inner_typed) = inner_stmt {
-                                typed_patterns
-                                    .push(TypedExportPattern::Tuple(inner_typed.pattern.into_tuple().to_vec()));
-                            }
-                        }
-                    }
-                }
-
-                TypedExportPattern::Tuple(typed_patterns)
-            }
-        };
+        let pattern = self.resolve_export_pattern(&export_tuple.pattern, export_tuple.is_const)?;
 
         Some(TypedStmt::ExportTuple(TypedExportTupleStmt {
             pattern,
-            ty: var_type,
             rhs: typed_rhs,
             is_const: export_tuple.is_const,
             loc: export_tuple.loc,
         }))
+    }
+
+    fn resolve_export_pattern(&mut self, pattern: &ExportPattern, stmt_is_const: bool) -> Option<TypedExportPattern> {
+        let kind = match &pattern.kind {
+            ExportPatternKind::Ident(ident) => {
+                let is_const = pattern
+                    .mutability
+                    .map(|mutability| match mutability {
+                        Mutability::Const => true,
+                        Mutability::Var => false,
+                    })
+                    .unwrap_or(stmt_is_const /* follow base stmt */);
+
+                let var_decl_id = self.insert_variable_decl(ident, None, None, is_const);
+
+                let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
+
+                TypedExportPatternKind::Ident(symbol_id)
+            }
+
+            ExportPatternKind::Tuple(patterns) => {
+                let mut typed_patterns = Vec::with_capacity(patterns.len());
+
+                for pat in patterns {
+                    typed_patterns.push(self.resolve_export_pattern(pat, stmt_is_const)?);
+                }
+
+                TypedExportPatternKind::Tuple(typed_patterns)
+            }
+
+            ExportPatternKind::Ignore => TypedExportPatternKind::Ignore,
+        };
+
+        let ty = pattern
+            .ty
+            .as_ref()
+            .and_then(|t| self.resolve_type(&None, t.clone(), pattern.loc));
+
+        Some(TypedExportPattern {
+            kind,
+            ty,
+            mutability: pattern.mutability,
+            loc: pattern.loc,
+        })
     }
 
     fn resolve_for_stmt(&mut self, for_stmt: &ASTForStmt) -> Option<TypedForStmt> {
