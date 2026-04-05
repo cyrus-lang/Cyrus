@@ -69,34 +69,29 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_stmt(&mut self, typed_stmt: &mut TypedStmt) -> FlowState {
         match typed_stmt {
-            TypedStmt::Expr(typed_expr) => {
-                self.analyze_expr(typed_expr, typed_expr.sema_type.clone());
+            TypedStmt::Expr(expr) => {
+                self.analyze_expr(expr, expr.sema_type.clone());
                 FlowState::Reachable
             }
-            TypedStmt::Variable(typed_variable) => {
-                self.analyze_variable(typed_variable);
+            TypedStmt::Variable(var) => {
+                self.analyze_variable(var);
                 FlowState::Reachable
             }
-            TypedStmt::BlockStmt(typed_block_statement) => self.analyze_block_stmt(typed_block_statement),
+            TypedStmt::BlockStmt(block) => self.analyze_block_stmt(block),
             TypedStmt::ExportTuple(export_tuple) => {
                 self.analyze_export_tuple_values(export_tuple);
                 FlowState::Reachable
             }
-            TypedStmt::If(typed_if) => self.analyze_if_stmt(typed_if),
-            TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
+            TypedStmt::If(if_stmt) => self.analyze_if_stmt(if_stmt),
+            TypedStmt::For(for_stmt) => self.analyze_for_loop(for_stmt),
+            TypedStmt::While(while_stmt) => self.analyze_while_loop(while_stmt),
             TypedStmt::Break(break_stmt) => self.analyze_break(break_stmt),
             TypedStmt::Continue(continue_stmt) => self.analyze_continue(continue_stmt),
-            TypedStmt::Goto(typed_goto) => {
-                // FIXME
-                // self.analyze_goto(typed_goto);
-                // FlowState::Reachable
-                todo!()
-            }
-            TypedStmt::For(typed_for) => self.analyze_for_loop(typed_for),
-            TypedStmt::While(typed_while) => self.analyze_while_loop(typed_while),
-            TypedStmt::Switch(typed_switch) => self.analyze_switch(typed_switch),
+            TypedStmt::Return(return_stmt) => self.analyze_return(return_stmt),
+            TypedStmt::Switch(switch_stmt) => self.analyze_switch(switch_stmt),
 
             // skipped
+            TypedStmt::Goto(_) => FlowState::Reachable,
             TypedStmt::Label(_) => FlowState::Reachable,
 
             // invalid statements

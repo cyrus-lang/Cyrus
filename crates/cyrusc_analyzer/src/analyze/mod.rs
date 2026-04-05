@@ -19,7 +19,6 @@ pub(crate) mod assign_stmt;
 pub(crate) mod block_stmt;
 pub(crate) mod enum_stmt;
 pub(crate) mod func_stmt;
-pub(crate) mod goto_stmt;
 pub(crate) mod if_stmt;
 pub(crate) mod interface_stmt;
 pub(crate) mod loop_stmt;

@@ -492,14 +492,63 @@ impl<'source_file> Parser<'source_file> {
                 fields,
             })
         } else if self.current_token_is(TokenKind::LeftBrace) {
-            // TODO Struct Enum Variant
-            unimplemented!("Struct Enum Variant Not Implemented Yet.");
+            let fields = self.parse_enum_struct_variant()?;
+
+            Ok(EnumVariant::Struct {
+                ident: variant_name,
+                fields,
+            })
         } else {
             Ok(EnumVariant::Unit(variant_name))
         }
     }
 
-    pub(crate) fn parse_enum_tuple_variant(&mut self) -> Result<Vec<EnumVariantTupleField>, Diag> {
+    fn parse_enum_struct_variant(&mut self) -> Result<Vec<EnumVariantStructField>, Diag> {
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut fields = Vec::new();
+
+        loop {
+            if self.current_token_is(TokenKind::RightBrace) {
+                return Err(self.error_with_hint(
+                    &self.current_token(),
+                    ParserDiagKind::InvalidToken(self.current_token().kind),
+                    "Consider to add a field to enum struct variant or remove the braces.",
+                ));
+            }
+
+            let loc = self.current_token().loc;
+            let (line, column, start) = (loc.line, loc.column, loc.start);
+
+            let name = self.parse_ident()?;
+            self.next_token();
+
+            self.expect_current(TokenKind::Colon)?;
+
+            let ty = self.parse_type_specifier()?;
+            self.next_token();
+
+            let end = self.current_token().loc.end;
+
+            fields.push(EnumVariantStructField {
+                name,
+                ty,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            });
+
+            if self.current_token_is(TokenKind::RightBrace) {
+                self.next_token();
+                break;
+            } else {
+                self.expect_current(TokenKind::Comma)?;
+                continue;
+            }
+        }
+
+        Ok(fields)
+    }
+
+    fn parse_enum_tuple_variant(&mut self) -> Result<Vec<EnumVariantTupleField>, Diag> {
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut fields = Vec::new();
@@ -1634,6 +1683,145 @@ impl<'source_file> Parser<'source_file> {
         }))
     }
 
+    pub fn parse_switch_pattern(&mut self) -> Result<SwitchCasePattern, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        if self.current_token_is(TokenKind::Underscore) {
+            self.next_token();
+            return Ok(SwitchCasePattern::Wildcard);
+        }
+
+        // enum variant pattern
+        if self.current_token_is(TokenKind::Dot) {
+            self.next_token(); // consume dot
+
+            let variant = self.parse_ident()?;
+            self.next_token();
+
+            // .Variant(a, b, _)
+            if self.current_token_is(TokenKind::LeftParen) {
+                self.next_token();
+
+                let mut items = Vec::new();
+
+                if !self.current_token_is(TokenKind::RightParen) {
+                    loop {
+                        let pattern = self.parse_switch_pattern()?;
+                        items.push(pattern);
+
+                        if self.current_token_is(TokenKind::Comma) {
+                            self.next_token();
+                            continue;
+                        }
+
+                        break;
+                    }
+                }
+
+                self.expect_current(TokenKind::RightParen)?;
+                
+                return Ok(SwitchCasePattern::EnumTupleVariant { variant, items });
+            }
+
+            // .Variant { a, b: x, c: _, .. }
+            if self.current_token_is(TokenKind::LeftBrace) {
+                self.next_token();
+
+                let mut items = Vec::new();
+                let mut has_rest = false;
+
+                while !self.current_token_is(TokenKind::RightBrace) {
+                    // rest pattern
+                    if self.current_token_is(TokenKind::DoubleDot) {
+                        has_rest = true;
+                        self.next_token();
+                        break;
+                    }
+
+                    let field_name = self.parse_ident()?;
+                    self.next_token();
+
+                    let pattern = if self.current_token_is(TokenKind::Colon) {
+                        self.next_token();
+                        self.parse_switch_pattern()?
+                    } else {
+                        // shorthand: { a } == { a: a }
+                        SwitchCasePattern::Binding(field_name.clone())
+                    };
+
+                    items.push(SwitchCaseEnumStructPatternField {
+                        name: field_name,
+                        pattern,
+                    });
+
+                    if self.current_token_is(TokenKind::Comma) {
+                        self.next_token();
+                        continue;
+                    }
+
+                    break;
+                }
+
+                self.expect_current(TokenKind::RightBrace)?;
+
+                return Ok(SwitchCasePattern::EnumStructVariant {
+                    variant,
+                    items,
+                    has_rest,
+                });
+            }
+
+            return Ok(SwitchCasePattern::EnumUnit(variant));
+        }
+
+        if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
+            let ident = self.parse_ident()?;
+            self.next_token();
+
+            return Ok(SwitchCasePattern::Binding(ident));
+        }
+
+        // expression or range pattern
+        let expr = self.parse_expr(Precedence::Prefix)?;
+        self.next_token();
+
+        let end = self.current_token().loc.end;
+
+        // range exclusive:  a..b
+        if self.current_token_is(TokenKind::TripleDot) {
+            self.next_token();
+            let upper = self.parse_expr(Precedence::Prefix)?;
+            self.next_token();
+
+            return Ok(SwitchCasePattern::Range(Range {
+                lower: expr,
+                upper,
+                inclusive_upper: false,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }));
+        }
+
+        // range inclusive:  a..=b
+        if self.current_token_is(TokenKind::DoubleDot) && self.peek_token_is(TokenKind::Assign) {
+            self.next_token(); // ..
+            self.next_token(); // =
+
+            let upper = self.parse_expr(Precedence::Prefix)?;
+            self.next_token();
+
+            return Ok(SwitchCasePattern::Range(Range {
+                lower: expr,
+                upper,
+                inclusive_upper: true,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }));
+        }
+
+        // fallback literal / expr pattern
+        Ok(SwitchCasePattern::Expr(expr))
+    }
+
     fn parse_switch(&mut self) -> Result<ASTStmt, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -1650,80 +1838,6 @@ impl<'source_file> Parser<'source_file> {
         let mut cases: Vec<SwitchCase> = Vec::new();
         let mut default_case: Option<ASTBlockStmt> = None;
 
-        fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, Diag> {
-            let line = this.current_token().loc.line;
-
-            let case_pattern = if this.current_token_is(TokenKind::Dot) {
-                this.next_token();
-                let ident = this.parse_ident()?;
-                this.next_token();
-
-                if this.current_token_is(TokenKind::LeftParen) {
-                    this.next_token();
-                    let mut items: Vec<Ident> = Vec::new();
-                    loop {
-                        let item = this.parse_ident()?;
-                        this.next_token();
-                        items.push(item);
-                        if this.current_token_is(TokenKind::RightParen) {
-                            break;
-                        } else {
-                            this.expect_current(TokenKind::Comma)?;
-                        }
-                    }
-                    this.expect_current(TokenKind::RightParen)?;
-                    SwitchCasePattern::EnumVariant(ident, items)
-                } else {
-                    SwitchCasePattern::Ident(ident)
-                }
-            } else {
-                let loc = this.current_token().loc;
-                let start = loc.start;
-                let column = loc.column;
-
-                let expr = this.parse_expr(Precedence::Prefix)?;
-                this.next_token();
-
-                if this.current_token_is(TokenKind::TripleDot) {
-                    // range (exclusive)
-                    this.next_token();
-
-                    let lower = expr;
-                    let upper = this.parse_expr(Precedence::Prefix)?;
-                    this.next_token();
-
-                    let end = this.current_token().loc.end;
-
-                    SwitchCasePattern::Range(Range {
-                        lower,
-                        upper,
-                        inclusive_upper: false,
-                        loc: Loc::new(this.file_id(), line, column, start, end),
-                    })
-                } else if this.current_token_is(TokenKind::DoubleDot) && this.peek_token_is(TokenKind::Assign) {
-                    // range (inclusive)
-                    this.next_token();
-                    this.next_token();
-
-                    let lower = expr;
-                    let upper = this.parse_expr(Precedence::Prefix)?;
-                    this.next_token();
-
-                    let end = this.current_token().loc.end;
-
-                    SwitchCasePattern::Range(Range {
-                        lower,
-                        upper,
-                        inclusive_upper: true,
-                        loc: Loc::new(this.file_id(), line, column, start, end),
-                    })
-                } else {
-                    SwitchCasePattern::Expr(expr)
-                }
-            };
-            Ok(case_pattern)
-        }
-
         loop {
             if self.current_token_is(TokenKind::Case) {
                 let loc = self.current_token().loc;
@@ -1733,7 +1847,7 @@ impl<'source_file> Parser<'source_file> {
 
                 let mut patterns: Vec<SwitchCasePattern> = Vec::new();
                 loop {
-                    let pattern = parse_pattern(self)?;
+                    let pattern = self.parse_switch_pattern()?;
                     patterns.push(pattern);
 
                     if self.current_token_is(TokenKind::Pipe) {

@@ -387,36 +387,6 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_unnamed_enum_value(&mut self) -> Result<ASTExpr, Diag> {
-        let loc = self.current_token().loc;
-        let (line, column, start) = (loc.line, loc.column, loc.start);
-
-        self.next_token(); // consume dot
-
-        let ident = self.parse_ident()?;
-
-        if self.peek_token_is(TokenKind::LeftParen) {
-            self.next_token(); // consume ident
-            let field_values = self.parse_expr_series(TokenKind::RightParen)?;
-
-            let end = self.current_token().loc.end;
-
-            Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
-                ident,
-                kind: UnnamedEnumValueKind::Fielded(field_values),
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }))
-        } else {
-            let end = self.current_token().loc.end;
-
-            Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
-                ident,
-                kind: UnnamedEnumValueKind::Plain,
-                loc: Loc::new(self.file_id(), line, column, start, end),
-            }))
-        }
-    }
-
     fn parse_dynamic_expr(&mut self) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
@@ -680,6 +650,14 @@ impl<'source_file> Parser<'source_file> {
                 self.next_token(); // consume ident
 
                 self.parse_method_call(operand, ident, is_fat_arrow, type_args, line, column, start)
+            } else if self.peek_token_is(TokenKind::LeftBrace) {
+                if is_fat_arrow || type_args.is_some() {
+                    self.error_at_current(ParserDiagKind::InvalidToken(self.current_token().kind));
+                }
+
+                self.next_token(); // consume ident
+
+                self.parse_enum_struct_variant_init(operand, ident, line, column, start)
             } else {
                 let end = self.current_token().loc.end;
 
@@ -1039,6 +1017,133 @@ impl<'source_file> Parser<'source_file> {
             data_type: type_spec,
             loc: Loc::new(self.file_id(), line, column, start, end),
         }))
+    }
+
+    fn parse_enum_struct_variant_field_inits(
+        &mut self,
+        column: usize,
+    ) -> Result<Vec<ASTEnumStructVariantFieldInit>, Diag> {
+        let mut field_inits = Vec::new();
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(self.error_at_current(ParserDiagKind::MissingClosingBrace));
+                }
+                TokenKind::Ident(_) => {
+                    let start = self.current_token().loc.start;
+                    let line = self.current_token().loc.line;
+                    let ident = self.parse_ident()?;
+
+                    self.next_token(); // consume ident
+
+                    if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+                        // syntax shorthand for `ident:ident`
+                        let ident_expr = ASTExpr::Ident(ident.clone());
+
+                        let end = self.current_token().loc.end;
+
+                        field_inits.push(ASTEnumStructVariantFieldInit {
+                            name: ident.clone(),
+                            value: ident_expr,
+                            loc: Loc::new(self.file_id(), line, column, start, end),
+                        });
+                    } else {
+                        self.expect_current(TokenKind::Colon)?;
+
+                        let value = self.parse_expr(Precedence::Lowest)?;
+                        self.next_token();
+
+                        let end = self.current_token().loc.end;
+
+                        field_inits.push(ASTEnumStructVariantFieldInit {
+                            name: ident.clone(),
+                            value,
+                            loc: Loc::new(self.file_id(), line, column, start, end),
+                        });
+                    }
+
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        break;
+                    } else {
+                        self.expect_current(TokenKind::Comma)?;
+                    }
+                }
+                _ => {
+                    return Err(self.error_invalid_token());
+                }
+            }
+        }
+
+        Ok(field_inits)
+    }
+
+    fn parse_enum_struct_variant_init(
+        &mut self,
+        operand: ASTExpr,
+        ident: Ident,
+        line: usize,
+        column: usize,
+        start: usize,
+    ) -> Result<ASTExpr, Diag> {
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let field_inits = self.parse_enum_struct_variant_field_inits(column)?;
+
+        let end = self.current_token().loc.end;
+
+        Ok(ASTExpr::EnumStructVariantInit(ASTEnumStructVariantInit {
+            operand: Box::new(operand),
+            ident,
+            field_inits,
+            loc: Loc::new(self.file_id(), line, column, start, end),
+        }))
+    }
+
+    fn parse_unnamed_enum_value(&mut self) -> Result<ASTExpr, Diag> {
+        let loc = self.current_token().loc;
+        let (line, column, start) = (loc.line, loc.column, loc.start);
+
+        self.next_token(); // consume dot
+
+        let ident = self.parse_ident()?;
+
+        if self.peek_token_is(TokenKind::LeftParen) {
+            self.next_token(); // consume ident
+            let values = self.parse_expr_series(TokenKind::RightParen)?;
+
+            let end = self.current_token().loc.end;
+
+            Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
+                ident,
+                kind: UnnamedEnumValueKind::Tuple(values),
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }))
+        } else if self.peek_token_is(TokenKind::LeftBrace) {
+            self.next_token(); // consume ident 
+
+            self.expect_current(TokenKind::LeftBrace)?;
+            let field_inits = self.parse_enum_struct_variant_field_inits(column)?;
+
+            let end = self.current_token().loc.end;
+
+            Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
+                ident,
+                kind: UnnamedEnumValueKind::Struct(field_inits),
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }))
+        } else {
+            let end = self.current_token().loc.end;
+
+            Ok(ASTExpr::UnnamedEnumValue(ASTUnnamedEnumValueExpr {
+                ident,
+                kind: UnnamedEnumValueKind::Plain,
+                loc: Loc::new(self.file_id(), line, column, start, end),
+            }))
+        }
     }
 
     fn parse_unnamed_struct_value(&mut self, repr_attr: Option<ReprAttr>) -> Result<ASTExpr, Diag> {

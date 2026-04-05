@@ -18,10 +18,12 @@
 use crate::decls::*;
 use std::sync::RwLock;
 
+#[derive(Debug)]
 pub struct DeclTablesRegistry {
     tables: RwLock<DeclTables>,
 }
 
+#[derive(Debug)]
 pub struct DeclTables {
     pub structs: Vec<StructDecl>,
     pub enums: Vec<EnumDecl>,

@@ -139,7 +139,6 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         Symbol(TypedSymbolExpr { symbol_id, .. }) => formatter.format_symbol_name(*symbol_id),
         Literal(literal) => literal.to_string(),
         Prefix(p) => format!("{}{}", p.op, format_typed_expr(&p.operand, formatter)),
-
         Infix(inf) => format!(
             "{}{}{}",
             format_typed_expr(&inf.lhs, formatter),
@@ -272,9 +271,37 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         }
         UnnamedEnumValue(unnamed_enum_value) => {
             let mut out = format!(".{}", unnamed_enum_value.ident.as_string());
-            if let TypedUnnamedEnumValueKind::Fielded(vals) = &unnamed_enum_value.kind {
+            if let TypedUnnamedEnumValueKind::Tuple(vals) = &unnamed_enum_value.kind {
                 out.push_str(&format!("({})", join_exprs(vals, formatter)));
             }
+            out
+        }
+        EnumStructVariantInit(struct_init) => {
+            let mut out = format!(
+                "{}.{}",
+                format_typed_expr(&struct_init.operand, formatter),
+                struct_init.ident
+            );
+
+            if !struct_init.field_inits.is_empty() {
+                let fields = struct_init
+                    .field_inits
+                    .iter()
+                    .map(|field_init| {
+                        format!(
+                            "{}: {}",
+                            field_init.name,
+                            format_typed_expr(&field_init.value, formatter)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                out.push_str(&format!(" {{ {} }}", fields));
+            } else {
+                out.push_str(" {}");
+            }
+
             out
         }
         SemanticType(sema_type) => format_sema_type(sema_type.clone(), formatter),

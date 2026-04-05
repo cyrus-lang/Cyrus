@@ -61,6 +61,7 @@ pub enum ASTExpr {
     Tuple(ASTTupleValueExpr),
     TupleAccess(ASTTupleAccessExpr),
     Dynamic(ASTDynamicExpr),
+    EnumStructVariantInit(ASTEnumStructVariantInit),
     UnnamedStructValue(ASTUnnamedStructValueExpr),
     UnnamedUnionValue(ASTUnnamedUnionValueExpr),
     UnnamedEnumValue(ASTUnnamedEnumValueExpr),
@@ -131,7 +132,8 @@ pub struct ASTUnnamedEnumValueExpr {
 #[derive(Debug, Clone)]
 pub enum UnnamedEnumValueKind {
     Plain,
-    Fielded(Vec<ASTExpr>),
+    Tuple(Vec<ASTExpr>),
+    Struct(Vec<ASTEnumStructVariantFieldInit>),
 }
 
 #[derive(Debug, Clone)]
@@ -286,6 +288,21 @@ pub struct ASTFieldAccessExpr {
     pub operand: Box<ASTExpr>,
     pub field_name: Ident,
     pub type_args: Option<TypeArgs>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTEnumStructVariantInit {
+    pub operand: Box<ASTExpr>,
+    pub ident: Ident,
+    pub field_inits: Vec<ASTEnumStructVariantFieldInit>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ASTEnumStructVariantFieldInit {
+    pub name: Ident,
+    pub value: ASTExpr,
     pub loc: Loc,
 }
 
@@ -610,10 +627,39 @@ pub struct SwitchCase {
 
 #[derive(Debug, Clone)]
 pub enum SwitchCasePattern {
+    /// `_`
+    Wildcard,
+
+    /// variable binding
+    Binding(Ident),
+
+    /// literal / constant expression
     Expr(ASTExpr),
+
+    // `1..10` or `1..=10`
     Range(Range),
-    Ident(Ident),
-    EnumVariant(Ident, Vec<Ident>),
+
+    /// .Variant
+    EnumUnit(Ident),
+
+    /// .Variant(a, b, _)
+    EnumTupleVariant {
+        variant: Ident,
+        items: Vec<SwitchCasePattern>,
+    },
+
+    /// .Variant { a, b: x, c: _, .. }
+    EnumStructVariant {
+        variant: Ident,
+        items: Vec<SwitchCaseEnumStructPatternField>,
+        has_rest: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SwitchCaseEnumStructPatternField {
+    pub name: Ident,
+    pub pattern: SwitchCasePattern,
 }
 
 #[derive(Debug, Clone)]
@@ -1399,7 +1445,7 @@ impl PartialEq for UnnamedEnumValueKind {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (UnnamedEnumValueKind::Plain, UnnamedEnumValueKind::Plain) => true,
-            (UnnamedEnumValueKind::Fielded(exprs1), UnnamedEnumValueKind::Fielded(exprs2)) => exprs1 == exprs2,
+            (UnnamedEnumValueKind::Tuple(exprs1), UnnamedEnumValueKind::Tuple(exprs2)) => exprs1 == exprs2,
             _ => false,
         }
     }

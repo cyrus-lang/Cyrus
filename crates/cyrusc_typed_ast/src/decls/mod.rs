@@ -25,7 +25,7 @@ use crate::{
     types::{SemanticType, TypedFuncType},
 };
 use cyrusc_ast::{
-    abi::Visibility,
+    abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
 use cyrusc_source_loc::Loc;
@@ -163,6 +163,21 @@ pub struct VarDecl {
     pub is_const: bool,
     pub analyzed: bool,
     pub loc: Loc,
+}
+
+impl EnumDecl {
+    pub fn is_repr_c(&self) -> bool {
+        if let Some(repr_attr) = &self.modifiers.repr_attr {
+            if let Some(kind) = repr_attr.kind() {
+                return match kind {
+                    ReprKind::C => true,
+                    ReprKind::Cyrus => false,
+                    ReprKind::Transparent => false,
+                };
+            }
+        }
+        false
+    }
 }
 
 impl MethodDecls {

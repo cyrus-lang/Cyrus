@@ -63,13 +63,13 @@ impl<'a> AnalysisContext<'a> {
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         vtable_registry: Arc<Mutex<VTableRegistry>>,
     ) -> Self {
+        let func_env = FuncEnv::new();
         let type_cache = TypeCache::new();
-        let fenv = FuncEnv::new();
         let control_stack = Vec::new();
 
         Self {
             type_cache,
-            func_env: fenv,
+            func_env,
             config,
             reporter,
             control_stack,

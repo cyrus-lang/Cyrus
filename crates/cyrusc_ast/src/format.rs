@@ -391,6 +391,15 @@ impl fmt::Display for ASTExpr {
                 }
                 write!(f, "}}")
             }
+            ASTExpr::EnumStructVariantInit(struct_init) => {
+                write!(
+                    f,
+                    "{}.{} {{ {} }}",
+                    struct_init.operand,
+                    struct_init.ident,
+                    format_enum_struct_variant_field_inits(&struct_init.field_inits)
+                )
+            }
             ASTExpr::UnnamedStructValue(unnamed_struct_value) => write!(f, "{}", unnamed_struct_value),
             ASTExpr::ModuleImport(module_import) => write!(f, "{}", module_import),
             ASTExpr::TypeSpecifier(type_spec) => write!(f, "{}", type_spec),
@@ -415,9 +424,12 @@ impl fmt::Display for ASTExpr {
 
                 match &unnamed_enum_value.kind {
                     UnnamedEnumValueKind::Plain => todo!(),
-                    UnnamedEnumValueKind::Fielded(exprs) => {
+                    UnnamedEnumValueKind::Tuple(exprs) => {
                         write!(f, "({})", format_expr_series(exprs))?;
                     }
+                    UnnamedEnumValueKind::Struct(field_inits) => {
+                        write!(f, "{{ {} }}", format_enum_struct_variant_field_inits(&field_inits))?;
+                    },
                 }
 
                 Ok(())
@@ -432,6 +444,14 @@ impl fmt::Display for ASTExpr {
             }
         }
     }
+}
+
+fn format_enum_struct_variant_field_inits(fields: &[ASTEnumStructVariantFieldInit]) -> String {
+    fields
+        .iter()
+        .map(|f| format!("{}: {}", f.name, f.value))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl fmt::Display for ASTStmt {

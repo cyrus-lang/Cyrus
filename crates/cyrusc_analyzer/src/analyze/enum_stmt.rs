@@ -40,6 +40,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_enum_decl(&mut self, enum_decl_id: EnumDeclID, enum_decl: &mut EnumDecl) {
+        let is_repr_c = enum_decl.is_repr_c();
+
         self.validate_align(&enum_decl.align, enum_decl.loc);
         self.validate_enum_repr_attr(&enum_decl.modifiers.repr_attr, enum_decl.align.is_some(), enum_decl.loc);
         self.validate_enum_tag_type(&enum_decl.tag_type, enum_decl.loc);
@@ -52,7 +54,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.check_duplicate_enum_variants(&object_name, &mut enum_decl.variants);
 
-        self.analyze_enum_variants(enum_decl_id, &mut enum_decl.variants, &enum_decl.tag_type);
+        self.analyze_enum_variants(enum_decl_id, &mut enum_decl.variants, &enum_decl.tag_type, is_repr_c);
 
         self.analyze_object_implements_interfaces(&object_name, &enum_decl.impls, &enum_decl.methods);
 
@@ -65,9 +67,10 @@ impl<'a> AnalysisContext<'a> {
         enum_decl_id: EnumDeclID,
         variants: &mut [TypedEnumVariant],
         tag_type_opt: &Option<SemanticType>,
+        is_repr_c: bool,
     ) {
         for variant in variants {
-            self.analyze_enum_variant(enum_decl_id, variant, tag_type_opt);
+            self.analyze_enum_variant(enum_decl_id, variant, tag_type_opt, is_repr_c);
         }
     }
 
@@ -76,11 +79,23 @@ impl<'a> AnalysisContext<'a> {
         enum_decl_id: EnumDeclID,
         variant: &mut TypedEnumVariant,
         tag_type_opt: &Option<SemanticType>,
+        is_repr_c: bool,
     ) {
         match variant {
             TypedEnumVariant::Ident(_) => { /* skip */ }
-            TypedEnumVariant::Valued { ident: _, value } => {
+            TypedEnumVariant::Valued { ident, value } => {
                 self.analyze_expr(value, None);
+
+                if let Some(value_type) = &value.sema_type {
+                    if is_repr_c && !value_type.is_integer() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
+                            loc: Some(ident.loc),
+                            hint: None,
+                        });
+                    }
+                }
 
                 if let (Some(value_type), Some(tag_type)) = (&value.sema_type, tag_type_opt) {
                     if !self.is_assignable_to(value_type.clone(), tag_type.clone(), value.loc) {
@@ -99,7 +114,16 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
             }
-            TypedEnumVariant::Tuple { ident: _, fields } => {
+            TypedEnumVariant::Tuple { ident, fields } => {
+                if is_repr_c {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
+                        loc: Some(ident.loc),
+                        hint: None,
+                    });
+                }
+
                 for tuple_field in fields {
                     tuple_field.ty = match self.normalize_sema_type(tuple_field.ty.clone(), tuple_field.loc) {
                         Some(ty) => ty,
@@ -109,7 +133,16 @@ impl<'a> AnalysisContext<'a> {
                     self.validate_enum_variant_field_type(enum_decl_id, &tuple_field.ty, tuple_field.loc);
                 }
             }
-            TypedEnumVariant::Struct { ident: _, fields } => {
+            TypedEnumVariant::Struct { ident, fields } => {
+                if is_repr_c {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::ReprCEnumWithNonIntegerVariant),
+                        loc: Some(ident.loc),
+                        hint: None,
+                    });
+                }
+
                 for struct_field in fields {
                     struct_field.ty = match self.normalize_sema_type(struct_field.ty.clone(), struct_field.loc) {
                         Some(ty) => ty,

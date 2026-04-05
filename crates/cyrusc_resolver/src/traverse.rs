@@ -390,6 +390,9 @@ impl Resolver {
             ASTExpr::Dynamic(dynamic) => self.resolve_dynamic_expr(dynamic),
             ASTExpr::UntypedArray(untyped_array) => self.resolve_untyped_array_expr(untyped_array),
             ASTExpr::UnnamedEnumValue(unnamed_enum_value) => self.resolve_unnamed_enum_value(unnamed_enum_value),
+            ASTExpr::EnumStructVariantInit(struct_variant_init) => {
+                self.resolve_enum_struct_variant_init(struct_variant_init)
+            }
             ASTExpr::UnnamedUnionValue(unnamed_union_value) => self.resolve_unnamed_union_value(unnamed_union_value),
             ASTExpr::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(unnamed_struct_value)
@@ -1037,6 +1040,40 @@ impl Resolver {
         }))
     }
 
+    fn resolve_enum_struct_variant_init(
+        &mut self,
+        struct_variant_init: &ASTEnumStructVariantInit,
+    ) -> Option<TypedExprStmt> {
+        let operand = self.resolve_expr(&struct_variant_init.operand)?;
+
+        let mut typed_field_inits = Vec::new();
+
+        for field_init in &struct_variant_init.field_inits {
+            match self.resolve_expr(&field_init.value) {
+                Some(typed_expr) => {
+                    typed_field_inits.push(TypedEnumStructVariantFieldInit {
+                        name: field_init.name.clone(),
+                        value: Box::new(typed_expr),
+                        loc: field_init.loc,
+                    });
+                }
+                None => continue,
+            }
+        }
+
+        Some(TypedExprStmt {
+            kind: TypedExprKind::EnumStructVariantInit(TypedEnumStructVariantInit {
+                operand: Box::new(operand),
+                ident: struct_variant_init.ident.clone(),
+                field_inits: typed_field_inits,
+                loc: struct_variant_init.loc,
+            }),
+            sema_type: None,
+            mloc: MemoryLocation::RValue,
+            loc: struct_variant_init.loc,
+        })
+    }
+
     fn resolve_enum_variants(&mut self, variants: &[EnumVariant]) -> Option<Vec<TypedEnumVariant>> {
         let mut typed_variants: Vec<TypedEnumVariant> = Vec::with_capacity(variants.len());
 
@@ -1072,9 +1109,24 @@ impl Resolver {
                         fields: typed_fields,
                     }
                 }
-                EnumVariant::Struct { ident: _, fields: _ } => {
-                    // TODO Struct Enum Variant
-                    unimplemented!("Struct Enum Variant Not Implemented Yet.");
+                EnumVariant::Struct { ident, fields } => {
+                    let mut typed_fields = Vec::new();
+
+                    for struct_field in fields {
+                        match self.resolve_type(&None, struct_field.ty.clone(), ident.loc) {
+                            Some(sema_type) => typed_fields.push(TypedEnumVariantStructField {
+                                name: struct_field.name.clone(),
+                                ty: sema_type,
+                                loc: struct_field.loc,
+                            }),
+                            None => continue,
+                        }
+                    }
+
+                    TypedEnumVariant::Struct {
+                        ident: ident.clone(),
+                        fields: typed_fields,
+                    }
                 }
             };
 
@@ -1835,13 +1887,13 @@ impl Resolver {
 
     fn resolve_switch_pattern(&mut self, pattern: &SwitchCasePattern) -> Option<TypedSwitchCasePattern> {
         match pattern {
-            SwitchCasePattern::Ident(ident) => Some(TypedSwitchCasePattern::Ident(ident.clone())),
+            SwitchCasePattern::EnumUnit(ident) => Some(TypedSwitchCasePattern::Ident(ident.clone())),
             SwitchCasePattern::Expr(expr) => {
                 let typed_expr = self.resolve_expr(expr)?;
 
                 Some(TypedSwitchCasePattern::Expr(typed_expr))
             }
-            SwitchCasePattern::EnumVariant(ident, valued_fields) => {
+            SwitchCasePattern::EnumTupleVariant(ident, valued_fields) => {
                 let mut fields = Vec::with_capacity(valued_fields.len());
 
                 for ident in valued_fields {
@@ -1923,11 +1975,25 @@ impl Resolver {
     }
 
     fn resolve_goto_stmt(&self, goto: &ASTGotoStmt) -> Option<TypedStmt> {
-        Some(TypedStmt::Goto(TypedGotoStmt {
-            name: goto.name.as_string(),
-            label_id: None,
-            loc: goto.loc,
-        }))
+        let current_scope = self.current_local_scope().unwrap();
+
+        if let Some(label_id) = current_scope.resolve_label(&goto.name.value) {
+            Some(TypedStmt::Goto(TypedGotoStmt {
+                name: goto.name.as_string(),
+                label_id: Some(label_id),
+                loc: goto.loc,
+            }))
+        } else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(ResolverDiagKind::LabelNotDefined {
+                    label_name: goto.name.as_string(),
+                }),
+                loc: Some(goto.name.loc),
+                hint: None,
+            });
+            return None;
+        }
     }
 
     fn resolve_label_stmt(&mut self, label: &ASTLabelStmt) -> Option<TypedStmt> {
@@ -1990,7 +2056,7 @@ impl Resolver {
     fn resolve_unnamed_enum_value(&mut self, unnamed_enum_value: &ASTUnnamedEnumValueExpr) -> Option<TypedExprStmt> {
         let kind = match &unnamed_enum_value.kind {
             UnnamedEnumValueKind::Plain => TypedUnnamedEnumValueKind::Plain,
-            UnnamedEnumValueKind::Fielded(exprs) => {
+            UnnamedEnumValueKind::Tuple(exprs) => {
                 let mut typed_exprs: Vec<TypedExprStmt> = Vec::new();
                 for expr in exprs {
                     match self.resolve_expr(expr) {
@@ -1998,7 +2064,23 @@ impl Resolver {
                         None => continue,
                     }
                 }
-                TypedUnnamedEnumValueKind::Fielded(typed_exprs)
+                TypedUnnamedEnumValueKind::Tuple(typed_exprs)
+            }
+            UnnamedEnumValueKind::Struct(field_inits) => {
+                let mut typed_field_inits = Vec::new();
+
+                for field_init in field_inits {
+                    match self.resolve_expr(&field_init.value) {
+                        Some(typed_expr) => typed_field_inits.push(TypedEnumStructVariantFieldInit {
+                            name: field_init.name.clone(),
+                            value: Box::new(typed_expr.clone()),
+                            loc: field_init.loc,
+                        }),
+                        None => continue,
+                    }
+                }
+
+                TypedUnnamedEnumValueKind::Struct(typed_field_inits)
             }
         };
 

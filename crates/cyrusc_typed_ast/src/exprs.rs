@@ -58,8 +58,9 @@ pub enum TypedExprKind {
     ArrayIndex(TypedArrayIndexExpr),
     StructInit(TypedStructInitExpr),
     UnnamedStructValue(TypedUnnamedStructValue),
-    UnnamedEnumValue(TypedUnnamedEnumValue),
     UnnamedUnionValue(TypedUnnamedUnionValue),
+    UnnamedEnumValue(TypedUnnamedEnumValue),
+    EnumStructVariantInit(TypedEnumStructVariantInit),
     FuncCall(TypedFuncCall),
     MethodCall(TypedMethodCall),
     FieldAccess(TypedFieldAccess),
@@ -295,8 +296,25 @@ pub struct TypedUnnamedEnumValue {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedUnnamedEnumValueKind {
     Plain,
-    Fielded(Vec<TypedExprStmt>),
+    Tuple(Vec<TypedExprStmt>),
+    Struct(Vec<TypedEnumStructVariantFieldInit>),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedEnumStructVariantInit {
+    pub operand: Box<TypedExprStmt>,
+    pub ident: Ident,
+    pub field_inits: Vec<TypedEnumStructVariantFieldInit>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedEnumStructVariantFieldInit {
+    pub name: Ident,
+    pub value: Box<TypedExprStmt>,
+    pub loc: Loc,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
     pub name: String,
@@ -316,13 +334,15 @@ impl TypedExprStmt {
 }
 
 impl TypedExprKind {
-    pub fn is_dynamic_expr(&self) -> bool {
+    #[inline]
+    pub fn is_dynamic(&self) -> bool {
         match self {
             TypedExprKind::Dynamic(_) => true,
             _ => false,
         }
     }
 
+    #[inline]
     pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
             TypedExprKind::Symbol(TypedSymbolExpr { symbol_id, .. }) => Some(*symbol_id),
@@ -330,6 +350,7 @@ impl TypedExprKind {
         }
     }
 
+    #[inline]
     pub fn is_lvalue(&self) -> bool {
         match self {
             TypedExprKind::Symbol(..) => true,
@@ -337,24 +358,26 @@ impl TypedExprKind {
             TypedExprKind::Deref(_) => true,
             TypedExprKind::FieldAccess(_) => true,
             TypedExprKind::TupleAccess(_) => true,
-            TypedExprKind::MethodCall(_) => false,
-            TypedExprKind::FuncCall(_) => false,
-            TypedExprKind::StructInit(_) => false,
-            TypedExprKind::UnnamedStructValue(_) => false,
-            TypedExprKind::UnnamedEnumValue(_) => false,
-            TypedExprKind::Literal(_) => false,
-            TypedExprKind::Prefix(_) => false,
-            TypedExprKind::Infix(_) => false,
-            TypedExprKind::Unary(_) => false,
-            TypedExprKind::Assign(_) => false,
-            TypedExprKind::AddrOf(_) => false,
-            TypedExprKind::Array(_) => false,
-            TypedExprKind::SemanticType(_) => false,
-            TypedExprKind::Lambda(_) => false,
-            TypedExprKind::Tuple(_) => false,
-            TypedExprKind::Dynamic(_) => false,
-            TypedExprKind::UnnamedUnionValue(_) => false,
-            TypedExprKind::Builtin(_) => false,
+
+            TypedExprKind::MethodCall(_)
+            | TypedExprKind::FuncCall(_)
+            | TypedExprKind::StructInit(_)
+            | TypedExprKind::UnnamedStructValue(_)
+            | TypedExprKind::UnnamedEnumValue(_)
+            | TypedExprKind::Literal(_)
+            | TypedExprKind::Prefix(_)
+            | TypedExprKind::Infix(_)
+            | TypedExprKind::Unary(_)
+            | TypedExprKind::Assign(_)
+            | TypedExprKind::AddrOf(_)
+            | TypedExprKind::Array(_)
+            | TypedExprKind::SemanticType(_)
+            | TypedExprKind::Lambda(_)
+            | TypedExprKind::Tuple(_)
+            | TypedExprKind::Dynamic(_)
+            | TypedExprKind::UnnamedUnionValue(_)
+            | TypedExprKind::Builtin(_)
+            | TypedExprKind::EnumStructVariantInit(_) => false,
         }
     }
 }
@@ -366,6 +389,7 @@ impl fmt::Display for TypedLiteralExpr {
 }
 
 impl TypedLiteralExpr {
+    #[inline]
     pub fn format_kind(&self) -> String {
         match &self.kind {
             LiteralKind::Integer { .. } => "integer",
@@ -380,10 +404,12 @@ impl TypedLiteralExpr {
 }
 
 impl TypedUnnamedEnumValueKind {
+    #[inline]
     pub fn as_fielded(&self) -> Option<&Vec<TypedExprStmt>> {
         match self {
             TypedUnnamedEnumValueKind::Plain => None,
-            TypedUnnamedEnumValueKind::Fielded(exprs) => Some(exprs),
+            TypedUnnamedEnumValueKind::Struct(_) => None,
+            TypedUnnamedEnumValueKind::Tuple(exprs) => Some(exprs),
         }
     }
 }
