@@ -140,14 +140,14 @@ impl CIREnumType {
 
     #[inline]
     pub fn includes_payload(&self) -> bool {
-        self.variants.iter().any(|v| !matches!(v, CIREnumVariant::Ident(_)))
+        self.variants.iter().any(|v| !matches!(v, CIREnumVariant::Unit(_)))
     }
 
     pub fn includes_only_integer_payload(&self) -> bool {
         self.variants.iter().all(|v| match v {
             CIREnumVariant::Valued(_, expr) => expr.ty.is_integer_or_bool(),
-            CIREnumVariant::Ident(_) => true,
-            CIREnumVariant::Fielded(_, _) => false,
+            CIREnumVariant::Unit(_) => true,
+            CIREnumVariant::Tuple(_, _) => false,
         })
     }
 
@@ -169,8 +169,8 @@ impl CIREnumType {
                     Some(variant_idx.try_into().unwrap())
                 }
             }
-            CIREnumVariant::Fielded(_, _) => Some(variant_idx.try_into().unwrap()),
-            CIREnumVariant::Ident(_) => Some(variant_idx.try_into().unwrap()),
+            CIREnumVariant::Tuple(_, _) => Some(variant_idx.try_into().unwrap()),
+            CIREnumVariant::Unit(_) => Some(variant_idx.try_into().unwrap()),
         }
     }
 }

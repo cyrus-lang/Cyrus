@@ -44,8 +44,8 @@ use cyrusc_internal::{
         instances::CIRInstanceRegistry,
     },
 };
-use cyrusc_typed_ast::LabelID;
 use cyrusc_tui_utils::tui_compiled;
+use cyrusc_typed_ast::LabelID;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -186,8 +186,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRStmt::Return(return_stmt) => self.emit_ret(return_stmt),
             CIRStmt::Label(label_stmt) => self.emit_label(label_stmt),
             CIRStmt::Goto(goto_stmt) => self.emit_goto(goto_stmt),
-            CIRStmt::Break(loc) => self.emit_break(loc),
-            CIRStmt::Continue(loc) => self.emit_continue(loc),
+            CIRStmt::Break(break_stmt) => self.emit_break(break_stmt),
+            CIRStmt::Continue(continue_stmt) => self.emit_continue(continue_stmt),
+            
             CIRStmt::Defer(_) => unreachable!(),
         }
 

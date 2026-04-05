@@ -87,15 +87,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRExprKind::UnionFieldAccess(union_field_access_expr) => {
                 self.emit_union_field_access(union_field_access_expr)
             }
-            CIRExprKind::FuncCall(func_call) => self.emit_func_call(func_call),
-            CIRExprKind::MonomorphFuncInstanceCall(monomorph_func_instance_call) => {
-                self.emit_monomorph_func_instance_call(monomorph_func_instance_call)
-            }
+            CIRExprKind::Call(call) => self.emit_call(call),
             CIRExprKind::Lambda(lambda) => self.emit_lambda(lambda),
             CIRExprKind::Dynamic(dynamic) => self.emit_dynamic_expr(dynamic),
-            CIRExprKind::InterfaceMethodCall(interface_method_call) => {
-                self.emit_interface_method_call(interface_method_call)
-            }
         };
 
         unsafe {
@@ -764,7 +758,10 @@ impl<'ll> IRBuilderCtx<'ll> {
             .unwrap()
             .into_pointer_value();
 
-        InternalValue::new(CIRType::Pointer(Box::new(ty)), InternalValueKind::RValue(selected.into()))
+        InternalValue::new(
+            CIRType::Pointer(Box::new(ty)),
+            InternalValueKind::RValue(selected.into()),
+        )
     }
 
     fn emit_logical_and(&self, lhs_rvalue: InternalValue<'ll>, rhs_rvalue: InternalValue<'ll>) -> InternalValue<'ll> {
@@ -916,7 +913,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    fn emit_pointer_add(&self, ptr: PointerValue<'ll>, index: IntValue<'ll>, result_type: CIRType) -> InternalValue<'ll> {
+    fn emit_pointer_add(
+        &self,
+        ptr: PointerValue<'ll>,
+        index: IntValue<'ll>,
+        result_type: CIRType,
+    ) -> InternalValue<'ll> {
         let pointee_type: BasicTypeEnum<'ll> = self
             .emit_ty(result_type.pointer_inner().unwrap().clone())
             .try_into()
@@ -941,7 +943,12 @@ impl<'ll> IRBuilderCtx<'ll> {
         InternalValue::new(result_type, InternalValueKind::RValue(basic_value))
     }
 
-    fn emit_pointer_sub(&self, ptr: PointerValue<'ll>, index: IntValue<'ll>, result_type: CIRType) -> InternalValue<'ll> {
+    fn emit_pointer_sub(
+        &self,
+        ptr: PointerValue<'ll>,
+        index: IntValue<'ll>,
+        result_type: CIRType,
+    ) -> InternalValue<'ll> {
         let pointee_type: BasicTypeEnum<'ll> = self
             .emit_ty(result_type.pointer_inner().unwrap().clone())
             .try_into()
@@ -1685,98 +1692,106 @@ impl<'ll> IRBuilderCtx<'ll> {
             .into_struct_value()
     }
 
-    fn emit_monomorph_func_instance_call(
-        &mut self,
-        monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
-    ) -> InternalValue<'ll> {
-        let (fn_value, cir_func_ty) = self.emit_monomorph_func_instance(monomorph_func_instance_call.monomorph_id);
+    // FIXME
+    // fn emit_monomorph_func_instance_call(
+    //     &mut self,
+    //     monomorph_func_instance_call: &CIRMonomorphFuncInstanceCall,
+    // ) -> InternalValue<'ll> {
+    //     let (fn_value, cir_func_ty) = self.emit_monomorph_func_instance(monomorph_func_instance_call.monomorph_id);
 
-        self.emit_direct_call(
-            &cir_func_ty,
-            &monomorph_func_instance_call.args,
-            &monomorph_func_instance_call.ret_ty,
-            &fn_value,
-        )
-    }
+    //     self.emit_direct_call(
+    //         &cir_func_ty,
+    //         &monomorph_func_instance_call.args,
+    //         &monomorph_func_instance_call.ret_ty,
+    //         &fn_value,
+    //     )
+    // }
 
-    fn emit_interface_method_call(&mut self, interface_method_call: &CIRInterfaceMethodCall) -> InternalValue<'ll> {
-        let dynamic_value = {
-            let lvalue = self.emit_expr(&interface_method_call.operand);
-            let rvalue = self.load_rvalue(lvalue);
-            rvalue.as_basic_value().into_struct_value()
-        };
+    // FIXME
+    // fn emit_interface_method_call(&mut self, interface_method_call: &CIRInterfaceMethodCall) -> InternalValue<'ll> {
+    //     let dynamic_value = {
+    //         let lvalue = self.emit_expr(&interface_method_call.operand);
+    //         let rvalue = self.load_rvalue(lvalue);
+    //         rvalue.as_basic_value().into_struct_value()
+    //     };
 
-        let data_ptr = self
-            .llvmbuilder
-            .build_extract_value(dynamic_value, 0, "extract_data")
-            .unwrap()
-            .into_pointer_value();
+    //     let data_ptr = self
+    //         .llvmbuilder
+    //         .build_extract_value(dynamic_value, 0, "extract_data")
+    //         .unwrap()
+    //         .into_pointer_value();
 
-        let vtable_ptr = self
-            .llvmbuilder
-            .build_extract_value(dynamic_value, 1, "extract_vtable")
-            .unwrap()
-            .into_pointer_value();
+    //     let vtable_ptr = self
+    //         .llvmbuilder
+    //         .build_extract_value(dynamic_value, 1, "extract_vtable")
+    //         .unwrap()
+    //         .into_pointer_value();
 
-        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+    //     let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
 
-        let method_ptr = unsafe {
-            let offset = self
-                .llvmctx
-                .i64_type()
-                .const_int(interface_method_call.method_idx as u64, false);
+    //     let method_ptr = unsafe {
+    //         let offset = self
+    //             .llvmctx
+    //             .i64_type()
+    //             .const_int(interface_method_call.method_idx as u64, false);
 
-            let method_ptr = self
-                .llvmbuilder
-                .build_gep(ptr_type, vtable_ptr, &[offset], "method_ptr")
-                .unwrap();
+    //         let method_ptr = self
+    //             .llvmbuilder
+    //             .build_gep(ptr_type, vtable_ptr, &[offset], "method_ptr")
+    //             .unwrap();
 
-            method_ptr
-        };
+    //         method_ptr
+    //     };
 
-        let vtable_function_pointer = self
-            .llvmbuilder
-            .build_load(ptr_type, method_ptr, "load")
-            .unwrap()
-            .into_pointer_value();
+    //     let vtable_function_pointer = self
+    //         .llvmbuilder
+    //         .build_load(ptr_type, method_ptr, "load")
+    //         .unwrap()
+    //         .into_pointer_value();
 
-        let vtable_function_type = self.emit_func_ty(interface_method_call.func_type.clone());
+    //     let vtable_function_type = self.emit_func_ty(interface_method_call.func_type.clone());
 
-        let mut args = self.emit_func_args(&interface_method_call.args, &interface_method_call.func_type.clone());
+    //     let mut args = self.emit_func_args(&interface_method_call.args, &interface_method_call.func_type.clone());
 
-        args.insert(0, data_ptr.as_basic_value_enum().into());
+    //     args.insert(0, data_ptr.as_basic_value_enum().into());
 
-        let call_site = self
-            .llvmbuilder
-            .build_indirect_call(vtable_function_type, vtable_function_pointer, &args, "indirect_call")
-            .unwrap();
+    //     let call_site = self
+    //         .llvmbuilder
+    //         .build_indirect_call(vtable_function_type, vtable_function_pointer, &args, "indirect_call")
+    //         .unwrap();
 
-        if let Some(basic_value) = call_site.try_as_basic_value().basic() {
-            InternalValue::new(
-                interface_method_call.ret_ty.clone(),
-                InternalValueKind::RValue(basic_value),
-            )
-        } else {
-            self.emit_null(interface_method_call.ret_ty.clone())
-        }
-    }
+    //     if let Some(basic_value) = call_site.try_as_basic_value().basic() {
+    //         InternalValue::new(
+    //             interface_method_call.ret_ty.clone(),
+    //             InternalValueKind::RValue(basic_value),
+    //         )
+    //     } else {
+    //         self.emit_null(interface_method_call.ret_ty.clone())
+    //     }
+    // }
 
-    fn emit_func_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
-        let lvalue = self.emit_expr(&func_call.operand);
+    // FIXME
+    fn emit_call(&mut self, call: &CIRCall) -> InternalValue<'ll> {
+        let lvalue = self.emit_expr(&call.operand);
         let rvalue = self.load_rvalue(lvalue);
 
-        // check if it's a direct or indirect call
-        if let Some(fn_value) = rvalue.as_func() {
-            self.emit_direct_call(
-                &rvalue.ty.as_func().unwrap(),
-                &func_call.args,
-                &func_call.ret_ty,
-                fn_value,
-            )
-        } else if rvalue.as_basic_value().is_pointer_value() {
-            self.emit_indirect_call(func_call)
-        } else {
-            panic!("Expected a function or pointer to function in call expression.")
+        match &call.dispatch {
+            CIRCallDispatch::Normal => {
+                // check if it's a direct or indirect call
+                if let Some(fn_value) = rvalue.as_func() {
+                    self.emit_direct_call(&rvalue.ty.as_func().unwrap(), &call.args, &call.ret_ty, fn_value)
+                } else if rvalue.as_basic_value().is_pointer_value() {
+                    self.emit_indirect_call(call)
+                } else {
+                    panic!("Expected a function or pointer to function in call expression.")
+                }
+            }
+            CIRCallDispatch::Interface {
+                method_idx,
+                methods_len,
+                func_type,
+            } => todo!(),
+            CIRCallDispatch::Monomorph(monomorph_id) => todo!(),
         }
     }
 
@@ -1822,7 +1837,7 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
-    fn emit_indirect_call(&mut self, func_call: &CIRFuncCall) -> InternalValue<'ll> {
+    fn emit_indirect_call(&mut self, func_call: &CIRCall) -> InternalValue<'ll> {
         let lvalue = self.emit_expr(&func_call.operand);
         let rvalue = self.load_rvalue(lvalue);
 

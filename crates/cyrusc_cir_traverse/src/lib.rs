@@ -43,7 +43,8 @@ pub(crate) struct CIRTraverse<'a> {
     vtable_registry: Arc<Mutex<VTableRegistry>>,
     target: &'a ABITarget,
     module_name: String,
-    lambda_id: u32,
+
+    next_irv_id: IRValueID,
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
@@ -65,7 +66,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             vtable_registry,
             target,
             module_name,
-            lambda_id: 0,
+            next_irv_id: IRValueID(0),
         }
     }
 
@@ -229,22 +230,12 @@ impl<'resolver> CIRTraverse<'resolver> {
         operand.clone()
     }
 
-    // FIXME
+    #[inline]
     fn lower_goto(&self, goto: &TypedGotoStmt) -> CIRStmt {
-        todo!();
-        // let scope_rc = self
-        //     .query
-        //     .resolve_local_scope(self.module_id, scope_id_opt.unwrap())
-        //     .unwrap();
-
-        // {
-        //     let scope_ref = scope_rc.borrow();
-        //     let label_id = scope_ref.resolve_label(&goto.name).unwrap();
-        //     CIRStmt::Goto(CIRGotoStmt {
-        //         label_id,
-        //         loc: goto.loc,
-        //     })
-        // }
+        CIRStmt::Goto(CIRGotoStmt {
+            label_id: goto.label_id.unwrap(),
+            loc: goto.loc,
+        })
     }
 
     pub fn lower_export_tuple_to_vars(&mut self, export_tuple: &TypedExportTupleStmt) -> Vec<CIRVarStmt> {
@@ -253,32 +244,33 @@ impl<'resolver> CIRTraverse<'resolver> {
         vars
     }
 
-    // FIXME
     fn lower_export_pattern_recursive(&mut self, pattern: &TypedExportPattern, vars: &mut Vec<CIRVarStmt>) {
-        todo!();
+        match &pattern.kind {
+            TypedExportPatternKind::Ident(symbol_id) => {
+                let var_decl_id = self.query.get_var(*symbol_id).unwrap();
+                let var_decl = self.decl_tables.var_decl(var_decl_id);
 
-        // match pattern {
-        //     TypedExportPattern::Ident(symbol_id) => {
-        //         let var = &self.query.get_var(*symbol_id).unwrap().variable;
+                let var_name = var_decl.name.clone();
+                let var_ty = self.lower_sema_type(&var_decl.ty.as_ref().unwrap());
+                let var_rhs = self.lower_expr(&var_decl.rhs.as_ref().unwrap());
 
-        //         let var_name = var.name.clone();
-        //         let var_ty = self.lower_sema_ty(&var.ty.as_ref().unwrap());
-        //         let var_rhs = self.lower_expr(&var.rhs.as_ref().unwrap());
+                let irv_id = self.next_irv_id();
 
-        //         vars.push(CIRVarStmt {
-        //             irv_id: symbol_id.0,
-        //             name: format!("tuple.{}", var_name),
-        //             ty: var_ty,
-        //             expr: Some(var_rhs),
-        //             loc: var.loc,
-        //         });
-        //     }
-        //     TypedExportPattern::Tuple(patterns) => {
-        //         for pattern in patterns {
-        //             self.lower_export_pattern_recursive(pattern, vars);
-        //         }
-        //     }
-        // }
+                vars.push(CIRVarStmt {
+                    irv_id,
+                    name: var_name,
+                    ty: var_ty,
+                    expr: Some(var_rhs),
+                    loc: var_decl.loc,
+                });
+            }
+            TypedExportPatternKind::Tuple(export_patterns) => {
+                for pattern in export_patterns {
+                    self.lower_export_pattern_recursive(pattern, vars);
+                }
+            }
+            TypedExportPatternKind::Ignore => { /* skip */ }
+        }
     }
 
     fn lower_if(&mut self, if_stmt: &TypedIfStmt) -> CIRStmt {
@@ -319,371 +311,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     // FIXME
     fn lower_switch(&mut self, switch_stmt: &TypedSwitchStmt) -> CIRStmt {
         todo!();
-
-        // let operand = self.lower_expr(&switch_stmt.operand);
-        // let operand_type = switch_stmt.operand.sema_type.as_ref().unwrap().const_inner();
-
-        // let unnamed_enum_type_opt = operand_type
-        //     .as_enum_symbol_id()
-        //     .and_then(|symbol_id| {
-        //         self.query
-        //             .get_enum(symbol_id)
-        //             .map(|resolved_enum| enum_sig_as_unnamed_enum_type(&resolved_enum.enum_decl, switch_stmt.loc))
-        //     })
-        //     .or(operand_type.as_generic_type().and_then(|generic_type| {
-        //         Some(
-        //             self.query
-        //                 .get_enum(generic_type.base)
-        //                 .map(|resolved_enum| {
-        //                     let enum_decl = substitute_enum_sig(
-        //                         self.mapping_ctx_arena.clone(),
-        //                         &resolved_enum.enum_decl,
-        //                         generic_type.mapping_ctx.clone(),
-        //                     )
-        //                     .unwrap();
-
-        //                     enum_sig_as_unnamed_enum_type(&enum_decl, switch_stmt.loc)
-        //                 })
-        //                 .unwrap(),
-        //         )
-        //     }))
-        //     .or(operand_type.as_unnamed_enum());
-
-        // let default = switch_stmt
-        //     .default_case
-        //     .as_ref()
-        //     .and_then(|default_case| Some(self.lower_body(&default_case)));
-
-        // if let Some(unnamed_enum_type) = &unnamed_enum_type_opt {
-        //     if unnamed_enum_type.is_repr_c() || !unnamed_enum_type.includes_payload() {
-        //         self.lower_switch_on_scalar_enum(&operand, &unnamed_enum_type, &default, switch_stmt)
-        //     } else {
-        //         self.lower_switch_on_enum(&unnamed_enum_type, &operand, &default, switch_stmt)
-        //     }
-        // } else {
-        //     if switch_stmt.includes_any_range() || !switch_stmt.includes_only_integer() {
-        //         return self.lower_switch_as_chained_if(&operand, &default, switch_stmt);
-        //     }
-
-        //     self.lower_pure_switch(&operand, &default, switch_stmt)
-        // }
     }
-
-    fn lower_switch_as_chained_if(
-        &mut self,
-
-        operand: &CIRExpr,
-        default: &Option<CIRBlockStmt>,
-        switch_stmt: &TypedSwitchStmt,
-    ) -> CIRStmt {
-        let mut current: Option<CIRIfStmt> = None;
-
-        // build chain bottom-up
-        for case in switch_stmt.cases.iter().rev() {
-            let mut cond_expr = CIRExpr {
-                kind: CIRExprKind::Literal(CIRLiteral {
-                    kind: CIRLiteralKind::Bool(false),
-                    ty: CIRType::Plain(PlainType::Bool),
-                }),
-                ty: CIRType::Plain(PlainType::Bool),
-                loc: case.loc,
-            };
-            for pattern in &case.patterns {
-                let new_cond = match &pattern {
-                    TypedSwitchCasePattern::Expr(expr) => {
-                        let lowered_case_expr = self.lower_expr(expr);
-
-                        CIRExpr {
-                            kind: CIRExprKind::Infix(CIRInfixExpr {
-                                op: InfixOperator::Equal,
-                                lhs: Box::new(operand.clone()),
-                                rhs: Box::new(lowered_case_expr),
-                            }),
-                            ty: CIRType::Plain(PlainType::Bool),
-                            loc: expr.loc,
-                        }
-                    }
-                    TypedSwitchCasePattern::Range(range) => {
-                        let lower = self.lower_expr(&range.lower);
-                        let upper = self.lower_expr(&range.upper);
-
-                        let ge = CIRExpr {
-                            kind: CIRExprKind::Infix(CIRInfixExpr {
-                                op: InfixOperator::GreaterEqual,
-                                lhs: Box::new(operand.clone()),
-                                rhs: Box::new(lower),
-                            }),
-                            ty: CIRType::Plain(PlainType::Bool),
-                            loc: range.loc,
-                        };
-
-                        // lhs <= upper (inclusive)
-                        // lhs < upper (exclusive)
-                        let upper_op = if range.inclusive_upper {
-                            InfixOperator::LessEqual
-                        } else {
-                            InfixOperator::LessThan
-                        };
-
-                        let upper_cmp = CIRExpr {
-                            kind: CIRExprKind::Infix(CIRInfixExpr {
-                                op: upper_op,
-                                lhs: Box::new(operand.clone()),
-                                rhs: Box::new(upper),
-                            }),
-                            ty: CIRType::Plain(PlainType::Bool),
-                            loc: range.loc,
-                        };
-
-                        CIRExpr {
-                            kind: CIRExprKind::Infix(CIRInfixExpr {
-                                op: InfixOperator::And,
-                                lhs: Box::new(ge),
-                                rhs: Box::new(upper_cmp),
-                            }),
-                            ty: CIRType::Plain(PlainType::Bool),
-                            loc: range.loc,
-                        }
-                    }
-                    _ => unreachable!("Unexpected switch pattern for if-chain lowering"),
-                };
-
-                let loc = new_cond.loc;
-
-                cond_expr = CIRExpr {
-                    kind: CIRExprKind::Infix(CIRInfixExpr {
-                        op: InfixOperator::Or,
-                        lhs: Box::new(cond_expr),
-                        rhs: Box::new(new_cond),
-                    }),
-                    ty: CIRType::Plain(PlainType::Bool),
-                    loc,
-                };
-            }
-
-            let then_block = Box::new(self.lower_body(&case.body));
-
-            let new_if = CIRIfStmt {
-                cond: cond_expr,
-                then_block,
-                else_block: match current {
-                    Some(inner) => {
-                        let loc = inner.loc;
-
-                        Some(Box::new(CIRBlockStmt {
-                            stmts: vec![CIRStmt::If(inner)],
-                            defers: Vec::new(),
-                            loc,
-                        }))
-                    }
-                    None => None,
-                },
-                loc: switch_stmt.loc,
-            };
-
-            current = Some(new_if);
-        }
-
-        let root_if = match current {
-            Some(mut if_stmt) => {
-                if let Some(default_block) = default.clone() {
-                    let loc = default_block.loc;
-
-                    if_stmt.else_block = Some(Box::new(CIRBlockStmt {
-                        stmts: vec![CIRStmt::Block(default_block)],
-                        defers: Vec::new(),
-                        loc,
-                    }));
-                }
-                if_stmt
-            }
-            None => {
-                return match default {
-                    Some(block) => CIRStmt::Block(block.clone()),
-                    None => unreachable!("Switch statement has no any case."),
-                };
-            }
-        };
-
-        CIRStmt::If(root_if)
-    }
-
-    // fn lower_switch_on_scalar_enum(
-    //     &mut self,
-    //     operand: &CIRExpr,
-    //     unnamed_enum_type: &TypedUnnamedEnumType,
-    //     default: &Option<CIRBlockStmt>,
-    //     switch_stmt: &TypedSwitchStmt,
-    // ) -> CIRStmt {
-    //     let enum_ty = self.lower_unnamed_enum_type_as_cir_enum_ty(unnamed_enum_type);
-
-    //     let cases: Vec<CIRSwitchCase> = switch_stmt
-    //         .cases
-    //         .iter()
-    //         .map(|case| {
-    //             let patterns: Vec<CIRExpr> = case
-    //                 .patterns
-    //                 .iter()
-    //                 .map(|pattern| {
-    //                     let (case_ident, case_loc) = match &pattern {
-    //                         TypedSwitchCasePattern::Ident(ident) => (ident, ident.loc),
-    //                         _ => unreachable!("Unexpected enum variant pattern when lowering switch on integer enum."),
-    //                     };
-
-    //                     let tag = enum_ty.compute_variant_tag(&case_ident.value).unwrap();
-    //                     let tag_type = enum_ty.tag_type_or_infer_or_default();
-
-    //                     CIRExpr {
-    //                         kind: CIRExprKind::Literal(CIRLiteral {
-    //                             kind: CIRLiteralKind::Integer(tag.try_into().unwrap(), tag_type.is_signed_integer()),
-    //                             ty: *tag_type.clone(),
-    //                         }),
-    //                         ty: *tag_type,
-    //                         loc: case_loc.clone(),
-    //                     }
-    //                 })
-    //                 .collect();
-
-    //             let body = self.lower_body(&case.body);
-
-    //             CIRSwitchCase { patterns, body }
-    //         })
-    //         .collect();
-
-    //     let explicit_all_cases_return = switch_stmt.cases.len() == enum_ty.variants.len();
-
-    //     CIRStmt::Switch(CIRSwitchStmt {
-    //         value: operand.clone(),
-    //         cases,
-    //         default: default.clone(),
-    //         all_cases_covered: explicit_all_cases_return,
-    //         loc: switch_stmt.loc,
-    //     })
-    // }
-
-    fn lower_pure_switch(
-        &mut self,
-        operand: &CIRExpr,
-        default: &Option<CIRBlockStmt>,
-        switch_stmt: &TypedSwitchStmt,
-    ) -> CIRStmt {
-        let cases: Vec<CIRSwitchCase> = switch_stmt
-            .cases
-            .iter()
-            .map(|case| {
-                let patterns: Vec<CIRExpr> = case
-                    .patterns
-                    .iter()
-                    .map(|pattern| {
-                        let case_expr = match &pattern {
-                            TypedSwitchCasePattern::Expr(expr) => expr,
-                            TypedSwitchCasePattern::Range(..) => {
-                                unreachable!("Unexpected range when lowering pure switch.")
-                            }
-                            _ => unreachable!("Unexpected enum variant pattern when lowering pure switch."),
-                        };
-
-                        self.lower_expr(case_expr)
-                    })
-                    .collect();
-
-                let body = self.lower_body(&case.body);
-
-                CIRSwitchCase { patterns, body }
-            })
-            .collect();
-
-        CIRStmt::Switch(CIRSwitchStmt {
-            value: operand.clone(),
-            cases,
-            default: default.clone(),
-            all_cases_covered: false,
-            loc: switch_stmt.loc,
-        })
-    }
-
-    // FIXME
-    // fn lower_switch_on_enum(
-    //     &mut self,
-
-    //     unnamed_enum_type: &TypedUnnamedEnumType,
-    //     operand: &CIRExpr,
-    //     default: &Option<CIRBlockStmt>,
-    //     switch_stmt: &TypedSwitchStmt,
-    // ) -> CIRStmt {
-    //     let mut lowered_cases: Vec<CIRSwitchOnEnumCase> = Vec::new();
-
-    //     for case in &switch_stmt.cases {
-    //         let mut lowered_patterns: Vec<CIRSwitchOnEnumPattern> = Vec::new();
-
-    //         for pattern in &case.patterns {
-    //             match pattern {
-    //                 TypedSwitchCasePattern::Ident(ident) => {
-    //                     let variant_idx = unnamed_enum_type
-    //                         .variants
-    //                         .iter()
-    //                         .position(|variant| variant.ident().value == ident.value)
-    //                         .unwrap();
-
-    //                     lowered_patterns.push(CIRSwitchOnEnumPattern::Ident(ident.as_string(), variant_idx));
-    //                 }
-    //                 TypedSwitchCasePattern::EnumVariant(ident, exported_fields, _) => {
-    //                     let variant_idx = unnamed_enum_type
-    //                         .variants
-    //                         .iter()
-    //                         .position(|variant| variant.ident().value == ident.value)
-    //                         .unwrap();
-
-    //                     let variant = &unnamed_enum_type.variants[variant_idx];
-
-    //                     match variant {
-    //                         TypedUnnamedEnumVariant::Valued(_, expr) => {
-    //                             let exported_field = exported_fields.first().unwrap();
-    //                             let lowered_expr = self.lower_expr(&expr);
-
-    //                             lowered_patterns.push(CIRSwitchOnEnumPattern::Valued(
-    //                                 ident.as_string(),
-    //                                 variant_idx,
-    //                                 (exported_field.clone(), lowered_expr),
-    //                             ));
-    //                         }
-    //                         TypedUnnamedEnumVariant::Variant(_, valued_fields) => {
-    //                             let exported_fields: Vec<(TypedIdent, CIRType)> = exported_fields
-    //                                 .iter()
-    //                                 .enumerate()
-    //                                 .map(|(i, ident)| {
-    //                                     let field_ty = &valued_fields.get(i).as_ref().unwrap().ty;
-    //                                     (ident.clone(), self.lower_sema_ty(field_ty))
-    //                                 })
-    //                                 .collect();
-
-    //                             lowered_patterns.push(CIRSwitchOnEnumPattern::ExportFields(
-    //                                 ident.as_string(),
-    //                                 variant_idx,
-    //                                 exported_fields,
-    //                             ));
-    //                         }
-    //                         TypedUnnamedEnumVariant::Ident(_) => unreachable!(),
-    //                     }
-    //                 }
-    //                 _ => unreachable!("Unexpected non-enum-variant pattern when lowering switch as switch_on_enum."),
-    //             }
-    //         }
-
-    //         let body = self.lower_body(&case.body);
-    //         lowered_cases.push(CIRSwitchOnEnumCase {
-    //             patterns: lowered_patterns,
-    //             body,
-    //         });
-    //     }
-
-    //     CIRStmt::SwitchOnEnum(CIRSwitchOnEnumStmt {
-    //         value: operand.clone(),
-    //         cases: lowered_cases,
-    //         default: default.clone(),
-    //         loc: switch_stmt.loc,
-    //     })
-    // }
 
     fn lower_while(&mut self, while_stmt: &TypedWhileStmt) -> CIRStmt {
         let cond = Box::new(self.lower_expr(&while_stmt.cond));
@@ -717,7 +345,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     fn lower_break(&self, break_stmt: &TypedBreakStmt) -> CIRStmt {
-        CIRStmt::Break(CIRContinueStmt { loc: break_stmt.loc })
+        CIRStmt::Break(CIRBreakStmt { loc: break_stmt.loc })
     }
 
     fn lower_continue(&self, continue_stmt: &TypedContinueStmt) -> CIRStmt {
@@ -738,7 +366,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             .ty
             .as_ref()
             .or_else(|| global_var.expr.as_ref().and_then(|expr| expr.sema_type.as_ref()))
-            .map(|sema_type| self.lower_sema_ty(sema_type))
+            .map(|sema_type| self.lower_sema_type(sema_type))
             .unwrap_or_else(|| {
                 panic!(
                     "Global var '{}' has neither explicit type nor valid initializer type.",
@@ -750,8 +378,10 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let mangled_name = mangle_global_var(&global_var.modifiers, &self.module_name, &global_var.name);
 
+        let irv_id = self.next_irv_id();
+
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
-            irv_id: global_var.symbol_id.0,
+            irv_id,
             name: mangled_name,
             ty,
             expr,
@@ -760,35 +390,35 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
-    fn lower_global_var_sig(&mut self, irv_id: IRValueID, global_var_sig: &GlobalVarDecl) -> CIRGlobalVarStmt {
-        let ty = global_var_sig
-            .ty
-            .as_ref()
-            .or_else(|| global_var_sig.rhs.as_ref().and_then(|expr| expr.sema_type.as_ref()))
-            .map(|sema_type| self.lower_sema_ty(sema_type))
-            .unwrap_or_else(|| {
-                panic!(
-                    "Global var '{}' has neither explicit type nor valid initializer type.",
-                    global_var_sig.name
-                )
-            });
+    // fn lower_global_var_sig(&mut self, irv_id: IRValueID, global_var_sig: &GlobalVarDecl) -> CIRGlobalVarStmt {
+    //     let ty = global_var_sig
+    //         .ty
+    //         .as_ref()
+    //         .or_else(|| global_var_sig.rhs.as_ref().and_then(|expr| expr.sema_type.as_ref()))
+    //         .map(|sema_type| self.lower_sema_ty(sema_type))
+    //         .unwrap_or_else(|| {
+    //             panic!(
+    //                 "Global var '{}' has neither explicit type nor valid initializer type.",
+    //                 global_var_sig.name
+    //             )
+    //         });
 
-        CIRGlobalVarStmt {
-            irv_id,
-            name: global_var_sig.name.clone(),
-            ty,
-            expr: None,
-            modifiers: global_var_sig.modifiers.clone(),
-            loc: global_var_sig.loc,
-        }
-    }
+    //     CIRGlobalVarStmt {
+    //         irv_id,
+    //         name: global_var_sig.name.clone(),
+    //         ty,
+    //         expr: None,
+    //         modifiers: global_var_sig.modifiers.clone(),
+    //         loc: global_var_sig.loc,
+    //     }
+    // }
 
     fn lower_var(&mut self, var: &TypedVarStmt) -> CIRVarStmt {
         let ty = var
             .ty
             .as_ref()
             .or_else(|| var.rhs.as_ref().and_then(|rhs| rhs.sema_type.as_ref()))
-            .map(|ty| self.lower_sema_ty(ty))
+            .map(|ty| self.lower_sema_type(ty))
             .unwrap_or_else(|| {
                 panic!(
                     "Variable '{}' has neither explicit type nor RHS type ({}:{})",
@@ -798,8 +428,10 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
+        let irv_id = self.next_irv_id();
+
         CIRVarStmt {
-            irv_id: var.symbol_id.0,
+            irv_id,
             name: var.name.clone(),
             ty,
             expr,
@@ -811,60 +443,58 @@ impl<'resolver> CIRTraverse<'resolver> {
         func_type_params
             .list
             .iter()
-            .map(|sema_type| self.lower_sema_ty(sema_type))
+            .map(|sema_type| self.lower_sema_type(sema_type))
             .collect()
     }
 
-    // FIXME
     fn lower_func_params(&mut self, func_params: &TypedFuncParams, is_decl: bool) -> CIRFuncParams {
-        todo!();
+        CIRFuncParams {
+            list: func_params
+                .list
+                .iter()
+                .map(|param_kind| {
+                    let name = Some(param_kind.name());
+                    let loc = param_kind.loc();
 
-        // CIRFuncParams {
-        //     list: func_params
-        //         .list
-        //         .iter()
-        //         .map(|param_kind| {
-        //             let name = Some(param_kind.name());
-        //             let loc = param_kind.loc();
+                    match param_kind {
+                        TypedFuncParamKind::FuncParam(func_param) => {
+                            let irv_id = { if !is_decl { Some(self.next_irv_id()) } else { None } };
 
-        //             match param_kind {
-        //                 TypedFuncParamKind::FuncParam(func_param) => {
-        //                     let irv_id = {
-        //                         if !is_decl {
-        //                             Some(func_param.symbol_id.unwrap().0)
-        //                         } else {
-        //                             None
-        //                         }
-        //                     };
+                            CIRFuncParam {
+                                name,
+                                irv_id,
+                                ty: self.lower_sema_type(&func_param.ty),
+                                loc,
+                            }
+                        }
+                        TypedFuncParamKind::SelfModifier(self_modifier) => {
+                            let irv_id = self.next_irv_id();
 
-        //                     CIRFuncParam {
-        //                         name,
-        //                         irv_id,
-        //                         ty: self.lower_sema_ty(&func_param.ty),
-        //                         loc,
-        //                     }
-        //                 }
-        //                 TypedFuncParamKind::SelfModifier(self_modifier) => CIRFuncParam {
-        //                     name,
-        //                     irv_id: Some(self_modifier.self_id.unwrap().0),
-        //                     ty: self.lower_sema_ty(&self_modifier.ty.as_ref().unwrap()),
-        //                     loc,
-        //                 },
-        //             }
-        //         })
-        //         .collect(),
-        //     is_var: func_params.variadic.is_some(),
-        // }
+                            CIRFuncParam {
+                                name,
+                                irv_id: Some(irv_id),
+                                ty: self.lower_sema_type(&self_modifier.ty.as_ref().unwrap()),
+                                loc,
+                            }
+                        }
+                    }
+                })
+                .collect(),
+
+            is_var: func_params.variadic.is_some(),
+        }
     }
 
     fn lower_func_def(&mut self, func_def: &TypedFuncDefStmt, mangle_name: bool) -> CIRStmt {
         let params = self.lower_func_params(&func_def.params, false);
 
         let body = self.lower_body(&func_def.body);
-        let ret = self.lower_sema_ty(&func_def.ret_type);
+        let ret = self.lower_sema_type(&func_def.ret_type);
+
+        let irv_id = self.next_irv_id();
 
         let mut cir_func_def = CIRFuncDefStmt {
-            irv_id: func_def.symbol_id.0,
+            irv_id,
             name: func_def.name.clone(),
             params,
             body: Box::new(body),
@@ -887,7 +517,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
     fn lower_func_decl(&mut self, func_decl: &TypedFuncDeclStmt, mangle_name: bool) -> CIRFuncDeclStmt {
         let params = self.lower_func_params(&func_decl.params, true);
-        let ret = self.lower_sema_ty(&func_decl.ret_type);
+        let ret = self.lower_sema_type(&func_decl.ret_type);
 
         let mut func_name = func_decl.renamed_as.as_ref().unwrap_or(&func_decl.name).clone();
 
@@ -895,28 +525,11 @@ impl<'resolver> CIRTraverse<'resolver> {
             func_name = mangle_func(&func_decl.modifiers, &self.module_name, &func_name);
         }
 
-        let mut cir_func_decl = CIRFuncDeclStmt {
-            irv_id: func_decl.symbol_id.0,
-            name: func_name,
-            params,
-            ret,
-            modifiers: func_decl.modifiers.clone(),
-            abi_func_info: None,
-            loc: func_decl.loc,
-        };
-
-        let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-        cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
-        cir_func_decl
-    }
-
-    pub(crate) fn lower_func_sig(&mut self, irv_id: IRValueID, func_decl: &FuncDecl) -> CIRFuncDeclStmt {
-        let params = self.lower_func_params(&func_decl.params, func_decl.is_func_decl);
-        let ret = self.lower_sema_ty(&func_decl.ret_type);
+        let irv_id = self.next_irv_id();
 
         let mut cir_func_decl = CIRFuncDeclStmt {
             irv_id,
-            name: func_decl.name.clone(),
+            name: func_name,
             params,
             ret,
             modifiers: func_decl.modifiers.clone(),
@@ -948,7 +561,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             debug_assert!(expr.sema_type.is_some());
         }
 
-        let ty = self.lower_sema_ty(&expr.sema_type.clone().unwrap());
+        let ty = self.lower_sema_type(&expr.sema_type.clone().unwrap());
 
         let kind = match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => self.lower_load_symbol(symbol_expr.symbol_id),
@@ -968,13 +581,14 @@ impl<'resolver> CIRTraverse<'resolver> {
             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(lambda_expr),
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
-            TypedExprKind::Dynamic(dynamic) => self.lower_dynamic_expr(dynamic),
+            TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
             TypedExprKind::Builtin(_builtin) => todo!(), // TODO
 
+            // lowered in analyzer layer
             TypedExprKind::UnnamedStructValue(_)
             | TypedExprKind::UnnamedEnumValue(_)
-            | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor"),
-
+            | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
+            TypedExprKind::EnumStructVariantInit(_) => unreachable!("unexpected enum struct variant init expression"),
             TypedExprKind::SemanticType(..) => unreachable!("unexpected semantic type as expression"),
         };
 
@@ -986,7 +600,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     // FIXME
-    fn lower_dynamic_expr(&mut self, dynamic: &TypedDynamicExpr) -> CIRExprKind {
+    fn lower_dynamic(&mut self, dynamic: &TypedDynamicExpr) -> CIRExprKind {
         todo!();
 
         // let operand = self.lower_expr(&dynamic.operand);
@@ -1174,7 +788,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_lambda(&mut self, lambda: &TypedLambdaExpr) -> CIRExprKind {
         let params = self.lower_func_params(&lambda.params, false);
         let body = Box::new(self.lower_body(&lambda.body));
-        let ret = self.lower_sema_ty(&lambda.ret_type);
+        let ret = self.lower_sema_type(&lambda.ret_type);
 
         let cir_func_type = CIRFuncType {
             params: params.list.iter().map(|param| param.ty.clone()).collect(),
@@ -1186,8 +800,7 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
 
-        let irv_id = self.lambda_id;
-        self.lambda_id += 1;
+        let irv_id = self.next_irv_id();
 
         CIRExprKind::Lambda(CIRLambda {
             irv_id,
@@ -1201,157 +814,8 @@ impl<'resolver> CIRTraverse<'resolver> {
     }
 
     // FIXME
-    fn lower_interface_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        todo!();
-
-        // let operand = self.lower_expr(&method_call.operand);
-
-        // let args = method_call
-        //     .args
-        //     .iter()
-        //     .map(|arg| self.lower_expr(arg))
-        //     .collect::<Vec<CIRExpr>>();
-
-        // let ret_ty = self.lower_sema_ty(&method_call.func_decl.as_ref().unwrap().ret_type.clone());
-
-        // let metadata = method_call.method_call_on_interface.as_ref().unwrap();
-
-        // let cir_func_decl = self.lower_func_sig(metadata.method_sig.symbol_id.unwrap().0, &metadata.method_sig);
-
-        // CIRExprKind::InterfaceMethodCall(CIRInterfaceMethodCall {
-        //     operand: Box::new(operand),
-        //     args,
-        //     ret_ty,
-        //     func_type: cir_func_decl_as_func_ty(&cir_func_decl),
-        //     method_idx: metadata.method_idx,
-        //     methods_len: metadata.methods_len,
-        // })
-    }
-
-    // FIXME
-    fn lower_regular_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
-        todo!();
-
-        // if method_call.method_call_on_interface.is_some() {
-        //     return self.lower_interface_method_call(method_call);
-        // }
-
-        // self.current_obj_operand_ty = Some(method_call.operand.sema_type.clone().unwrap());
-        // self.current_self_ty = method_call
-        //     .self_ty
-        //     .clone()
-        //     .map(|sema_type| self.lower_sema_ty(&sema_type));
-
-        // let mut func_decl = method_call.func_decl.as_ref().unwrap().clone();
-
-        // let mangled_name = mangle_method(
-        //     &self.query.lookup_module_name(func_decl.module_id).unwrap(),
-        //     &method_call.object_name.as_ref().unwrap(),
-        //     &func_decl.name,
-        // );
-
-        // func_decl.name = mangled_name;
-
-        // let args = method_call
-        //     .args
-        //     .iter()
-        //     .map(|arg| self.lower_expr(arg))
-        //     .collect::<Vec<CIRExpr>>();
-
-        // let ret_ty = self.lower_sema_ty(&func_decl.ret_type.clone());
-
-        // let cir_expr_kind;
-        // if let Some(monomorph_id) = method_call.monomorph_id {
-        //     self.insert_monomorph_func_instance(monomorph_id, &func_decl);
-
-        //     cir_expr_kind = CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
-        //         monomorph_id,
-        //         args,
-        //         ret_ty,
-        //     })
-        // } else {
-        //     let func_decl = typed_func_decl_from_func_sig(&func_decl);
-        //     let cir_func_decl = self.lower_func_decl(&func_decl, false);
-
-        //     let operand = Box::new(CIRExpr {
-        //         kind: CIRExprKind::Load(CIRValue {
-        //             irv_id: method_call.func_decl.as_ref().unwrap().symbol_id.unwrap().0,
-        //             kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-        //         }),
-        //         ty: ret_ty.clone(),
-        //         loc: func_decl.loc,
-        //     });
-
-        //     cir_expr_kind = CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
-        // }
-
-        // self.current_self_ty = None;
-        // cir_expr_kind
-    }
-
-    // FIXME: method_call is wrong! Use TypedEnumInit.
-    fn lower_enum_init(&mut self, enum_decl: &EnumDecl, method_call: &TypedMethodCall) -> CIRExprKind {
-        todo!();
-
-        // let sema_type = method_call.operand.sema_type.as_ref().unwrap();
-
-        // let variant_idx_opt = enum_decl
-        //     .variants
-        //     .iter()
-        //     .position(|variant| variant.ident().as_string() == method_call.method_name);
-
-        // // it's not a enum variant construction, so try again as a regular method call
-        // let variant_idx = if let Some(i) = variant_idx_opt {
-        //     i
-        // } else {
-        //     return self.lower_regular_method_call(method_call);
-        // };
-
-        // let typed_variant = enum_decl.variants.get(variant_idx).unwrap();
-
-        // let variant: CIREnumInitVariant;
-        // let enum_ty: CIREnumTy;
-        // if let Some(generic_type) = sema_type.as_generic_type() {
-        //     let enum_decl = substitute_enum_sig(
-        //         self.mapping_ctx_arena.clone(),
-        //         &enum_decl,
-        //         generic_type.mapping_ctx.clone(),
-        //     )
-        //     .unwrap();
-
-        //     enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
-        // } else {
-        //     enum_ty = self.lower_enum_sig_as_enum_ty(&enum_decl);
-        // }
-
-        // let tag = enum_ty.compute_variant_tag(&method_call.method_name).unwrap();
-
-        // variant = match typed_variant {
-        //     TypedEnumVariant::Variant(..) => {
-        //         let values: Vec<CIRExpr> = method_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
-        //         CIREnumInitVariant::Fielded(values)
-        //     }
-        //     _ => unreachable!(),
-        // };
-
-        // return CIRExprKind::EnumInit(CIREnumInitExpr {
-        //     tag: tag.try_into().unwrap(),
-        //     variant,
-        //     enum_ty,
-        // });
-    }
-
-    // FIXME
     fn lower_method_call(&mut self, method_call: &TypedMethodCall) -> CIRExprKind {
         todo!();
-
-        // if let Some(enum_id) = method_call.enum_constructor {
-        //     let resolved_enum = self.query.get_enum(enum_id).unwrap();
-
-        //     return self.lower_enum_init(&resolved_enum.enum_decl, method_call);
-        // }
-
-        // self.lower_regular_method_call(method_call)
     }
 
     // FIXME
@@ -1498,7 +962,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let elements: Vec<CIRExpr> = array.elements.iter().map(|elm| self.lower_expr(elm)).collect();
 
         CIRExprKind::Array(CIRArrayExpr {
-            ty: self.lower_sema_ty(&array.ty.as_ref().unwrap()),
+            ty: self.lower_sema_type(&array.ty.as_ref().unwrap()),
             elements,
             loc: array.loc,
         })
@@ -1561,14 +1025,14 @@ impl<'resolver> CIRTraverse<'resolver> {
             },
         };
 
-        let ty = self.lower_sema_ty(&literal.ty.clone().unwrap());
+        let ty = self.lower_sema_type(&literal.ty.clone().unwrap());
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
-    fn lower_sema_ty(&mut self, sema_type: &SemanticType) -> CIRType {
+    fn lower_sema_type(&mut self, sema_type: &SemanticType) -> CIRType {
         match sema_type {
             SemanticType::Array(array_type) => {
-                let element_type = self.lower_sema_ty(&array_type.element_type);
+                let element_type = self.lower_sema_type(&array_type.element_type);
                 let len = match &array_type.capacity {
                     TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
                     TypedArrayCapacity::Dynamic => todo!(),
@@ -1579,10 +1043,10 @@ impl<'resolver> CIRTraverse<'resolver> {
                     len: len.try_into().unwrap(),
                 })
             }
-            SemanticType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_ty(&*sema_type))),
-            SemanticType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_ty(&*sema_type))),
+            SemanticType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_type(&*sema_type))),
+            SemanticType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_type(&*sema_type))),
             SemanticType::FuncType(func_type) => {
-                let ret = Box::new(self.lower_sema_ty(&func_type.ret_type));
+                let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
                 let params = self.lower_func_type_params(&func_type.params);
 
                 let mut cir_type = CIRFuncType {
@@ -1600,7 +1064,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 let elements: Vec<CIRType> = tuple_type
                     .elements
                     .iter()
-                    .map(|sema_type| self.lower_sema_ty(sema_type))
+                    .map(|sema_type| self.lower_sema_type(sema_type))
                     .collect();
 
                 CIRType::Tuple(CIRTupleType {
@@ -1637,7 +1101,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let fields = struct_decl
             .fields
             .iter()
-            .map(|field| self.lower_sema_ty(&field.ty))
+            .map(|field| self.lower_sema_type(&field.ty))
             .collect();
 
         let fields_info = struct_decl
@@ -1656,32 +1120,32 @@ impl<'resolver> CIRTraverse<'resolver> {
         }
     }
 
-    // FIXME
-    fn lower_enum_ty_variant(&mut self, variant: &TypedEnumVariant) -> CIREnumVariant {
-        todo!();
-        // match variant {
-        //     TypedEnumVariant::Ident(ident) => CIREnumTyVariant::Ident(ident.as_string()),
-        //     TypedEnumVariant::Valued(ident, expr) => {
-        //         CIREnumTyVariant::Valued(ident.as_string(), Box::new(self.lower_expr(expr)))
-        //     }
-        //     TypedEnumVariant::Variant(ident, fields) => {
-        //         let fields: Vec<CIRType> = fields.iter().map(|field| self.lower_sema_ty(&field.ty)).collect();
-        //         CIREnumTyVariant::Fielded(ident.as_string(), fields)
-        //     }
-        // }
+    fn lower_enum_variant(&mut self, variant: &TypedEnumVariant) -> CIREnumVariant {
+        match variant {
+            TypedEnumVariant::Unit(ident) => CIREnumVariant::Unit(ident.as_string()),
+            TypedEnumVariant::Valued { ident, value } => {
+                CIREnumVariant::Valued(ident.as_string(), Box::new(self.lower_expr(value)))
+            }
+            TypedEnumVariant::Tuple { ident, fields } => {
+                let tuple_fields = fields.iter().map(|field| self.lower_sema_type(&field.ty)).collect();
+
+                CIREnumVariant::Tuple(ident.as_string(), tuple_fields)
+            }
+            TypedEnumVariant::Struct { ident, fields } => todo!(), // TODO
+        }
     }
 
     fn lower_enum_decl(&mut self, enum_decl: &EnumDecl) -> CIREnumType {
         let variants: Vec<CIREnumVariant> = enum_decl
             .variants
             .iter()
-            .map(|variant| self.lower_enum_ty_variant(variant))
+            .map(|variant| self.lower_enum_variant(variant))
             .collect();
 
         let tag_type = enum_decl
             .tag_type
             .clone()
-            .map(|sema_type| Box::new(self.lower_sema_ty(&sema_type)));
+            .map(|sema_type| Box::new(self.lower_sema_type(&sema_type)));
 
         CIREnumType {
             name: enum_decl.name.clone(),
@@ -1697,7 +1161,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         let fields = union_decl
             .fields
             .iter()
-            .map(|field| self.lower_sema_ty(&field.ty))
+            .map(|field| self.lower_sema_type(&field.ty))
             .collect();
 
         let fields_info = union_decl
@@ -1731,68 +1195,20 @@ impl<'resolver> CIRTraverse<'resolver> {
                 CIRType::Union(self.lower_union_decl(&union_decl))
             }
             TypeDeclID::Interface(interface_decl_id) => {
-                // FIXME
-                todo!()
                 // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
-                // CIRType::Dynamic(self.lower_dynamic_expr(&interface_decl))
+                // CIRType::Dynamic(self.lower_interface(&interface_decl))
+
+                // FIXME
+                todo!();
             }
         }
     }
 
-    pub fn insert_monomorph_func_instance(&mut self, monomorph_id: MonomorphID, func_decl: &FuncDecl) {
-        todo!();
-        //     {
-        //         let cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
-        //         if cir_monomorph_registry.contains_key(&monomorph_id) {
-        //             // if it's a Placeholder, we are already lowering it (recursion detected).
-        //             // if it's a body, we've already finished it.
-        //             // either way, STOP here to break the loop.
-        //             return;
-        //         }
-        //     }
-
-        //     let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
-        //     let specialized_func_entry = self.query.lookup_specialized_func_instance(monomorph_id).unwrap();
-
-        //     let irv_id: IRValueID = monomorph_func_entry.id.0.try_into().unwrap();
-
-        //     let cir_func_decl = self.lower_func_sig(irv_id, func_decl);
-
-        //     let cir_func_params = cir_func_decl.params.clone();
-        //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-
-        //     let abi_func_info = self.target.target_abi.classify_func(&cir_func_type).unwrap();
-
-        //     {
-        //         // body placeholder to prevent infinite recursion during lowering
-
-        //         let mut cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
-        //         cir_monomorph_registry.insert(
-        //             monomorph_id.clone(),
-        //             CIRMonomorphEntry::Func(CIRInstanceFunc {
-        //                 irv_id,
-        //                 func_params: cir_func_params,
-        //                 func_type: cir_func_type,
-        //                 func_body: CIRInstanceFuncBody::Placeholder,
-        //                 abi_func_info,
-        //                 loc: cir_func_decl.loc,
-        //             }),
-        //         );
-        //     }
-
-        //     // lower body
-        //     let cir_func_body = self.lower_body(&specialized_func_entry.body);
-
-        //     {
-        //         let mut cir_monomorph_registry = self.cir_instance_registry.lock().unwrap();
-        //         let monomorph_entry = cir_monomorph_registry.get_mut(&monomorph_id).unwrap();
-
-        //         match monomorph_entry {
-        //             CIRMonomorphEntry::Func(monomorph_func_entry) => {
-        //                 monomorph_func_entry.func_body = CIRInstanceFuncBody::Body(Box::new(cir_func_body));
-        //             }
-        //         }
-        //     }
+    #[inline(always)]
+    fn next_irv_id(&mut self) -> IRValueID {
+        let id = self.next_irv_id.0;
+        self.next_irv_id.0 += 1;
+        IRValueID(id)
     }
 }
 

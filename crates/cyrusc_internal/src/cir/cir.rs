@@ -28,8 +28,8 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{LabelID, decls::MonomorphID, exprs::TypedIdent};
 use std::fmt::Debug;
 
-pub type IRValueID = u32;
-pub type CIRBlockID = u32;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct IRValueID(pub u32);
 
 pub struct CIRProgramTree {
     pub body: Vec<CIRStmt>,
@@ -58,7 +58,7 @@ pub enum CIRStmt {
     Goto(CIRGotoStmt),
     Defer(CIRDeferStmt),
     Continue(CIRContinueStmt),
-    Break(CIRContinueStmt),
+    Break(CIRBreakStmt),
 }
 
 #[derive(Debug, Clone)]
@@ -90,10 +90,8 @@ pub enum CIRExprKind {
     StructFieldAccess(CIRStructFieldAccessExpr),
     UnionFieldAccess(CIRUnionFieldAccessExpr),
     Lambda(CIRLambda),
-    FuncCall(CIRFuncCall),
     Dynamic(CIRDynamicExpr),
-    MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall),
-    InterfaceMethodCall(CIRInterfaceMethodCall),
+    Call(CIRCall),
 }
 
 #[derive(Debug, Clone)]
@@ -117,27 +115,22 @@ pub struct CIRLambda {
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRFuncCall {
+pub struct CIRCall {
     pub operand: Box<CIRExpr>,
     pub args: Vec<CIRExpr>,
     pub ret_ty: CIRType,
+    pub dispatch: CIRCallDispatch,
 }
 
 #[derive(Debug, Clone)]
-pub struct CIRMonomorphFuncInstanceCall {
-    pub monomorph_id: MonomorphID,
-    pub args: Vec<CIRExpr>,
-    pub ret_ty: CIRType,
-}
-
-#[derive(Debug, Clone)]
-pub struct CIRInterfaceMethodCall {
-    pub operand: Box<CIRExpr>,
-    pub args: Vec<CIRExpr>,
-    pub ret_ty: CIRType,
-    pub func_type: CIRFuncType,
-    pub method_idx: usize,
-    pub methods_len: usize,
+pub enum CIRCallDispatch {
+    Normal,
+    Interface {
+        method_idx: usize,
+        methods_len: usize,
+        func_type: CIRFuncType,
+    },
+    Monomorph(MonomorphID),
 }
 
 #[derive(Debug, Clone)]
@@ -452,17 +445,17 @@ pub struct CIREnumStmt {
 
 #[derive(Debug, Clone)]
 pub enum CIREnumVariant {
-    Ident(String),
+    Unit(String),
     Valued(String, Box<CIRExpr>),
-    Fielded(String, Vec<CIRType>),
+    Tuple(String, Vec<CIRType>),
 }
 
 impl PartialEq for CIREnumVariant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Ident(ident1), Self::Ident(ident2)) => ident1 == ident2,
+            (Self::Unit(ident1), Self::Unit(ident2)) => ident1 == ident2,
             (Self::Valued(ident1, expr1), Self::Valued(ident2, expr2)) => ident1 == ident2 && expr1.ty == expr2.ty,
-            (Self::Fielded(ident1, fields1), Self::Fielded(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
+            (Self::Tuple(ident1, fields1), Self::Tuple(ident2, fields2)) => ident1 == ident2 && fields1 == fields2,
             _ => false,
         }
     }
@@ -471,16 +464,16 @@ impl PartialEq for CIREnumVariant {
 impl CIREnumVariant {
     pub fn as_fielded(&self) -> Option<&Vec<CIRType>> {
         match self {
-            CIREnumVariant::Fielded(_, fields) => Some(fields),
+            CIREnumVariant::Tuple(_, fields) => Some(fields),
             _ => None,
         }
     }
 
     pub fn ident(&self) -> &String {
         match self {
-            CIREnumVariant::Ident(ident) => ident,
+            CIREnumVariant::Unit(ident) => ident,
             CIREnumVariant::Valued(ident, _) => ident,
-            CIREnumVariant::Fielded(ident, _) => ident,
+            CIREnumVariant::Tuple(ident, _) => ident,
         }
     }
 }

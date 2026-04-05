@@ -127,14 +127,14 @@ pub fn cir_type_to_abi_type(info: &ABITargetInfo, cir_type: &CIRType) -> ABIType
 
                 for variant in &enum_ty.variants {
                     match variant {
-                        CIREnumVariant::Ident(_) => {
+                        CIREnumVariant::Unit(_) => {
                             // no payload
                         }
                         CIREnumVariant::Valued(_, expr) => {
                             let layout = type_layout(info, &expr.ty);
                             max_payload_size = max_payload_size.max(layout.size);
                         }
-                        CIREnumVariant::Fielded(_, fields) => {
+                        CIREnumVariant::Tuple(_, fields) => {
                             let mut total_size = 0;
                             let mut max_align = 1;
 

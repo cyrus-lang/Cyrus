@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
         is_repr_c: bool,
     ) {
         match variant {
-            TypedEnumVariant::Ident(_) => { /* skip */ }
+            TypedEnumVariant::Unit(_) => { /* skip */ }
             TypedEnumVariant::Valued { ident, value } => {
                 self.analyze_expr(value, None);
 

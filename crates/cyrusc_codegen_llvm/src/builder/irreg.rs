@@ -15,12 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_internal::cir::types::CIRType;
+use cyrusc_internal::cir::{cir::IRValueID, types::CIRType};
 use inkwell::values::{FunctionValue, GlobalValue, PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-
-/// Represents a unique symbol ID in the current IR scope.
-pub type IRValueID = u32;
 
 /// Shared reference to the registry.
 pub type LocalIRValueRegistryRef<'a> = Rc<RefCell<LocalIRValueRegistry<'a>>>;

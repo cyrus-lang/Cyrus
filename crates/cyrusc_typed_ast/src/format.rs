@@ -81,7 +81,7 @@ pub fn format_enum_decl(enum_decl: &EnumDecl, f: &dyn Formatter) -> String {
         .variants
         .iter()
         .map(|variant| match variant {
-            TypedEnumVariant::Ident(ident) => ident.value.clone(),
+            TypedEnumVariant::Unit(ident) => ident.value.clone(),
             TypedEnumVariant::Valued { ident, value } => {
                 format!("{} = {}", ident.value, format_typed_expr(value, f))
             }

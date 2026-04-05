@@ -99,11 +99,6 @@ pub(crate) fn apply_global_var_modifiers<'ll>(global_value: &GlobalValue<'ll>, m
     if let Some(section) = &modifiers.section {
         global_value.set_section(Some(section.0.as_str()));
     }
-
-    assert!(
-        modifiers.optional_flags.is_empty(),
-        "Global variables do not accept optional flags."
-    );
 }
 
 pub(crate) fn apply_inlining_func<'a>(llvmctx: &'a Context, fn_value: &FunctionValue<'a>, inline: Inlining) {

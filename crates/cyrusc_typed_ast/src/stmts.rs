@@ -154,7 +154,7 @@ pub struct TypedEnumStmt {
 
 #[derive(Debug, Clone)]
 pub enum TypedEnumVariant {
-    Ident(Ident),
+    Unit(Ident),
     Valued {
         ident: Ident,
         value: Box<TypedExprStmt>,
@@ -641,7 +641,7 @@ impl TypedEnumVariant {
     #[inline]
     pub fn ident(&self) -> &Ident {
         match self {
-            TypedEnumVariant::Ident(ident) => ident,
+            TypedEnumVariant::Unit(ident) => ident,
             TypedEnumVariant::Valued { ident, .. } => ident,
             TypedEnumVariant::Tuple { ident, .. } => ident,
             TypedEnumVariant::Struct { ident, .. } => ident,

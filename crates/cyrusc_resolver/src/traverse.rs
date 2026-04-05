@@ -1079,7 +1079,7 @@ impl Resolver {
 
         for variant in variants {
             let typed_variant = match variant {
-                EnumVariant::Unit(ident) => TypedEnumVariant::Ident(ident.clone()),
+                EnumVariant::Unit(ident) => TypedEnumVariant::Unit(ident.clone()),
                 EnumVariant::Valued { ident, value } => {
                     let typed_expr = match self.resolve_expr(&value) {
                         Some(expr) => expr,

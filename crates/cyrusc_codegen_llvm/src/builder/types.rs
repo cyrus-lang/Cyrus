@@ -180,7 +180,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                         .variants
                         .iter()
                         .map(|variant| match variant {
-                            CIREnumVariant::Ident(ident) => {
+                            CIREnumVariant::Unit(ident) => {
                                 let tag = enum_ty.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
@@ -188,7 +188,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                                 let tag = enum_ty.compute_variant_tag(ident).unwrap();
                                 (ident.clone(), tag as i64)
                             }
-                            CIREnumVariant::Fielded(..) => unreachable!(),
+                            CIREnumVariant::Tuple(..) => unreachable!(),
                         })
                         .collect();
 
@@ -212,13 +212,13 @@ impl<'ll> IRBuilderCtx<'ll> {
                             let tag = enum_ty.compute_variant_tag(ident).unwrap();
 
                             match variant {
-                                CIREnumVariant::Ident(_) => {
+                                CIREnumVariant::Unit(_) => {
                                     (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
                                 CIREnumVariant::Valued(_, _) => {
                                     (ident.clone(), tag as i64, std::ptr::null_mut() as LLVMMetadataRef)
                                 }
-                                CIREnumVariant::Fielded(_, elements) => {
+                                CIREnumVariant::Tuple(_, elements) => {
                                     let tuple_type = CIRTupleType {
                                         elements: elements.to_vec(),
                                         loc: enum_ty.loc,
@@ -465,14 +465,14 @@ impl<'ll> IRBuilderCtx<'ll> {
 
         for variant in &enum_ty.variants {
             let (payload_size, payload_align) = match variant {
-                CIREnumVariant::Ident(_) => (0, 1),
+                CIREnumVariant::Unit(_) => (0, 1),
                 CIREnumVariant::Valued(_, expr) => {
                     let llvm_ty: BasicTypeEnum<'ll> = self.emit_ty(expr.ty.clone()).try_into().unwrap();
                     let size = target_data.get_store_size(&llvm_ty);
                     let align = target_data.get_abi_alignment(&llvm_ty) as u64;
                     (size, align)
                 }
-                CIREnumVariant::Fielded(_, field_tys) => {
+                CIREnumVariant::Tuple(_, field_tys) => {
                     if field_tys.is_empty() {
                         (0, 1)
                     } else {

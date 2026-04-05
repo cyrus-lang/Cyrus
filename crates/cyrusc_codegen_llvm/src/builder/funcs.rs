@@ -38,12 +38,11 @@ use cyrusc_internal::{
     },
     cir::{
         cir::{CIRBlockStmt, CIRExpr, CIRFuncDeclStmt, CIRFuncParams, CIRLambda, cir_func_decl_as_func_ty},
-        instances::CIRMonomorphEntry,
         types::{CIRFuncType, CIRType},
     },
 };
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::backup_typed_ast_generics::monomorph::MonomorphID;
+use cyrusc_typed_ast::decls::MonomorphID;
 use inkwell::{
     AddressSpace,
     context::AsContextRef,
@@ -381,80 +380,83 @@ impl<'ll> IRBuilderCtx<'ll> {
         }
     }
 
+    // FIXME
     pub(crate) fn emit_monomorph_func_instance(
         &mut self,
         monomorph_id: MonomorphID,
     ) -> (FunctionValue<'ll>, CIRFuncType) {
-        {
-            let monomorph_registry = self.monomorph_registry.lock().unwrap();
-            let monomorph_entry = monomorph_registry.get_func(&monomorph_id).cloned().unwrap();
-            let monomorph_func_entry = match monomorph_entry {
-                CIRMonomorphEntry::Func(entry) => entry,
-            };
+        todo!();
 
-            let irreg = self.irreg.borrow();
-            if let Some(local_ir_value) = irreg.get(monomorph_func_entry.irv_id) {
-                // already exists in current module
-                let fn_value = local_ir_value.as_func().cloned().unwrap();
-                return (fn_value, monomorph_func_entry.func_type.clone());
-            }
+        // {
+        //     let monomorph_registry = self.monomorph_registry.lock().unwrap();
+        //     let monomorph_entry = monomorph_registry.get_func(&monomorph_id).cloned().unwrap();
+        //     let monomorph_func_entry = match monomorph_entry {
+        //         CIRMonomorphEntry::Func(entry) => entry,
+        //     };
 
-            drop(monomorph_registry);
-            drop(irreg);
+        //     let irreg = self.irreg.borrow();
+        //     if let Some(local_ir_value) = irreg.get(monomorph_func_entry.irv_id) {
+        //         // already exists in current module
+        //         let fn_value = local_ir_value.as_func().cloned().unwrap();
+        //         return (fn_value, monomorph_func_entry.func_type.clone());
+        //     }
 
-            // insert func to current module
-            let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
-            {
-                let fn_value = {
-                    let llvmmodule = self.llvmmodule.borrow_mut();
-                    let mut irreg = self.irreg.borrow_mut();
+        //     drop(monomorph_registry);
+        //     drop(irreg);
 
-                    let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
+        //     // insert func to current module
+        //     let fn_ty = self.emit_func_ty(monomorph_func_entry.func_type.clone());
+        //     {
+        //         let fn_value = {
+        //             let llvmmodule = self.llvmmodule.borrow_mut();
+        //             let mut irreg = self.irreg.borrow_mut();
 
-                    let fn_value = match llvmmodule.get_function(&func_name) {
-                        Some(f) => f,
-                        None => llvmmodule.add_function(&func_name, fn_ty, None),
-                    };
+        //             let func_name = monomorph_func_name(monomorph_func_entry.irv_id);
 
-                    irreg.insert(
-                        monomorph_func_entry.irv_id,
-                        LocalIRValue::Func(fn_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
-                    );
+        //             let fn_value = match llvmmodule.get_function(&func_name) {
+        //                 Some(f) => f,
+        //                 None => llvmmodule.add_function(&func_name, fn_ty, None),
+        //             };
 
-                    fn_value
-                };
+        //             irreg.insert(
+        //                 monomorph_func_entry.irv_id,
+        //                 LocalIRValue::Func(fn_value, CIRType::FuncType(monomorph_func_entry.func_type.clone())),
+        //             );
 
-                let parent_cur_func = self.cur_func.clone();
-                let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
-                let parent_blockreg = self.blockreg.clone();
+        //             fn_value
+        //         };
 
-                self.set_current_func(fn_value, monomorph_func_entry.abi_func_info.clone());
+        //         let parent_cur_func = self.cur_func.clone();
+        //         let parent_cur_abi_func_info = self.cur_abi_func_info.clone();
+        //         let parent_blockreg = self.blockreg.clone();
 
-                let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
+        //         self.set_current_func(fn_value, monomorph_func_entry.abi_func_info.clone());
 
-                self.emit_func_body(
-                    &monomorph_func_entry.func_params,
-                    &monomorph_func_entry.abi_func_info,
-                    &monomorph_func_entry.body().unwrap(),
-                    func_metadata,
-                    monomorph_func_entry.loc,
-                );
+        //         let func_metadata = self.emit_func_metadata(&monomorph_func_entry.func_type);
 
-                {
-                    // back to parent state because we emitted a new function in the middle of an another function
-                    if let Some(cur_func) = parent_cur_func {
-                        self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
-                    }
+        //         self.emit_func_body(
+        //             &monomorph_func_entry.func_params,
+        //             &monomorph_func_entry.abi_func_info,
+        //             &monomorph_func_entry.body().unwrap(),
+        //             func_metadata,
+        //             monomorph_func_entry.loc,
+        //         );
 
-                    self.blockreg = parent_blockreg;
-                    if let Some(cur_block) = self.blockreg.cur_block {
-                        self.emit_block(cur_block);
-                    }
-                }
+        //         {
+        //             // back to parent state because we emitted a new function in the middle of an another function
+        //             if let Some(cur_func) = parent_cur_func {
+        //                 self.set_current_func(cur_func, parent_cur_abi_func_info.unwrap());
+        //             }
 
-                return (fn_value, monomorph_func_entry.func_type.clone());
-            }
-        }
+        //             self.blockreg = parent_blockreg;
+        //             if let Some(cur_block) = self.blockreg.cur_block {
+        //                 self.emit_block(cur_block);
+        //             }
+        //         }
+
+        //         return (fn_value, monomorph_func_entry.func_type.clone());
+        //     }
+        // }
     }
 
     pub(crate) fn emit_func_params(&self, func_params: CIRFuncParams, abi_func_info: &ABIFunctionInfo) {
