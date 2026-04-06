@@ -1068,6 +1068,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::EnumStructVariantInit(TypedEnumStructVariantInit {
+                enum_decl_id: None,
                 operand: Box::new(operand),
                 ident: struct_variant_init.ident.clone(),
                 field_inits: typed_field_inits,
@@ -1509,7 +1510,7 @@ impl Resolver {
     fn insert_func_params_into_current_scope(
         &mut self,
         params_kinds: &mut Vec<TypedFuncParamKind>,
-        variadic: &mut Option<TypedFuncVariadicParam>,
+        _variadic: &mut Option<TypedFuncVariadicParam>,
     ) -> Option<()> {
         // TODO: Const func param not implemented yet.
         let is_const_param = false;
@@ -2135,7 +2136,7 @@ impl Resolver {
 
     fn resolve_unnamed_enum_value(&mut self, unnamed_enum_value: &ASTUnnamedEnumValueExpr) -> Option<TypedExprStmt> {
         let kind = match &unnamed_enum_value.kind {
-            UnnamedEnumValueKind::Plain => TypedUnnamedEnumValueKind::Plain,
+            UnnamedEnumValueKind::Plain => TypedUnnamedEnumValueKind::Unit,
             UnnamedEnumValueKind::Tuple(exprs) => {
                 let mut typed_exprs: Vec<TypedExprStmt> = Vec::new();
                 for expr in exprs {
@@ -2166,6 +2167,7 @@ impl Resolver {
 
         Some(TypedExprStmt {
             kind: TypedExprKind::UnnamedEnumValue(TypedUnnamedEnumValue {
+                enum_decl_id: None,
                 ident: unnamed_enum_value.ident.clone(),
                 kind,
                 loc: unnamed_enum_value.loc,

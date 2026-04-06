@@ -47,7 +47,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: union_name,
+                        object_name: union_name,
                         field_name: union_value.name.as_string(),
                     }),
                     loc: Some(union_value.loc),

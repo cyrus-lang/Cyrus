@@ -17,7 +17,6 @@
 
 use crate::{context::AnalysisContext, lower::lower_assign::lower_assign_to_infix_expr};
 use cyrusc_ast::{AssignKind, operators::PrefixOperator};
-use cyrusc_internal::symbols::symbols::SymbolEntryKind;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
     types::SemanticType,
@@ -54,5 +53,8 @@ impl<'a> AnalysisContext<'a> {
         };
     }
 
-    pub(crate) fn lower_expr_post_analysis(&mut self, typed_expr: &mut TypedExprStmt) {}
+    pub(crate) fn lower_expr_post_analysis(&mut self, typed_expr: &mut TypedExprStmt) {
+        self.lower_unnamed_enum_value_as_enum_init(typed_expr);
+        self.lower_enum_struct_variant_init_as_enum_init(typed_expr);
+    }
 }

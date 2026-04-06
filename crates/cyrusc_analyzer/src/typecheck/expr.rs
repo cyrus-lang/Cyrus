@@ -86,9 +86,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
-            TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
-            TypedExprKind::MethodCall(typed_method_call) => todo!(),
-            TypedExprKind::FieldAccess(typed_field_access) => todo!(),
+            TypedExprKind::Dynamic(dynamic_expr) => todo!(),
+            TypedExprKind::MethodCall(method_call) => todo!(),
+            TypedExprKind::FieldAccess(field_access) => todo!(),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
@@ -102,7 +102,7 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExprKind::UnnamedEnumValue(enum_value) => self.analyze_unnamed_enum_value(enum_value, expected_type),
             TypedExprKind::EnumStructVariantInit(struct_variant_init) => {
-                self.analyze_enum_struct_variant_init(struct_variant_init, expected_type)
+                self.analyze_enum_struct_variant_init(struct_variant_init)
             }
 
             TypedExprKind::Builtin(_typed_builtin) => todo!(),

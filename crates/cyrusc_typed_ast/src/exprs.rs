@@ -262,7 +262,7 @@ pub struct TypedFieldAccess {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumInit {
     pub enum_decl_id: EnumDeclID,
-    pub variant_name: String,
+    pub name: String,
     pub args: TypedEnumInitArgs,
     pub type_args: Option<TypedTypeArgs>,
     pub loc: Loc,
@@ -325,6 +325,7 @@ pub struct TypedUnnamedUnionValue {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedEnumValue {
+    pub enum_decl_id: Option<EnumDeclID>,
     pub ident: Ident,
     pub kind: TypedUnnamedEnumValueKind,
     pub loc: Loc,
@@ -332,13 +333,14 @@ pub struct TypedUnnamedEnumValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedUnnamedEnumValueKind {
-    Plain,
+    Unit,
     Tuple(Vec<TypedExprStmt>),
     Struct(Vec<TypedEnumStructVariantFieldInit>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedEnumStructVariantInit {
+    pub enum_decl_id: Option<EnumDeclID>,
     pub operand: Box<TypedExprStmt>,
     pub ident: Ident,
     pub field_inits: Vec<TypedEnumStructVariantFieldInit>,
@@ -446,7 +448,7 @@ impl TypedUnnamedEnumValueKind {
     #[inline]
     pub fn as_fielded(&self) -> Option<&Vec<TypedExprStmt>> {
         match self {
-            TypedUnnamedEnumValueKind::Plain => None,
+            TypedUnnamedEnumValueKind::Unit => None,
             TypedUnnamedEnumValueKind::Struct(_) => None,
             TypedUnnamedEnumValueKind::Tuple(exprs) => Some(exprs),
         }

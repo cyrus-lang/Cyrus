@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParamsList, TypedTypeArgs},
     types::SemanticType,
 };
-use std::ops::RangeInclusive;
+use std::{ops::RangeInclusive, string};
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -74,6 +74,12 @@ pub enum AnalyzerDiagKind {
 
     #[error("Value of type '{got_type}' is not compatible with the enum's tag type '{expected_type}'.")]
     InvalidEnumVariantValueType { got_type: String, expected_type: String },
+
+    #[error("Value of type '{got_type}' is not assignable to field type '{expected_type}'.")]
+    InvalidEnumVariantFieldValueType { got_type: String, expected_type: String },
+
+    #[error("Invalid enum constructor target; expression '{expr}' is not an enum.")]
+    InvalidEnumConstructorTarget { expr: String },
 
     #[error("Variant '.{variant_name}' has only one field, but multiple were provided.")]
     ValuedEnumVariantCanOnlyExportOneField { variant_name: String },
@@ -158,7 +164,7 @@ pub enum AnalyzerDiagKind {
     NoSuchEnumVariant { enum_name: String, variant_name: String },
 
     #[error("Could not infer type of unnamed enum value '.{variant_name}'")]
-    UnnamedEnumValueInfering { variant_name: String },
+    CannotInferEnumForUnnamedVariant { variant_name: String },
 
     #[error("Could not infer type of unnamed union value.")]
     UnnamedUnionValueInfering,
@@ -172,14 +178,18 @@ pub enum AnalyzerDiagKind {
     #[error("Variant '{variant_name}' does not export any fields, but you attempted to destructure it.")]
     VariantDoesNotExportAnyField { variant_name: String },
 
-    #[error("Variant '{enum_name}.{variant_name}' is missing fields.")]
-    VariantMissingFields { enum_name: String, variant_name: String },
+    #[error("Invalid construction of enum variant.")]
+    EnumVariantKindMismatch {
+        variant_name: String,
+        expected_kind: String,
+        provided_kind: String,
+    },
 
-    #[error("Enum '{enum_name}' has no variant named '{variant_name}'.")]
-    VariantNotDefinedForEnum { enum_name: String, variant_name: String },
+    #[error("Variant '{variant_name}' has no field named '{field_name}'.")]
+    InvalidEnumVariantField { variant_name: String, field_name: String },
 
-    #[error("Union initializer must specify exactly one field.")]
-    UnionInitWithInvalidFields,
+    #[error("Missing field '{field_name}' in initializer for variant '{variant_name}'.")]
+    MissingEnumVariantField { field_name: String, variant_name: String },
 
     #[error(
         "Switch statement must contain at least one case or consider removing it or replacing it with an if statement."
@@ -283,8 +293,8 @@ pub enum AnalyzerDiagKind {
         missing_field_names: String,
     },
 
-    #[error("'{struct_name}' has no field named '{field_name}'.")]
-    ObjectHasNoFieldNamed { struct_name: String, field_name: String },
+    #[error("'{object_name}' has no field named '{field_name}'.")]
+    ObjectHasNoFieldNamed { object_name: String, field_name: String },
 
     #[error("Invalid integer literal suffix.")]
     InvalidIntegerLiteralSuffix,
@@ -358,9 +368,6 @@ pub enum AnalyzerDiagKind {
 
     #[error("Symbol '{symbol_name}' is not a function.")]
     NonFunctionSymbol { symbol_name: String },
-
-    #[error("Symbol '{symbol_name}' is not a struct.")]
-    NonStructSymbol { symbol_name: String },
 
     #[error("Cannot use {elements} elements in an array of size {expected}.")]
     ArrayElementsCountMismatch { elements: u32, expected: u32 },

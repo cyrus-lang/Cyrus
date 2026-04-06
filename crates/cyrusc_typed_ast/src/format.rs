@@ -18,7 +18,7 @@
 use crate::SymbolID;
 use crate::decls::{EnumDecl, StructDecl, UnionDecl};
 use crate::exprs::TypedEnumInitArgs;
-use crate::stmts::TypedEnumVariant;
+use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField};
 use crate::types::TypeDeclID;
 use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
@@ -308,7 +308,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         EnumInit(enum_init) => {
             let enum_name = formatter.format_type_decl(TypeDeclID::Enum(enum_init.enum_decl_id));
 
-            let mut out = String::from(format!("{}.{}", enum_name, enum_init.variant_name));
+            let mut out = String::from(format!("{}.{}", enum_name, enum_init.name));
 
             match &enum_init.args {
                 TypedEnumInitArgs::Unit => {}
@@ -364,6 +364,17 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         },
         Poisoned => unreachable!(),
     }
+}
+
+pub fn format_enum_struct_variant_fields(
+    fields: &Vec<TypedEnumVariantStructField>,
+    formatter: &dyn Formatter,
+) -> String {
+    fields
+        .iter()
+        .map(|field| format!("{}: {}", field.name, format_sema_type(field.ty.clone(), formatter)))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> String {

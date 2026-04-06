@@ -19,7 +19,9 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::SymbolEntryKind;
 use cyrusc_typed_ast::{
-    exprs::{MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt},
+    exprs::{
+        MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind,
+    },
     format::format_enum_decl,
 };
 
@@ -45,7 +47,7 @@ impl<'a> AnalysisContext<'a> {
 
                     let enum_init = TypedEnumInit {
                         enum_decl_id,
-                        variant_name: field_access.name.clone(),
+                        name: field_access.name.clone(),
                         args,
                         type_args: field_access.type_args.clone(),
                         loc: field_access.loc,
@@ -92,13 +94,13 @@ impl<'a> AnalysisContext<'a> {
             if let SymbolEntryKind::Enum(enum_decl_id) = symbol_entry.kind {
                 let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-                // variant exists?
+                // lower only if variant exists
                 if enum_decl.lookup_variant(&method_call.name).is_some() {
                     let args = TypedEnumInitArgs::Tuple(method_call.args.clone());
 
                     let enum_init = TypedEnumInit {
                         enum_decl_id,
-                        variant_name: method_call.name.clone(),
+                        name: method_call.name.clone(),
                         args,
                         type_args: method_call.type_args.clone(),
                         loc: method_call.loc,
@@ -110,23 +112,54 @@ impl<'a> AnalysisContext<'a> {
                         mloc: MemoryLocation::RValue,
                         loc: method_call.loc,
                     };
-                } else {
-                    // no such variant on enum decl
-                    let enum_name = format_enum_decl(&enum_decl, self.formatter);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
-                            enum_name,
-                            variant_name: method_call.name.clone(),
-                        }),
-                        loc: Some(method_call.loc),
-                        hint: None,
-                    });
-
-                    typed_expr.kind = TypedExprKind::Poisoned;
                 }
             }
         }
+    }
+
+    pub(crate) fn lower_unnamed_enum_value_as_enum_init(&self, typed_expr: &mut TypedExprStmt) {
+        let TypedExprKind::UnnamedEnumValue(enum_value) = &typed_expr.kind else {
+            return;
+        };
+
+        let enum_init_args = match &enum_value.kind {
+            TypedUnnamedEnumValueKind::Unit => TypedEnumInitArgs::Unit,
+            TypedUnnamedEnumValueKind::Tuple(elements) => TypedEnumInitArgs::Tuple(elements.clone()),
+            TypedUnnamedEnumValueKind::Struct(field_inits) => TypedEnumInitArgs::Struct(field_inits.clone()),
+        };
+
+        *typed_expr = TypedExprStmt {
+            kind: TypedExprKind::EnumInit(TypedEnumInit {
+                enum_decl_id: enum_value.enum_decl_id.unwrap(),
+                name: enum_value.ident.as_string(),
+                args: enum_init_args,
+                type_args: None,
+                loc: enum_value.loc,
+            }),
+            sema_type: typed_expr.sema_type.clone(),
+            mloc: typed_expr.mloc,
+            loc: typed_expr.loc,
+        };
+    }
+
+    pub(crate) fn lower_enum_struct_variant_init_as_enum_init(&self, typed_expr: &mut TypedExprStmt) {
+        let TypedExprKind::EnumStructVariantInit(struct_variant_init) = &typed_expr.kind else {
+            return;
+        };
+
+        let args = TypedEnumInitArgs::Struct(struct_variant_init.field_inits.clone());
+
+        *typed_expr = TypedExprStmt {
+            kind: TypedExprKind::EnumInit(TypedEnumInit {
+                enum_decl_id: struct_variant_init.enum_decl_id.unwrap(),
+                name: struct_variant_init.ident.as_string(),
+                args,
+                type_args: None,
+                loc: struct_variant_init.loc,
+            }),
+            sema_type: typed_expr.sema_type.clone(),
+            mloc: typed_expr.mloc,
+            loc: typed_expr.loc,
+        };
     }
 }

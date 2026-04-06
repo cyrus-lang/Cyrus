@@ -77,7 +77,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_enum_variant(
+    pub(crate) fn analyze_enum_variant(
         &mut self,
         enum_decl_id: EnumDeclID,
         variant: &mut TypedEnumVariant,

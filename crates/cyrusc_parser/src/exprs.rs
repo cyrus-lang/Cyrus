@@ -1052,7 +1052,7 @@ impl<'source_file> Parser<'source_file> {
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     } else {
-                        self.expect_current(TokenKind::Colon)?;
+                        self.expect_current(TokenKind::Assign)?;
 
                         let value = self.parse_expr(Precedence::Lowest)?;
                         self.next_token();

@@ -72,7 +72,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                            struct_name,
+                            object_name: struct_name,
                             field_name: struct_value_field.name.clone(),
                         }),
                         loc: Some(struct_value_field.loc),
@@ -196,7 +196,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: struct_name.clone(),
+                        object_name: struct_name.clone(),
                         field_name: field.name.clone(),
                     }),
                     loc: Some(field.loc),
@@ -277,7 +277,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: struct_name.clone(),
+                        object_name: struct_name.clone(),
                         field_name: field_name.to_string(),
                     }),
                     loc: Some(init.loc),
