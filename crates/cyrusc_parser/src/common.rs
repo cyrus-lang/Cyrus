@@ -860,7 +860,7 @@ impl<'source_file> Parser<'source_file> {
                 let end = self.current_token().loc.end;
 
                 fields.push(UnnamedUnionTypeField {
-                    field_name,
+                    ident: field_name,
                     field_ty: field_type_specifier,
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 });

@@ -602,7 +602,7 @@ impl<'source_file> Parser<'source_file> {
         let end = self.current_token().loc.end;
 
         let field = UnionField {
-            ident,
+            name: ident,
             ty: type_token,
             loc: Loc::new(self.file_id(), line, column, start, end),
         };
@@ -911,7 +911,7 @@ impl<'source_file> Parser<'source_file> {
         let end = self.current_token().loc.end;
 
         let field = StructField {
-            ident,
+            name: ident,
             ty: type_token,
             vis: vis.unwrap_or_default(),
             loc: Loc::new(self.file_id(), line, column, start, end),

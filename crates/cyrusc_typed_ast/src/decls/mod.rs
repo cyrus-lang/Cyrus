@@ -226,7 +226,30 @@ impl PartialEq for FuncDecl {
     }
 }
 
+impl UnionDecl {
+    #[inline]
+    pub fn lookup_field(&self, name: &str) -> Option<&TypedUnionField> {
+        self.fields.iter().find(|field| field.name == name)
+    }
+
+    #[inline]
+    pub fn lookup_field_mut(&mut self, name: &str) -> Option<&mut TypedUnionField> {
+        self.fields.iter_mut().find(|field| field.name == name)
+    }
+}
+
 impl StructDecl {
+    #[inline]
+    pub fn lookup_field(&self, name: &str) -> Option<&TypedStructField> {
+        self.fields.iter().find(|field| field.name == name)
+    }
+
+    #[inline]
+    pub fn lookup_field_mut(&mut self, name: &str) -> Option<&mut TypedStructField> {
+        self.fields.iter_mut().find(|field| field.name == name)
+    }
+
+    #[inline]
     pub fn is_packed(&self) -> bool {
         match &self.modifiers.repr_attr {
             Some(repr_attr) => repr_attr.is_packed(),

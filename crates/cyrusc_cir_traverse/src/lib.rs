@@ -656,7 +656,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     // FIXME
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
         todo!();
-        
+
         // let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
         // if let Some(func_decl_id) = symbol_entry.as_func() {

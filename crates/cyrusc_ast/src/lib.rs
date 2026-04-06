@@ -169,7 +169,7 @@ pub struct UnnamedUnionType {
 
 #[derive(Debug, Clone)]
 pub struct UnnamedUnionTypeField {
-    pub field_name: Ident,
+    pub ident: Ident,
     pub field_ty: TypeSpecifier,
     pub loc: Loc,
 }
@@ -188,7 +188,7 @@ pub struct ASTUnionStmt {
 
 #[derive(Debug, Clone)]
 pub struct UnionField {
-    pub ident: Ident,
+    pub name: Ident,
     pub ty: TypeSpecifier,
     pub loc: Loc,
 }
@@ -572,7 +572,7 @@ pub struct ASTStructInitExpr {
 
 #[derive(Debug, Clone)]
 pub struct StructField {
-    pub ident: Ident,
+    pub name: Ident,
     pub vis: Visibility,
     pub ty: TypeSpecifier,
     pub loc: Loc,
@@ -1252,7 +1252,7 @@ impl PartialEq for UnnamedUnionType {
 
 impl PartialEq for UnnamedUnionTypeField {
     fn eq(&self, other: &Self) -> bool {
-        self.field_name == other.field_name && self.field_ty == other.field_ty
+        self.ident == other.ident && self.field_ty == other.field_ty
     }
 }
 

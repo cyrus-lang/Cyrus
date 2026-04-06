@@ -651,7 +651,7 @@ impl Resolver {
             let ty = self.resolve_type(generic_params, field.field_ty.clone(), field.loc)?;
 
             fields.push(TypedUnionField {
-                name: field.field_name.value.clone(),
+                name: field.ident.as_string(),
                 ty,
                 loc: field.loc,
             });
@@ -1004,7 +1004,7 @@ impl Resolver {
             };
 
             typed_union_fields.push(TypedUnionField {
-                name: field.ident.as_string(),
+                name: field.name.as_string(),
                 ty: sema_type,
                 loc: field.loc,
             });
@@ -1411,7 +1411,7 @@ impl Resolver {
             .filter_map(|field| {
                 self.resolve_type(&generic_params, field.ty.clone(), field.loc)
                     .map(|ty| TypedStructField {
-                        name: field.ident.as_string(),
+                        name: field.name.as_string(),
                         vis: field.vis.clone(),
                         ty,
                         loc: field.loc,
@@ -2355,13 +2355,16 @@ impl Resolver {
             .fields
             .iter()
             .filter_map(|field| {
-                self.resolve_expr(&field.value)
-                    .map(|value| TypedUnnamedStructValueField {
+                self.resolve_expr(&field.value).map(|value| {
+                    let ty = field.ty.clone().and_then(|ty| self.resolve_type(&None, ty, field.loc));
+
+                    TypedUnnamedStructValueField {
                         name: field.name.as_string(),
-                        ty: None,
+                        ty,
                         value: Box::new(value),
                         loc: field.loc,
-                    })
+                    }
+                })
             })
             .collect();
 

@@ -86,19 +86,22 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
-
-            TypedExprKind::UnnamedStructValue(unnamed_struct_value) => todo!(),
-            TypedExprKind::UnnamedUnionValue(unnamed_union_value) => todo!(),
-            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => todo!(),
-            TypedExprKind::EnumStructVariantInit(struct_variant_init) => todo!(),
+            TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
             TypedExprKind::MethodCall(typed_method_call) => todo!(),
             TypedExprKind::FieldAccess(typed_field_access) => todo!(),
-            TypedExprKind::Dynamic(typed_dynamic_expr) => todo!(),
-
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type),
+
+            TypedExprKind::UnnamedStructValue(struct_value) => {
+                self.analyze_unnamed_struct_value(struct_value, expected_type)
+            }
+            TypedExprKind::UnnamedUnionValue(union_value) => {
+                self.analyze_unnamed_union_value(union_value, expected_type)
+            }
+            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => todo!(),
+            TypedExprKind::EnumStructVariantInit(struct_variant_init) => todo!(),
 
             TypedExprKind::Builtin(_typed_builtin) => todo!(), // TODO
 

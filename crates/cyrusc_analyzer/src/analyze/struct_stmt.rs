@@ -134,7 +134,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn validate_struct_field_type(&mut self, struct_decl_id: StructDeclID, sema_type: &SemanticType, loc: Loc) {
+    pub(crate) fn validate_struct_field_type(&mut self, struct_decl_id: StructDeclID, sema_type: &SemanticType, loc: Loc) {
         let sema_type = sema_type.const_inner();
 
         if sema_type.is_void() {

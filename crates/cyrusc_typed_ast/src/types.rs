@@ -125,6 +125,38 @@ pub enum TypedArrayCapacity {
 
 impl TypeDeclID {
     #[inline]
+    pub fn as_struct(&self) -> Option<StructDeclID> {
+        match self {
+            TypeDeclID::Struct(struct_decl_id) => Some(*struct_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_enum(&self) -> Option<EnumDeclID> {
+        match self {
+            TypeDeclID::Enum(enum_decl_id) => Some(*enum_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_union(&self) -> Option<UnionDeclID> {
+        match self {
+            TypeDeclID::Union(union_decl_id) => Some(*union_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_interface(&self) -> Option<InterfaceDeclID> {
+        match self {
+            TypeDeclID::Interface(interface_decl_id) => Some(*interface_decl_id),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn is_struct(&self) -> bool {
         matches!(self, Self::Struct(_))
     }
