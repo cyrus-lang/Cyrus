@@ -166,6 +166,12 @@ pub struct VarDecl {
 }
 
 impl EnumDecl {
+    #[inline]
+    pub fn lookup_variant(&self, name: &str) -> Option<&TypedEnumVariant> {
+        self.variants.iter().find(|variant| variant.ident().value == name)
+    }
+
+    #[inline]
     pub fn is_repr_c(&self) -> bool {
         if let Some(repr_attr) = &self.modifiers.repr_attr {
             if let Some(kind) = repr_attr.kind() {

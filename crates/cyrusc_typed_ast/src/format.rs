@@ -17,6 +17,7 @@
 
 use crate::SymbolID;
 use crate::decls::{EnumDecl, StructDecl, UnionDecl};
+use crate::exprs::TypedEnumInitArgs;
 use crate::stmts::TypedEnumVariant;
 use crate::types::TypeDeclID;
 use crate::{
@@ -216,7 +217,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         FieldAccess(field_access) => {
             let op = format_typed_expr(&field_access.operand, formatter);
             let sep = if field_access.is_fat_arrow { "->" } else { "." };
-            format!("{}{}{}", op, sep, field_access.field_name)
+            format!("{}{}{}", op, sep, field_access.name)
         }
         TupleAccess(tuple_access) => format!(
             "{}.{}",
@@ -226,7 +227,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
         MethodCall(method_call) => {
             let operand = format_typed_expr(&method_call.operand, formatter);
             let separator = if method_call.is_fat_arrow { "->" } else { "." };
-            format!("{}{}{}", operand, separator, method_call.method_name)
+            format!("{}{}{}", operand, separator, method_call.name)
         }
         UnnamedUnionValue(unnamed_union_value) => format!(
             "union {{ {} = {} }}",
@@ -304,6 +305,41 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
 
             out
         }
+        EnumInit(enum_init) => {
+            let enum_name = formatter.format_type_decl(TypeDeclID::Enum(enum_init.enum_decl_id));
+
+            let mut out = String::from(format!("{}.{}", enum_name, enum_init.variant_name));
+
+            match &enum_init.args {
+                TypedEnumInitArgs::Unit => {}
+
+                TypedEnumInitArgs::Tuple(vals) => {
+                    out.push_str(&format!("({})", join_exprs(vals, formatter)));
+                }
+
+                TypedEnumInitArgs::Struct(fields) => {
+                    if !fields.is_empty() {
+                        let fields = fields
+                            .iter()
+                            .map(|field_init| {
+                                format!(
+                                    "{}: {}",
+                                    field_init.name,
+                                    format_typed_expr(&field_init.value, formatter)
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+
+                        out.push_str(&format!(" {{ {} }}", fields));
+                    } else {
+                        out.push_str(" {}");
+                    }
+                }
+            }
+
+            out
+        }
         SemanticType(sema_type) => format_sema_type(sema_type.clone(), formatter),
         Lambda(lambda) => format_lambda(lambda, formatter),
         Tuple(tuple) => format!(
@@ -326,6 +362,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
                 join_exprs(&builtin_scope.args, formatter)
             ),
         },
+        Poisoned => unreachable!(),
     }
 }
 

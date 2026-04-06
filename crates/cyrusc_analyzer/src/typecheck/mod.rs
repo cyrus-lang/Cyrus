@@ -18,6 +18,7 @@
 pub(crate) mod array_expr;
 pub(crate) mod call_expr;
 pub(crate) mod dynamic_expr;
+pub(crate) mod enum_init;
 pub(crate) mod expr;
 pub(crate) mod field_access_expr;
 pub(crate) mod lambda_expr;

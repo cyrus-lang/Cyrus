@@ -17,7 +17,7 @@
 
 use crate::{
     SymbolID, VTableID,
-    decls::{FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID},
+    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{SemanticType, TypedFuncType},
 };
@@ -61,6 +61,7 @@ pub enum TypedExprKind {
     UnnamedUnionValue(TypedUnnamedUnionValue),
     UnnamedEnumValue(TypedUnnamedEnumValue),
     EnumStructVariantInit(TypedEnumStructVariantInit),
+    EnumInit(TypedEnumInit),
     FuncCall(TypedFuncCall),
     MethodCall(TypedMethodCall),
     FieldAccess(TypedFieldAccess),
@@ -70,6 +71,8 @@ pub enum TypedExprKind {
     Dynamic(TypedDynamicExpr),
     SemanticType(SemanticType),
     Builtin(TypedBuiltin),
+
+    Poisoned, // semantically wrong
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -248,18 +251,34 @@ pub enum TypedFuncCallDispatch {
 pub struct TypedFieldAccess {
     pub operand: Box<TypedExprStmt>,
     pub object_symbol_id: Option<SymbolID>,
-    pub field_name: String,
-    pub field_index: Option<usize>,
-    pub field_ty: Option<SemanticType>,
+    pub name: String,
+    pub index: Option<usize>,
+    pub ty: Option<SemanticType>,
     pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TypedEnumInit {
+    pub enum_decl_id: EnumDeclID,
+    pub variant_name: String,
+    pub args: TypedEnumInitArgs,
+    pub type_args: Option<TypedTypeArgs>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedEnumInitArgs {
+    Unit,
+    Tuple(Vec<TypedExprStmt>),
+    Struct(Vec<TypedEnumStructVariantFieldInit>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
-    pub method_name: String,
+    pub name: String,
     pub args: Vec<TypedExprStmt>,
     pub type_args: Option<TypedTypeArgs>,
 
@@ -376,7 +395,6 @@ impl TypedExprKind {
             TypedExprKind::Deref(_) => true,
             TypedExprKind::FieldAccess(_) => true,
             TypedExprKind::TupleAccess(_) => true,
-
             TypedExprKind::MethodCall(_)
             | TypedExprKind::FuncCall(_)
             | TypedExprKind::StructInit(_)
@@ -396,6 +414,9 @@ impl TypedExprKind {
             | TypedExprKind::UnnamedUnionValue(_)
             | TypedExprKind::Builtin(_)
             | TypedExprKind::EnumStructVariantInit(_) => false,
+            TypedExprKind::EnumInit(_) => false,
+
+            TypedExprKind::Poisoned => unreachable!(),
         }
     }
 }

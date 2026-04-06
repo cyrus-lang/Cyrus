@@ -71,7 +71,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.lower_expr_pre_analysis(expr, expected_type.clone());
 
-        let ty_opt = match &mut expr.kind {
+        let expr_type = match &mut expr.kind {
             TypedExprKind::Symbol(symbol_expr) => self.resolve_symbol_type(symbol_expr.symbol_id, symbol_expr.loc),
             TypedExprKind::Assign(assign) => {
                 self.analyze_assign(assign);
@@ -93,19 +93,20 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type),
-
+            TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init),
             TypedExprKind::UnnamedStructValue(struct_value) => {
                 self.analyze_unnamed_struct_value(struct_value, expected_type)
             }
             TypedExprKind::UnnamedUnionValue(union_value) => {
                 self.analyze_unnamed_union_value(union_value, expected_type)
             }
-            TypedExprKind::UnnamedEnumValue(unnamed_enum_value) => todo!(),
-            TypedExprKind::EnumStructVariantInit(struct_variant_init) => todo!(),
+            TypedExprKind::UnnamedEnumValue(enum_value) => self.analyze_unnamed_enum_value(enum_value, expected_type),
+            TypedExprKind::EnumStructVariantInit(struct_variant_init) => {
+                self.analyze_enum_struct_variant_init(struct_variant_init, expected_type)
+            }
 
-            TypedExprKind::Builtin(_typed_builtin) => todo!(), // TODO
+            TypedExprKind::Builtin(_typed_builtin) => todo!(),
 
-            // invalid expressions
             TypedExprKind::SemanticType(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -115,16 +116,19 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
+
+            TypedExprKind::Poisoned => return None,
         };
 
-        let normalized_type = self.normalize_sema_type(ty_opt.clone()?, expr.loc);
+        let normalized_type = self.normalize_sema_type(expr_type.clone()?, expr.loc);
+
         expr.sema_type = Some(normalized_type.clone()?);
 
+        // debug
         if cfg!(debug_assertions) {
             if let Some(sema_type) = expr.sema_type.clone() {
                 assert!(!sema_type.is_unresolved());
             }
-
             if expr.sema_type.is_none() {
                 panic!("expr.sema_type is empty!");
             }

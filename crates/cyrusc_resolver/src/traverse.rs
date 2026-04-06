@@ -2266,10 +2266,10 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::FieldAccess(TypedFieldAccess {
                 operand: Box::new(operand),
-                field_name: field_access.field_name.value.clone(),
+                name: field_access.field_name.value.clone(),
                 is_fat_arrow: field_access.is_fat_arrow,
-                field_index: None,
-                field_ty: None,
+                index: None,
+                ty: None,
                 object_symbol_id: None,
                 type_args,
                 loc: field_access.loc,
@@ -2297,7 +2297,7 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
-                method_name: method_call.method_name.value.clone(),
+                name: method_call.method_name.value.clone(),
                 args,
                 type_args,
 

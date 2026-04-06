@@ -588,14 +588,17 @@ impl<'resolver> CIRTraverse<'resolver> {
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
+            TypedExprKind::EnumInit(typed_enum_init) => todo!(), // TODO
+
             TypedExprKind::Builtin(_builtin) => todo!(), // TODO
 
-            // lowered in analyzer layer
             TypedExprKind::UnnamedStructValue(_)
             | TypedExprKind::UnnamedEnumValue(_)
             | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
             TypedExprKind::EnumStructVariantInit(_) => unreachable!("unexpected enum struct variant init expression"),
             TypedExprKind::SemanticType(..) => unreachable!("unexpected semantic type as expression"),
+
+            TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
         };
 
         CIRExpr {

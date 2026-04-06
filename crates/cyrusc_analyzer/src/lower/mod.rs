@@ -17,12 +17,14 @@
 
 use crate::{context::AnalysisContext, lower::lower_assign::lower_assign_to_infix_expr};
 use cyrusc_ast::{AssignKind, operators::PrefixOperator};
+use cyrusc_internal::symbols::symbols::SymbolEntryKind;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
     types::SemanticType,
 };
 
 pub(crate) mod lower_assign;
+pub(crate) mod lower_enum_init;
 pub(crate) mod lower_prefix_not;
 
 impl<'a> AnalysisContext<'a> {
@@ -39,20 +41,18 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
             TypedExprKind::Prefix(prefix) => {
-                match prefix.op {
-                    PrefixOperator::Bang => {
-                        if let Some(lowered_typed_expr) = self.lower_prefix_not_pointer(expected_type.clone(), prefix) {
-                            *typed_expr = lowered_typed_expr;
-                        }
+                if let PrefixOperator::Bang = prefix.op {
+                    if let Some(lowered_typed_expr) = self.lower_prefix_not_pointer(expected_type.clone(), prefix) {
+                        *typed_expr = lowered_typed_expr;
                     }
-                    _ => {}
                 };
             }
-            _ => {}
+            _ => {
+                self.lower_field_access_as_enum_init(typed_expr);
+                self.lower_method_call_as_enum_init(typed_expr);
+            }
         };
     }
 
-    pub(crate) fn lower_expr_post_analysis(&mut self, typed_expr: &mut TypedExprStmt) {
-        
-    }
+    pub(crate) fn lower_expr_post_analysis(&mut self, typed_expr: &mut TypedExprStmt) {}
 }

@@ -1,0 +1,132 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_internal::symbols::symbols::SymbolEntryKind;
+use cyrusc_typed_ast::{
+    exprs::{MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt},
+    format::format_enum_decl,
+};
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn lower_field_access_as_enum_init(&self, typed_expr: &mut TypedExprStmt) {
+        let TypedExprKind::FieldAccess(field_access) = &typed_expr.kind else {
+            return;
+        };
+
+        if field_access.is_fat_arrow {
+            return;
+        }
+
+        if let Some(symbol_id) = field_access.operand.kind.as_symbol_id() {
+            let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
+
+            if let SymbolEntryKind::Enum(enum_decl_id) = symbol_entry.kind {
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                // variant exists?
+                if enum_decl.lookup_variant(&field_access.name).is_some() {
+                    let args = TypedEnumInitArgs::Unit;
+
+                    let enum_init = TypedEnumInit {
+                        enum_decl_id,
+                        variant_name: field_access.name.clone(),
+                        args,
+                        type_args: field_access.type_args.clone(),
+                        loc: field_access.loc,
+                    };
+
+                    *typed_expr = TypedExprStmt {
+                        kind: TypedExprKind::EnumInit(enum_init),
+                        sema_type: None,
+                        mloc: MemoryLocation::RValue,
+                        loc: field_access.loc,
+                    };
+                } else {
+                    // no such variant on enum decl
+                    let enum_name = format_enum_decl(&enum_decl, self.formatter);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
+                            enum_name,
+                            variant_name: field_access.name.clone(),
+                        }),
+                        loc: Some(field_access.loc),
+                        hint: None,
+                    });
+
+                    typed_expr.kind = TypedExprKind::Poisoned;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn lower_method_call_as_enum_init(&self, typed_expr: &mut TypedExprStmt) {
+        let TypedExprKind::MethodCall(method_call) = &typed_expr.kind else {
+            return;
+        };
+
+        if method_call.is_fat_arrow {
+            return;
+        }
+
+        if let Some(symbol_id) = method_call.operand.kind.as_symbol_id() {
+            let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
+
+            if let SymbolEntryKind::Enum(enum_decl_id) = symbol_entry.kind {
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
+
+                // variant exists?
+                if enum_decl.lookup_variant(&method_call.name).is_some() {
+                    let args = TypedEnumInitArgs::Tuple(method_call.args.clone());
+
+                    let enum_init = TypedEnumInit {
+                        enum_decl_id,
+                        variant_name: method_call.name.clone(),
+                        args,
+                        type_args: method_call.type_args.clone(),
+                        loc: method_call.loc,
+                    };
+
+                    *typed_expr = TypedExprStmt {
+                        kind: TypedExprKind::EnumInit(enum_init),
+                        sema_type: None,
+                        mloc: MemoryLocation::RValue,
+                        loc: method_call.loc,
+                    };
+                } else {
+                    // no such variant on enum decl
+                    let enum_name = format_enum_decl(&enum_decl, self.formatter);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::NoSuchEnumVariant {
+                            enum_name,
+                            variant_name: method_call.name.clone(),
+                        }),
+                        loc: Some(method_call.loc),
+                        hint: None,
+                    });
+
+                    typed_expr.kind = TypedExprKind::Poisoned;
+                }
+            }
+        }
+    }
+}
