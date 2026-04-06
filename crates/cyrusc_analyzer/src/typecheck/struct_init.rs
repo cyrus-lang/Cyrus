@@ -29,7 +29,20 @@ use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemanticType> {
-        let struct_decl_id = struct_init.struct_decl_id.unwrap();
+        let symbol_id = struct_init.symbol_id.unwrap();
+
+        let Some(struct_decl_id) = self.query.get_struct(symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
+                    symbol_name: self.formatter.format_symbol_name(symbol_id),
+                }),
+                loc: Some(struct_init.loc),
+                hint: None,
+            });
+            return None;
+        };
+
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
         for field in &mut struct_init.fields {

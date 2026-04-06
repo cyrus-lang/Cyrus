@@ -202,7 +202,6 @@ pub struct TypedDerefExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInitExpr {
     pub symbol_id: Option<SymbolID>,
-    pub struct_decl_id: Option<StructDeclID>,
     pub type_args: Option<TypedTypeArgs>,
     pub fields: Vec<TypedStructFieldInit>,
     pub loc: Loc,

@@ -71,21 +71,16 @@ impl<'a> AnalysisContext<'a> {
         method_decls: &MethodDecls,
     ) {
         for implement_interface in impls {
-            let symbol_entry = self.query.lookup_symbol_entry(implement_interface.symbol_id).unwrap();
-
-            let interface_decl_id = match symbol_entry.as_interface() {
-                Some(id) => id,
-                None => {
-                    let symbol_name = self.formatter.format_symbol_name(implement_interface.symbol_id);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::SymbolIsNotInterface { symbol_name }),
-                        loc: Some(implement_interface.loc),
-                        hint: None,
-                    });
-                    continue;
-                }
+            let Some(interface_decl_id) = self.query.get_interface(implement_interface.symbol_id) else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::NonInterfaceSymbol {
+                        symbol_name: self.formatter.format_symbol_name(implement_interface.symbol_id),
+                    }),
+                    loc: Some(implement_interface.loc),
+                    hint: None,
+                });
+                continue;
             };
 
             let interface_decl = self.decl_tables.interface_decl(interface_decl_id);

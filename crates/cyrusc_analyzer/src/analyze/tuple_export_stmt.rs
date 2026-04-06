@@ -32,7 +32,6 @@ use cyrusc_typed_ast::{
 // var (var a, var b) = (1, 2);
 // var (const a: int64, const b) = (1, 2);
 
-
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_export_tuple_values(&mut self, export_tuple: &mut TypedExportTupleStmt) -> Option<()> {
         let rhs = match export_tuple.rhs.as_mut() {
@@ -141,6 +140,14 @@ impl<'a> AnalysisContext<'a> {
                 let rhs = self.tuple_access_expr(root_expr, path, loc);
 
                 let Some(var_decl_id) = self.query.get_var(*symbol_id) else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::NonVariableSymbol {
+                            symbol_name: self.formatter.format_symbol_name(*symbol_id),
+                        }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
                     return;
                 };
 

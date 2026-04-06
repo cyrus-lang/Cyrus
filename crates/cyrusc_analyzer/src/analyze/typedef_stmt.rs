@@ -15,7 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::context::AnalysisContext;
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::stmts::TypedTypedefStmt;
 
 impl<'a> AnalysisContext<'a> {
@@ -25,7 +26,18 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
-        let typedef_decl_id = self.query.get_typedef(typedef.symbol_id).unwrap();
+        let Some(typedef_decl_id) = self.query.get_typedef(typedef.symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonTypedefSymbol {
+                    symbol_name: self.formatter.format_symbol_name(typedef.symbol_id),
+                }),
+                loc: Some(typedef.loc),
+                hint: None,
+            });
+            return;
+        };
+
         self.decl_tables.with_typedef_decl_mut(typedef_decl_id, |typedef_decl| {
             typedef_decl.ty = Box::new(typedef.ty.clone());
         });

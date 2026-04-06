@@ -103,11 +103,21 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let global_var_decl_id = self.query.get_global_var(global_var.symbol_id).unwrap();
+        let Some(global_var_decl_id) = self.query.get_global_var(global_var.symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonGlobalVarSymbol {
+                    symbol_name: self.formatter.format_symbol_name(global_var.symbol_id),
+                }),
+                loc: Some(global_var.loc),
+                hint: None,
+            });
+            return;
+        };
+
         self.decl_tables
             .with_global_var_decl_mut(global_var_decl_id, |global_var_decl| {
-                // FIXME: Remove later.
-                // global_var_decl.rhs = global_var.expr.clone();
+                global_var_decl.rhs = global_var.expr.clone();
                 global_var_decl.ty = global_var.ty.clone();
             });
     }

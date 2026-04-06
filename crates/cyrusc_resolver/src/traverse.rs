@@ -2316,7 +2316,6 @@ impl Resolver {
 
     fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_local_module_import(&struct_init.struct_name)?;
-        let struct_decl_id = self.get_struct(symbol_id).unwrap();
 
         let fields: Vec<TypedStructFieldInit> = struct_init
             .field_inits
@@ -2338,7 +2337,6 @@ impl Resolver {
         Some(TypedExprStmt {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
                 symbol_id: Some(symbol_id),
-                struct_decl_id: Some(struct_decl_id),
                 fields,
                 type_args,
                 loc: struct_init.loc,

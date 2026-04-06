@@ -46,7 +46,18 @@ impl<'a> AnalysisContext<'a> {
         if let Some(symbol_id) = func_type.symbol_id {
             // named func call
 
-            let func_decl_id = self.query.get_func(symbol_id).unwrap();
+            let Some(func_decl_id) = self.query.get_func(symbol_id) else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol {
+                        symbol_name: self.formatter.format_symbol_name(symbol_id),
+                    }),
+                    loc: Some(func_call.loc),
+                    hint: None,
+                });
+                return None;
+            };
+
             let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
             self.normalize_func_params(&mut func_decl.params, func_call.loc);

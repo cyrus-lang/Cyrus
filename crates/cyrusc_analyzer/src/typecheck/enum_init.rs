@@ -289,7 +289,18 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let enum_decl_id = self.query.get_enum(symbol_id).unwrap();
+        let Some(enum_decl_id) = self.query.get_enum(symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonEnumSymbol {
+                    symbol_name: self.formatter.format_symbol_name(symbol_id),
+                }),
+                loc: Some(struct_variant_init.loc),
+                hint: None,
+            });
+            return None;
+        };
+
         let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         let Some(variant) = enum_decl.lookup_variant(&struct_variant_init.ident.value) else {

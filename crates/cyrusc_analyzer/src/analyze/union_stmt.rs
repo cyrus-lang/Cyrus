@@ -29,7 +29,18 @@ use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_union_stmt(&mut self, union_stmt: &mut TypedUnionStmt) {
-        let union_decl_id = self.query.get_union(union_stmt.symbol_id).unwrap();
+        let Some(union_decl_id) = self.query.get_union(union_stmt.symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonUnionSymbol {
+                    symbol_name: self.formatter.format_symbol_name(union_stmt.symbol_id),
+                }),
+                loc: Some(union_stmt.loc),
+                hint: None,
+            });
+            return;
+        };
+
         let mut union_decl = self.decl_tables.union_decl(union_decl_id);
 
         self.analyze_union_decl(union_decl_id, &mut union_decl);

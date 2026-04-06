@@ -29,7 +29,18 @@ use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_stmt(&mut self, enum_stmt: &mut TypedEnumStmt) {
-        let enum_decl_id = self.query.get_enum(enum_stmt.symbol_id).unwrap();
+        let Some(enum_decl_id) = self.query.get_enum(enum_stmt.symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonEnumSymbol {
+                    symbol_name: self.formatter.format_symbol_name(enum_stmt.symbol_id),
+                }),
+                loc: Some(enum_stmt.loc),
+                hint: None,
+            });
+            return;
+        };
+
         let mut enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
         self.analyze_enum_decl(enum_decl_id, &mut enum_decl);

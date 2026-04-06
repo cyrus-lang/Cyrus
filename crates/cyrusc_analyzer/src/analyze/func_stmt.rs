@@ -32,7 +32,18 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_entry_func(func_def);
         self.analyze_generic_params(&func_def.generic_params);
 
-        let func_decl_id = self.query.get_func(func_def.symbol_id).unwrap();
+        let Some(func_decl_id) = self.query.get_func(func_def.symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol {
+                    symbol_name: self.formatter.format_symbol_name(func_def.symbol_id),
+                }),
+                loc: Some(func_def.loc),
+                hint: None,
+            });
+            return;
+        };
+
         let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
         self.analyze_func_decl(&mut func_decl);
@@ -64,7 +75,18 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let func_decl_id = self.query.get_func(func_decl_stmt.symbol_id).unwrap();
+        let Some(func_decl_id) = self.query.get_func(func_decl_stmt.symbol_id) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::NonFunctionSymbol {
+                    symbol_name: self.formatter.format_symbol_name(func_decl_stmt.symbol_id),
+                }),
+                loc: Some(func_decl_stmt.loc),
+                hint: None,
+            });
+            return;
+        };
+
         let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
         self.analyze_func_decl(&mut func_decl);

@@ -132,9 +132,6 @@ pub enum AnalyzerDiagKind {
         interface_name: String,
     },
 
-    #[error("Symbol '{symbol_name}' is not interface.")]
-    SymbolIsNotInterface { symbol_name: String },
-
     #[error("Mismatch between number of exported values and tuple elements.")]
     TupleExportedValuesAndTupleElementsCountMismatch,
 
@@ -366,8 +363,29 @@ pub enum AnalyzerDiagKind {
         argument_type: String,
     },
 
+    #[error("Symbol '{symbol_name}' is not an interface.")]
+    NonInterfaceSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not an union.")]
+    NonUnionSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a typedef.")]
+    NonTypedefSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a variable.")]
+    NonVariableSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a global variable.")]
+    NonGlobalVarSymbol { symbol_name: String },
+
     #[error("Symbol '{symbol_name}' is not a function.")]
     NonFunctionSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not a struct.")]
+    NonStructSymbol { symbol_name: String },
+
+    #[error("Symbol '{symbol_name}' is not an enum.")]
+    NonEnumSymbol { symbol_name: String },
 
     #[error("Cannot use {elements} elements in an array of size {expected}.")]
     ArrayElementsCountMismatch { elements: u32, expected: u32 },
