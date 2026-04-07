@@ -94,6 +94,9 @@ pub enum ResolverDiagKind {
     #[error("Symbol '{symbol_name}' has already been declared in this module.")]
     DuplicateSymbol { symbol_name: String },
 
+    #[error("Generic parameter '{name}' is declared more than once.")]
+    DuplicateGenericParam { name: String },
+
     #[error("Symbol '{symbol_name}' cannot be declared again. It already exists within the current scope.")]
     DuplicateSymbolInThisScope { symbol_name: String },
 

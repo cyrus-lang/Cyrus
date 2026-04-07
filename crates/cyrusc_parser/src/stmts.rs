@@ -626,9 +626,9 @@ impl<'source_file> Parser<'source_file> {
 
         let generic_params = {
             if self.current_token_is(TokenKind::LessThan) {
-                Some(self.parse_generic_params()?)
+                self.parse_generic_params()?
             } else {
-                None
+                GenericParams::new()
             }
         };
 
@@ -715,12 +715,13 @@ impl<'source_file> Parser<'source_file> {
         let tag_type = self.parse_enum_tag_type()?;
         let align = self.parse_align_specifier()?;
 
-        let generic_params;
-        if self.current_token_is(TokenKind::LessThan) {
-            generic_params = Some(self.parse_generic_params()?);
-        } else {
-            generic_params = None;
-        }
+        let generic_params = {
+            if self.current_token_is(TokenKind::LessThan) {
+                self.parse_generic_params()?
+            } else {
+                GenericParams::new()
+            }
+        };
 
         let impls = self.parse_object_impls()?;
 
@@ -829,9 +830,9 @@ impl<'source_file> Parser<'source_file> {
 
         let generic_params = {
             if self.current_token_is(TokenKind::LessThan) {
-                Some(self.parse_generic_params()?)
+                self.parse_generic_params()?
             } else {
-                None
+                GenericParams::new()
             }
         };
 
@@ -1017,10 +1018,12 @@ impl<'source_file> Parser<'source_file> {
         let ident = self.parse_ident()?;
         self.next_token();
 
-        let generic_params = if self.current_token_is(TokenKind::LessThan) {
-            Some(self.parse_generic_params()?)
-        } else {
-            None
+        let generic_params = {
+            if self.current_token_is(TokenKind::LessThan) {
+                self.parse_generic_params()?
+            } else {
+                GenericParams::new()
+            }
         };
 
         self.expect_current(TokenKind::LeftBrace)?;
@@ -1467,10 +1470,12 @@ impl<'source_file> Parser<'source_file> {
         let func_name = self.parse_ident()?; // export the name of the function
         self.next_token(); // consume the name of the ident
 
-        let generic_params = if self.current_token_is(TokenKind::LessThan) {
-            Some(self.parse_generic_params()?)
-        } else {
-            None
+        let generic_params = {
+            if self.current_token_is(TokenKind::LessThan) {
+                self.parse_generic_params()?
+            } else {
+                GenericParams::new()
+            }
         };
 
         let params = self.parse_func_params()?;
@@ -1658,12 +1663,13 @@ impl<'source_file> Parser<'source_file> {
         let ident = self.parse_ident()?;
         self.next_token();
 
-        let generic_params;
-        if self.current_token_is(TokenKind::LessThan) {
-            generic_params = Some(self.parse_generic_params()?);
-        } else {
-            generic_params = None;
-        }
+        let generic_params = {
+            if self.current_token_is(TokenKind::LessThan) {
+                self.parse_generic_params()?
+            } else {
+                GenericParams::new()
+            }
+        };
 
         self.expect_current(TokenKind::Assign)?;
 
@@ -1720,7 +1726,7 @@ impl<'source_file> Parser<'source_file> {
                 }
 
                 self.expect_current(TokenKind::RightParen)?;
-                
+
                 return Ok(SwitchCasePattern::EnumTupleVariant { variant, items });
             }
 

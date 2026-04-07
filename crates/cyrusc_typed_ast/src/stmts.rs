@@ -16,8 +16,8 @@
  */
 
 use crate::{
-    LabelID, SymbolID,
-    decls::{FuncDecl, MethodDecls, VarDeclID},
+    GenericParamID, LabelID, SymbolID,
+    decls::{FuncDecl, FuncDeclID, MethodDecls, VarDeclID},
     exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
     types::SemanticType,
 };
@@ -132,8 +132,8 @@ pub struct TypedImplementInterface {
 pub struct TypedInterfaceStmt {
     pub name: String,
     pub symbol_id: SymbolID,
-    pub methods: Vec<TypedFuncDeclStmt>,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub methods: Vec<FuncDeclID>,
+    pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -144,7 +144,7 @@ pub struct TypedEnumStmt {
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
     pub methods: MethodDecls,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: EnumModifiers,
     pub tag_type: Option<SemanticType>,
@@ -188,7 +188,7 @@ pub struct TypedStructStmt {
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub methods: MethodDecls,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
@@ -201,7 +201,7 @@ pub struct TypedUnionStmt {
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: MethodDecls,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub impls: Vec<TypedImplementInterface>,
     pub align: Option<usize>,
     pub modifiers: UnionModifiers,
@@ -246,7 +246,7 @@ pub struct TypedTypedefStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: SemanticType,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -282,7 +282,7 @@ pub struct TypedFuncDefStmt {
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub body: Box<TypedBlockStmt>,
     pub ret_type: SemanticType,
     pub modifiers: FuncModifiers,
@@ -293,7 +293,7 @@ pub struct TypedFuncDefStmt {
 pub struct TypedFuncDeclStmt {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub params: TypedFuncParams,
     pub ret_type: SemanticType,
     pub modifiers: FuncModifiers,
@@ -436,27 +436,90 @@ pub struct TypedContinueStmt {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct TypedGenericParamsList {
-    pub list: Vec<TypedGenericParam>,
-}
+pub struct TypedGenericParams(pub Vec<TypedGenericParam>);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedGenericParam {
     pub name: Ident,
-    pub bounds: Option<Vec<TypedBound>>,
+    pub bounds: Vec<TypedBound>,
     pub default: Option<Box<SemanticType>>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TypedBound {
-    pub symbol: Ident,
-    pub type_args: TypedTypeArgs,
+pub struct TypedTypeArgs(pub Vec<TypedTypeArg>);
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum TypedTypeArg {
+    Type(SemanticType, Loc),
+    Infer,
 }
 
-#[derive(Debug, Clone, Eq)]
-pub enum TypedTypeArg {
-    Positional { i: usize, ty: SemanticType, loc: Loc },
-    Named { key: String, ty: SemanticType, loc: Loc },
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct TypedBound(pub SemanticType);
+
+impl TypedGenericParams {
+    #[inline]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &TypedGenericParam> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut TypedGenericParam> {
+        self.0.iter_mut()
+    }
+}
+
+impl TypedTypeArgs {
+    #[inline]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &TypedTypeArg> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut TypedTypeArg> {
+        self.0.iter_mut()
+    }
+
+    #[inline]
+    pub fn push(&mut self, ty: TypedTypeArg) {
+        self.0.push(ty);
+    }
+}
+
+impl FromIterator<TypedTypeArg> for TypedTypeArgs {
+    fn from_iter<T: IntoIterator<Item = TypedTypeArg>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
 }
 
 impl TypedExportPattern {
@@ -466,6 +529,24 @@ impl TypedExportPattern {
             TypedExportPatternKind::Tuple(patterns) => Some(patterns),
             _ => None,
         }
+    }
+}
+
+impl TypedStructStmt {
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+}
+
+impl TypedEnumStmt {
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
+    }
+}
+
+impl TypedUnionStmt {
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
     }
 }
 
@@ -674,92 +755,13 @@ impl TypedSwitchStmt {
 impl Hash for TypedGenericParam {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
-        if let Some(bounds) = &self.bounds {
-            bounds.hash(state);
-        }
+        self.bounds.hash(state);
     }
 }
 
 impl TypedFuncDefStmt {
     pub fn is_generic(&self) -> bool {
-        self.generic_params.is_some()
-    }
-}
-
-impl TypedGenericParamsList {
-    pub fn new() -> Self {
-        Self { list: Vec::new() }
-    }
-
-    pub fn push(&mut self, gp: TypedGenericParam) {
-        self.list.push(gp);
-    }
-
-    pub fn lookup_named(&self, name: &String) -> Option<&TypedGenericParam> {
-        self.list.iter().find(|generic_param| &generic_param.name.value == name)
-    }
-
-    pub fn lookup_positional(&self, i: usize) -> Option<&TypedGenericParam> {
-        self.list.get(i)
-    }
-}
-
-impl TypedTypeArg {
-    pub fn as_named(&self) -> Option<(&String, &SemanticType)> {
-        match self {
-            TypedTypeArg::Named { key, ty, .. } => Some((key, ty)),
-            _ => None,
-        }
-    }
-
-    pub fn ty(&self) -> &SemanticType {
-        match self {
-            TypedTypeArg::Named { ty, .. } => ty,
-            TypedTypeArg::Positional { ty, .. } => ty,
-        }
-    }
-
-    pub fn ty_mut(&mut self) -> &mut SemanticType {
-        match self {
-            TypedTypeArg::Named { ty, .. } => ty,
-            TypedTypeArg::Positional { ty, .. } => ty,
-        }
-    }
-}
-
-pub type TypedTypeArgs = Vec<TypedTypeArg>;
-
-impl Hash for TypedTypeArg {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            TypedTypeArg::Positional { i, ty, .. } => {
-                i.hash(state);
-                ty.hash(state);
-            }
-            TypedTypeArg::Named { key, ty, .. } => {
-                key.hash(state);
-                ty.hash(state);
-            }
-        }
-    }
-}
-
-impl PartialEq for TypedTypeArg {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Positional { i: l_idx, ty: l_ty, .. }, Self::Positional { i: r_idx, ty: r_ty, .. }) => {
-                l_idx == r_idx && l_ty == r_ty
-            }
-            (
-                Self::Named {
-                    key: l_key, ty: l_ty, ..
-                },
-                Self::Named {
-                    key: r_key, ty: r_ty, ..
-                },
-            ) => l_key == r_key && l_ty == r_ty,
-            _ => false,
-        }
+        !self.generic_params.is_empty()
     }
 }
 
@@ -815,6 +817,20 @@ impl Hash for TypedIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.symbol_id.hash(state);
+    }
+}
+
+impl Hash for TypedTypeArg {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            TypedTypeArg::Type(sema_type, _) => {
+                0u8.hash(state);
+                sema_type.hash(state);
+            }
+            TypedTypeArg::Infer => {
+                1u8.hash(state);
+            }
+        }
     }
 }
 

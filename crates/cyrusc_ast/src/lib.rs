@@ -178,7 +178,7 @@ pub struct UnnamedUnionTypeField {
 pub struct ASTUnionStmt {
     pub ident: Ident,
     pub fields: Vec<UnionField>,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub methods: Vec<ASTFuncDefStmt>,
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: UnionModifiers,
@@ -197,7 +197,7 @@ pub struct UnionField {
 pub struct ASTEnumStmt {
     pub ident: Ident,
     pub variants: Vec<EnumVariant>,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub methods: Vec<ASTFuncDefStmt>,
     pub impls: Vec<TypeSpecifier>,
     pub modifiers: EnumModifiers,
@@ -483,7 +483,7 @@ pub struct ASTDeferStmt {
 pub struct ASTInterfaceStmt {
     pub ident: Ident,
     pub methods: Vec<ASTFuncDeclStmt>,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -502,7 +502,7 @@ pub struct ASTGlobalVarStmt {
 pub struct ASTTypedefStmt {
     pub ident: Ident,
     pub type_spec: TypeSpecifier,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -552,7 +552,7 @@ pub struct ASTImportStmt {
 #[derive(Debug, Clone)]
 pub struct ASTStructStmt {
     pub ident: Ident,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub impls: Vec<TypeSpecifier>,
     pub fields: Vec<StructField>,
     pub methods: Vec<ASTFuncDefStmt>,
@@ -682,7 +682,7 @@ pub struct ASTLambdaExpr {
 #[derive(Debug, Clone)]
 pub struct ASTFuncDefStmt {
     pub ident: Ident,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub params: FuncParams,
     pub body: Box<ASTBlockStmt>,
     pub ret_type: Option<TypeSpecifier>,
@@ -693,7 +693,7 @@ pub struct ASTFuncDefStmt {
 #[derive(Debug, Clone)]
 pub struct ASTFuncDeclStmt {
     pub ident: Ident,
-    pub generic_params: Option<GenericParamsList>,
+    pub generic_params: GenericParams,
     pub params: FuncParams,
     pub ret_type: Option<TypeSpecifier>,
     pub modifiers: FuncModifiers,
@@ -809,7 +809,7 @@ pub struct ASTIfStmt {
     pub loc: Loc,
 }
 
-pub type GenericParamsList = Vec<GenericParam>;
+pub type GenericParams = Vec<GenericParam>;
 
 #[derive(Debug, Clone)]
 pub struct GenericParam {
@@ -819,18 +819,16 @@ pub struct GenericParam {
 }
 
 #[derive(Debug, Clone)]
-pub struct Bound {
-    pub symbol: Ident,
-    pub type_args: Vec<TypeArg>,
-}
+pub struct Bound(pub TypeSpecifier);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeArgs(pub Vec<TypeArg>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeArg {
-    Positional(TypeSpecifier),
-    Named { key: Ident, ty: TypeSpecifier },
+    Type(TypeSpecifier),
+    Infer, // `_`
 }
-
-pub type TypeArgs = Vec<TypeArg>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mutability {
@@ -864,6 +862,48 @@ pub fn sub_module_segments(segments: Vec<ModuleSegment>) -> Vec<Ident> {
         .iter()
         .filter_map(|module_segment| module_segment.as_ident())
         .collect()
+}
+
+impl TypeArgs {
+    #[inline]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &TypeArg> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut TypeArg> {
+        self.0.iter_mut()
+    }
+
+    #[inline]
+    pub fn push(&mut self, ty: TypeArg) {
+        self.0.push(ty);
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&TypeArg> {
+        self.0.get(index)
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[TypeArg] {
+        &self.0
+    }
 }
 
 impl ModuleSegment {

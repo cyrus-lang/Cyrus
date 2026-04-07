@@ -19,8 +19,8 @@ use crate::{
     SymbolID,
     exprs::TypedExprStmt,
     stmts::{
-        TypedBlockStmt, TypedEnumVariant, TypedFuncDeclStmt, TypedFuncParams, TypedGenericParamsList,
-        TypedImplementInterface, TypedStructField, TypedUnionField,
+        TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
+        TypedStructField, TypedUnionField,
     },
     types::{SemanticType, TypedFuncType},
 };
@@ -73,7 +73,7 @@ pub struct StructDecl {
     pub fields: Vec<TypedStructField>,
     pub impls: Vec<TypedImplementInterface>,
     pub methods: MethodDecls,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub modifiers: StructModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
@@ -86,7 +86,7 @@ pub struct UnionDecl {
     pub fields: Vec<TypedUnionField>,
     pub impls: Vec<TypedImplementInterface>,
     pub methods: MethodDecls,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub modifiers: UnionModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
@@ -99,7 +99,7 @@ pub struct EnumDecl {
     pub methods: MethodDecls,
     pub variants: Vec<TypedEnumVariant>,
     pub impls: Vec<TypedImplementInterface>,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub modifiers: EnumModifiers,
     pub tag_type: Option<SemanticType>,
     pub align: Option<usize>,
@@ -111,7 +111,7 @@ pub struct FuncDecl {
     pub symbol_id: Option<SymbolID>,
     pub name: String,
     pub params: TypedFuncParams,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub ret_type: SemanticType,
     pub is_func_decl: bool,
     pub modifiers: FuncModifiers,
@@ -128,7 +128,7 @@ pub struct MethodDecl {
 pub struct TypedefDecl {
     pub name: String,
     pub ty: Box<SemanticType>,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -137,8 +137,8 @@ pub struct TypedefDecl {
 pub struct InterfaceDecl {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub methods: Vec<TypedFuncDeclStmt>,
-    pub generic_params: Option<TypedGenericParamsList>,
+    pub methods: Vec<FuncDeclID>,
+    pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -266,7 +266,7 @@ impl StructDecl {
 
 impl FuncDecl {
     pub fn is_generic(&self) -> bool {
-        self.generic_params.is_some()
+        !self.generic_params.is_empty()
     }
 
     pub fn as_func_type(&self) -> TypedFuncType {

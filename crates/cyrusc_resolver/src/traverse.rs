@@ -38,6 +38,7 @@ use cyrusc_typed_ast::exprs::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::*;
+use fx_hash::FxHashSet;
 
 // Resolver endpoints.
 impl Resolver {
@@ -247,10 +248,6 @@ impl Resolver {
             return Some(symbol_id);
         }
 
-        if ident.value == "Self" {
-            return self.current_object;
-        }
-
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
             return Some(symbol_id);
         }
@@ -414,34 +411,33 @@ impl Resolver {
         }
     }
 
-    fn resolve_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        type_spec: TypeSpecifier,
-        loc: Loc,
-    ) -> Option<SemanticType> {
+    fn resolve_type(&mut self, type_spec: TypeSpecifier, loc: Loc) -> Option<SemanticType> {
         match type_spec {
-            TypeSpecifier::Ident(ident) => self.resolve_ident_type(generic_params, ident),
+            TypeSpecifier::Ident(ident) => {
+                if ident.value == "Self" {
+                    return Some(SemanticType::SelfType(TypedSelfType { loc: ident.loc }));
+                }
+
+                self.resolve_ident_type(ident)
+            }
             TypeSpecifier::ModuleImport(import) => self.resolve_module_import_type(import),
             TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
-
             TypeSpecifier::Const(inner) => {
-                let inner = self.resolve_type(generic_params, *inner, loc)?;
+                let inner = self.resolve_type(*inner, loc)?;
                 Some(SemanticType::Const(Box::new(inner)))
             }
             TypeSpecifier::SelfType(self_ty) => Some(SemanticType::SelfType(TypedSelfType { loc: self_ty.loc })),
-            TypeSpecifier::GenericInst(inst) => self.resolve_generic_inst_type(generic_params, inst, loc),
-            TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(generic_params, tuple),
-            TypeSpecifier::FuncType(func) => self.resolve_func_type(generic_params, *func, loc),
-            TypeSpecifier::Array(array) => self.resolve_array_type(generic_params, array, loc),
+            TypeSpecifier::GenericInst(inst) => self.resolve_generic_inst_type(inst, loc),
+            TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(tuple),
+            TypeSpecifier::FuncType(func) => self.resolve_func_type(*func, loc),
+            TypeSpecifier::Array(array) => self.resolve_array_type(array, loc),
             TypeSpecifier::Deref(inner) => {
-                let inner = self.resolve_type(generic_params, *inner, loc)?;
+                let inner = self.resolve_type(*inner, loc)?;
                 Some(SemanticType::Pointer(Box::new(inner)))
             }
-
-            TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(generic_params, union_ty),
+            TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(union_ty),
             TypeSpecifier::UnnamedEnum(enum_ty) => self.resolve_unnamed_enum_type(enum_ty),
-            TypeSpecifier::UnnamedStruct(struct_ty) => self.resolve_unnamed_struct_type(generic_params, struct_ty),
+            TypeSpecifier::UnnamedStruct(struct_ty) => self.resolve_unnamed_struct_type(struct_ty),
         }
     }
 
@@ -462,17 +458,13 @@ impl Resolver {
         }
     }
 
-    fn resolve_ident_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        ident: Ident,
-    ) -> Option<SemanticType> {
-        if let Some(ty) = self.resolve_generic_param_as_type(generic_params, &ident) {
-            return Some(ty);
-        }
-
+    fn resolve_ident_type(&mut self, ident: Ident) -> Option<SemanticType> {
         if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
             return Some(SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)));
+        }
+
+        if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
+            return Some(SemanticType::GenericParam(generic_param_id));
         }
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
@@ -491,26 +483,12 @@ impl Resolver {
         None
     }
 
-    fn resolve_generic_param_as_type(
-        &mut self,
-        generic_params_list_opt: &Option<TypedGenericParamsList>,
-        ident: &Ident,
-    ) -> Option<SemanticType> {
+    fn resolve_generic_param_as_type(&mut self, ident: &Ident) -> Option<GenericParamID> {
         let name = ident.as_string();
 
-        if let Some(generic_params) = generic_params_list_opt {
-            if let Some(param) = generic_params
-                .list
-                .iter()
-                .find(|generic_param| generic_param.name.value == name)
-            {
-                return Some(SemanticType::GenericParam(param.clone()));
-            }
-        }
-
-        if let Some(object_params) = &self.current_object_generic_params {
-            if let Some(param) = object_params.lookup_named(&ident.value) {
-                return Some(SemanticType::GenericParam(param.clone()));
+        for generic_scope in self.generic_scopes_iter() {
+            if let Some(generic_param_id) = generic_scope.lookup(&name) {
+                return Some(generic_param_id);
             }
         }
 
@@ -533,31 +511,25 @@ impl Resolver {
             })
     }
 
-    fn resolve_func_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        func: FuncType,
-        loc: Loc,
-    ) -> Option<SemanticType> {
+    fn resolve_func_type(&mut self, func: FuncType, loc: Loc) -> Option<SemanticType> {
         let mut params = Vec::with_capacity(func.params.list.len());
 
         for param in func.params.list {
-            let ty = self.resolve_type(generic_params, param, loc)?;
-            params.push(ty);
+            params.push(self.resolve_type(param, loc)?);
         }
 
         let variadic = match func.params.variadic {
             Some(FuncTypeVariadicParams::UntypedCStyle) => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
 
             Some(FuncTypeVariadicParams::Typed(spec)) => {
-                let ty = self.resolve_type(generic_params, spec, loc)?;
+                let ty = self.resolve_type(spec, loc)?;
                 Some(Box::new(TypedFuncTypeVariadicParams::Typed(ty)))
             }
 
             None => None,
         };
 
-        let ret_type = self.resolve_type(generic_params, *func.ret_type, loc)?;
+        let ret_type = self.resolve_type(*func.ret_type, loc)?;
 
         Some(SemanticType::FuncType(TypedFuncType {
             symbol_id: None,
@@ -568,13 +540,8 @@ impl Resolver {
         }))
     }
 
-    fn resolve_generic_inst_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        inst: GenericInst,
-        loc: Loc,
-    ) -> Option<SemanticType> {
-        let base_type = self.resolve_type(generic_params, *inst.base.clone(), loc)?;
+    fn resolve_generic_inst_type(&mut self, inst: GenericInst, loc: Loc) -> Option<SemanticType> {
+        let base_type = self.resolve_type(*inst.base.clone(), loc)?;
 
         let base = match base_type.const_inner().as_unresolved_symbol_id() {
             Some(id) => id,
@@ -592,7 +559,7 @@ impl Resolver {
             }
         };
 
-        let type_args = self.resolve_type_args(generic_params, &inst.type_args, loc)?;
+        let type_args = self.resolve_type_args(&inst.type_args)?;
 
         Some(SemanticType::Unresolved(UnresolvedType::GenericInst {
             base,
@@ -600,15 +567,11 @@ impl Resolver {
         }))
     }
 
-    fn resolve_tuple_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        tuple: TupleType,
-    ) -> Option<SemanticType> {
+    fn resolve_tuple_type(&mut self, tuple: TupleType) -> Option<SemanticType> {
         let mut elements = Vec::new();
 
         for type_spec in tuple.type_list {
-            elements.push(self.resolve_type(generic_params, type_spec, tuple.loc)?);
+            elements.push(self.resolve_type(type_spec, tuple.loc)?);
         }
 
         Some(SemanticType::Tuple(TypedTupleType {
@@ -617,13 +580,8 @@ impl Resolver {
         }))
     }
 
-    fn resolve_array_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        array: ArrayType,
-        loc: Loc,
-    ) -> Option<SemanticType> {
-        let element_type = self.resolve_type(generic_params, *array.element_type, loc)?;
+    fn resolve_array_type(&mut self, array: ArrayType, loc: Loc) -> Option<SemanticType> {
+        let element_type = self.resolve_type(*array.element_type, loc)?;
 
         let capacity = match array.size {
             ArrayCapacity::Fixed(expr) => {
@@ -640,15 +598,11 @@ impl Resolver {
         }))
     }
 
-    fn resolve_unnamed_union_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        union_type: UnnamedUnionType,
-    ) -> Option<SemanticType> {
+    fn resolve_unnamed_union_type(&mut self, union_type: UnnamedUnionType) -> Option<SemanticType> {
         let mut fields = Vec::with_capacity(union_type.fields.len());
 
         for field in &union_type.fields {
-            let ty = self.resolve_type(generic_params, field.field_ty.clone(), field.loc)?;
+            let ty = self.resolve_type(field.field_ty.clone(), field.loc)?;
 
             fields.push(TypedUnionField {
                 name: field.ident.as_string(),
@@ -666,7 +620,7 @@ impl Resolver {
             fields,
             methods: MethodDecls::new(),
             impls: Vec::new(),
-            generic_params: None,
+            generic_params: TypedGenericParams::new(),
             modifiers: union_modifiers,
             align: union_type.align,
             loc: union_type.loc,
@@ -683,7 +637,7 @@ impl Resolver {
 
         let tag_type = enum_type
             .tag_type
-            .and_then(|type_spec| self.resolve_type(&None, *type_spec, enum_type.loc));
+            .and_then(|type_spec| self.resolve_type(*type_spec, enum_type.loc));
 
         let mut enum_modifiers = EnumModifiers::default();
         enum_modifiers.repr_attr = enum_type.repr_attr;
@@ -695,7 +649,7 @@ impl Resolver {
             tag_type,
             methods: MethodDecls::new(),
             impls: Vec::new(),
-            generic_params: None,
+            generic_params: TypedGenericParams::new(),
             modifiers: enum_modifiers,
             align: enum_type.align,
             loc: enum_type.loc,
@@ -707,18 +661,14 @@ impl Resolver {
         }))
     }
 
-    fn resolve_unnamed_struct_type(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        struct_type: UnnamedStructType,
-    ) -> Option<SemanticType> {
+    fn resolve_unnamed_struct_type(&mut self, struct_type: UnnamedStructType) -> Option<SemanticType> {
         let mut fields = Vec::with_capacity(struct_type.fields.len());
 
         // unnamed struct field visibility is always public
         let field_vis = Visibility::Public;
 
         for field in &struct_type.fields {
-            let ty = self.resolve_type(generic_params, field.ty.clone(), field.loc)?;
+            let ty = self.resolve_type(field.ty.clone(), field.loc)?;
 
             fields.push(TypedStructField {
                 name: field.name.value.clone(),
@@ -737,7 +687,7 @@ impl Resolver {
             fields,
             impls: Vec::new(),
             methods: MethodDecls::new(),
-            generic_params: None,
+            generic_params: TypedGenericParams::new(),
             modifiers: struct_modifiers,
             align: struct_type.align,
             loc: struct_type.loc,
@@ -749,77 +699,76 @@ impl Resolver {
         }))
     }
 
-    fn resolve_type_args(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        type_args: &TypeArgs,
-        loc: Loc,
-    ) -> Option<TypedTypeArgs> {
+    fn resolve_type_args(&mut self, type_args: &TypeArgs) -> Option<TypedTypeArgs> {
         type_args
             .iter()
-            .enumerate()
-            .map(|(i, type_arg)| match type_arg {
-                TypeArg::Positional(type_spec) => {
-                    let loc = type_spec.loc();
-                    let ty = self.resolve_type(generic_params, type_spec.clone(), loc)?;
-
-                    Some(TypedTypeArg::Positional { i, ty, loc })
+            .map(|type_arg| match type_arg {
+                TypeArg::Type(type_spec) => {
+                    let sema_type = self.resolve_type(type_spec.clone(), type_spec.loc())?;
+                    Some(TypedTypeArg::Type(sema_type, type_spec.loc()))
                 }
-                TypeArg::Named { key, ty } => {
-                    let ty = self.resolve_type(generic_params, ty.clone(), loc)?;
-
-                    Some(TypedTypeArg::Named {
-                        key: key.as_string(),
-                        ty,
-                        loc: key.loc,
-                    })
-                }
+                TypeArg::Infer => Some(TypedTypeArg::Infer),
             })
             .collect::<Option<_>>()
     }
 
-    fn resolve_generic_params(&mut self, generic_params: &GenericParamsList) -> Option<TypedGenericParamsList> {
+    fn resolve_generic_params(&mut self, generic_params: &GenericParams) -> Option<TypedGenericParams> {
         let mut list = Vec::with_capacity(generic_params.len());
+        let mut seen = FxHashSet::default();
 
         for generic_param in generic_params {
+            let name = &generic_param.param_name.value;
+
+            if !seen.insert(name.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(ResolverDiagKind::DuplicateGenericParam { name: name.clone() }),
+                    loc: Some(generic_param.param_name.loc),
+                    hint: None,
+                });
+            }
+
             let bounds = self.resolve_generic_param_bounds(generic_param)?;
             let default = self.resolve_generic_param_default(generic_param)?;
 
             let name = Ident {
-                value: generic_param.param_name.as_string(),
+                value: name.clone(),
                 loc: generic_param.param_name.loc,
             };
 
-            list.push(TypedGenericParam { name, bounds, default });
+            let generic_param = TypedGenericParam { name, bounds, default };
+
+            // store for declaration
+            list.push(generic_param.clone());
         }
 
-        Some(TypedGenericParamsList { list })
+        Some(TypedGenericParams(list))
     }
 
-    fn resolve_generic_param_bounds(&mut self, generic_param: &GenericParam) -> Option<Option<Vec<TypedBound>>> {
+    fn resolve_generic_param_bounds(&mut self, generic_param: &GenericParam) -> Option<Vec<TypedBound>> {
         let bounds_list = match &generic_param.bounds {
             Some(b) => b,
-            None => return Some(None),
+            None => return Some(Vec::new()),
         };
 
         let mut typed_bounds = Vec::with_capacity(bounds_list.len());
 
         for bound in bounds_list {
-            let type_args = self.resolve_type_args(&None, &bound.type_args, generic_param.param_name.loc)?;
+            let sema_type = match self.resolve_type(bound.0.clone(), bound.0.loc()) {
+                Some(ty) => ty,
+                None => continue,
+            };
 
-            typed_bounds.push(TypedBound {
-                symbol: bound.symbol.clone(),
-                type_args,
-            });
+            typed_bounds.push(TypedBound(sema_type));
         }
 
-        Some(Some(typed_bounds))
+        Some(typed_bounds)
     }
 
     fn resolve_generic_param_default(&mut self, generic_param: &GenericParam) -> Option<Option<Box<SemanticType>>> {
         match &generic_param.default {
             Some(default_ty) => {
-                let ty = self.resolve_type(&None, default_ty.clone(), generic_param.param_name.loc)?;
+                let ty = self.resolve_type(default_ty.clone(), generic_param.param_name.loc)?;
 
                 Some(Some(Box::new(ty)))
             }
@@ -832,12 +781,9 @@ impl Resolver {
             .lookup_symbol_id(self.current_scope.unwrap(), &typedef.ident.value)
             .unwrap();
 
-        let generic_params = typedef
-            .generic_params
-            .clone()
-            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+        let generic_params = self.resolve_generic_params(&typedef.generic_params)?;
 
-        let sema_type = self.resolve_type(&generic_params, typedef.type_spec.clone(), typedef.loc)?;
+        let sema_type = self.resolve_type(typedef.type_spec.clone(), typedef.loc)?;
 
         let typedef_decl_id = self.decl_tables.insert_typedef(TypedefDecl {
             name: typedef.ident.as_string(),
@@ -912,73 +858,73 @@ impl Resolver {
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = interface.loc;
 
-        let typed_generic_params = match &interface.generic_params {
-            Some(params) => self.resolve_generic_params(params)?,
-            None => TypedGenericParamsList { list: Vec::new() },
-        };
+        let generic_params = self.resolve_generic_params(&interface.generic_params)?;
 
-        // Install these as active for method resolution
-        self.current_object_generic_params = Some(typed_generic_params.clone());
+        self.with_generic_scope(&generic_params.clone(), |this| {
+            let mut interface_methods = Vec::with_capacity(interface.methods.len());
 
-        let mut typed_methods = Vec::with_capacity(interface.methods.len());
+            for func_decl_stmt in &interface.methods {
+                // Interfaces never allow renaming
+                if func_decl_stmt.renamed_as.is_some() {
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(ResolverDiagKind::RenameInterfaceMethod),
+                        loc: Some(func_decl_stmt.loc),
+                        hint: None,
+                    });
+                    continue;
+                }
 
-        for func_decl_stmt in &interface.methods {
-            // Interfaces never allow renaming
-            if func_decl_stmt.renamed_as.is_some() {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(ResolverDiagKind::RenameInterfaceMethod),
-                    loc: Some(func_decl_stmt.loc),
-                    hint: None,
-                });
-                continue;
+                let (generic_params, params, variadic, ret_type) = {
+                    this.resolve_func_sig(
+                        &func_decl_stmt.generic_params,
+                        &func_decl_stmt.params,
+                        &func_decl_stmt.ret_type,
+                        func_decl_stmt.loc,
+                    )?
+                };
+
+                let func_decl = FuncDecl {
+                    symbol_id: None,
+                    name: func_decl_stmt.ident.as_string(),
+                    generic_params: generic_params,
+                    params: TypedFuncParams {
+                        list: params,
+                        variadic: variadic,
+                    },
+                    ret_type,
+                    modifiers: func_decl_stmt.modifiers.clone(),
+                    is_func_decl: true,
+                    loc: func_decl_stmt.loc,
+                };
+
+                let func_decl_id = this.decl_tables.insert_func(func_decl);
+
+                interface_methods.push(func_decl_id);
             }
 
-            let (generic_params, params, variadic, ret_type) = {
-                self.resolve_func_sig(
-                    &func_decl_stmt.generic_params,
-                    &func_decl_stmt.params,
-                    &func_decl_stmt.ret_type,
-                    func_decl_stmt.loc,
-                )?
-            };
-
-            typed_methods.push(TypedFuncDeclStmt {
+            let interface_decl_id = this.decl_tables.insert_interface(InterfaceDecl {
                 symbol_id,
-                name: func_decl_stmt.ident.as_string(),
-                generic_params: generic_params,
-                params: TypedFuncParams {
-                    list: params,
-                    variadic: variadic,
-                },
-                ret_type,
-                modifiers: func_decl_stmt.modifiers.clone(),
-                renamed_as: None,
-                loc: func_decl_stmt.loc,
+                name: name.clone(),
+                methods: interface_methods.clone(),
+                generic_params: generic_params.clone(),
+                vis: interface.vis.clone(),
+                loc,
             });
-        }
 
-        let interface_decl_id = self.decl_tables.insert_interface(InterfaceDecl {
-            symbol_id,
-            name: name.clone(),
-            methods: typed_methods.clone(),
-            generic_params: Some(typed_generic_params.clone()),
-            vis: interface.vis.clone(),
-            loc,
-        });
+            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Interface(interface_decl_id)
+            });
 
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Interface(interface_decl_id)
-        });
-
-        Some(TypedStmt::Interface(TypedInterfaceStmt {
-            name,
-            symbol_id,
-            methods: typed_methods,
-            generic_params: Some(typed_generic_params),
-            vis: interface.vis.clone(),
-            loc,
-        }))
+            Some(TypedStmt::Interface(TypedInterfaceStmt {
+                name,
+                symbol_id,
+                methods: interface_methods,
+                generic_params,
+                vis: interface.vis.clone(),
+                loc,
+            }))
+        })
     }
 
     fn resolve_union_stmt(&mut self, union_decl: &ASTUnionStmt) -> Option<TypedStmt> {
@@ -986,63 +932,58 @@ impl Resolver {
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = union_decl.loc;
 
-        self.current_object = Some(symbol_id);
+        let generic_params = self.resolve_generic_params(&union_decl.generic_params)?;
 
-        let generic_params = match &union_decl.generic_params {
-            Some(params) => Some(self.resolve_generic_params(params)?),
-            None => None,
-        };
+        self.with_generic_scope(&generic_params.clone(), |this| {
+            let mut typed_union_fields = Vec::with_capacity(union_decl.fields.len());
 
-        self.current_object_generic_params = generic_params.clone();
+            for field in &union_decl.fields {
+                let sema_type = match this.resolve_type(field.ty.clone(), field.loc) {
+                    Some(ty) => ty,
+                    None => continue,
+                };
 
-        let mut typed_union_fields = Vec::with_capacity(union_decl.fields.len());
+                typed_union_fields.push(TypedUnionField {
+                    name: field.name.as_string(),
+                    ty: sema_type,
+                    loc: field.loc,
+                });
+            }
 
-        for field in &union_decl.fields {
-            let sema_type = match self.resolve_type(&generic_params, field.ty.clone(), field.loc) {
-                Some(ty) => ty,
-                None => continue,
-            };
+            this.report_if_duplicate_method_names(&name, &union_decl.methods);
 
-            typed_union_fields.push(TypedUnionField {
-                name: field.name.as_string(),
-                ty: sema_type,
-                loc: field.loc,
+            let methods = this.resolve_methods(&union_decl.methods, &name);
+
+            let impls = this.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
+
+            let union_decl_id = this.decl_tables.insert_union(UnionDecl {
+                symbol_id: Some(symbol_id),
+                name: Some(name.clone()),
+                fields: typed_union_fields.clone(),
+                methods: methods.clone(),
+                impls: impls.clone(),
+                generic_params: generic_params.clone(),
+                modifiers: union_decl.modifiers.clone(),
+                align: union_decl.align.clone(),
+                loc,
             });
-        }
 
-        self.report_if_duplicate_method_names(&name, &union_decl.methods);
+            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Union(union_decl_id)
+            });
 
-        let methods = self.resolve_methods(&union_decl.methods, &name);
-
-        let impls = self.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
-
-        let union_decl_id = self.decl_tables.insert_union(UnionDecl {
-            symbol_id: Some(symbol_id),
-            name: Some(name.clone()),
-            fields: typed_union_fields.clone(),
-            methods: methods.clone(),
-            impls: impls.clone(),
-            generic_params: generic_params.clone(),
-            modifiers: union_decl.modifiers.clone(),
-            align: union_decl.align.clone(),
-            loc,
-        });
-
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Union(union_decl_id)
-        });
-
-        Some(TypedStmt::Union(TypedUnionStmt {
-            symbol_id,
-            name,
-            fields: typed_union_fields,
-            methods,
-            generic_params,
-            modifiers: union_decl.modifiers.clone(),
-            impls,
-            align: union_decl.align.clone(),
-            loc: union_decl.ident.loc,
-        }))
+            Some(TypedStmt::Union(TypedUnionStmt {
+                symbol_id,
+                name,
+                fields: typed_union_fields,
+                methods,
+                generic_params,
+                modifiers: union_decl.modifiers.clone(),
+                impls,
+                align: union_decl.align.clone(),
+                loc: union_decl.ident.loc,
+            }))
+        })
     }
 
     fn resolve_enum_struct_variant_init(
@@ -1101,7 +1042,7 @@ impl Resolver {
                     let mut typed_fields = Vec::new();
 
                     for tuple_field in fields {
-                        match self.resolve_type(&None, tuple_field.ty.clone(), ident.loc) {
+                        match self.resolve_type(tuple_field.ty.clone(), ident.loc) {
                             Some(sema_type) => typed_fields.push(TypedEnumVariantTupleField {
                                 ty: sema_type,
                                 loc: tuple_field.loc,
@@ -1119,7 +1060,7 @@ impl Resolver {
                     let mut typed_fields = Vec::new();
 
                     for struct_field in fields {
-                        match self.resolve_type(&None, struct_field.ty.clone(), ident.loc) {
+                        match self.resolve_type(struct_field.ty.clone(), ident.loc) {
                             Some(sema_type) => typed_fields.push(TypedEnumVariantStructField {
                                 name: struct_field.name.clone(),
                                 ty: sema_type,
@@ -1147,57 +1088,52 @@ impl Resolver {
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
         let loc = enum_decl.loc;
 
-        self.current_object = Some(symbol_id);
+        let generic_params = self.resolve_generic_params(&enum_decl.generic_params)?;
 
-        let generic_params = match &enum_decl.generic_params {
-            Some(params) => Some(self.resolve_generic_params(params)?),
-            None => None,
-        };
+        self.with_generic_scope(&generic_params.clone(), |this| {
+            let variants = this.resolve_enum_variants(&enum_decl.variants)?;
 
-        self.current_object_generic_params = generic_params.clone();
+            this.report_if_duplicate_method_names(&name, &enum_decl.methods);
 
-        let variants = self.resolve_enum_variants(&enum_decl.variants)?;
+            let tag_type = match &enum_decl.tag_type {
+                Some(ty) => this.resolve_type(ty.clone(), enum_decl.loc),
+                None => None,
+            };
 
-        self.report_if_duplicate_method_names(&name, &enum_decl.methods);
+            let methods = this.resolve_methods(&enum_decl.methods, &name);
 
-        let tag_type = match &enum_decl.tag_type {
-            Some(ty) => self.resolve_type(&None, ty.clone(), enum_decl.loc),
-            None => None,
-        };
+            let impls = this.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
 
-        let methods = self.resolve_methods(&enum_decl.methods, &name);
+            let enum_decl_id = this.decl_tables.insert_enum(EnumDecl {
+                symbol_id: Some(symbol_id),
+                name: Some(name.clone()),
+                variants: variants.clone(),
+                methods: methods.clone(),
+                impls: impls.clone(),
+                generic_params: generic_params.clone(),
+                tag_type: tag_type.clone(),
+                modifiers: enum_decl.modifiers.clone(),
+                align: enum_decl.align.clone(),
+                loc,
+            });
 
-        let impls = self.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
+            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Enum(enum_decl_id)
+            });
 
-        let enum_decl_id = self.decl_tables.insert_enum(EnumDecl {
-            symbol_id: Some(symbol_id),
-            name: Some(name.clone()),
-            variants: variants.clone(),
-            methods: methods.clone(),
-            impls: impls.clone(),
-            generic_params: generic_params.clone(),
-            tag_type: tag_type.clone(),
-            modifiers: enum_decl.modifiers.clone(),
-            align: enum_decl.align.clone(),
-            loc,
-        });
-
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Enum(enum_decl_id)
-        });
-
-        Some(TypedStmt::Enum(TypedEnumStmt {
-            symbol_id,
-            name,
-            variants,
-            methods,
-            generic_params,
-            impls,
-            tag_type,
-            modifiers: enum_decl.modifiers.clone(),
-            align: enum_decl.align.clone(),
-            loc,
-        }))
+            Some(TypedStmt::Enum(TypedEnumStmt {
+                symbol_id,
+                name,
+                variants,
+                methods,
+                generic_params,
+                impls,
+                tag_type,
+                modifiers: enum_decl.modifiers.clone(),
+                align: enum_decl.align.clone(),
+                loc,
+            }))
+        })
     }
 
     fn resolve_global_var_stmt(&mut self, global_var: &ASTGlobalVarStmt) -> Option<TypedStmt> {
@@ -1206,7 +1142,7 @@ impl Resolver {
         let loc = global_var.loc;
 
         let sema_type = match &global_var.type_spec {
-            Some(ty) => self.resolve_type(&None, ty.clone(), loc),
+            Some(ty) => self.resolve_type(ty.clone(), loc),
             None => None,
         };
 
@@ -1248,9 +1184,12 @@ impl Resolver {
         for ast_method in methods {
             let method_name = &ast_method.ident.value;
 
-            let Some((generic_params, params, variadic, ret_type)) =
-                self.resolve_func_sig(&None, &ast_method.params, &ast_method.ret_type, ast_method.loc)
-            else {
+            let Some((generic_params, params, variadic, ret_type)) = self.resolve_func_sig(
+                &GenericParams::new(),
+                &ast_method.params,
+                &ast_method.ret_type,
+                ast_method.loc,
+            ) else {
                 continue;
             };
 
@@ -1353,7 +1292,7 @@ impl Resolver {
                 }
                 TypeSpecifier::GenericInst(generic_inst) => {
                     let base_symbol_id = match self
-                        .resolve_type(&None, *generic_inst.base.clone(), loc)
+                        .resolve_type(*generic_inst.base.clone(), loc)
                         .and_then(|ty| ty.as_unresolved_symbol_id())
                     {
                         Some(symbol_id) => symbol_id,
@@ -1368,7 +1307,7 @@ impl Resolver {
                         }
                     };
 
-                    let type_args = self.resolve_type_args(&None, &generic_inst.type_args, loc);
+                    let type_args = self.resolve_type_args(&generic_inst.type_args);
 
                     (base_symbol_id, type_args)
                 }
@@ -1396,66 +1335,63 @@ impl Resolver {
     fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
         let name = struct_decl.ident.as_string();
         let symbol_id = self.lookup_symbol_id(self.current_scope.unwrap(), &name).unwrap();
+        let loc = struct_decl.loc;
 
-        self.current_object = Some(symbol_id);
+        let generic_params = self.resolve_generic_params(&struct_decl.generic_params)?;
 
-        let generic_params = struct_decl
-            .generic_params
-            .as_ref()
-            .and_then(|g| self.resolve_generic_params(g));
+        self.with_generic_scope(&generic_params.clone(), |this| {
+            let typed_struct_fields: Vec<TypedStructField> = struct_decl
+                .fields
+                .iter()
+                .filter_map(|field| {
+                    this.resolve_type(field.ty.clone(), field.loc)
+                        .map(|ty| TypedStructField {
+                            name: field.name.as_string(),
+                            vis: field.vis.clone(),
+                            ty,
+                            loc: field.loc,
+                        })
+                })
+                .collect();
 
-        self.current_object_generic_params = generic_params.clone();
+            this.report_if_duplicate_method_names(&name, &struct_decl.methods);
 
-        let typed_struct_fields: Vec<TypedStructField> = struct_decl
-            .fields
-            .iter()
-            .filter_map(|field| {
-                self.resolve_type(&generic_params, field.ty.clone(), field.loc)
-                    .map(|ty| TypedStructField {
-                        name: field.name.as_string(),
-                        vis: field.vis.clone(),
-                        ty,
-                        loc: field.loc,
-                    })
-            })
-            .collect();
+            let methods = this.resolve_methods(&struct_decl.methods, &name);
 
-        let methods = self.resolve_methods(&struct_decl.methods, &name);
+            let impls = this.resolve_object_implements_interface_list(&struct_decl.impls, struct_decl.loc);
 
-        let impls = self.resolve_object_implements_interface_list(&struct_decl.impls, struct_decl.loc);
+            let struct_decl_id = this.decl_tables.insert_struct(StructDecl {
+                symbol_id: Some(symbol_id),
+                name: Some(name.clone()),
+                fields: typed_struct_fields.clone(),
+                generic_params: generic_params.clone(),
+                impls: impls.clone(),
+                methods: methods.clone(),
+                modifiers: struct_decl.modifiers.clone(),
+                align: struct_decl.align.clone(),
+                loc,
+            });
 
-        let struct_decl_id = self.decl_tables.insert_struct(StructDecl {
-            symbol_id: Some(symbol_id),
-            name: Some(name.clone()),
-            fields: typed_struct_fields.clone(),
-            generic_params: generic_params.clone(),
-            impls: impls.clone(),
-            methods: methods.clone(),
-            modifiers: struct_decl.modifiers.clone(),
-            align: struct_decl.align.clone(),
-            loc: struct_decl.loc,
-        });
+            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Struct(struct_decl_id)
+            });
 
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Struct(struct_decl_id)
-        });
-
-        Some(TypedStmt::Struct(TypedStructStmt {
-            symbol_id,
-            name: struct_decl.ident.as_string(),
-            fields: typed_struct_fields,
-            methods,
-            generic_params,
-            impls,
-            modifiers: struct_decl.modifiers.clone(),
-            align: struct_decl.align.clone(),
-            loc: struct_decl.loc,
-        }))
+            Some(TypedStmt::Struct(TypedStructStmt {
+                symbol_id,
+                name,
+                fields: typed_struct_fields,
+                methods,
+                generic_params,
+                impls,
+                modifiers: struct_decl.modifiers.clone(),
+                align: struct_decl.align.clone(),
+                loc,
+            }))
+        })
     }
 
     fn resolve_func_params(
         &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
         params: &FuncParams,
     ) -> Option<(Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParam>)> {
         let mut typed_params = Vec::with_capacity(params.list.len());
@@ -1463,7 +1399,7 @@ impl Resolver {
         for param in &params.list {
             match param {
                 FuncParamKind::FuncParam(func_param) => {
-                    let typed = self.resolve_func_param(generic_params, func_param)?;
+                    let typed = self.resolve_func_param(func_param)?;
                     typed_params.push(TypedFuncParamKind::FuncParam(typed));
                 }
                 FuncParamKind::SelfModifier(self_modifier) => {
@@ -1481,13 +1417,9 @@ impl Resolver {
         Some((typed_params, variadic))
     }
 
-    fn resolve_func_param(
-        &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
-        param: &FuncParam,
-    ) -> Option<TypedFuncParam> {
+    fn resolve_func_param(&mut self, param: &FuncParam) -> Option<TypedFuncParam> {
         let ty = match &param.ty {
-            Some(spec) => self.resolve_type(generic_params, spec.clone(), param.loc)?,
+            Some(type_spec) => self.resolve_type(type_spec.clone(), param.loc)?,
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1545,9 +1477,11 @@ impl Resolver {
     }
 
     fn resolve_self_modifier_param(&mut self, self_modifier: &SelfModifier) -> TypedSelfModifier {
+        let self_type = SemanticType::SelfType(TypedSelfType { loc: self_modifier.loc });
+
         TypedSelfModifier {
             var_decl_id: None,
-            ty: None,
+            ty: Some(self_type),
             kind: self_modifier.kind.clone(),
             loc: self_modifier.loc,
         }
@@ -1557,7 +1491,7 @@ impl Resolver {
         match variadic {
             FuncVariadicParam::UntypedCStyle => Some(Some(TypedFuncVariadicParam::UntypedCStyle)),
             FuncVariadicParam::Typed(ident, type_spec) => {
-                let ty = self.resolve_type(&None, type_spec.clone(), ident.loc)?;
+                let ty = self.resolve_type(type_spec.clone(), ident.loc)?;
 
                 let var_decl_id = self.insert_variable_decl(ident, Some(ty.clone()), None, false);
                 let symbol_id = self.insert_variable_symbol_to_current_scope(ident, var_decl_id)?;
@@ -1624,25 +1558,23 @@ impl Resolver {
 
     fn resolve_func_sig(
         &mut self,
-        generic_params: &Option<GenericParamsList>,
+        generic_params: &GenericParams,
         params: &FuncParams,
         ret_type: &Option<TypeSpecifier>,
         loc: Loc,
     ) -> Option<(
-        Option<TypedGenericParamsList>,
+        TypedGenericParams,
         Vec<TypedFuncParamKind>,
         Option<TypedFuncVariadicParam>,
         SemanticType,
     )> {
-        let generic_params = generic_params
-            .clone()
-            .and_then(|generic_params| self.resolve_generic_params(&generic_params));
+        let typed_generic_params = self.resolve_generic_params(&generic_params)?;
 
-        let ret_type = self.resolve_type(&generic_params, return_type_or_default_void(ret_type.clone(), loc), loc)?;
+        let ret_type = self.resolve_type(return_type_or_default_void(ret_type.clone(), loc), loc)?;
 
-        let (param_kinds, variadic_param) = self.resolve_func_params(&generic_params, params)?;
+        let (param_kinds, variadic_param) = self.resolve_func_params(params)?;
 
-        Some((generic_params, param_kinds, variadic_param, ret_type))
+        Some((typed_generic_params, param_kinds, variadic_param, ret_type))
     }
 
     fn resolve_func_def(&mut self, func_def: &ASTFuncDefStmt) -> Option<TypedStmt> {
@@ -1809,7 +1741,7 @@ impl Resolver {
         let ty = pattern
             .ty
             .as_ref()
-            .and_then(|t| self.resolve_type(&None, t.clone(), pattern.loc));
+            .and_then(|t| self.resolve_type(t.clone(), pattern.loc));
 
         Some(TypedExportPattern {
             kind,
@@ -2020,7 +1952,7 @@ impl Resolver {
         let ty = var
             .ty
             .as_ref()
-            .and_then(|type_spec| self.resolve_type(&None, type_spec.clone(), var.loc));
+            .and_then(|type_spec| self.resolve_type(type_spec.clone(), var.loc));
 
         let rhs = var.rhs.as_ref().and_then(|expr| self.resolve_expr(expr));
 
@@ -2234,8 +2166,14 @@ impl Resolver {
         let scope = LocalScope::new();
 
         with_local_scope!(self, scope, {
-            let (_, params, variadic, ret_type) =
-                { self.resolve_func_sig(&None, &lambda.params, &Some(lambda.ret_type.clone()), lambda.loc)? };
+            let (_, params, variadic, ret_type) = {
+                self.resolve_func_sig(
+                    &GenericParams::new(),
+                    &lambda.params,
+                    &Some(lambda.ret_type.clone()),
+                    lambda.loc,
+                )?
+            };
 
             let body = match self.resolve_block_stmt(&lambda.body) {
                 Some(block) => Box::new(block),
@@ -2263,7 +2201,7 @@ impl Resolver {
         let type_args = field_access
             .type_args
             .clone()
-            .and_then(|type_args| self.resolve_type_args(&None, &type_args, field_access.loc));
+            .and_then(|type_args| self.resolve_type_args(&type_args));
 
         Some(TypedExprStmt {
             kind: TypedExprKind::FieldAccess(TypedFieldAccess {
@@ -2294,7 +2232,7 @@ impl Resolver {
         let type_args = method_call
             .type_args
             .clone()
-            .and_then(|type_args| self.resolve_type_args(&None, &type_args, method_call.loc));
+            .and_then(|type_args| self.resolve_type_args(&type_args));
 
         Some(TypedExprStmt {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
@@ -2332,7 +2270,7 @@ impl Resolver {
         let type_args = struct_init
             .type_args
             .clone()
-            .and_then(|type_args| self.resolve_type_args(&None, &type_args, struct_init.loc));
+            .and_then(|type_args| self.resolve_type_args(&type_args));
 
         Some(TypedExprStmt {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
@@ -2356,7 +2294,7 @@ impl Resolver {
             .iter()
             .filter_map(|field| {
                 self.resolve_expr(&field.value).map(|value| {
-                    let ty = field.ty.clone().and_then(|ty| self.resolve_type(&None, ty, field.loc));
+                    let ty = field.ty.clone().and_then(|ty| self.resolve_type(ty, field.loc));
 
                     TypedUnnamedStructValueField {
                         name: field.name.as_string(),
@@ -2389,7 +2327,7 @@ impl Resolver {
         let type_args = func_call
             .type_args
             .as_ref()
-            .and_then(|type_args| self.resolve_type_args(&None, type_args, func_call.loc));
+            .and_then(|type_args| self.resolve_type_args(type_args));
 
         let loc = func_call.loc;
 
@@ -2427,7 +2365,7 @@ impl Resolver {
     }
 
     fn resolve_array_expr(&mut self, array: &ASTArrayExpr) -> Option<TypedExprStmt> {
-        let array_type = self.resolve_type(&None, array.data_type.clone(), array.loc)?;
+        let array_type = self.resolve_type(array.data_type.clone(), array.loc)?;
 
         let typed_elements: Vec<TypedExprStmt> = array
             .elements
@@ -2486,7 +2424,7 @@ impl Resolver {
             TypeSpecifier::Ident(ident) => self.resolve_ident(&ident)?,
             TypeSpecifier::ModuleImport(module_import) => self.resolve_module_import(module_import.clone())?,
             _ => {
-                let sema_type = self.resolve_type(&None, type_spec.clone(), loc)?;
+                let sema_type = self.resolve_type(type_spec.clone(), loc)?;
                 return Some(TypedExprStmt {
                     kind: TypedExprKind::SemanticType(sema_type.clone()),
                     mloc: MemoryLocation::RValue,

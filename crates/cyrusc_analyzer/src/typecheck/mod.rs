@@ -15,16 +15,16 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod array_expr;
-pub(crate) mod call_expr;
-pub(crate) mod dynamic_expr;
+pub(crate) mod arrays;
+pub(crate) mod call;
+pub(crate) mod dynamic;
 pub(crate) mod enum_init;
-pub(crate) mod expr;
-pub(crate) mod field_access_expr;
-pub(crate) mod lambda_expr;
-pub(crate) mod literal_expr;
+pub(crate) mod exprs;
+pub(crate) mod field_access;
+pub(crate) mod lambda;
+pub(crate) mod literal;
 pub(crate) mod operations;
 pub(crate) mod struct_init;
-pub(crate) mod tuple_expr;
+pub(crate) mod tuples;
 pub(crate) mod type_cache;
 pub(crate) mod union_init;

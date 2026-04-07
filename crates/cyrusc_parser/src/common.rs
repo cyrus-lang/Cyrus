@@ -117,7 +117,7 @@ impl<'source_file> Parser<'source_file> {
                 // handle generic type arguments
 
                 self.next_token(); // consume less than
-                let type_args = self.parse_type_arg_list()?;
+                let type_args = self.parse_type_args()?;
 
                 let end = self.current_token().loc.end;
 
@@ -137,10 +137,10 @@ impl<'source_file> Parser<'source_file> {
     /// Parses generic parameters enclosed in `<...>`.
     ///
     /// Used in declarations like structs, enums, unions, typedefs, and functions.
-    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParamsList, Diag> {
+    pub(crate) fn parse_generic_params(&mut self) -> Result<GenericParams, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
-        let mut generic_params: GenericParamsList = GenericParamsList::new();
+        let mut generic_params: GenericParams = GenericParams::new();
 
         loop {
             generic_params.push(self.parse_generic_param()?);
@@ -178,9 +178,11 @@ impl<'source_file> Parser<'source_file> {
 
         let default = if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
-            let type_spec = self.parse_type_specifier()?;
+
+            let ty = self.parse_type_specifier()?;
             self.next_token();
-            Some(type_spec)
+
+            Some(ty)
         } else {
             None
         };
@@ -197,13 +199,10 @@ impl<'source_file> Parser<'source_file> {
         let mut list: Vec<Bound> = Vec::new();
 
         loop {
-            let symbol = self.parse_ident()?;
+            let ty = self.parse_type_specifier()?;
             self.next_token();
 
-            list.push(Bound {
-                symbol,
-                type_args: Vec::new(),
-            });
+            list.push(Bound(ty));
 
             match self.current_token().kind {
                 TokenKind::Plus => {
@@ -220,25 +219,21 @@ impl<'source_file> Parser<'source_file> {
     /// Parses a list of type arguments inside `<...>` for generic instantiations.
     ///
     /// Supports both positional (`<T, U>`) and named (`<Key = T, Value = U>`) arguments.
-    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, Diag> {
+    pub(crate) fn parse_type_args(&mut self) -> Result<TypeArgs, Diag> {
         self.expect_current(TokenKind::LessThan)?;
 
         let mut args = Vec::new();
 
         loop {
-            if matches!(self.current_token().kind, TokenKind::Ident { .. }) && self.peek_token_is(TokenKind::Assign) {
-                let key = self.parse_ident()?;
-                self.next_token(); // consume ident
-                self.expect_current(TokenKind::Assign)?;
-
-                let ty = self.parse_type_specifier()?;
+            if self.current_token_is(TokenKind::Underscore) {
                 self.next_token();
 
-                args.push(TypeArg::Named { key, ty });
+                args.push(TypeArg::Infer);
             } else {
                 let ty = self.parse_type_specifier()?;
                 self.next_token();
-                args.push(TypeArg::Positional(ty));
+
+                args.push(TypeArg::Type(ty));
             }
 
             match self.current_token().kind {
@@ -255,7 +250,7 @@ impl<'source_file> Parser<'source_file> {
             }
         }
 
-        Ok(args)
+        Ok(TypeArgs(args))
     }
 
     /// Determines if the current position starts a type argument list.

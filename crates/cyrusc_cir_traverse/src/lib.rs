@@ -85,7 +85,7 @@ impl<'resolver> CIRTraverse<'resolver> {
     fn lower_stmt(&mut self, stmt: &TypedStmt, lowered_stmts: &mut Vec<CIRStmt>) {
         match stmt {
             TypedStmt::FuncDef(func_def) => {
-                if func_def.generic_params.is_some() {
+                if func_def.is_generic() {
                     return; // skip lowering at this point
                 }
                 lowered_stmts.push(self.lower_func_def(func_def, true));
@@ -140,19 +140,19 @@ impl<'resolver> CIRTraverse<'resolver> {
                 lowered_stmts.push(CIRStmt::Expr(self.lower_expr(expr)));
             }
             TypedStmt::Struct(struct_stmt) => {
-                if struct_stmt.generic_params.is_none() {
+                if struct_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&struct_stmt.name, &struct_stmt.methods);
                     lowered_stmts.extend(stmts);
                 }
             }
             TypedStmt::Enum(enum_stmt) => {
-                if enum_stmt.generic_params.is_none() {
+                if enum_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&enum_stmt.name, &enum_stmt.methods);
                     lowered_stmts.extend(stmts);
                 }
             }
             TypedStmt::Union(union_stmt) => {
-                if union_stmt.generic_params.is_none() {
+                if union_stmt.is_generic() {
                     let stmts = self.lower_non_generic_methods(&union_stmt.name, &union_stmt.methods);
                     lowered_stmts.extend(stmts);
                 }

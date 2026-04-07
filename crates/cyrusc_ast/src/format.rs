@@ -189,16 +189,22 @@ impl fmt::Display for TypeSpecifier {
                 let type_args = generic_inst
                     .type_args
                     .iter()
-                    .map(|type_arg| match type_arg {
-                        TypeArg::Positional(type_spec) => type_spec.to_string(),
-                        TypeArg::Named { ty, .. } => ty.to_string(),
-                    })
+                    .map(|type_arg| type_arg.to_string())
                     .collect::<Vec<String>>()
                     .join(", ");
 
                 write!(f, "{}<{}>", generic_inst.base, type_args)
             }
             TypeSpecifier::SelfType(_) => write!(f, "Self"),
+        }
+    }
+}
+
+impl fmt::Display for TypeArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeArg::Type(type_spec) => write!(f, "{}", type_spec),
+            TypeArg::Infer => write!(f, "_"),
         }
     }
 }
@@ -429,7 +435,7 @@ impl fmt::Display for ASTExpr {
                     }
                     UnnamedEnumValueKind::Struct(field_inits) => {
                         write!(f, "{{ {} }}", format_enum_struct_variant_field_inits(&field_inits))?;
-                    },
+                    }
                 }
 
                 Ok(())

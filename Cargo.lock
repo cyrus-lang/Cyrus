@@ -376,6 +376,7 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
+ "fx-hash",
  "once_cell",
 ]
 
@@ -420,6 +421,7 @@ dependencies = [
  "cyrusc_source_loc",
  "cyrusc_tokens",
  "cyrusc_typed_ast",
+ "fx-hash",
  "rand",
  "thiserror",
  "thiserror-impl",

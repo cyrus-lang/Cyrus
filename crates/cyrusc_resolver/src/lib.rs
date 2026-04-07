@@ -17,6 +17,7 @@
 
 use cyrusc_ast::abi::Visibility;
 use cyrusc_diagcentral::reporter::DiagReporter;
+use cyrusc_internal::generic_scope::GenericScope;
 use cyrusc_internal::local_scope::LocalScope;
 use cyrusc_internal::module_loader::ModuleLoader;
 use cyrusc_internal::symbols::SymbolQuery;
@@ -32,6 +33,7 @@ use cyrusc_typed_ast::format::{Formatter, format_enum_decl, format_struct_decl, 
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::TypeDeclID;
 use cyrusc_typed_ast::*;
+use fx_hash::FxHashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -89,13 +91,7 @@ pub struct Resolver {
 
     current_module_file_id: Option<FileID>,
 
-    /// Symbol representing the current object context (struct/trait/impl).
-    /// Used to resolve `Self` and member references.
-    current_object: Option<SymbolID>,
-
-    /// Generic parameters currently in scope for the active object.
-    /// Used when resolving generic type references.
-    current_object_generic_params: Option<TypedGenericParamsList>,
+    generic_scopes: Vec<GenericScope>,
 
     /// Stack of active `LocalScope`s representing the current nesting of lexical scopes
     ///
@@ -134,8 +130,7 @@ impl Resolver {
             module_names: Arc::new(Mutex::new(HashMap::new())),
             local_scopes: Vec::new(),
             module_loader,
-            current_object_generic_params: None,
-            current_object: None,
+            generic_scopes: Vec::new(),
             reporter,
             decl_tables,
             source_map,
@@ -329,6 +324,46 @@ impl Resolver {
         let mut registry = self.global_symbols.inner.write().unwrap();
         let entry = registry.entries.get_mut(symbol_id.0 as usize)?;
         Some(f(entry))
+    }
+
+    pub(crate) fn with_generic_scope<F, R>(&mut self, generic_params: &TypedGenericParams, f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let scope = self.new_generic_scope(generic_params);
+        self.push_generic_scope(scope);
+
+        let result = f(self);
+
+        self.pop_generic_scope();
+
+        result
+    }
+
+    pub(crate) fn new_generic_scope(&self, generic_params: &TypedGenericParams) -> GenericScope {
+        let mut generic_scope = GenericScope::new();
+        for generic_param in generic_params.iter() {
+            // store in decl table (metadata accessed by generic param id)
+            let generic_param_id = self.decl_tables.insert_generic_param(generic_param.clone());
+            generic_scope.insert(generic_param.name.as_string(), generic_param_id);
+        }
+        generic_scope
+    }
+
+    pub(crate) fn push_generic_scope(&mut self, generic_scope: GenericScope) {
+        self.generic_scopes.push(generic_scope);
+    }
+
+    pub(crate) fn pop_generic_scope(&mut self) {
+        self.generic_scopes.pop();
+    }
+
+    pub(crate) fn current_generic_scope(&self) -> Option<&GenericScope> {
+        self.generic_scopes.last()
+    }
+
+    pub(crate) fn generic_scopes_iter(&self) -> impl Iterator<Item = &GenericScope> {
+        self.generic_scopes.iter().rev()
     }
 }
 

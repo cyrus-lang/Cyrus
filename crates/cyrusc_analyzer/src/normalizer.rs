@@ -199,6 +199,7 @@ impl<'a> AnalysisContext<'a> {
 
     // FIXME
     fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
+        dbg!(generic_param.clone());
         todo!();
 
         // // try to resolve from current object operand context
@@ -229,20 +230,15 @@ impl<'a> AnalysisContext<'a> {
             return;
         };
 
-        for type_arg in type_args {
+        for type_arg in type_args.iter_mut() {
             match type_arg {
-                TypedTypeArg::Positional { ty, loc, .. } => {
-                    *ty = match self.normalize_and_check_sema_ty(ty.clone(), *loc) {
+                TypedTypeArg::Type(sema_type, loc) => {
+                    *sema_type = match self.normalize_and_check_sema_ty(sema_type.clone(), *loc) {
                         Some(sema_type) => sema_type,
                         None => continue,
                     };
                 }
-                TypedTypeArg::Named { ty, loc, .. } => {
-                    *ty = match self.normalize_and_check_sema_ty(ty.clone(), *loc) {
-                        Some(sema_type) => sema_type,
-                        None => continue,
-                    };
-                }
+                TypedTypeArg::Infer => { /* skip */ }
             }
         }
     }
@@ -279,10 +275,11 @@ impl<'a> AnalysisContext<'a> {
                     self.validate_param_type(&typed_func_param.ty, typed_func_param.loc);
                 }
                 TypedFuncParamKind::SelfModifier(self_modifier) => {
-                    // we make sure that to apply normalized type to self modifier,
-                    // so it never reaches this point.
+                    let normalized_type = self
+                        .normalize_sema_type(self_modifier.ty.clone().unwrap(), self_modifier.loc)
+                        .unwrap();
 
-                    self.validate_param_type(&self_modifier.ty.as_ref().unwrap(), self_modifier.loc);
+                    self.validate_param_type(&normalized_type, self_modifier.loc);
                 }
             }
         }

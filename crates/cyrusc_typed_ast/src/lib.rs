@@ -23,9 +23,8 @@ pub mod decls;
 pub mod exprs;
 pub mod format;
 pub mod stmts;
-mod tests;
-pub mod types;
 pub mod substitute;
+pub mod types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolID(pub u32);
@@ -35,6 +34,12 @@ pub struct LabelID(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VTableID(pub u32);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GenericParamID {
+    name: String, // used for diagnostics
+    id: u32,
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {

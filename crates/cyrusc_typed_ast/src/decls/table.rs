@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::decls::*;
+use crate::{GenericParamID, decls::*, stmts::TypedGenericParam};
 use std::sync::RwLock;
 
 #[derive(Debug)]
@@ -34,6 +34,7 @@ pub struct DeclTables {
     pub global_vars: Vec<GlobalVarDecl>,
     pub vars: Vec<VarDecl>,
     pub typedefs: Vec<TypedefDecl>,
+    pub generic_params: Vec<TypedGenericParam>,
 }
 
 impl DeclTablesRegistry {
@@ -49,6 +50,7 @@ impl DeclTablesRegistry {
                 global_vars: Vec::new(),
                 vars: Vec::new(),
                 typedefs: Vec::new(),
+                generic_params: Vec::new(),
             }),
         }
     }
@@ -126,6 +128,17 @@ impl DeclTablesRegistry {
         tables.typedefs.push(decl);
         id
     }
+
+    #[inline]
+    pub fn insert_generic_param(&self, generic_param: TypedGenericParam) -> GenericParamID {
+        let mut tables = self.tables.write().unwrap();
+        let id = GenericParamID {
+            name: generic_param.name.as_string(),
+            id: tables.generic_params.len() as u32,
+        };
+        tables.generic_params.push(generic_param);
+        id
+    }
 }
 
 impl DeclTablesRegistry {
@@ -181,6 +194,12 @@ impl DeclTablesRegistry {
     pub fn typedef_decl(&self, id: TypedefDeclID) -> TypedefDecl {
         let tables = self.tables.read().unwrap();
         tables.typedefs[id.0 as usize].clone()
+    }
+
+    #[inline]
+    pub fn generic_param(&self, generic_param_id: GenericParamID) -> TypedGenericParam {
+        let tables = self.tables.read().unwrap();
+        tables.generic_params[generic_param_id.id as usize].clone()
     }
 }
 

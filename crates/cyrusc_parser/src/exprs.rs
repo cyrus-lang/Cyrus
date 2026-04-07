@@ -351,13 +351,13 @@ impl<'source_file> Parser<'source_file> {
             }
         };
 
-        let mut type_args_opt: Option<Vec<TypeArg>> = None;
+        let mut type_args_opt: Option<TypeArgs> = None;
 
         let type_arg_start_detail = self.is_type_arg_start(expr.clone());
         if type_arg_start_detail.includes_type_args {
             if !type_arg_start_detail.is_array_init {
                 self.next_token(); // consume current token of expr
-                type_args_opt = Some(self.parse_type_arg_list()?);
+                type_args_opt = Some(self.parse_type_args()?);
             } else {
                 // handle generic array init
                 let type_spec = self.parse_type_specifier()?;
@@ -640,10 +640,11 @@ impl<'source_file> Parser<'source_file> {
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
 
-            let mut type_args: Option<Vec<TypeArg>> = None;
+            let mut type_args: Option<TypeArgs> = None;
+            
             if self.is_type_arg_start(operand.clone()).includes_type_args {
                 self.next_token(); // consume current token of expr
-                type_args = Some(self.parse_type_arg_list()?);
+                type_args = Some(self.parse_type_args()?);
             }
 
             if self.peek_token_is(TokenKind::LeftParen) {

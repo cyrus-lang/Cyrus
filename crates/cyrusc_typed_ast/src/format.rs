@@ -18,14 +18,11 @@
 use crate::SymbolID;
 use crate::decls::{EnumDecl, StructDecl, UnionDecl};
 use crate::exprs::TypedEnumInitArgs;
-use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField};
+use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArg};
 use crate::types::TypeDeclID;
 use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
-    stmts::{
-        TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam, TypedTypeArg,
-        TypedTypeArgs,
-    },
+    stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam, TypedTypeArgs},
     types::{SemanticType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
 use cyrusc_ast::operators::UnaryOperator;
@@ -384,7 +381,7 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
             UnresolvedType::Symbol(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
         },
-        SemanticType::GenericParam(generic_param) => generic_param.name.as_string(),
+        SemanticType::GenericParam(generic_param) => generic_param.name.clone(),
         SemanticType::Named(named_type) => {
             let name = formatter.format_type_decl(named_type.decl_id);
             if let Some(type_args) = &named_type.type_args {
@@ -436,23 +433,21 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
 }
 
 fn format_type_args(type_args: &TypedTypeArgs, formatter: &dyn Formatter) -> String {
-    if type_args.is_empty() {
+    if type_args.0.is_empty() {
         return String::new();
     }
 
-    let mut out = String::from('<');
-    for type_arg in type_args {
-        match type_arg {
-            TypedTypeArg::Positional { ty, .. } => {
-                out.push_str(&format_sema_type(ty.clone(), formatter));
-            }
-            TypedTypeArg::Named { key, ty, .. } => {
-                out.push_str(&format!("{} = {}", key, format_sema_type(ty.clone(), formatter)));
-            }
-        }
-    }
-    out.push('>');
-    out
+    let args = type_args
+        .0
+        .iter()
+        .map(|type_arg| match type_arg {
+            TypedTypeArg::Type(sema_type, _) => format_sema_type(sema_type.clone(), formatter),
+            TypedTypeArg::Infer => String::from('_'),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!("<{}>", args)
 }
 
 pub fn format_func_type<'a>(func_type: &TypedFuncType, formatter: &dyn Formatter) -> String {

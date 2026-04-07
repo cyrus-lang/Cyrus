@@ -17,8 +17,8 @@
 
 use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, UnionDeclID};
 use crate::exprs::{TypedExprStmt, TypedSelfType};
-use crate::stmts::{TypedFuncTypeParams, TypedGenericParam, TypedTypeArgs};
-use crate::{SymbolID, VTableID};
+use crate::stmts::{TypedFuncTypeParams, TypedTypeArgs};
+use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
@@ -34,7 +34,7 @@ pub enum SemanticType {
     Pointer(Box<SemanticType>),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
-    GenericParam(TypedGenericParam),
+    GenericParam(GenericParamID),
     SelfType(TypedSelfType),
     InterfaceType(InterfaceType),
 }
@@ -320,9 +320,9 @@ impl SemanticType {
     }
 
     #[inline]
-    pub fn as_generic_param(&self) -> Option<&TypedGenericParam> {
+    pub fn as_generic_param(&self) -> Option<GenericParamID> {
         match self.const_inner() {
-            SemanticType::GenericParam(generic_param) => Some(generic_param),
+            SemanticType::GenericParam(generic_param_id) => Some(generic_param_id.clone()),
             _ => None,
         }
     }

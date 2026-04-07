@@ -21,7 +21,7 @@ use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::MethodDecls,
-    stmts::{TypedGenericParamsList, TypedStmt},
+    stmts::{TypedGenericParams, TypedStmt},
 };
 use fx_hash::FxHashSet;
 
@@ -116,7 +116,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         object_name: &String,
         method_decls: &MethodDecls,
-        generic_params_opt: &Option<TypedGenericParamsList>,
+        generic_params_opt: &Option<TypedGenericParams>,
     ) {
         let Some(generic_params) = generic_params_opt else {
             return;
@@ -144,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     /// Validates a list of generic parameters for duplicate names.
-    pub(crate) fn analyze_generic_params(&mut self, generic_params_opt: &Option<TypedGenericParamsList>) {
+    pub(crate) fn analyze_generic_params(&mut self, generic_params_opt: &Option<TypedGenericParams>) {
         let Some(generic_params) = generic_params_opt else {
             return;
         };

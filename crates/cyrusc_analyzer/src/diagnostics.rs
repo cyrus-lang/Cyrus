@@ -20,7 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
-    stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParamsList, TypedTypeArgs},
+    stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     types::SemanticType,
 };
 use std::{ops::RangeInclusive, string};
@@ -467,7 +467,7 @@ impl<'a> AnalysisContext<'a> {
     /// like `NonGenericType<int>` which would be invalid.
     pub(crate) fn report_if_unexpected_type_args(
         &mut self,
-        generic_params: &Option<TypedGenericParamsList>,
+        generic_params: &Option<TypedGenericParams>,
         type_args: &Option<TypedTypeArgs>,
         loc: Loc,
     ) -> bool {
