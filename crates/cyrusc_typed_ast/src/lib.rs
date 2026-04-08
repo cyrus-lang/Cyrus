@@ -35,11 +35,8 @@ pub struct LabelID(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VTableID(pub u32);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct GenericParamID {
-    name: String, // used for diagnostics
-    id: u32,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GenericParamID(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct TypedProgramTree {

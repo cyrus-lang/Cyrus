@@ -15,14 +15,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
 use cyrusc_ast::{abi::Visibility, modifiers::StructModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, StructDecl, StructDeclID},
     exprs::{TypedStructFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
     format::{format_missing_fields, format_sema_type, format_struct_decl},
-    stmts::TypedStructField,
+    stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
     types::{NamedType, SemanticType, TypeDeclID, UnresolvedType},
 };
 use fx_hash::FxHashSet;
@@ -45,19 +45,50 @@ impl<'a> AnalysisContext<'a> {
 
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-        for field in &mut struct_init.fields {
-            let expected_type = struct_decl.lookup_field(&field.name).map(|field| field.ty.clone());
+        let generic_env = GenericEnv::from_type_args(struct_decl.generic_params.clone(), &struct_init.type_args);
 
-            self.analyze_expr(&mut field.value, expected_type);
-        }
+        self.with_generic_env(generic_env, |this| {
+            for field in &mut struct_init.fields {
+                let Some(mut expected_type) = struct_decl
+                    .lookup_field(&field.name)
+                    .map(|field| this.substitute_type(&field.ty))
+                else {
+                    continue;
+                };
 
-        self.check_duplicate_struct_field_init(&struct_init.fields);
-        self.check_missing_fields(&struct_decl, struct_init);
-        self.check_invalid_fields(&struct_decl, struct_init);
+                let Some(value_type) = this.analyze_expr(&mut field.value, Some(expected_type.clone())) else {
+                    continue;
+                };
+
+                let value_type = this.substitute_type(&value_type);
+
+                this.infer_generic_param(&expected_type, &value_type);
+
+                expected_type = this.substitute_type(&expected_type);
+
+                if !this.is_assignable_to(value_type.clone(), expected_type.clone(), field.loc) {
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                            lhs_type: format_sema_type(expected_type.clone(), this.formatter),
+                            rhs_type: format_sema_type(value_type.clone(), this.formatter),
+                        }),
+                        loc: Some(field.loc),
+                        hint: None,
+                    });
+                }
+            }
+
+            this.check_duplicate_struct_field_init(&struct_init.fields);
+            this.check_missing_fields(&struct_decl, struct_init);
+            this.check_invalid_fields(&struct_decl, struct_init);
+        });
+
+        let final_type_args = self.collect_instantiated_type_args(struct_decl.generic_params);
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: struct_init.type_args.clone(),
+            type_args: final_type_args,
         }))
     }
 
@@ -71,6 +102,7 @@ impl<'a> AnalysisContext<'a> {
         if let Some((struct_decl_id, struct_decl)) = self.infer_struct_decl_from_expected_type(expected_type) {
             for struct_value_field in &mut struct_value.fields {
                 if struct_value_field.ty.is_some() {
+                    // FIXME
                     todo!();
                 }
 
@@ -100,7 +132,7 @@ impl<'a> AnalysisContext<'a> {
 
             return Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Struct(struct_decl_id),
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
             }));
         }
 
@@ -142,7 +174,7 @@ impl<'a> AnalysisContext<'a> {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -179,7 +211,7 @@ impl<'a> AnalysisContext<'a> {
             fields,
             impls: Vec::new(),
             methods: MethodDecls::new(),
-            generic_params: None,
+            generic_params: TypedGenericParams::new(),
             modifiers: StructModifiers {
                 vis: Visibility::Public,
                 repr_attr: struct_value.repr_attr.clone(),

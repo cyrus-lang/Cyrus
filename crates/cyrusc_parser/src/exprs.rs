@@ -254,7 +254,7 @@ impl<'source_file> Parser<'source_file> {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
-                    ASTExpr::StructInit(self.parse_struct_init(module_import, None)?)
+                    ASTExpr::StructInit(self.parse_struct_init(module_import, TypeArgs::new())?)
                 } else {
                     ASTExpr::ModuleImport(module_import)
                 }
@@ -351,13 +351,13 @@ impl<'source_file> Parser<'source_file> {
             }
         };
 
-        let mut type_args_opt: Option<TypeArgs> = None;
+        let mut type_args = TypeArgs::new();
 
         let type_arg_start_detail = self.is_type_arg_start(expr.clone());
         if type_arg_start_detail.includes_type_args {
             if !type_arg_start_detail.is_array_init {
                 self.next_token(); // consume current token of expr
-                type_args_opt = Some(self.parse_type_args()?);
+                type_args = self.parse_type_args()?;
             } else {
                 // handle generic array init
                 let type_spec = self.parse_type_specifier()?;
@@ -370,16 +370,16 @@ impl<'source_file> Parser<'source_file> {
             if let ASTExpr::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
 
-                let struct_init = self.parse_struct_init(module_import, type_args_opt)?;
+                let struct_init = self.parse_struct_init(module_import, type_args)?;
                 Ok(ASTExpr::StructInit(struct_init))
             } else {
                 return Err(self.error_invalid_token());
             }
         } else if self.peek_token_is(TokenKind::LeftParen) {
-            return self.parse_func_call(expr, type_args_opt);
+            return self.parse_func_call(expr, type_args);
         } else {
             // type args are given to the wrong expression
-            if type_args_opt.is_some() {
+            if !type_args.is_empty() {
                 return Err(self.error_invalid_token());
             }
 
@@ -599,7 +599,7 @@ impl<'source_file> Parser<'source_file> {
         operand: ASTExpr,
         method_name: Ident,
         is_fat_arrow: bool,
-        type_args: Option<TypeArgs>,
+        type_args: TypeArgs,
         line: usize,
         column: usize,
         start: usize,
@@ -640,11 +640,11 @@ impl<'source_file> Parser<'source_file> {
         if matches!(self.current_token().kind, TokenKind::Ident { .. }) {
             let ident = self.parse_ident()?;
 
-            let mut type_args: Option<TypeArgs> = None;
-            
+            let mut type_args: TypeArgs = TypeArgs::new();
+
             if self.is_type_arg_start(operand.clone()).includes_type_args {
                 self.next_token(); // consume current token of expr
-                type_args = Some(self.parse_type_args()?);
+                type_args = self.parse_type_args()?;
             }
 
             if self.peek_token_is(TokenKind::LeftParen) {
@@ -652,7 +652,7 @@ impl<'source_file> Parser<'source_file> {
 
                 self.parse_method_call(operand, ident, is_fat_arrow, type_args, line, column, start)
             } else if self.peek_token_is(TokenKind::LeftBrace) {
-                if is_fat_arrow || type_args.is_some() {
+                if is_fat_arrow || !type_args.is_empty() {
                     self.error_at_current(ParserDiagKind::InvalidToken(self.current_token().kind));
                 }
 
@@ -682,7 +682,7 @@ impl<'source_file> Parser<'source_file> {
         }
     }
 
-    fn parse_func_call(&mut self, operand: ASTExpr, type_args: Option<TypeArgs>) -> Result<ASTExpr, Diag> {
+    fn parse_func_call(&mut self, operand: ASTExpr, type_args: TypeArgs) -> Result<ASTExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);
 
@@ -704,7 +704,7 @@ impl<'source_file> Parser<'source_file> {
     fn parse_struct_init(
         &mut self,
         struct_name: ASTModuleImport,
-        type_args: Option<TypeArgs>,
+        type_args: TypeArgs,
     ) -> Result<ASTStructInitExpr, Diag> {
         let loc = self.current_token().loc;
         let (line, column, start) = (loc.line, loc.column, loc.start);

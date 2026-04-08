@@ -19,6 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::MethodDecls,
+    format::format_sema_type,
     stmts::{TypedImplementInterface, TypedInterfaceStmt},
 };
 
@@ -28,34 +29,34 @@ impl<'a> AnalysisContext<'a> {
 
         self.nameconv_check_interface_name(&interface_name, interface.loc);
 
-        self.analyze_generic_params(&interface.generic_params);
-
         let mut methods: Vec<String> = Vec::new();
 
-        for method in &interface.methods {
-            if !method.params.is_instance_method() {
+        for func_decl_id in &interface.methods {
+            let func_decl = self.decl_tables.func_decl(*func_decl_id);
+
+            if !func_decl.params.is_instance_method() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustHaveSelfModifier),
-                    loc: Some(method.loc),
+                    loc: Some(func_decl.loc),
                     hint: None,
                 });
             }
 
-            if methods.contains(&method.name) {
+            if methods.contains(&func_decl.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InterfaceDuplicateMethod {
                         interface_name: interface_name.clone(),
-                        method_name: method.name.clone(),
+                        method_name: func_decl.name.clone(),
                     }),
-                    loc: Some(method.loc),
+                    loc: Some(func_decl.loc),
                     hint: None,
                 });
                 continue;
             }
 
-            methods.push(method.name.clone());
+            methods.push(func_decl.name.clone());
         }
     }
 
@@ -71,22 +72,33 @@ impl<'a> AnalysisContext<'a> {
         method_decls: &MethodDecls,
     ) {
         for implement_interface in impls {
-            let Some(interface_decl_id) = self.query.get_interface(implement_interface.symbol_id) else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::NonInterfaceSymbol {
-                        symbol_name: self.formatter.format_symbol_name(implement_interface.symbol_id),
-                    }),
-                    loc: Some(implement_interface.loc),
-                    hint: None,
-                });
+            let Some(normalized_type) =
+                self.normalize_and_check_sema_ty(implement_interface.ty.clone(), implement_interface.loc)
+            else {
                 continue;
             };
 
-            let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
+            let interface_decl_id = normalized_type
+                .as_named_type()
+                .and_then(|named_type| named_type.decl_id.as_interface());
 
-            for func_decl_stmt in &interface_decl.methods {
-                let interface_func_decl = func_decl_stmt.as_func_decl();
+            let interface_decl = match interface_decl_id {
+                Some(id) => self.decl_tables.interface_decl(id),
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::NonInterfaceSymbol {
+                            symbol_name: format_sema_type(normalized_type, self.formatter),
+                        }),
+                        loc: Some(implement_interface.loc),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            for func_decl_id in &interface_decl.methods {
+                let interface_func_decl = self.decl_tables.func_decl(*func_decl_id);
 
                 if !method_decls.contains(&interface_func_decl.name) {
                     // method missing

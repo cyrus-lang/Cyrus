@@ -73,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
         } else {
             // function pointer call
 
-            if func_call.type_args.is_some() {
+            if !func_call.type_args.is_empty() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),

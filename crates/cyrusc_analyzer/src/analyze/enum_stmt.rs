@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{EnumDecl, EnumDeclID},
     format::{format_enum_decl, format_sema_type},
-    stmts::{TypedEnumStmt, TypedEnumVariant},
+    stmts::{TypedEnumStmt, TypedEnumVariant, TypedTypeArgs},
     types::{NamedType, SemanticType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
@@ -72,7 +72,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &enum_decl.impls, &enum_decl.methods);
 
-        self.analyze_object_methods(&object_name, &enum_decl.methods);
+        self.analyze_object_methods(&enum_decl.methods);
     }
 
     #[inline]
@@ -271,7 +271,7 @@ impl<'a> AnalysisContext<'a> {
 
         let ty = NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         };
 
         if self.sema_type_contains_self_by_value(sema_type, ty) {

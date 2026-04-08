@@ -21,12 +21,12 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    SymbolID,
+    GenericParamID, SymbolID,
     decls::{FuncDecl, InterfaceDeclID, TypedefDeclID},
     exprs::TypedSelfType,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam,
-        TypedGenericParam, TypedTypeArg, TypedTypeArgs,
+        TypedTypeArg, TypedTypeArgs,
     },
     types::{
         NamedType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
@@ -71,9 +71,9 @@ impl<'a> AnalysisContext<'a> {
     // and recursively normalize children. Never returns UnresolvedSymbol.
     pub fn normalize_sema_type(&mut self, ty: SemanticType, loc: Loc) -> Option<SemanticType> {
         match ty {
-            SemanticType::Unresolved(unresolved_type) => self.normalize_unresolved_type(&unresolved_type, loc),
+            SemanticType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
             SemanticType::Named(_) => Some(ty), // already normalized
-            SemanticType::GenericParam(generic_param) => self.normalize_generic_param(generic_param),
+            SemanticType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
             SemanticType::Pointer(inner) => self.normalize_pointer(*inner, loc),
             SemanticType::Const(inner) => self.normalize_const(*inner, loc),
             SemanticType::Array(arr) => self.normalize_array(arr, loc),
@@ -84,11 +84,24 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn normalize_unresolved_type(&mut self, unresolved_type: &UnresolvedType, loc: Loc) -> Option<SemanticType> {
+    fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemanticType> {
         match unresolved_type {
             UnresolvedType::Infer => unreachable!(),
-            UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(*symbol_id, loc),
-            UnresolvedType::GenericInst { base: _, type_args: _ } => todo!(),
+            UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(symbol_id, loc),
+            UnresolvedType::GenericInst { base, mut type_args } => {
+                let base_type = self.normalize_unresolved_type(UnresolvedType::Symbol(base), loc)?;
+
+                if let Some(named_type) = base_type.as_named_type() {
+                    self.normalize_type_args(&mut type_args);
+
+                    Some(SemanticType::Named(NamedType {
+                        decl_id: named_type.decl_id,
+                        type_args,
+                    }))
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -197,25 +210,13 @@ impl<'a> AnalysisContext<'a> {
         Some(*typedef_decl.ty.clone())
     }
 
-    // FIXME
-    fn normalize_generic_param(&self, generic_param: TypedGenericParam) -> Option<SemanticType> {
-        dbg!(generic_param.clone());
-        todo!();
+    fn normalize_generic_param(&self, generic_param_id: GenericParamID) -> Option<SemanticType> {
+        if let Some(ty) = self.lookup_generic_binding(generic_param_id) {
+            return Some(ty.clone());
+        }
 
-        // // try to resolve from current object operand context
-        // if let Some(sema_type) = &self.fenv.current_object_type {
-        //     if let Some(generic_type) = sema_type.as_generic_type() {
-        //         let mapping_ctx = generic_type.mapping_ctx.borrow();
-
-        //         if let Some(sema_type) =
-        //             mapping_ctx.resolve_with_name(self.mapping_ctx_arena.clone(), &generic_param.name.value)
-        //         {
-        //             return Some(sema_type);
-        //         }
-        //     }
-        // }
-
-        // Some(SemanticType::GenericParam(generic_param))
+        // fallback
+        Some(SemanticType::GenericParam(generic_param_id))
     }
 
     fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
@@ -225,11 +226,7 @@ impl<'a> AnalysisContext<'a> {
             .or(Some(SemanticType::SelfType(self_type)))
     }
 
-    pub(crate) fn normalize_type_args(&mut self, type_args_opt: Option<&mut TypedTypeArgs>) {
-        let Some(type_args) = type_args_opt else {
-            return;
-        };
-
+    pub(crate) fn normalize_type_args(&mut self, type_args: &mut TypedTypeArgs) {
         for type_arg in type_args.iter_mut() {
             match type_arg {
                 TypedTypeArg::Type(sema_type, loc) => {
@@ -238,7 +235,6 @@ impl<'a> AnalysisContext<'a> {
                         None => continue,
                     };
                 }
-                TypedTypeArg::Infer => { /* skip */ }
             }
         }
     }
@@ -373,15 +369,15 @@ impl<'a> AnalysisContext<'a> {
             }
             SymbolEntryKind::Struct(strut_decl_id) => Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Struct(*strut_decl_id),
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
             })),
             SymbolEntryKind::Enum(enum_decl_id) => Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Enum(*enum_decl_id),
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
             })),
             SymbolEntryKind::Union(union_decl_id) => Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Union(*union_decl_id),
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
             })),
             SymbolEntryKind::Interface(interface_decl_id) => self.normalize_interface_type(*interface_decl_id),
             SymbolEntryKind::Typedef(typedef_decl_id) => self.normalize_typedef(*typedef_decl_id),

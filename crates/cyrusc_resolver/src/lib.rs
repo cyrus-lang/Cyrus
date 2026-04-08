@@ -342,10 +342,9 @@ impl Resolver {
 
     pub(crate) fn new_generic_scope(&self, generic_params: &TypedGenericParams) -> GenericScope {
         let mut generic_scope = GenericScope::new();
-        for generic_param in generic_params.iter() {
-            // store in decl table (metadata accessed by generic param id)
-            let generic_param_id = self.decl_tables.insert_generic_param(generic_param.clone());
-            generic_scope.insert(generic_param.name.as_string(), generic_param_id);
+        for generic_param_id in generic_params.iter() {
+            let generic_param = self.decl_tables.generic_param(*generic_param_id);
+            generic_scope.insert(generic_param.name.as_string(), generic_param_id.clone());
         }
         generic_scope
     }
@@ -706,6 +705,11 @@ impl Formatter for Resolver {
             },
             None => String::from(UNRESOLVED_SYMBOL),
         }
+    }
+
+    fn format_generic_param(&self, generic_param_id: GenericParamID) -> String {
+        let generic_param = self.decl_tables.generic_param(generic_param_id);
+        generic_param.name.as_string()
     }
 }
 

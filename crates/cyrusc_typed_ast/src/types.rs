@@ -49,7 +49,7 @@ pub enum UnresolvedType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NamedType {
     pub decl_id: TypeDeclID,
-    pub type_args: Option<TypedTypeArgs>,
+    pub type_args: TypedTypeArgs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

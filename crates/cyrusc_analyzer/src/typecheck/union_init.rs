@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     decls::{MethodDecls, UnionDecl, UnionDeclID},
     exprs::TypedUnnamedUnionValue,
     format::format_union_decl,
-    stmts::TypedUnionField,
+    stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
     types::{NamedType, SemanticType, TypeDeclID, UnresolvedType},
 };
 
@@ -60,7 +60,7 @@ impl<'a> AnalysisContext<'a> {
 
             return Some(SemanticType::Named(NamedType {
                 decl_id: TypeDeclID::Union(union_decl_id),
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
             }));
         }
 
@@ -86,7 +86,7 @@ impl<'a> AnalysisContext<'a> {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -117,7 +117,7 @@ impl<'a> AnalysisContext<'a> {
             fields,
             impls: Vec::new(),
             methods: MethodDecls::new(),
-            generic_params: None,
+            generic_params: TypedGenericParams::new(),
             modifiers: UnionModifiers {
                 vis: Visibility::Public,
                 repr_attr: None,

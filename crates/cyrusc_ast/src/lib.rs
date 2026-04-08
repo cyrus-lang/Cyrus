@@ -180,7 +180,7 @@ pub struct ASTUnionStmt {
     pub fields: Vec<UnionField>,
     pub generic_params: GenericParams,
     pub methods: Vec<ASTFuncDefStmt>,
-    pub impls: Vec<TypeSpecifier>,
+    pub impls: Vec<ImplementInterface>,
     pub modifiers: UnionModifiers,
     pub align: Option<usize>,
     pub loc: Loc,
@@ -199,7 +199,7 @@ pub struct ASTEnumStmt {
     pub variants: Vec<EnumVariant>,
     pub generic_params: GenericParams,
     pub methods: Vec<ASTFuncDefStmt>,
-    pub impls: Vec<TypeSpecifier>,
+    pub impls: Vec<ImplementInterface>,
     pub modifiers: EnumModifiers,
     pub tag_type: Option<TypeSpecifier>,
     pub align: Option<usize>,
@@ -278,7 +278,7 @@ pub struct BuiltinScope {
 pub struct ASTFuncCallExpr {
     pub operand: Box<ASTExpr>,
     pub args: Vec<ASTExpr>,
-    pub type_args: Option<TypeArgs>,
+    pub type_args: TypeArgs,
     pub loc: Loc,
 }
 
@@ -287,7 +287,7 @@ pub struct ASTFieldAccessExpr {
     pub is_fat_arrow: bool,
     pub operand: Box<ASTExpr>,
     pub field_name: Ident,
-    pub type_args: Option<TypeArgs>,
+    pub type_args: TypeArgs,
     pub loc: Loc,
 }
 
@@ -312,7 +312,7 @@ pub struct ASTMethodCallExpr {
     pub operand: Box<ASTExpr>,
     pub method_name: Ident,
     pub args: Vec<ASTExpr>,
-    pub type_args: Option<TypeArgs>,
+    pub type_args: TypeArgs,
     pub loc: Loc,
 }
 
@@ -553,7 +553,7 @@ pub struct ASTImportStmt {
 pub struct ASTStructStmt {
     pub ident: Ident,
     pub generic_params: GenericParams,
-    pub impls: Vec<TypeSpecifier>,
+    pub impls: Vec<ImplementInterface>,
     pub fields: Vec<StructField>,
     pub methods: Vec<ASTFuncDefStmt>,
     pub modifiers: StructModifiers,
@@ -566,7 +566,7 @@ pub struct ASTStructStmt {
 pub struct ASTStructInitExpr {
     pub struct_name: ASTModuleImport,
     pub field_inits: Vec<FieldInit>,
-    pub type_args: Option<TypeArgs>,
+    pub type_args: TypeArgs,
     pub loc: Loc,
 }
 
@@ -805,7 +805,12 @@ pub struct ASTIfStmt {
     pub then_block: Box<ASTBlockStmt>,
     pub branches: Vec<ASTIfStmt>,
     pub else_block: Option<Box<ASTBlockStmt>>,
+    pub loc: Loc,
+}
 
+#[derive(Debug, Clone)]
+pub struct ImplementInterface {
+    pub ty: TypeSpecifier,
     pub loc: Loc,
 }
 
@@ -827,7 +832,6 @@ pub struct TypeArgs(pub Vec<TypeArg>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeArg {
     Type(TypeSpecifier),
-    Infer, // `_`
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1551,6 +1555,13 @@ impl PartialEq for BuiltinFunc {
     }
 }
 
+impl PartialEq for ImplementInterface {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl Eq for ImplementInterface {}
 impl Eq for BuiltinFunc {}
 impl Eq for BuiltinScope {}
 impl Eq for ASTArrayExpr {}

@@ -25,7 +25,7 @@ use cyrusc_typed_ast::{
         TypedUnnamedEnumValue, TypedUnnamedEnumValueKind,
     },
     format::{format_enum_decl, format_sema_type, format_typed_expr},
-    stmts::{TypedEnumVariant, TypedEnumVariantStructField},
+    stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArgs},
     types::{NamedType, SemanticType, TypeDeclID},
 };
 use fx_hash::{FxHashMap, FxHashSet};
@@ -140,7 +140,7 @@ impl<'a> AnalysisContext<'a> {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_init.enum_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -269,7 +269,7 @@ impl<'a> AnalysisContext<'a> {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -359,7 +359,7 @@ impl<'a> AnalysisContext<'a> {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 

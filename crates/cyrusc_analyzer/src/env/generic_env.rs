@@ -16,21 +16,123 @@
  */
 
 use cyrusc_typed_ast::{
-    stmts::{TypedGenericParam, TypedGenericParams},
-    types::SemanticType,
+    GenericParamID,
+    stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    types::{NamedType, SemanticType, TypedArrayType, TypedFuncType, TypedTupleType},
 };
-use fx_hash::FxHashMap;
 
 pub(crate) struct GenericEnv {
     pub params: TypedGenericParams,
-    pub bindings: FxHashMap<TypedGenericParam, SemanticType>,
+    bindings: Vec<Option<SemanticType>>,
 }
 
 impl GenericEnv {
     pub fn new(params: TypedGenericParams) -> Self {
-        Self {
-            params,
-            bindings: FxHashMap::default(),
+        let bindings = vec![None; params.len()];
+
+        Self { params, bindings }
+    }
+
+    pub fn from_type_args(params: TypedGenericParams, type_args: &TypedTypeArgs) -> Self {
+        let mut generic_env = GenericEnv::new(params.clone());
+
+        for (param, arg) in params.iter().zip(type_args.iter()) {
+            if let TypedTypeArg::Type(ty, _) = arg {
+                generic_env.bind(*param, ty.clone());
+            }
+        }
+
+        generic_env
+    }
+
+    fn slot(&self, param: GenericParamID) -> Option<usize> {
+        self.params.iter().position(|p| *p == param)
+    }
+
+    pub fn bind(&mut self, param: GenericParamID, ty: SemanticType) -> bool {
+        let Some(idx) = self.slot(param) else {
+            return false;
+        };
+
+        match &self.bindings[idx] {
+            Some(existing) => existing == &ty,
+            None => {
+                self.bindings[idx] = Some(ty);
+                true
+            }
+        }
+    }
+
+    pub fn lookup(&self, param: GenericParamID) -> Option<&SemanticType> {
+        let idx = self.slot(param)?;
+        self.bindings[idx].as_ref()
+    }
+}
+
+impl GenericEnv {
+    #[inline]
+    pub fn substitute_sema_type(&self, sema_type: &SemanticType) -> SemanticType {
+        match sema_type {
+            SemanticType::Unresolved(_) | SemanticType::Plain(_) => sema_type.clone(),
+            SemanticType::Named(named_type) => {
+                let type_args = named_type
+                    .type_args
+                    .iter()
+                    .map(|type_arg| match type_arg {
+                        TypedTypeArg::Type(ty, loc) => TypedTypeArg::Type(self.substitute_sema_type(&ty), *loc),
+                    })
+                    .collect();
+
+                SemanticType::Named(NamedType {
+                    decl_id: named_type.decl_id,
+                    type_args,
+                })
+            }
+            SemanticType::Array(array) => SemanticType::Array(TypedArrayType {
+                element_type: Box::new(self.substitute_sema_type(&array.element_type)),
+                capacity: array.capacity.clone(),
+                loc: array.loc,
+            }),
+            SemanticType::Const(inner) => SemanticType::Const(Box::new(self.substitute_sema_type(inner))),
+            SemanticType::Pointer(inner) => SemanticType::Pointer(Box::new(self.substitute_sema_type(inner))),
+            SemanticType::FuncType(func) => {
+                let params = func
+                    .params
+                    .list
+                    .iter()
+                    .map(|param_ty| self.substitute_sema_type(param_ty))
+                    .collect();
+
+                let variadic = func.params.variadic.as_ref().map(|variadic| {
+                    Box::new(match variadic.as_ref() {
+                        v @ TypedFuncTypeVariadicParams::UntypedCStyle => v.clone(),
+
+                        TypedFuncTypeVariadicParams::Typed(ty) => {
+                            TypedFuncTypeVariadicParams::Typed(self.substitute_sema_type(ty))
+                        }
+                    })
+                });
+
+                let ret_type = Box::new(self.substitute_sema_type(&func.ret_type));
+
+                SemanticType::FuncType(TypedFuncType {
+                    symbol_id: func.symbol_id,
+                    params: TypedFuncTypeParams { list: params, variadic },
+                    ret_type,
+                    is_public: func.is_public,
+                    loc: func.loc,
+                })
+            }
+            SemanticType::Tuple(tuple) => SemanticType::Tuple(TypedTupleType {
+                elements: tuple.elements.iter().map(|t| self.substitute_sema_type(t)).collect(),
+                loc: tuple.loc,
+            }),
+            SemanticType::GenericParam(id) => match self.lookup(*id) {
+                Some(ty) => ty.clone(),
+                None => sema_type.clone(),
+            },
+            SemanticType::SelfType(self_ty) => SemanticType::SelfType(self_ty.clone()),
+            SemanticType::InterfaceType(interface) => SemanticType::InterfaceType(interface.clone()),
         }
     }
 }

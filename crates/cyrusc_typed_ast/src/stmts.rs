@@ -123,8 +123,7 @@ pub struct TypedDeferStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedImplementInterface {
-    pub symbol_id: SymbolID,
-    pub type_args: Option<TypedTypeArgs>,
+    pub ty: SemanticType,
     pub loc: Loc,
 }
 
@@ -436,7 +435,7 @@ pub struct TypedContinueStmt {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct TypedGenericParams(pub Vec<TypedGenericParam>);
+pub struct TypedGenericParams(pub Vec<GenericParamID>);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TypedGenericParam {
@@ -451,7 +450,6 @@ pub struct TypedTypeArgs(pub Vec<TypedTypeArg>);
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TypedTypeArg {
     Type(SemanticType, Loc),
-    Infer,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -474,13 +472,8 @@ impl TypedGenericParams {
     }
 
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &TypedGenericParam> {
+    pub fn iter(&self) -> impl Iterator<Item = &GenericParamID> {
         self.0.iter()
-    }
-
-    #[inline]
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut TypedGenericParam> {
-        self.0.iter_mut()
     }
 }
 
@@ -602,6 +595,13 @@ impl TypedStmt {
             TypedStmt::Goto(typed_goto_stmt) => typed_goto_stmt.loc,
             TypedStmt::Builtin(typed_builtin) => typed_builtin.loc(),
         }
+    }
+}
+
+impl TypedFuncDeclStmt {
+    #[inline]
+    pub fn is_generic(&self) -> bool {
+        !self.generic_params.is_empty()
     }
 }
 
@@ -826,9 +826,6 @@ impl Hash for TypedTypeArg {
             TypedTypeArg::Type(sema_type, _) => {
                 0u8.hash(state);
                 sema_type.hash(state);
-            }
-            TypedTypeArg::Infer => {
-                1u8.hash(state);
             }
         }
     }

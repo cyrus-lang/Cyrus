@@ -90,7 +90,7 @@ impl<'a> AnalysisContext<'a> {
                 interface_type1.interface_decl_id == interface_type2.interface_decl_id
             }
 
-            // TODO: StructDecl 
+            // TODO: StructDecl
             // TODO: EnumDecl
             // TODO: UnionDecl
 

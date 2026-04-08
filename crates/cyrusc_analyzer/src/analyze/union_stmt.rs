@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{UnionDecl, UnionDeclID},
     format::{format_sema_type, format_union_decl},
-    stmts::{TypedUnionField, TypedUnionStmt},
+    stmts::{TypedTypeArgs, TypedUnionField, TypedUnionStmt},
     types::{NamedType, SemanticType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
@@ -56,8 +56,6 @@ impl<'a> AnalysisContext<'a> {
         self.validate_align(&union_decl.align, union_decl.loc);
         self.validate_union_repr_attr(&union_decl.modifiers.repr_attr, union_decl.fields.len(), union_decl.loc);
 
-        self.analyze_generic_params(&union_decl.generic_params);
-
         if let Some(union_name) = &union_decl.name {
             self.nameconv_check_union_name(union_name, union_decl.loc);
         }
@@ -70,7 +68,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &union_decl.impls, &union_decl.methods);
 
-        self.analyze_object_methods(&object_name, &union_decl.methods);
+        self.analyze_object_methods(&union_decl.methods);
     }
 
     fn analyze_union_fields(&mut self, union_decl_id: UnionDeclID, union_fields: &mut [TypedUnionField]) {
@@ -155,7 +153,7 @@ impl<'a> AnalysisContext<'a> {
 
         let ty = NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         };
 
         if self.sema_type_contains_self_by_value(sema_type, ty) {

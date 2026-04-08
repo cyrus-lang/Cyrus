@@ -19,12 +19,11 @@ use crate::context::AnalysisContext;
 use cyrusc_typed_ast::decls::{MethodDecl, MethodDeclID, MethodDecls};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_object_methods(&mut self, object_name: &String, method_decls: &MethodDecls) {
+    pub(crate) fn analyze_object_methods(&mut self, method_decls: &MethodDecls) {
         // pass 1: declarations
         for (_, method_decl_id) in method_decls.iter() {
             let mut method_decl = self.decl_tables.method_decl(*method_decl_id);
 
-            self.analyze_method_generic_params(object_name, method_decls, &method_decl.func_decl.generic_params);
             self.analyze_method_decl(&mut method_decl);
 
             self.decl_tables.with_method_decl_mut(*method_decl_id, |_method_decl| {

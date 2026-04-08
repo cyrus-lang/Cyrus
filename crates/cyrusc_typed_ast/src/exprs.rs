@@ -202,7 +202,7 @@ pub struct TypedDerefExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInitExpr {
     pub symbol_id: Option<SymbolID>,
-    pub type_args: Option<TypedTypeArgs>,
+    pub type_args: TypedTypeArgs,
     pub fields: Vec<TypedStructFieldInit>,
     pub loc: Loc,
 }
@@ -218,7 +218,7 @@ pub struct TypedStructFieldInit {
 pub struct TypedFuncCall {
     pub operand: Box<TypedExprStmt>,
     pub args: Vec<TypedExprStmt>,
-    pub type_args: Option<TypedTypeArgs>,
+    pub type_args: TypedTypeArgs,
 
     pub dispatch: TypedFuncCallDispatch,
 
@@ -253,7 +253,7 @@ pub struct TypedFieldAccess {
     pub name: String,
     pub index: Option<usize>,
     pub ty: Option<SemanticType>,
-    pub type_args: Option<TypedTypeArgs>,
+    pub type_args: TypedTypeArgs,
     pub is_fat_arrow: bool,
     pub loc: Loc,
 }
@@ -263,7 +263,7 @@ pub struct TypedEnumInit {
     pub enum_decl_id: EnumDeclID,
     pub name: String,
     pub args: TypedEnumInitArgs,
-    pub type_args: Option<TypedTypeArgs>,
+    pub type_args: TypedTypeArgs,
     pub loc: Loc,
 }
 
@@ -279,7 +279,7 @@ pub struct TypedMethodCall {
     pub operand: Box<TypedExprStmt>,
     pub name: String,
     pub args: Vec<TypedExprStmt>,
-    pub type_args: Option<TypedTypeArgs>,
+    pub type_args: TypedTypeArgs,
 
     pub dispatch: TypedMethodCallDispatch,
 

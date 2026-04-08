@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::{StructDecl, StructDeclID},
     format::{format_sema_type, format_struct_decl},
-    stmts::{TypedStructField, TypedStructStmt},
+    stmts::{TypedStructField, TypedStructStmt, TypedTypeArgs},
     types::{NamedType, SemanticType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
@@ -60,8 +60,6 @@ impl<'a> AnalysisContext<'a> {
             struct_decl.loc,
         );
 
-        self.analyze_generic_params(&struct_decl.generic_params);
-
         if let Some(struct_name) = &struct_decl.name {
             self.nameconv_check_struct_name(struct_name, struct_decl.loc);
         }
@@ -74,7 +72,7 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_object_implements_interfaces(&object_name, &struct_decl.impls, &struct_decl.methods);
 
-        self.analyze_object_methods(&object_name, &struct_decl.methods);
+        self.analyze_object_methods(&struct_decl.methods);
     }
 
     fn analyze_struct_fields(&mut self, struct_decl_id: StructDeclID, struct_fields: &mut [TypedStructField]) {
@@ -164,7 +162,7 @@ impl<'a> AnalysisContext<'a> {
 
         let ty = NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         };
 
         if self.sema_type_contains_self_by_value(sema_type, ty) {

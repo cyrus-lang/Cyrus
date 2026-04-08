@@ -30,7 +30,6 @@ impl<'a> AnalysisContext<'a> {
         let is_generic_func = func_def.is_generic();
 
         self.analyze_entry_func(func_def);
-        self.analyze_generic_params(&func_def.generic_params);
 
         let Some(func_decl_id) = self.query.get_func(func_def.symbol_id) else {
             self.reporter.report(Diag {
@@ -66,7 +65,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_func_decl_stmt(&mut self, func_decl_stmt: &mut TypedFuncDeclStmt) {
-        if func_decl_stmt.generic_params.is_some() {
+        if func_decl_stmt.is_generic() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::GenericFunctionDeclaration),

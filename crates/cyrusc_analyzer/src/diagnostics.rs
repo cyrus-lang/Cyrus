@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     types::SemanticType,
 };
-use std::{ops::RangeInclusive, string};
+use std::ops::RangeInclusive;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]

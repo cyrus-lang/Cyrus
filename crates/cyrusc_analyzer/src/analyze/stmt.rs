@@ -19,11 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::flow_state::FlowState;
 use cyrusc_source_loc::Loc;
-use cyrusc_typed_ast::{
-    decls::MethodDecls,
-    stmts::{TypedGenericParams, TypedStmt},
-};
-use fx_hash::FxHashSet;
+use cyrusc_typed_ast::stmts::TypedStmt;
 
 impl<'a> AnalysisContext<'a> {
     // Traverse TypedAST
@@ -103,66 +99,6 @@ impl<'a> AnalysisContext<'a> {
                     hint: None,
                 });
                 return FlowState::Reachable;
-            }
-        }
-    }
-
-    /// Checks method-level generic parameters against the object's generic parameters.
-    ///
-    /// Ensures that no method generic parameter reuses a name already defined
-    /// at the object level. If a conflict is found, an error diagnostic is emitted
-    /// because the method generic would shadow the object's generic parameter.
-    pub(crate) fn analyze_method_generic_params(
-        &mut self,
-        object_name: &String,
-        method_decls: &MethodDecls,
-        generic_params_opt: &Option<TypedGenericParams>,
-    ) {
-        let Some(generic_params) = generic_params_opt else {
-            return;
-        };
-
-        for (_, method_decl_id) in method_decls.iter() {
-            let method_decl = self.decl_tables.method_decl(*method_decl_id);
-
-            if let Some(method_generic_params) = &method_decl.func_decl.generic_params {
-                for method_generic_param in &method_generic_params.list {
-                    if generic_params.lookup_named(&method_generic_param.name.value).is_some() {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::ShadowsObjectGenericParam {
-                                param_name: method_generic_param.name.as_string(),
-                                object_name: object_name.clone(),
-                            }),
-                            loc: Some(method_generic_param.name.loc),
-                            hint: Some("Consider to rename the generic param to a different name.".to_string()),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    /// Validates a list of generic parameters for duplicate names.
-    pub(crate) fn analyze_generic_params(&mut self, generic_params_opt: &Option<TypedGenericParams>) {
-        let Some(generic_params) = generic_params_opt else {
-            return;
-        };
-
-        let mut seen: FxHashSet<&str> = FxHashSet::default();
-
-        for generic_param in &generic_params.list {
-            let name = generic_param.name.value.as_str();
-
-            if !seen.insert(name) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::DuplicateGenericParam {
-                        param_name: generic_param.name.as_string(),
-                    }),
-                    loc: Some(generic_param.name.loc),
-                    hint: Some("Consider renaming the generic parameter to a different name.".to_string()),
-                });
             }
         }
     }

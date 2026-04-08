@@ -132,10 +132,7 @@ impl DeclTablesRegistry {
     #[inline]
     pub fn insert_generic_param(&self, generic_param: TypedGenericParam) -> GenericParamID {
         let mut tables = self.tables.write().unwrap();
-        let id = GenericParamID {
-            name: generic_param.name.as_string(),
-            id: tables.generic_params.len() as u32,
-        };
+        let id = GenericParamID(tables.generic_params.len() as u32);
         tables.generic_params.push(generic_param);
         id
     }
@@ -199,7 +196,7 @@ impl DeclTablesRegistry {
     #[inline]
     pub fn generic_param(&self, generic_param_id: GenericParamID) -> TypedGenericParam {
         let tables = self.tables.read().unwrap();
-        tables.generic_params[generic_param_id.id as usize].clone()
+        tables.generic_params[generic_param_id.0 as usize].clone()
     }
 }
 

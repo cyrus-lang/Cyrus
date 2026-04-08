@@ -225,16 +225,10 @@ impl<'source_file> Parser<'source_file> {
         let mut args = Vec::new();
 
         loop {
-            if self.current_token_is(TokenKind::Underscore) {
-                self.next_token();
+            let ty = self.parse_type_specifier()?;
+            self.next_token();
 
-                args.push(TypeArg::Infer);
-            } else {
-                let ty = self.parse_type_specifier()?;
-                self.next_token();
-
-                args.push(TypeArg::Type(ty));
-            }
+            args.push(TypeArg::Type(ty));
 
             match self.current_token().kind {
                 TokenKind::Comma => {

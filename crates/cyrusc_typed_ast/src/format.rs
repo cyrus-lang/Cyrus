@@ -15,11 +15,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::SymbolID;
 use crate::decls::{EnumDecl, StructDecl, UnionDecl};
 use crate::exprs::TypedEnumInitArgs;
 use crate::stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArg};
 use crate::types::TypeDeclID;
+use crate::{GenericParamID, SymbolID};
 use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam, TypedTypeArgs},
@@ -33,6 +33,7 @@ use cyrusc_source_loc::{Loc, SourceMap};
 pub trait Formatter {
     fn format_symbol_name(&self, symbol_id: SymbolID) -> String;
     fn format_type_decl(&self, type_decl_id: TypeDeclID) -> String;
+    fn format_generic_param(&self, generic_param_id: GenericParamID) -> String;
 }
 
 fn join_exprs(exprs: &[TypedExprStmt], f: &dyn Formatter) -> String {
@@ -381,14 +382,10 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
             UnresolvedType::Symbol(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
         },
-        SemanticType::GenericParam(generic_param) => generic_param.name.clone(),
+        SemanticType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
         SemanticType::Named(named_type) => {
             let name = formatter.format_type_decl(named_type.decl_id);
-            if let Some(type_args) = &named_type.type_args {
-                format!("{}{}", name, format_type_args(&type_args, formatter))
-            } else {
-                name
-            }
+            format!("{}{}", name, format_type_args(&named_type.type_args, formatter))
         }
         SemanticType::Plain(plain_type) => plain_type.to_string(),
         SemanticType::Array(typed_array_type) => {
@@ -442,7 +439,6 @@ fn format_type_args(type_args: &TypedTypeArgs, formatter: &dyn Formatter) -> Str
         .iter()
         .map(|type_arg| match type_arg {
             TypedTypeArg::Type(sema_type, _) => format_sema_type(sema_type.clone(), formatter),
-            TypedTypeArg::Infer => String::from('_'),
         })
         .collect::<Vec<_>>()
         .join(", ");

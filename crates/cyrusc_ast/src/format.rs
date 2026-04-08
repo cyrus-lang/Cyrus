@@ -204,7 +204,6 @@ impl fmt::Display for TypeArg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TypeArg::Type(type_spec) => write!(f, "{}", type_spec),
-            TypeArg::Infer => write!(f, "_"),
         }
     }
 }

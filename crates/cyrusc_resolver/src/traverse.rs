@@ -628,7 +628,7 @@ impl Resolver {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -657,7 +657,7 @@ impl Resolver {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -695,7 +695,7 @@ impl Resolver {
 
         Some(SemanticType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: None,
+            type_args: TypedTypeArgs::new(),
         }))
     }
 
@@ -707,7 +707,6 @@ impl Resolver {
                     let sema_type = self.resolve_type(type_spec.clone(), type_spec.loc())?;
                     Some(TypedTypeArg::Type(sema_type, type_spec.loc()))
                 }
-                TypeArg::Infer => Some(TypedTypeArg::Infer),
             })
             .collect::<Option<_>>()
     }
@@ -738,8 +737,9 @@ impl Resolver {
 
             let generic_param = TypedGenericParam { name, bounds, default };
 
-            // store for declaration
-            list.push(generic_param.clone());
+            let generic_param_id = self.decl_tables.insert_generic_param(generic_param.clone());
+
+            list.push(generic_param_id);
         }
 
         Some(TypedGenericParams(list))
@@ -954,7 +954,7 @@ impl Resolver {
 
             let methods = this.resolve_methods(&union_decl.methods, &name);
 
-            let impls = this.resolve_object_implements_interface_list(&union_decl.impls, union_decl.loc);
+            let impls = this.resolve_object_implements_interfaces(&union_decl.impls, union_decl.loc)?;
 
             let union_decl_id = this.decl_tables.insert_union(UnionDecl {
                 symbol_id: Some(symbol_id),
@@ -1102,7 +1102,7 @@ impl Resolver {
 
             let methods = this.resolve_methods(&enum_decl.methods, &name);
 
-            let impls = this.resolve_object_implements_interface_list(&enum_decl.impls, enum_decl.loc);
+            let impls = this.resolve_object_implements_interfaces(&enum_decl.impls, enum_decl.loc)?;
 
             let enum_decl_id = this.decl_tables.insert_enum(EnumDecl {
                 symbol_id: Some(symbol_id),
@@ -1267,69 +1267,22 @@ impl Resolver {
         method_decls
     }
 
-    fn resolve_object_implements_interface_list(
+    fn resolve_object_implements_interfaces(
         &mut self,
-        impls: &Vec<TypeSpecifier>,
+        impls: &Vec<ImplementInterface>,
         loc: Loc,
-    ) -> Vec<TypedImplementInterface> {
-        let mut symbol_ids: Vec<TypedImplementInterface> = Vec::new();
+    ) -> Option<Vec<TypedImplementInterface>> {
+        let mut typed_impls: Vec<TypedImplementInterface> = Vec::new();
 
-        for type_spec in impls {
-            let (symbol_id, type_args) = match type_spec {
-                TypeSpecifier::ModuleImport(module_import) => {
-                    let Some(symbol_id) = self.resolve_local_module_import(module_import) else {
-                        continue;
-                    };
-
-                    (symbol_id, None)
-                }
-                TypeSpecifier::Ident(ident) => {
-                    let Some(symbol_id) = self.resolve_ident(ident) else {
-                        continue;
-                    };
-
-                    (symbol_id, None)
-                }
-                TypeSpecifier::GenericInst(generic_inst) => {
-                    let base_symbol_id = match self
-                        .resolve_type(*generic_inst.base.clone(), loc)
-                        .and_then(|ty| ty.as_unresolved_symbol_id())
-                    {
-                        Some(symbol_id) => symbol_id,
-                        None => {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: Box::new(ResolverDiagKind::InvalidImplementInterface),
-                                loc: Some(loc),
-                                hint: None,
-                            });
-                            return symbol_ids;
-                        }
-                    };
-
-                    let type_args = self.resolve_type_args(&generic_inst.type_args);
-
-                    (base_symbol_id, type_args)
-                }
-                _ => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(ResolverDiagKind::InvalidImplementInterface),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                    return symbol_ids;
-                }
+        for implement_interface in impls {
+            let Some(ty) = self.resolve_type(implement_interface.ty.clone(), implement_interface.loc) else {
+                continue;
             };
 
-            symbol_ids.push(TypedImplementInterface {
-                symbol_id,
-                type_args,
-                loc,
-            });
+            typed_impls.push(TypedImplementInterface { ty, loc })
         }
 
-        symbol_ids
+        Some(typed_impls)
     }
 
     fn resolve_struct_stmt(&mut self, struct_decl: &ASTStructStmt) -> Option<TypedStmt> {
@@ -1358,7 +1311,7 @@ impl Resolver {
 
             let methods = this.resolve_methods(&struct_decl.methods, &name);
 
-            let impls = this.resolve_object_implements_interface_list(&struct_decl.impls, struct_decl.loc);
+            let impls = this.resolve_object_implements_interfaces(&struct_decl.impls, struct_decl.loc)?;
 
             let struct_decl_id = this.decl_tables.insert_struct(StructDecl {
                 symbol_id: Some(symbol_id),
@@ -2198,10 +2151,7 @@ impl Resolver {
     fn resolve_field_access(&mut self, field_access: &ASTFieldAccessExpr) -> Option<TypedExprStmt> {
         let operand = self.resolve_expr(&field_access.operand)?;
 
-        let type_args = field_access
-            .type_args
-            .clone()
-            .and_then(|type_args| self.resolve_type_args(&type_args));
+        let type_args = self.resolve_type_args(&field_access.type_args)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::FieldAccess(TypedFieldAccess {
@@ -2229,10 +2179,7 @@ impl Resolver {
             .filter_map(|arg| self.resolve_expr(arg))
             .collect();
 
-        let type_args = method_call
-            .type_args
-            .clone()
-            .and_then(|type_args| self.resolve_type_args(&type_args));
+        let type_args = self.resolve_type_args(&method_call.type_args)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::MethodCall(TypedMethodCall {
@@ -2267,10 +2214,7 @@ impl Resolver {
             })
             .collect();
 
-        let type_args = struct_init
-            .type_args
-            .clone()
-            .and_then(|type_args| self.resolve_type_args(&type_args));
+        let type_args = self.resolve_type_args(&struct_init.type_args)?;
 
         Some(TypedExprStmt {
             kind: TypedExprKind::StructInit(TypedStructInitExpr {
@@ -2324,10 +2268,7 @@ impl Resolver {
 
         let args: Vec<TypedExprStmt> = func_call.args.iter().filter_map(|arg| self.resolve_expr(arg)).collect();
 
-        let type_args = func_call
-            .type_args
-            .as_ref()
-            .and_then(|type_args| self.resolve_type_args(type_args));
+        let type_args = self.resolve_type_args(&func_call.type_args)?;
 
         let loc = func_call.loc;
 

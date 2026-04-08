@@ -50,13 +50,6 @@ impl<'a> AnalysisContext<'a> {
             _ => {}
         };
 
-        // if the expected type is a generic parameter with a default, use the default type
-        if let Some(sema_type) = &expected_type {
-            if let Some(generic_param) = sema_type.as_generic_param() {
-                expected_type = generic_param.default.clone().map(|sema_type| *sema_type);
-            }
-        }
-
         self.analyze_expr_non_terminal(expr, expected_type)
     }
 

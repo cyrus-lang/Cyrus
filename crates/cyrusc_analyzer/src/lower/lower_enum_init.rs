@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     exprs::{
         MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind,
     },
-    format::format_enum_decl,
+    format::format_enum_decl, stmts::TypedTypeArgs,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -133,7 +133,7 @@ impl<'a> AnalysisContext<'a> {
                 enum_decl_id: enum_value.enum_decl_id.unwrap(),
                 name: enum_value.ident.as_string(),
                 args: enum_init_args,
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
                 loc: enum_value.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),
@@ -154,7 +154,7 @@ impl<'a> AnalysisContext<'a> {
                 enum_decl_id: struct_variant_init.enum_decl_id.unwrap(),
                 name: struct_variant_init.ident.as_string(),
                 args,
-                type_args: None,
+                type_args: TypedTypeArgs::new(),
                 loc: struct_variant_init.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),

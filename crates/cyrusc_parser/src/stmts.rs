@@ -922,16 +922,25 @@ impl<'source_file> Parser<'source_file> {
         Ok(field)
     }
 
-    fn parse_object_impls(&mut self) -> Result<Vec<TypeSpecifier>, Diag> {
-        let mut impls: Vec<TypeSpecifier> = Vec::new();
+    fn parse_object_impls(&mut self) -> Result<Vec<ImplementInterface>, Diag> {
+        let mut impls= Vec::new();
+
         if self.current_token_is(TokenKind::Colon) {
             self.next_token();
 
             loop {
+                let loc = self.current_token().loc;
+                let (line, column, start) = (loc.line, loc.column, loc.start);
+
                 let type_spec = self.parse_type_specifier()?;
                 self.next_token();
 
-                impls.push(type_spec);
+                let end = self.current_token().loc.end;
+
+                impls.push(ImplementInterface {
+                    ty: type_spec,
+                    loc: Loc::new(self.file_id(), line, column, start, end),
+                });
 
                 if self.current_token_is(TokenKind::Comma) {
                     continue;
@@ -940,6 +949,7 @@ impl<'source_file> Parser<'source_file> {
                 }
             }
         }
+
         Ok(impls)
     }
 
