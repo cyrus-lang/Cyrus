@@ -137,7 +137,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let normalized_type = self.normalize_sema_type(expr_type, expr.loc);
+        let normalized_type = self.normalize_and_check_type_formation(expr_type, expr.loc);
 
         expr.sema_type = Some(normalized_type.clone()?);
 
@@ -198,7 +198,7 @@ impl<'a> AnalysisContext<'a> {
 
         expected_type = self.substitute_type(&expected_type);
 
-        if !self.is_assignable_to(value_type.clone(), expected_type.clone()) {
+        if !self.is_assignable_to(value_type.clone(), expected_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {

@@ -334,7 +334,7 @@ impl<'a> AnalysisContext<'a> {
 
         if lhs_type.is_enum() && rhs_type.is_enum() {
             return Some(SemanticType::Plain(PlainType::Bool));
-        } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone()) {
+        } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
@@ -380,7 +380,7 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone()) {
+        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {

@@ -45,7 +45,7 @@ impl<'a> AnalysisContext<'a> {
 
         assert!(assign.kind == AssignKind::Default);
 
-        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone()) {
+        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), assign.loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {

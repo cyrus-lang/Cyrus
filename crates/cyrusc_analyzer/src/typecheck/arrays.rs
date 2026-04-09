@@ -90,7 +90,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        array.ty = match self.normalize_sema_type(array.ty.clone()?, array.loc) {
+        array.ty = match self.normalize_and_check_type_formation(array.ty.clone()?, array.loc) {
             Some(sema_type) => Some(sema_type),
             None => return None,
         };
@@ -99,7 +99,7 @@ impl<'a> AnalysisContext<'a> {
             let expr_type: SemanticType;
 
             if analyzed_first_element && element.sema_type.is_some() {
-                expr_type = match self.normalize_sema_type(element.sema_type.clone().unwrap(), element.loc) {
+                expr_type = match self.normalize_and_check_type_formation(element.sema_type.clone().unwrap(), element.loc) {
                     Some(sema_type) => sema_type,
                     None => continue,
                 };
@@ -110,7 +110,7 @@ impl<'a> AnalysisContext<'a> {
                 };
             }
 
-            if !self.is_assignable_to(expr_type.clone(), *array_type!().element_type.clone()) {
+            if !self.is_assignable_to(expr_type.clone(), *array_type!().element_type.clone(), element.loc) {
                 let element_type = format_sema_type(expr_type, self.formatter);
                 let expected_type = format_sema_type(*array_type!().element_type.clone(), self.formatter);
 

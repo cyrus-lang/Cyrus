@@ -121,7 +121,7 @@ impl<'a> AnalysisContext<'a> {
         path: &mut Vec<usize>,
     ) {
         if let Some(explicit_type) = &pattern.ty {
-            if !self.is_assignable_to(sema_type.clone(), explicit_type.clone()) {
+            if !self.is_assignable_to(sema_type.clone(), explicit_type.clone(), loc) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {

@@ -24,6 +24,7 @@ use cyrusc_typed_ast::{
     GenericParamID, SymbolID,
     decls::{FuncDecl, InterfaceDeclID},
     exprs::TypedSelfType,
+    format::format_sema_type,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam,
         TypedTypeArg, TypedTypeArgs,
@@ -39,6 +40,7 @@ impl<'a> AnalysisContext<'a> {
     /// This is what we call when an explicit type is used
     pub fn normalize_and_check_type_formation(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
         let sema_type = self.normalize_sema_type(sema_type, loc)?;
+
         self.check_type_formation(sema_type, loc)
     }
 
@@ -46,8 +48,8 @@ impl<'a> AnalysisContext<'a> {
     // and recursively normalize children. Never returns UnresolvedSymbol.
     pub fn normalize_sema_type(&mut self, ty: SemanticType, loc: Loc) -> Option<SemanticType> {
         match ty {
-            SemanticType::Placeholder => unreachable!(),
-            SemanticType::InferVar(_) => unreachable!(),
+            SemanticType::Placeholder => Some(ty),
+            SemanticType::InferVar(_) => Some(ty),
 
             SemanticType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
             SemanticType::Named(_) => Some(ty),
@@ -172,9 +174,9 @@ impl<'a> AnalysisContext<'a> {
         Some(SemanticType::Array(array_type))
     }
 
+    #[inline]
     fn normalize_const(&mut self, inner: SemanticType, loc: Loc) -> Option<SemanticType> {
-        let ty = self.normalize_sema_type(inner, loc)?;
-        Some(ty.as_const())
+        Some(SemanticType::Const(Box::new(self.normalize_sema_type(inner, loc)?)))
     }
 
     fn normalize_pointer(&mut self, inner: SemanticType, loc: Loc) -> Option<SemanticType> {
@@ -293,7 +295,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn resolve_symbol_type_expanded(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
         let ty = self.resolve_symbol_type(symbol_id, loc)?;
-        Some(self.expand_semantic_type(ty))
+        Some(self.expand_semantic_type(ty, loc))
     }
 
     pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
@@ -380,30 +382,51 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn expand_semantic_type(&mut self, ty: SemanticType) -> SemanticType {
-        match ty {
+    pub(crate) fn expand_semantic_type(&mut self, ty: SemanticType, loc: Loc) -> SemanticType {
+        match &ty {
             SemanticType::InferVar(_) => ty,
             SemanticType::Placeholder => ty,
 
-            SemanticType::Named(named_type) => match named_type.decl_id {
+            SemanticType::Named(named_type) => match &named_type.decl_id {
                 TypeDeclID::Typedef(typedef_id) => {
-                    let typedef_decl = self.decl_tables.typedef_decl(typedef_id);
+                    let typedef_decl = self.decl_tables.typedef_decl(*typedef_id);
 
-                    // fill missing typedef type args with infer placeholders
-                    let mut type_args = named_type.type_args.clone();
+                    let generic_params = &typedef_decl.generic_params;
+                    let mut final_args = Vec::with_capacity(generic_params.len());
 
-                    if type_args.len() < typedef_decl.generic_params.len() {
-                        type_args.0.extend(
-                            std::iter::repeat(TypedTypeArg::Infer)
-                                .take(typedef_decl.generic_params.len() - type_args.len()),
-                        );
+                    // fill in every typedef generic param in order
+                    for i in 0..generic_params.len() {
+                        if let Some(arg) = named_type.type_args.get(i) {
+                            // user provided type arg
+                            final_args.push(arg.clone());
+                        } else {
+                            // no arg provided, create a fresh inference var
+                            let infer_type = self.func_env.infer.as_mut().unwrap().new_var();
+
+                            final_args.push(TypedTypeArg::Type(infer_type, loc));
+                        }
                     }
 
-                    let generic_env = GenericEnv::from_type_args(typedef_decl.generic_params.clone(), &type_args);
+                    if named_type.type_args.len() > final_args.len() {
+                        let type_name = format_sema_type(ty.clone(), self.formatter);
+
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::WrongNumberOfTypeArgs {
+                                type_name,
+                                expected: final_args.len(),
+                                provided: named_type.type_args.len(),
+                            }),
+                            loc: Some(loc),
+                            hint: None,
+                        });
+                    }
+
+                    let generic_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
 
                     let expanded_type = generic_env.substitute_sema_type(&typedef_decl.ty);
 
-                    self.expand_semantic_type(expanded_type)
+                    return self.expand_semantic_type(expanded_type, loc);
                 }
                 _ => {
                     let type_args = named_type
@@ -411,7 +434,7 @@ impl<'a> AnalysisContext<'a> {
                         .iter()
                         .map(|type_arg| match type_arg {
                             TypedTypeArg::Type(ty, loc) => {
-                                TypedTypeArg::Type(self.expand_semantic_type(ty.clone()), *loc)
+                                TypedTypeArg::Type(self.expand_semantic_type(ty.clone(), *loc), *loc)
                             }
                             TypedTypeArg::Infer => TypedTypeArg::Infer,
                         })
@@ -423,18 +446,21 @@ impl<'a> AnalysisContext<'a> {
                     })
                 }
             },
-            SemanticType::Pointer(inner) => SemanticType::Pointer(Box::new(self.expand_semantic_type(*inner))),
-            SemanticType::Const(inner) => SemanticType::Const(Box::new(self.expand_semantic_type(*inner))),
+            SemanticType::Pointer(inner) => {
+                SemanticType::Pointer(Box::new(self.expand_semantic_type(*inner.clone(), loc)))
+            }
+            SemanticType::Const(inner) => SemanticType::Const(Box::new(self.expand_semantic_type(*inner.clone(), loc))),
             SemanticType::Array(array) => SemanticType::Array(TypedArrayType {
-                element_type: Box::new(self.expand_semantic_type(*array.element_type)),
-                capacity: array.capacity,
+                element_type: Box::new(self.expand_semantic_type(*array.element_type.clone(), loc)),
+                capacity: array.capacity.clone(),
                 loc: array.loc,
             }),
             SemanticType::Tuple(tuple) => {
                 let elements = tuple
                     .elements
+                    .clone()
                     .into_iter()
-                    .map(|t| self.expand_semantic_type(t))
+                    .map(|ty| self.expand_semantic_type(ty, loc))
                     .collect();
 
                 SemanticType::Tuple(TypedTupleType {
@@ -447,20 +473,21 @@ impl<'a> AnalysisContext<'a> {
                     list: func
                         .params
                         .list
+                        .clone()
                         .into_iter()
-                        .map(|p| self.expand_semantic_type(p))
+                        .map(|ty| self.expand_semantic_type(ty, loc))
                         .collect(),
 
-                    variadic: func.params.variadic.map(|variadic| {
+                    variadic: func.params.variadic.clone().map(|variadic| {
                         Box::new(match *variadic {
                             TypedFuncTypeVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
                             TypedFuncTypeVariadicParams::Typed(ty) => {
-                                TypedFuncTypeVariadicParams::Typed(self.expand_semantic_type(ty))
+                                TypedFuncTypeVariadicParams::Typed(self.expand_semantic_type(ty, loc))
                             }
                         })
                     }),
                 };
-                let ret_type = Box::new(self.expand_semantic_type(*func.ret_type));
+                let ret_type = Box::new(self.expand_semantic_type(*func.ret_type.clone(), loc));
 
                 SemanticType::FuncType(TypedFuncType {
                     symbol_id: func.symbol_id,

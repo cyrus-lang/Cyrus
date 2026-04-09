@@ -100,8 +100,8 @@ pub enum AnalyzerDiagKind {
     #[error("Missing type argument for generic parameter '{param_name}' in type '{type_name}'.")]
     MissingGenericArgument { type_name: String, param_name: String },
 
-    #[error("Type arguments supplied to a non-generic type.")]
-    UnexpectedTypeArgs,
+    #[error("Type arguments supplied to non-generic type '{type_name}'.")]
+    UnexpectedTypeArgs { type_name: String },
 
     #[error("Could not resolve type for generic parameter '{param_name}'.")]
     UnresolvedGenericParameter { param_name: String },

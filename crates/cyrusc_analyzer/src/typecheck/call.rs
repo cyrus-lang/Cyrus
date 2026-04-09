@@ -21,7 +21,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::FuncDecl,
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
-    format::{format_func_type, format_sema_type},
+    format::{format_func_type, format_sema_type, format_typed_expr},
     stmts::{TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
     types::{SemanticType, TypedFuncType},
 };
@@ -60,7 +60,7 @@ impl<'a> AnalysisContext<'a> {
             let mut func_decl = self.decl_tables.func_decl(func_decl_id);
 
             self.normalize_func_params(&mut func_decl.params, func_call.loc);
-            func_decl.ret_type = self.normalize_sema_type(func_decl.ret_type.clone(), func_call.loc)?;
+            func_decl.ret_type = self.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_call.loc)?;
 
             let ret_type = self.check_func_call(&mut func_decl, &mut func_call.args, func_call.loc, false)?;
 
@@ -73,17 +73,18 @@ impl<'a> AnalysisContext<'a> {
             // function pointer call
 
             if !func_call.type_args.is_empty() {
+                let type_name = format_typed_expr(&func_call.operand, self.formatter);
+                
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
+                    kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs { type_name }),
                     loc: Some(func_call.loc),
                     hint: Some("Lambdas never accept type args.".to_string()),
                 });
-                return None;
             }
 
             self.normalize_func_type_params(&mut func_type.params, func_call.loc);
-            func_type.ret_type = Box::new(self.normalize_sema_type(*func_type.ret_type.clone(), func_call.loc)?);
+            func_type.ret_type = Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc)?);
 
             let ret_type = self.check_func_type_call(&mut func_type, &mut func_call.args, func_call.loc)?;
 
@@ -158,7 +159,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            if !self.is_assignable_to(arg_type.clone(), param_type.clone()) {
+            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -166,7 +167,7 @@ impl<'a> AnalysisContext<'a> {
                         argument_type: format_sema_type(arg_type, self.formatter),
                         argument_idx: param_idx as u32,
                     }),
-                    loc: Some(loc),
+                    loc: Some(arg.loc),
                     hint: None,
                 });
             }
@@ -185,12 +186,12 @@ impl<'a> AnalysisContext<'a> {
         let static_params_len = func_decl.params.list.len();
         let variadic_args = &mut args[static_params_len..];
 
-        if let Some(var_param) = &func_decl.params.variadic {
-            match var_param.clone() {
+        if let Some(variadic) = &func_decl.params.variadic {
+            match variadic.clone() {
                 TypedFuncVariadicParam::Typed(_, variadic_param_type) => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
                         if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                            if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone()) {
+                            if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), loc) {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
@@ -257,14 +258,14 @@ impl<'a> AnalysisContext<'a> {
             .zip(args.iter_mut())
             .enumerate()
         {
-            let param_type = self.normalize_sema_type(param.clone(), loc).unwrap();
+            let param_type = self.normalize_and_check_type_formation(param.clone(), loc).unwrap();
 
             let arg_type = match self.analyze_expr(arg, Some(param_type.clone())) {
                 Some(sema_type) => sema_type,
                 None => continue,
             };
 
-            if !self.is_assignable_to(arg_type.clone(), param_type.clone()) {
+            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -272,7 +273,7 @@ impl<'a> AnalysisContext<'a> {
                         argument_type: format_sema_type(arg_type, self.formatter),
                         argument_idx: param_idx as u32,
                     }),
-                    loc: Some(loc),
+                    loc: Some(arg.loc),
                     hint: None,
                 });
             }
@@ -284,12 +285,12 @@ impl<'a> AnalysisContext<'a> {
             let static_params_len = func_type.params.list.len();
             let variadic_args = &mut args[static_params_len..];
 
-            if let Some(var_param) = &func_type.params.variadic {
-                match *var_param.clone() {
+            if let Some(variadic) = &func_type.params.variadic {
+                match *variadic.clone() {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
                         for (i, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                                if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone()) {
+                                if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), loc) {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {

@@ -28,7 +28,7 @@ impl<'a> AnalysisContext<'a> {
         self.normalize_func_params(&mut lambda.params, lambda.loc);
         let params = lambda.params.as_func_type_params();
 
-        lambda.ret_type = self.normalize_sema_type(lambda.ret_type.clone(), lambda.loc)?;
+        lambda.ret_type = self.normalize_and_check_type_formation(lambda.ret_type.clone(), lambda.loc)?;
 
         let func_type = TypedFuncType {
             symbol_id: None,

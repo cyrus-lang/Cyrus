@@ -106,7 +106,7 @@ impl<'a> AnalysisContext<'a> {
             func_decl.loc,
         );
 
-        func_decl.ret_type = match self.normalize_sema_type(func_decl.ret_type.clone(), func_decl.loc) {
+        func_decl.ret_type = match self.normalize_and_check_type_formation(func_decl.ret_type.clone(), func_decl.loc) {
             Some(sema_type) => sema_type,
             None => return,
         };

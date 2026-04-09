@@ -126,7 +126,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_variable(&mut self, var: &mut TypedVarStmt) {
         if let Some(ty) = &var.ty {
-            var.ty = self.normalize_sema_type(ty.clone(), var.loc);
+            var.ty = self.normalize_and_check_type_formation(ty.clone(), var.loc);
         }
 
         if let Some(rhs) = &mut var.rhs {
@@ -151,7 +151,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(expr) = &mut var.rhs {
             if let Some(target_type) = &var.ty {
-                if !self.is_assignable_to(expr.sema_type.clone().unwrap(), target_type.clone()) {
+                if !self.is_assignable_to(expr.sema_type.clone().unwrap(), target_type.clone(), var.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {

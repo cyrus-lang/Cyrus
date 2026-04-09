@@ -57,13 +57,18 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn is_assignable_to(&mut self, mut rhs_type: SemanticType, mut lhs_type: SemanticType) -> bool {
-        lhs_type = self.expand_semantic_type(lhs_type);
-        rhs_type = self.expand_semantic_type(rhs_type);
+    pub(crate) fn is_assignable_to(
+        &mut self,
+        mut rhs_type: SemanticType,
+        mut lhs_type: SemanticType,
+        loc: Loc,
+    ) -> bool {
+        lhs_type = self.expand_semantic_type(lhs_type, loc);
+        rhs_type = self.expand_semantic_type(rhs_type, loc);
 
         match (rhs_type.const_inner().clone(), lhs_type.const_inner().clone()) {
             (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => {
-                self.is_named_type_assignable_to(named_type1, named_type2)
+                self.is_named_type_assignable_to(named_type1, named_type2, loc)
             }
             (SemanticType::Plain(plain_type1), SemanticType::Plain(plain_type2)) => {
                 self.is_plain_type_assignable_to(plain_type1, plain_type2)
@@ -71,14 +76,14 @@ impl<'a> AnalysisContext<'a> {
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
                 let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
 
-                valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type)
+                valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
             }
             (SemanticType::Array(array_type), SemanticType::Pointer(inner)) => {
                 // array-to-pointer decay
-                self.is_assignable_to(*array_type.element_type, *inner)
+                self.is_assignable_to(*array_type.element_type, *inner, loc)
             }
             (SemanticType::Pointer(inner1), SemanticType::Pointer(inner2)) => {
-                (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2)
+                (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
@@ -93,7 +98,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn is_named_type_assignable_to(&mut self, named_type1: NamedType, named_type2: NamedType) -> bool {
+    fn is_named_type_assignable_to(&mut self, named_type1: NamedType, named_type2: NamedType, loc: Loc) -> bool {
         // check type args count
         if named_type1.type_args.len() != named_type2.type_args.len() {
             return false;
@@ -111,7 +116,7 @@ impl<'a> AnalysisContext<'a> {
                     return false;
                 };
 
-                self.is_assignable_to(sema_type1.clone(), sema_type2.clone())
+                self.is_assignable_to(sema_type1.clone(), sema_type2.clone(), loc)
             })
         {
             return false;
@@ -125,7 +130,7 @@ impl<'a> AnalysisContext<'a> {
                 let env1 = GenericEnv::from_type_args(decl1.generic_params.clone(), &named_type1.type_args);
                 let env2 = GenericEnv::from_type_args(decl2.generic_params.clone(), &named_type2.type_args);
 
-                self.is_struct_decl_assignable_to(&decl1, &decl2, env1, env2)
+                self.is_struct_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
             (TypeDeclID::Union(id1), TypeDeclID::Union(id2)) => {
                 let decl1 = self.decl_tables.union_decl(id1);
@@ -134,7 +139,7 @@ impl<'a> AnalysisContext<'a> {
                 let env1 = GenericEnv::from_type_args(decl1.generic_params.clone(), &named_type1.type_args);
                 let env2 = GenericEnv::from_type_args(decl2.generic_params.clone(), &named_type2.type_args);
 
-                self.is_union_decl_assignable_to(&decl1, &decl2, env1, env2)
+                self.is_union_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
             (TypeDeclID::Enum(id1), TypeDeclID::Enum(id2)) => {
                 let decl1 = self.decl_tables.enum_decl(id1);
@@ -143,7 +148,7 @@ impl<'a> AnalysisContext<'a> {
                 let env1 = GenericEnv::from_type_args(decl1.generic_params.clone(), &named_type1.type_args);
                 let env2 = GenericEnv::from_type_args(decl2.generic_params.clone(), &named_type2.type_args);
 
-                self.is_enum_decl_assignable_to(&decl1, &decl2, env1, env2)
+                self.is_enum_decl_assignable_to(&decl1, &decl2, env1, env2, loc)
             }
 
             (TypeDeclID::Interface(id1), TypeDeclID::Interface(id2)) => id1 == id2,
@@ -158,6 +163,7 @@ impl<'a> AnalysisContext<'a> {
         struct_decl2: &StructDecl,
         env1: GenericEnv,
         env2: GenericEnv,
+        loc: Loc,
     ) -> bool {
         for field2 in &struct_decl2.fields {
             let Some(field1) = struct_decl1.lookup_field(&field2.name) else {
@@ -167,7 +173,7 @@ impl<'a> AnalysisContext<'a> {
             let ty1 = env1.substitute_sema_type(&field1.ty);
             let ty2 = env2.substitute_sema_type(&field2.ty);
 
-            if !self.is_assignable_to(ty1, ty2) {
+            if !self.is_assignable_to(ty1, ty2, loc) {
                 return false;
             }
         }
@@ -181,6 +187,7 @@ impl<'a> AnalysisContext<'a> {
         union_decl2: &UnionDecl,
         env1: GenericEnv,
         env2: GenericEnv,
+        loc: Loc,
     ) -> bool {
         for field1 in &union_decl1.fields {
             let Some(field2) = union_decl2.lookup_field(&field1.name) else {
@@ -190,7 +197,7 @@ impl<'a> AnalysisContext<'a> {
             let ty1 = env1.substitute_sema_type(&field1.ty);
             let ty2 = env2.substitute_sema_type(&field2.ty);
 
-            if !self.is_assignable_to(ty1, ty2) {
+            if !self.is_assignable_to(ty1, ty2, loc) {
                 return false;
             }
         }
@@ -204,12 +211,13 @@ impl<'a> AnalysisContext<'a> {
         enum_decl2: &EnumDecl,
         env1: GenericEnv,
         env2: GenericEnv,
+        loc: Loc,
     ) -> bool {
         if let (Some(tag1), Some(tag2)) = (&enum_decl1.tag_type, &enum_decl2.tag_type) {
             let tag1 = env1.substitute_sema_type(tag1);
             let tag2 = env2.substitute_sema_type(tag2);
 
-            if !self.is_assignable_to(tag1, tag2) {
+            if !self.is_assignable_to(tag1, tag2, loc) {
                 return false;
             }
         }
@@ -236,7 +244,7 @@ impl<'a> AnalysisContext<'a> {
                     let ty1 = env1.substitute_sema_type(&sema_type1);
                     let ty2 = env2.substitute_sema_type(&sema_type2);
 
-                    if !self.is_assignable_to(ty1, ty2) {
+                    if !self.is_assignable_to(ty1, ty2, loc) {
                         return false;
                     }
                 }
@@ -250,7 +258,7 @@ impl<'a> AnalysisContext<'a> {
                         let ty1 = env1.substitute_sema_type(&t1.ty);
                         let ty2 = env2.substitute_sema_type(&t2.ty);
 
-                        if !self.is_assignable_to(ty1, ty2) {
+                        if !self.is_assignable_to(ty1, ty2, loc) {
                             return false;
                         }
                     }
@@ -265,7 +273,7 @@ impl<'a> AnalysisContext<'a> {
                         let ty1 = env1.substitute_sema_type(&field1.ty);
                         let ty2 = env2.substitute_sema_type(&field2.ty);
 
-                        if !self.is_assignable_to(ty1, ty2) {
+                        if !self.is_assignable_to(ty1, ty2, loc) {
                             return false;
                         }
                     }
@@ -450,6 +458,10 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        if let Some(named_type) = sema_type.as_named_type() {
+            self.check_unexpected_type_args(named_type, loc);
+        }
+
         Some(sema_type)
     }
 
@@ -465,6 +477,30 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(sema_type)
+    }
+
+    fn check_unexpected_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {
+        let generic_params = match named_type.decl_id {
+            TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
+            TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
+            TypeDeclID::Union(id) => self.decl_tables.union_decl(id).generic_params,
+            TypeDeclID::Interface(id) => self.decl_tables.interface_decl(id).generic_params,
+            TypeDeclID::Typedef(id) => self.decl_tables.typedef_decl(id).generic_params,
+        };
+
+        if generic_params.is_empty() && !named_type.type_args.is_empty() {
+            let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs { type_name }),
+                loc: Some(loc),
+                hint: None,
+            });
+            return true;
+        }
+
+        false
     }
 
     fn check_missing_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {

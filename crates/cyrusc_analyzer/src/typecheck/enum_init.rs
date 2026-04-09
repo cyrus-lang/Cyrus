@@ -75,7 +75,7 @@ impl<'a> AnalysisContext<'a> {
                         None => continue,
                     };
 
-                    if !self.is_assignable_to(value_type.clone(), field.ty.clone()) {
+                    if !self.is_assignable_to(value_type.clone(), field.ty.clone(), element.loc) {
                         let got_type = format_sema_type(value_type.clone(), self.formatter);
                         let expected_type = format_sema_type(field.ty.clone(), self.formatter);
 
@@ -202,7 +202,7 @@ impl<'a> AnalysisContext<'a> {
                         None => continue,
                     };
 
-                    if !self.is_assignable_to(value_type.clone(), field.ty.clone()) {
+                    if !self.is_assignable_to(value_type.clone(), field.ty.clone(), element.loc) {
                         let got_type = format_sema_type(value_type.clone(), self.formatter);
                         let expected_type = format_sema_type(field.ty.clone(), self.formatter);
 
@@ -422,7 +422,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            if !self.is_assignable_to(value_type.clone(), declared_field.ty.clone()) {
+            if !self.is_assignable_to(value_type.clone(), declared_field.ty.clone(), field_init.loc) {
                 let got_type = format_sema_type(value_type.clone(), self.formatter);
                 let expected_type = format_sema_type(declared_field.ty.clone(), self.formatter);
 

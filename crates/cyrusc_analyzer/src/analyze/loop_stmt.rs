@@ -56,7 +56,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_return(&mut self, ret: &mut TypedReturnStmt) -> FlowState {
         let func_type = self.func_env.current_func.clone().unwrap();
-        let ret_type = self.normalize_sema_type(*func_type.ret_type, ret.loc).unwrap();
+        let ret_type = self.normalize_and_check_type_formation(*func_type.ret_type, ret.loc).unwrap();
 
         if ret_type.is_void() && ret.arg.is_some() {
             self.reporter.report(Diag {
@@ -65,9 +65,9 @@ impl<'a> AnalysisContext<'a> {
                 loc: Some(ret.loc),
                 hint: None,
             });
-        } else if let Some(typed_expr) = &mut ret.arg {
-            if let Some(sema_type) = self.analyze_expr(typed_expr, Some(ret_type.clone())) {
-                if !self.is_assignable_to(sema_type.clone(), ret_type.clone()) {
+        } else if let Some(expr) = &mut ret.arg {
+            if let Some(sema_type) = self.analyze_expr(expr, Some(ret_type.clone())) {
+                if !self.is_assignable_to(sema_type.clone(), ret_type.clone(), expr.loc) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {
