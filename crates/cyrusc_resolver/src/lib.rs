@@ -33,7 +33,6 @@ use cyrusc_typed_ast::format::{Formatter, format_enum_decl, format_struct_decl, 
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::TypeDeclID;
 use cyrusc_typed_ast::*;
-use fx_hash::FxHashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -357,10 +356,6 @@ impl Resolver {
         self.generic_scopes.pop();
     }
 
-    pub(crate) fn current_generic_scope(&self) -> Option<&GenericScope> {
-        self.generic_scopes.last()
-    }
-
     pub(crate) fn generic_scopes_iter(&self) -> impl Iterator<Item = &GenericScope> {
         self.generic_scopes.iter().rev()
     }
@@ -638,6 +633,11 @@ impl Formatter for Resolver {
                 }
             }
             TypeDeclID::Interface(interface_decl_id) => self.decl_tables.interface_decl(interface_decl_id).name,
+            TypeDeclID::Typedef(typedef_decl_id) => {
+                let decl = self.decl_tables.typedef_decl(typedef_decl_id);
+
+                decl.name
+            }
         }
     }
 

@@ -1099,10 +1099,11 @@ impl<'resolver> CIRTraverse<'resolver> {
             }),
             SemanticType::Named(named_type) => self.lower_named_type(named_type),
             SemanticType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
-
             SemanticType::Unresolved(_) => unreachable!("unexpected unresolved type"),
             SemanticType::GenericParam(_) => unreachable!("Unexpected generic param"),
             SemanticType::SelfType(_) => unreachable!("unexpected self type"),
+            SemanticType::InferVar(_) => unreachable!("unexpected infer var type"),
+            SemanticType::Placeholder => unreachable!("unexpected placeholder type"),
         }
         .const_inner()
         .clone()
@@ -1212,6 +1213,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 // FIXME
                 todo!();
             }
+            TypeDeclID::Typedef(_) => unreachable!("unexpected unexpanded typedef"),
         }
     }
 

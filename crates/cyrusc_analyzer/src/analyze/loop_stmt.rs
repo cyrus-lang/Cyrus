@@ -67,7 +67,7 @@ impl<'a> AnalysisContext<'a> {
             });
         } else if let Some(typed_expr) = &mut ret.arg {
             if let Some(sema_type) = self.analyze_expr(typed_expr, Some(ret_type.clone())) {
-                if !self.is_assignable_to(sema_type.clone(), ret_type.clone(), ret.loc) {
+                if !self.is_assignable_to(sema_type.clone(), ret_type.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::ReturnStatementTypeMismatch {

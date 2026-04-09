@@ -450,6 +450,7 @@ pub struct TypedTypeArgs(pub Vec<TypedTypeArg>);
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TypedTypeArg {
     Type(SemanticType, Loc),
+    Infer,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -481,6 +482,11 @@ impl TypedTypeArgs {
     #[inline]
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&TypedTypeArg> {
+        self.0.get(index)
     }
 
     #[inline]
@@ -826,6 +832,9 @@ impl Hash for TypedTypeArg {
             TypedTypeArg::Type(sema_type, _) => {
                 0u8.hash(state);
                 sema_type.hash(state);
+            }
+            TypedTypeArg::Infer => {
+                1u8.hash(state);
             }
         }
     }

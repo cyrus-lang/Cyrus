@@ -15,20 +15,22 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
 use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
+    decls::{EnumDecl, StructDecl, UnionDecl},
     format::format_sema_type,
-    types::{NamedType, PlainType, SemanticType, TypedArrayCapacity, TypedArrayType},
+    stmts::{TypedEnumVariant, TypedTypeArg},
+    types::{NamedType, PlainType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemanticType, named_type: NamedType) -> bool {
         match field_type {
             SemanticType::Unresolved(_) => unreachable!(),
-
+            SemanticType::Named(_named_type) => *_named_type == named_type,
             SemanticType::Pointer(_) => {
                 false // indirect
             }
@@ -37,7 +39,6 @@ impl<'a> AnalysisContext<'a> {
                 // hence it's never harmful for self-recursion situations.
                 false
             }
-            SemanticType::Named(_named_type) => *_named_type == named_type,
             SemanticType::Const(inner) => self.sema_type_contains_self_by_value(inner, named_type),
             SemanticType::Array(array_type) => {
                 self.sema_type_contains_self_by_value(&array_type.element_type, named_type)
@@ -47,52 +48,43 @@ impl<'a> AnalysisContext<'a> {
                 .iter()
                 .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
-            SemanticType::InterfaceType(_) => false,
-            SemanticType::SelfType(_) => false,
-            SemanticType::Plain(_) => false,
-            SemanticType::GenericParam(_) => false,
+            SemanticType::InterfaceType(_)
+            | SemanticType::SelfType(_)
+            | SemanticType::Plain(_)
+            | SemanticType::GenericParam(_)
+            | SemanticType::InferVar(_)
+            | SemanticType::Placeholder => false,
         }
     }
 
-    pub(crate) fn is_assignable_to(&mut self, rhs_type: SemanticType, lhs_type: SemanticType, loc: Loc) -> bool {
+    pub(crate) fn is_assignable_to(&mut self, mut rhs_type: SemanticType, mut lhs_type: SemanticType) -> bool {
+        lhs_type = self.expand_semantic_type(lhs_type);
+        rhs_type = self.expand_semantic_type(rhs_type);
+
         match (rhs_type.const_inner().clone(), lhs_type.const_inner().clone()) {
-            (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => named_type1 == named_type2,
+            (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => {
+                self.is_named_type_assignable_to(named_type1, named_type2)
+            }
             (SemanticType::Plain(plain_type1), SemanticType::Plain(plain_type2)) => {
                 self.is_plain_type_assignable_to(plain_type1, plain_type2)
             }
             (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
                 let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
 
-                valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
+                valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type)
             }
             (SemanticType::Array(array_type), SemanticType::Pointer(inner)) => {
-                if array_type.element_type.is_const() && !inner.is_const() {
-                    let from = format_sema_type(rhs_type, self.formatter);
-                    let to = format_sema_type(lhs_type, self.formatter);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Warning,
-                        kind: Box::new(AnalyzerDiagKind::CannotDiscardConst { from, to }),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                }
-
                 // array-to-pointer decay
-                self.is_assignable_to(*array_type.element_type, *inner, loc)
+                self.is_assignable_to(*array_type.element_type, *inner)
             }
             (SemanticType::Pointer(inner1), SemanticType::Pointer(inner2)) => {
-                (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
+                (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2)
             }
             (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
             (SemanticType::InterfaceType(interface_type1), SemanticType::InterfaceType(interface_type2)) => {
                 interface_type1.interface_decl_id == interface_type2.interface_decl_id
             }
-
-            // TODO: StructDecl
-            // TODO: EnumDecl
-            // TODO: UnionDecl
 
             // allowed: null -> T*
             (SemanticType::Plain(PlainType::Null), SemanticType::Pointer(..)) => true,
@@ -101,7 +93,194 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn is_plain_type_assignable_to(&self, value_type: PlainType, target_type: PlainType) -> bool {
+    fn is_named_type_assignable_to(&mut self, named_type1: NamedType, named_type2: NamedType) -> bool {
+        // check type args count
+        if named_type1.type_args.len() != named_type2.type_args.len() {
+            return false;
+        }
+
+        // check type args compatibility
+        if !named_type1
+            .type_args
+            .0
+            .iter()
+            .zip(&named_type2.type_args.0)
+            .all(|(type_arg1, type_arg2)| {
+                let (TypedTypeArg::Type(sema_type1, _), TypedTypeArg::Type(sema_type2, _)) = (type_arg1, type_arg2)
+                else {
+                    return false;
+                };
+
+                self.is_assignable_to(sema_type1.clone(), sema_type2.clone())
+            })
+        {
+            return false;
+        }
+
+        match (named_type1.decl_id, named_type2.decl_id) {
+            (TypeDeclID::Struct(id1), TypeDeclID::Struct(id2)) => {
+                let decl1 = self.decl_tables.struct_decl(id1);
+                let decl2 = self.decl_tables.struct_decl(id2);
+
+                let env1 = GenericEnv::from_type_args(decl1.generic_params.clone(), &named_type1.type_args);
+                let env2 = GenericEnv::from_type_args(decl2.generic_params.clone(), &named_type2.type_args);
+
+                self.is_struct_decl_assignable_to(&decl1, &decl2, env1, env2)
+            }
+            (TypeDeclID::Union(id1), TypeDeclID::Union(id2)) => {
+                let decl1 = self.decl_tables.union_decl(id1);
+                let decl2 = self.decl_tables.union_decl(id2);
+
+                let env1 = GenericEnv::from_type_args(decl1.generic_params.clone(), &named_type1.type_args);
+                let env2 = GenericEnv::from_type_args(decl2.generic_params.clone(), &named_type2.type_args);
+
+                self.is_union_decl_assignable_to(&decl1, &decl2, env1, env2)
+            }
+            (TypeDeclID::Enum(id1), TypeDeclID::Enum(id2)) => {
+                let decl1 = self.decl_tables.enum_decl(id1);
+                let decl2 = self.decl_tables.enum_decl(id2);
+
+                let env1 = GenericEnv::from_type_args(decl1.generic_params.clone(), &named_type1.type_args);
+                let env2 = GenericEnv::from_type_args(decl2.generic_params.clone(), &named_type2.type_args);
+
+                self.is_enum_decl_assignable_to(&decl1, &decl2, env1, env2)
+            }
+
+            (TypeDeclID::Interface(id1), TypeDeclID::Interface(id2)) => id1 == id2,
+
+            _ => false,
+        }
+    }
+
+    fn is_struct_decl_assignable_to(
+        &mut self,
+        struct_decl1: &StructDecl,
+        struct_decl2: &StructDecl,
+        env1: GenericEnv,
+        env2: GenericEnv,
+    ) -> bool {
+        for field2 in &struct_decl2.fields {
+            let Some(field1) = struct_decl1.lookup_field(&field2.name) else {
+                return false;
+            };
+
+            let ty1 = env1.substitute_sema_type(&field1.ty);
+            let ty2 = env2.substitute_sema_type(&field2.ty);
+
+            if !self.is_assignable_to(ty1, ty2) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_union_decl_assignable_to(
+        &mut self,
+        union_decl1: &UnionDecl,
+        union_decl2: &UnionDecl,
+        env1: GenericEnv,
+        env2: GenericEnv,
+    ) -> bool {
+        for field1 in &union_decl1.fields {
+            let Some(field2) = union_decl2.lookup_field(&field1.name) else {
+                return false;
+            };
+
+            let ty1 = env1.substitute_sema_type(&field1.ty);
+            let ty2 = env2.substitute_sema_type(&field2.ty);
+
+            if !self.is_assignable_to(ty1, ty2) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_enum_decl_assignable_to(
+        &mut self,
+        enum_decl1: &EnumDecl,
+        enum_decl2: &EnumDecl,
+        env1: GenericEnv,
+        env2: GenericEnv,
+    ) -> bool {
+        if let (Some(tag1), Some(tag2)) = (&enum_decl1.tag_type, &enum_decl2.tag_type) {
+            let tag1 = env1.substitute_sema_type(tag1);
+            let tag2 = env2.substitute_sema_type(tag2);
+
+            if !self.is_assignable_to(tag1, tag2) {
+                return false;
+            }
+        }
+
+        if let (Some(a1), Some(a2)) = (enum_decl1.align, enum_decl2.align) {
+            if a1 != a2 {
+                return false;
+            }
+        }
+
+        for variant1 in &enum_decl1.variants {
+            let Some(variant2) = enum_decl2.lookup_variant(&variant1.ident().value) else {
+                return false;
+            };
+
+            match (variant1, variant2) {
+                (TypedEnumVariant::Unit(_), TypedEnumVariant::Unit(_)) => {}
+
+                (TypedEnumVariant::Valued { value: v1, .. }, TypedEnumVariant::Valued { value: v2, .. }) => {
+                    let (Some(sema_type1), Some(sema_type2)) = (v1.sema_type.clone(), v2.sema_type.clone()) else {
+                        return false;
+                    };
+
+                    let ty1 = env1.substitute_sema_type(&sema_type1);
+                    let ty2 = env2.substitute_sema_type(&sema_type2);
+
+                    if !self.is_assignable_to(ty1, ty2) {
+                        return false;
+                    }
+                }
+
+                (TypedEnumVariant::Tuple { fields: f1, .. }, TypedEnumVariant::Tuple { fields: f2, .. }) => {
+                    if f1.len() != f2.len() {
+                        return false;
+                    }
+
+                    for (t1, t2) in f1.iter().zip(f2) {
+                        let ty1 = env1.substitute_sema_type(&t1.ty);
+                        let ty2 = env2.substitute_sema_type(&t2.ty);
+
+                        if !self.is_assignable_to(ty1, ty2) {
+                            return false;
+                        }
+                    }
+                }
+
+                (TypedEnumVariant::Struct { fields: f1, .. }, TypedEnumVariant::Struct { fields: f2, .. }) => {
+                    for field2 in f2 {
+                        let Some(field1) = f1.iter().find(|f| f.name == field2.name) else {
+                            return false;
+                        };
+
+                        let ty1 = env1.substitute_sema_type(&field1.ty);
+                        let ty2 = env2.substitute_sema_type(&field2.ty);
+
+                        if !self.is_assignable_to(ty1, ty2) {
+                            return false;
+                        }
+                    }
+                }
+
+                _ => {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn is_plain_type_assignable_to(&self, value_type: PlainType, target_type: PlainType) -> bool {
         use PlainType::*;
 
         match (value_type, target_type) {
@@ -257,4 +436,92 @@ impl<'a> AnalysisContext<'a> {
     //         _ => false,
     //     }
     // }
+}
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn check_type_formation(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+        if sema_type.count_const_layers() > 1 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        if sema_type.is_self_type() && self.func_env.current_object.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        Some(sema_type)
+    }
+
+    pub(crate) fn check_type_arity(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+        if let Some(named_type) = sema_type.as_named_type() {
+            self.check_missing_type_args(named_type, loc);
+        }
+
+        Some(sema_type)
+    }
+
+    fn check_missing_type_args(&self, named_type: &NamedType, loc: Loc) {
+        let generic_params = match named_type.decl_id {
+            TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
+            TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
+            TypeDeclID::Union(id) => self.decl_tables.union_decl(id).generic_params,
+            TypeDeclID::Interface(id) => self.decl_tables.interface_decl(id).generic_params,
+            TypeDeclID::Typedef(id) => self.decl_tables.typedef_decl(id).generic_params,
+        };
+
+        for (i, param_id) in generic_params.iter().enumerate() {
+            let Some(type_arg) = named_type.type_args.get(i) else {
+                let param = self.decl_tables.generic_param(*param_id);
+                let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::MissingGenericArgument {
+                        type_name,
+                        param_name: param.name.as_string(),
+                    }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+
+                continue;
+            };
+
+            let generic_param = self.decl_tables.generic_param(*param_id);
+
+            match type_arg {
+                TypedTypeArg::Type(sema_ty, arg_loc) => {
+                    if sema_ty.contains_generic_param() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::UnresolvedGenericParameter {
+                                param_name: generic_param.name.as_string(),
+                            }),
+                            loc: Some(*arg_loc),
+                            hint: None,
+                        });
+                    }
+                }
+                TypedTypeArg::Infer => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::UnresolvedGenericParameter {
+                            param_name: generic_param.name.as_string(),
+                        }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                }
+            }
+        }
+    }
 }

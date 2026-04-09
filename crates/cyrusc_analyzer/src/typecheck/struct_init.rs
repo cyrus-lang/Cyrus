@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_ast::{abi::Visibility, modifiers::StructModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
@@ -31,21 +31,29 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemanticType> {
         let symbol_id = struct_init.symbol_id.unwrap();
 
-        let Some(struct_decl_id) = self.query.get_struct(symbol_id) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
-                    symbol_name: self.formatter.format_symbol_name(symbol_id),
-                }),
-                loc: Some(struct_init.loc),
-                hint: None,
-            });
+        let init_type = self.resolve_symbol_type_expanded(symbol_id, struct_init.loc)?;
+
+        let Some(named_type) = init_type.as_named_type() else {
+            self.report_non_struct_symbol(symbol_id, struct_init.loc);
             return None;
         };
 
+        let TypeDeclID::Struct(struct_decl_id) = named_type.decl_id else {
+            self.report_non_struct_symbol(symbol_id, struct_init.loc);
+            return None;
+        };
+
+        // overwrite type args with expanded ones if none explicitly provided
+        if struct_init.type_args.is_empty() {
+            struct_init.type_args = named_type.type_args.clone();
+        }
+
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
-        let generic_env = GenericEnv::from_type_args(struct_decl.generic_params.clone(), &struct_init.type_args);
+        self.normalize_type_args(&mut struct_init.type_args);
+
+        // let generic_env = GenericEnv::from_type_args(struct_decl.generic_params.clone(), &struct_init.type_args);
+        let generic_env = self.create_inference_generic_env(struct_decl.generic_params.clone(), &struct_init.type_args);
 
         self.with_generic_env(generic_env, |this| {
             for field in &mut struct_init.fields {
@@ -60,13 +68,31 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 };
 
-                let value_type = this.substitute_type(&value_type);
+                let mut value_type = this.substitute_type(&value_type);
 
-                this.infer_generic_param(&expected_type, &value_type);
+                // generic inference
+                if let Some(infer) = &mut this.func_env.infer {
+                    if !infer.unify(&expected_type, &value_type) {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                                lhs_type: format_sema_type(expected_type.clone(), this.formatter),
+                                rhs_type: format_sema_type(value_type.clone(), this.formatter),
+                            }),
+                            loc: Some(field.loc),
+                            hint: None,
+                        });
+                        continue;
+                    }
+
+                    // resolve inference variables after unification
+                    expected_type = infer.resolve(&expected_type);
+                    value_type = infer.resolve(&value_type);
+                }
 
                 expected_type = this.substitute_type(&expected_type);
 
-                if !this.is_assignable_to(value_type.clone(), expected_type.clone(), field.loc) {
+                if !this.is_assignable_to(value_type.clone(), expected_type.clone()) {
                     this.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -82,14 +108,16 @@ impl<'a> AnalysisContext<'a> {
             this.check_duplicate_struct_field_init(&struct_init.fields);
             this.check_missing_fields(&struct_decl, struct_init);
             this.check_invalid_fields(&struct_decl, struct_init);
-        });
 
-        let final_type_args = self.collect_instantiated_type_args(struct_decl.generic_params);
+            this.apply_generic_defaults(struct_decl.generic_params.clone());
 
-        Some(SemanticType::Named(NamedType {
-            decl_id: TypeDeclID::Struct(struct_decl_id),
-            type_args: final_type_args,
-        }))
+            let final_type_args = this.collect_instantiated_type_args(struct_decl.generic_params);
+
+            Some(SemanticType::Named(NamedType {
+                decl_id: TypeDeclID::Struct(struct_decl_id),
+                type_args: final_type_args,
+            }))
+        })
     }
 
     pub(crate) fn analyze_unnamed_struct_value(
@@ -148,7 +176,7 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(rhs_type) = &struct_value_field.value.sema_type {
                 if let Some(explicit_type) = &struct_value_field.ty {
-                    if !self.is_assignable_to(rhs_type.clone(), explicit_type.clone(), struct_value_field.loc) {
+                    if !self.is_assignable_to(rhs_type.clone(), explicit_type.clone()) {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -183,11 +211,9 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<(StructDeclID, StructDecl)> {
         expected_type.and_then(|sema_type| {
-            sema_type.as_named_type().and_then(|named_type| {
-                let id_opt = named_type.decl_id.as_struct();
-
-                id_opt.map(|struct_decl_id| (struct_decl_id, self.decl_tables.struct_decl(struct_decl_id)))
-            })
+            sema_type
+                .as_struct()
+                .map(|struct_decl_id| (struct_decl_id, self.decl_tables.struct_decl(struct_decl_id)))
         })
     }
 
@@ -195,13 +221,11 @@ impl<'a> AnalysisContext<'a> {
         let fields = struct_value
             .fields
             .iter()
-            .map(|field| {
-                TypedStructField {
-                    name: field.name.clone(),
-                    ty: SemanticType::Unresolved(UnresolvedType::Infer), // placeholder
-                    vis: Visibility::Public,
-                    loc: field.loc,
-                }
+            .map(|field| TypedStructField {
+                name: field.name.clone(),
+                ty: SemanticType::Placeholder,
+                vis: Visibility::Public,
+                loc: field.loc,
             })
             .collect();
 

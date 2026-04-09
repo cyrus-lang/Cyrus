@@ -20,6 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::SymbolEntryKind;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
+    format::format_sema_type,
     types::{PlainType, SemanticType},
 };
 
@@ -27,7 +28,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr(
         &mut self,
         expr: &mut TypedExprStmt,
-        mut expected_type: Option<SemanticType>,
+        expected_type: Option<SemanticType>,
     ) -> Option<SemanticType> {
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
@@ -70,13 +71,13 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_assign(assign);
                 assign.rhs.sema_type.clone()
             }
-            TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type),
-            TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type),
-            TypedExprKind::Infix(infix) => self.analyze_infix(infix, expected_type),
+            TypedExprKind::Literal(literal) => self.analyze_literal(literal, expected_type.clone()),
+            TypedExprKind::Prefix(prefix) => self.analyze_prefix(prefix, expected_type.clone()),
+            TypedExprKind::Infix(infix) => self.analyze_infix(infix, expected_type.clone()),
             TypedExprKind::Unary(unary) => self.analyze_unary(unary),
             TypedExprKind::AddrOf(addr_of) => self.analyze_addr_of(addr_of),
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
-            TypedExprKind::Array(array) => self.analyze_array(array, expected_type),
+            TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
             TypedExprKind::Dynamic(dynamic_expr) => todo!(),
@@ -84,16 +85,18 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::FieldAccess(field_access) => todo!(),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
-            TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type),
-            TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type),
+            TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
+            TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
             TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init),
             TypedExprKind::UnnamedStructValue(struct_value) => {
-                self.analyze_unnamed_struct_value(struct_value, expected_type)
+                self.analyze_unnamed_struct_value(struct_value, expected_type.clone())
             }
             TypedExprKind::UnnamedUnionValue(union_value) => {
-                self.analyze_unnamed_union_value(union_value, expected_type)
+                self.analyze_unnamed_union_value(union_value, expected_type.clone())
             }
-            TypedExprKind::UnnamedEnumValue(enum_value) => self.analyze_unnamed_enum_value(enum_value, expected_type),
+            TypedExprKind::UnnamedEnumValue(enum_value) => {
+                self.analyze_unnamed_enum_value(enum_value, expected_type.clone())
+            }
             TypedExprKind::EnumStructVariantInit(struct_variant_init) => {
                 self.analyze_enum_struct_variant_init(struct_variant_init)
             }
@@ -113,7 +116,26 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Poisoned => return None,
         };
 
-        let normalized_type = self.normalize_sema_type(expr_type.clone()?, expr.loc);
+        let expr_type = expr_type?;
+
+        if let Some(expected_type) = expected_type {
+            if let Some(infer) = &mut self.func_env.infer {
+                if !infer.unify(&expr_type, &expected_type) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                            lhs_type: format_sema_type(expected_type, self.formatter),
+                            rhs_type: format_sema_type(expr_type, self.formatter),
+                        }),
+                        loc: Some(expr.loc),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+        }
+
+        let normalized_type = self.normalize_sema_type(expr_type, expr.loc);
 
         expr.sema_type = Some(normalized_type.clone()?);
 

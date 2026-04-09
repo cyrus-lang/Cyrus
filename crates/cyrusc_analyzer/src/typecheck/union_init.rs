@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     exprs::TypedUnnamedUnionValue,
     format::format_union_decl,
     stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
-    types::{NamedType, SemanticType, TypeDeclID, UnresolvedType},
+    types::{NamedType, SemanticType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -95,19 +95,16 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<(UnionDeclID, UnionDecl)> {
         expected_type.and_then(|sema_type| {
-            sema_type.as_named_type().and_then(|named_type| {
-                named_type
-                    .decl_id
-                    .as_union()
-                    .map(|id| (id, self.decl_tables.union_decl(id)))
-            })
+            sema_type
+                .as_union()
+                .map(|union_decl_id| (union_decl_id, self.decl_tables.union_decl(union_decl_id)))
         })
     }
 
     fn create_union_decl_from_unnamed_union_value(&mut self, union_value: &TypedUnnamedUnionValue) -> UnionDecl {
         let fields = vec![TypedUnionField {
             name: union_value.name.as_string(),
-            ty: SemanticType::Unresolved(UnresolvedType::Infer),
+            ty: SemanticType::Placeholder,
             loc: union_value.loc,
         }];
 

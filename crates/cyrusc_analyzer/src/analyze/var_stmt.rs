@@ -47,7 +47,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         global_var.ty = match &global_var.ty {
-            Some(sema_type) => self.normalize_and_check_sema_ty(sema_type.clone(), global_var.loc),
+            Some(sema_type) => self.normalize_and_check_type_formation(sema_type.clone(), global_var.loc),
             None => match global_var.expr.as_ref().and_then(|expr| expr.sema_type.clone()) {
                 Some(sema_type) => Some(sema_type),
                 None => {
@@ -147,7 +147,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(expr) = &mut var.rhs {
             if let Some(target_type) = &var.ty {
-                if !self.is_assignable_to(expr.sema_type.clone().unwrap(), target_type.clone(), var.loc) {
+                if !self.is_assignable_to(expr.sema_type.clone().unwrap(), target_type.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -162,6 +162,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
+        
         self.decl_tables.with_var_decl_mut(var_decl_id, |var_decl| {
             var_decl.rhs = var.rhs.clone();
             var_decl.ty = var.ty.clone();
@@ -196,6 +197,6 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        self.check_sema_ty(sema_type.clone(), loc);
+        self.check_type_arity(sema_type.clone(), loc);
     }
 }

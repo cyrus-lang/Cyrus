@@ -20,6 +20,7 @@ use cyrusc_diagcentral::{Diag, DiagKind, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_strescape::diagnostics::UnescapeError;
 use cyrusc_typed_ast::{
+    SymbolID,
     stmts::{TypedFuncParamKind, TypedFuncVariadicParam, TypedGenericParams, TypedTypeArgs},
     types::SemanticType,
 };
@@ -99,11 +100,14 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot destructure tuple in export without a value.")]
     TupleDestructionWithNoRhs,
 
-    #[error("Generic type '{type_name}' requires type arguments.")]
-    MissingTypeArgs { type_name: String },
+    #[error("Missing type argument for generic parameter '{param_name}' in type '{type_name}'.")]
+    MissingGenericArgument { type_name: String, param_name: String },
 
     #[error("Type arguments supplied to a non-generic type.")]
     UnexpectedTypeArgs,
+
+    #[error("Could not resolve type for generic parameter '{param_name}'.")]
+    UnresolvedGenericParameter { param_name: String },
 
     #[error("Unknown symbol '{symbol_name}'.")]
     UnknownSymbol { symbol_name: String },
@@ -460,29 +464,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    /// Validates that type arguments are not provided for non-generic types.
-    ///
-    /// Checks whether type arguments (e.g., `<T, U>`) are unexpectedly provided
-    /// for a type that does not have generic parameters. This prevents syntax
-    /// like `NonGenericType<int>` which would be invalid.
-    pub(crate) fn report_if_unexpected_type_args(
-        &mut self,
-        generic_params: &Option<TypedGenericParams>,
-        type_args: &Option<TypedTypeArgs>,
-        loc: Loc,
-    ) -> bool {
-        if generic_params.is_none() && type_args.is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs),
-                loc: Some(loc),
-                hint: None,
-            });
-            return true;
-        }
-        false
-    }
-
     pub(crate) fn report_if_duplicate_param_names(
         &mut self,
         params: &[TypedFuncParamKind],
@@ -564,6 +545,17 @@ impl<'a> AnalysisContext<'a> {
             f(diag);
         }
         drop(diags);
+    }
+
+    pub(crate) fn report_non_struct_symbol(&self, symbol_id: SymbolID, loc: Loc) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
+                symbol_name: self.formatter.format_symbol_name(symbol_id),
+            }),
+            loc: Some(loc),
+            hint: None,
+        });
     }
 }
 

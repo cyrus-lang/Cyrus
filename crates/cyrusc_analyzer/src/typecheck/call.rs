@@ -19,11 +19,10 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    SymbolID,
     decls::FuncDecl,
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_sema_type},
-    stmts::{TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
+    stmts::{TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
     types::{SemanticType, TypedFuncType},
 };
 
@@ -154,12 +153,12 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            param_type = match self.normalize_and_check_sema_ty(param_type, param.loc()) {
+            param_type = match self.normalize_and_check_type_formation(param_type, param.loc()) {
                 Some(sema_type) => sema_type,
                 None => continue,
             };
 
-            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
+            if !self.is_assignable_to(arg_type.clone(), param_type.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -191,7 +190,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedFuncVariadicParam::Typed(_, variadic_param_type) => {
                     for (i, arg) in variadic_args.iter_mut().enumerate() {
                         if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                            if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
+                            if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone()) {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
@@ -265,7 +264,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            if !self.is_assignable_to(arg_type.clone(), param_type.clone(), arg.loc) {
+            if !self.is_assignable_to(arg_type.clone(), param_type.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::FuncCallParamTypeMismatch {
@@ -290,7 +289,7 @@ impl<'a> AnalysisContext<'a> {
                     TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
                         for (i, arg) in variadic_args.iter_mut().enumerate() {
                             if let Some(arg_type) = self.analyze_expr(arg, arg.sema_type.clone()) {
-                                if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone(), arg.loc) {
+                                if !self.is_assignable_to(arg_type.clone(), variadic_param_type.clone()) {
                                     self.reporter.report(Diag {
                                         level: DiagLevel::Error,
                                         kind: Box::new(AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {

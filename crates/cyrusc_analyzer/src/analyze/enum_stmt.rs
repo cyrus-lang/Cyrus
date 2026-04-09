@@ -112,7 +112,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 if let (Some(value_type), Some(tag_type)) = (&value.sema_type, tag_type_opt) {
-                    if !self.is_assignable_to(value_type.clone(), tag_type.clone(), value.loc) {
+                    if !self.is_assignable_to(value_type.clone(), tag_type.clone()) {
                         let got_type = format_sema_type(value_type.clone(), self.formatter);
                         let expected_type = format_sema_type(tag_type.clone(), self.formatter);
 
@@ -286,6 +286,6 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        self.check_sema_ty(sema_type.clone(), loc);
+        self.check_type_arity(sema_type.clone(), loc);
     }
 }

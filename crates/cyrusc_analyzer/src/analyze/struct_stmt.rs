@@ -177,6 +177,6 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        self.check_sema_ty(sema_type.clone(), loc);
+        self.check_type_arity(sema_type.clone(), loc);
     }
 }

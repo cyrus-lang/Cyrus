@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::infer::InferCtx;
 use cyrusc_typed_ast::{
     decls::MethodDeclID,
     types::{SemanticType, TypedFuncType},
@@ -25,6 +26,7 @@ pub(crate) struct FuncEnv {
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_object: Option<SemanticType>,
     pub(crate) current_method: Option<MethodDeclID>,
+    pub(crate) infer: Option<InferCtx>,
 }
 
 impl FuncEnv {
@@ -33,6 +35,7 @@ impl FuncEnv {
             current_func: None,
             current_object: None,
             current_method: None,
+            infer: None,
         }
     }
 }

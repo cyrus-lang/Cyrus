@@ -53,9 +53,6 @@ pub enum ResolverDiagKind {
     #[error("Type '{type_name}' does not accept any type arguments.")]
     TypeDoesNotAcceptTypeArgs { type_name: String },
 
-    #[error("Expected interface symbol to be implemented by the object, but got unknown.")]
-    InvalidImplementInterface,
-
     #[error("Expected an ident in module import path, but found something else.")]
     ExpectedIdentifierInImport,
 

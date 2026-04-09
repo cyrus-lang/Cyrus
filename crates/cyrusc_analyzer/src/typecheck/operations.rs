@@ -322,11 +322,6 @@ impl<'a> AnalysisContext<'a> {
         })
     }
 
-    // FIXME
-    fn analyze_compare_enums(&mut self, lhs_type: SemanticType, rhs_type: SemanticType) -> Option<SemanticType> {
-        todo!()
-    }
-
     fn analyze_compare_expr(
         &mut self,
         lhs_type: SemanticType,
@@ -338,22 +333,8 @@ impl<'a> AnalysisContext<'a> {
         let rhs_type = rhs_type.const_inner();
 
         if lhs_type.is_enum() && rhs_type.is_enum() {
-            match self.analyze_compare_enums(lhs_type.clone(), rhs_type.clone()) {
-                Some(sema_type) => return Some(sema_type),
-                None => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::InvalidInfix {
-                            lhs_type: format_sema_type(lhs_type.clone(), self.formatter),
-                            rhs_type: format_sema_type(rhs_type.clone(), self.formatter),
-                        }),
-                        loc: Some(loc),
-                        hint: None,
-                    });
-                    return None;
-                }
-            }
-        } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
+            return Some(SemanticType::Plain(PlainType::Bool));
+        } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {
@@ -399,7 +380,7 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
-        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
+        if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::InvalidInfix {

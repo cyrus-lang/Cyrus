@@ -15,14 +15,17 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, UnionDeclID};
+use crate::decls::{EnumDeclID, InterfaceDeclID, StructDeclID, TypedefDeclID, UnionDeclID};
 use crate::exprs::{TypedExprStmt, TypedSelfType};
-use crate::stmts::{TypedFuncTypeParams, TypedTypeArgs};
+use crate::stmts::{TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedTypeArg, TypedTypeArgs};
 use crate::{GenericParamID, SymbolID, VTableID};
 use cyrusc_source_loc::Loc;
 use cyrusc_tokens::TokenKind;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct InferVarID(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SemanticType {
@@ -34,14 +37,15 @@ pub enum SemanticType {
     Pointer(Box<SemanticType>),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
-    GenericParam(GenericParamID),
     SelfType(TypedSelfType),
     InterfaceType(InterfaceType),
+    GenericParam(GenericParamID),
+    InferVar(InferVarID),
+    Placeholder, // used only during synthesis of unnamed unions/structs
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnresolvedType {
-    Infer,
     Symbol(SymbolID),
     GenericInst { base: SymbolID, type_args: TypedTypeArgs },
 }
@@ -58,6 +62,7 @@ pub enum TypeDeclID {
     Enum(EnumDeclID),
     Union(UnionDeclID),
     Interface(InterfaceDeclID),
+    Typedef(TypedefDeclID),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -215,7 +220,6 @@ impl UnresolvedType {
     #[inline]
     pub fn as_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            UnresolvedType::Infer => None,
             UnresolvedType::GenericInst { .. } => None,
             UnresolvedType::Symbol(symbol_id) => Some(*symbol_id),
         }
@@ -283,6 +287,38 @@ impl SemanticType {
     pub fn as_named_type(&self) -> Option<&NamedType> {
         match self.const_inner() {
             SemanticType::Named(named_type) => Some(named_type),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_struct(&self) -> Option<StructDeclID> {
+        match self.const_inner() {
+            SemanticType::Named(named_type) => named_type.decl_id.as_struct(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_union(&self) -> Option<UnionDeclID> {
+        match self.const_inner() {
+            SemanticType::Named(named_type) => named_type.decl_id.as_union(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_enum(&self) -> Option<EnumDeclID> {
+        match self.const_inner() {
+            SemanticType::Named(named_type) => named_type.decl_id.as_enum(),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn as_interface(&self) -> Option<InterfaceDeclID> {
+        match self.const_inner() {
+            SemanticType::Named(named_type) => named_type.decl_id.as_interface(),
             _ => None,
         }
     }
@@ -410,6 +446,39 @@ impl SemanticType {
     #[inline]
     pub fn is_pointer(&self) -> bool {
         matches!(self.const_inner(), SemanticType::Pointer(..))
+    }
+
+    pub fn contains_generic_param(&self) -> bool {
+        match self {
+            SemanticType::Placeholder => false,
+            SemanticType::GenericParam(_) => true,
+            SemanticType::InferVar(_) => false,
+
+            SemanticType::Pointer(inner) | SemanticType::Const(inner) => inner.contains_generic_param(),
+            SemanticType::Array(array) => array.element_type.contains_generic_param(),
+            SemanticType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_generic_param()),
+            SemanticType::FuncType(func) => {
+                func.params.list.iter().any(|ty| ty.contains_generic_param())
+                    || func
+                        .params
+                        .variadic
+                        .clone()
+                        .map(|variadic| match *variadic {
+                            TypedFuncTypeVariadicParams::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParams::Typed(ty) => ty.contains_generic_param(),
+                        })
+                        .unwrap_or(false)
+                    || func.ret_type.contains_generic_param()
+            }
+            SemanticType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+                TypedTypeArg::Type(ty, _) => ty.contains_generic_param(),
+                TypedTypeArg::Infer => todo!(),
+            }),
+            SemanticType::Unresolved(_)
+            | SemanticType::Plain(_)
+            | SemanticType::SelfType(_)
+            | SemanticType::InterfaceType(_) => false,
+        }
     }
 }
 
@@ -682,6 +751,12 @@ impl fmt::Display for PlainType {
         };
 
         write!(f, "{name}")
+    }
+}
+
+impl fmt::Display for InferVarID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "?{}", self.0)
     }
 }
 

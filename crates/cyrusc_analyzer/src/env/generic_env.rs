@@ -45,12 +45,8 @@ impl GenericEnv {
         generic_env
     }
 
-    fn slot(&self, param: GenericParamID) -> Option<usize> {
-        self.params.iter().position(|p| *p == param)
-    }
-
-    pub fn bind(&mut self, param: GenericParamID, ty: SemanticType) -> bool {
-        let Some(idx) = self.slot(param) else {
+    pub fn bind(&mut self, generic_param_id: GenericParamID, ty: SemanticType) -> bool {
+        let Some(idx) = self.slot(generic_param_id) else {
             return false;
         };
 
@@ -63,9 +59,13 @@ impl GenericEnv {
         }
     }
 
-    pub fn lookup(&self, param: GenericParamID) -> Option<&SemanticType> {
-        let idx = self.slot(param)?;
+    pub fn lookup(&self, generic_param_id: GenericParamID) -> Option<&SemanticType> {
+        let idx = self.slot(generic_param_id)?;
         self.bindings[idx].as_ref()
+    }
+
+    fn slot(&self, param: GenericParamID) -> Option<usize> {
+        self.params.iter().position(|p| *p == param)
     }
 }
 
@@ -73,13 +73,18 @@ impl GenericEnv {
     #[inline]
     pub fn substitute_sema_type(&self, sema_type: &SemanticType) -> SemanticType {
         match sema_type {
-            SemanticType::Unresolved(_) | SemanticType::Plain(_) => sema_type.clone(),
+            SemanticType::Unresolved(_)
+            | SemanticType::InferVar(_)
+            | SemanticType::Plain(_)
+            | SemanticType::Placeholder => sema_type.clone(),
+
             SemanticType::Named(named_type) => {
                 let type_args = named_type
                     .type_args
                     .iter()
                     .map(|type_arg| match type_arg {
                         TypedTypeArg::Type(ty, loc) => TypedTypeArg::Type(self.substitute_sema_type(&ty), *loc),
+                        TypedTypeArg::Infer => TypedTypeArg::Infer,
                     })
                     .collect();
 

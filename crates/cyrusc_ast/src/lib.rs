@@ -832,6 +832,7 @@ pub struct TypeArgs(pub Vec<TypeArg>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeArg {
     Type(TypeSpecifier),
+    Infer, // `_`
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

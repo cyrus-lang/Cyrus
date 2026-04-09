@@ -24,7 +24,7 @@ use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
     format::format_sema_type,
     stmts::{TypedExportPattern, TypedExportPatternKind, TypedExportTupleStmt},
-    types::{SemanticType, TypedTupleType, UnresolvedType},
+    types::{SemanticType, TypedTupleType},
 };
 
 // TODO: Warn for weird situations like:
@@ -121,7 +121,7 @@ impl<'a> AnalysisContext<'a> {
         path: &mut Vec<usize>,
     ) {
         if let Some(explicit_type) = &pattern.ty {
-            if !self.is_assignable_to(sema_type.clone(), explicit_type.clone(), loc) {
+            if !self.is_assignable_to(sema_type.clone(), explicit_type.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
@@ -194,7 +194,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn build_expected_tuple_type_from_pattern(&self, pattern: &TypedExportPattern) -> Option<SemanticType> {
+    fn build_expected_tuple_type_from_pattern(&mut self, pattern: &TypedExportPattern) -> Option<SemanticType> {
         let TypedExportPatternKind::Tuple(elements) = &pattern.kind else {
             return None;
         };
@@ -215,11 +215,11 @@ impl<'a> AnalysisContext<'a> {
                         result_type.push(inner);
                         has_explicit_type = true;
                     } else {
-                        result_type.push(SemanticType::Unresolved(UnresolvedType::Infer));
+                        result_type.push(self.func_env.infer.as_mut().unwrap().new_var());
                     }
                 }
                 _ => {
-                    result_type.push(SemanticType::Unresolved(UnresolvedType::Infer));
+                    result_type.push(self.func_env.infer.as_mut().unwrap().new_var());
                 }
             }
         }

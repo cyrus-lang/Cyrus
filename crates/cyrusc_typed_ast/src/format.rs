@@ -378,7 +378,6 @@ pub fn format_enum_struct_variant_fields(
 pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> String {
     match sema_type {
         SemanticType::Unresolved(unresolved_type) => match unresolved_type {
-            UnresolvedType::Infer => format!("<unresolved_infer>"),
             UnresolvedType::Symbol(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
         },
@@ -426,6 +425,8 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
             )
         }
         SemanticType::SelfType(_) => "Self".to_string(),
+        SemanticType::InferVar(infer_var_id) => format!("<infer_var={}>", infer_var_id),
+        SemanticType::Placeholder => "<placeholder>".to_string(),
     }
 }
 
@@ -439,6 +440,7 @@ fn format_type_args(type_args: &TypedTypeArgs, formatter: &dyn Formatter) -> Str
         .iter()
         .map(|type_arg| match type_arg {
             TypedTypeArg::Type(sema_type, _) => format_sema_type(sema_type.clone(), formatter),
+            TypedTypeArg::Infer => String::from('_'),
         })
         .collect::<Vec<_>>()
         .join(", ");

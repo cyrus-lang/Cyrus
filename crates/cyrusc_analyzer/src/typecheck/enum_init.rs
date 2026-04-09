@@ -75,7 +75,7 @@ impl<'a> AnalysisContext<'a> {
                         None => continue,
                     };
 
-                    if !self.is_assignable_to(value_type.clone(), field.ty.clone(), field.loc) {
+                    if !self.is_assignable_to(value_type.clone(), field.ty.clone()) {
                         let got_type = format_sema_type(value_type.clone(), self.formatter);
                         let expected_type = format_sema_type(field.ty.clone(), self.formatter);
 
@@ -202,7 +202,7 @@ impl<'a> AnalysisContext<'a> {
                         None => continue,
                     };
 
-                    if !self.is_assignable_to(value_type.clone(), field.ty.clone(), field.loc) {
+                    if !self.is_assignable_to(value_type.clone(), field.ty.clone()) {
                         let got_type = format_sema_type(value_type.clone(), self.formatter);
                         let expected_type = format_sema_type(field.ty.clone(), self.formatter);
 
@@ -368,11 +368,9 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<SemanticType>,
     ) -> Option<(EnumDeclID, EnumDecl)> {
         expected_type.and_then(|sema_type| {
-            sema_type.as_named_type().and_then(|named_type| {
-                let id_opt = named_type.decl_id.as_enum();
-
-                id_opt.map(|enum_decl_id| (enum_decl_id, self.decl_tables.enum_decl(enum_decl_id)))
-            })
+            sema_type
+                .as_enum()
+                .map(|enum_decl_id| (enum_decl_id, self.decl_tables.enum_decl(enum_decl_id)))
         })
     }
 
@@ -424,7 +422,7 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            if !self.is_assignable_to(value_type.clone(), declared_field.ty.clone(), field_init.loc) {
+            if !self.is_assignable_to(value_type.clone(), declared_field.ty.clone()) {
                 let got_type = format_sema_type(value_type.clone(), self.formatter);
                 let expected_type = format_sema_type(declared_field.ty.clone(), self.formatter);
 

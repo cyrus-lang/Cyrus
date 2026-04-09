@@ -1,0 +1,157 @@
+/*
+ * Copyright (c) 2026 The Cyrus Language
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+use crate::{context::AnalysisContext, env::generic_env::GenericEnv};
+use cyrusc_typed_ast::{
+    GenericParamID,
+    stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
+    types::SemanticType,
+};
+
+impl<'a> AnalysisContext<'a> {
+    #[inline]
+    pub(crate) fn push_generic_env(&mut self, env: GenericEnv) {
+        self.generic_env_stack.push(env);
+    }
+
+    #[inline]
+    pub(crate) fn pop_generic_env(&mut self) {
+        self.generic_env_stack.pop();
+    }
+
+    #[inline]
+    pub(crate) fn current_generic_env_mut(&mut self) -> Option<&mut GenericEnv> {
+        self.generic_env_stack.last_mut()
+    }
+
+    pub(crate) fn lookup_generic_binding(&self, generic_param_id: GenericParamID) -> Option<&SemanticType> {
+        for env in self.generic_env_stack.iter().rev() {
+            if let Some(ty) = env.lookup(generic_param_id) {
+                return Some(ty);
+            }
+        }
+
+        None
+    }
+
+    pub(crate) fn substitute_type(&self, ty: &SemanticType) -> SemanticType {
+        let mut result = ty.clone();
+
+        for env in self.generic_env_stack.iter().rev() {
+            result = env.substitute_sema_type(&result);
+        }
+
+        result
+    }
+
+    pub(crate) fn with_generic_env<F, R>(&mut self, generic_env: GenericEnv, f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        self.push_generic_env(generic_env);
+        let result = f(self);
+        self.pop_generic_env();
+        result
+    }
+
+    pub(crate) fn collect_instantiated_type_args(&mut self, generic_params: TypedGenericParams) -> TypedTypeArgs {
+        let mut args = Vec::with_capacity(generic_params.len());
+
+        for generic_param_id in generic_params.iter() {
+            let generic_param = self.decl_tables.generic_param(*generic_param_id);
+
+            let mut sema_type = {
+                if let Some(ty) = self.lookup_generic_binding(*generic_param_id) {
+                    ty.clone()
+                } else {
+                    unreachable!("missing generic binding")
+                }
+            };
+
+            let infer = self.func_env.infer.as_mut().unwrap();
+
+            sema_type = infer.resolve(&sema_type);
+
+            args.push(TypedTypeArg::Type(sema_type, generic_param.name.loc));
+        }
+
+        TypedTypeArgs(args)
+    }
+
+    pub(crate) fn apply_generic_defaults(&mut self, generic_params: TypedGenericParams) {
+        for generic_param_id in generic_params.iter() {
+            let already_exist = {
+                let generic_env = self.current_generic_env_mut().unwrap();
+                generic_env.lookup(*generic_param_id).is_some()
+            };
+
+            if already_exist {
+                continue;
+            }
+
+            let generic_param = self.decl_tables.generic_param(*generic_param_id);
+
+            if let Some(ty) = &generic_param.default {
+                let mut default_type = self.normalize_sema_type(*ty.clone(), generic_param.name.loc).unwrap();
+
+                default_type = self.substitute_type(&default_type);
+
+                let generic_env = self.current_generic_env_mut().unwrap();
+
+                generic_env.bind(*generic_param_id, default_type);
+            }
+        }
+    }
+
+    pub(crate) fn create_inference_generic_env(
+        &mut self,
+        params: TypedGenericParams,
+        type_args: &TypedTypeArgs,
+    ) -> GenericEnv {
+        let mut generic_env = GenericEnv::new(params.clone());
+
+        let infer = self.func_env.infer.as_mut().unwrap();
+
+        for (i, param_id) in params.iter().enumerate() {
+            let mut bound_type: Option<SemanticType> = None;
+
+            // 1. check if an explicit type argument was provided
+            if let Some(type_arg) = type_args.get(i) {
+                match type_arg {
+                    TypedTypeArg::Type(sema_type, _) => {
+                        bound_type = Some(sema_type.clone());
+                    }
+                    TypedTypeArg::Infer => {
+                        bound_type = Some(infer.new_var());
+                    }
+                }
+            }
+
+            // 2. if nothing was provided (e.g. MyStruct { ... }), create an InferVar
+            if bound_type.is_none() {
+                bound_type = Some(infer.new_var());
+            }
+
+            // bind it
+            if let Some(ty) = bound_type {
+                generic_env.bind(*param_id, ty);
+            }
+        }
+
+        generic_env
+    }
+}

@@ -23,7 +23,7 @@ CARGO_RUN   = cargo run -j$(JOBS) $(CARGO_PROFILE_FLAG)
 CARGO_BUILD = cargo build -j$(JOBS) $(CARGO_PROFILE_FLAG)
 CARGO_TEST  = cargo test -j$(JOBS) $(CARGO_PROFILE_FLAG)
 
-COMMON_FLAGS = --disable-warnings $(ARGS)
+COMMON_FLAGS = $(ARGS)
 
 .PHONY: run build test testsuite \
         cir_walk analyzer resolver parser emit-llvm

@@ -110,7 +110,7 @@ impl<'a> AnalysisContext<'a> {
                 };
             }
 
-            if !self.is_assignable_to(expr_type.clone(), *array_type!().element_type.clone(), element.loc) {
+            if !self.is_assignable_to(expr_type.clone(), *array_type!().element_type.clone()) {
                 let element_type = format_sema_type(expr_type, self.formatter);
                 let expected_type = format_sema_type(*array_type!().element_type.clone(), self.formatter);
 

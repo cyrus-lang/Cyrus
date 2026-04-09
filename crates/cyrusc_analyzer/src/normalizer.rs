@@ -15,64 +15,42 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID, SymbolID,
-    decls::{FuncDecl, InterfaceDeclID, TypedefDeclID},
+    decls::{FuncDecl, InterfaceDeclID},
     exprs::TypedSelfType,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam,
         TypedTypeArg, TypedTypeArgs,
     },
     types::{
-        NamedType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
-        UnresolvedType,
+        InterfaceType, NamedType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType,
+        TypedTupleType, UnresolvedType,
     },
 };
 
 impl<'a> AnalysisContext<'a> {
-    /// Validate a semantic type.
-    /// This does NOT normalize the type.
-    pub fn check_sema_ty(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
-        if sema_type.count_const_layers() > 1 {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        if sema_type.is_self_type() && self.func_env.current_object.is_none() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        // TODO: Check NamedTypes
-        Some(sema_type)
-    }
-
     /// Fully normalize AND validate a type
     /// This is what we call when an explicit type is used
-    pub fn normalize_and_check_sema_ty(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+    pub fn normalize_and_check_type_formation(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
         let sema_type = self.normalize_sema_type(sema_type, loc)?;
-        self.check_sema_ty(sema_type, loc)
+        self.check_type_formation(sema_type, loc)
     }
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
     // and recursively normalize children. Never returns UnresolvedSymbol.
     pub fn normalize_sema_type(&mut self, ty: SemanticType, loc: Loc) -> Option<SemanticType> {
         match ty {
+            SemanticType::Placeholder => unreachable!(),
+            SemanticType::InferVar(_) => unreachable!(),
+
             SemanticType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
-            SemanticType::Named(_) => Some(ty), // already normalized
+            SemanticType::Named(_) => Some(ty),
             SemanticType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
             SemanticType::Pointer(inner) => self.normalize_pointer(*inner, loc),
             SemanticType::Const(inner) => self.normalize_const(*inner, loc),
@@ -86,7 +64,6 @@ impl<'a> AnalysisContext<'a> {
 
     fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemanticType> {
         match unresolved_type {
-            UnresolvedType::Infer => unreachable!(),
             UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(symbol_id, loc),
             UnresolvedType::GenericInst { base, mut type_args } => {
                 let base_type = self.normalize_unresolved_type(UnresolvedType::Symbol(base), loc)?;
@@ -168,8 +145,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // TODO: Implement slices.
-    fn normalize_array_capacity(&mut self, mut arr: TypedArrayType, loc: Loc) -> Option<TypedArrayType> {
-        match &mut arr.capacity {
+    fn normalize_array_capacity(&mut self, mut array: TypedArrayType, loc: Loc) -> Option<TypedArrayType> {
+        match &mut array.capacity {
             TypedArrayCapacity::Fixed(expr) => {
                 self.analyze_expr(expr, None);
 
@@ -186,12 +163,12 @@ impl<'a> AnalysisContext<'a> {
             TypedArrayCapacity::Dynamic => todo!(),
         }
 
-        arr.element_type = Box::new(self.normalize_sema_type(*arr.element_type, loc)?);
-        Some(arr)
+        array.element_type = Box::new(self.normalize_sema_type(*array.element_type, loc)?);
+        Some(array)
     }
 
-    fn normalize_array(&mut self, arr: TypedArrayType, loc: Loc) -> Option<SemanticType> {
-        let array_type = self.normalize_array_capacity(arr, loc)?;
+    fn normalize_array(&mut self, array: TypedArrayType, loc: Loc) -> Option<SemanticType> {
+        let array_type = self.normalize_array_capacity(array, loc)?;
         Some(SemanticType::Array(array_type))
     }
 
@@ -203,11 +180,6 @@ impl<'a> AnalysisContext<'a> {
     fn normalize_pointer(&mut self, inner: SemanticType, loc: Loc) -> Option<SemanticType> {
         let ty = self.normalize_sema_type(inner, loc)?;
         Some(SemanticType::Pointer(Box::new(ty)))
-    }
-
-    fn normalize_typedef(&mut self, typedef_decl_id: TypedefDeclID) -> Option<SemanticType> {
-        let typedef_decl = self.decl_tables.typedef_decl(typedef_decl_id);
-        Some(*typedef_decl.ty.clone())
     }
 
     fn normalize_generic_param(&self, generic_param_id: GenericParamID) -> Option<SemanticType> {
@@ -230,11 +202,12 @@ impl<'a> AnalysisContext<'a> {
         for type_arg in type_args.iter_mut() {
             match type_arg {
                 TypedTypeArg::Type(sema_type, loc) => {
-                    *sema_type = match self.normalize_and_check_sema_ty(sema_type.clone(), *loc) {
+                    *sema_type = match self.normalize_and_check_type_formation(sema_type.clone(), *loc) {
                         Some(sema_type) => sema_type,
                         None => continue,
                     };
                 }
+                TypedTypeArg::Infer => { /* skip */ }
             }
         }
     }
@@ -318,6 +291,11 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    pub(crate) fn resolve_symbol_type_expanded(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
+        let ty = self.resolve_symbol_type(symbol_id, loc)?;
+        Some(self.expand_semantic_type(ty))
+    }
+
     pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
         if let Some(cached_sema_ty) = self.type_cache.cache.get(&symbol_id) {
             return Some(cached_sema_ty.clone());
@@ -379,12 +357,15 @@ impl<'a> AnalysisContext<'a> {
                 decl_id: TypeDeclID::Union(*union_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
+            SymbolEntryKind::Typedef(typedef_decl_id) => Some(SemanticType::Named(NamedType {
+                decl_id: TypeDeclID::Typedef(*typedef_decl_id),
+                type_args: TypedTypeArgs::new(),
+            })),
             SymbolEntryKind::Interface(interface_decl_id) => self.normalize_interface_type(*interface_decl_id),
-            SymbolEntryKind::Typedef(typedef_decl_id) => self.normalize_typedef(*typedef_decl_id),
+
             SymbolEntryKind::ProxiedSymbol { .. } => {
                 unreachable!("proxied symbol entry kind should not appear here")
             }
-            SymbolEntryKind::Method(..) => unreachable!("method symbols are not type expressions"),
             SymbolEntryKind::ProxiedModule { .. } => {
                 unreachable!("proxied module symbol entry kind should not appear here")
             }
@@ -395,6 +376,100 @@ impl<'a> AnalysisContext<'a> {
                 unreachable!("namespace symbol entry kind should not appear here")
             }
             SymbolEntryKind::Unresolved => unreachable!("unresolved symbol entry should not appear here"),
+            SymbolEntryKind::Method(_) => unreachable!("method symbols are not type expressions"),
+        }
+    }
+
+    pub(crate) fn expand_semantic_type(&mut self, ty: SemanticType) -> SemanticType {
+        match ty {
+            SemanticType::Placeholder => unreachable!(),
+            SemanticType::InferVar(_) => unreachable!(),
+
+            SemanticType::Named(named) => match named.decl_id {
+                TypeDeclID::Typedef(typedef_id) => {
+                    let typedef_decl = self.decl_tables.typedef_decl(typedef_id);
+
+                    let generic_env = GenericEnv::from_type_args(typedef_decl.generic_params.clone(), &named.type_args);
+
+                    let expanded_type = generic_env.substitute_sema_type(&typedef_decl.ty);
+
+                    self.expand_semantic_type(expanded_type)
+                }
+                _ => {
+                    let type_args = named
+                        .type_args
+                        .iter()
+                        .map(|type_arg| match type_arg {
+                            TypedTypeArg::Type(ty, loc) => {
+                                TypedTypeArg::Type(self.expand_semantic_type(ty.clone()), *loc)
+                            }
+                            TypedTypeArg::Infer => TypedTypeArg::Infer,
+                        })
+                        .collect();
+
+                    SemanticType::Named(NamedType {
+                        decl_id: named.decl_id,
+                        type_args,
+                    })
+                }
+            },
+            SemanticType::Pointer(inner) => SemanticType::Pointer(Box::new(self.expand_semantic_type(*inner))),
+            SemanticType::Const(inner) => SemanticType::Const(Box::new(self.expand_semantic_type(*inner))),
+            SemanticType::Array(array) => SemanticType::Array(TypedArrayType {
+                element_type: Box::new(self.expand_semantic_type(*array.element_type)),
+                capacity: array.capacity,
+                loc: array.loc,
+            }),
+            SemanticType::Tuple(tuple) => {
+                let elements = tuple
+                    .elements
+                    .into_iter()
+                    .map(|t| self.expand_semantic_type(t))
+                    .collect();
+
+                SemanticType::Tuple(TypedTupleType {
+                    elements,
+                    loc: tuple.loc,
+                })
+            }
+            SemanticType::FuncType(func) => {
+                let params = TypedFuncTypeParams {
+                    list: func
+                        .params
+                        .list
+                        .into_iter()
+                        .map(|p| self.expand_semantic_type(p))
+                        .collect(),
+
+                    variadic: func.params.variadic.map(|variadic| {
+                        Box::new(match *variadic {
+                            TypedFuncTypeVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
+                            TypedFuncTypeVariadicParams::Typed(ty) => {
+                                TypedFuncTypeVariadicParams::Typed(self.expand_semantic_type(ty))
+                            }
+                        })
+                    }),
+                };
+                let ret_type = Box::new(self.expand_semantic_type(*func.ret_type));
+
+                SemanticType::FuncType(TypedFuncType {
+                    symbol_id: func.symbol_id,
+                    params,
+                    ret_type,
+                    is_public: func.is_public,
+                    loc: func.loc,
+                })
+            }
+            SemanticType::InterfaceType(interface) => SemanticType::InterfaceType(InterfaceType {
+                interface_decl_id: interface.interface_decl_id,
+                vtable_id: interface.vtable_id,
+                loc: interface.loc,
+            }),
+
+            SemanticType::Plain(_)
+            | SemanticType::GenericParam(_)
+            | SemanticType::SelfType(_)
+            | SemanticType::Unresolved(_) => ty,
         }
     }
 }

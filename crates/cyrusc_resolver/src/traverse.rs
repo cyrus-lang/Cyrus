@@ -707,6 +707,7 @@ impl Resolver {
                     let sema_type = self.resolve_type(type_spec.clone(), type_spec.loc())?;
                     Some(TypedTypeArg::Type(sema_type, type_spec.loc()))
                 }
+                TypeArg::Infer => Some(TypedTypeArg::Infer),
             })
             .collect::<Option<_>>()
     }
@@ -783,28 +784,30 @@ impl Resolver {
 
         let generic_params = self.resolve_generic_params(&typedef.generic_params)?;
 
-        let sema_type = self.resolve_type(typedef.type_spec.clone(), typedef.loc)?;
+        self.with_generic_scope(&generic_params.clone(), |this| {
+            let sema_type = this.resolve_type(typedef.type_spec.clone(), typedef.loc)?;
 
-        let typedef_decl_id = self.decl_tables.insert_typedef(TypedefDecl {
-            name: typedef.ident.as_string(),
-            generic_params: generic_params.clone(),
-            ty: Box::new(sema_type.clone()),
-            vis: typedef.vis.clone(),
-            loc: typedef.loc,
-        });
+            let typedef_decl_id = this.decl_tables.insert_typedef(TypedefDecl {
+                name: typedef.ident.as_string(),
+                generic_params: generic_params.clone(),
+                ty: Box::new(sema_type.clone()),
+                vis: typedef.vis.clone(),
+                loc: typedef.loc,
+            });
 
-        self.with_global_symbol_mut(symbol_id, |symbol_entry| {
-            symbol_entry.kind = SymbolEntryKind::Typedef(typedef_decl_id)
-        });
+            this.with_global_symbol_mut(symbol_id, |symbol_entry| {
+                symbol_entry.kind = SymbolEntryKind::Typedef(typedef_decl_id)
+            });
 
-        Some(TypedStmt::Typedef(TypedTypedefStmt {
-            symbol_id,
-            name: typedef.ident.as_string(),
-            ty: sema_type,
-            generic_params,
-            vis: typedef.vis.clone(),
-            loc: typedef.loc,
-        }))
+            Some(TypedStmt::Typedef(TypedTypedefStmt {
+                symbol_id,
+                name: typedef.ident.as_string(),
+                ty: sema_type,
+                generic_params,
+                vis: typedef.vis.clone(),
+                loc: typedef.loc,
+            }))
+        })
     }
 
     // ANCHOR: New feature

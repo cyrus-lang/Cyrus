@@ -73,14 +73,12 @@ impl<'a> AnalysisContext<'a> {
     ) {
         for implement_interface in impls {
             let Some(normalized_type) =
-                self.normalize_and_check_sema_ty(implement_interface.ty.clone(), implement_interface.loc)
+                self.normalize_and_check_type_formation(implement_interface.ty.clone(), implement_interface.loc)
             else {
                 continue;
             };
 
-            let interface_decl_id = normalized_type
-                .as_named_type()
-                .and_then(|named_type| named_type.decl_id.as_interface());
+            let interface_decl_id = normalized_type.as_interface();
 
             let interface_decl = match interface_decl_id {
                 Some(id) => self.decl_tables.interface_decl(id),
