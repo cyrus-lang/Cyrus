@@ -15,6 +15,5 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub(crate) mod field_env;
 pub(crate) mod func_env;
 pub(crate) mod generic_env;

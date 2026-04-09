@@ -2205,11 +2205,11 @@ impl Resolver {
     fn resolve_struct_init(&mut self, struct_init: &ASTStructInitExpr) -> Option<TypedExprStmt> {
         let symbol_id = self.resolve_local_module_import(&struct_init.struct_name)?;
 
-        let fields: Vec<TypedStructFieldInit> = struct_init
+        let fields: Vec<TypedFieldInit> = struct_init
             .field_inits
             .iter()
             .filter_map(|field_init| {
-                self.resolve_expr(&field_init.value).map(|value| TypedStructFieldInit {
+                self.resolve_expr(&field_init.value).map(|value| TypedFieldInit {
                     name: field_init.ident.as_string(),
                     value,
                     loc: field_init.loc,
@@ -2240,16 +2240,12 @@ impl Resolver {
             .fields
             .iter()
             .filter_map(|field| {
-                self.resolve_expr(&field.value).map(|value| {
-                    let ty = field.ty.clone().and_then(|ty| self.resolve_type(ty, field.loc));
-
-                    TypedUnnamedStructValueField {
+                self.resolve_expr(&field.value)
+                    .map(|value| TypedUnnamedStructValueField {
                         name: field.name.as_string(),
-                        ty,
                         value: Box::new(value),
                         loc: field.loc,
-                    }
-                })
+                    })
             })
             .collect();
 

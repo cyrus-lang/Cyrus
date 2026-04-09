@@ -18,6 +18,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::SymbolEntryKind;
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
     format::format_sema_type,
@@ -79,7 +80,6 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Deref(deref) => self.analyze_deref(deref),
             TypedExprKind::Array(array) => self.analyze_array(array, expected_type.clone()),
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
-            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
             TypedExprKind::Dynamic(dynamic_expr) => todo!(),
             TypedExprKind::MethodCall(method_call) => todo!(),
             TypedExprKind::FieldAccess(field_access) => todo!(),
@@ -88,6 +88,8 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
             TypedExprKind::TupleAccess(tuple_access) => self.analyze_tuple_access(tuple_access, expected_type.clone()),
             TypedExprKind::EnumInit(enum_init) => self.analyze_enum_init(enum_init),
+            TypedExprKind::StructInit(struct_init) => self.analyze_struct_init(struct_init),
+            TypedExprKind::UnionInit(union_init) => self.analyze_union_init(union_init),
             TypedExprKind::UnnamedStructValue(struct_value) => {
                 self.analyze_unnamed_struct_value(struct_value, expected_type.clone())
             }
@@ -160,5 +162,54 @@ impl<'a> AnalysisContext<'a> {
         if let Some(sema_type) = self.analyze_expr(cond, Some(SemanticType::Plain(PlainType::Bool))) {
             self.report_if_not_cond_expr(sema_type, cond.loc);
         }
+    }
+
+    pub(crate) fn analyze_field_assign(
+        &mut self,
+        field_expr: &mut TypedExprStmt,
+        mut expected_type: SemanticType,
+        loc: Loc,
+    ) -> SemanticType {
+        expected_type = self.substitute_type(&expected_type);
+
+        let Some(mut value_type) = self.analyze_expr(field_expr, Some(expected_type.clone())) else {
+            return expected_type;
+        };
+
+        value_type = self.substitute_type(&value_type);
+
+        if let Some(infer) = &mut self.func_env.infer {
+            if !infer.unify(&expected_type, &value_type) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: format_sema_type(expected_type.clone(), self.formatter),
+                        rhs_type: format_sema_type(value_type.clone(), self.formatter),
+                    }),
+                    loc: Some(loc),
+                    hint: None,
+                });
+                return expected_type;
+            }
+
+            expected_type = infer.resolve(&expected_type);
+            value_type = infer.resolve(&value_type);
+        }
+
+        expected_type = self.substitute_type(&expected_type);
+
+        if !self.is_assignable_to(value_type.clone(), expected_type.clone()) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
+                    lhs_type: format_sema_type(expected_type.clone(), self.formatter),
+                    rhs_type: format_sema_type(value_type.clone(), self.formatter),
+                }),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        expected_type
     }
 }

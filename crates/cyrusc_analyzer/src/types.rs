@@ -354,88 +354,80 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // TODO: Would be used after implementing @cast.
-    // pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
-    //     match (value_type, target_type) {
-    //         // Any integer to any integer
-    //         (SemanticType::PlainType(value), SemanticType::PlainType(target))
-    //             if value.is_integer() && target.is_integer() =>
-    //         {
-    //             true
-    //         }
+    // NOTE: Would be used after implementing @cast.
+    pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
+        match (value_type, target_type) {
+            // Any integer to any integer
+            (SemanticType::Plain(value), SemanticType::Plain(target)) if value.is_integer() && target.is_integer() => {
+                true
+            }
 
-    //         // Any float to any float
-    //         (SemanticType::PlainType(value), SemanticType::PlainType(target))
-    //             if value.is_float() && target.is_float() =>
-    //         {
-    //             true
-    //         }
+            // Any float to any float
+            (SemanticType::Plain(value), SemanticType::Plain(target)) if value.is_float() && target.is_float() => true,
 
-    //         // Any integer <-> float
-    //         (SemanticType::PlainType(v), SemanticType::PlainType(t))
-    //             if (v.is_integer() && t.is_float()) || (v.is_float() && t.is_integer()) =>
-    //         {
-    //             true
-    //         }
+            // Any integer <-> float
+            (SemanticType::Plain(value), SemanticType::Plain(target))
+                if (value.is_integer() && target.is_float()) || (value.is_float() && target.is_integer()) =>
+            {
+                true
+            }
 
-    //         // Bool to anything integer-ish (common in C-style languages)
-    //         (SemanticType::PlainType(PlainType::Bool), SemanticType::PlainType(target)) if target.is_integer() => true,
+            // Bool to anything integer-ish (common in C-style languages)
+            (SemanticType::Plain(PlainType::Bool), SemanticType::Plain(target)) if target.is_integer() => true,
 
-    //         // Char to integer and back
-    //         (SemanticType::PlainType(PlainType::Char), SemanticType::PlainType(target)) if target.is_integer() => true,
-    //         (SemanticType::PlainType(value), SemanticType::PlainType(PlainType::Char)) if value.is_integer() => true,
+            // Char to integer and back
+            (SemanticType::Plain(PlainType::Char), SemanticType::Plain(target)) if target.is_integer() => true,
+            (SemanticType::Plain(value), SemanticType::Plain(PlainType::Char)) if value.is_integer() => true,
 
-    //         // void* <-> intptr/uintptr
-    //         (SemanticType::Pointer(..), SemanticType::PlainType(PlainType::IntPtr))
-    //         | (SemanticType::Pointer(..), SemanticType::PlainType(PlainType::UIntPtr))
-    //         | (SemanticType::PlainType(PlainType::IntPtr), SemanticType::Pointer(..))
-    //         | (SemanticType::PlainType(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
+            // void* <-> intptr/uintptr
+            (SemanticType::Pointer(..), SemanticType::Plain(PlainType::IntPtr))
+            | (SemanticType::Pointer(..), SemanticType::Plain(PlainType::UIntPtr))
+            | (SemanticType::Plain(PlainType::IntPtr), SemanticType::Pointer(..))
+            | (SemanticType::Plain(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
 
-    //         // NOTE
-    //         //
-    //         // At the semantic/typecheck layer we intentionally allow casts between
-    //         // enums and integer/bool scalar types without validating the enum’s
-    //         // underlying representation yet.
-    //         //
-    //         // The reason is architectural: the semantic layer only answers the
-    //         // question “is this cast conceptually legal?”, not "how exactly should it
-    //         // be lowered?”. Determining the actual integer representation of an enum
-    //         // (its tag type) is a lowering concern that is handled
-    //         // later in the CIR stage.
-    //         //
-    //         //
-    //         // Therefore here we accept the following conversions:
-    //         // enum -> integer/bool ^ integer/bool -> enum
-    //         //
-    //         //
-    //         // as long as the non‑enum side is a scalar integer or bool. This keeps the
-    //         // typechecker simple and avoids pulling enum layout/lowering knowledge
-    //         // into this phase.
-    //         //
-    //         // During CIR lowering the expression:
-    //         //
-    //         // @cast(IntType, enumValue)
-    //         //
-    //         // is resolved using the enum's tag type. At that
-    //         // point we perform the precise lowering (and any required compile‑time validation)
-    //         // through the cast builtin implementation.
-    //         //
-    //         (SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id)), SemanticType::PlainType(plain_type)) => {
-    //             let symbol_entry = self.query.lookup_symbol_entry(enum_id).unwrap();
+            // NOTE
+            //
+            // At the semantic/typecheck layer we intentionally allow casts between
+            // enums and integer/bool scalar types without validating the enum’s
+            // underlying representation yet.
+            //
+            // The reason is architectural: the semantic layer only answers the
+            // question “is this cast conceptually legal?”, not "how exactly should it
+            // be lowered?”. Determining the actual integer representation of an enum
+            // (its tag type) is a lowering concern that is handled
+            // later in the CIR stage.
+            //
+            //
+            // Therefore here we accept the following conversions:
+            // enum -> integer/bool ^ integer/bool -> enum
+            //
+            //
+            // as long as the non‑enum side is a scalar integer or bool. This keeps the
+            // typechecker simple and avoids pulling enum layout/lowering knowledge
+            // into this phase.
+            //
+            // During CIR lowering the expression:
+            //
+            // @cast(IntType, enumValue)
+            //
+            // is resolved using the enum's tag type. At that
+            // point we perform the precise lowering (and any required compile‑time validation)
+            // through the cast builtin implementation.
+            //
+            (SemanticType::Named(named_type), SemanticType::Plain(plain_type)) => {
+                let Some(enum_decl_id) = named_type.decl_id.as_enum() else {
+                    return false;
+                };
 
-    //             symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
-    //         }
-    //         (SemanticType::UnnamedEnum(_), SemanticType::PlainType(plain_type)) => plain_type.is_integer_or_bool(),
-    //         (SemanticType::PlainType(plain_type), SemanticType::ResolvedSymbol(ResolvedSymbol::Enum(enum_id))) => {
-    //             let symbol_entry = self.query.lookup_symbol_entry(enum_id).unwrap();
+                let enum_decl = self.decl_tables.enum_decl(enum_decl_id);
 
-    //             symbol_entry.as_enum().is_some() && plain_type.is_integer_or_bool()
-    //         }
-    //         (SemanticType::PlainType(plain_type), SemanticType::UnnamedEnum(_)) => plain_type.is_integer_or_bool(),
-    //         // END
-    //         _ => false,
-    //     }
-    // }
+                // FIXME: Checking repr isn't enough, we must validate tag type.
+                enum_decl.is_repr_c() && plain_type.is_integer_or_bool()
+            }
+
+            _ => false,
+        }
+    }
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -463,13 +455,21 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn check_type_arity(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
         if let Some(named_type) = sema_type.as_named_type() {
-            self.check_missing_type_args(named_type, loc);
+            if self.check_missing_type_args(named_type, loc) {
+                return None;
+            }
+
+            if self.check_unresolved_infer_vars(named_type, loc) {
+                return None;
+            }
         }
 
         Some(sema_type)
     }
 
-    fn check_missing_type_args(&self, named_type: &NamedType, loc: Loc) {
+    fn check_missing_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {
+        let mut has_error = false;
+
         let generic_params = match named_type.decl_id {
             TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
             TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
@@ -480,6 +480,8 @@ impl<'a> AnalysisContext<'a> {
 
         for (i, param_id) in generic_params.iter().enumerate() {
             let Some(type_arg) = named_type.type_args.get(i) else {
+                has_error = true;
+
                 let param = self.decl_tables.generic_param(*param_id);
                 let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
 
@@ -499,19 +501,23 @@ impl<'a> AnalysisContext<'a> {
             let generic_param = self.decl_tables.generic_param(*param_id);
 
             match type_arg {
-                TypedTypeArg::Type(sema_ty, arg_loc) => {
+                TypedTypeArg::Type(sema_ty, _) => {
                     if sema_ty.contains_generic_param() {
+                        has_error = true;
+
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: Box::new(AnalyzerDiagKind::UnresolvedGenericParameter {
                                 param_name: generic_param.name.as_string(),
                             }),
-                            loc: Some(*arg_loc),
+                            loc: Some(loc),
                             hint: None,
                         });
                     }
                 }
                 TypedTypeArg::Infer => {
+                    has_error = true;
+
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: Box::new(AnalyzerDiagKind::UnresolvedGenericParameter {
@@ -523,5 +529,62 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
+
+        has_error
+    }
+
+    fn check_unresolved_infer_vars(&self, named_type: &NamedType, loc: Loc) -> bool {
+        let mut has_error = false;
+
+        let generic_params = match named_type.decl_id {
+            TypeDeclID::Struct(id) => self.decl_tables.struct_decl(id).generic_params,
+            TypeDeclID::Enum(id) => self.decl_tables.enum_decl(id).generic_params,
+            TypeDeclID::Union(id) => self.decl_tables.union_decl(id).generic_params,
+            TypeDeclID::Interface(id) => self.decl_tables.interface_decl(id).generic_params,
+            TypeDeclID::Typedef(id) => self.decl_tables.typedef_decl(id).generic_params,
+        };
+
+        for (i, param_id) in generic_params.iter().enumerate() {
+            let Some(type_arg) = named_type.type_args.get(i) else {
+                continue;
+            };
+
+            let generic_param = self.decl_tables.generic_param(*param_id);
+
+            match type_arg {
+                TypedTypeArg::Type(sema_ty, _) => {
+                    if sema_ty.contains_infer_var() {
+                        has_error = true;
+                        let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::CannotInferGenericArgument {
+                                type_name,
+                                param_name: generic_param.name.as_string(),
+                            }),
+                            loc: Some(loc),
+                            hint: None,
+                        });
+                    }
+                }
+                TypedTypeArg::Infer => {
+                    has_error = true;
+                    let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::CannotInferGenericArgument {
+                            type_name,
+                            param_name: generic_param.name.as_string(),
+                        }),
+                        loc: Some(loc),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        has_error
     }
 }

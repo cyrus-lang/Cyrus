@@ -25,6 +25,7 @@ use cyrusc_typed_ast::{
 pub(crate) mod lower_assign;
 pub(crate) mod lower_enum_init;
 pub(crate) mod lower_prefix_not;
+pub(crate) mod lower_union_init;
 
 impl<'a> AnalysisContext<'a> {
     /// Rewrites special expression forms into their canonical AST representation.
@@ -49,6 +50,7 @@ impl<'a> AnalysisContext<'a> {
             _ => {
                 self.lower_field_access_as_enum_init(typed_expr);
                 self.lower_method_call_as_enum_init(typed_expr);
+                self.lower_struct_init_as_union_init(typed_expr);
             }
         };
     }

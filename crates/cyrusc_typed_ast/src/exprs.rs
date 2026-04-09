@@ -56,12 +56,13 @@ pub enum TypedExprKind {
     Deref(TypedDerefExpr),
     Array(TypedArrayExpr),
     ArrayIndex(TypedArrayIndexExpr),
-    StructInit(TypedStructInitExpr),
     UnnamedStructValue(TypedUnnamedStructValue),
     UnnamedUnionValue(TypedUnnamedUnionValue),
     UnnamedEnumValue(TypedUnnamedEnumValue),
     EnumStructVariantInit(TypedEnumStructVariantInit),
     EnumInit(TypedEnumInit),
+    StructInit(TypedStructInitExpr),
+    UnionInit(TypedUnionInitExpr),
     FuncCall(TypedFuncCall),
     MethodCall(TypedMethodCall),
     FieldAccess(TypedFieldAccess),
@@ -203,12 +204,20 @@ pub struct TypedDerefExpr {
 pub struct TypedStructInitExpr {
     pub symbol_id: Option<SymbolID>,
     pub type_args: TypedTypeArgs,
-    pub fields: Vec<TypedStructFieldInit>,
+    pub fields: Vec<TypedFieldInit>,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedStructFieldInit {
+pub struct TypedUnionInitExpr {
+    pub symbol_id: Option<SymbolID>,
+    pub type_args: TypedTypeArgs,
+    pub field: Box<TypedFieldInit>,
+    pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedFieldInit {
     pub name: String,
     pub value: TypedExprStmt,
     pub loc: Loc,
@@ -356,7 +365,6 @@ pub struct TypedEnumStructVariantFieldInit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
     pub name: String,
-    pub ty: Option<SemanticType>,
     pub value: Box<TypedExprStmt>,
     pub loc: Loc,
 }
@@ -414,8 +422,9 @@ impl TypedExprKind {
             | TypedExprKind::Dynamic(_)
             | TypedExprKind::UnnamedUnionValue(_)
             | TypedExprKind::Builtin(_)
-            | TypedExprKind::EnumStructVariantInit(_) => false,
-            TypedExprKind::EnumInit(_) => false,
+            | TypedExprKind::EnumStructVariantInit(_)
+            | TypedExprKind::UnionInit(_)
+            | TypedExprKind::EnumInit(_) => false,
 
             TypedExprKind::Poisoned => unreachable!(),
         }

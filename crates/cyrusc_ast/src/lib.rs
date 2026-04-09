@@ -139,7 +139,6 @@ pub enum UnnamedEnumValueKind {
 #[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
     pub name: Ident,
-    pub ty: Option<TypeSpecifier>,
     pub value: Box<ASTExpr>,
     pub loc: Loc,
 }

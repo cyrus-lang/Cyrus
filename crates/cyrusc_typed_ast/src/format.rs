@@ -207,6 +207,30 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
                 format!("struct {{ {} }}", fields)
             }
         }
+        UnionInit(union_init) => {
+            if let Some(symbol_id) = union_init.symbol_id {
+                let name = formatter.format_symbol_name(symbol_id);
+
+                format!(
+                    "{}{{ {} }}",
+                    name,
+                    format!(
+                        "{}: {}",
+                        union_init.field.name,
+                        format_typed_expr(&union_init.field.value, formatter)
+                    )
+                )
+            } else {
+                format!(
+                    "union {{ {} }}",
+                    format!(
+                        "{}: {}",
+                        union_init.field.name,
+                        format_typed_expr(&union_init.field.value, formatter)
+                    )
+                )
+            }
+        }
         FuncCall(func_call) => format!(
             "{}({})",
             format_typed_expr(&func_call.operand, formatter),
@@ -254,10 +278,6 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
                     .map(|field| {
                         let mut x = String::new();
                         x.push_str(&field.name);
-                        if let Some(ty) = &field.ty {
-                            x.push_str(": ");
-                            x.push_str(&format_sema_type(ty.clone(), formatter));
-                        }
                         x.push_str(&format_typed_expr(&field.value, formatter));
                         x
                     })
@@ -425,8 +445,8 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
             )
         }
         SemanticType::SelfType(_) => "Self".to_string(),
-        SemanticType::InferVar(infer_var_id) => format!("<infer_var={}>", infer_var_id),
         SemanticType::Placeholder => "<placeholder>".to_string(),
+        SemanticType::InferVar(_) => "_".to_string(),
     }
 }
 

@@ -448,6 +448,38 @@ impl SemanticType {
         matches!(self.const_inner(), SemanticType::Pointer(..))
     }
 
+    pub fn contains_infer_var(&self) -> bool {
+        match self {
+            SemanticType::Placeholder => false,
+            SemanticType::GenericParam(_) => false,
+            SemanticType::InferVar(_) => true,
+            SemanticType::Pointer(inner) | SemanticType::Const(inner) => inner.contains_infer_var(),
+            SemanticType::Array(array) => array.element_type.contains_infer_var(),
+            SemanticType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_infer_var()),
+            SemanticType::FuncType(func) => {
+                func.params.list.iter().any(|ty| ty.contains_infer_var())
+                    || func
+                        .params
+                        .variadic
+                        .as_ref()
+                        .map(|variadic| match &**variadic {
+                            TypedFuncTypeVariadicParams::UntypedCStyle => false,
+                            TypedFuncTypeVariadicParams::Typed(ty) => ty.contains_infer_var(),
+                        })
+                        .unwrap_or(false)
+                    || func.ret_type.contains_infer_var()
+            }
+            SemanticType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+                TypedTypeArg::Type(ty, _) => ty.contains_infer_var(),
+                TypedTypeArg::Infer => true,
+            }),
+            SemanticType::Unresolved(_)
+            | SemanticType::Plain(_)
+            | SemanticType::SelfType(_)
+            | SemanticType::InterfaceType(_) => false,
+        }
+    }
+
     pub fn contains_generic_param(&self) -> bool {
         match self {
             SemanticType::Placeholder => false,

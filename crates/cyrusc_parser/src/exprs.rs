@@ -1053,7 +1053,7 @@ impl<'source_file> Parser<'source_file> {
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     } else {
-                        self.expect_current(TokenKind::Assign)?;
+                        self.expect_current(TokenKind::Colon)?;
 
                         let value = self.parse_expr(Precedence::Lowest)?;
                         self.next_token();
@@ -1182,22 +1182,12 @@ impl<'source_file> Parser<'source_file> {
 
                         fields.push(UnnamedStructValueField {
                             name: ident.clone(),
-                            ty: None,
                             value: Box::new(ident_expr),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         });
                     } else {
-                        let mut ty: Option<TypeSpecifier> = None;
-                        if self.current_token_is(TokenKind::Colon) {
-                            self.next_token();
+                        self.expect_current(TokenKind::Colon)?;
 
-                            let type_spec = self.parse_type_specifier()?;
-                            self.next_token();
-
-                            ty = Some(type_spec);
-                        }
-
-                        self.expect_current(TokenKind::Assign)?;
                         let field_value = self.parse_expr(Precedence::Lowest)?;
                         self.next_token();
 
@@ -1205,7 +1195,6 @@ impl<'source_file> Parser<'source_file> {
 
                         fields.push(UnnamedStructValueField {
                             name: ident.clone(),
-                            ty,
                             value: Box::new(field_value),
                             loc: Loc::new(self.file_id(), line, column, start, end),
                         });
@@ -1260,7 +1249,7 @@ impl<'source_file> Parser<'source_file> {
                 loc: Loc::new(self.file_id(), line, column, start, end),
             }));
         } else {
-            self.expect_current(TokenKind::Assign)?;
+            self.expect_current(TokenKind::Colon)?;
 
             let field_value = self.parse_expr(Precedence::Lowest)?;
             self.next_token();

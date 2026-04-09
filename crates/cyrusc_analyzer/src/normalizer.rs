@@ -382,21 +382,31 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn expand_semantic_type(&mut self, ty: SemanticType) -> SemanticType {
         match ty {
-            SemanticType::Placeholder => unreachable!(),
-            SemanticType::InferVar(_) => unreachable!(),
+            SemanticType::InferVar(_) => ty,
+            SemanticType::Placeholder => ty,
 
-            SemanticType::Named(named) => match named.decl_id {
+            SemanticType::Named(named_type) => match named_type.decl_id {
                 TypeDeclID::Typedef(typedef_id) => {
                     let typedef_decl = self.decl_tables.typedef_decl(typedef_id);
 
-                    let generic_env = GenericEnv::from_type_args(typedef_decl.generic_params.clone(), &named.type_args);
+                    // fill missing typedef type args with infer placeholders
+                    let mut type_args = named_type.type_args.clone();
+
+                    if type_args.len() < typedef_decl.generic_params.len() {
+                        type_args.0.extend(
+                            std::iter::repeat(TypedTypeArg::Infer)
+                                .take(typedef_decl.generic_params.len() - type_args.len()),
+                        );
+                    }
+
+                    let generic_env = GenericEnv::from_type_args(typedef_decl.generic_params.clone(), &type_args);
 
                     let expanded_type = generic_env.substitute_sema_type(&typedef_decl.ty);
 
                     self.expand_semantic_type(expanded_type)
                 }
                 _ => {
-                    let type_args = named
+                    let type_args = named_type
                         .type_args
                         .iter()
                         .map(|type_arg| match type_arg {
@@ -408,7 +418,7 @@ impl<'a> AnalysisContext<'a> {
                         .collect();
 
                     SemanticType::Named(NamedType {
-                        decl_id: named.decl_id,
+                        decl_id: named_type.decl_id,
                         type_args,
                     })
                 }

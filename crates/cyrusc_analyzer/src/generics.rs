@@ -15,7 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, env::generic_env::GenericEnv};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
+use cyrusc_diagcentral::{Diag, DiagLevel};
+use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
     stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
@@ -94,24 +96,43 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn apply_generic_defaults(&mut self, generic_params: TypedGenericParams) {
         for generic_param_id in generic_params.iter() {
-            let already_exist = {
+            let generic_param = self.decl_tables.generic_param(*generic_param_id);
+
+            let binding = {
                 let generic_env = self.current_generic_env_mut().unwrap();
-                generic_env.lookup(*generic_param_id).is_some()
+                generic_env.lookup(*generic_param_id).cloned()
             };
 
-            if already_exist {
+            if let Some(bound_ty) = binding {
+                let resolved = self.func_env.infer.as_ref().unwrap().resolve(&bound_ty);
+
+                if let SemanticType::InferVar(var) = resolved {
+                    if let Some(default_ty) = &generic_param.default {
+                        let mut default_type = self
+                            .normalize_sema_type(*default_ty.clone(), generic_param.name.loc)
+                            .unwrap();
+
+                        default_type = self.substitute_type(&default_type);
+
+                        self.func_env
+                            .infer
+                            .as_mut()
+                            .unwrap()
+                            .unify(&SemanticType::InferVar(var), &default_type);
+                    }
+                }
+
                 continue;
             }
 
-            let generic_param = self.decl_tables.generic_param(*generic_param_id);
-
-            if let Some(ty) = &generic_param.default {
-                let mut default_type = self.normalize_sema_type(*ty.clone(), generic_param.name.loc).unwrap();
+            if let Some(default_ty) = &generic_param.default {
+                let mut default_type = self
+                    .normalize_sema_type(*default_ty.clone(), generic_param.name.loc)
+                    .unwrap();
 
                 default_type = self.substitute_type(&default_type);
 
                 let generic_env = self.current_generic_env_mut().unwrap();
-
                 generic_env.bind(*generic_param_id, default_type);
             }
         }
@@ -119,9 +140,25 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn create_inference_generic_env(
         &mut self,
+        type_name: &String,
         params: TypedGenericParams,
         type_args: &TypedTypeArgs,
-    ) -> GenericEnv {
+        loc: Loc,
+    ) -> Option<GenericEnv> {
+        if !type_args.is_empty() && params.len() != type_args.len() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::WrongNumberOfTypeArgs {
+                    type_name: type_name.clone(),
+                    expected: params.len(),
+                    provided: type_args.len(),
+                }),
+                loc: Some(loc),
+                hint: None,
+            });
+            return None;
+        }
+
         let mut generic_env = GenericEnv::new(params.clone());
 
         let infer = self.func_env.infer.as_mut().unwrap();
@@ -152,6 +189,6 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        generic_env
+        Some(generic_env)
     }
 }

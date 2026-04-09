@@ -58,15 +58,15 @@ pub fn is_comptime_valid(expr: &TypedExprKind) -> bool {
         TypedExprKind::Infix(infix) => is_comptime_valid(&infix.lhs.kind) && is_comptime_valid(&infix.rhs.kind),
         TypedExprKind::Unary(unary) => is_comptime_valid(&unary.operand.kind),
         TypedExprKind::Tuple(_) | TypedExprKind::Array(_) => false,
-        
+
         TypedExprKind::StructInit(_)
+        | TypedExprKind::UnionInit(_)
         | TypedExprKind::UnnamedStructValue(_)
         | TypedExprKind::UnnamedEnumValue(_)
         | TypedExprKind::EnumStructVariantInit(_)
         | TypedExprKind::EnumInit(_)
-        | TypedExprKind::UnnamedUnionValue(_) => false,
-
-        TypedExprKind::Symbol(..)
+        | TypedExprKind::UnnamedUnionValue(_)
+        | TypedExprKind::Symbol(_)
         | TypedExprKind::ArrayIndex(_)
         | TypedExprKind::TupleAccess(_)
         | TypedExprKind::Deref(_)

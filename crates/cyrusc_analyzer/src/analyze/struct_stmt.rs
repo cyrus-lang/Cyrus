@@ -82,7 +82,9 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            self.validate_struct_field_type(struct_decl_id, &field.ty, field.loc);
+            if !field.ty.contains_generic_param() {
+                self.validate_struct_field_type(struct_decl_id, &field.ty, field.loc);
+            }
         }
     }
 

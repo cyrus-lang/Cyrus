@@ -94,9 +94,6 @@ pub enum AnalyzerDiagKind {
     #[error("Overlapping range in switch case.")]
     OverlappingSwitchCaseRange,
 
-    #[error("Goto targets a the label '{label_name}' that is not defined in the current scope.")]
-    UndefinedGotoLabel { label_name: String },
-
     #[error("Cannot destructure tuple in export without a value.")]
     TupleDestructionWithNoRhs,
 
@@ -108,6 +105,13 @@ pub enum AnalyzerDiagKind {
 
     #[error("Could not resolve type for generic parameter '{param_name}'.")]
     UnresolvedGenericParameter { param_name: String },
+
+    #[error("Type '{type_name}' expects {expected} type arguments but {provided} were provided.")]
+    WrongNumberOfTypeArgs {
+        type_name: String,
+        expected: usize,
+        provided: usize,
+    },
 
     #[error("Unknown symbol '{symbol_name}'.")]
     UnknownSymbol { symbol_name: String },
@@ -169,6 +173,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("Could not infer type of unnamed union value.")]
     UnnamedUnionValueInfering,
+
+    #[error("Union initialization must contain exactly one field.")]
+    UnionInitMustContainExactlyOneField,
 
     #[error("Only enum variants are allowed here.")]
     ExpressionPatternInAEnumSwitch,
@@ -321,9 +328,6 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot dereference a pointer of type 'void*'.")]
     DerefVoidPointerValue,
 
-    #[error("Duplicate generic parameter name '{param_name}'.")]
-    DuplicateGenericParam { param_name: String },
-
     #[error("Method generic parameter '{param_name}' shadows generic parameter from '{object_name}'.")]
     ShadowsObjectGenericParam { param_name: String, object_name: String },
 
@@ -396,6 +400,9 @@ pub enum AnalyzerDiagKind {
 
     #[error("An untyped array was constructed, but the compiler was unable to infer a suitable element type.")]
     UntypedArrayCannotBeInferred,
+
+    #[error("Cannot infer type for generic parameter '{param_name}' in '{type_name}'.")]
+    CannotInferGenericArgument { type_name: String, param_name: String },
 
     #[error(
         "Type mismatch for value of type '{element_type}' at index {element_index} for array of type '{expected_type}'."
@@ -551,6 +558,17 @@ impl<'a> AnalysisContext<'a> {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: Box::new(AnalyzerDiagKind::NonStructSymbol {
+                symbol_name: self.formatter.format_symbol_name(symbol_id),
+            }),
+            loc: Some(loc),
+            hint: None,
+        });
+    }
+
+    pub(crate) fn report_non_union_symbol(&self, symbol_id: SymbolID, loc: Loc) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: Box::new(AnalyzerDiagKind::NonUnionSymbol {
                 symbol_name: self.formatter.format_symbol_name(symbol_id),
             }),
             loc: Some(loc),

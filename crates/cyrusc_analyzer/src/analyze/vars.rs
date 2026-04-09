@@ -63,7 +63,9 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if let Some(sema_type) = &global_var.ty {
-            self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc);
+            if !self.validate_variable_type(sema_type, global_var.expr.is_some(), global_var.loc) {
+                return;
+            }
         }
 
         if let Some(expr) = &global_var.expr {
@@ -142,7 +144,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(sema_type) = &var.ty {
-            self.validate_variable_type(sema_type, var.rhs.is_some(), var.loc);
+            if !self.validate_variable_type(sema_type, var.rhs.is_some(), var.loc) {
+                return;
+            }
         }
 
         if let Some(expr) = &mut var.rhs {
@@ -162,14 +166,14 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
-        
+
         self.decl_tables.with_var_decl_mut(var_decl_id, |var_decl| {
             var_decl.rhs = var.rhs.clone();
             var_decl.ty = var.ty.clone();
         });
     }
 
-    fn validate_variable_type(&mut self, sema_type: &SemanticType, is_init: bool, loc: Loc) {
+    fn validate_variable_type(&mut self, sema_type: &SemanticType, is_init: bool, loc: Loc) -> bool {
         if sema_type.const_inner().is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -197,6 +201,6 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        self.check_type_arity(sema_type.clone(), loc);
+        self.check_type_arity(sema_type.clone(), loc).is_some()
     }
 }

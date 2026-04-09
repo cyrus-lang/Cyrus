@@ -78,7 +78,9 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
-            self.validate_union_field_type(union_decl_id, &field.ty, field.loc);
+            if !field.ty.contains_generic_param() {
+                self.validate_union_field_type(union_decl_id, &field.ty, field.loc);
+            }
         }
     }
 

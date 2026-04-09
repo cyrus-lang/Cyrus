@@ -20,7 +20,7 @@ use cyrusc_ast::{abi::Visibility, modifiers::StructModifiers};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     decls::{MethodDecls, StructDecl, StructDeclID},
-    exprs::{TypedStructFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
+    exprs::{TypedFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
     format::{format_missing_fields, format_sema_type, format_struct_decl},
     stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
     types::{NamedType, SemanticType, TypeDeclID, UnresolvedType},
@@ -38,7 +38,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
-        let TypeDeclID::Struct(struct_decl_id) = named_type.decl_id else {
+        let Some(struct_decl_id) = named_type.decl_id.as_struct() else {
             self.report_non_struct_symbol(symbol_id, struct_init.loc);
             return None;
         };
@@ -50,59 +50,27 @@ impl<'a> AnalysisContext<'a> {
 
         let struct_decl = self.decl_tables.struct_decl(struct_decl_id);
 
+        let struct_name = format_struct_decl(&struct_decl, self.formatter);
+
         self.normalize_type_args(&mut struct_init.type_args);
 
-        // let generic_env = GenericEnv::from_type_args(struct_decl.generic_params.clone(), &struct_init.type_args);
-        let generic_env = self.create_inference_generic_env(struct_decl.generic_params.clone(), &struct_init.type_args);
+        let generic_env = self.create_inference_generic_env(
+            &struct_name,
+            struct_decl.generic_params.clone(),
+            &struct_init.type_args,
+            struct_init.loc,
+        )?;
 
         self.with_generic_env(generic_env, |this| {
             for field in &mut struct_init.fields {
-                let Some(mut expected_type) = struct_decl
+                let Some(expected_type) = struct_decl
                     .lookup_field(&field.name)
                     .map(|field| this.substitute_type(&field.ty))
                 else {
                     continue;
                 };
 
-                let Some(value_type) = this.analyze_expr(&mut field.value, Some(expected_type.clone())) else {
-                    continue;
-                };
-
-                let mut value_type = this.substitute_type(&value_type);
-
-                // generic inference
-                if let Some(infer) = &mut this.func_env.infer {
-                    if !infer.unify(&expected_type, &value_type) {
-                        this.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                                lhs_type: format_sema_type(expected_type.clone(), this.formatter),
-                                rhs_type: format_sema_type(value_type.clone(), this.formatter),
-                            }),
-                            loc: Some(field.loc),
-                            hint: None,
-                        });
-                        continue;
-                    }
-
-                    // resolve inference variables after unification
-                    expected_type = infer.resolve(&expected_type);
-                    value_type = infer.resolve(&value_type);
-                }
-
-                expected_type = this.substitute_type(&expected_type);
-
-                if !this.is_assignable_to(value_type.clone(), expected_type.clone()) {
-                    this.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(expected_type.clone(), this.formatter),
-                            rhs_type: format_sema_type(value_type.clone(), this.formatter),
-                        }),
-                        loc: Some(field.loc),
-                        hint: None,
-                    });
-                }
+                this.analyze_field_assign(&mut field.value, expected_type, field.loc);
             }
 
             this.check_duplicate_struct_field_init(&struct_init.fields);
@@ -127,45 +95,56 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<SemanticType> {
         // case 1: if expected type is a struct, then use it's declaration
         // and analyze fields with expected type.
-        if let Some((struct_decl_id, struct_decl)) = self.infer_struct_decl_from_expected_type(expected_type) {
-            for struct_value_field in &mut struct_value.fields {
-                if struct_value_field.ty.is_some() {
-                    // FIXME
-                    todo!();
+        if let Some(struct_decl) = self.infer_struct_decl_from_expected_type(expected_type.clone()) {
+            let type_args = if let Some(SemanticType::Named(named)) = &expected_type {
+                named.type_args.clone()
+            } else {
+                TypedTypeArgs::new()
+            };
+
+            let struct_name = format_struct_decl(&struct_decl, self.formatter);
+
+            let generic_env = self.create_inference_generic_env(
+                &struct_name,
+                struct_decl.generic_params.clone(),
+                &type_args,
+                struct_value.loc,
+            )?;
+
+            return self.with_generic_env(generic_env, |this| {
+                for struct_value_field in &mut struct_value.fields {
+                    if let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) {
+                        let expected_field_type = this.substitute_type(&struct_field.ty);
+
+                        this.analyze_field_assign(
+                            &mut struct_value_field.value,
+                            expected_field_type,
+                            struct_value_field.loc,
+                        );
+                    } else {
+                        let struct_name = format_struct_decl(&struct_decl, this.formatter);
+
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                                object_name: struct_name,
+                                field_name: struct_value_field.name.clone(),
+                            }),
+                            loc: Some(struct_value_field.loc),
+                            hint: None,
+                        });
+                    }
                 }
 
-                if let Some(struct_field) = struct_decl.lookup_field(&struct_value_field.name) {
-                    let expected_type = Some(struct_field.ty.clone());
+                this.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
+                this.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
+                this.check_duplicate_fields_for_unnamed_struct_value(struct_value);
 
-                    self.analyze_expr(&mut struct_value_field.value, expected_type);
-                } else {
-                    // field does not exist in expected type
-                    let struct_name = format_struct_decl(&struct_decl, self.formatter);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                            object_name: struct_name,
-                            field_name: struct_value_field.name.clone(),
-                        }),
-                        loc: Some(struct_value_field.loc),
-                        hint: None,
-                    });
-                }
-            }
-
-            self.check_invalid_fields_for_unnamed_struct_value(&struct_decl, struct_value);
-            self.check_missing_fields_for_unnamed_struct_value(&struct_decl, struct_value);
-            self.check_duplicate_fields_for_unnamed_struct_value(struct_value);
-
-            return Some(SemanticType::Named(NamedType {
-                decl_id: TypeDeclID::Struct(struct_decl_id),
-                type_args: TypedTypeArgs::new(),
-            }));
+                Some(expected_type.unwrap())
+            });
         }
 
         // case 2: no expected type (create a new struct decl)
-
         let mut struct_decl = self.create_struct_decl_from_unnamed_struct_value(struct_value);
         let struct_decl_id = self.decl_tables.insert_struct(struct_decl.clone());
 
@@ -175,20 +154,6 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_expr(&mut struct_value_field.value, None);
 
             if let Some(rhs_type) = &struct_value_field.value.sema_type {
-                if let Some(explicit_type) = &struct_value_field.ty {
-                    if !self.is_assignable_to(rhs_type.clone(), explicit_type.clone()) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                                lhs_type: format_sema_type(explicit_type.clone(), self.formatter),
-                                rhs_type: format_sema_type(rhs_type.clone(), self.formatter),
-                            }),
-                            loc: Some(struct_value_field.loc),
-                            hint: None,
-                        });
-                    }
-                }
-
                 struct_field.ty = rhs_type.clone();
             }
         }
@@ -206,14 +171,11 @@ impl<'a> AnalysisContext<'a> {
         }))
     }
 
-    fn infer_struct_decl_from_expected_type(
-        &self,
-        expected_type: Option<SemanticType>,
-    ) -> Option<(StructDeclID, StructDecl)> {
+    fn infer_struct_decl_from_expected_type(&self, expected_type: Option<SemanticType>) -> Option<StructDecl> {
         expected_type.and_then(|sema_type| {
             sema_type
                 .as_struct()
-                .map(|struct_decl_id| (struct_decl_id, self.decl_tables.struct_decl(struct_decl_id)))
+                .map(|struct_decl_id| self.decl_tables.struct_decl(struct_decl_id))
         })
     }
 
@@ -390,7 +352,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_duplicate_struct_field_init(&self, fields: &[TypedStructFieldInit]) {
+    fn check_duplicate_struct_field_init(&self, fields: &[TypedFieldInit]) {
         let mut field_names: FxHashSet<&str> = FxHashSet::default();
 
         for field in fields {

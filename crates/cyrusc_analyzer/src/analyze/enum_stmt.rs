@@ -139,12 +139,14 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for tuple_field in fields {
-                    tuple_field.ty = match self.normalize_sema_type(tuple_field.ty.clone(), tuple_field.loc) {
-                        Some(ty) => ty,
-                        None => continue,
-                    };
+                    if !tuple_field.ty.contains_generic_param() {
+                        tuple_field.ty = match self.normalize_sema_type(tuple_field.ty.clone(), tuple_field.loc) {
+                            Some(ty) => ty,
+                            None => continue,
+                        };
 
-                    self.validate_enum_variant_field_type(enum_decl_id, &tuple_field.ty, tuple_field.loc);
+                        self.validate_enum_variant_field_type(enum_decl_id, &tuple_field.ty, tuple_field.loc);
+                    }
                 }
             }
             TypedEnumVariant::Struct { ident, fields } => {
@@ -158,12 +160,14 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 for struct_field in fields {
-                    struct_field.ty = match self.normalize_sema_type(struct_field.ty.clone(), struct_field.loc) {
-                        Some(ty) => ty,
-                        None => continue,
-                    };
+                    if !struct_field.ty.contains_generic_param() {
+                        struct_field.ty = match self.normalize_sema_type(struct_field.ty.clone(), struct_field.loc) {
+                            Some(ty) => ty,
+                            None => continue,
+                        };
 
-                    self.validate_enum_variant_field_type(enum_decl_id, &struct_field.ty, struct_field.loc);
+                        self.validate_enum_variant_field_type(enum_decl_id, &struct_field.ty, struct_field.loc);
+                    }
                 }
             }
         }
