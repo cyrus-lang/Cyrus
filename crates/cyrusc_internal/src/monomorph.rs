@@ -18,21 +18,21 @@
 use cyrusc_typed_ast::{
     decls::{FuncDeclID, MonomorphID},
     stmts::TypedBlockStmt,
-    types::SemanticType,
+    types::SemaType,
 };
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MonomorphKey {
     pub template: FuncDeclID,
-    pub type_args: Vec<SemanticType>,
+    pub type_args: Vec<SemaType>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MonomorphInstance {
     pub id: MonomorphID,
     pub template: FuncDeclID,
-    pub type_args: Vec<SemanticType>,
+    pub type_args: Vec<SemaType>,
 
     pub body: Option<TypedBlockStmt>,
     pub analyzed: bool,
@@ -49,7 +49,7 @@ impl MonomorphRegistry {
         Self::default()
     }
 
-    pub fn get_or_create(&mut self, template: FuncDeclID, type_args: Vec<SemanticType>) -> MonomorphID {
+    pub fn get_or_create(&mut self, template: FuncDeclID, type_args: Vec<SemaType>) -> MonomorphID {
         let key = MonomorphKey { template, type_args };
 
         if let Some(id) = self.key_map.get(&key) {

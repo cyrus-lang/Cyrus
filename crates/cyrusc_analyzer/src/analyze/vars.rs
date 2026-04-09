@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     format::format_sema_type,
     stmts::{TypedGlobalVarStmt, TypedVarStmt},
-    types::SemanticType,
+    types::SemaType,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -69,7 +69,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(expr) = &global_var.expr {
-            if !is_comptime_valid(&expr.kind) && !matches!(global_var.ty, Some(SemanticType::Const(..))) {
+            if !is_comptime_valid(&expr.kind) && !matches!(global_var.ty, Some(SemaType::Const(..))) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::GlobalVariableExprNotComptimeValid),
@@ -80,15 +80,12 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if self.is_const_qualified_type_assigned_to_non_const_variable(
-            &global_var.ty.as_ref().unwrap(),
-            global_var.is_const,
-        ) {
-            self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
-        }
-
         if let Some(expr) = &global_var.expr {
             if let Some(target_type) = &global_var.ty {
+                if self.is_const_qualified_type_assigned_to_non_const_variable(&target_type, global_var.is_const) {
+                    self.report_const_qualified_type_assigned_to_non_const_variable(global_var.loc);
+                }
+
                 let expr_type = expr.sema_type.clone().unwrap();
 
                 if *expr_type.const_inner() != *target_type.const_inner() {
@@ -139,12 +136,12 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        if self.is_const_qualified_type_assigned_to_non_const_variable(&var.ty.as_ref().unwrap(), var.is_const) {
-            self.report_const_qualified_type_assigned_to_non_const_variable(var.loc);
-        }
+        if let Some(ty) = &var.ty {
+            if self.is_const_qualified_type_assigned_to_non_const_variable(ty, var.is_const) {
+                self.report_const_qualified_type_assigned_to_non_const_variable(var.loc);
+            }
 
-        if let Some(sema_type) = &var.ty {
-            if !self.validate_variable_type(sema_type, var.rhs.is_some(), var.loc) {
+            if !self.validate_variable_type(ty, var.rhs.is_some(), var.loc) {
                 return;
             }
         }
@@ -173,7 +170,7 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    fn validate_variable_type(&mut self, sema_type: &SemanticType, is_init: bool, loc: Loc) -> bool {
+    fn validate_variable_type(&mut self, sema_type: &SemaType, is_init: bool, loc: Loc) -> bool {
         if sema_type.const_inner().is_void() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,

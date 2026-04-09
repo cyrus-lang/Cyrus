@@ -23,12 +23,12 @@ use cyrusc_typed_ast::{
     exprs::{TypedFieldInit, TypedStructInitExpr, TypedUnnamedStructValue},
     format::{format_missing_fields, format_sema_type, format_struct_decl},
     stmts::{TypedGenericParams, TypedStructField, TypedTypeArgs},
-    types::{NamedType, SemanticType, TypeDeclID, UnresolvedType},
+    types::{NamedType, SemaType, TypeDeclID, UnresolvedType},
 };
 use fx_hash::FxHashSet;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_struct_init(&mut self, struct_init: &mut TypedStructInitExpr) -> Option<SemaType> {
         let symbol_id = struct_init.symbol_id.unwrap();
 
         let init_type = self.resolve_symbol_type_expanded(symbol_id, struct_init.loc)?;
@@ -81,7 +81,7 @@ impl<'a> AnalysisContext<'a> {
 
             let final_type_args = this.collect_instantiated_type_args(struct_decl.generic_params);
 
-            Some(SemanticType::Named(NamedType {
+            Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Struct(struct_decl_id),
                 type_args: final_type_args,
             }))
@@ -91,12 +91,12 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_unnamed_struct_value(
         &mut self,
         struct_value: &mut TypedUnnamedStructValue,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         // case 1: if expected type is a struct, then use it's declaration
         // and analyze fields with expected type.
         if let Some(struct_decl) = self.infer_struct_decl_from_expected_type(expected_type.clone()) {
-            let type_args = if let Some(SemanticType::Named(named)) = &expected_type {
+            let type_args = if let Some(SemaType::Named(named)) = &expected_type {
                 named.type_args.clone()
             } else {
                 TypedTypeArgs::new()
@@ -165,13 +165,13 @@ impl<'a> AnalysisContext<'a> {
             *_struct_decl = struct_decl.clone();
         });
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
 
-    fn infer_struct_decl_from_expected_type(&self, expected_type: Option<SemanticType>) -> Option<StructDecl> {
+    fn infer_struct_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<StructDecl> {
         expected_type.and_then(|sema_type| {
             sema_type
                 .as_struct()
@@ -185,7 +185,7 @@ impl<'a> AnalysisContext<'a> {
             .iter()
             .map(|field| TypedStructField {
                 name: field.name.clone(),
-                ty: SemanticType::Placeholder,
+                ty: SemaType::Placeholder,
                 vis: Visibility::Public,
                 loc: field.loc,
             })

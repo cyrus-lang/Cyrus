@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     decls::{UnionDecl, UnionDeclID},
     format::{format_sema_type, format_union_decl},
     stmts::{TypedTypeArgs, TypedUnionField, TypedUnionStmt},
-    types::{NamedType, SemanticType, TypeDeclID},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
 
@@ -141,7 +141,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn validate_union_field_type(&mut self, union_decl_id: UnionDeclID, sema_type: &SemanticType, loc: Loc) {
+    fn validate_union_field_type(&mut self, union_decl_id: UnionDeclID, sema_type: &SemaType, loc: Loc) {
         let sema_type = sema_type.const_inner();
 
         if sema_type.is_void() {

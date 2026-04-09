@@ -23,11 +23,11 @@ use cyrusc_typed_ast::{
     exprs::{TypedExprStmt, TypedFuncCall, TypedFuncCallDispatch},
     format::{format_func_type, format_sema_type, format_typed_expr},
     stmts::{TypedFuncTypeVariadicParams, TypedFuncVariadicParam},
-    types::{SemanticType, TypedFuncType},
+    types::{SemaType, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemanticType> {
+    pub(crate) fn analyze_func_call(&mut self, func_call: &mut TypedFuncCall) -> Option<SemaType> {
         let operand_type = self.analyze_expr_non_terminal(&mut func_call.operand, None)?;
 
         let Some(mut func_type) = operand_type.as_func_type().cloned() else {
@@ -107,7 +107,7 @@ impl<'a> AnalysisContext<'a> {
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
         instance_method_call: bool,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         let is_variadic = func_decl.params.variadic.is_some();
         let mut expected_args_len = func_decl.params.list.len();
 
@@ -225,7 +225,7 @@ impl<'a> AnalysisContext<'a> {
         func_type: &mut TypedFuncType,
         args: &mut Vec<TypedExprStmt>,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         let is_variadic = func_type.params.variadic.is_some();
         let expected_args_len = func_type.params.list.len();
         let func_name = format_func_type(func_type, self.formatter);

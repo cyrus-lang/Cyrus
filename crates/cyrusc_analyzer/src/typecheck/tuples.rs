@@ -19,7 +19,7 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     exprs::{TypedTupleAccessExpr, TypedTupleExpr},
-    types::{SemanticType, TypedTupleType},
+    types::{SemaType, TypedTupleType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -31,9 +31,9 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_tuple_value(
         &mut self,
         tuple_value: &mut TypedTupleExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
-        let mut elements: Vec<SemanticType> = Vec::new();
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
+        let mut elements: Vec<SemaType> = Vec::new();
 
         let tuple_type_opt = match expected_type {
             Some(sema_type) => sema_type.as_tuple_type().cloned(),
@@ -41,7 +41,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         for (i, expr) in &mut tuple_value.elements.iter_mut().enumerate() {
-            let mut expected_type: Option<SemanticType> = None;
+            let mut expected_type: Option<SemaType> = None;
 
             if let Some(tuple_type) = &tuple_type_opt {
                 expected_type = tuple_type.elements.get(i).cloned();
@@ -53,7 +53,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        Some(SemanticType::Tuple(TypedTupleType {
+        Some(SemaType::Tuple(TypedTupleType {
             elements,
             loc: tuple_value.loc,
         }))
@@ -67,8 +67,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_tuple_access(
         &mut self,
         tuple_member_access: &mut TypedTupleAccessExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let operand_type = self.analyze_expr(&mut tuple_member_access.operand, expected_type)?;
 
         if !operand_type.const_inner().as_tuple_type().is_some() {

@@ -22,7 +22,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     decls::FuncDecl,
     stmts::{TypedBlockStmt, TypedFuncDeclStmt, TypedFuncDefStmt},
-    types::SemanticType,
+    types::SemaType,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -114,7 +114,7 @@ impl<'a> AnalysisContext<'a> {
         self.normalize_func_params(&mut func_decl.params, func_decl.loc);
     }
 
-    pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemanticType) {
+    pub(crate) fn analyze_func_body(&mut self, body: &mut TypedBlockStmt, ret_type: &SemaType) {
         self.func_env.infer = Some(InferCtx::new());
 
         let state = self.analyze_block_stmt(body);
@@ -148,7 +148,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn validate_param_type(&mut self, sema_type: &SemanticType, loc: Loc) {
+    pub(crate) fn validate_param_type(&mut self, sema_type: &SemaType, loc: Loc) {
         let sema_type = sema_type.const_inner();
 
         if sema_type.is_void() {

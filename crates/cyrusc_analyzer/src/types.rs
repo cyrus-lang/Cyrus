@@ -20,79 +20,80 @@ use cyrusc_const_eval::fold::ConstFolder;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
-    decls::{EnumDecl, StructDecl, UnionDecl},
+    decls::{EnumDecl, StructDecl, TypedefDeclID, UnionDecl},
     format::format_sema_type,
-    stmts::{TypedEnumVariant, TypedTypeArg},
-    types::{NamedType, PlainType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType},
+    stmts::{TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedTypeArg, TypedTypeArgs},
+    types::{
+        InterfaceType, NamedType, PlainType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType,
+        TypedTupleType,
+    },
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemanticType, named_type: NamedType) -> bool {
+    pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemaType, named_type: NamedType) -> bool {
         match field_type {
-            SemanticType::Unresolved(_) => unreachable!(),
-            SemanticType::Named(_named_type) => *_named_type == named_type,
-            SemanticType::Pointer(_) => {
+            SemaType::Unresolved(_) => unreachable!(),
+            SemaType::Named(_named_type) => *_named_type == named_type,
+            SemaType::Pointer(_) => {
                 false // indirect
             }
-            SemanticType::FuncType(_) => {
+            SemaType::FuncType(_) => {
                 // func type lowered as pointer-size value in codegen,
                 // hence it's never harmful for self-recursion situations.
                 false
             }
-            SemanticType::Const(inner) => self.sema_type_contains_self_by_value(inner, named_type),
-            SemanticType::Array(array_type) => {
-                self.sema_type_contains_self_by_value(&array_type.element_type, named_type)
-            }
-            SemanticType::Tuple(tuple_type) => tuple_type
+            SemaType::Const(inner) => self.sema_type_contains_self_by_value(inner, named_type),
+            SemaType::Array(array_type) => self.sema_type_contains_self_by_value(&array_type.element_type, named_type),
+            SemaType::Tuple(tuple_type) => tuple_type
                 .elements
                 .iter()
                 .any(|ty| self.sema_type_contains_self_by_value(ty, named_type.clone())),
 
-            SemanticType::InterfaceType(_)
-            | SemanticType::SelfType(_)
-            | SemanticType::Plain(_)
-            | SemanticType::GenericParam(_)
-            | SemanticType::InferVar(_)
-            | SemanticType::Placeholder => false,
+            SemaType::InterfaceType(_)
+            | SemaType::SelfType(_)
+            | SemaType::Plain(_)
+            | SemaType::GenericParam(_)
+            | SemaType::InferVar(_)
+            | SemaType::Placeholder
+            | SemaType::Err(_) => false,
         }
     }
 
-    pub(crate) fn is_assignable_to(
-        &mut self,
-        mut rhs_type: SemanticType,
-        mut lhs_type: SemanticType,
-        loc: Loc,
-    ) -> bool {
-        lhs_type = self.expand_semantic_type(lhs_type, loc);
-        rhs_type = self.expand_semantic_type(rhs_type, loc);
+    pub(crate) fn is_assignable_to(&mut self, mut rhs_type: SemaType, mut lhs_type: SemaType, loc: Loc) -> bool {
+        lhs_type = self.expand_sema_type(lhs_type, loc);
+        rhs_type = self.expand_sema_type(rhs_type, loc);
 
         match (rhs_type.const_inner().clone(), lhs_type.const_inner().clone()) {
-            (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => {
+            (SemaType::Err(_), _) | (_, SemaType::Err(_)) => {
+                return true;
+            }
+
+            (SemaType::Named(named_type1), SemaType::Named(named_type2)) => {
                 self.is_named_type_assignable_to(named_type1, named_type2, loc)
             }
-            (SemanticType::Plain(plain_type1), SemanticType::Plain(plain_type2)) => {
+            (SemaType::Plain(plain_type1), SemaType::Plain(plain_type2)) => {
                 self.is_plain_type_assignable_to(plain_type1, plain_type2)
             }
-            (SemanticType::Array(array_type1), SemanticType::Array(array_type2)) => {
+            (SemaType::Array(array_type1), SemaType::Array(array_type2)) => {
                 let valid_capacity = self.is_const_str_assignable_to_array(array_type1.clone(), array_type2.clone());
 
                 valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
             }
-            (SemanticType::Array(array_type), SemanticType::Pointer(inner)) => {
+            (SemaType::Array(array_type), SemaType::Pointer(inner)) => {
                 // array-to-pointer decay
                 self.is_assignable_to(*array_type.element_type, *inner, loc)
             }
-            (SemanticType::Pointer(inner1), SemanticType::Pointer(inner2)) => {
+            (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
                 (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
-            (SemanticType::FuncType(func_type1), SemanticType::FuncType(func_type2)) => func_type1 == func_type2,
-            (SemanticType::Tuple(tuple_type1), SemanticType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
-            (SemanticType::InterfaceType(interface_type1), SemanticType::InterfaceType(interface_type2)) => {
+            (SemaType::FuncType(func_type1), SemaType::FuncType(func_type2)) => func_type1 == func_type2,
+            (SemaType::Tuple(tuple_type1), SemaType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
+            (SemaType::InterfaceType(interface_type1), SemaType::InterfaceType(interface_type2)) => {
                 interface_type1.interface_decl_id == interface_type2.interface_decl_id
             }
 
             // allowed: null -> T*
-            (SemanticType::Plain(PlainType::Null), SemanticType::Pointer(..)) => true,
+            (SemaType::Plain(PlainType::Null), SemaType::Pointer(..)) => true,
 
             _ => false,
         }
@@ -363,35 +364,33 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // NOTE: Would be used after implementing @cast.
-    pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemanticType, target_type: SemanticType) -> bool {
+    pub(crate) fn is_explicit_cast_allowed(&mut self, value_type: SemaType, target_type: SemaType) -> bool {
         match (value_type, target_type) {
             // Any integer to any integer
-            (SemanticType::Plain(value), SemanticType::Plain(target)) if value.is_integer() && target.is_integer() => {
-                true
-            }
+            (SemaType::Plain(value), SemaType::Plain(target)) if value.is_integer() && target.is_integer() => true,
 
             // Any float to any float
-            (SemanticType::Plain(value), SemanticType::Plain(target)) if value.is_float() && target.is_float() => true,
+            (SemaType::Plain(value), SemaType::Plain(target)) if value.is_float() && target.is_float() => true,
 
             // Any integer <-> float
-            (SemanticType::Plain(value), SemanticType::Plain(target))
+            (SemaType::Plain(value), SemaType::Plain(target))
                 if (value.is_integer() && target.is_float()) || (value.is_float() && target.is_integer()) =>
             {
                 true
             }
 
             // Bool to anything integer-ish (common in C-style languages)
-            (SemanticType::Plain(PlainType::Bool), SemanticType::Plain(target)) if target.is_integer() => true,
+            (SemaType::Plain(PlainType::Bool), SemaType::Plain(target)) if target.is_integer() => true,
 
             // Char to integer and back
-            (SemanticType::Plain(PlainType::Char), SemanticType::Plain(target)) if target.is_integer() => true,
-            (SemanticType::Plain(value), SemanticType::Plain(PlainType::Char)) if value.is_integer() => true,
+            (SemaType::Plain(PlainType::Char), SemaType::Plain(target)) if target.is_integer() => true,
+            (SemaType::Plain(value), SemaType::Plain(PlainType::Char)) if value.is_integer() => true,
 
             // void* <-> intptr/uintptr
-            (SemanticType::Pointer(..), SemanticType::Plain(PlainType::IntPtr))
-            | (SemanticType::Pointer(..), SemanticType::Plain(PlainType::UIntPtr))
-            | (SemanticType::Plain(PlainType::IntPtr), SemanticType::Pointer(..))
-            | (SemanticType::Plain(PlainType::UIntPtr), SemanticType::Pointer(..)) => true,
+            (SemaType::Pointer(..), SemaType::Plain(PlainType::IntPtr))
+            | (SemaType::Pointer(..), SemaType::Plain(PlainType::UIntPtr))
+            | (SemaType::Plain(PlainType::IntPtr), SemaType::Pointer(..))
+            | (SemaType::Plain(PlainType::UIntPtr), SemaType::Pointer(..)) => true,
 
             // NOTE
             //
@@ -422,7 +421,7 @@ impl<'a> AnalysisContext<'a> {
             // point we perform the precise lowering (and any required compile‑time validation)
             // through the cast builtin implementation.
             //
-            (SemanticType::Named(named_type), SemanticType::Plain(plain_type)) => {
+            (SemaType::Named(named_type), SemaType::Plain(plain_type)) => {
                 let Some(enum_decl_id) = named_type.decl_id.as_enum() else {
                     return false;
                 };
@@ -439,8 +438,165 @@ impl<'a> AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn check_type_formation(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
-        if sema_type.count_const_layers() > 1 {
+    fn expand_typedef(&mut self, typedef_decl_id: TypedefDeclID, args: &TypedTypeArgs, loc: Loc) -> SemaType {
+        if self.push_typedef_expansion(typedef_decl_id).is_err() {
+            let symbol_name = self.formatter.format_type_decl(TypeDeclID::Typedef(typedef_decl_id));
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
+                loc: Some(loc),
+                hint: None,
+            });
+            return SemaType::Err(loc);
+        }
+
+        let typedef_decl = self.decl_tables.typedef_decl(typedef_decl_id);
+
+        let generic_params = &typedef_decl.generic_params;
+        let mut final_args = Vec::with_capacity(generic_params.len());
+
+        for i in 0..generic_params.len() {
+            if let Some(arg) = args.get(i) {
+                final_args.push(arg.clone());
+            } else {
+                let infer_type = self.func_env.infer.as_mut().unwrap().new_var();
+
+                final_args.push(TypedTypeArg::Type(infer_type, loc));
+            }
+        }
+
+        if args.len() > final_args.len() {
+            let type_name = format_sema_type(
+                SemaType::Named(NamedType {
+                    decl_id: TypeDeclID::Typedef(typedef_decl_id),
+                    type_args: args.clone(),
+                }),
+                self.formatter,
+            );
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::WrongNumberOfTypeArgs {
+                    type_name,
+                    expected: final_args.len(),
+                    provided: args.len(),
+                }),
+                loc: Some(loc),
+                hint: None,
+            });
+        }
+
+        let generic_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
+
+        let typedef_type = match self.normalize_and_check_type_formation(*typedef_decl.ty, loc) {
+            Some(ty) => ty,
+            None => return SemaType::Err(loc),
+        };
+
+        let substituted_type = generic_env.substitute_sema_type(&typedef_type);
+
+        let result = self.expand_sema_type(substituted_type, loc);
+
+        self.pop_typedef_expansion(typedef_decl_id);
+
+        result
+    }
+
+    pub(crate) fn expand_sema_type(&mut self, ty: SemaType, loc: Loc) -> SemaType {
+        match &ty {
+            SemaType::InferVar(_) => ty,
+            SemaType::Placeholder => ty,
+            SemaType::Named(named_type) => match &named_type.decl_id {
+                TypeDeclID::Typedef(typedef_decl_id) => {
+                    self.expand_typedef(*typedef_decl_id, &named_type.type_args, loc)
+                }
+                _ => {
+                    let type_args = named_type
+                        .type_args
+                        .iter()
+                        .map(|type_arg| match type_arg {
+                            TypedTypeArg::Type(ty, loc) => {
+                                TypedTypeArg::Type(self.expand_sema_type(ty.clone(), *loc), *loc)
+                            }
+                            TypedTypeArg::Infer => TypedTypeArg::Infer,
+                        })
+                        .collect();
+
+                    SemaType::Named(NamedType {
+                        decl_id: named_type.decl_id,
+                        type_args,
+                    })
+                }
+            },
+            SemaType::Pointer(inner) => SemaType::Pointer(Box::new(self.expand_sema_type(*inner.clone(), loc))),
+            SemaType::Const(inner) => SemaType::Const(Box::new(self.expand_sema_type(*inner.clone(), loc))),
+            SemaType::Array(array) => SemaType::Array(TypedArrayType {
+                element_type: Box::new(self.expand_sema_type(*array.element_type.clone(), loc)),
+                capacity: array.capacity.clone(),
+                loc: array.loc,
+            }),
+            SemaType::Tuple(tuple) => {
+                let elements = tuple
+                    .elements
+                    .clone()
+                    .into_iter()
+                    .map(|ty| self.expand_sema_type(ty, loc))
+                    .collect();
+
+                SemaType::Tuple(TypedTupleType {
+                    elements,
+                    loc: tuple.loc,
+                })
+            }
+            SemaType::FuncType(func) => {
+                let params = TypedFuncTypeParams {
+                    list: func
+                        .params
+                        .list
+                        .clone()
+                        .into_iter()
+                        .map(|ty| self.expand_sema_type(ty, loc))
+                        .collect(),
+
+                    variadic: func.params.variadic.clone().map(|variadic| {
+                        Box::new(match *variadic {
+                            TypedFuncTypeVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
+                            TypedFuncTypeVariadicParams::Typed(ty) => {
+                                TypedFuncTypeVariadicParams::Typed(self.expand_sema_type(ty, loc))
+                            }
+                        })
+                    }),
+                };
+                let ret_type = Box::new(self.expand_sema_type(*func.ret_type.clone(), loc));
+
+                SemaType::FuncType(TypedFuncType {
+                    symbol_id: func.symbol_id,
+                    params,
+                    ret_type,
+                    is_public: func.is_public,
+                    loc: func.loc,
+                })
+            }
+            SemaType::InterfaceType(interface) => SemaType::InterfaceType(InterfaceType {
+                interface_decl_id: interface.interface_decl_id,
+                vtable_id: interface.vtable_id,
+                loc: interface.loc,
+            }),
+            SemaType::Plain(_) | SemaType::GenericParam(_) | SemaType::SelfType(_) | SemaType::Unresolved(_) => ty,
+
+            SemaType::Err(_) => ty,
+        }
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn check_type_formation(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+        if ty.is_err() {
+            return None;
+        }
+
+        if ty.count_const_layers() > 1 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::RedundantConstQualifier),
@@ -449,7 +605,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if sema_type.is_self_type() && self.func_env.current_object.is_none() {
+        if ty.is_self_type() && self.func_env.current_object.is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: Box::new(AnalyzerDiagKind::SelfTypeOutsideOfAnObject),
@@ -458,15 +614,19 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if let Some(named_type) = sema_type.as_named_type() {
+        if let Some(named_type) = ty.as_named_type() {
             self.check_unexpected_type_args(named_type, loc);
         }
 
-        Some(sema_type)
+        Some(ty)
     }
 
-    pub(crate) fn check_type_arity(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
-        if let Some(named_type) = sema_type.as_named_type() {
+    pub(crate) fn check_type_arity(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
+        if ty.is_err() {
+            return None;
+        }
+
+        if let Some(named_type) = ty.as_named_type() {
             if self.check_missing_type_args(named_type, loc) {
                 return None;
             }
@@ -476,7 +636,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        Some(sema_type)
+        Some(ty)
     }
 
     fn check_unexpected_type_args(&self, named_type: &NamedType, loc: Loc) -> bool {
@@ -489,7 +649,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if generic_params.is_empty() && !named_type.type_args.is_empty() {
-            let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+            let type_name = format_sema_type(SemaType::Named(named_type.clone()), self.formatter);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -519,7 +679,7 @@ impl<'a> AnalysisContext<'a> {
                 has_error = true;
 
                 let param = self.decl_tables.generic_param(*param_id);
-                let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+                let type_name = format_sema_type(SemaType::Named(named_type.clone()), self.formatter);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -591,7 +751,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedTypeArg::Type(sema_ty, _) => {
                     if sema_ty.contains_infer_var() {
                         has_error = true;
-                        let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+                        let type_name = format_sema_type(SemaType::Named(named_type.clone()), self.formatter);
 
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -606,7 +766,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedTypeArg::Infer => {
                     has_error = true;
-                    let type_name = format_sema_type(SemanticType::Named(named_type.clone()), self.formatter);
+                    let type_name = format_sema_type(SemaType::Named(named_type.clone()), self.formatter);
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,

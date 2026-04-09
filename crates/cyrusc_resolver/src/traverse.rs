@@ -411,11 +411,11 @@ impl Resolver {
         }
     }
 
-    fn resolve_type(&mut self, type_spec: TypeSpecifier, loc: Loc) -> Option<SemanticType> {
+    fn resolve_type(&mut self, type_spec: TypeSpecifier, loc: Loc) -> Option<SemaType> {
         match type_spec {
             TypeSpecifier::Ident(ident) => {
                 if ident.value == "Self" {
-                    return Some(SemanticType::SelfType(TypedSelfType { loc: ident.loc }));
+                    return Some(SemaType::SelfType(TypedSelfType { loc: ident.loc }));
                 }
 
                 self.resolve_ident_type(ident)
@@ -424,16 +424,16 @@ impl Resolver {
             TypeSpecifier::TypeToken(token) => self.resolve_builtin_type(token, loc),
             TypeSpecifier::Const(inner) => {
                 let inner = self.resolve_type(*inner, loc)?;
-                Some(SemanticType::Const(Box::new(inner)))
+                Some(SemaType::Const(Box::new(inner)))
             }
-            TypeSpecifier::SelfType(self_ty) => Some(SemanticType::SelfType(TypedSelfType { loc: self_ty.loc })),
+            TypeSpecifier::SelfType(self_ty) => Some(SemaType::SelfType(TypedSelfType { loc: self_ty.loc })),
             TypeSpecifier::GenericInst(inst) => self.resolve_generic_inst_type(inst, loc),
             TypeSpecifier::Tuple(tuple) => self.resolve_tuple_type(tuple),
             TypeSpecifier::FuncType(func) => self.resolve_func_type(*func, loc),
             TypeSpecifier::Array(array) => self.resolve_array_type(array, loc),
             TypeSpecifier::Deref(inner) => {
                 let inner = self.resolve_type(*inner, loc)?;
-                Some(SemanticType::Pointer(Box::new(inner)))
+                Some(SemaType::Pointer(Box::new(inner)))
             }
             TypeSpecifier::UnnamedUnion(union_ty) => self.resolve_unnamed_union_type(union_ty),
             TypeSpecifier::UnnamedEnum(enum_ty) => self.resolve_unnamed_enum_type(enum_ty),
@@ -441,8 +441,8 @@ impl Resolver {
         }
     }
 
-    fn resolve_builtin_type(&mut self, token: Token, loc: Loc) -> Option<SemanticType> {
-        match SemanticType::try_from(token.kind.clone()) {
+    fn resolve_builtin_type(&mut self, token: Token, loc: Loc) -> Option<SemaType> {
+        match SemaType::try_from(token.kind.clone()) {
             Ok(ty) => Some(ty),
             Err(_) => {
                 self.reporter.report(Diag {
@@ -458,17 +458,17 @@ impl Resolver {
         }
     }
 
-    fn resolve_ident_type(&mut self, ident: Ident) -> Option<SemanticType> {
+    fn resolve_ident_type(&mut self, ident: Ident) -> Option<SemaType> {
         if let Some(symbol_id) = self.resolve_local_scope_symbol(&ident.value) {
-            return Some(SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)));
+            return Some(SemaType::Unresolved(UnresolvedType::Symbol(symbol_id)));
         }
 
         if let Some(generic_param_id) = self.resolve_generic_param_as_type(&ident) {
-            return Some(SemanticType::GenericParam(generic_param_id));
+            return Some(SemaType::GenericParam(generic_param_id));
         }
 
         if let Some(symbol_id) = self.lookup_symbol_id(self.current_scope.unwrap(), &ident.value) {
-            return Some(SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)));
+            return Some(SemaType::Unresolved(UnresolvedType::Symbol(symbol_id)));
         }
 
         self.reporter.report(Diag {
@@ -495,9 +495,9 @@ impl Resolver {
         None
     }
 
-    fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemanticType> {
+    fn resolve_module_import_type(&mut self, module_import: ASTModuleImport) -> Option<SemaType> {
         self.resolve_module_import(module_import.clone())
-            .map(|symbol_id| SemanticType::Unresolved(UnresolvedType::Symbol(symbol_id)))
+            .map(|symbol_id| SemaType::Unresolved(UnresolvedType::Symbol(symbol_id)))
             .or_else(|| {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -511,7 +511,7 @@ impl Resolver {
             })
     }
 
-    fn resolve_func_type(&mut self, func: FuncType, loc: Loc) -> Option<SemanticType> {
+    fn resolve_func_type(&mut self, func: FuncType, loc: Loc) -> Option<SemaType> {
         let mut params = Vec::with_capacity(func.params.list.len());
 
         for param in func.params.list {
@@ -531,7 +531,7 @@ impl Resolver {
 
         let ret_type = self.resolve_type(*func.ret_type, loc)?;
 
-        Some(SemanticType::FuncType(TypedFuncType {
+        Some(SemaType::FuncType(TypedFuncType {
             symbol_id: None,
             params: TypedFuncTypeParams { list: params, variadic },
             ret_type: Box::new(ret_type),
@@ -540,7 +540,7 @@ impl Resolver {
         }))
     }
 
-    fn resolve_generic_inst_type(&mut self, inst: GenericInst, loc: Loc) -> Option<SemanticType> {
+    fn resolve_generic_inst_type(&mut self, inst: GenericInst, loc: Loc) -> Option<SemaType> {
         let base_type = self.resolve_type(*inst.base.clone(), loc)?;
 
         let base = match base_type.const_inner().as_unresolved_symbol_id() {
@@ -561,26 +561,26 @@ impl Resolver {
 
         let type_args = self.resolve_type_args(&inst.type_args)?;
 
-        Some(SemanticType::Unresolved(UnresolvedType::GenericInst {
+        Some(SemaType::Unresolved(UnresolvedType::GenericInst {
             base,
             type_args,
         }))
     }
 
-    fn resolve_tuple_type(&mut self, tuple: TupleType) -> Option<SemanticType> {
+    fn resolve_tuple_type(&mut self, tuple: TupleType) -> Option<SemaType> {
         let mut elements = Vec::new();
 
         for type_spec in tuple.type_list {
             elements.push(self.resolve_type(type_spec, tuple.loc)?);
         }
 
-        Some(SemanticType::Tuple(TypedTupleType {
+        Some(SemaType::Tuple(TypedTupleType {
             elements,
             loc: tuple.loc,
         }))
     }
 
-    fn resolve_array_type(&mut self, array: ArrayType, loc: Loc) -> Option<SemanticType> {
+    fn resolve_array_type(&mut self, array: ArrayType, loc: Loc) -> Option<SemaType> {
         let element_type = self.resolve_type(*array.element_type, loc)?;
 
         let capacity = match array.size {
@@ -591,14 +591,14 @@ impl Resolver {
             ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
         };
 
-        Some(SemanticType::Array(TypedArrayType {
+        Some(SemaType::Array(TypedArrayType {
             element_type: Box::new(element_type),
             capacity,
             loc,
         }))
     }
 
-    fn resolve_unnamed_union_type(&mut self, union_type: UnnamedUnionType) -> Option<SemanticType> {
+    fn resolve_unnamed_union_type(&mut self, union_type: UnnamedUnionType) -> Option<SemaType> {
         let mut fields = Vec::with_capacity(union_type.fields.len());
 
         for field in &union_type.fields {
@@ -626,13 +626,13 @@ impl Resolver {
             loc: union_type.loc,
         });
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
 
-    fn resolve_unnamed_enum_type(&mut self, enum_type: UnnamedEnumType) -> Option<SemanticType> {
+    fn resolve_unnamed_enum_type(&mut self, enum_type: UnnamedEnumType) -> Option<SemaType> {
         let variants = self.resolve_enum_variants(&enum_type.variants)?;
 
         let tag_type = enum_type
@@ -655,13 +655,13 @@ impl Resolver {
             loc: enum_type.loc,
         });
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
 
-    fn resolve_unnamed_struct_type(&mut self, struct_type: UnnamedStructType) -> Option<SemanticType> {
+    fn resolve_unnamed_struct_type(&mut self, struct_type: UnnamedStructType) -> Option<SemaType> {
         let mut fields = Vec::with_capacity(struct_type.fields.len());
 
         // unnamed struct field visibility is always public
@@ -693,7 +693,7 @@ impl Resolver {
             loc: struct_type.loc,
         });
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Struct(struct_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
@@ -766,7 +766,7 @@ impl Resolver {
         Some(typed_bounds)
     }
 
-    fn resolve_generic_param_default(&mut self, generic_param: &GenericParam) -> Option<Option<Box<SemanticType>>> {
+    fn resolve_generic_param_default(&mut self, generic_param: &GenericParam) -> Option<Option<Box<SemaType>>> {
         match &generic_param.default {
             Some(default_ty) => {
                 let ty = self.resolve_type(default_ty.clone(), generic_param.param_name.loc)?;
@@ -1433,7 +1433,7 @@ impl Resolver {
     }
 
     fn resolve_self_modifier_param(&mut self, self_modifier: &SelfModifier) -> TypedSelfModifier {
-        let self_type = SemanticType::SelfType(TypedSelfType { loc: self_modifier.loc });
+        let self_type = SemaType::SelfType(TypedSelfType { loc: self_modifier.loc });
 
         TypedSelfModifier {
             var_decl_id: None,
@@ -1522,7 +1522,7 @@ impl Resolver {
         TypedGenericParams,
         Vec<TypedFuncParamKind>,
         Option<TypedFuncVariadicParam>,
-        SemanticType,
+        SemaType,
     )> {
         let typed_generic_params = self.resolve_generic_params(&generic_params)?;
 
@@ -2416,7 +2416,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_literal_type(&mut self, literal: &ASTLiteralExpr) -> Option<Option<SemanticType>> {
+    fn resolve_literal_type(&mut self, literal: &ASTLiteralExpr) -> Option<Option<SemaType>> {
         match &literal.kind {
             LiteralKind::Integer(_, suffix_opt) | LiteralKind::Float(_, suffix_opt) => {
                 self.resolve_number_literal_type(suffix_opt, literal.loc)
@@ -2434,9 +2434,9 @@ impl Resolver {
         &mut self,
         suffix_opt: &Option<Box<TokenKind>>,
         loc: Loc,
-    ) -> Option<Option<SemanticType>> {
+    ) -> Option<Option<SemaType>> {
         if let Some(token_kind) = suffix_opt {
-            match SemanticType::try_from(*token_kind.clone()) {
+            match SemaType::try_from(*token_kind.clone()) {
                 Ok(sema_type) => Some(Some(sema_type)),
                 Err(_) => {
                     self.reporter.report(Diag {
@@ -2458,30 +2458,30 @@ impl Resolver {
         string_value: &String,
         string_prefix: &Option<StringPrefix>,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         match string_prefix {
             Some(StringPrefix::B) => {
                 let len = string_value.len() + 1;
                 let len_expr = literal_expr_from_const_int(len.try_into().unwrap(), loc);
 
-                Some(SemanticType::Array(TypedArrayType {
-                    element_type: Box::new(SemanticType::Plain(PlainType::Char)),
+                Some(SemaType::Array(TypedArrayType {
+                    element_type: Box::new(SemaType::Plain(PlainType::Char)),
                     capacity: TypedArrayCapacity::Fixed(Box::new(len_expr)),
                     loc,
                 }))
             }
 
-            Some(StringPrefix::C) => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char)))),
+            Some(StringPrefix::C) => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)))),
 
-            None => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char)))),
+            None => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)))),
         }
     }
 
-    fn resolve_plain_literal_type(&self, kind: &LiteralKind) -> Option<SemanticType> {
+    fn resolve_plain_literal_type(&self, kind: &LiteralKind) -> Option<SemaType> {
         match kind {
-            LiteralKind::Bool(_) => Some(SemanticType::Plain(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::Plain(PlainType::Char)),
-            LiteralKind::Null => Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Void)))),
+            LiteralKind::Bool(_) => Some(SemaType::Plain(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemaType::Plain(PlainType::Char)),
+            LiteralKind::Null => Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void)))),
             _ => None,
         }
     }
@@ -2551,7 +2551,7 @@ impl Resolver {
     fn insert_variable_decl(
         &mut self,
         ident: &Ident,
-        ty: Option<SemanticType>,
+        ty: Option<SemaType>,
         rhs: Option<TypedExprStmt>,
         is_const: bool,
     ) -> VarDeclID {

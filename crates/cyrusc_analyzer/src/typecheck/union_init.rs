@@ -23,11 +23,11 @@ use cyrusc_typed_ast::{
     exprs::{TypedUnionInitExpr, TypedUnnamedUnionValue},
     format::format_union_decl,
     stmts::{TypedGenericParams, TypedTypeArgs, TypedUnionField},
-    types::{NamedType, SemanticType, TypeDeclID},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_union_init(&mut self, union_init: &mut TypedUnionInitExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_union_init(&mut self, union_init: &mut TypedUnionInitExpr) -> Option<SemaType> {
         let symbol_id = union_init.symbol_id.unwrap();
 
         let init_type = self.resolve_symbol_type_expanded(symbol_id, union_init.loc)?;
@@ -73,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
 
             let final_type_args = this.collect_instantiated_type_args(union_decl.generic_params);
 
-            let final_type = SemanticType::Named(NamedType {
+            let final_type = SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Union(union_decl_id),
                 type_args: final_type_args,
             });
@@ -85,10 +85,10 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_unnamed_union_value(
         &mut self,
         union_value: &mut TypedUnnamedUnionValue,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         if let Some(union_decl) = self.infer_union_decl_from_expected_type(expected_type.clone()) {
-            let type_args = if let Some(SemanticType::Named(named)) = &expected_type {
+            let type_args = if let Some(SemaType::Named(named)) = &expected_type {
                 named.type_args.clone()
             } else {
                 TypedTypeArgs::new()
@@ -142,13 +142,13 @@ impl<'a> AnalysisContext<'a> {
             *_decl = union_decl.clone();
         });
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Union(union_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
     }
 
-    fn infer_union_decl_from_expected_type(&self, expected_type: Option<SemanticType>) -> Option<UnionDecl> {
+    fn infer_union_decl_from_expected_type(&self, expected_type: Option<SemaType>) -> Option<UnionDecl> {
         expected_type.and_then(|sema_type| {
             sema_type
                 .as_union()
@@ -159,7 +159,7 @@ impl<'a> AnalysisContext<'a> {
     fn create_union_decl_from_unnamed_union_value(&mut self, union_value: &TypedUnnamedUnionValue) -> UnionDecl {
         let fields = vec![TypedUnionField {
             name: union_value.name.as_string(),
-            ty: SemanticType::Placeholder,
+            ty: SemaType::Placeholder,
             loc: union_value.loc,
         }];
 

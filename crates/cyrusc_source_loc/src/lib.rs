@@ -42,7 +42,7 @@ pub struct SourceFile {
     pub content: String,    // The full source code of the file
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Loc {
     pub file_id: FileID,
     pub line: usize,

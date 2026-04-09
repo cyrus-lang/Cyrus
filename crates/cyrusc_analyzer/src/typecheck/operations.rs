@@ -22,22 +22,22 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::*,
     format::format_sema_type,
-    types::{PlainType, SemanticType},
+    types::{PlainType, SemaType},
 };
 
 impl<'a> AnalysisContext<'a> {
     fn analyze_pointer_arithmetic_type(
         &mut self,
-        lhs_type: &SemanticType,
-        rhs_type: &SemanticType,
+        lhs_type: &SemaType,
+        rhs_type: &SemaType,
         is_addition: bool,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         if lhs_type.is_pointer() && rhs_type.is_integer() {
             return Some(lhs_type.clone());
         } else if lhs_type.is_integer() && rhs_type.is_pointer() {
             return Some(rhs_type.clone());
         } else if lhs_type.is_pointer() && rhs_type.is_pointer() && !is_addition {
-            return Some(SemanticType::Plain(PlainType::ISize));
+            return Some(SemaType::Plain(PlainType::ISize));
         } else {
             None
         }
@@ -46,8 +46,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_infix(
         &mut self,
         infix: &mut TypedInfixExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let lhs_type = match self.analyze_expr(&mut infix.lhs, expected_type.clone()) {
             Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
@@ -94,7 +94,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_addr_of(&mut self, addr_of: &mut TypedAddrOfExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_addr_of(&mut self, addr_of: &mut TypedAddrOfExpr) -> Option<SemaType> {
         if !addr_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -112,10 +112,10 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        Some(SemanticType::Pointer(Box::new(operand_type)))
+        Some(SemaType::Pointer(Box::new(operand_type)))
     }
 
-    pub(crate) fn analyze_deref(&mut self, deref: &mut TypedDerefExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_deref(&mut self, deref: &mut TypedDerefExpr) -> Option<SemaType> {
         let expected_type = deref.operand.sema_type.clone();
 
         let operand_type = match self.analyze_expr(&mut deref.operand, expected_type) {
@@ -136,7 +136,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let inner_type = match operand_type {
-            SemanticType::Pointer(sema_type) => *sema_type,
+            SemaType::Pointer(sema_type) => *sema_type,
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -164,8 +164,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_prefix(
         &mut self,
         prefix: &mut TypedPrefixExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let operand_type = match self.analyze_expr(&mut prefix.operand, expected_type) {
             Some(sema_type) => sema_type.const_inner().clone(),
             None => return None,
@@ -174,7 +174,7 @@ impl<'a> AnalysisContext<'a> {
         match prefix.op {
             PrefixOperator::BitwiseNot => {
                 let valid_plain_type = match &operand_type {
-                    SemanticType::Plain(plain_type) => {
+                    SemaType::Plain(plain_type) => {
                         if plain_type.is_integer() {
                             Some(plain_type.clone())
                         } else {
@@ -185,7 +185,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_type) => Some(SemanticType::Plain(sema_type.clone())),
+                    Some(sema_type) => Some(SemaType::Plain(sema_type.clone())),
                     None => {
                         let operand_type = format_sema_type(operand_type, self.formatter);
 
@@ -201,7 +201,7 @@ impl<'a> AnalysisContext<'a> {
             }
             PrefixOperator::Bang => {
                 let valid_plain_type = match &operand_type {
-                    SemanticType::Plain(plain_type) => {
+                    SemaType::Plain(plain_type) => {
                         if plain_type.is_bool() {
                             Some(plain_type)
                         } else {
@@ -212,7 +212,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_type) => Some(SemanticType::Plain(sema_type.clone())),
+                    Some(sema_type) => Some(SemaType::Plain(sema_type.clone())),
                     None => {
                         let operand_type = format_sema_type(operand_type, self.formatter);
 
@@ -228,7 +228,7 @@ impl<'a> AnalysisContext<'a> {
             }
             PrefixOperator::Minus => {
                 let valid_plain_type = match &operand_type {
-                    SemanticType::Plain(plain_type) => {
+                    SemaType::Plain(plain_type) => {
                         if plain_type.is_integer() {
                             if !plain_type.is_signed() {
                                 self.reporter.report(Diag {
@@ -253,7 +253,7 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 match valid_plain_type {
-                    Some(sema_type) => Some(SemanticType::Plain(sema_type.clone())),
+                    Some(sema_type) => Some(SemaType::Plain(sema_type.clone())),
                     None => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -270,7 +270,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_unary(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_unary(&mut self, unary: &mut TypedUnaryExpr) -> Option<SemaType> {
         let expected_type = unary.operand.sema_type.clone();
         let operand_type = self.analyze_expr(&mut unary.operand, expected_type)?;
 
@@ -301,16 +301,16 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_arithmetic_expr(
         &mut self,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
+        lhs_type: SemaType,
+        rhs_type: SemaType,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             let valid = (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float());
 
             if valid {
-                if let (SemanticType::Plain(lhs_basic), SemanticType::Plain(rhs_basic)) = (lhs, rhs) {
-                    Some(SemanticType::Plain(
+                if let (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) = (lhs, rhs) {
+                    Some(SemaType::Plain(
                         PlainType::widen_type(lhs_basic, rhs_basic).unwrap(),
                     ))
                 } else {
@@ -324,16 +324,16 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_compare_expr(
         &mut self,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
+        lhs_type: SemaType,
+        rhs_type: SemaType,
         cmp_eq: bool,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
         if lhs_type.is_enum() && rhs_type.is_enum() {
-            return Some(SemanticType::Plain(PlainType::Bool));
+            return Some(SemaType::Plain(PlainType::Bool));
         } else if !self.is_assignable_to(rhs_type.clone(), lhs_type.clone(), loc) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -349,17 +349,17 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             if (lhs.is_integer() && rhs.is_integer()) || (lhs.is_float() && rhs.is_float()) {
-                Some(SemanticType::Plain(PlainType::Bool))
+                Some(SemaType::Plain(PlainType::Bool))
             } else if cmp_eq {
                 // allow pointer comparisons
-                if let (SemanticType::Pointer(_), SemanticType::Pointer(_)) = (&lhs, &rhs) {
-                    Some(SemanticType::Plain(PlainType::Bool))
-                } else if let (SemanticType::Pointer(_), SemanticType::Plain(PlainType::Null)) = (&lhs, &rhs) {
-                    Some(SemanticType::Plain(PlainType::Bool))
-                } else if let (SemanticType::Plain(PlainType::Bool), SemanticType::Plain(PlainType::Bool)) =
+                if let (SemaType::Pointer(_), SemaType::Pointer(_)) = (&lhs, &rhs) {
+                    Some(SemaType::Plain(PlainType::Bool))
+                } else if let (SemaType::Pointer(_), SemaType::Plain(PlainType::Null)) = (&lhs, &rhs) {
+                    Some(SemaType::Plain(PlainType::Bool))
+                } else if let (SemaType::Plain(PlainType::Bool), SemaType::Plain(PlainType::Bool)) =
                     (&lhs, &rhs)
                 {
-                    Some(SemanticType::Plain(PlainType::Bool))
+                    Some(SemaType::Plain(PlainType::Bool))
                 } else {
                     None
                 }
@@ -372,11 +372,11 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_binary_expr(
         &mut self,
 
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
+        lhs_type: SemaType,
+        rhs_type: SemaType,
         loc: Loc,
-        type_checker: impl Fn(&mut Self, SemanticType, SemanticType) -> Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        type_checker: impl Fn(&mut Self, SemaType, SemaType) -> Option<SemaType>,
+    ) -> Option<SemaType> {
         let lhs_type = lhs_type.const_inner();
         let rhs_type = rhs_type.const_inner();
 
@@ -413,41 +413,41 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_or_expr(&mut self, lhs_type: SemanticType, rhs_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+    fn analyze_or_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         match (lhs_type.clone(), rhs_type.clone()) {
-            (SemanticType::Plain(PlainType::Null), SemanticType::Pointer(inner_pointer_type)) => {
-                Some(SemanticType::Pointer(inner_pointer_type))
+            (SemaType::Plain(PlainType::Null), SemaType::Pointer(inner_pointer_type)) => {
+                Some(SemaType::Pointer(inner_pointer_type))
             }
-            (SemanticType::Pointer(inner_pointer_type), SemanticType::Plain(PlainType::Null)) => {
-                Some(SemanticType::Pointer(inner_pointer_type))
+            (SemaType::Pointer(inner_pointer_type), SemaType::Plain(PlainType::Null)) => {
+                Some(SemaType::Pointer(inner_pointer_type))
             }
-            (SemanticType::Pointer(inner_pointer_type1), SemanticType::Pointer(inner_pointer_type2)) => {
+            (SemaType::Pointer(inner_pointer_type1), SemaType::Pointer(inner_pointer_type2)) => {
                 if *inner_pointer_type1 == *inner_pointer_type2 {
-                    Some(SemanticType::Pointer(inner_pointer_type1))
+                    Some(SemaType::Pointer(inner_pointer_type1))
                 } else {
                     None
                 }
             }
-            (null_sema_ty @ SemanticType::Plain(PlainType::Null), SemanticType::Plain(PlainType::Null)) => {
+            (null_sema_ty @ SemaType::Plain(PlainType::Null), SemaType::Plain(PlainType::Null)) => {
                 Some(null_sema_ty)
             }
             _ => self.analyze_binary_expr(lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-                (SemanticType::Plain(lhs_basic), SemanticType::Plain(rhs_basic))
+                (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic))
                     if lhs_basic.is_bool() && rhs_basic.is_bool() =>
                 {
-                    Some(SemanticType::Plain(PlainType::Bool))
+                    Some(SemaType::Plain(PlainType::Bool))
                 }
                 _ => None,
             }),
         }
     }
 
-    fn analyze_and_expr(&mut self, lhs_type: SemanticType, rhs_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+    fn analyze_and_expr(&mut self, lhs_type: SemaType, rhs_type: SemaType, loc: Loc) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
-            (SemanticType::Plain(lhs_basic), SemanticType::Plain(rhs_basic))
+            (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic))
                 if lhs_basic.is_bool() && rhs_basic.is_bool() =>
             {
-                Some(SemanticType::Plain(PlainType::Bool))
+                Some(SemaType::Plain(PlainType::Bool))
             }
             _ => None,
         })
@@ -455,14 +455,14 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_left_shift_expr(
         &mut self,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
+        lhs_type: SemaType,
+        rhs_type: SemaType,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
-            if let (SemanticType::Plain(lhs_basic), SemanticType::Plain(rhs_basic)) = (&lhs, &rhs) {
+            if let (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) = (&lhs, &rhs) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    Some(SemanticType::Plain(PlainType::widen_type(
+                    Some(SemaType::Plain(PlainType::widen_type(
                         lhs_basic.clone(),
                         rhs_basic.clone(),
                     )?))
@@ -477,12 +477,12 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_right_shift_expr(
         &mut self,
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
+        lhs_type: SemaType,
+        rhs_type: SemaType,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |this, lhs, rhs| {
-            if let (SemanticType::Plain(lhs_basic), SemanticType::Plain(rhs_basic)) = (&lhs, &rhs) {
+            if let (SemaType::Plain(lhs_basic), SemaType::Plain(rhs_basic)) = (&lhs, &rhs) {
                 // rhs must be unsigned
                 if rhs_basic.is_signed() {
                     this.reporter.report(Diag {
@@ -495,7 +495,7 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    Some(SemanticType::Plain(PlainType::widen_type(
+                    Some(SemaType::Plain(PlainType::widen_type(
                         lhs_basic.clone(),
                         rhs_basic.clone(),
                     )?))
@@ -511,15 +511,15 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_bitwise_expr(
         &mut self,
 
-        lhs_type: SemanticType,
-        rhs_type: SemanticType,
+        lhs_type: SemaType,
+        rhs_type: SemaType,
         loc: Loc,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         self.analyze_binary_expr(lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
             // only allow integer types
             if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_plain_type(), rhs.as_plain_type()) {
                 if lhs_basic.is_integer() && rhs_basic.is_integer() {
-                    return Some(SemanticType::Plain(
+                    return Some(SemaType::Plain(
                         PlainType::widen_type(lhs_basic.clone(), rhs_basic.clone()).unwrap(),
                     ));
                 }

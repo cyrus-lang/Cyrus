@@ -21,7 +21,7 @@ use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_typed_ast::{
     exprs::{TypedArrayExpr, TypedArrayIndexExpr, literal_expr_from_const_int},
     format::format_sema_type,
-    types::{SemanticType, TypedArrayCapacity, TypedArrayType},
+    types::{SemaType, TypedArrayCapacity, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -32,8 +32,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_array(
         &mut self,
         array: &mut TypedArrayExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         macro_rules! array_type {
             () => {
                 array.ty.clone().unwrap().as_array_type().unwrap()
@@ -57,7 +57,7 @@ impl<'a> AnalysisContext<'a> {
                     let elements_count_expr =
                         literal_expr_from_const_int(elements_count.try_into().unwrap(), first_elem.loc);
 
-                    array.ty = Some(SemanticType::Array(TypedArrayType {
+                    array.ty = Some(SemaType::Array(TypedArrayType {
                         element_type: Box::new(sema_type),
                         capacity: TypedArrayCapacity::Fixed(Box::new(elements_count_expr)),
                         loc: array.loc,
@@ -73,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(sema_type) = expected_element_type {
                 let elements_count_expr = literal_expr_from_const_int(elements_count.try_into().unwrap(), array.loc);
 
-                array.ty = Some(SemanticType::Array(TypedArrayType {
+                array.ty = Some(SemaType::Array(TypedArrayType {
                     element_type: Box::new(sema_type),
                     capacity: TypedArrayCapacity::Fixed(Box::new(elements_count_expr)),
                     loc: array.loc,
@@ -96,7 +96,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         for (i, element) in array.elements.iter_mut().enumerate() {
-            let expr_type: SemanticType;
+            let expr_type: SemaType;
 
             if analyzed_first_element && element.sema_type.is_some() {
                 expr_type = match self.normalize_and_check_type_formation(element.sema_type.clone().unwrap(), element.loc) {
@@ -161,7 +161,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(SemanticType::Array(
+        Some(SemaType::Array(
             array.ty.clone().unwrap().as_array_type().unwrap().clone(),
         ))
     }
@@ -172,7 +172,7 @@ impl<'a> AnalysisContext<'a> {
     /// Validates the index expression is integer type and the operand is
     /// indexable (array or pointer). Returns the element type with proper
     /// const qualification.
-    pub(crate) fn analyze_array_index(&mut self, array_index: &mut TypedArrayIndexExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_array_index(&mut self, array_index: &mut TypedArrayIndexExpr) -> Option<SemaType> {
         let operand_type = match self.analyze_expr(&mut array_index.operand, None) {
             Some(sema_type) => sema_type,
             None => return None,
@@ -217,7 +217,7 @@ impl<'a> AnalysisContext<'a> {
 
         let sema_type = array_index.operand.sema_type.clone().unwrap();
 
-        let element_type: SemanticType;
+        let element_type: SemaType;
 
         if is_operand_array {
             let array_type = sema_type.as_array_type().unwrap();

@@ -19,7 +19,7 @@ use cyrusc_ast::operators::InfixOperator;
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::{
     exprs::{MemoryLocation, TypedExprKind, TypedExprStmt, TypedInfixExpr, TypedLiteralExpr, TypedPrefixExpr},
-    types::{PlainType, SemanticType},
+    types::{PlainType, SemaType},
 };
 use crate::context::AnalysisContext;
 
@@ -27,7 +27,7 @@ use crate::context::AnalysisContext;
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_prefix_not_pointer(
         &mut self,
-        expected_type: Option<SemanticType>,
+        expected_type: Option<SemaType>,
         prefix_expr: &mut TypedPrefixExpr,
     ) -> Option<TypedExprStmt> {
         let operand_type = match self.analyze_expr(&mut prefix_expr.operand, expected_type.clone()) {
@@ -37,7 +37,7 @@ impl<'a> AnalysisContext<'a> {
 
         let null_literal_expr = TypedExprStmt {
             kind: TypedExprKind::Literal(TypedLiteralExpr {
-                ty: Some(SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Void)))),
+                ty: Some(SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Void)))),
                 kind: LiteralKind::Null,
                 loc: prefix_expr.loc,
             }),

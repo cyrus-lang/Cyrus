@@ -28,19 +28,22 @@ use std::hash::{Hash, Hasher};
 pub struct InferVarID(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SemanticType {
+pub enum SemaType {
+    Err(Loc),
+
     Unresolved(UnresolvedType),
     Named(NamedType),
     Plain(PlainType),
     Array(TypedArrayType),
-    Const(Box<SemanticType>),
-    Pointer(Box<SemanticType>),
+    Const(Box<SemaType>),
+    Pointer(Box<SemaType>),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
     SelfType(TypedSelfType),
     InterfaceType(InterfaceType),
     GenericParam(GenericParamID),
     InferVar(InferVarID),
+
     Placeholder, // used only during synthesis of unnamed unions/structs
 }
 
@@ -95,7 +98,7 @@ pub enum PlainType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
-    pub elements: Vec<SemanticType>,
+    pub elements: Vec<SemaType>,
     pub loc: Loc,
 }
 
@@ -103,7 +106,7 @@ pub struct TypedTupleType {
 pub struct TypedFuncType {
     pub symbol_id: Option<SymbolID>,
     pub params: TypedFuncTypeParams,
-    pub ret_type: Box<SemanticType>,
+    pub ret_type: Box<SemaType>,
     pub is_public: bool,
     pub loc: Loc,
 }
@@ -117,7 +120,7 @@ pub struct InterfaceType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct TypedArrayType {
-    pub element_type: Box<SemanticType>,
+    pub element_type: Box<SemaType>,
     pub capacity: TypedArrayCapacity,
     pub loc: Loc,
 }
@@ -183,8 +186,8 @@ impl TypeDeclID {
 }
 
 #[inline]
-pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::Plain(match suffix {
+pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemaType> {
+    Some(SemaType::Plain(match suffix {
         TokenKind::UIntPtr => PlainType::UIntPtr,
         TokenKind::IntPtr => PlainType::IntPtr,
         TokenKind::USize => PlainType::USize,
@@ -206,8 +209,8 @@ pub fn map_integer_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticTyp
 }
 
 #[inline]
-pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemanticType> {
-    Some(SemanticType::Plain(match suffix {
+pub fn map_float_suffix_to_sema_type(suffix: &TokenKind) -> Option<SemaType> {
+    Some(SemaType::Plain(match suffix {
         TokenKind::Float16 => PlainType::Float16,
         TokenKind::Float32 => PlainType::Float32,
         TokenKind::Float64 => PlainType::Float64,
@@ -226,27 +229,27 @@ impl UnresolvedType {
     }
 }
 
-impl SemanticType {
+impl SemaType {
     #[inline]
     pub fn as_unresolved_symbol_id(&self) -> Option<SymbolID> {
         match &self.const_inner() {
-            SemanticType::Unresolved(unresolved_type) => unresolved_type.as_symbol_id(),
+            SemaType::Unresolved(unresolved_type) => unresolved_type.as_symbol_id(),
             _ => None,
         }
     }
 
     #[inline]
-    pub fn const_inner(&self) -> &SemanticType {
+    pub fn const_inner(&self) -> &SemaType {
         match self {
-            SemanticType::Const(sema_type) => sema_type,
+            SemaType::Const(sema_type) => sema_type,
             sema_type @ _ => sema_type,
         }
     }
 
     #[inline]
-    pub fn const_inner_mut(&mut self) -> &mut SemanticType {
+    pub fn const_inner_mut(&mut self) -> &mut SemaType {
         match self {
-            SemanticType::Const(sema_type) => sema_type,
+            SemaType::Const(sema_type) => sema_type,
             sema_type @ _ => sema_type,
         }
     }
@@ -254,31 +257,31 @@ impl SemanticType {
     #[inline]
     pub fn count_const_layers(&self) -> usize {
         match self {
-            SemanticType::Const(inner) => 1 + inner.count_const_layers(),
+            SemaType::Const(inner) => 1 + inner.count_const_layers(),
             _ => 0,
         }
     }
 
     #[inline]
-    pub fn pointer_inner(&self) -> &SemanticType {
+    pub fn pointer_inner(&self) -> &SemaType {
         match self {
-            SemanticType::Pointer(sema_type) => sema_type,
+            SemaType::Pointer(sema_type) => sema_type,
             ty @ _ => ty,
         }
     }
 
     #[inline]
-    pub fn as_const(&self) -> SemanticType {
+    pub fn as_const(&self) -> SemaType {
         if self.is_const() {
             return self.clone();
         }
-        SemanticType::Const(Box::new(self.clone()))
+        SemaType::Const(Box::new(self.clone()))
     }
 
     #[inline]
     pub fn as_plain_type(&self) -> Option<&PlainType> {
         match self.const_inner() {
-            SemanticType::Plain(ty) => Some(ty),
+            SemaType::Plain(ty) => Some(ty),
             _ => None,
         }
     }
@@ -286,7 +289,7 @@ impl SemanticType {
     #[inline]
     pub fn as_named_type(&self) -> Option<&NamedType> {
         match self.const_inner() {
-            SemanticType::Named(named_type) => Some(named_type),
+            SemaType::Named(named_type) => Some(named_type),
             _ => None,
         }
     }
@@ -294,7 +297,7 @@ impl SemanticType {
     #[inline]
     pub fn as_struct(&self) -> Option<StructDeclID> {
         match self.const_inner() {
-            SemanticType::Named(named_type) => named_type.decl_id.as_struct(),
+            SemaType::Named(named_type) => named_type.decl_id.as_struct(),
             _ => None,
         }
     }
@@ -302,7 +305,7 @@ impl SemanticType {
     #[inline]
     pub fn as_union(&self) -> Option<UnionDeclID> {
         match self.const_inner() {
-            SemanticType::Named(named_type) => named_type.decl_id.as_union(),
+            SemaType::Named(named_type) => named_type.decl_id.as_union(),
             _ => None,
         }
     }
@@ -310,7 +313,7 @@ impl SemanticType {
     #[inline]
     pub fn as_enum(&self) -> Option<EnumDeclID> {
         match self.const_inner() {
-            SemanticType::Named(named_type) => named_type.decl_id.as_enum(),
+            SemaType::Named(named_type) => named_type.decl_id.as_enum(),
             _ => None,
         }
     }
@@ -318,7 +321,7 @@ impl SemanticType {
     #[inline]
     pub fn as_interface(&self) -> Option<InterfaceDeclID> {
         match self.const_inner() {
-            SemanticType::Named(named_type) => named_type.decl_id.as_interface(),
+            SemaType::Named(named_type) => named_type.decl_id.as_interface(),
             _ => None,
         }
     }
@@ -326,7 +329,7 @@ impl SemanticType {
     #[inline]
     pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
         match &self.const_inner() {
-            SemanticType::Tuple(tuple_type) => Some(tuple_type),
+            SemaType::Tuple(tuple_type) => Some(tuple_type),
             _ => None,
         }
     }
@@ -334,7 +337,7 @@ impl SemanticType {
     #[inline]
     pub fn as_func_type(&self) -> Option<&TypedFuncType> {
         match &self.const_inner() {
-            SemanticType::FuncType(func_type) => Some(func_type),
+            SemaType::FuncType(func_type) => Some(func_type),
             _ => None,
         }
     }
@@ -342,7 +345,7 @@ impl SemanticType {
     #[inline]
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
         match self.const_inner() {
-            SemanticType::Array(ty) => Some(ty),
+            SemaType::Array(ty) => Some(ty),
             _ => None,
         }
     }
@@ -350,7 +353,7 @@ impl SemanticType {
     #[inline]
     pub fn as_self_type(&self) -> Option<&TypedSelfType> {
         match self.const_inner() {
-            SemanticType::SelfType(self_type) => Some(self_type),
+            SemaType::SelfType(self_type) => Some(self_type),
             _ => None,
         }
     }
@@ -358,22 +361,27 @@ impl SemanticType {
     #[inline]
     pub fn as_generic_param(&self) -> Option<GenericParamID> {
         match self.const_inner() {
-            SemanticType::GenericParam(generic_param_id) => Some(generic_param_id.clone()),
+            SemaType::GenericParam(generic_param_id) => Some(generic_param_id.clone()),
             _ => None,
         }
     }
 }
 
-impl SemanticType {
+impl SemaType {
+    #[inline]
+    pub fn is_err(&self) -> bool {
+        matches!(self, SemaType::Err(_))
+    }
+
     #[inline]
     pub fn is_unresolved(&self) -> bool {
-        matches!(self, SemanticType::Unresolved(_))
+        matches!(self, SemaType::Unresolved(_))
     }
 
     #[inline]
     pub fn is_char(&self) -> bool {
         match self.const_inner() {
-            SemanticType::Plain(PlainType::Char) => true,
+            SemaType::Plain(PlainType::Char) => true,
             _ => false,
         }
     }
@@ -381,7 +389,7 @@ impl SemanticType {
     #[inline]
     pub fn is_scalar(&self) -> bool {
         match self.const_inner() {
-            SemanticType::Plain(plain_type) => plain_type.is_scalar(),
+            SemaType::Plain(plain_type) => plain_type.is_scalar(),
             _ => false,
         }
     }
@@ -389,7 +397,7 @@ impl SemanticType {
     #[inline]
     pub fn is_self_type(&self) -> bool {
         match self.const_inner() {
-            SemanticType::SelfType(_) => true,
+            SemaType::SelfType(_) => true,
             _ => false,
         }
     }
@@ -397,7 +405,7 @@ impl SemanticType {
     #[inline]
     pub fn is_integer(&self) -> bool {
         match self.const_inner() {
-            SemanticType::Plain(basic) => basic.is_integer(),
+            SemaType::Plain(basic) => basic.is_integer(),
             _ => false,
         }
     }
@@ -405,7 +413,7 @@ impl SemanticType {
     #[inline]
     pub fn is_float(&self) -> bool {
         match self.const_inner() {
-            SemanticType::Plain(basic) => basic.is_float(),
+            SemaType::Plain(basic) => basic.is_float(),
             _ => false,
         }
     }
@@ -413,50 +421,50 @@ impl SemanticType {
     #[inline]
     pub fn is_enum(&self) -> bool {
         match self.const_inner() {
-            SemanticType::Named(named_type) => named_type.decl_id.is_enum(),
+            SemaType::Named(named_type) => named_type.decl_id.is_enum(),
             _ => false,
         }
     }
 
     #[inline]
     pub fn is_bool(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Plain(PlainType::Bool))
+        matches!(self.const_inner(), SemaType::Plain(PlainType::Bool))
     }
 
     #[inline]
     pub fn is_array(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Array(..))
+        matches!(self.const_inner(), SemaType::Array(..))
     }
 
     #[inline]
     pub fn is_func_type(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::FuncType(..))
+        matches!(self.const_inner(), SemaType::FuncType(..))
     }
 
     #[inline]
     pub fn is_const(&self) -> bool {
-        matches!(self, SemanticType::Const(_))
+        matches!(self, SemaType::Const(_))
     }
 
     #[inline]
     pub fn is_void(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Plain(PlainType::Void))
+        matches!(self.const_inner(), SemaType::Plain(PlainType::Void))
     }
 
     #[inline]
     pub fn is_pointer(&self) -> bool {
-        matches!(self.const_inner(), SemanticType::Pointer(..))
+        matches!(self.const_inner(), SemaType::Pointer(..))
     }
 
     pub fn contains_infer_var(&self) -> bool {
         match self {
-            SemanticType::Placeholder => false,
-            SemanticType::GenericParam(_) => false,
-            SemanticType::InferVar(_) => true,
-            SemanticType::Pointer(inner) | SemanticType::Const(inner) => inner.contains_infer_var(),
-            SemanticType::Array(array) => array.element_type.contains_infer_var(),
-            SemanticType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_infer_var()),
-            SemanticType::FuncType(func) => {
+            SemaType::Placeholder => false,
+            SemaType::GenericParam(_) => false,
+            SemaType::InferVar(_) => true,
+            SemaType::Pointer(inner) | SemaType::Const(inner) => inner.contains_infer_var(),
+            SemaType::Array(array) => array.element_type.contains_infer_var(),
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_infer_var()),
+            SemaType::FuncType(func) => {
                 func.params.list.iter().any(|ty| ty.contains_infer_var())
                     || func
                         .params
@@ -469,27 +477,28 @@ impl SemanticType {
                         .unwrap_or(false)
                     || func.ret_type.contains_infer_var()
             }
-            SemanticType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+            SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
                 TypedTypeArg::Type(ty, _) => ty.contains_infer_var(),
                 TypedTypeArg::Infer => true,
             }),
-            SemanticType::Unresolved(_)
-            | SemanticType::Plain(_)
-            | SemanticType::SelfType(_)
-            | SemanticType::InterfaceType(_) => false,
+            SemaType::Err(_)
+            | SemaType::Unresolved(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::InterfaceType(_) => false,
         }
     }
 
     pub fn contains_generic_param(&self) -> bool {
         match self {
-            SemanticType::Placeholder => false,
-            SemanticType::GenericParam(_) => true,
-            SemanticType::InferVar(_) => false,
+            SemaType::Placeholder => false,
+            SemaType::GenericParam(_) => true,
+            SemaType::InferVar(_) => false,
 
-            SemanticType::Pointer(inner) | SemanticType::Const(inner) => inner.contains_generic_param(),
-            SemanticType::Array(array) => array.element_type.contains_generic_param(),
-            SemanticType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_generic_param()),
-            SemanticType::FuncType(func) => {
+            SemaType::Pointer(inner) | SemaType::Const(inner) => inner.contains_generic_param(),
+            SemaType::Array(array) => array.element_type.contains_generic_param(),
+            SemaType::Tuple(tuple) => tuple.elements.iter().any(|t| t.contains_generic_param()),
+            SemaType::FuncType(func) => {
                 func.params.list.iter().any(|ty| ty.contains_generic_param())
                     || func
                         .params
@@ -502,14 +511,15 @@ impl SemanticType {
                         .unwrap_or(false)
                     || func.ret_type.contains_generic_param()
             }
-            SemanticType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
+            SemaType::Named(named_type) => named_type.type_args.iter().any(|type_arg| match type_arg {
                 TypedTypeArg::Type(ty, _) => ty.contains_generic_param(),
                 TypedTypeArg::Infer => todo!(),
             }),
-            SemanticType::Unresolved(_)
-            | SemanticType::Plain(_)
-            | SemanticType::SelfType(_)
-            | SemanticType::InterfaceType(_) => false,
+            SemaType::Err(_)
+            | SemaType::Unresolved(_)
+            | SemaType::Plain(_)
+            | SemaType::SelfType(_)
+            | SemaType::InterfaceType(_) => false,
         }
     }
 }
@@ -718,7 +728,7 @@ impl PartialEq for TypedTupleType {
     }
 }
 
-impl TryFrom<TokenKind> for SemanticType {
+impl TryFrom<TokenKind> for SemaType {
     type Error = ();
 
     fn try_from(token_kind: TokenKind) -> Result<Self, Self::Error> {
@@ -749,7 +759,7 @@ impl TryFrom<TokenKind> for SemanticType {
             _ => return Err(()),
         };
 
-        Ok(SemanticType::Plain(basic_type))
+        Ok(SemaType::Plain(basic_type))
     }
 }
 

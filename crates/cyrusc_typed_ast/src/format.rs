@@ -23,7 +23,7 @@ use crate::{GenericParamID, SymbolID};
 use crate::{
     exprs::{TypedExprKind, TypedExprStmt, TypedLambdaExpr, TypedSymbolExpr, TypedUnnamedEnumValueKind},
     stmts::{TypedBuiltin, TypedFuncParamKind, TypedFuncTypeVariadicParams, TypedFuncVariadicParam, TypedTypeArgs},
-    types::{SemanticType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
+    types::{SemaType, TypedArrayCapacity, TypedFuncType, UnresolvedType},
 };
 use cyrusc_ast::operators::UnaryOperator;
 use cyrusc_source_loc::{Loc, SourceMap};
@@ -395,19 +395,19 @@ pub fn format_enum_struct_variant_fields(
         .join(", ")
 }
 
-pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> String {
+pub fn format_sema_type(sema_type: SemaType, formatter: &dyn Formatter) -> String {
     match sema_type {
-        SemanticType::Unresolved(unresolved_type) => match unresolved_type {
+        SemaType::Unresolved(unresolved_type) => match unresolved_type {
             UnresolvedType::Symbol(_) => format!("<unresolved_symbol>"),
             UnresolvedType::GenericInst { .. } => format!("<unresolved_generic_inst>"),
         },
-        SemanticType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
-        SemanticType::Named(named_type) => {
+        SemaType::GenericParam(generic_param_id) => formatter.format_generic_param(generic_param_id),
+        SemaType::Named(named_type) => {
             let name = formatter.format_type_decl(named_type.decl_id);
             format!("{}{}", name, format_type_args(&named_type.type_args, formatter))
         }
-        SemanticType::Plain(plain_type) => plain_type.to_string(),
-        SemanticType::Array(typed_array_type) => {
+        SemaType::Plain(plain_type) => plain_type.to_string(),
+        SemaType::Array(typed_array_type) => {
             let mut fmt = String::new();
             fmt.push_str(&format_sema_type(*typed_array_type.element_type, formatter));
             fmt.push_str("[");
@@ -420,14 +420,14 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
             fmt.push_str("]");
             fmt
         }
-        SemanticType::Const(sema_type) => {
+        SemaType::Const(sema_type) => {
             format!("const {}", format_sema_type(*sema_type, formatter))
         }
-        SemanticType::Pointer(sema_type) => {
+        SemaType::Pointer(sema_type) => {
             format!("{}*", format_sema_type(*sema_type, formatter))
         }
-        SemanticType::FuncType(func_type) => format_func_type(&func_type, formatter),
-        SemanticType::Tuple(tuple_type) => {
+        SemaType::FuncType(func_type) => format_func_type(&func_type, formatter),
+        SemaType::Tuple(tuple_type) => {
             format!(
                 "({})",
                 tuple_type
@@ -438,15 +438,16 @@ pub fn format_sema_type(sema_type: SemanticType, formatter: &dyn Formatter) -> S
                     .join(", ")
             )
         }
-        SemanticType::InterfaceType(dynamic_type) => {
+        SemaType::InterfaceType(dynamic_type) => {
             format!(
                 "dynamic {}",
                 formatter.format_symbol_name(dynamic_type.interface_decl_id)
             )
         }
-        SemanticType::SelfType(_) => "Self".to_string(),
-        SemanticType::Placeholder => "<placeholder>".to_string(),
-        SemanticType::InferVar(_) => "_".to_string(),
+        SemaType::SelfType(_) => "Self".to_string(),
+        SemaType::Err(_) => "<error>".to_string(),
+        SemaType::InferVar(_) => "_".to_string(),
+        SemaType::Placeholder => "<placeholder>".to_string(),
     }
 }
 

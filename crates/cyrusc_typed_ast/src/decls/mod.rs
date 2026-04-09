@@ -22,7 +22,7 @@ use crate::{
         TypedBlockStmt, TypedEnumVariant, TypedFuncParams, TypedGenericParams, TypedImplementInterface,
         TypedStructField, TypedUnionField,
     },
-    types::{SemanticType, TypedFuncType},
+    types::{SemaType, TypedFuncType},
 };
 use cyrusc_ast::{
     abi::{ReprKind, Visibility},
@@ -101,7 +101,7 @@ pub struct EnumDecl {
     pub impls: Vec<TypedImplementInterface>,
     pub generic_params: TypedGenericParams,
     pub modifiers: EnumModifiers,
-    pub tag_type: Option<SemanticType>,
+    pub tag_type: Option<SemaType>,
     pub align: Option<usize>,
     pub loc: Loc,
 }
@@ -112,7 +112,7 @@ pub struct FuncDecl {
     pub name: String,
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
-    pub ret_type: SemanticType,
+    pub ret_type: SemaType,
     pub is_func_decl: bool,
     pub modifiers: FuncModifiers,
     pub loc: Loc,
@@ -127,7 +127,7 @@ pub struct MethodDecl {
 #[derive(Debug, Clone)]
 pub struct TypedefDecl {
     pub name: String,
-    pub ty: Box<SemanticType>,
+    pub ty: Box<SemaType>,
     pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
@@ -147,7 +147,7 @@ pub struct InterfaceDecl {
 pub struct GlobalVarDecl {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub analyzed: bool,
@@ -158,7 +158,7 @@ pub struct GlobalVarDecl {
 #[derive(Debug, Clone)]
 pub struct VarDecl {
     pub name: String,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub analyzed: bool,

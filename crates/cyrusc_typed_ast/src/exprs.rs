@@ -19,7 +19,7 @@ use crate::{
     SymbolID, VTableID,
     decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
-    types::{SemanticType, TypedFuncType},
+    types::{SemaType, TypedFuncType},
 };
 use cyrusc_ast::{
     AssignKind, Ident,
@@ -33,7 +33,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct TypedExprStmt {
     pub kind: TypedExprKind,
-    pub sema_type: Option<SemanticType>,
+    pub sema_type: Option<SemaType>,
     pub mloc: MemoryLocation,
     pub loc: Loc,
 }
@@ -70,7 +70,7 @@ pub enum TypedExprKind {
     Tuple(TypedTupleExpr),
     TupleAccess(TypedTupleAccessExpr),
     Dynamic(TypedDynamicExpr),
-    SemanticType(SemanticType),
+    SemanticType(SemaType),
     Builtin(TypedBuiltin),
 
     Poisoned, // semantically wrong
@@ -107,7 +107,7 @@ pub struct TypedTupleExpr {
 pub struct TypedLambdaExpr {
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStmt>,
-    pub ret_type: SemanticType,
+    pub ret_type: SemaType,
     pub inline: bool,
     pub loc: Loc,
 }
@@ -120,7 +120,7 @@ pub struct TypedSizeOfExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedLiteralExpr {
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub kind: LiteralKind,
     pub loc: Loc,
 }
@@ -170,13 +170,13 @@ pub struct TypedAssignExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedCastExpr {
     pub operand: Box<TypedExprStmt>,
-    pub target_type: SemanticType,
+    pub target_type: SemaType,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayExpr {
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub elements: Vec<TypedExprStmt>,
     pub loc: Loc,
 }
@@ -261,7 +261,7 @@ pub struct TypedFieldAccess {
     pub object_symbol_id: Option<SymbolID>,
     pub name: String,
     pub index: Option<usize>,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub type_args: TypedTypeArgs,
     pub is_fat_arrow: bool,
     pub loc: Loc,
@@ -301,18 +301,18 @@ pub enum TypedMethodCallDispatch {
     Unresolved,
     Direct {
         decl_id: FuncDeclID,
-        self_type: SemanticType,
+        self_type: SemaType,
     },
     Interface {
         decl_id: InterfaceDeclID,
-        self_type: SemanticType,
+        self_type: SemaType,
         method_idx: usize,
         methods_len: usize,
     },
     Monomorph {
         decl_id: FuncDeclID,
         monomorph_id: MonomorphID,
-        self_type: SemanticType,
+        self_type: SemaType,
     },
 }
 

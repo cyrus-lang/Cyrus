@@ -15,14 +15,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{SymbolID, types::SemanticType};
+use cyrusc_typed_ast::{SymbolID, types::SemaType};
 use fx_hash::FxHashMap;
 use smallvec::SmallVec;
 
 #[derive(Default)]
 pub struct TypeCache {
     // Canonical, fully normalized result for a symbol (no UnresolvedSymbol, no Typedef)
-    pub cache: FxHashMap<SymbolID, SemanticType>,
+    pub cache: FxHashMap<SymbolID, SemaType>,
     
     // Guard against cycles
     pub in_progress: SmallVec<[SymbolID; 16]>,

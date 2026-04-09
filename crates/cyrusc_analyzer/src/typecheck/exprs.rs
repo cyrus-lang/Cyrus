@@ -22,15 +22,15 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
     format::format_sema_type,
-    types::{PlainType, SemanticType},
+    types::{PlainType, SemaType},
 };
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr(
         &mut self,
         expr: &mut TypedExprStmt,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         match &expr.kind {
             TypedExprKind::Symbol(symbol_expr) => {
                 let symbol_entry = self.query.lookup_symbol_entry(symbol_expr.symbol_id).unwrap();
@@ -58,8 +58,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_expr_non_terminal(
         &mut self,
         expr: &mut TypedExprStmt,
-        mut expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        mut expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         if let Some(sema_type) = expected_type {
             expected_type = Some(sema_type.const_inner().clone());
         }
@@ -159,7 +159,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_cond_expr(&mut self, cond: &mut TypedExprStmt) {
-        if let Some(sema_type) = self.analyze_expr(cond, Some(SemanticType::Plain(PlainType::Bool))) {
+        if let Some(sema_type) = self.analyze_expr(cond, Some(SemaType::Plain(PlainType::Bool))) {
             self.report_if_not_cond_expr(sema_type, cond.loc);
         }
     }
@@ -167,9 +167,9 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_field_assign(
         &mut self,
         field_expr: &mut TypedExprStmt,
-        mut expected_type: SemanticType,
+        mut expected_type: SemaType,
         loc: Loc,
-    ) -> SemanticType {
+    ) -> SemaType {
         expected_type = self.substitute_type(&expected_type);
 
         let Some(mut value_type) = self.analyze_expr(field_expr, Some(expected_type.clone())) else {

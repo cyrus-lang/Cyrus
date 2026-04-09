@@ -17,14 +17,14 @@
 
 use cyrusc_typed_ast::{
     stmts::{TypedFuncTypeVariadicParams, TypedTypeArg},
-    types::{InferVarID, SemanticType},
+    types::{InferVarID, SemaType, TypedFuncType},
 };
 use fx_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct InferCtx {
     next_var: u32,
-    bindings: FxHashMap<InferVarID, SemanticType>,
+    bindings: FxHashMap<InferVarID, SemaType>,
 }
 
 impl InferCtx {
@@ -35,20 +35,20 @@ impl InferCtx {
         }
     }
 
-    pub fn new_var(&mut self) -> SemanticType {
+    pub fn new_var(&mut self) -> SemaType {
         let id = self.next_var;
         self.next_var += 1;
 
-        SemanticType::InferVar(InferVarID(id))
+        SemaType::InferVar(InferVarID(id))
     }
 
-    fn bind(&mut self, var: InferVarID, ty: SemanticType) {
+    fn bind(&mut self, var: InferVarID, ty: SemaType) {
         self.bindings.insert(var, ty);
     }
 
-    pub fn resolve(&self, ty: &SemanticType) -> SemanticType {
+    pub fn resolve(&self, ty: &SemaType) -> SemaType {
         match ty {
-            SemanticType::InferVar(id) => {
+            SemaType::InferVar(id) => {
                 if let Some(bound) = self.bindings.get(id) {
                     self.resolve(bound)
                 } else {
@@ -59,94 +59,105 @@ impl InferCtx {
         }
     }
 
-    fn occurs_check(&self, var: InferVarID, ty: &SemanticType) -> bool {
+    fn occurs_check(&self, var: InferVarID, ty: &SemaType) -> bool {
         match ty {
-            SemanticType::InferVar(id) => *id == var,
-            SemanticType::Named(named) => named.type_args.iter().any(|arg| match arg {
+            SemaType::InferVar(id) => *id == var,
+            SemaType::Named(named) => named.type_args.iter().any(|arg| match arg {
                 TypedTypeArg::Type(t, _) => self.occurs_check(var, t),
                 _ => false,
             }),
-            SemanticType::Tuple(t) => t.elements.iter().any(|e| self.occurs_check(var, e)),
-            SemanticType::Array(a) => self.occurs_check(var, &a.element_type),
-            SemanticType::Pointer(inner) => self.occurs_check(var, inner),
+            SemaType::Tuple(t) => t.elements.iter().any(|e| self.occurs_check(var, e)),
+            SemaType::Array(a) => self.occurs_check(var, &a.element_type),
+            SemaType::Pointer(inner) => self.occurs_check(var, inner),
             _ => false,
         }
     }
 
-    pub(crate) fn unify(&mut self, a: &SemanticType, b: &SemanticType) -> bool {
+    pub(crate) fn unify(&mut self, a: &SemaType, b: &SemaType) -> bool {
         let a = self.resolve(a);
         let b = self.resolve(b);
 
-        match (&a, &b) {
-            (SemanticType::InferVar(id1), SemanticType::InferVar(id2)) if id1 == id2 => true,
-            (SemanticType::InferVar(id1), ty) | (ty, SemanticType::InferVar(id1)) => {
-                if self.occurs_check(*id1, &ty) {
-                    return false;
-                }
-
-                self.bind(*id1, ty.clone());
-                true
-            }
-            (SemanticType::Named(named_type1), SemanticType::Named(named_type2)) => {
-                if named_type1.decl_id != named_type2.decl_id {
-                    return false;
-                }
-
-                for (type_arg1, type_arg2) in named_type1.type_args.iter().zip(named_type2.type_args.iter()) {
-                    if let (TypedTypeArg::Type(ty1, _), TypedTypeArg::Type(ty2, _)) = (type_arg1, type_arg2) {
-                        if !self.unify(&ty1, &ty2) {
-                            return false;
-                        }
-                    }
-                }
-
-                true
-            }
-            (SemanticType::Tuple(tuple1), SemanticType::Tuple(tuple2)) => {
-                if tuple1.elements.len() != tuple2.elements.len() {
-                    return false;
-                }
-
-                for (element1, element2) in tuple1.elements.iter().zip(tuple2.elements.iter()) {
-                    if !self.unify(element1, element2) {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            (SemanticType::Array(array1), SemanticType::Array(array2)) => {
-                self.unify(&array1.element_type, &array2.element_type)
-            }
-            (SemanticType::Pointer(inner1), SemanticType::Pointer(inner2)) => self.unify(&inner1, &inner2),
-            (SemanticType::FuncType(func1), SemanticType::FuncType(func2)) => {
-                if func1.params.list.len() != func2.params.list.len() {
-                    return false;
-                }
-
-                for (ty1, ty2) in func1.params.list.iter().zip(func2.params.list.iter()) {
-                    if !self.unify(ty1, ty2) {
-                        return false;
-                    }
-                }
-
-                if let (Some(variadic1), Some(variadic2)) =
-                    (func1.params.variadic.clone(), func2.params.variadic.clone())
-                {
-                    match (*variadic1, *variadic2) {
-                        (TypedFuncTypeVariadicParams::Typed(ty1), TypedFuncTypeVariadicParams::Typed(ty2)) => {
-                            if !self.unify(&ty1, &ty2) {
-                                return false;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
-                self.unify(&func1.ret_type, &func2.ret_type)
-            }
-
-            _ => a == b,
+        if a.is_err() || b.is_err() {
+            return true;
         }
+
+        match (&a, &b) {
+            (SemaType::InferVar(id1), SemaType::InferVar(id2)) if id1 == id2 => true,
+            (SemaType::InferVar(id), ty) | (ty, SemaType::InferVar(id)) => {
+                if self.occurs_check(*id, ty) {
+                    return false;
+                }
+                self.bind(*id, ty.clone());
+                true
+            }
+            (SemaType::Named(n1), SemaType::Named(n2)) => {
+                if n1.decl_id != n2.decl_id {
+                    return false;
+                }
+                for (a, b) in n1.type_args.iter().zip(n2.type_args.iter()) {
+                    if !self.unify_type_arg(a, b) {
+                        return false;
+                    }
+                }
+                true
+            }
+            (SemaType::Tuple(t1), SemaType::Tuple(t2)) => {
+                t1.elements.len() == t2.elements.len()
+                    && t1.elements.iter().zip(&t2.elements).all(|(a, b)| self.unify(a, b))
+            }
+            (SemaType::Array(a1), SemaType::Array(a2)) => self.unify(&a1.element_type, &a2.element_type),
+            (SemaType::Pointer(p1), SemaType::Pointer(p2)) => self.unify(p1, p2),
+            (SemaType::Const(c1), SemaType::Const(c2)) => self.unify(c1, c2),
+            (SemaType::FuncType(f1), SemaType::FuncType(f2)) => self.unify_func(f1, f2),
+
+            _ => false,
+        }
+    }
+
+    fn unify_type_arg(&mut self, a: &TypedTypeArg, b: &TypedTypeArg) -> bool {
+        match (a, b) {
+            (TypedTypeArg::Type(t1, _), TypedTypeArg::Type(t2, _)) => self.unify(t1, t2),
+
+            // `_` vs `_`
+            (TypedTypeArg::Infer, TypedTypeArg::Infer) => true,
+
+            // `_` vs concrete
+            // we don't have a type yet, so we allow it
+            (TypedTypeArg::Infer, TypedTypeArg::Type(_, _)) | (TypedTypeArg::Type(_, _), TypedTypeArg::Infer) => true,
+        }
+    }
+
+    fn unify_func(&mut self, f1: &TypedFuncType, f2: &TypedFuncType) -> bool {
+        if f1.params.list.len() != f2.params.list.len() {
+            return false;
+        }
+
+        // unify parameters
+        for (p1, p2) in f1.params.list.iter().zip(&f2.params.list) {
+            if !self.unify(p1, p2) {
+                return false;
+            }
+        }
+
+        // unify variadic parameters
+        match (&f1.params.variadic, &f2.params.variadic) {
+            (None, None) => {}
+
+            (Some(v1), Some(v2)) => match (&**v1, &**v2) {
+                (TypedFuncTypeVariadicParams::Typed(t1), TypedFuncTypeVariadicParams::Typed(t2)) => {
+                    if !self.unify(&t1, &t2) {
+                        return false;
+                    }
+                }
+                (TypedFuncTypeVariadicParams::UntypedCStyle, TypedFuncTypeVariadicParams::UntypedCStyle) => {}
+
+                _ => return false,
+            },
+
+            _ => return false,
+        }
+
+        // unify return type
+        self.unify(&f1.ret_type, &f2.ret_type)
     }
 }

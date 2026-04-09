@@ -18,11 +18,11 @@
 use crate::context::AnalysisContext;
 use cyrusc_typed_ast::{
     exprs::TypedLambdaExpr,
-    types::{SemanticType, TypedFuncType},
+    types::{SemaType, TypedFuncType},
 };
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemanticType> {
+    pub(crate) fn analyze_lambda(&mut self, lambda: &mut TypedLambdaExpr) -> Option<SemaType> {
         let parent_func = self.func_env.current_func.clone();
 
         self.normalize_func_params(&mut lambda.params, lambda.loc);
@@ -42,6 +42,6 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_block_stmt(&mut lambda.body);
 
         self.func_env.current_func = parent_func;
-        Some(SemanticType::FuncType(func_type))
+        Some(SemaType::FuncType(func_type))
     }
 }

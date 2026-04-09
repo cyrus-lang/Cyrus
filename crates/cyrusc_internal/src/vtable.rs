@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use cyrusc_typed_ast::{SymbolID, VTableID, decls::FuncDecl, types::SemanticType};
+use cyrusc_typed_ast::{SymbolID, VTableID, decls::FuncDecl, types::SemaType};
 use std::collections::HashMap;
 
 /// Uniquely identifies a vtable by the pair:
@@ -33,7 +33,7 @@ pub struct VTableKey {
     ///
     /// This must be a *concrete* semantic type, never an interface,
     /// never `Self`, never an unresolved generic.
-    pub sema_type: SemanticType,
+    pub sema_type: SemaType,
 
     /// The symbol ID of the interface being implemented.
     pub interface_id: SymbolID,
@@ -63,7 +63,7 @@ pub struct VTableRegistry {
 #[derive(Debug, Clone)]
 pub struct VTableInfo {
     /// The concrete type implementing the interface.
-    pub sema_type: SemanticType,
+    pub sema_type: SemaType,
 
     /// The interface being implemented.
     pub interface_symbol_id: SymbolID,
@@ -105,7 +105,7 @@ impl VTableRegistry {
     /// attempts to change the method layout.
     pub fn register(
         &mut self,
-        sema_type: SemanticType,
+        sema_type: SemaType,
         interface_id: SymbolID,
         interface_name: String,
         methods: Vec<FuncDecl>,
@@ -150,7 +150,7 @@ impl VTableRegistry {
     /// # Panics
     ///
     /// Panics if the vtable was not registered during type checking.
-    pub fn get(&self, sema_type: &SemanticType, interface_id: SymbolID) -> VTableID {
+    pub fn get(&self, sema_type: &SemaType, interface_id: SymbolID) -> VTableID {
         let key = VTableKey {
             sema_type: sema_type.clone(),
             interface_id,

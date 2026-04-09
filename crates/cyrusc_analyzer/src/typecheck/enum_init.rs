@@ -26,12 +26,12 @@ use cyrusc_typed_ast::{
     },
     format::{format_enum_decl, format_sema_type, format_typed_expr},
     stmts::{TypedEnumVariant, TypedEnumVariantStructField, TypedTypeArgs},
-    types::{NamedType, SemanticType, TypeDeclID},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 use fx_hash::{FxHashMap, FxHashSet};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn analyze_enum_init(&mut self, enum_init: &mut TypedEnumInit) -> Option<SemanticType> {
+    pub(crate) fn analyze_enum_init(&mut self, enum_init: &mut TypedEnumInit) -> Option<SemaType> {
         let enum_decl = self.decl_tables.enum_decl(enum_init.enum_decl_id);
 
         let Some(variant) = enum_decl.lookup_variant(&enum_init.name) else {
@@ -138,7 +138,7 @@ impl<'a> AnalysisContext<'a> {
             },
         }
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_init.enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
@@ -147,8 +147,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_unnamed_enum_value(
         &mut self,
         enum_value: &mut TypedUnnamedEnumValue,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let Some((enum_decl_id, enum_decl)) = self.infer_enum_decl_from_expected_type(expected_type) else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -267,7 +267,7 @@ impl<'a> AnalysisContext<'a> {
 
         enum_value.enum_decl_id = Some(enum_decl_id);
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
@@ -276,7 +276,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_enum_struct_variant_init(
         &mut self,
         struct_variant_init: &mut TypedEnumStructVariantInit,
-    ) -> Option<SemanticType> {
+    ) -> Option<SemaType> {
         let Some(symbol_id) = struct_variant_init.operand.kind.as_symbol_id() else {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -357,7 +357,7 @@ impl<'a> AnalysisContext<'a> {
 
         struct_variant_init.enum_decl_id = Some(enum_decl_id);
 
-        Some(SemanticType::Named(NamedType {
+        Some(SemaType::Named(NamedType {
             decl_id: TypeDeclID::Enum(enum_decl_id),
             type_args: TypedTypeArgs::new(),
         }))
@@ -365,7 +365,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn infer_enum_decl_from_expected_type(
         &self,
-        expected_type: Option<SemanticType>,
+        expected_type: Option<SemaType>,
     ) -> Option<(EnumDeclID, EnumDecl)> {
         expected_type.and_then(|sema_type| {
             sema_type

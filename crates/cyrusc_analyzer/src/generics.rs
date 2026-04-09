@@ -21,7 +21,7 @@ use cyrusc_source_loc::Loc;
 use cyrusc_typed_ast::{
     GenericParamID,
     stmts::{TypedGenericParams, TypedTypeArg, TypedTypeArgs},
-    types::SemanticType,
+    types::SemaType,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -40,7 +40,7 @@ impl<'a> AnalysisContext<'a> {
         self.generic_env_stack.last_mut()
     }
 
-    pub(crate) fn lookup_generic_binding(&self, generic_param_id: GenericParamID) -> Option<&SemanticType> {
+    pub(crate) fn lookup_generic_binding(&self, generic_param_id: GenericParamID) -> Option<&SemaType> {
         for env in self.generic_env_stack.iter().rev() {
             if let Some(ty) = env.lookup(generic_param_id) {
                 return Some(ty);
@@ -50,7 +50,7 @@ impl<'a> AnalysisContext<'a> {
         None
     }
 
-    pub(crate) fn substitute_type(&self, ty: &SemanticType) -> SemanticType {
+    pub(crate) fn substitute_type(&self, ty: &SemaType) -> SemaType {
         let mut result = ty.clone();
 
         for env in self.generic_env_stack.iter().rev() {
@@ -106,7 +106,7 @@ impl<'a> AnalysisContext<'a> {
             if let Some(bound_ty) = binding {
                 let resolved = self.func_env.infer.as_ref().unwrap().resolve(&bound_ty);
 
-                if let SemanticType::InferVar(var) = resolved {
+                if let SemaType::InferVar(var) = resolved {
                     if let Some(default_ty) = &generic_param.default {
                         let mut default_type = self
                             .normalize_sema_type(*default_ty.clone(), generic_param.name.loc)
@@ -118,7 +118,7 @@ impl<'a> AnalysisContext<'a> {
                             .infer
                             .as_mut()
                             .unwrap()
-                            .unify(&SemanticType::InferVar(var), &default_type);
+                            .unify(&SemaType::InferVar(var), &default_type);
                     }
                 }
 
@@ -164,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
         let infer = self.func_env.infer.as_mut().unwrap();
 
         for (i, param_id) in params.iter().enumerate() {
-            let mut bound_type: Option<SemanticType> = None;
+            let mut bound_type: Option<SemaType> = None;
 
             // 1. check if an explicit type argument was provided
             if let Some(type_arg) = type_args.get(i) {

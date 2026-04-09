@@ -24,7 +24,7 @@ use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt, TypedTupleAccessExpr},
     format::format_sema_type,
     stmts::{TypedExportPattern, TypedExportPatternKind, TypedExportTupleStmt},
-    types::{SemanticType, TypedTupleType},
+    types::{SemaType, TypedTupleType},
 };
 
 // TODO: Warn for weird situations like:
@@ -98,7 +98,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_tuple_ident_pattern(
         &mut self,
         var_decl_id: VarDeclID,
-        sema_type: &SemanticType,
+        sema_type: &SemaType,
         rhs: &TypedExprStmt,
         is_const: bool,
     ) {
@@ -114,7 +114,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_tuple_pattern(
         &mut self,
         pattern: &TypedExportPattern,
-        sema_type: &SemanticType,
+        sema_type: &SemaType,
         root_expr: &TypedExprStmt,
         stmt_is_const: bool,
         loc: Loc,
@@ -194,7 +194,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn build_expected_tuple_type_from_pattern(&mut self, pattern: &TypedExportPattern) -> Option<SemanticType> {
+    fn build_expected_tuple_type_from_pattern(&mut self, pattern: &TypedExportPattern) -> Option<SemaType> {
         let TypedExportPatternKind::Tuple(elements) = &pattern.kind else {
             return None;
         };
@@ -228,7 +228,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(SemanticType::Tuple(TypedTupleType {
+        Some(SemaType::Tuple(TypedTupleType {
             elements: result_type,
             loc: pattern.loc,
         }))

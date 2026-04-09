@@ -19,7 +19,7 @@ use crate::{context::AnalysisContext, lower::lower_assign::lower_assign_to_infix
 use cyrusc_ast::{AssignKind, operators::PrefixOperator};
 use cyrusc_typed_ast::{
     exprs::{TypedExprKind, TypedExprStmt},
-    types::SemanticType,
+    types::SemaType,
 };
 
 pub(crate) mod lower_assign;
@@ -32,7 +32,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn lower_expr_pre_analysis(
         &mut self,
         typed_expr: &mut TypedExprStmt,
-        expected_type: Option<SemanticType>,
+        expected_type: Option<SemaType>,
     ) {
         match &mut typed_expr.kind {
             TypedExprKind::Assign(assign) => {

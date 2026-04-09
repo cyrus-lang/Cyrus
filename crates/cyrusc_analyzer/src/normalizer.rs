@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, env::generic_env::GenericEnv};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use cyrusc_const_eval::value::is_comptime_valid;
 use cyrusc_diagcentral::{Diag, DiagLevel};
 use cyrusc_internal::symbols::symbols::{SymbolEntry, SymbolEntryKind};
@@ -24,21 +24,20 @@ use cyrusc_typed_ast::{
     GenericParamID, SymbolID,
     decls::{FuncDecl, InterfaceDeclID},
     exprs::TypedSelfType,
-    format::format_sema_type,
     stmts::{
         TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParam,
         TypedTypeArg, TypedTypeArgs,
     },
     types::{
-        InterfaceType, NamedType, SemanticType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType,
-        TypedTupleType, UnresolvedType,
+        NamedType, SemaType, TypeDeclID, TypedArrayCapacity, TypedArrayType, TypedFuncType, TypedTupleType,
+        UnresolvedType,
     },
 };
 
 impl<'a> AnalysisContext<'a> {
     /// Fully normalize AND validate a type
     /// This is what we call when an explicit type is used
-    pub fn normalize_and_check_type_formation(&mut self, sema_type: SemanticType, loc: Loc) -> Option<SemanticType> {
+    pub fn normalize_and_check_type_formation(&mut self, sema_type: SemaType, loc: Loc) -> Option<SemaType> {
         let sema_type = self.normalize_sema_type(sema_type, loc)?;
 
         self.check_type_formation(sema_type, loc)
@@ -46,45 +45,48 @@ impl<'a> AnalysisContext<'a> {
 
     // Fully normalize a type: remove UnresolvedSymbol, expand typedefs,
     // and recursively normalize children. Never returns UnresolvedSymbol.
-    pub fn normalize_sema_type(&mut self, ty: SemanticType, loc: Loc) -> Option<SemanticType> {
+    pub fn normalize_sema_type(&mut self, ty: SemaType, loc: Loc) -> Option<SemaType> {
         match ty {
-            SemanticType::Placeholder => Some(ty),
-            SemanticType::InferVar(_) => Some(ty),
+            SemaType::Placeholder => Some(ty),
+            SemaType::InferVar(_) => Some(ty),
+            SemaType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
+            SemaType::Named(_) => Some(ty),
+            SemaType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
+            SemaType::Pointer(inner) => self.normalize_pointer(*inner, loc),
+            SemaType::Const(inner) => self.normalize_const(*inner, loc),
+            SemaType::Array(arr) => self.normalize_array(arr, loc),
+            SemaType::FuncType(func_type) => self.normalize_func_type(func_type),
+            SemaType::Tuple(tuple_type) => self.normalize_tuple(tuple_type),
+            SemaType::SelfType(self_type) => self.normalize_self_type(self_type),
+            SemaType::Plain(_) | SemaType::InterfaceType(_) => Some(ty),
 
-            SemanticType::Unresolved(unresolved_type) => self.normalize_unresolved_type(unresolved_type, loc),
-            SemanticType::Named(_) => Some(ty),
-            SemanticType::GenericParam(generic_param_id) => self.normalize_generic_param(generic_param_id),
-            SemanticType::Pointer(inner) => self.normalize_pointer(*inner, loc),
-            SemanticType::Const(inner) => self.normalize_const(*inner, loc),
-            SemanticType::Array(arr) => self.normalize_array(arr, loc),
-            SemanticType::FuncType(func_type) => self.normalize_func_type(func_type),
-            SemanticType::Tuple(tuple_type) => self.normalize_tuple(tuple_type),
-            SemanticType::SelfType(self_type) => self.normalize_self_type(self_type),
-            SemanticType::Plain(_) | SemanticType::InterfaceType(_) => Some(ty),
+            SemaType::Err(_) => Some(ty),
         }
     }
 
-    fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemanticType> {
-        match unresolved_type {
-            UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(symbol_id, loc),
+    fn normalize_unresolved_type(&mut self, unresolved_type: UnresolvedType, loc: Loc) -> Option<SemaType> {
+        let ty = match unresolved_type {
+            UnresolvedType::Symbol(symbol_id) => self.resolve_symbol_type(symbol_id, loc)?,
             UnresolvedType::GenericInst { base, mut type_args } => {
                 let base_type = self.normalize_unresolved_type(UnresolvedType::Symbol(base), loc)?;
 
                 if let Some(named_type) = base_type.as_named_type() {
                     self.normalize_type_args(&mut type_args);
 
-                    Some(SemanticType::Named(NamedType {
+                    SemaType::Named(NamedType {
                         decl_id: named_type.decl_id,
                         type_args,
-                    }))
+                    })
                 } else {
-                    None
+                    return None;
                 }
             }
-        }
+        };
+
+        Some(self.expand_sema_type(ty, loc))
     }
 
-    fn normalize_func_type(&mut self, mut func_type: TypedFuncType) -> Option<SemanticType> {
+    fn normalize_func_type(&mut self, mut func_type: TypedFuncType) -> Option<SemaType> {
         let params_len = func_type.params.list.len();
         let params: Vec<_> = func_type
             .params
@@ -118,15 +120,15 @@ impl<'a> AnalysisContext<'a> {
         let normalized_ret = self.normalize_sema_type(*func_type.ret_type, func_type.loc)?;
         func_type.ret_type = Box::new(normalized_ret);
 
-        Some(SemanticType::FuncType(func_type))
+        Some(SemaType::FuncType(func_type))
     }
 
-    fn normalize_func_decl_as_func_type(&mut self, func_decl: &FuncDecl) -> Option<SemanticType> {
+    fn normalize_func_decl_as_func_type(&mut self, func_decl: &FuncDecl) -> Option<SemaType> {
         let func_type = func_decl.as_func_type();
         self.normalize_func_type(func_type)
     }
 
-    fn normalize_tuple(&mut self, tuple_type: TypedTupleType) -> Option<SemanticType> {
+    fn normalize_tuple(&mut self, tuple_type: TypedTupleType) -> Option<SemaType> {
         let elements_len = tuple_type.elements.len();
 
         let elements: Vec<_> = tuple_type
@@ -140,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        Some(SemanticType::Tuple(TypedTupleType {
+        Some(SemaType::Tuple(TypedTupleType {
             elements,
             loc: tuple_type.loc,
         }))
@@ -169,35 +171,35 @@ impl<'a> AnalysisContext<'a> {
         Some(array)
     }
 
-    fn normalize_array(&mut self, array: TypedArrayType, loc: Loc) -> Option<SemanticType> {
+    fn normalize_array(&mut self, array: TypedArrayType, loc: Loc) -> Option<SemaType> {
         let array_type = self.normalize_array_capacity(array, loc)?;
-        Some(SemanticType::Array(array_type))
+        Some(SemaType::Array(array_type))
     }
 
     #[inline]
-    fn normalize_const(&mut self, inner: SemanticType, loc: Loc) -> Option<SemanticType> {
-        Some(SemanticType::Const(Box::new(self.normalize_sema_type(inner, loc)?)))
+    fn normalize_const(&mut self, inner: SemaType, loc: Loc) -> Option<SemaType> {
+        Some(SemaType::Const(Box::new(self.normalize_sema_type(inner, loc)?)))
     }
 
-    fn normalize_pointer(&mut self, inner: SemanticType, loc: Loc) -> Option<SemanticType> {
+    fn normalize_pointer(&mut self, inner: SemaType, loc: Loc) -> Option<SemaType> {
         let ty = self.normalize_sema_type(inner, loc)?;
-        Some(SemanticType::Pointer(Box::new(ty)))
+        Some(SemaType::Pointer(Box::new(ty)))
     }
 
-    fn normalize_generic_param(&self, generic_param_id: GenericParamID) -> Option<SemanticType> {
+    fn normalize_generic_param(&self, generic_param_id: GenericParamID) -> Option<SemaType> {
         if let Some(ty) = self.lookup_generic_binding(generic_param_id) {
             return Some(ty.clone());
         }
 
         // fallback
-        Some(SemanticType::GenericParam(generic_param_id))
+        Some(SemaType::GenericParam(generic_param_id))
     }
 
-    fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemanticType> {
+    fn normalize_self_type(&mut self, self_type: TypedSelfType) -> Option<SemaType> {
         self.func_env
             .current_object
             .clone()
-            .or(Some(SemanticType::SelfType(self_type)))
+            .or(Some(SemaType::SelfType(self_type)))
     }
 
     pub(crate) fn normalize_type_args(&mut self, type_args: &mut TypedTypeArgs) {
@@ -215,7 +217,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // FIXME
-    fn normalize_interface_type(&mut self, interface_decl_id: InterfaceDeclID) -> Option<SemanticType> {
+    fn normalize_interface_type(&mut self, interface_decl_id: InterfaceDeclID) -> Option<SemaType> {
         todo!();
         // let interface_decl = self.decl_tables.interface_decl(interface_decl_id);
 
@@ -293,12 +295,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn resolve_symbol_type_expanded(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
+    pub(crate) fn resolve_symbol_type_expanded(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemaType> {
         let ty = self.resolve_symbol_type(symbol_id, loc)?;
-        Some(self.expand_semantic_type(ty, loc))
+        Some(self.expand_sema_type(ty, loc))
     }
 
-    pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemanticType> {
+    pub(crate) fn resolve_symbol_type(&mut self, symbol_id: SymbolID, loc: Loc) -> Option<SemaType> {
         if let Some(cached_sema_ty) = self.type_cache.cache.get(&symbol_id) {
             return Some(cached_sema_ty.clone());
         }
@@ -333,7 +335,7 @@ impl<'a> AnalysisContext<'a> {
         sema_type_opt
     }
 
-    fn resolve_symbol_type_internal(&mut self, symbol_entry: &SymbolEntry) -> Option<SemanticType> {
+    fn resolve_symbol_type_internal(&mut self, symbol_entry: &SymbolEntry) -> Option<SemaType> {
         match &symbol_entry.kind {
             SymbolEntryKind::GlobalVar(global_var_decl_id) => {
                 let global_var_decl = self.decl_tables.global_var_decl(*global_var_decl_id);
@@ -347,19 +349,19 @@ impl<'a> AnalysisContext<'a> {
                 let func_decl = self.decl_tables.func_decl(*func_decl_id);
                 self.normalize_func_decl_as_func_type(&func_decl)
             }
-            SymbolEntryKind::Struct(strut_decl_id) => Some(SemanticType::Named(NamedType {
+            SymbolEntryKind::Struct(strut_decl_id) => Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Struct(*strut_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Enum(enum_decl_id) => Some(SemanticType::Named(NamedType {
+            SymbolEntryKind::Enum(enum_decl_id) => Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Enum(*enum_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Union(union_decl_id) => Some(SemanticType::Named(NamedType {
+            SymbolEntryKind::Union(union_decl_id) => Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Union(*union_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
-            SymbolEntryKind::Typedef(typedef_decl_id) => Some(SemanticType::Named(NamedType {
+            SymbolEntryKind::Typedef(typedef_decl_id) => Some(SemaType::Named(NamedType {
                 decl_id: TypeDeclID::Typedef(*typedef_decl_id),
                 type_args: TypedTypeArgs::new(),
             })),
@@ -379,134 +381,6 @@ impl<'a> AnalysisContext<'a> {
             }
             SymbolEntryKind::Unresolved => unreachable!("unresolved symbol entry should not appear here"),
             SymbolEntryKind::Method(_) => unreachable!("method symbols are not type expressions"),
-        }
-    }
-
-    pub(crate) fn expand_semantic_type(&mut self, ty: SemanticType, loc: Loc) -> SemanticType {
-        match &ty {
-            SemanticType::InferVar(_) => ty,
-            SemanticType::Placeholder => ty,
-
-            SemanticType::Named(named_type) => match &named_type.decl_id {
-                TypeDeclID::Typedef(typedef_id) => {
-                    let typedef_decl = self.decl_tables.typedef_decl(*typedef_id);
-
-                    let generic_params = &typedef_decl.generic_params;
-                    let mut final_args = Vec::with_capacity(generic_params.len());
-
-                    // fill in every typedef generic param in order
-                    for i in 0..generic_params.len() {
-                        if let Some(arg) = named_type.type_args.get(i) {
-                            // user provided type arg
-                            final_args.push(arg.clone());
-                        } else {
-                            // no arg provided, create a fresh inference var
-                            let infer_type = self.func_env.infer.as_mut().unwrap().new_var();
-
-                            final_args.push(TypedTypeArg::Type(infer_type, loc));
-                        }
-                    }
-
-                    if named_type.type_args.len() > final_args.len() {
-                        let type_name = format_sema_type(ty.clone(), self.formatter);
-
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: Box::new(AnalyzerDiagKind::WrongNumberOfTypeArgs {
-                                type_name,
-                                expected: final_args.len(),
-                                provided: named_type.type_args.len(),
-                            }),
-                            loc: Some(loc),
-                            hint: None,
-                        });
-                    }
-
-                    let generic_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
-
-                    let expanded_type = generic_env.substitute_sema_type(&typedef_decl.ty);
-
-                    return self.expand_semantic_type(expanded_type, loc);
-                }
-                _ => {
-                    let type_args = named_type
-                        .type_args
-                        .iter()
-                        .map(|type_arg| match type_arg {
-                            TypedTypeArg::Type(ty, loc) => {
-                                TypedTypeArg::Type(self.expand_semantic_type(ty.clone(), *loc), *loc)
-                            }
-                            TypedTypeArg::Infer => TypedTypeArg::Infer,
-                        })
-                        .collect();
-
-                    SemanticType::Named(NamedType {
-                        decl_id: named_type.decl_id,
-                        type_args,
-                    })
-                }
-            },
-            SemanticType::Pointer(inner) => {
-                SemanticType::Pointer(Box::new(self.expand_semantic_type(*inner.clone(), loc)))
-            }
-            SemanticType::Const(inner) => SemanticType::Const(Box::new(self.expand_semantic_type(*inner.clone(), loc))),
-            SemanticType::Array(array) => SemanticType::Array(TypedArrayType {
-                element_type: Box::new(self.expand_semantic_type(*array.element_type.clone(), loc)),
-                capacity: array.capacity.clone(),
-                loc: array.loc,
-            }),
-            SemanticType::Tuple(tuple) => {
-                let elements = tuple
-                    .elements
-                    .clone()
-                    .into_iter()
-                    .map(|ty| self.expand_semantic_type(ty, loc))
-                    .collect();
-
-                SemanticType::Tuple(TypedTupleType {
-                    elements,
-                    loc: tuple.loc,
-                })
-            }
-            SemanticType::FuncType(func) => {
-                let params = TypedFuncTypeParams {
-                    list: func
-                        .params
-                        .list
-                        .clone()
-                        .into_iter()
-                        .map(|ty| self.expand_semantic_type(ty, loc))
-                        .collect(),
-
-                    variadic: func.params.variadic.clone().map(|variadic| {
-                        Box::new(match *variadic {
-                            TypedFuncTypeVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
-                            TypedFuncTypeVariadicParams::Typed(ty) => {
-                                TypedFuncTypeVariadicParams::Typed(self.expand_semantic_type(ty, loc))
-                            }
-                        })
-                    }),
-                };
-                let ret_type = Box::new(self.expand_semantic_type(*func.ret_type.clone(), loc));
-
-                SemanticType::FuncType(TypedFuncType {
-                    symbol_id: func.symbol_id,
-                    params,
-                    ret_type,
-                    is_public: func.is_public,
-                    loc: func.loc,
-                })
-            }
-            SemanticType::InterfaceType(interface) => SemanticType::InterfaceType(InterfaceType {
-                interface_decl_id: interface.interface_decl_id,
-                vtable_id: interface.vtable_id,
-                loc: interface.loc,
-            }),
-
-            SemanticType::Plain(_)
-            | SemanticType::GenericParam(_)
-            | SemanticType::SelfType(_)
-            | SemanticType::Unresolved(_) => ty,
         }
     }
 }

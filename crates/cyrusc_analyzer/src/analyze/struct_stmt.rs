@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     decls::{StructDecl, StructDeclID},
     format::{format_sema_type, format_struct_decl},
     stmts::{TypedStructField, TypedStructStmt, TypedTypeArgs},
-    types::{NamedType, SemanticType, TypeDeclID},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
 
@@ -148,7 +148,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn validate_struct_field_type(
         &mut self,
         struct_decl_id: StructDeclID,
-        sema_type: &SemanticType,
+        sema_type: &SemaType,
         loc: Loc,
     ) {
         let sema_type = sema_type.const_inner();

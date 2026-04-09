@@ -25,7 +25,7 @@ use cyrusc_tokens::{
 use cyrusc_typed_ast::{
     exprs::{TypedLiteralExpr, literal_expr_from_const_int},
     types::{
-        PlainType, SemanticType, TypedArrayCapacity, TypedArrayType, map_float_suffix_to_sema_type,
+        PlainType, SemaType, TypedArrayCapacity, TypedArrayType, map_float_suffix_to_sema_type,
         map_integer_suffix_to_sema_type,
     },
 };
@@ -34,8 +34,8 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_literal(
         &mut self,
         literal: &mut TypedLiteralExpr,
-        expected_type: Option<SemanticType>,
-    ) -> Option<SemanticType> {
+        expected_type: Option<SemaType>,
+    ) -> Option<SemaType> {
         let literal_clone = literal.clone();
 
         let ty_opt = match &mut literal.kind {
@@ -75,22 +75,22 @@ impl<'a> AnalysisContext<'a> {
 
                 let ty = if let Some(prefix) = prefix_opt {
                     match prefix {
-                        StringPrefix::C => SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char))),
-                        StringPrefix::B => SemanticType::Array(TypedArrayType {
-                            element_type: Box::new(SemanticType::Const(Box::new(SemanticType::Plain(PlainType::Char)))),
+                        StringPrefix::C => SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char))),
+                        StringPrefix::B => SemaType::Array(TypedArrayType {
+                            element_type: Box::new(SemaType::Const(Box::new(SemaType::Plain(PlainType::Char)))),
                             capacity: TypedArrayCapacity::Fixed(Box::new(capacity)),
                             loc: literal.loc,
                         }),
                     }
                 } else {
-                    SemanticType::Pointer(Box::new(SemanticType::Plain(PlainType::Char)))
+                    SemaType::Pointer(Box::new(SemaType::Plain(PlainType::Char)))
                 };
 
                 Some(ty)
             }
-            LiteralKind::Bool(_) => Some(SemanticType::Plain(PlainType::Bool)),
-            LiteralKind::Char(_) => Some(SemanticType::Plain(PlainType::Char)),
-            LiteralKind::Null => Some(SemanticType::Plain(PlainType::Null)),
+            LiteralKind::Bool(_) => Some(SemaType::Plain(PlainType::Bool)),
+            LiteralKind::Char(_) => Some(SemaType::Plain(PlainType::Char)),
+            LiteralKind::Null => Some(SemaType::Plain(PlainType::Null)),
         };
 
         if let Some(ty) = &ty_opt {
@@ -104,8 +104,8 @@ impl<'a> AnalysisContext<'a> {
 fn infer_integer_type(
     literal: &TypedLiteralExpr,
     suffix_opt: &Option<Box<TokenKind>>,
-    expected: Option<SemanticType>,
-) -> Result<SemanticType, Diag> {
+    expected: Option<SemaType>,
+) -> Result<SemaType, Diag> {
     if let Some(suffix) = suffix_opt {
         return match map_integer_suffix_to_sema_type(&suffix) {
             Some(ty) => Ok(ty),
@@ -123,14 +123,14 @@ fn infer_integer_type(
     }
 
     // default integer type
-    Ok(SemanticType::Plain(PlainType::Int))
+    Ok(SemaType::Plain(PlainType::Int))
 }
 
 fn infer_float_type(
     literal: &TypedLiteralExpr,
     suffix_opt: &Option<Box<TokenKind>>,
-    expected: Option<SemanticType>,
-) -> Result<SemanticType, Diag> {
+    expected: Option<SemaType>,
+) -> Result<SemaType, Diag> {
     if let Some(suffix) = suffix_opt {
         return match map_float_suffix_to_sema_type(&suffix) {
             Some(ty) => Ok(ty),
@@ -148,5 +148,5 @@ fn infer_float_type(
     }
 
     // default float type
-    Ok(SemanticType::Plain(PlainType::Float64))
+    Ok(SemaType::Plain(PlainType::Float64))
 }

@@ -33,9 +33,10 @@ use cyrusc_internal::{
 use cyrusc_source_loc::{Loc, SourceMap};
 use cyrusc_typed_ast::{
     TypedProgramTree,
-    decls::table::DeclTablesRegistry,
+    decls::{TypedefDeclID, table::DeclTablesRegistry},
     format::{Formatter, format_loc},
 };
+use fx_hash::FxHashSet;
 
 pub struct AnalysisContext<'a> {
     pub(crate) config: AnalyzerConfig,
@@ -54,6 +55,8 @@ pub struct AnalysisContext<'a> {
 
     pub(crate) control_stack: Vec<ControlRegion>,
     pub(crate) generic_env_stack: Vec<GenericEnv>,
+
+    pub(crate) typedef_expansion_stack: FxHashSet<TypedefDeclID>,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -72,8 +75,10 @@ impl<'a> AnalysisContext<'a> {
         let generic_env_stack = Vec::new();
         let type_cache = TypeCache::new();
         let control_stack = Vec::new();
+        let typedef_expansion_stack = FxHashSet::default();
 
         Self {
+            typedef_expansion_stack,
             generic_env_stack,
             type_cache,
             func_env,
@@ -171,5 +176,21 @@ impl EntryPoints {
                 hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(&self.source_map, loc))),
             });
         }
+    }
+}
+
+impl<'a> AnalysisContext<'a> {
+    #[inline]
+    pub(crate) fn push_typedef_expansion(&mut self, id: TypedefDeclID) -> Result<(), ()> {
+        if !self.typedef_expansion_stack.insert(id) {
+            return Err(());
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn pop_typedef_expansion(&mut self, id: TypedefDeclID) {
+        self.typedef_expansion_stack.remove(&id);
     }
 }

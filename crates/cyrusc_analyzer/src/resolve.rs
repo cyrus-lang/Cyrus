@@ -17,7 +17,7 @@
 
 use crate::context::AnalysisContext;
 use cyrusc_const_eval::{fold::ConstFolder, resolver::ConstResolver};
-use cyrusc_typed_ast::{SymbolID, exprs::TypedExprStmt, types::SemanticType};
+use cyrusc_typed_ast::{SymbolID, exprs::TypedExprStmt, types::SemaType};
 
 impl<'a> AnalysisContext<'a> {
     /// Returns `true` when a const‑qualified type is assigned to a mutable variable.
@@ -26,7 +26,7 @@ impl<'a> AnalysisContext<'a> {
     ///     var x: const int = 10;
     pub(crate) fn is_const_qualified_type_assigned_to_non_const_variable(
         &mut self,
-        ty: &SemanticType,
+        ty: &SemaType,
         is_variable_const: bool,
     ) -> bool {
         !is_variable_const && ty.is_const()

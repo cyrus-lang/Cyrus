@@ -1040,9 +1040,9 @@ impl<'resolver> CIRTraverse<'resolver> {
         CIRExprKind::Literal(CIRLiteral { kind, ty })
     }
 
-    fn lower_sema_type(&mut self, sema_type: &SemanticType) -> CIRType {
+    fn lower_sema_type(&mut self, sema_type: &SemaType) -> CIRType {
         match sema_type {
-            SemanticType::Array(array_type) => {
+            SemaType::Array(array_type) => {
                 let element_type = self.lower_sema_type(&array_type.element_type);
                 let len = match &array_type.capacity {
                     TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
@@ -1054,9 +1054,9 @@ impl<'resolver> CIRTraverse<'resolver> {
                     len: len.try_into().unwrap(),
                 })
             }
-            SemanticType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_type(&*sema_type))),
-            SemanticType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_type(&*sema_type))),
-            SemanticType::FuncType(func_type) => {
+            SemaType::Const(sema_type) => CIRType::Const(Box::new(self.lower_sema_type(&*sema_type))),
+            SemaType::Pointer(sema_type) => CIRType::Pointer(Box::new(self.lower_sema_type(&*sema_type))),
+            SemaType::FuncType(func_type) => {
                 let ret = Box::new(self.lower_sema_type(&func_type.ret_type));
                 let params = self.lower_func_type_params(&func_type.params);
 
@@ -1071,7 +1071,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
                 CIRType::FuncType(cir_type)
             }
-            SemanticType::Tuple(tuple_type) => {
+            SemaType::Tuple(tuple_type) => {
                 let elements: Vec<CIRType> = tuple_type
                     .elements
                     .iter()
@@ -1083,7 +1083,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                     loc: tuple_type.loc,
                 })
             }
-            SemanticType::InterfaceType(interface_type) => CIRType::Struct(CIRStructType {
+            SemaType::InterfaceType(interface_type) => CIRType::Struct(CIRStructType {
                 name: None,
                 fields: vec![
                     CIRType::Pointer(Box::new(CIRType::Plain(PlainType::Void))),
@@ -1097,13 +1097,13 @@ impl<'resolver> CIRTraverse<'resolver> {
                 align: None,
                 loc: interface_type.loc,
             }),
-            SemanticType::Named(named_type) => self.lower_named_type(named_type),
-            SemanticType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
-            SemanticType::Unresolved(_) => unreachable!("unexpected unresolved type"),
-            SemanticType::GenericParam(_) => unreachable!("Unexpected generic param"),
-            SemanticType::SelfType(_) => unreachable!("unexpected self type"),
-            SemanticType::InferVar(_) => unreachable!("unexpected infer var type"),
-            SemanticType::Placeholder => unreachable!("unexpected placeholder type"),
+            SemaType::Named(named_type) => self.lower_named_type(named_type),
+            SemaType::Plain(plain_type) => CIRType::Plain(plain_type.clone()),
+            SemaType::Unresolved(_) => unreachable!("unexpected unresolved type"),
+            SemaType::GenericParam(_) => unreachable!("Unexpected generic param"),
+            SemaType::SelfType(_) => unreachable!("unexpected self type"),
+            SemaType::InferVar(_) => unreachable!("unexpected infer var type"),
+            SemaType::Placeholder => unreachable!("unexpected placeholder type"),
         }
         .const_inner()
         .clone()

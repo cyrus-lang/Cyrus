@@ -19,7 +19,7 @@ use crate::{
     GenericParamID, LabelID, SymbolID,
     decls::{FuncDecl, FuncDeclID, MethodDecls, VarDeclID},
     exprs::{TypedExprStmt, TypedIdent, TypedLambdaExpr, TypedTupleAccessExpr, TypedTupleExpr},
-    types::SemanticType,
+    types::SemaType,
 };
 use cyrusc_ast::{
     Ident, Mutability, SelfModifierKind,
@@ -103,7 +103,7 @@ pub struct TypedExportTupleStmt {
 #[derive(Debug, Clone)]
 pub struct TypedExportPattern {
     pub kind: TypedExportPatternKind,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub mutability: Option<Mutability>,
     pub loc: Loc,
 }
@@ -123,7 +123,7 @@ pub struct TypedDeferStmt {
 
 #[derive(Debug, Clone)]
 pub struct TypedImplementInterface {
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub loc: Loc,
 }
 
@@ -146,7 +146,7 @@ pub struct TypedEnumStmt {
     pub generic_params: TypedGenericParams,
     pub impls: Vec<TypedImplementInterface>,
     pub modifiers: EnumModifiers,
-    pub tag_type: Option<SemanticType>,
+    pub tag_type: Option<SemaType>,
     pub align: Option<usize>,
     pub loc: Loc,
 }
@@ -170,14 +170,14 @@ pub enum TypedEnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumVariantTupleField {
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumVariantStructField {
     pub name: Ident,
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub loc: Loc,
 }
 
@@ -210,14 +210,14 @@ pub struct TypedUnionStmt {
 #[derive(Debug, Clone)]
 pub struct TypedUnionField {
     pub name: String,
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub loc: Loc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedStructField {
     pub name: String,
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub vis: Visibility,
     pub loc: Loc,
 }
@@ -233,7 +233,7 @@ pub struct TypedGlobalVarStmt {
     pub file_id: FileID,
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub expr: Option<TypedExprStmt>,
     pub is_const: bool,
     pub modifiers: GlobalVarModifiers,
@@ -244,7 +244,7 @@ pub struct TypedGlobalVarStmt {
 pub struct TypedTypedefStmt {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub generic_params: TypedGenericParams,
     pub vis: Visibility,
     pub loc: Loc,
@@ -261,7 +261,7 @@ pub struct TypedBlockStmt {
 pub struct TypedVarStmt {
     pub symbol_id: SymbolID,
     pub name: String,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub rhs: Option<TypedExprStmt>,
     pub is_const: bool,
     pub loc: Loc,
@@ -283,7 +283,7 @@ pub struct TypedFuncDefStmt {
     pub params: TypedFuncParams,
     pub generic_params: TypedGenericParams,
     pub body: Box<TypedBlockStmt>,
-    pub ret_type: SemanticType,
+    pub ret_type: SemaType,
     pub modifiers: FuncModifiers,
     pub loc: Loc,
 }
@@ -294,7 +294,7 @@ pub struct TypedFuncDeclStmt {
     pub name: String,
     pub generic_params: TypedGenericParams,
     pub params: TypedFuncParams,
-    pub ret_type: SemanticType,
+    pub ret_type: SemaType,
     pub modifiers: FuncModifiers,
     pub renamed_as: Option<String>,
     pub loc: Loc,
@@ -309,19 +309,19 @@ pub struct TypedFuncParams {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedFuncVariadicParam {
     UntypedCStyle,
-    Typed(TypedIdent, SemanticType),
+    Typed(TypedIdent, SemaType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypedFuncTypeParams {
-    pub list: Vec<SemanticType>,
+    pub list: Vec<SemaType>,
     pub variadic: Option<Box<TypedFuncTypeVariadicParams>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypedFuncTypeVariadicParams {
     UntypedCStyle,
-    Typed(SemanticType),
+    Typed(SemaType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,7 +333,7 @@ pub enum TypedFuncParamKind {
 #[derive(Debug, Clone, Eq)]
 pub struct TypedSelfModifier {
     pub var_decl_id: Option<VarDeclID>,
-    pub ty: Option<SemanticType>,
+    pub ty: Option<SemaType>,
     pub kind: SelfModifierKind,
     pub loc: Loc,
 }
@@ -342,7 +342,7 @@ pub struct TypedSelfModifier {
 pub struct TypedFuncParam {
     pub var_decl_id: Option<VarDeclID>, // none if used in func decl
     pub ident: Ident,
-    pub ty: SemanticType,
+    pub ty: SemaType,
     pub loc: Loc,
 }
 
@@ -441,7 +441,7 @@ pub struct TypedGenericParams(pub Vec<GenericParamID>);
 pub struct TypedGenericParam {
     pub name: Ident,
     pub bounds: Vec<TypedBound>,
-    pub default: Option<Box<SemanticType>>,
+    pub default: Option<Box<SemaType>>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -449,12 +449,12 @@ pub struct TypedTypeArgs(pub Vec<TypedTypeArg>);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TypedTypeArg {
-    Type(SemanticType, Loc),
+    Type(SemaType, Loc),
     Infer,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TypedBound(pub SemanticType);
+pub struct TypedBound(pub SemaType);
 
 impl TypedGenericParams {
     #[inline]
@@ -656,7 +656,7 @@ impl TypedFuncParams {
 }
 
 impl TypedFuncTypeParams {
-    pub fn as_typed_variadic(&self) -> Option<SemanticType> {
+    pub fn as_typed_variadic(&self) -> Option<SemaType> {
         self.variadic.clone().and_then(|variadic| match *variadic {
             TypedFuncTypeVariadicParams::Typed(sema_type) => Some(sema_type),
             TypedFuncTypeVariadicParams::UntypedCStyle => None,
@@ -679,7 +679,7 @@ impl TypedFuncParamKind {
         }
     }
 
-    pub fn param_type(&self) -> Option<SemanticType> {
+    pub fn param_type(&self) -> Option<SemaType> {
         match self {
             TypedFuncParamKind::FuncParam(func_param) => Some(func_param.ty.clone()),
             TypedFuncParamKind::SelfModifier(self_modifier) => self_modifier.ty.clone(),

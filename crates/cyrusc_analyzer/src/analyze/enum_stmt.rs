@@ -23,7 +23,7 @@ use cyrusc_typed_ast::{
     decls::{EnumDecl, EnumDeclID},
     format::{format_enum_decl, format_sema_type},
     stmts::{TypedEnumStmt, TypedEnumVariant, TypedTypeArgs},
-    types::{NamedType, SemanticType, TypeDeclID},
+    types::{NamedType, SemaType, TypeDeclID},
 };
 use fx_hash::FxHashSet;
 
@@ -80,7 +80,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         enum_decl_id: EnumDeclID,
         variants: &mut [TypedEnumVariant],
-        tag_type_opt: &Option<SemanticType>,
+        tag_type_opt: &Option<SemaType>,
         is_repr_c: bool,
     ) {
         for variant in variants {
@@ -92,7 +92,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         enum_decl_id: EnumDeclID,
         variant: &mut TypedEnumVariant,
-        tag_type_opt: &Option<SemanticType>,
+        tag_type_opt: &Option<SemaType>,
         is_repr_c: bool,
     ) {
         match variant {
@@ -245,7 +245,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn validate_enum_tag_type(&mut self, tag_type: &Option<SemanticType>, loc: Loc) {
+    fn validate_enum_tag_type(&mut self, tag_type: &Option<SemaType>, loc: Loc) {
         if let Some(tag_type) = tag_type {
             let tag_type = tag_type.const_inner();
             let valid = tag_type.is_integer() || tag_type.is_char() || tag_type.is_bool();
@@ -266,7 +266,7 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn validate_enum_variant_field_type(
         &mut self,
         enum_decl_id: EnumDeclID,
-        sema_type: &SemanticType,
+        sema_type: &SemaType,
         loc: Loc,
     ) {
         let sema_type = sema_type.const_inner();

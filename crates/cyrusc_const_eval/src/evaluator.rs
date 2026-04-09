@@ -22,7 +22,7 @@ use cyrusc_ast::operators::{InfixOperator, PrefixOperator};
 use cyrusc_tokens::literals::LiteralKind;
 use cyrusc_typed_ast::SymbolID;
 use cyrusc_typed_ast::exprs::*;
-use cyrusc_typed_ast::types::SemanticType;
+use cyrusc_typed_ast::types::SemaType;
 use std::collections::HashMap;
 
 pub struct ConstEvaluator<'a, R: ConstResolver> {
@@ -178,7 +178,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
     fn coerce_to_expected_type(
         &self,
         value: ConstValue,
-        expected_type: &SemanticType,
+        expected_type: &SemaType,
     ) -> Result<ConstValue, ConstEvalError> {
         if expected_type.is_integer() {
             return match value {
