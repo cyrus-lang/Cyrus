@@ -118,7 +118,7 @@ pub struct CIRLambda {
 pub struct CIRCall {
     pub operand: Box<CIRExpr>,
     pub args: Vec<CIRExpr>,
-    pub ret_ty: CIRType,
+    pub ret_type: CIRType,
     pub dispatch: CIRCallDispatch,
 }
 
@@ -436,7 +436,7 @@ pub enum CIREnumVariant {
 pub enum CIREnumInitVariant {
     Ident,
     Valued(Box<CIRExpr>),
-    Fielded(Vec<CIRExpr>),
+    Payload(Vec<CIRExpr>),
 }
 
 #[derive(Debug, Clone)]

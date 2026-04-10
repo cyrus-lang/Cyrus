@@ -210,8 +210,8 @@ pub enum AnalyzerDiagKind {
     #[error("Cannot call method '{method_name}' on constant instance '{instance_name}'.")]
     MutationPossibleMethodCallOnConstInstance { method_name: String, instance_name: String },
 
-    #[error("Cannot access internal field '{field_name}' of struct '{struct_name}' from outside its definition.")]
-    InternalFieldAccess { field_name: String, struct_name: String },
+    #[error("Cannot access internal field '{field_name}' of struct '{object_name}' from outside its definition.")]
+    InternalFieldAccess { field_name: String, object_name: String },
 
     #[error("Cannot call internal method '{method_name}' of object '{object_name}' from outside its definition.")]
     InternalMethodCall { method_name: String, object_name: String },

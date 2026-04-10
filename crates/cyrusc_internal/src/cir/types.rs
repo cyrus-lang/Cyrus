@@ -50,7 +50,7 @@ pub struct CIRDynamicType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CIRArrayType {
-    pub element_ty: Box<CIRType>,
+    pub element_type: Box<CIRType>,
     pub len: usize,
 }
 

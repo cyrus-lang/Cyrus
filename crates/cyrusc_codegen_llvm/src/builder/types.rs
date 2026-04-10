@@ -285,7 +285,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             }
             CIRType::FuncType(func_ty) => self.emit_func_metadata(func_ty),
             CIRType::Array(array_ty) => {
-                let element_ty_metadata = self.emit_debug_ty_metadata(&array_ty.element_ty);
+                let element_ty_metadata = self.emit_debug_ty_metadata(&array_ty.element_type);
                 let layout = type_layout(&self.target.info, &CIRType::Array(array_ty.clone()));
 
                 unsafe {
@@ -579,7 +579,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_arr_ty(&self, array_ty: CIRArrayType) -> AnyTypeEnum<'ll> {
         let elm_ty: BasicTypeEnum<'ll> = self
-            .emit_ty(*array_ty.element_ty)
+            .emit_ty(*array_ty.element_type)
             .try_into()
             .expect("Array element must be a valid llvm type.");
         elm_ty.array_type(array_ty.len as u32).as_any_type_enum()

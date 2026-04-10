@@ -32,6 +32,7 @@ use cyrusc_typed_ast::decls::*;
 use cyrusc_typed_ast::stmts::*;
 use cyrusc_typed_ast::types::*;
 use cyrusc_typed_ast::{SymbolID, exprs::*};
+use fx_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
 
 pub mod cir_dump;
@@ -46,6 +47,7 @@ pub(crate) struct CIRTraverse<'a> {
     module_name: String,
 
     next_irv_id: IRValueID,
+    decl_to_ir_value_map: FxHashMap<DeclID, IRValueID>,
 }
 
 impl<'resolver> CIRTraverse<'resolver> {
@@ -68,6 +70,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             target,
             module_name,
             next_irv_id: IRValueID(0),
+            decl_to_ir_value_map: FxHashMap::default(),
         }
     }
 
@@ -100,7 +103,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 lowered_stmts.push(CIRStmt::Variable(self.lower_var(var)));
             }
             TypedStmt::GlobalVar(global_var) => {
-                lowered_stmts.push(self.lower_global_var(&mut global_var.clone()));
+                lowered_stmts.push(self.lower_global_var_stmt(&mut global_var.clone()));
             }
             TypedStmt::BlockStmt(block) => {
                 lowered_stmts.push(CIRStmt::Block(self.lower_body(block)));
@@ -257,6 +260,8 @@ impl<'resolver> CIRTraverse<'resolver> {
 
                 let irv_id = self.next_irv_id();
 
+                self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
+
                 vars.push(CIRVarStmt {
                     irv_id,
                     name: var_name,
@@ -362,7 +367,7 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
-    fn lower_global_var(&mut self, global_var: &mut TypedGlobalVarStmt) -> CIRStmt {
+    fn lower_global_var_stmt(&mut self, global_var: &mut TypedGlobalVarStmt) -> CIRStmt {
         let ty = global_var
             .ty
             .as_ref()
@@ -381,6 +386,11 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let irv_id = self.next_irv_id();
 
+        let global_var_decl_id = self.query.get_global_var(global_var.symbol_id).unwrap();
+
+        self.decl_to_ir_value_map
+            .insert(DeclID::GlobalVar(global_var_decl_id), irv_id);
+
         CIRStmt::GlobalVar(CIRGlobalVarStmt {
             irv_id,
             name: mangled_name,
@@ -391,28 +401,20 @@ impl<'resolver> CIRTraverse<'resolver> {
         })
     }
 
-    // fn lower_global_var_sig(&mut self, irv_id: IRValueID, global_var_sig: &GlobalVarDecl) -> CIRGlobalVarStmt {
-    //     let ty = global_var_sig
-    //         .ty
-    //         .as_ref()
-    //         .or_else(|| global_var_sig.rhs.as_ref().and_then(|expr| expr.sema_type.as_ref()))
-    //         .map(|sema_type| self.lower_sema_ty(sema_type))
-    //         .unwrap_or_else(|| {
-    //             panic!(
-    //                 "Global var '{}' has neither explicit type nor valid initializer type.",
-    //                 global_var_sig.name
-    //             )
-    //         });
+    fn lower_global_var_decl(&mut self, irv_id: IRValueID, global_var_decl: &GlobalVarDecl) -> CIRGlobalVarStmt {
+        let ty = global_var_decl.ty.as_ref().map(|ty| self.lower_sema_type(ty)).unwrap();
 
-    //     CIRGlobalVarStmt {
-    //         irv_id,
-    //         name: global_var_sig.name.clone(),
-    //         ty,
-    //         expr: None,
-    //         modifiers: global_var_sig.modifiers.clone(),
-    //         loc: global_var_sig.loc,
-    //     }
-    // }
+        let mangled_name = mangle_global_var(&global_var_decl.modifiers, &self.module_name, &global_var_decl.name);
+
+        CIRGlobalVarStmt {
+            irv_id,
+            name: mangled_name,
+            ty,
+            expr: None,
+            modifiers: global_var_decl.modifiers.clone(),
+            loc: global_var_decl.loc,
+        }
+    }
 
     fn lower_var(&mut self, var: &TypedVarStmt) -> CIRVarStmt {
         let ty = var
@@ -430,6 +432,10 @@ impl<'resolver> CIRTraverse<'resolver> {
         let expr = var.rhs.clone().and_then(|expr| Some(self.lower_expr(&expr)));
 
         let irv_id = self.next_irv_id();
+
+        let var_decl_id = self.query.get_var(var.symbol_id).unwrap();
+
+        self.decl_to_ir_value_map.insert(DeclID::Var(var_decl_id), irv_id);
 
         CIRVarStmt {
             irv_id,
@@ -494,6 +500,10 @@ impl<'resolver> CIRTraverse<'resolver> {
 
         let irv_id = self.next_irv_id();
 
+        let func_decl_id = self.query.get_func(func_def.symbol_id).unwrap();
+
+        self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
+
         let mut cir_func_def = CIRFuncDefStmt {
             irv_id,
             name: func_def.name.clone(),
@@ -527,6 +537,10 @@ impl<'resolver> CIRTraverse<'resolver> {
         };
 
         let irv_id = self.next_irv_id();
+
+        let func_decl_id = self.query.get_func(func_decl.symbol_id.unwrap()).unwrap();
+
+        self.decl_to_ir_value_map.insert(DeclID::Func(func_decl_id), irv_id);
 
         let mut cir_func_decl = CIRFuncDeclStmt {
             irv_id,
@@ -583,21 +597,21 @@ impl<'resolver> CIRTraverse<'resolver> {
             TypedExprKind::FuncCall(func_call) => self.lower_func_call(func_call),
             TypedExprKind::MethodCall(method_call) => self.lower_method_call(method_call),
             TypedExprKind::FieldAccess(field_access) => self.lower_field_access(field_access.clone()),
-            TypedExprKind::StructInit(struct_init_expr) => self.lower_struct_init(struct_init_expr),
             TypedExprKind::Lambda(lambda_expr) => self.lower_lambda(lambda_expr),
             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic(dynamic),
-            TypedExprKind::EnumInit(typed_enum_init) => todo!(), // TODO
+            TypedExprKind::StructInit(struct_init_expr) => self.lower_struct_init(struct_init_expr),
+            TypedExprKind::EnumInit(enum_init) => todo!(),
+            TypedExprKind::UnionInit(union_init) => todo!(),
 
-            TypedExprKind::Builtin(_builtin) => todo!(), // TODO
+            TypedExprKind::Builtin(_builtin) => todo!(),
 
             TypedExprKind::UnnamedStructValue(_)
             | TypedExprKind::UnnamedEnumValue(_)
             | TypedExprKind::UnnamedUnionValue(_) => unreachable!("unexpected unnamed constructor expression"),
             TypedExprKind::EnumStructVariantInit(_) => unreachable!("unexpected enum struct variant init expression"),
-            TypedExprKind::SemanticType(..) => unreachable!("unexpected semantic type as expression"),
-
+            TypedExprKind::SemaType(..) => unreachable!("unexpected semantic type as expression"),
             TypedExprKind::Poisoned => unreachable!("unexpected poisoned expression"),
         };
 
@@ -656,61 +670,55 @@ impl<'resolver> CIRTraverse<'resolver> {
         // })
     }
 
-    // FIXME
     pub(crate) fn lower_load_symbol(&mut self, symbol_id: SymbolID) -> CIRExprKind {
-        todo!();
+        let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
-        // let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
+        if let Some(func_decl_id) = symbol_entry.as_func() {
+            let func_decl = self.decl_tables.func_decl(func_decl_id);
+            let mut cir_func_decl = self.lower_func_decl(&func_decl, true);
 
-        // if let Some(func_decl_id) = symbol_entry.as_func() {
-        //     let func_decl = self.decl_tables.func_decl(func_decl_id);
-        //     let mut cir_func_decl = self.lower_func_decl(&func_decl, true);
+            let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
+            cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
 
-        //     let cir_func_type = cir_func_decl_as_func_ty(&cir_func_decl);
-        //     cir_func_decl.abi_func_info = Some(self.target.target_abi.classify_func(&cir_func_type).unwrap());
+            let irv_id = self
+                .decl_to_ir_value_map
+                .get(&DeclID::Func(func_decl_id))
+                .copied()
+                .unwrap();
 
-        //     let mangled_name = mangle_func(
-        //         &cir_func_decl.modifiers,
-        //         &self.query.lookup_module_name(func_decl.file_id).unwrap(),
-        //         &func_decl.name,
-        //     );
+            CIRExprKind::Load(CIRValue {
+                irv_id,
+                kind: CIRValueKind::Func(Box::new(cir_func_decl)),
+            })
+        } else if let Some(global_var_decl_id) = symbol_entry.as_global_var() {
+            let global_var_decl = self.decl_tables.global_var_decl(global_var_decl_id);
 
-        //     cir_func_decl.name = mangled_name;
+            let irv_id = self
+                .decl_to_ir_value_map
+                .get(&DeclID::GlobalVar(global_var_decl_id))
+                .copied()
+                .unwrap();
 
-        //     CIRExprKind::Load(CIRValue {
-        //         irv_id: resolved_func.symbol_id.0,
-        //         kind: CIRValueKind::Func(Box::new(cir_func_decl)),
-        //     })
-        // } else if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-        //     let mut global_var_stmt =
-        //         self.lower_global_var_sig(resolved_global_var.symbol_id.0, &resolved_global_var.global_var_sig);
+            let global_var_stmt = self.lower_global_var_decl(irv_id, &global_var_decl);
 
-        //     if global_var_stmt.modifiers.vis.is_public() {
-        //         if global_var_stmt.modifiers.linkage.is_none() {
-        //             global_var_stmt.modifiers.linkage = Some(Linkage::Extern(None));
-        //         }
-        //     }
+            CIRExprKind::Load(CIRValue {
+                irv_id,
+                kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
+            })
+        } else if let Some(var_decl_id) = symbol_entry.as_var() {
+            let irv_id = self
+                .decl_to_ir_value_map
+                .get(&DeclID::Var(var_decl_id))
+                .copied()
+                .unwrap();
 
-        //     let mangled_name = mangle_global_var(
-        //         &resolved_global_var.global_var_sig.modifiers,
-        //         &self.query.lookup_module_name(resolved_global_var.file_id).unwrap(),
-        //         &resolved_global_var.global_var_sig.name,
-        //     );
-
-        //     global_var_stmt.name = mangled_name;
-
-        //     CIRExprKind::Load(CIRValue {
-        //         irv_id: resolved_global_var.symbol_id.0,
-        //         kind: CIRValueKind::GlobalVar(Box::new(global_var_stmt)),
-        //     })
-        // } else if let Some(resolved_variable) = symbol_entry.as_var() {
-        //     CIRExprKind::Load(CIRValue {
-        //         irv_id: resolved_variable.symbol_id.0,
-        //         kind: CIRValueKind::LocalVariable,
-        //     })
-        // } else {
-        //     unreachable!("Unexpected symbol kind when lowering load symbol.")
-        // }
+            CIRExprKind::Load(CIRValue {
+                irv_id,
+                kind: CIRValueKind::LocalVariable,
+            })
+        } else {
+            unreachable!("Unexpected symbol kind when lowering load symbol.")
+        }
     }
 
     // FIXME
@@ -918,48 +926,40 @@ impl<'resolver> CIRTraverse<'resolver> {
         // }
     }
 
-    // FIXME
     fn lower_func_call(&mut self, func_call: &TypedFuncCall) -> CIRExprKind {
-        todo!();
+        let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
 
-        // let args: Vec<CIRExpr> = func_call.args.iter().map(|arg| self.lower_expr(arg)).collect();
+        let operand = Box::new(self.lower_expr(&func_call.operand));
 
-        // let ret_ty = self.lower_sema_ty(&func_call.ret_type.clone().unwrap());
+        match &func_call.dispatch {
+            TypedFuncCallDispatch::Unresolved => unreachable!(),
+            TypedFuncCallDispatch::Direct { func_decl_id } => {
+                let func_decl = self.decl_tables.func_decl(*func_decl_id);
 
-        // if let Some(monomorph_id) = func_call.monomorph_id {
-        //     let monomorph_func_entry = self.query.lookup_monomorph_func(monomorph_id).unwrap();
+                let ret_type = self.lower_sema_type(&func_decl.ret_type);
 
-        //     let symbol_entry = self
-        //         .query
-        //         .lookup_symbol_entry(monomorph_func_entry.base_symbol)
-        //         .unwrap();
+                CIRExprKind::Call(CIRCall {
+                    operand,
+                    args,
+                    ret_type,
+                    dispatch: CIRCallDispatch::Normal,
+                })
+            }
+            TypedFuncCallDispatch::FunctionPointer { func_type } => {
+                let ret_type = self.lower_sema_type(&func_type.ret_type);
 
-        //     let mut func_decl = symbol_entry
-        //         .as_func()
-        //         .map(|resolved_func| resolved_func.func_decl.clone())
-        //         .or(symbol_entry
-        //             .as_method()
-        //             .map(|resolved_method| resolved_method.func_decl.clone()))
-        //         .expect("Monomorphizaton not supported for the symbol.");
-
-        //     func_decl = substitute_func_sig(
-        //         self.mapping_ctx_arena.clone(),
-        //         &func_decl,
-        //         Rc::new(RefCell::new(monomorph_func_entry.mapping_ctx.clone())),
-        //     )
-        //     .unwrap();
-
-        //     self.insert_monomorph_func_instance(monomorph_id, &func_decl);
-
-        //     CIRExprKind::MonomorphFuncInstanceCall(CIRMonomorphFuncInstanceCall {
-        //         monomorph_id,
-        //         args,
-        //         ret_ty,
-        //     })
-        // } else {
-        //     let operand = Box::new(self.lower_expr(&func_call.operand));
-        //     CIRExprKind::FuncCall(CIRFuncCall { operand, args, ret_ty })
-        // }
+                CIRExprKind::Call(CIRCall {
+                    operand,
+                    args,
+                    ret_type,
+                    dispatch: CIRCallDispatch::Normal,
+                })
+            }
+            TypedFuncCallDispatch::Monomorph {
+                func_decl_id,
+                monomorph_id,
+            } => todo!(),
+        }
     }
 
     fn lower_array_index(&mut self, array_index: &TypedArrayIndexExpr) -> CIRExprKind {
@@ -1050,7 +1050,7 @@ impl<'resolver> CIRTraverse<'resolver> {
                 };
 
                 CIRType::Array(CIRArrayType {
-                    element_ty: Box::new(element_type),
+                    element_type: Box::new(element_type),
                     len: len.try_into().unwrap(),
                 })
             }
@@ -1104,6 +1104,7 @@ impl<'resolver> CIRTraverse<'resolver> {
             SemaType::SelfType(_) => unreachable!("unexpected self type"),
             SemaType::InferVar(_) => unreachable!("unexpected infer var type"),
             SemaType::Placeholder => unreachable!("unexpected placeholder type"),
+            SemaType::Err(_) => unreachable!("unexpected error type"),
         }
         .const_inner()
         .clone()

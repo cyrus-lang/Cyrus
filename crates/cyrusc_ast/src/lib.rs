@@ -286,7 +286,6 @@ pub struct ASTFieldAccessExpr {
     pub is_fat_arrow: bool,
     pub operand: Box<ASTExpr>,
     pub field_name: Ident,
-    pub type_args: TypeArgs,
     pub loc: Loc,
 }
 

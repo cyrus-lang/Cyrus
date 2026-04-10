@@ -99,11 +99,11 @@ impl<'a> AnalysisContext<'a> {
             (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
                 (inner1.is_void() || inner2.is_void()) || self.is_assignable_to(*inner1, *inner2, loc)
             }
-            (SemaType::FuncType(func_type1), SemaType::FuncType(func_type2)) => func_type1 == func_type2,
             (SemaType::Tuple(tuple_type1), SemaType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
             (SemaType::InterfaceType(interface_type1), SemaType::InterfaceType(interface_type2)) => {
                 interface_type1.interface_decl_id == interface_type2.interface_decl_id
             }
+            (SemaType::FuncType(func_type1), SemaType::FuncType(func_type2)) => func_type1 == func_type2,
 
             // allowed: null -> T*
             (SemaType::Plain(PlainType::Null), SemaType::Pointer(..)) => true,

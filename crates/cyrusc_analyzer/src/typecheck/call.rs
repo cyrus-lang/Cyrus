@@ -42,9 +42,8 @@ impl<'a> AnalysisContext<'a> {
             return None;
         };
 
+        // named func call
         if let Some(symbol_id) = func_type.symbol_id {
-            // named func call
-
             let Some(func_decl_id) = self.query.get_func(symbol_id) else {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -69,12 +68,12 @@ impl<'a> AnalysisContext<'a> {
             };
 
             Some(ret_type)
-        } else {
-            // function pointer call
-
+        }
+        // function pointer call
+        else {
             if !func_call.type_args.is_empty() {
-                let type_name = format_typed_expr(&func_call.operand, self.formatter);
-                
+                let type_name = format_sema_type(operand_type, self.formatter);
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs { type_name }),
@@ -84,7 +83,8 @@ impl<'a> AnalysisContext<'a> {
             }
 
             self.normalize_func_type_params(&mut func_type.params, func_call.loc);
-            func_type.ret_type = Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc)?);
+            func_type.ret_type =
+                Box::new(self.normalize_and_check_type_formation(*func_type.ret_type.clone(), func_call.loc)?);
 
             let ret_type = self.check_func_type_call(&mut func_type, &mut func_call.args, func_call.loc)?;
 
@@ -322,7 +322,7 @@ impl<'a> AnalysisContext<'a> {
     //     &mut self,
     //     instance_symbol_id: SymbolID,
     //     method_name: &String,
-    //     method_call_operand_ty: SemanticType,
+    //     method_call_operand_ty: SemaType,
     //     is_fat_arrow: bool,
     //     method_call_on_interface: bool,
     //     first_param_opt: Option<&TypedFuncParamKind>,

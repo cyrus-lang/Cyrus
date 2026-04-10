@@ -358,7 +358,7 @@ pub fn format_typed_expr(expr: &TypedExprStmt, formatter: &dyn Formatter) -> Str
 
             out
         }
-        SemanticType(sema_type) => format_sema_type(sema_type.clone(), formatter),
+        SemaType(sema_type) => format_sema_type(sema_type.clone(), formatter),
         Lambda(lambda) => format_lambda(lambda, formatter),
         Tuple(tuple) => format!(
             "({})",

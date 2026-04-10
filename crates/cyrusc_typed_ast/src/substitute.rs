@@ -20,69 +20,69 @@
 // /// using the provided generic mapping context.
 // pub fn substitute_type(
 //     mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
-//     sema_type: SemanticType,
+//     sema_type: SemaType,
 //     mapping_ctx: Rc<RefCell<GenericMappingCtx>>,
-// ) -> Option<SemanticType> {
+// ) -> Option<SemaType> {
 //     /// Small helper to apply a substitution callback on an inner type.
-//     fn sub<F>(inner: SemanticType, f: &F) -> Option<SemanticType>
+//     fn sub<F>(inner: SemaType, f: &F) -> Option<SemaType>
 //     where
-//         F: Fn(SemanticType) -> Option<SemanticType>,
+//         F: Fn(SemaType) -> Option<SemaType>,
 //     {
 //         f(inner)
 //     }
 
 //     match sema_type {
-//         SemanticType::GenericParam(generic_param) => {
+//         SemaType::GenericParam(generic_param) => {
 //             let mut sema_type = {
 //                 let mapping_ctx_ref = mapping_ctx.borrow();
 //                 mapping_ctx_ref.resolve_with_name(mapping_ctx_arena, &generic_param.name.value)
 //             };
 
-//             if let Some(SemanticType::GenericParam(generic_param)) = sema_type {
+//             if let Some(SemaType::GenericParam(generic_param)) = sema_type {
 //                 sema_type = generic_param.default.map(|sema_type| *sema_type);
 //             }
 
 //             sema_type
 //         }
-//         SemanticType::GenericType(mut generic_type) => {
+//         SemaType::GenericType(mut generic_type) => {
 //             if let Some(type_args) = &mut generic_type.type_args {
 //                 for type_arg in type_args {
 //                     *type_arg.ty_mut() =
 //                         substitute_type(mapping_ctx_arena.clone(), type_arg.ty().clone(), mapping_ctx.clone())?;
 //                 }
 //             }
-//             Some(SemanticType::GenericType(generic_type))
+//             Some(SemaType::GenericType(generic_type))
 //         }
-//         SemanticType::Pointer(inner) => sub(*inner, &|t| {
+//         SemaType::Pointer(inner) => sub(*inner, &|t| {
 //             substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone())
 //         })
-//         .map(|t| SemanticType::Pointer(Box::new(t))),
-//         SemanticType::Array(array_type) => sub(*array_type.element_type, &|t| {
+//         .map(|t| SemaType::Pointer(Box::new(t))),
+//         SemaType::Array(array_type) => sub(*array_type.element_type, &|t| {
 //             substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone())
 //         })
 //         .map(|elem_ty| {
-//             SemanticType::Array(TypedArrayType {
+//             SemaType::Array(TypedArrayType {
 //                 element_type: Box::new(elem_ty),
 //                 capacity: array_type.capacity,
 //                 loc: array_type.loc,
 //             })
 //         }),
-//         SemanticType::Const(inner) => sub(*inner, &|sema_type| {
+//         SemaType::Const(inner) => sub(*inner, &|sema_type| {
 //             substitute_type(mapping_ctx_arena.clone(), sema_type, mapping_ctx.clone())
 //         })
 //         .map(|sema_type| sema_type.as_const()),
-//         SemanticType::Tuple(tuple_type) => {
+//         SemaType::Tuple(tuple_type) => {
 //             let list = tuple_type
 //                 .elements
 //                 .into_iter()
 //                 .map(|t| substitute_type(mapping_ctx_arena.clone(), t, mapping_ctx.clone()))
 //                 .collect::<Option<Vec<_>>>()?;
-//             Some(SemanticType::Tuple(TypedTupleType {
+//             Some(SemaType::Tuple(TypedTupleType {
 //                 elements: list,
 //                 loc: tuple_type.loc,
 //             }))
 //         }
-//         SemanticType::FuncType(func_type) => {
+//         SemaType::FuncType(func_type) => {
 //             let params = func_type
 //                 .params
 //                 .list
@@ -94,7 +94,7 @@
 //                 *func_type.ret_type,
 //                 mapping_ctx.clone(),
 //             )?);
-//             Some(SemanticType::FuncType(TypedFuncType {
+//             Some(SemaType::FuncType(TypedFuncType {
 //                 symbol_id: func_type.symbol_id,
 //                 params: TypedFuncTypeParams {
 //                     list: params,
@@ -105,7 +105,7 @@
 //                 loc: func_type.loc,
 //             }))
 //         }
-//         SemanticType::UnnamedStruct(unnamed_struct_type) => {
+//         SemaType::UnnamedStruct(unnamed_struct_type) => {
 //             let fields = unnamed_struct_type
 //                 .fields
 //                 .iter()
@@ -119,7 +119,7 @@
 //                 })
 //                 .collect::<Option<Vec<_>>>()?;
 
-//             Some(SemanticType::UnnamedStruct(TypedUnnamedStructType {
+//             Some(SemaType::UnnamedStruct(TypedUnnamedStructType {
 //                 fields,
 //                 repr_attr: unnamed_struct_type.repr_attr.clone(),
 //                 align: unnamed_struct_type.align.clone(),

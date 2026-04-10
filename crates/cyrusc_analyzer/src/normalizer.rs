@@ -227,7 +227,7 @@ impl<'a> AnalysisContext<'a> {
         //     .map(|func_decl| func_decl)
         //     .collect();
 
-        // Some(SemanticType::Interface(InterfaceType {
+        // Some(SemaType::Interface(InterfaceType {
         //     symbol_id: interface_decl_id.symbol_id,
         //     methods,
         //     loc,

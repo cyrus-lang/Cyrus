@@ -208,7 +208,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             if basic_value.is_pointer_value() {
                 self.emit_inbounds_checked_array_index(
                     base_addr.as_basic_value().into_pointer_value(),
-                    *array_type.element_ty.clone(),
+                    *array_type.element_type.clone(),
                     index_rvalue,
                     array_type.len.try_into().unwrap(),
                 )
@@ -217,7 +217,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
                 self.emit_inbounds_checked_array_index(
                     ptr, // use temp alloca instead
-                    *array_type.element_ty.clone(),
+                    *array_type.element_type.clone(),
                     index_rvalue,
                     array_type.len.try_into().unwrap(),
                 )
@@ -475,7 +475,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     fn emit_array(&mut self, array: &CIRArrayExpr) -> InternalValue<'ll> {
         let cir_arr_ty = array.ty.as_array().unwrap();
-        let element_ty = cir_arr_ty.element_ty.clone();
+        let element_ty = cir_arr_ty.element_type.clone();
 
         let arr_ty: ArrayType<'ll> = self.emit_arr_ty(cir_arr_ty).try_into().unwrap();
 
@@ -542,7 +542,7 @@ impl<'ll> IRBuilderCtx<'ll> {
 
     pub(crate) fn emit_decay_array_to_pointer(&self, array_lvalue: InternalValue<'ll>) -> InternalValue<'ll> {
         let array_ptr = array_lvalue.as_basic_value().into_pointer_value();
-        let element_type = array_lvalue.ty.as_array().unwrap().element_ty;
+        let element_type = array_lvalue.ty.as_array().unwrap().element_type;
 
         let zero = self.llvmctx.i32_type().const_int(0, false);
         let first_element = unsafe {
@@ -1398,7 +1398,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                     .unwrap()
                     .into_struct_value();
             }
-            CIREnumInitVariant::Fielded(field_exprs) => {
+            CIREnumInitVariant::Payload(field_exprs) => {
                 let field_basic_tys: Vec<BasicTypeEnum<'ll>> = field_exprs
                     .iter()
                     .map(|fld| self.emit_ty(fld.ty.clone()).try_into().unwrap())
@@ -1600,7 +1600,7 @@ impl<'ll> IRBuilderCtx<'ll> {
                 }
                 ABIFieldOffsetInfo::Padding { size, .. } => {
                     let cir_array_type = CIRType::Array(CIRArrayType {
-                        element_ty: Box::new(CIRType::Plain(PlainType::Int8)),
+                        element_type: Box::new(CIRType::Plain(PlainType::Int8)),
                         len: *size as usize,
                     });
                     let padding_array_value = self.llvmctx.i8_type().array_type(*size).const_zero();
@@ -1779,7 +1779,7 @@ impl<'ll> IRBuilderCtx<'ll> {
             CIRCallDispatch::Normal => {
                 // check if it's a direct or indirect call
                 if let Some(fn_value) = rvalue.as_func() {
-                    self.emit_direct_call(&rvalue.ty.as_func().unwrap(), &call.args, &call.ret_ty, fn_value)
+                    self.emit_direct_call(&rvalue.ty.as_func().unwrap(), &call.args, &call.ret_type, fn_value)
                 } else if rvalue.as_basic_value().is_pointer_value() {
                     self.emit_indirect_call(call)
                 } else {
@@ -1862,9 +1862,9 @@ impl<'ll> IRBuilderCtx<'ll> {
             let actual_return_type: BasicTypeEnum<'ll> = self.emit_ty(*cir_fn_ty.ret.clone()).try_into().unwrap();
             basic_value = self.intrinsic_coerce_through_alloca(basic_value, actual_return_type, "coerce_ret");
 
-            InternalValue::new(func_call.ret_ty.clone(), InternalValueKind::RValue(basic_value))
+            InternalValue::new(func_call.ret_type.clone(), InternalValueKind::RValue(basic_value))
         } else {
-            self.emit_null(func_call.ret_ty.clone())
+            self.emit_null(func_call.ret_type.clone())
         }
     }
 

@@ -90,7 +90,7 @@ mod tests {
     }
 
     fn array_ty(ty: CIRType, len: usize) -> CIRType {
-        CIRType::Array(CIRArrayType { element_ty: Box::new(ty), len })
+        CIRType::Array(CIRArrayType { element_type: Box::new(ty), len })
     }
 
     #[test]

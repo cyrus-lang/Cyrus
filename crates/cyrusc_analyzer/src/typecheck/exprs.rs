@@ -82,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
             TypedExprKind::ArrayIndex(array_index) => self.analyze_array_index(array_index),
             TypedExprKind::Dynamic(dynamic_expr) => todo!(),
             TypedExprKind::MethodCall(method_call) => todo!(),
-            TypedExprKind::FieldAccess(field_access) => todo!(),
+            TypedExprKind::FieldAccess(field_access) => self.analyze_field_access(field_access),
             TypedExprKind::FuncCall(func_call) => self.analyze_func_call(func_call),
             TypedExprKind::Lambda(lambda) => self.analyze_lambda(lambda),
             TypedExprKind::Tuple(tuple) => self.analyze_tuple_value(tuple, expected_type.clone()),
@@ -105,7 +105,7 @@ impl<'a> AnalysisContext<'a> {
 
             TypedExprKind::Builtin(_typed_builtin) => todo!(),
 
-            TypedExprKind::SemanticType(_) => {
+            TypedExprKind::SemaType(_) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: Box::new(AnalyzerDiagKind::InvalidUsageOfTheSemanticType),

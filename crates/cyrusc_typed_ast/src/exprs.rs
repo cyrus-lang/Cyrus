@@ -17,7 +17,7 @@
 
 use crate::{
     SymbolID, VTableID,
-    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID},
+    decls::{EnumDeclID, FuncDeclID, InterfaceDeclID, MonomorphID, StructDeclID, UnionDeclID},
     stmts::{TypedBlockStmt, TypedBuiltin, TypedFuncParams, TypedTypeArgs},
     types::{SemaType, TypedFuncType},
 };
@@ -70,7 +70,7 @@ pub enum TypedExprKind {
     Tuple(TypedTupleExpr),
     TupleAccess(TypedTupleAccessExpr),
     Dynamic(TypedDynamicExpr),
-    SemanticType(SemaType),
+    SemaType(SemaType),
     Builtin(TypedBuiltin),
 
     Poisoned, // semantically wrong
@@ -228,9 +228,7 @@ pub struct TypedFuncCall {
     pub operand: Box<TypedExprStmt>,
     pub args: Vec<TypedExprStmt>,
     pub type_args: TypedTypeArgs,
-
     pub dispatch: TypedFuncCallDispatch,
-
     pub loc: Loc,
 }
 
@@ -245,7 +243,7 @@ pub enum TypedFuncCallDispatch {
 
     /// Generic function instantiation
     Monomorph {
-        decl_id: FuncDeclID,
+        func_decl_id: FuncDeclID,
         monomorph_id: MonomorphID,
     },
 
@@ -258,13 +256,20 @@ pub enum TypedFuncCallDispatch {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFieldAccess {
     pub operand: Box<TypedExprStmt>,
-    pub object_symbol_id: Option<SymbolID>,
     pub name: String,
-    pub index: Option<usize>,
+    pub dispatch: TypedFieldAccessDispatch,
     pub ty: Option<SemaType>,
-    pub type_args: TypedTypeArgs,
     pub is_fat_arrow: bool,
     pub loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedFieldAccessDispatch {
+    Unresolved,
+
+    Struct { struct_decl_id: StructDeclID, index: usize },
+
+    Union { union_decl_id: UnionDeclID },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -272,7 +277,6 @@ pub struct TypedEnumInit {
     pub enum_decl_id: EnumDeclID,
     pub name: String,
     pub args: TypedEnumInitArgs,
-    pub type_args: TypedTypeArgs,
     pub loc: Loc,
 }
 
@@ -416,7 +420,7 @@ impl TypedExprKind {
             | TypedExprKind::Assign(_)
             | TypedExprKind::AddrOf(_)
             | TypedExprKind::Array(_)
-            | TypedExprKind::SemanticType(_)
+            | TypedExprKind::SemaType(_)
             | TypedExprKind::Lambda(_)
             | TypedExprKind::Tuple(_)
             | TypedExprKind::Dynamic(_)

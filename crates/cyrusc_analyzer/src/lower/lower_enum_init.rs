@@ -22,7 +22,7 @@ use cyrusc_typed_ast::{
     exprs::{
         MemoryLocation, TypedEnumInit, TypedEnumInitArgs, TypedExprKind, TypedExprStmt, TypedUnnamedEnumValueKind,
     },
-    format::format_enum_decl, stmts::TypedTypeArgs,
+    format::format_enum_decl,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -49,7 +49,6 @@ impl<'a> AnalysisContext<'a> {
                         enum_decl_id,
                         name: field_access.name.clone(),
                         args,
-                        type_args: field_access.type_args.clone(),
                         loc: field_access.loc,
                     };
 
@@ -88,6 +87,17 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
+        if !method_call.type_args.is_empty() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: Box::new(AnalyzerDiagKind::UnexpectedTypeArgs {
+                    type_name: method_call.name.clone(),
+                }),
+                loc: Some(method_call.loc),
+                hint: None,
+            });
+        }
+
         if let Some(symbol_id) = method_call.operand.kind.as_symbol_id() {
             let symbol_entry = self.query.lookup_symbol_entry(symbol_id).unwrap();
 
@@ -102,7 +112,6 @@ impl<'a> AnalysisContext<'a> {
                         enum_decl_id,
                         name: method_call.name.clone(),
                         args,
-                        type_args: method_call.type_args.clone(),
                         loc: method_call.loc,
                     };
 
@@ -133,7 +142,6 @@ impl<'a> AnalysisContext<'a> {
                 enum_decl_id: enum_value.enum_decl_id.unwrap(),
                 name: enum_value.ident.as_string(),
                 args: enum_init_args,
-                type_args: TypedTypeArgs::new(),
                 loc: enum_value.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),
@@ -154,7 +162,6 @@ impl<'a> AnalysisContext<'a> {
                 enum_decl_id: struct_variant_init.enum_decl_id.unwrap(),
                 name: struct_variant_init.ident.as_string(),
                 args,
-                type_args: TypedTypeArgs::new(),
                 loc: struct_variant_init.loc,
             }),
             sema_type: typed_expr.sema_type.clone(),

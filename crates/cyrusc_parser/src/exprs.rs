@@ -653,20 +653,23 @@ impl<'source_file> Parser<'source_file> {
                 self.parse_method_call(operand, ident, is_fat_arrow, type_args, line, column, start)
             } else if self.peek_token_is(TokenKind::LeftBrace) {
                 if is_fat_arrow || !type_args.is_empty() {
-                    self.error_at_current(ParserDiagKind::InvalidToken(self.current_token().kind));
+                    return Err(self.error_invalid_token());
                 }
 
                 self.next_token(); // consume ident
 
                 self.parse_enum_struct_variant_init(operand, ident, line, column, start)
             } else {
+                if !type_args.is_empty() {
+                    return Err(self.error_invalid_token());
+                }
+
                 let end = self.current_token().loc.end;
 
                 Ok(ASTExpr::FieldAccess(ASTFieldAccessExpr {
                     is_fat_arrow,
                     operand: Box::new(operand),
                     field_name: ident,
-                    type_args,
                     loc: Loc::new(self.file_id(), line, column, start, end),
                 }))
             }

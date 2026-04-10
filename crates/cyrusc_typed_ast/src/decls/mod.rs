@@ -28,10 +28,23 @@ use cyrusc_ast::{
     abi::{ReprKind, Visibility},
     modifiers::{EnumModifiers, FuncModifiers, GlobalVarModifiers, StructModifiers, UnionModifiers},
 };
-use cyrusc_source_loc::Loc;
+use cyrusc_source_loc::{FileID, Loc};
 use std::{collections::HashMap, hash::Hash};
 
 pub mod table;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum DeclID {
+    Struct(StructDeclID),
+    Enum(EnumDeclID),
+    Union(UnionDeclID),
+    Func(FuncDeclID),
+    Method(MethodDeclID),
+    Interface(InterfaceDeclID),
+    GlobalVar(GlobalVarDeclID),
+    Var(VarDeclID),
+    Typedef(TypedefDeclID),
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct StructDeclID(pub u32);
@@ -206,6 +219,10 @@ impl MethodDecls {
 
     pub fn contains(&self, name: &str) -> bool {
         self.0.contains_key(name)
+    }
+
+    pub fn contains_method_id(&self, method_decl_id: MethodDeclID) -> bool {
+        self.0.values().any(|&id| id == method_decl_id)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &MethodDeclID)> {

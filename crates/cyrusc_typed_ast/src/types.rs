@@ -419,14 +419,6 @@ impl SemaType {
     }
 
     #[inline]
-    pub fn is_enum(&self) -> bool {
-        match self.const_inner() {
-            SemaType::Named(named_type) => named_type.decl_id.is_enum(),
-            _ => false,
-        }
-    }
-
-    #[inline]
     pub fn is_bool(&self) -> bool {
         matches!(self.const_inner(), SemaType::Plain(PlainType::Bool))
     }
@@ -454,6 +446,38 @@ impl SemaType {
     #[inline]
     pub fn is_pointer(&self) -> bool {
         matches!(self.const_inner(), SemaType::Pointer(..))
+    }
+
+    #[inline]
+    pub fn is_struct(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Named(named_type) => named_type.decl_id.is_struct(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_union(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Named(named_type) => named_type.decl_id.is_union(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_enum(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Named(named_type) => named_type.decl_id.is_enum(),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_interface(&self) -> bool {
+        match self.const_inner() {
+            SemaType::Named(named_type) => named_type.decl_id.is_interface(),
+            _ => false,
+        }
     }
 
     pub fn contains_infer_var(&self) -> bool {

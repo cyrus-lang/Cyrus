@@ -47,7 +47,7 @@
 //     current_self_ty: Option<CIRTy>,
 //     pub(crate) query: &'q dyn Query,
 //     pub(crate) cir_monomorph_registry: Arc<Mutex<CIRMonomorphRegistry>>,
-//     pub(crate) current_obj_operand_ty: Option<SemanticType>,
+//     pub(crate) current_obj_operand_ty: Option<SemaType>,
 //     pub(crate) mapping_ctx_arena: Arc<Mutex<dyn GenericMappingCtxArena>>,
 //     pub(crate) vtable_registry: Arc<Mutex<VTableRegistry>>,
 //     pub(crate) target: &'q ABITarget,
@@ -972,7 +972,7 @@
 //             TypedExprKind::Tuple(tuple_expr) => self.lower_tuple(tuple_expr),
 //             TypedExprKind::TupleAccess(tuple_access_expr) => self.lower_tuple_access(tuple_access_expr),
 //             TypedExprKind::Dynamic(dynamic) => self.lower_dynamic_expr(dynamic),
-//             TypedExprKind::SemanticType(..) => unreachable!(),
+//             TypedExprKind::SemaType(..) => unreachable!(),
 
 //             TypedExprKind::Builtin(_builtin) => todo!(),
 //         };
@@ -1661,11 +1661,11 @@
 //         CIRExprKind::Literal(CIRLiteral { kind, ty })
 //     }
 
-//     fn lower_sema_ty(&mut self, sema_type: &SemanticType) -> CIRTy {
+//     fn lower_sema_ty(&mut self, sema_type: &SemaType) -> CIRTy {
 //         match sema_type {
-//             SemanticType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(resolved_symbol),
-//             SemanticType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
-//             SemanticType::Array(array_type) => {
+//             SemaType::ResolvedSymbol(resolved_symbol) => self.lower_resolved_symbol(resolved_symbol),
+//             SemaType::PlainType(basic_type) => CIRTy::PlainType(basic_type.clone()),
+//             SemaType::Array(array_type) => {
 //                 let element_type = self.lower_sema_ty(&array_type.element_type);
 //                 let len = match &array_type.capacity {
 //                     TypedArrayCapacity::Fixed(expr) => expr.literal_const_int_value().unwrap(),
@@ -1677,9 +1677,9 @@
 //                     len: len.try_into().unwrap(),
 //                 })
 //             }
-//             SemanticType::Const(sema_type) => CIRTy::Const(Box::new(self.lower_sema_ty(&*sema_type))),
-//             SemanticType::Pointer(sema_type) => CIRTy::Pointer(Box::new(self.lower_sema_ty(&*sema_type))),
-//             SemanticType::UnnamedStruct(unnamed_struct_type) => {
+//             SemaType::Const(sema_type) => CIRTy::Const(Box::new(self.lower_sema_ty(&*sema_type))),
+//             SemaType::Pointer(sema_type) => CIRTy::Pointer(Box::new(self.lower_sema_ty(&*sema_type))),
+//             SemaType::UnnamedStruct(unnamed_struct_type) => {
 //                 let fields = unnamed_struct_type
 //                     .fields
 //                     .iter()
@@ -1701,7 +1701,7 @@
 //                     loc: unnamed_struct_type.loc,
 //                 })
 //             }
-//             SemanticType::FuncType(func_type) => {
+//             SemaType::FuncType(func_type) => {
 //                 let ret = Box::new(self.lower_sema_ty(&func_type.ret_type));
 //                 let params = self.lower_func_type_params(&func_type.params);
 
@@ -1716,7 +1716,7 @@
 //                 cir_type.abi_func_info = Some(self.target.target_abi.classify_func(&cir_type).unwrap());
 //                 CIRTy::FuncType(cir_type)
 //             }
-//             SemanticType::Tuple(tuple_type) => {
+//             SemaType::Tuple(tuple_type) => {
 //                 let elements: Vec<CIRTy> = tuple_type
 //                     .elements
 //                     .iter()
@@ -1728,16 +1728,16 @@
 //                     loc: tuple_type.loc,
 //                 })
 //             }
-//             SemanticType::GenericType(generic_type) => self.lower_generic_type(generic_type.clone()),
-//             SemanticType::UnresolvedSymbol(_) => unreachable!("unexpected unresolved symbol"),
-//             SemanticType::SelfType(_) => {
+//             SemaType::GenericType(generic_type) => self.lower_generic_type(generic_type.clone()),
+//             SemaType::UnresolvedSymbol(_) => unreachable!("unexpected unresolved symbol"),
+//             SemaType::SelfType(_) => {
 //                 if let Some(cir_type) = &self.current_self_ty {
 //                     cir_type.clone()
 //                 } else {
 //                     unreachable!("unexpected self type which is not resolved")
 //                 }
 //             }
-//             SemanticType::GenericParam(generic_param) => {
+//             SemaType::GenericParam(generic_param) => {
 //                 if let Some(sema_type) = self.current_obj_operand_ty.clone() {
 //                     if let Some(generic_type) = sema_type.as_generic_type() {
 //                         {
@@ -1755,10 +1755,10 @@
 
 //                 unreachable!("Unexpected generic param which is not resolved: {:#?}", generic_param)
 //             }
-//             SemanticType::DynamicType(dynamic_type) => CIRTy::Dynamic(CIRDynamicTy {
+//             SemaType::DynamicType(dynamic_type) => CIRTy::Dynamic(CIRDynamicTy {
 //                 vtable_id: dynamic_type.vtable_id,
 //             }),
-//             SemanticType::Interface(interface_type) => CIRTy::Struct(CIRStructTy {
+//             SemaType::Interface(interface_type) => CIRTy::Struct(CIRStructTy {
 //                 name: None,
 //                 fields: vec![
 //                     CIRTy::Pointer(Box::new(CIRTy::PlainType(PlainType::Void))),
@@ -1772,10 +1772,10 @@
 //                 align: None,
 //                 loc: interface_type.loc,
 //             }),
-//             SemanticType::UnnamedUnion(unnamed_union_type) => {
+//             SemaType::UnnamedUnion(unnamed_union_type) => {
 //                 CIRTy::Union(self.lower_unnamed_union_type_as_cir_union_ty(unnamed_union_type))
 //             }
-//             SemanticType::UnnamedEnum(unnamed_enum_type) => {
+//             SemaType::UnnamedEnum(unnamed_enum_type) => {
 //                 CIRTy::Enum(self.lower_unnamed_enum_type_as_cir_enum_ty(unnamed_enum_type))
 //             }
 //         }
