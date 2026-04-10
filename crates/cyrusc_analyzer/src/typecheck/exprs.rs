@@ -122,18 +122,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(expected_type) = expected_type {
             if let Some(infer) = &mut self.func_env.infer {
-                if !infer.unify(&expr_type, &expected_type) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                            lhs_type: format_sema_type(expected_type, self.formatter),
-                            rhs_type: format_sema_type(expr_type, self.formatter),
-                        }),
-                        loc: Some(expr.loc),
-                        hint: None,
-                    });
-                    return None;
-                }
+                infer.unify(&expr_type, &expected_type);
             }
         }
 
@@ -179,18 +168,7 @@ impl<'a> AnalysisContext<'a> {
         value_type = self.substitute_type(&value_type);
 
         if let Some(infer) = &mut self.func_env.infer {
-            if !infer.unify(&expected_type, &value_type) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_sema_type(expected_type.clone(), self.formatter),
-                        rhs_type: format_sema_type(value_type.clone(), self.formatter),
-                    }),
-                    loc: Some(loc),
-                    hint: None,
-                });
-                return expected_type;
-            }
+            infer.unify(&expected_type, &value_type);
 
             expected_type = infer.resolve(&expected_type);
             value_type = infer.resolve(&value_type);

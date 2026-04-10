@@ -79,8 +79,8 @@ impl<'a> AnalysisContext<'a> {
 
                 valid_capacity && self.is_assignable_to(*array_type1.element_type, *array_type2.element_type, loc)
             }
+            // array-to-pointer decay
             (SemaType::Array(array_type), SemaType::Pointer(inner)) => {
-                // array-to-pointer decay
                 self.is_assignable_to(*array_type.element_type, *inner, loc)
             }
             (SemaType::Pointer(inner1), SemaType::Pointer(inner2)) => {
@@ -439,15 +439,25 @@ impl<'a> AnalysisContext<'a> {
 
 impl<'a> AnalysisContext<'a> {
     fn expand_typedef(&mut self, typedef_decl_id: TypedefDeclID, args: &TypedTypeArgs, loc: Loc) -> SemaType {
-        if self.push_typedef_expansion(typedef_decl_id).is_err() {
-            let symbol_name = self.formatter.format_type_decl(TypeDeclID::Typedef(typedef_decl_id));
+        if let Err(path) = self.push_typedef_expansion(typedef_decl_id) {
+            // only report the error once per cycle to avoid spamming the user
+            if !self.typedef_cycle_reported {
+                let cycle_str = path
+                    .iter()
+                    .map(|&id| self.formatter.format_type_decl(TypeDeclID::Typedef(id)))
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name }),
-                loc: Some(loc),
-                hint: None,
-            });
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name: cycle_str }),
+                    loc: Some(loc),
+                    hint: Some(
+                        "Cycles in type definitions are not allowed as they result in infinite recursion.".to_string(),
+                    ),
+                });
+                self.typedef_cycle_reported = true;
+            }
             return SemaType::Err(loc);
         }
 
@@ -498,7 +508,7 @@ impl<'a> AnalysisContext<'a> {
 
         let result = self.expand_sema_type(substituted_type, loc);
 
-        self.pop_typedef_expansion(typedef_decl_id);
+        self.pop_typedef_expansion();
 
         result
     }
