@@ -57,7 +57,7 @@ pub struct GlobalVarDeclID(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VarDeclID(pub u32);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypedefDeclID(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

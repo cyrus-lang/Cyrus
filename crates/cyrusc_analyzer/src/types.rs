@@ -29,6 +29,19 @@ use cyrusc_typed_ast::{
     },
 };
 
+macro_rules! with_typedef_expansion {
+    ($ctx:expr, $id:expr, $body:block) => {{
+        match $ctx.push_typedef_expansion($id) {
+            Ok(_) => {
+                let result = (|| $body)();
+                $ctx.pop_typedef_expansion();
+                result
+            }
+            Err(cycle) => Err(cycle),
+        }
+    }};
+}
+
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn sema_type_contains_self_by_value(&self, field_type: &SemaType, named_type: NamedType) -> bool {
         match field_type {
@@ -439,78 +452,83 @@ impl<'a> AnalysisContext<'a> {
 
 impl<'a> AnalysisContext<'a> {
     fn expand_typedef(&mut self, typedef_decl_id: TypedefDeclID, args: &TypedTypeArgs, loc: Loc) -> SemaType {
-        if let Err(path) = self.push_typedef_expansion(typedef_decl_id) {
-            // only report the error once per cycle to avoid spamming the user
-            if !self.typedef_cycle_reported {
-                let cycle_str = path
-                    .iter()
-                    .map(|&id| self.formatter.format_type_decl(TypeDeclID::Typedef(id)))
-                    .collect::<Vec<_>>()
-                    .join(" -> ");
+        let expansion_result: Result<SemaType, Vec<TypedefDeclID>> = with_typedef_expansion!(self, typedef_decl_id, {
+            let typedef_decl = self.decl_tables.typedef_decl(typedef_decl_id);
+
+            let generic_params = &typedef_decl.generic_params;
+            let mut final_args = Vec::with_capacity(generic_params.len());
+
+            for i in 0..generic_params.len() {
+                if let Some(arg) = args.get(i) {
+                    final_args.push(arg.clone());
+                } else {
+                    let infer = self.func_env.infer.as_mut().unwrap().new_var();
+                    final_args.push(TypedTypeArg::Type(infer, loc));
+                }
+            }
+
+            if args.len() > final_args.len() {
+                let type_name = format_sema_type(
+                    SemaType::Named(NamedType {
+                        decl_id: TypeDeclID::Typedef(typedef_decl_id),
+                        type_args: args.clone(),
+                    }),
+                    self.formatter,
+                );
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name: cycle_str }),
+                    kind: Box::new(AnalyzerDiagKind::WrongNumberOfTypeArgs {
+                        type_name,
+                        expected: final_args.len(),
+                        provided: args.len(),
+                    }),
                     loc: Some(loc),
-                    hint: Some(
-                        "Cycles in type definitions are not allowed as they result in infinite recursion.".to_string(),
-                    ),
+                    hint: None,
                 });
-                self.typedef_cycle_reported = true;
             }
-            return SemaType::Err(loc);
-        }
 
-        let typedef_decl = self.decl_tables.typedef_decl(typedef_decl_id);
+            let gen_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
 
-        let generic_params = &typedef_decl.generic_params;
-        let mut final_args = Vec::with_capacity(generic_params.len());
+            let typedef_type = match self.normalize_and_check_type_formation(*typedef_decl.ty, loc) {
+                Some(t) => t,
+                None => return Ok(SemaType::Err(loc)),
+            };
 
-        for i in 0..generic_params.len() {
-            if let Some(arg) = args.get(i) {
-                final_args.push(arg.clone());
-            } else {
-                let infer_type = self.func_env.infer.as_mut().unwrap().new_var();
+            let substituted = gen_env.substitute_sema_type(&typedef_type);
 
-                final_args.push(TypedTypeArg::Type(infer_type, loc));
+            Ok(self.expand_sema_type(substituted, loc))
+        });
+
+        match expansion_result {
+            Ok(ty) => ty,
+            Err(path) => {
+                let canonical = canonicalize_typedef_cycle(&path);
+
+                if self.reported_typedef_cycles.insert(canonical.clone()) {
+                    let mut ids = canonical.clone();
+                    ids.push(canonical[0]);
+
+                    let cycle_str = ids
+                        .iter()
+                        .map(|&id| self.formatter.format_type_decl(TypeDeclID::Typedef(id)))
+                        .collect::<Vec<_>>()
+                        .join(" -> ");
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: Box::new(AnalyzerDiagKind::CyclicTypeDefinition { symbol_name: cycle_str }),
+                        loc: Some(loc),
+                        hint: Some(
+                            "Cycles in type definitions are not allowed as they result in infinite recursion."
+                                .to_string(),
+                        ),
+                    });
+                }
+
+                SemaType::Err(loc)
             }
         }
-
-        if args.len() > final_args.len() {
-            let type_name = format_sema_type(
-                SemaType::Named(NamedType {
-                    decl_id: TypeDeclID::Typedef(typedef_decl_id),
-                    type_args: args.clone(),
-                }),
-                self.formatter,
-            );
-
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: Box::new(AnalyzerDiagKind::WrongNumberOfTypeArgs {
-                    type_name,
-                    expected: final_args.len(),
-                    provided: args.len(),
-                }),
-                loc: Some(loc),
-                hint: None,
-            });
-        }
-
-        let generic_env = GenericEnv::from_type_args(generic_params.clone(), &TypedTypeArgs(final_args));
-
-        let typedef_type = match self.normalize_and_check_type_formation(*typedef_decl.ty, loc) {
-            Some(ty) => ty,
-            None => return SemaType::Err(loc),
-        };
-
-        let substituted_type = generic_env.substitute_sema_type(&typedef_type);
-
-        let result = self.expand_sema_type(substituted_type, loc);
-
-        self.pop_typedef_expansion();
-
-        result
     }
 
     pub(crate) fn expand_sema_type(&mut self, ty: SemaType, loc: Loc) -> SemaType {
@@ -598,6 +616,43 @@ impl<'a> AnalysisContext<'a> {
             SemaType::Err(_) => ty,
         }
     }
+}
+
+impl<'a> AnalysisContext<'a> {
+    /// Pushes a typedef to the expansion stack.
+    /// Returns `Err(Vec<TypedefDeclID>)` containing the detected cycle path if a cycle occurs.
+    pub(crate) fn push_typedef_expansion(&mut self, id: TypedefDeclID) -> Result<(), Vec<TypedefDeclID>> {
+        if let Some(index) = self.typedef_expansion_stack.iter().position(|&x| x == id) {
+            let mut cycle_path = self.typedef_expansion_stack[index..].to_vec();
+            cycle_path.push(id);
+            return Err(cycle_path);
+        }
+
+        self.typedef_expansion_stack.push(id);
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn pop_typedef_expansion(&mut self) {
+        self.typedef_expansion_stack.pop();
+    }
+}
+
+fn canonicalize_typedef_cycle(path: &[TypedefDeclID]) -> Vec<TypedefDeclID> {
+    // remove duplicated last element
+    let mut cycle = path[..path.len() - 1].to_vec();
+
+    // find smallest element to normalize rotation
+    let min_index = cycle
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, id)| *id)
+        .map(|(i, _)| i)
+        .unwrap();
+
+    cycle.rotate_left(min_index);
+
+    cycle
 }
 
 impl<'a> AnalysisContext<'a> {

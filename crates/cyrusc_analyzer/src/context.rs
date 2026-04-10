@@ -36,6 +36,7 @@ use cyrusc_typed_ast::{
     decls::{TypedefDeclID, table::DeclTablesRegistry},
     format::{Formatter, format_loc},
 };
+use fx_hash::FxHashSet;
 
 pub struct AnalysisContext<'a> {
     pub(crate) config: AnalyzerConfig,
@@ -56,7 +57,7 @@ pub struct AnalysisContext<'a> {
     pub(crate) generic_env_stack: Vec<GenericEnv>,
 
     pub(crate) typedef_expansion_stack: Vec<TypedefDeclID>,
-    pub(crate) typedef_cycle_reported: bool,
+    pub(crate) reported_typedef_cycles: FxHashSet<Vec<TypedefDeclID>>,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -76,10 +77,11 @@ impl<'a> AnalysisContext<'a> {
         let type_cache = TypeCache::new();
         let control_stack = Vec::new();
         let typedef_expansion_stack = Vec::new();
+        let reported_typedef_cycles = FxHashSet::default();
 
         Self {
             typedef_expansion_stack,
-            typedef_cycle_reported: false,
+            reported_typedef_cycles,
             generic_env_stack,
             type_cache,
             func_env,
@@ -176,34 +178,6 @@ impl EntryPoints {
                 loc: entry_points.last().copied(),
                 hint: hint_loc.map(|loc| format!("Another declaration is at {}.", format_loc(&self.source_map, loc))),
             });
-        }
-    }
-}
-
-impl<'a> AnalysisContext<'a> {
-    /// Pushes a typedef to the stack.
-    /// Returns Err(Vec<TypedefDeclID>) containing the cycle path if a cycle is detected.
-    pub(crate) fn push_typedef_expansion(&mut self, id: TypedefDeclID) -> Result<(), Vec<TypedefDeclID>> {
-        if let Some(index) = self.typedef_expansion_stack.iter().position(|&x| x == id) {
-            // found a cycle!
-            // the cycle is from the first occurrence of 'id' to the end, plus 'id' again.
-            let mut cycle_path = self.typedef_expansion_stack[index..].to_vec();
-            cycle_path.push(id);
-
-            return Err(cycle_path);
-        }
-
-        self.typedef_expansion_stack.push(id);
-        Ok(())
-    }
-
-    #[inline]
-    pub(crate) fn pop_typedef_expansion(&mut self) {
-        self.typedef_expansion_stack.pop();
-
-        // Reset the reporting flag when we fully clear the stack
-        if self.typedef_expansion_stack.is_empty() {
-            self.typedef_cycle_reported = false;
         }
     }
 }
